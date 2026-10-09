@@ -59,6 +59,7 @@ impl Plugin for ScenePlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn load_requested(
     mut commands: Commands,
     request: Res<SceneRequest>,
