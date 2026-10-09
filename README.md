@@ -19,4 +19,4 @@ Documentation: `docs/METHOD.md` (how changes are judged), `docs/SETUP.md`
 (running it), `docs/ROADMAP.md` (status), `AGENTS.md` (contract for
 contributors and agents), and a `README.md` in every crate.
 
-Not affiliated with Bethesda. No license is granted; all rights reserved.
+Not affiliated with Bethesda.
