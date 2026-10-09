@@ -47,3 +47,7 @@ run-web:
 # headless game + MCP server round-trip (needs an install and built binaries)
 smoke-mcp:
     scripts/smoke-mcp.sh
+
+# one-time per clone: git hooks that refuse working memory and game files
+hooks:
+    git config core.hooksPath .githooks
