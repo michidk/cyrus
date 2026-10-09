@@ -67,4 +67,4 @@ reference:
     [ -d magic/reference/redguard-unity ] || git clone -q https://github.com/RGUnity/redguard-unity magic/reference/redguard-unity
     git -C magic/reference/redguard-preservation pull -q --ff-only
     git -C magic/reference/redguard-unity pull -q --ff-only
-    @echo "docs: magic/reference/redguard-preservation/docs  code: magic/reference/redguard-unity/Assets/Scripts/RGFileImport"
+    @echo "docs: magic/reference/redguard-preservation/docs  code: magic/reference/redguard-unity/Assets/Scripts"
