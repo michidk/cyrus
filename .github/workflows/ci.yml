@@ -1,23 +1,73 @@
-name: ci
-on:
-  push:
-    branches: [main]
-  pull_request:
+name: Test & Lint
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: short
+  RUSTFLAGS: "-D warnings"
+  RUSTUP_MAX_RETRIES: 10
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  gates:
-    runs-on: ubuntu-latest
+  test:
+    name: Test Suite
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v6
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Install Bevy's Linux libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+
+      # This plugin should be loaded after toolchain setup
+      - name: Cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Test
+        run: cargo test --workspace --all-features
+
+  lints:
+    name: Lints
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Install Bevy's Linux libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      - run: scripts/gates.sh
-  pr-title:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+          components: rustfmt, clippy
+
+      # This plugin should be loaded after toolchain setup
+      - name: Cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check --color always
+
+      - name: Run cargo clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  publish-check:
+    name: No game data or research traces
+    runs-on: ubuntu-26.04
     steps:
-      - uses: amannn/action-semantic-pull-request@v6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Scan tracked files
+        run: dev/scripts/publish-check.sh

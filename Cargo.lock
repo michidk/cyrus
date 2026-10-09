@@ -2604,6 +2604,7 @@ dependencies = [
  "clap",
  "cyrus-control",
  "cyrus-game",
+ "winit",
 ]
 
 [[package]]

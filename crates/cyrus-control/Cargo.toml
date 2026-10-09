@@ -3,7 +3,6 @@ name = "cyrus-control"
 description = "Line-delimited JSON control protocol between a running cyrus game and external drivers (tests, the MCP server)."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 serde.workspace = true

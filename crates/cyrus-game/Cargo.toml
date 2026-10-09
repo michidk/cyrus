@@ -3,7 +3,6 @@ name = "cyrus-game"
 description = "Game plugins: install discovery, preload, scene loading, fidelity switch, player, control server."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 bevy.workspace = true

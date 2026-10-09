@@ -3,7 +3,6 @@ name = "cyrus-web"
 description = "Browser build: loads scenes exported by the native game from the web server. No install access, no preload, no control port."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 bevy = { workspace = true, features = ["webgl2"] }

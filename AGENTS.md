@@ -9,7 +9,8 @@ Redguard's file formats and engine facts are owned by the sibling project
 
 Read in this order: this file, `docs/METHOD.md` (how a change is judged),
 `docs/SETUP.md` (running the new and the original game), `docs/ROADMAP.md`
-(what is next). `README.md` is for players.
+(delivery stages, what is done and what is next), then the `README.md` of the
+crate you touch. The root `README.md` is for players.
 
 ## Hard rules
 
@@ -33,7 +34,8 @@ Read in this order: this file, `docs/METHOD.md` (how a change is judged),
    executable offsets, no decompiler placeholder names, no "the original does X
    at ...". Engine facts are stated as facts and, where they are format or
    engine knowledge, contributed to redguard-preservation's `docs/` so the
-   public record lives there. `scripts/publish-check.sh` greps for the shapes.
+   public record lives there. `dev/scripts/publish-check.sh` greps for the shapes
+   and CI runs it.
 6. **No piracy.** Documentation tells readers to buy the game (GOG). No
    installer links, keys or game files anywhere in the repository.
 
@@ -81,18 +83,23 @@ no worktree. Silence is the failure mode; coordination is part of the work.
 - `crates/cyrus-mcp` — MCP stdio server; `.mcp.json` (Claude) and
   `.codex/config.toml` (Codex) register it. Tools: ping, state, screenshot,
   teleport, input, set_fidelity, load_scene, quit.
-- `docker/retro` — the original game under DOSBox-X with Voodoo emulation,
-  streamed over noVNC. `docker/dev` — a virtual display with software Vulkan
-  for running cyrus where there is no GPU or screen.
-- `scripts/` — `gates.sh` (what must be green), `publish-check.sh`,
+- `dev/docker/retro` — the original game under DOSBox-X with Voodoo emulation,
+  streamed over noVNC. `dev/docker/dev` — a virtual display with software
+  Vulkan for running cyrus where there is no GPU or screen.
+- `dev/scripts/` — `gates.sh` (what must be green), `publish-check.sh`,
   `run-retro.sh`, `run-game.sh`, `build-web.sh`, `run-web.sh`.
-- `.agents/skills/` — project skills (`.claude/skills` links here).
+- `.agents/skills/` — project skills for Codex and Claude Code (`just setup`
+  links `.claude/skills` here). `.mcp.json` registers the MCP server for
+  Claude Code and other tools that read it; `.claude/` and `.codex/` are
+  untracked local config.
+- Each crate has a `README.md` with its role, modules and commands.
 - `magic/` — untracked working memory: the GOG installer, the extracted game,
   research, journals, specs. Its own `README.md` and `METHODOLOGY.md` live there.
 
 ## Workflow
 
-- Once per clone run `just hooks`; the pre-commit hook refuses working memory and game files.
+- Once per clone run `just setup`; it writes the untracked local agent config
+  (`.claude/`, `.codex/`): the skills link, the MCP pre-approval, the Codex server.
 
 - `git pull` before starting. Commit completed, verified work directly to
   `main` and push; no feature branches or pull requests unless asked.

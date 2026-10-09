@@ -7,7 +7,6 @@ default-members = ["crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
 repository = "https://github.com/michidk/cyrus"
 
 [workspace.dependencies]

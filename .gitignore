@@ -9,3 +9,6 @@
 /.claude/settings.local.json
 /.serena/
 /.gitnexus/
+# Local agent config, written by `just setup`.
+/.claude/
+/.codex/

@@ -1,5 +1,0 @@
-# Project-scoped Codex config; loaded only for a trusted project.
-[mcp_servers.cyrus]
-command = "cargo"
-args = ["run", "-q", "-p", "cyrus-mcp"]
-env = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }

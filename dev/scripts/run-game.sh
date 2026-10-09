@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # cyrus with a virtual display and software Vulkan, behind the VibePod preview "cyrus".
-# Builds locally, runs the binary inside docker/dev (the container has the runtime libs).
+# Builds locally, runs the binary inside dev/docker/dev (the container has the runtime libs).
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 cargo build -p cyrus
-docker image inspect cyrus-dev:dev >/dev/null 2>&1 || docker build -t cyrus-dev:dev docker/dev
+docker image inspect cyrus-dev:dev >/dev/null 2>&1 || docker build -t cyrus-dev:dev dev/docker/dev
 docker rm -f cyrus-dev >/dev/null 2>&1 || true
 install=$(readlink -f "${REDGUARD_DIR:-redguard}")
 vibepod-preview run -port 36081 -title "cyrus (Bevy)" cyrus -- \

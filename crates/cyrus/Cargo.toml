@@ -3,7 +3,6 @@ name = "cyrus"
 description = "The game binary."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 bevy.workspace = true
@@ -11,3 +10,5 @@ cyrus-game.workspace = true
 cyrus-control.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+# Load libwayland at runtime instead of linking it, so the binary starts on hosts without it.
+winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }

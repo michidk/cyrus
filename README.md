@@ -15,4 +15,8 @@ Nothing is playable yet.
 File formats and engine documentation come from
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Related projects: [RGUnity](https://github.com/RGUnity/redguard-unity) (Unity).
-Not affiliated with Bethesda. MIT licensed.
+Documentation: `docs/METHOD.md` (how changes are judged), `docs/SETUP.md`
+(running it), `docs/ROADMAP.md` (status), `AGENTS.md` (contract for
+contributors and agents), and a `README.md` in every crate.
+
+Not affiliated with Bethesda. No license is granted; all rights reserved.

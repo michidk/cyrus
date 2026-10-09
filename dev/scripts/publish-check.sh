@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Refuses tracked files that carry traces of binary research or game data.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 status=0
 # Decompiler placeholder names and raw addresses in code or docs.
 if git ls-files -z | xargs -0 grep -nE '\b(FUN|DAT|LAB|thunk_FUN)_[0-9a-fA-F]{6,}\b|\b0x[0-9a-fA-F]{6,8}\b' -- 2>/dev/null; then

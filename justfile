@@ -3,9 +3,16 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
+# once per clone: local agent config (.claude/, .codex/) that is not tracked
+setup:
+    mkdir -p .claude .codex
+    ln -sfn ../.agents/skills .claude/skills
+    printf '{\n  "enabledMcpjsonServers": ["cyrus"]\n}\n' > .claude/settings.json
+    printf '# Loaded only for a trusted project.\n[mcp_servers.cyrus]\ncommand = "cargo"\nargs = ["run", "-q", "-p", "cyrus-mcp"]\nenv = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }\n' > .codex/config.toml
+
 # fmt, clippy, tests, publish check
 gates:
-    scripts/gates.sh
+    dev/scripts/gates.sh
 
 build:
     cargo build --workspace
@@ -16,13 +23,13 @@ run *ARGS:
 run-headless *ARGS:
     cargo run -p cyrus -- --headless {{ARGS}}
 
-# cyrus in docker/dev (virtual display + software Vulkan), VibePod preview "cyrus"
+# cyrus in dev/docker/dev (virtual display + software Vulkan), VibePod preview "cyrus"
 run-novnc *ARGS:
-    scripts/run-game.sh {{ARGS}}
+    dev/scripts/run-game.sh {{ARGS}}
 
-# the original game in docker/retro, VibePod preview "cyrus-retro"
+# the original game in dev/docker/retro, VibePod preview "cyrus-retro"
 retro:
-    scripts/run-retro.sh
+    dev/scripts/run-retro.sh
 
 stop:
     -vibepod-preview stop cyrus
@@ -33,21 +40,18 @@ mcp:
     cargo run -q -p cyrus-mcp
 
 docker-build:
-    docker build -t cyrus-retro:dev docker/retro
-    docker build -t cyrus-dev:dev docker/dev
+    docker build -t cyrus-retro:dev dev/docker/retro
+    docker build -t cyrus-dev:dev dev/docker/dev
 
 # wasm build of crates/cyrus-web into target/web
 web-build:
-    scripts/build-web.sh
+    dev/scripts/build-web.sh
 
 # serve the wasm build, VibePod preview "cyrus-web" (needs exported scenes in cyrus-config/cache)
 run-web:
-    scripts/run-web.sh
+    dev/scripts/run-web.sh
 
 # headless game + MCP server round-trip (needs an install and built binaries)
 smoke-mcp:
-    scripts/smoke-mcp.sh
+    dev/scripts/smoke-mcp.sh
 
-# one-time per clone: git hooks that refuse working memory and game files
-hooks:
-    git config core.hooksPath .githooks

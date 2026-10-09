@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Agent-loop smoke: starts the game headless, drives it through cyrus-mcp over stdio,
-# checks that state/input/fidelity/quit round-trip. Needs an install; built binaries are used as-is.
+# checks that state/input/fidelity/quit round-trip. Needs an install. Binaries are started
+# through `cargo run` so cargo's [env] (library paths on hosts without root) applies.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-: "${CYRUS_BIN:=target/debug/cyrus}" "${MCP_BIN:=target/debug/cyrus-mcp}"
-[ -x "$CYRUS_BIN" ] && [ -x "$MCP_BIN" ] || { echo "build first: cargo build" >&2; exit 1; }
+cd "$(dirname "$0")/../.."
+cargo build -q -p cyrus -p cyrus-mcp
 log=$(mktemp)
-"$CYRUS_BIN" --headless --scene START >"$log" 2>&1 &
+cargo run -q -p cyrus -- --headless --scene START >"$log" 2>&1 &
 game=$!
 trap 'kill $game 2>/dev/null || true' EXIT
-for _ in $(seq 1 60); do grep -q 'control: listening' "$log" && break; sleep 1; done
+for _ in $(seq 1 120); do grep -q 'control: listening' "$log" && break; sleep 1; done
 grep -q 'control: listening' "$log" || { echo "game did not start"; tail -20 "$log"; exit 1; }
 sleep 3
-python3 -I - "$MCP_BIN" <<'PY'
+python3 -I - <<'PY'
 import json, subprocess, sys
-p = subprocess.Popen([sys.argv[1]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+p = subprocess.Popen(["cargo", "run", "-q", "-p", "cyrus-mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 def rpc(o):
     p.stdin.write(json.dumps(o) + "\n"); p.stdin.flush(); return json.loads(p.stdout.readline())
 rpc({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}})

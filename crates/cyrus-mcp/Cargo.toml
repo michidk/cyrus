@@ -3,7 +3,6 @@ name = "cyrus-mcp"
 description = "MCP (stdio) server exposing a running cyrus game to AI agents via the control protocol."
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 cyrus-control.workspace = true
