@@ -55,3 +55,7 @@ run-web:
 smoke-mcp:
     dev/scripts/smoke-mcp.sh
 
+
+# same scene from cyrus and the original into cyrus-config/compare/<label>-{cyrus,original}.png
+compare LABEL:
+    dev/scripts/compare.sh {{LABEL}}
