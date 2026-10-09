@@ -12,7 +12,7 @@ Documented baseline at commit 1df0990. These capabilities were not revalidated b
 
 ## Delivery sequence
 
-Stages 01 through 08 describe dependency order, not dates or completion percentages. After stage 05, full-content coverage can proceed alongside stage 06; both must finish before stage 07 is accepted.
+Stages 01 through 08 describe dependency order; 09 is cross-cutting tooling, not dates or completion percentages. After stage 05, full-content coverage can proceed alongside stage 06; both must finish before stage 07 is accepted.
 
 ## 01. Establish the reference
 
@@ -116,6 +116,26 @@ Let an owner of Redguard install and play cyrus reliably.
 - [ ] Publish player setup instructions, controls, supported features, known limitations, and recovery steps. Keep the browser scene viewer scope explicit unless gameplay parity is separately approved.
 
 **Exit condition.** A clean machine with a purchased GOG install can run the release, finish the validated route, and save/resume; packages contain no game assets.
+
+## 09. Development tooling
+
+Status: In progress. Depends on: None; cross-cutting.
+
+Agents and developers must run, drive and compare both games on a machine without a GPU, a screen or root.
+
+- [x] Original game in DOSBox-X (Voodoo emulation) behind noVNC, mixer on so WAV capture works.
+- [x] Browser build with a download progress bar; stems or WORLD.INI indices select the scene.
+- [x] Headless mode, TCP control protocol, MCP server, project skills for Claude Code and Codex.
+- [x] Preload coverage report per file type and unsupported extension (`cyrus-config/preload-report.json`).
+- [ ] `just smoke-mcp` green on a built tree (headless game driven through the MCP server).
+- [ ] Native game under the virtual display (`just run-novnc`), image rebuilt when missing.
+- [ ] `just compare <label>`: the same scene from cyrus and the original into `cyrus-config/compare/`.
+- [ ] The fidelity switch gates graphics, not only the player controller.
+- [ ] Split `cyrus-game` into crates by concern (assets, world, rendering, control) once stage 02 has landed.
+- [ ] Codex set up end to end from a fresh clone, including project trust.
+- [ ] CI green since the repository restructure.
+
+**Exit condition.** A fresh clone with a linked install builds, runs both games, is driven from an agent, and produces a comparison capture using only the commands in `docs/SETUP.md`.
 
 ## Rules for every stage
 
