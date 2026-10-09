@@ -52,7 +52,10 @@ impl Preloaded {
     }
     pub fn write_report(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(crate::settings::CONFIG_DIR)?;
-        std::fs::write(Self::report_path(), serde_json::to_string_pretty(self).unwrap_or_default())
+        std::fs::write(
+            Self::report_path(),
+            serde_json::to_string_pretty(self).unwrap_or_default(),
+        )
     }
 }
 
@@ -183,7 +186,9 @@ fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
             total,
             name: entry.name.clone(),
         });
-        let count = by_type.entry(entry.file_type.display_name().to_string()).or_default();
+        let count = by_type
+            .entry(entry.file_type.display_name().to_string())
+            .or_default();
         match parse_one(&entry.path, entry.file_type) {
             Ok(()) => count.parsed += 1,
             Err(e) => {
@@ -208,11 +213,19 @@ fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
 /// Files under the install whose extension no parser claims, counted per extension.
 pub fn unsupported_extensions(root: &std::path::Path) -> std::collections::BTreeMap<String, usize> {
     let mut counts = std::collections::BTreeMap::new();
-    for entry in walkdir::WalkDir::new(root).into_iter().filter_map(Result::ok) {
+    for entry in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !entry.file_type().is_file() || FileType::from_path(entry.path()).is_some() {
             continue;
         }
-        let ext = entry.path().extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        let ext = entry
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
         *counts.entry(ext).or_insert(0) += 1;
     }
     counts
