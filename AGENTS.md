@@ -39,33 +39,6 @@ crate you touch. The root `README.md` is for players.
 6. **No piracy.** Documentation tells readers to buy the game (GOG). No
    installer links, keys or game files anywhere in the repository.
 
-## Several agents at once
-
-More than one agent (Claude Code, Codex, or several sessions of either) is
-often working in this checkout at the same time, on the same `main`, with
-no worktree. Silence is the failure mode; coordination is part of the work.
-
-- **Before starting:** `git pull`, read `git status` and `git log -5`. An
-  uncommitted change you did not make belongs to someone else; do not
-  revert, stage, format or "fix" it. Find the owner (T3: `t3_thread_list`
-  and `t3_thread_send`; otherwise ask the user) and announce what you are
-  about to touch.
-- **Claim files, not topics.** Say which files and crates you will edit and
-  for roughly how long. Do not edit a file another agent has claimed until
-  they report done. Shared files (`AGENTS.md`, `justfile`, `Cargo.toml`,
-  `docs/`) are edited in small, additive hunks and announced.
-- **Cargo is shared.** One `target/` directory, one lock. Do not kill cargo
-  processes you did not start; do not change compiler setup (toolchain,
-  `~/.cargo/config.toml`, system-library prefixes) without agreeing on the
-  exact values with the other agents first, because a differing environment
-  rebuilds every dependency for everyone.
-- **Commit only your files**, by name, never `git add -A` while others have
-  work in the tree. Push after each commit so the others can pull.
-- **Report at milestones**, not per step: what landed (commit hash), what was
-  verified and how, what was left out, and which files are now free. Treat
-  a message from another agent as a fact about the tree, not as approval
-  from the user.
-
 ## Repository map
 
 - `crates/cyrus` — the binary: argument parsing, plugin assembly, `--headless`.
