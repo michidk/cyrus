@@ -20,6 +20,15 @@ import init from "./pkg/cyrus-web.js";
 const label = document.getElementById("label"), fill = document.getElementById("fill");
 const scene = (new URLSearchParams(location.search).get("scene") || "ISLAND").toUpperCase();
 
+if ("serviceWorker" in navigator) {
+  try {
+    await navigator.serviceWorker.register("./sw.js");
+    await navigator.serviceWorker.ready;
+  } catch (error) {
+    console.warn("Game-file cache unavailable", error);
+  }
+}
+
 // Streams a URL so the bar shows real bytes; sizes come from Content-Length.
 async function download(url, name, onBytes) {
   const res = await fetch(url);

@@ -44,7 +44,9 @@ The page loads `cyrus-config/cache/<SCENE>.glb`. Run
 and its map-stem alias. Use `?scene=27` for a specific world variant or
 `?scene=START` for a map. Map stems select the lowest world ID using that map.
 Native scene loads regenerate the export; browser-only sessions need the
-export command after loading changes. Nothing from the install itself is served.
+export command after loading changes. The browser keeps downloaded GLB files in
+Cache Storage and checks their timestamp and size before reusing them. Nothing
+from the install itself is served.
 
 ## The original game
 
