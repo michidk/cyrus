@@ -1,0 +1,11 @@
+# Working memory: game files, decompilation, journals. Never tracked, never `git add -f`.
+/magic/
+# Link to the player's own install.
+/redguard
+# Local state: settings, caches, screenshots.
+/cyrus-config/
+/target/
+# Agent-tool local state.
+/.claude/settings.local.json
+/.serena/
+/.gitnexus/

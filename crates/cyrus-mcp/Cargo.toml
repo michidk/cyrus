@@ -1,0 +1,16 @@
+[package]
+name = "cyrus-mcp"
+description = "MCP (stdio) server exposing a running cyrus game to AI agents via the control protocol."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cyrus-control.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rmcp = { version = "3", features = ["server", "transport-io", "macros"] }
+schemars = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+base64 = "0.22"

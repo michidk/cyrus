@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
+default-members = ["crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/michidk/cyrus"
+
+[workspace.dependencies]
+bevy = { version = "0.20", features = ["serialize"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+clap = { version = "4", features = ["derive", "env"] }
+log = "0.4"
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "896f76c" }
+cyrus-control = { path = "crates/cyrus-control" }
+cyrus-game = { path = "crates/cyrus-game" }
+
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3
