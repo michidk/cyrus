@@ -2,6 +2,7 @@
 //! forwards each request into the ECS; one system answers them in frame order.
 
 use crate::fidelity::{Area, Fidelity, Mode};
+use crate::loading::Preloaded;
 use crate::player::Player;
 use crate::scene::{CurrentScene, SceneRequest};
 use bevy::prelude::*;
@@ -101,6 +102,7 @@ fn handle(
     mut fidelity: ResMut<Fidelity>,
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
+    preloaded: Option<Res<Preloaded>>,
     frames: Res<bevy::diagnostic::FrameCount>,
     mut player: Query<&mut Transform, With<Player>>,
     mut exit: MessageWriter<AppExit>,
@@ -115,8 +117,11 @@ fn handle(
                     let (yaw, pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
                     json!({"position": t.translation.to_array(), "yaw": yaw, "pitch": pitch})
                 });
+                let preload = preloaded.as_ref().map(|p| {
+                    json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": Preloaded::report_path()})
+                });
                 Ok(
-                    json!({"scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0}),
+                    json!({"scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload}),
                 )
             }
             Command::Screenshot { path } => {

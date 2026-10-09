@@ -28,11 +28,32 @@ pub enum Progress {
     Done(Box<Preloaded>),
 }
 
-/// Result of the preload, kept for the rest of the session.
-#[derive(Resource, Debug, Clone)]
+/// Result of the preload, kept for the rest of the session and written to
+/// `cyrus-config/preload-report.json`: the format-coverage report.
+#[derive(Resource, Debug, Clone, Default, serde::Serialize)]
 pub struct Preloaded {
     pub parsed: usize,
     pub failed: Vec<(String, String)>,
+    /// Per file type (display name): parsed and failed counts.
+    pub by_type: std::collections::BTreeMap<String, TypeCount>,
+    /// Extensions in the install that no parser claims, with file counts.
+    pub unsupported: std::collections::BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+pub struct TypeCount {
+    pub parsed: usize,
+    pub failed: usize,
+}
+
+impl Preloaded {
+    pub fn report_path() -> std::path::PathBuf {
+        std::path::Path::new(crate::settings::CONFIG_DIR).join("preload-report.json")
+    }
+    pub fn write_report(&self) -> std::io::Result<()> {
+        std::fs::create_dir_all(crate::settings::CONFIG_DIR)?;
+        std::fs::write(Self::report_path(), serde_json::to_string_pretty(self).unwrap_or_default())
+    }
 }
 
 #[derive(Resource)]
@@ -120,6 +141,12 @@ fn poll(
                 for (name, err) in &preloaded.failed {
                     warn!("preload: {name}: {err}");
                 }
+                for (ext, n) in &preloaded.unsupported {
+                    info!("preload: {n} unsupported .{ext} files");
+                }
+                if let Err(e) = preloaded.write_report() {
+                    warn!("preload: cannot write report: {e}");
+                }
                 commands.insert_resource(*preloaded);
                 next.set(AppState::InGame);
             }
@@ -139,8 +166,8 @@ fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
         Ok(r) => r,
         Err(e) => {
             let _ = tx.send(Progress::Done(Box::new(Preloaded {
-                parsed: 0,
                 failed: vec![("scan".into(), e.to_string())],
+                ..Default::default()
             })));
             return;
         }
@@ -149,14 +176,20 @@ fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
     entries.sort_by(|a, b| a.path.cmp(&b.path));
     let total = entries.len();
     let mut failed = Vec::new();
+    let mut by_type = std::collections::BTreeMap::<String, TypeCount>::new();
     for (i, entry) in entries.iter().enumerate() {
         let _ = tx.send(Progress::File {
             done: i,
             total,
             name: entry.name.clone(),
         });
-        if let Err(e) = parse_one(&entry.path, entry.file_type) {
-            failed.push((entry.name.clone(), e));
+        let count = by_type.entry(entry.file_type.display_name().to_string()).or_default();
+        match parse_one(&entry.path, entry.file_type) {
+            Ok(()) => count.parsed += 1,
+            Err(e) => {
+                count.failed += 1;
+                failed.push((entry.name.clone(), e));
+            }
         }
     }
     let _ = tx.send(Progress::File {
@@ -167,7 +200,22 @@ fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
     let _ = tx.send(Progress::Done(Box::new(Preloaded {
         parsed: total - failed.len(),
         failed,
+        by_type,
+        unsupported: unsupported_extensions(root),
     })));
+}
+
+/// Files under the install whose extension no parser claims, counted per extension.
+pub fn unsupported_extensions(root: &std::path::Path) -> std::collections::BTreeMap<String, usize> {
+    let mut counts = std::collections::BTreeMap::new();
+    for entry in walkdir::WalkDir::new(root).into_iter().filter_map(Result::ok) {
+        if !entry.file_type().is_file() || FileType::from_path(entry.path()).is_some() {
+            continue;
+        }
+        let ext = entry.path().extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+        *counts.entry(ext).or_insert(0) += 1;
+    }
+    counts
 }
 
 /// One parse per file type. Returns the error text so coverage gaps are visible in the log.

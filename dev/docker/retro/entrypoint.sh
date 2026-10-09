@@ -2,6 +2,8 @@
 # Expects the GOG app directory mounted at /game (contains Redguard/ and game.ins).
 set -euo pipefail
 export DISPLAY=:1
+# No audio device in the container; the mixer still runs so DOSBox-X can record WAV captures.
+export SDL_AUDIODRIVER=dummy
 Xvfb :1 -screen 0 "${SCREEN:-1024x768x24}" -nolisten tcp &
 sleep 1
 x11vnc -display :1 -nopw -forever -shared -quiet -bg -rfbport 5900
