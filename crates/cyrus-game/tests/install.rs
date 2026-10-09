@@ -41,3 +41,26 @@ fn every_scene_file_in_maps_parses() {
         .collect();
     assert!(failed.is_empty(), "{failed:#?}");
 }
+
+#[test]
+fn world_exports_include_declared_terrain_and_textures() {
+    let Some(install) = install() else { return };
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("world-export-test-{}", std::process::id()));
+    for (name, terrain) in [("START", true), ("PALACE", false)] {
+        let path = output.join(format!("{name}.glb"));
+        cyrus_game::scene::export_scene(&install, name, &path).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[..4], b"glTF");
+        let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+        let document: serde_json::Value =
+            serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
+        let nodes = document["nodes"].as_array().unwrap();
+        assert_eq!(nodes.iter().any(|node| node["name"] == "Terrain"), terrain);
+        assert!(!document["images"].as_array().unwrap().is_empty());
+        assert!(nodes.iter().any(|node| node.get("mesh").is_some()));
+        std::fs::remove_file(path).unwrap();
+    }
+    std::fs::remove_dir(output).unwrap();
+}

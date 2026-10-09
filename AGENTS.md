@@ -42,7 +42,7 @@ Read in this order: this file, `docs/METHOD.md` (how a change is judged),
 - `crates/cyrus` — the binary: argument parsing, plugin assembly, `--headless`.
 - `crates/cyrus-game` — the game as Bevy plugins; no window assumptions.
   `install.rs` (find the install), `loading.rs` (startup preload with progress
-  bar, parses every known file through `rgpre`), `scene.rs` (scene export and
+  bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
   load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
   `settings.rs` (`cyrus-config/settings.toml`), `control.rs` (TCP control server).
 - `crates/cyrus-control` — the control protocol types and a blocking client.
@@ -64,6 +64,8 @@ Read in this order: this file, `docs/METHOD.md` (how a change is judged),
   research, journals, specs. Its own `README.md` and `METHODOLOGY.md` live there.
 
 ## Workflow
+
+- Once per clone run `just hooks`; the pre-commit hook refuses working memory and game files.
 
 - `git pull` before starting. Commit completed, verified work directly to
   `main` and push; no feature branches or pull requests unless asked.

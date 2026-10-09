@@ -24,6 +24,8 @@ The link is gitignored. cyrus only reads from it.
 ```sh
 just run                 # window
 just run -- --scene START
+just run -- --scene 27    # WORLD.INI ID selects the night island variant
+cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
 just run-headless        # no window: preload + scene export + control server
 just run-novnc           # in docker/dev with a virtual display, served via VibePod preview "cyrus"
 ```
@@ -37,9 +39,12 @@ rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # v
 just run-web             # VibePod preview "cyrus-web"; ?scene=START picks a scene
 ```
 
-The page loads `cyrus-config/cache/<SCENE>.glb`, so run the native game (or
-`just run-headless --scene X`) once per scene first. Nothing from the install
-itself is served.
+The page loads `cyrus-config/cache/<SCENE>.glb`. Run
+`cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry
+and its map-stem alias. Use `?scene=27` for a specific world variant or
+`?scene=START` for a map. Map stems select the lowest world ID using that map.
+Native scene loads regenerate the export; browser-only sessions need the
+export command after loading changes. Nothing from the install itself is served.
 
 ## The original game
 

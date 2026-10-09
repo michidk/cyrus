@@ -9,12 +9,15 @@ struct Args {
     /// Path to the GOG install's Redguard directory (overrides $REDGUARD_DIR and ./redguard).
     #[arg(long)]
     install: Option<PathBuf>,
-    /// Scene stem to load (overrides settings.toml).
+    /// WORLD.INI world ID or map stem to load (overrides settings.toml).
     #[arg(long)]
     scene: Option<String>,
     /// No window, no renderer: preload, scene export and the control server only.
     #[arg(long)]
     headless: bool,
+    /// Export every WORLD.INI world to the browser cache and exit.
+    #[arg(long)]
+    export_all_worlds: bool,
     /// Control server bind address.
     #[arg(long, env = "CYRUS_CONTROL_ADDR")]
     control: Option<String>,
@@ -27,6 +30,9 @@ fn main() -> anyhow::Result<()> {
         settings.scene = scene;
     }
     let install = GameInstall::locate(args.install.as_deref())?;
+    if args.export_all_worlds {
+        return cyrus_game::scene::export_all_worlds(&install, &Settings::cache_dir());
+    }
     let control = ControlAddr(
         args.control
             .unwrap_or_else(|| settings.control_addr.clone()),

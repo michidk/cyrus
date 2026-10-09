@@ -32,6 +32,10 @@ commit message. It is never the default of a fidelity area.
    Put the comparison, or what could not be compared, in the commit message.
 5. **Gates green, commit small.** `just gates`; one logical change per commit.
 
+World-loading checks enumerate WORLD.INI and export every entry, including
+worlds sharing a map with different palettes. Successful export proves loading
+coverage; visual fidelity still requires comparison with the original.
+
 ## The fidelity switch
 
 `Fidelity` is a resource with one `Mode` per `Area` (`player_controller`,
