@@ -20,6 +20,14 @@ state dump, from both games where the change claims fidelity.
 `vibepod-preview doctor <name>` prints the URL. Open `/vnc.html?autoconnect=1&resize=scale`.
 Stop everything with `just stop`.
 
+## Prove the loop works
+
+`just smoke-mcp` starts the game headless and drives it through the MCP
+server over stdio (tool list, state, a key press that moves the player, a
+fidelity switch, quit). Run it after touching the control server, the MCP
+server or the player. Scenes in the browser build accept a stem (`START`) or
+a WORLD.INI index (`?scene=27`).
+
 ## Drive cyrus
 
 Prefer the MCP tools (`cyrus` server: `ping`, `state`, `screenshot`,

@@ -43,3 +43,7 @@ web-build:
 # serve the wasm build, VibePod preview "cyrus-web" (needs exported scenes in cyrus-config/cache)
 run-web:
     scripts/run-web.sh
+
+# headless game + MCP server round-trip (needs an install and built binaries)
+smoke-mcp:
+    scripts/smoke-mcp.sh
