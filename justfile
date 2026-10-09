@@ -59,3 +59,12 @@ smoke-mcp:
 # same scene from cyrus and the original into cyrus-config/compare/<label>-{cyrus,original}.png
 compare LABEL:
     dev/scripts/compare.sh {{LABEL}}
+
+# reference clones under magic/reference (untracked): format docs and the Unity reimplementation
+reference:
+    mkdir -p magic/reference
+    [ -d magic/reference/redguard-preservation ] || git clone -q https://github.com/michidk/redguard-preservation magic/reference/redguard-preservation
+    [ -d magic/reference/redguard-unity ] || git clone -q https://github.com/RGUnity/redguard-unity magic/reference/redguard-unity
+    git -C magic/reference/redguard-preservation pull -q --ff-only
+    git -C magic/reference/redguard-unity pull -q --ff-only
+    @echo "docs: magic/reference/redguard-preservation/docs  code: magic/reference/redguard-unity/Assets/Scripts/RGFileImport"
