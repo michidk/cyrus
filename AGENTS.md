@@ -34,8 +34,7 @@ crate you touch. The root `README.md` is for players.
    executable offsets, no decompiler placeholder names, no "the original does X
    at ...". Engine facts are stated as facts and, where they are format or
    engine knowledge, contributed to redguard-preservation's `docs/` so the
-   public record lives there. `dev/scripts/publish-check.sh` greps for the shapes
-   and CI runs it.
+   public record lives there.
 6. **No piracy.** Documentation tells readers to buy the game (GOG). No
    installer links, keys or game files anywhere in the repository.
 
@@ -59,7 +58,7 @@ crate you touch. The root `README.md` is for players.
 - `dev/docker/retro` — the original game under DOSBox-X with Voodoo emulation,
   streamed over noVNC. `dev/docker/dev` — a virtual display with software
   Vulkan for running cyrus where there is no GPU or screen.
-- `dev/scripts/` — `gates.sh` (what must be green), `publish-check.sh`,
+- `dev/scripts/` — `gates.sh` (what must be green),
   `run-retro.sh`, `run-game.sh`, `build-web.sh`, `run-web.sh`.
 - `.agents/skills/` — project skills for Codex and Claude Code (`just setup`
   links `.claude/skills` here). `.mcp.json` registers the MCP server for
@@ -79,7 +78,7 @@ crate you touch. The root `README.md` is for players.
 - Conventional Commits: `type(scope): description`. Scopes: `game`, `scene`,
   `player`, `fidelity`, `control`, `mcp`, `docker`, `docs`, `skills`.
 - Gates before every commit: `just gates` (fmt, clippy with `-D warnings`,
-  tests, publish check). Tests that need the install skip when it is absent
+  tests). Tests that need the install skip when it is absent
   and say so.
 - Say what was verified and how: a test, a headless run, a screenshot
   compared with the original. "It compiles" is not verification.

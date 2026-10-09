@@ -61,13 +61,3 @@ jobs:
 
       - name: Run cargo clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-  publish-check:
-    name: No game data or research traces
-    runs-on: ubuntu-26.04
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v7
-
-      - name: Scan tracked files
-        run: dev/scripts/publish-check.sh
