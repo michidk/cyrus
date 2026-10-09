@@ -1,6 +1,6 @@
 # ROADMAP
 
-A delivery plan for a faithful rebuild of Redguard in Rust and Bevy. The original game, run from the player's own GOG install, is the specification.
+A delivery plan for a faithful rebuild of Redguard in Rust and Bevy. The original game, run from the player's own GOG install, is the specification. Scope is limited to the original single-player game: no multiplayer, new content, or functionality the original did not have.
 
 ## Current baseline
 
@@ -47,7 +47,7 @@ Replace placeholder control with observed movement and collision.
 - [ ] Resolve the player start from game data. Read the keyboard mapping from KEYS.INI and verify it in the original.
 - [ ] Measure movement, turning, camera behavior, jumps, gravity, slopes, steps, walls, and ledges. Implement only supported behavior in Faithful mode.
 - [ ] Investigate swimming, climbing, falls, and scene exits where the original requires them. Exercise collision at boundaries and across frame rates.
-- [ ] Keep alternative controls and camera behavior behind their fidelity areas; verify the default remains Faithful.
+- [ ] Verify that controls and camera behavior reproduce the original. Alternative behavior is not a delivery goal.
 
 **Exit condition.** Recorded input routes reproduce movement and camera behavior, block solid geometry, and cross supported scene boundaries without trapping the player.
 
@@ -100,7 +100,7 @@ Expand from the proven route to the whole original game.
 - [ ] Enumerate reachable worlds, quests, actors, script operations, items, combat encounters, and endings from the install and reference playthroughs.
 - [ ] Close coverage gaps in small verified changes. Exercise quest order, revisits, failure paths, death, and save/load across transitions.
 - [ ] Run a complete new-game-to-ending playthrough with checkpoint comparisons. Fix blockers and review every remaining unverified assumption.
-- [ ] Classify remaining differences by fidelity area and evidence. Modern mode must not change shared scene content or the default faithful behavior.
+- [ ] Classify remaining differences by fidelity area and evidence. Resolve deviations from original behavior before claiming fidelity.
 
 **Exit condition.** A complete playthrough finishes without blockers; the content matrix has no unexplained omissions, and known differences have explicit evidence and disposition.
 
@@ -122,7 +122,7 @@ Let an owner of Redguard install and play cyrus reliably.
 - Observe the original, specify behavior, implement one piece, and compare the same inputs. Run `just gates` before each commit.
 - `rgpre` owns formats and published engine facts. cyrus owns Bevy behavior, integration, fidelity modes, and player experience. Contribute discoveries upstream.
 - Read the install only. Keep saves and settings in `cyrus-config/`. Keep research and copyrighted captures in `magic/` or `cyrus-config/`, untracked.
-- Default to Faithful. Register modern deviations under a fidelity area; never alter shared scene content to implement them.
+- Default to Faithful. The existing fidelity switch does not authorize new functionality or expand the scope beyond the original game.
 - Keep native filesystem, socket, and thread access out of the browser build.
 
 ## Unknowns and decisions
@@ -140,9 +140,9 @@ Let an owner of Redguard install and play cyrus reliably.
 3. Create the world comparison matrix and verify START plus a shared-map palette variant.
 4. Resolve player spawn and input mapping from data, then measure a short movement route in both games.
 
-## Deferred by decision
+## Out of scope
 
-Multiplayer, new content, and decoders derived from third-party GPL sources remain deferred. The browser scene viewer does not commit the project to full browser gameplay.
+Multiplayer, new content, and functionality absent from the original are excluded, not deferred. Decoders derived from third-party GPL sources are also excluded. The browser scene viewer does not commit the project to full browser gameplay.
 
 ## Maintaining this plan
 
