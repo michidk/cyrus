@@ -22,6 +22,7 @@ pub struct FrameScene(pub bool);
 
 // unverified placeholders; replace with values derived from the original.
 const MOVE_SPEED: f32 = 12.0;
+const FLYCAM_SPEED: f32 = 100.0;
 const TURN_SPEED: f32 = 2.0;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
@@ -141,6 +142,6 @@ fn modern_controller(
         dir -= Vec3::Y;
     }
     if dir != Vec3::ZERO {
-        t.translation += dir.normalize() * MOVE_SPEED * dt;
+        t.translation += dir.normalize() * FLYCAM_SPEED * dt;
     }
 }
