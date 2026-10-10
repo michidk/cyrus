@@ -32,3 +32,6 @@ strip = true
 opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.test]
+debug = 0
