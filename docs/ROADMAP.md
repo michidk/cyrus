@@ -31,7 +31,7 @@ Update or release ownership when work changes.
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; ground response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
-| Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range deployed; scrolling verified natively; independent Modern Water/Fog/Sky presets under verification |
+| Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
 
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
 | Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions verified by native contracts and WASM compilation; researching original eligibility, clock and script scheduling for automatic playback |
@@ -73,7 +73,7 @@ committed support; unverified work stays in the TODO column.
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Startup title artwork and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
-| Glide sky BSI/COL | Sky plane, fog, and BIOS-timed scrolling in both graphics modes | Full projection/motion comparison, tilt, and sun disc |
+| Glide sky BSI/COL | Faithful sky plane, fog, and BIOS-timed scrolling; camera-centered Modern sky | Full projection/motion comparison, tilt, and sun disc |
 | `SFX` | Every effect decoded at its stored rate and channel layout; playback by index with the file's loop flag, via the control/MCP `play_sound` command | Script, animation, ambient and surface triggers; positional and per-call volume; audible comparison with the original |
 | `RTX` | All voice clips of the `rtx_filename` container load in the background; playback by label via `play_speech`; `dialog_use_speech` honoured | Dialogue and combat triggers, subtitles and text, dialogue choices, and quest integration |
 | `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
