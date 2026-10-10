@@ -40,6 +40,9 @@ render the Glide BSI sky in Faithful graphics. **Verified:** source textures,
 matching palettes, and the static plane projection follow preservation's
 [sky documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 `SYSTEM.INI`'s `sky_disable=1` suppresses the sky. Indoor worlds remove it.
+**Verified:** the Glide background uses `world_fogrgb`, including beyond the
+finite sky plane. Re-export old sidecars to replace their legacy background
+colors. The recovered background fact is [published for preservation review](https://github.com/michidk/redguard-preservation/compare/main...fix/glide-background-fill).
 
 **Verified:** water uses preservation's [water documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/water.md):
 selected-corner mask, terrain-centered phase, quarter-shifted rotation table,

@@ -141,7 +141,7 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
     let (root, buffer) = match &entry.world {
         Some(path) => {
             let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
-            crate::environment_export::export(install, entry, &palette, Some(&terrain), out)?;
+            crate::environment_export::export(install, entry, Some(&terrain), out)?;
             convert_wld_scene_to_gltf(
                 &terrain,
                 TERRAIN_TEXBSI_ID,
@@ -152,7 +152,7 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
             )?
         }
         None => {
-            crate::environment_export::export(install, entry, &palette, None, out)?;
+            crate::environment_export::export(install, entry, None, out)?;
             convert_positioned_models_to_gltf(
                 &models,
                 &lights,

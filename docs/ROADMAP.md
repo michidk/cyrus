@@ -66,7 +66,7 @@ committed support; unverified work stays in the TODO column.
 | `3D`, `3DC`, `ROB` | Static export and retained animation frame geometry, including unambiguous embedded models | Actor and mesh animation playback |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Parsing | Software sky projection and menu artwork |
-| Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
+| Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Full projection comparison, scrolling, tilt, and sun disc |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
 | `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
 | `FNT` | Preload parsing | In-game text and menus |
@@ -81,7 +81,9 @@ plane mapping are documented in preservation's
 [sky renderer notes](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 Installed day, night, sunset, and Necro exports pass palette and plane checks;
 native Vulkan and browser WebGL runs show the static sky behind scene geometry.
-The former GXA cubemap and approximate water animation are removed. Sky
+The former GXA cubemap and approximate water animation are removed.
+**Verified:** uncovered pixels use the Glide `world_fogrgb` clear color. Re-export
+old environment sidecars to replace legacy palette backgrounds. Sky
 scrolling, tilt, and the sun disc remain unsupported; a static sky does not
 establish complete original-game fidelity.
 

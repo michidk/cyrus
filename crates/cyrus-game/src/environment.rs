@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub struct Environment {
     /// Decoded Glide BSI sky and its plane parameters, if the world declares a sky.
     pub sky: Option<SkyImage>,
-    /// Palette-derived RGB background; `None` means sky-derived color is unresolved.
+    /// Glide fog RGB background; `None` in older sidecars falls back to black.
     pub background: Option<[u8; 3]>,
     /// Terrain water mask and original wave parameters, if declared.
     pub water: Option<Water>,
