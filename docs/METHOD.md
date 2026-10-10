@@ -35,6 +35,20 @@ unsupported. An `// unverified` comment or Modern mode does not authorize a gues
    Put the comparison, or what could not be compared, in the commit message.
 5. **Gates green, commit small.** `just gates`; one logical change per commit.
 
+## Controller parity evidence
+
+An isolated arithmetic test establishes only that calculation. To claim movement
+parity, compare the complete player update from a reproducible starting state:
+scene, settled position, heading, actor attributes, held inputs, animation state,
+and timing inputs. Record fractional positions when integer displays hide a
+difference. Check startup, steady movement, and release separately.
+
+Measure simulated updates rather than treating host key-hold duration or video
+frames as an update count. Debugger pauses change timing; use native recordings
+for timing comparisons and debugger traces to establish call order and values.
+If a helper-only prediction disagrees with the recording, trace the remaining
+update before implementing or tuning constants to fit the endpoint.
+
 World-loading checks enumerate WORLD.INI and export every entry, including
 worlds sharing a map with different palettes. Successful export proves loading
 coverage; visual fidelity still requires comparison with the original.

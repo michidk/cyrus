@@ -41,6 +41,9 @@ render the Glide BSI sky in Faithful graphics. **Verified:** source textures,
 matching palettes, and the static plane projection follow preservation's
 [sky documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 `SYSTEM.INI`'s `sky_disable=1` suppresses the sky. Indoor worlds remove it.
+**Verified:** the Glide background uses `world_fogrgb`, including beyond the
+finite sky plane. Re-export old sidecars to replace their legacy background
+colors. The recovered background fact is [published for preservation review](https://github.com/michidk/redguard-preservation/compare/main...fix/glide-background-fill).
 
 **Verified:** water uses preservation's [water documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/water.md):
 selected-corner mask, terrain-centered phase, quarter-shifted rotation table,
@@ -56,8 +59,11 @@ The debug flycam toggle moves only the view camera. Turning it off returns the
 view to the stationary player pose; it does not enable gameplay. Faithful
 keyboard actions preserve held and opposing inputs. Modern input samples WASD,
 Space, and held Shift run. Camera-relative movement and the mouse camera remain
-pending. The deterministic `player::turn` core is
-tested against original heading observations, but gameplay does not yet drive it.
+pending. The deterministic `player::turn` and `player::walk` cores are
+tested against original heading and animation-gated startup observations.
+Walking supports actor step type 1 and advances startup during suppressed
+translation. Gameplay does not yet drive these cores: animation eligibility,
+collision, and simulation timing remain incomplete.
 
 Default windowed startup plays the original authored 3dfx animation and decoded
 640×480 title image, then stops at the book menu. Preload runs concurrently.

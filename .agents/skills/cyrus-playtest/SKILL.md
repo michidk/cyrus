@@ -18,13 +18,13 @@ state dump, from both games where the change claims fidelity.
 | original game | `just retro` | VibePod preview `cyrus-retro` |
 
 `vibepod-preview doctor <name>` prints the URL. Open `/vnc.html?autoconnect=1&resize=scale`.
-Stop everything with `just stop`.
+In a shared workspace, stop only the processes and previews this session owns.
 
 ## Prove the loop works
 
 `just smoke-mcp` starts the game headless and drives it through the MCP
-server over stdio (tool list, state, a key press that moves the player, a
-fidelity switch, quit). Run it after touching the control server, the MCP
+server over stdio (tool list, state, a key press that moves the debug camera
+while leaving the player stationary, a fidelity switch, quit). Run it after touching the control server, the MCP
 server or the player. Scenes in the browser build accept a stem (`START`) or
 a WORLD.INI index (`?scene=27`).
 
@@ -45,10 +45,18 @@ Keys are Bevy `KeyCode` names. `tap` presses for one frame. Fidelity areas:
 ## Drive the original
 
 The DOSBox-X window is a browser tab through noVNC: use the T3 `preview_*`
-tools to press keys and take snapshots. DOSBox-X's own menu offers capture
-and the built-in debugger (Debug menu) for memory inspection. Keyboard scheme
+tools to press keys and take snapshots. DOSBox-X's menu offers capture;
+debugger availability depends on the build. Keyboard scheme
 is in the install's `KEYS.INI`. Save games live in the writable copy under
 `magic/retro-run/Redguard/SAVEGAME/`.
+
+For held input, use noVNC's `UI.rfb.sendKey(keysym, code, true)`, wait, then
+send the matching release. A browser key tap may be too brief for the original
+to sample. Host hold duration does not establish a simulated update count.
+Console text can lose characters; send it slowly, handle modifiers explicitly,
+and inspect the echoed command and result before treating it as successful.
+
+For runtime inspection, read [Original-game debugger](references/original-debugger.md).
 
 ## Compare
 

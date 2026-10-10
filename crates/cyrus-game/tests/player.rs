@@ -262,3 +262,32 @@ fn ground_turn_rounds_directions_separately_and_preserves_overshoot() {
     assert_eq!(turn.advance(12, [true, false], 12, 20, 256), 36);
     assert_eq!(turn.advance(36, [true, false], 12, 20, 256), 60);
 }
+
+#[test]
+fn walking_startup_matches_original_animation_gated_displacements() {
+    let mut walk = cyrus_game::player::walk::WalkingStartup::new(1).unwrap();
+    assert_eq!(walk.advance(8, 161, false), 0);
+    let mut z = 10_502_144;
+    for (scale, observed_z) in [(161, 10_502_572), (161, 10_503_216), (153, 10_504_440)] {
+        z += walk.advance(8, scale, true);
+        assert_eq!(z, observed_z);
+    }
+    assert_eq!(walk.advance(8, 153, false), 0);
+    assert_eq!(walk.advance(8, 153, true), 1224);
+}
+
+#[test]
+fn walking_startup_uses_actor_speed_and_rejects_unsupported_step_types() {
+    use cyrus_game::player::walk::WalkingStartup;
+
+    for step_type in 0..=u8::MAX {
+        assert_eq!(WalkingStartup::new(step_type).is_some(), step_type == 1);
+    }
+    let mut walk = WalkingStartup::new(1).unwrap();
+    assert_eq!(walk.advance(7, 256, true), 448);
+    assert_eq!(walk.advance(7, 256, true), 597);
+    assert_eq!(walk.advance(7, 256, true), 896);
+    assert_eq!(walk.advance(7, 256, true), 1792);
+    assert_eq!(walk.advance(0, 256, true), 0);
+    assert_eq!(walk.advance(9, 256, true), 2304);
+}

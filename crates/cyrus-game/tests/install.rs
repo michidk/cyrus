@@ -177,17 +177,18 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
         .join(format!("sky-export-test-{}", std::process::id()));
     let mut skies = Vec::new();
     // Verified installed WORLD.INI and matching sky COL samples; no game bytes are fixtures.
-    for (world, first_pixel, scale) in [
-        ("1", [107, 181, 231, 255], 2000.0),
-        ("27", [0, 8, 41, 255], 2000.0),
-        ("28", [107, 181, 231, 255], 2000.0),
-        ("6", [49, 33, 41, 255], 1500.0),
+    for (world, first_pixel, scale, background) in [
+        ("1", [107, 181, 231, 255], 2000.0, [200, 190, 250]),
+        ("27", [0, 8, 41, 255], 2000.0, [0, 0, 10]),
+        ("28", [107, 181, 231, 255], 2000.0, [200, 100, 100]),
+        ("6", [49, 33, 41, 255], 1500.0, [57, 49, 49]),
     ] {
         let path = output.join(format!("{world}.glb"));
         cyrus_game::scene::export_scene(&install, world, &path).unwrap();
         let environment: cyrus_game::environment::Environment =
             serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
                 .unwrap();
+        assert_eq!(environment.background, Some(background), "world {world}");
         let sky = environment.sky.unwrap();
         assert_eq!((sky.width, sky.height), (256, 256), "world {world}");
         assert_eq!(sky.level, -4500.0, "world {world}");

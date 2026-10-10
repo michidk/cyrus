@@ -30,7 +30,7 @@ Update or release ownership when work changes.
 | --- | --- | --- |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tracing the original walking startup discrepancy before locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tested animation-gated walking startup core landed; movement eligibility and collision still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
@@ -70,7 +70,7 @@ committed support; unverified work stays in the TODO column.
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Startup title artwork and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
-| Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
+| Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Full projection comparison, scrolling, tilt, and sun disc |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
 | `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
 | `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
@@ -87,7 +87,9 @@ plane mapping are documented in preservation's
 [sky renderer notes](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 Installed day, night, sunset, and Necro exports pass palette and plane checks;
 native Vulkan and browser WebGL runs show the static sky behind scene geometry.
-The former GXA cubemap and approximate water animation are removed. Sky
+The former GXA cubemap and approximate water animation are removed.
+**Verified:** uncovered pixels use the Glide `world_fogrgb` clear color. Re-export
+old environment sidecars to replace legacy palette backgrounds. Sky
 scrolling, tilt, and the sun disc remain unsupported; a static sky does not
 establish complete original-game fidelity.
 
@@ -192,11 +194,12 @@ Published prerequisites:
 
 FPS-derived frame-scale smoothing is now documented and checked against a native
 original-game recording ([16703d1](https://github.com/michidk/redguard-preservation/commit/16703d1)).
-Walking startup still needs animation-state and fractional-position evidence;
-recorded displacement alone does not establish its movement rule.
-The startup discrepancy reproduces in a second native recording. Runtime actor
-attributes and executable identity have been checked; tracing the original's
-movement calls is the next verification step.
+Forward-walking startup advances while animation can suppress translation.
+Live original-game observations confirm the first displacement can use a later
+startup phase ([e839ed8](https://github.com/michidk/redguard-preservation/commit/e839ed8)).
+This explains the recorded integer-position sequence, but its fractional endpoint
+still differs by two raw coordinate units. Complete animation eligibility,
+collision, and release timing remain unresolved; locomotion is not enabled.
 
 Input foundation: eight held directional/action bindings from
 `KEYS.INI`, Modern WASD/Space/held-Shift input, an independent debug flycam
@@ -204,9 +207,11 @@ toggle, and input/camera-isolation tests. A deterministic ground-turn core
 matches captured original heading changes, including a frame-scale change and
 release. It is not connected to live gameplay while timing and state eligibility
 remain unresolved. Workspace tests, strict Clippy, formatting, publication checks,
-and an MCP smoke test pass using isolated worktree artifacts. The six player
-tests cover installed bindings, Modern input, camera isolation, and ground-turn
-arithmetic. Translation and the original follow camera remain unsupported.
+and an MCP smoke test pass using isolated worktree artifacts. Player tests cover
+installed bindings, Modern input, camera isolation, ground-turn arithmetic, and
+animation-gated walking startup. The walking core supports step
+type 1 and rejects other step types. It is not connected to gameplay. Translation
+and the original follow camera remain unsupported.
 
 - [x] Land and verify the keyboard-input and independent debug-flycam foundation.
 - [ ] Read and apply the original player spawn selection and position.

@@ -86,7 +86,9 @@ builds show the BSI sky in Faithful and Modern graphics. **Verified:** sky
 texture selection, palette, and static plane projection follow preservation's
 sky documentation. Old sidecars lack the plane inputs and must be rebuilt.
 Sky scrolling, tilt, and the sun remain unsupported. `sky_disable=1` in the
-install's `SYSTEM.INI` suppresses the sky.
+install's `SYSTEM.INI` suppresses the sky. **Verified:** uncovered pixels use
+`world_fogrgb`, the Glide background-clear color. Re-export old sidecars to
+replace legacy palette background colors and the black fallback.
 
 Water waves run in both graphics modes. Re-export worlds after this update;
 old water sidecars have incompatible masks. **Verified:** vertex selection,

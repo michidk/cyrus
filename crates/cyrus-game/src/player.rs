@@ -3,6 +3,7 @@
 
 pub mod input;
 pub mod turn;
+pub mod walk;
 
 use crate::AppState;
 use bevy::camera::primitives::Aabb;

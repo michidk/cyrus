@@ -63,10 +63,20 @@ fn sky_disabled(ini: &str) -> anyhow::Result<bool> {
     Ok(disabled)
 }
 
+fn background_color(ini: &str, id: u32) -> anyhow::Result<[u8; 3]> {
+    let context = || format!("world {id}: world_fogrgb requires three RGB bytes");
+    let channels = value(ini, "world_fogrgb", id)
+        .unwrap_or("0,0,0")
+        .split(',')
+        .map(|v| v.trim().parse::<u8>())
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(context)?;
+    channels.try_into().map_err(|_| anyhow::anyhow!(context()))
+}
+
 pub fn export(
     install: &GameInstall,
     entry: &WorldEntry,
-    palette: &Palette,
     terrain: Option<&wld::WldFile>,
     out: &Path,
 ) -> anyhow::Result<()> {
@@ -109,15 +119,8 @@ pub fn export(
     } else {
         None
     };
-    let background_index = value(&ini, "world_background", entry.index)
-        .unwrap_or("0")
-        .parse::<u8>()?;
-    // Preservation's sky docs distinguish black, unresolved sky color, and palette indices.
-    let background = match background_index {
-        0 => Some([0; 3]),
-        2 => None,
-        index => Some(palette.colors[index as usize]),
-    };
+    // Verified Glide background fill in preservation's docs/engine/sky.md.
+    let background = Some(background_color(&ini, entry.index)?);
     let water = if let (Some(terrain), Some(parameters)) =
         (terrain, value(&ini, "world_wave", entry.index))
     {
@@ -162,6 +165,20 @@ pub fn export(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn glide_background_uses_fog_rgb_instead_of_legacy_palette_modes() {
+        let ini = "world_background[1]=2\nworld_fogrgb[1]=200, 190, 250\nworld_fogrgb[27]=0,0,10";
+        assert_eq!(background_color(ini, 1).unwrap(), [200, 190, 250]);
+        assert_eq!(background_color(ini, 27).unwrap(), [0, 0, 10]);
+        assert_eq!(
+            background_color("world_background[6]=171", 6).unwrap(),
+            [0; 3]
+        );
+        for rgb in ["200,190", "200,190,250,0", "256,0,0", "-1,0,0", "bad,0,0"] {
+            let error = background_color(&format!("world_fogrgb[1]={rgb}"), 1).unwrap_err();
+            assert!(error.to_string().contains("world 1: world_fogrgb"));
+        }
+    }
     #[test]
     fn sky_configuration_uses_engine_defaults_and_the_xngine_section() {
         assert_eq!(sky_parameter("", "world_skyscale", 1, 2000).unwrap(), 2000);
