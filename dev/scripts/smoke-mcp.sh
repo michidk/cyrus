@@ -4,6 +4,7 @@
 # started directly so a concurrent cargo job holding the build lock cannot stall the run.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. dev/scripts/cargo.sh
 cargo build -q -p cyrus -p cyrus-mcp
 log=$(mktemp)
 target/debug/cyrus --headless --scene START >"$log" 2>&1 &

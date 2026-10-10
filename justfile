@@ -3,13 +3,14 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# once per clone: the publish-check pre-commit hook and local agent config (.claude/, .codex/)
+# once per clone: the publish-check pre-commit hook, local agent config (.claude/, .codex/) and cargo-hauler
 setup:
     git config core.hooksPath dev/hooks
     mkdir -p .claude .codex
     ln -sfn ../.agents/skills .claude/skills
     printf '{\n  "enabledMcpjsonServers": ["cyrus"]\n}\n' > .claude/settings.json
     printf '# Loaded only for a trusted project.\n[mcp_servers.cyrus]\ncommand = "cargo"\nargs = ["run", "-q", "-p", "cyrus-mcp"]\nenv = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }\n' > .codex/config.toml
+    dev/scripts/setup-hauler.sh
 
 # publish-check, fmt, clippy, tests
 gates:

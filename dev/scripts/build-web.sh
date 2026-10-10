@@ -2,6 +2,7 @@
 # Builds crates/cyrus-web for wasm32 into target/web/ (page, pkg/, and a link to the GLB cache).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. dev/scripts/cargo.sh
 cargo build -p cyrus-web --target wasm32-unknown-unknown --profile wasm-release
 out=target/web
 mkdir -p "$out"

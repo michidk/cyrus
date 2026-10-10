@@ -77,8 +77,29 @@ it up from `.mcp.json`, Codex from `.codex/config.toml` (trusted project).
 printf '{"id":1,"cmd":{"type":"state"}}\n' | nc 127.0.0.1 7117
 ```
 
+## Shared build queue
+
+`just setup` installs [cargo-hauler](https://github.com/ScriptedAlchemy/cargo-hauler)
+(Node 22.19 or newer). Its hooks route the cargo commands Claude Code and Codex
+run through one daemon, and the build scripts source `dev/scripts/cargo.sh` for
+the same. Builds in one workspace queue instead of blocking on Cargo's lock,
+identical requests share a run, and long builds continue after the agent's
+command returns.
+
+```sh
+hauler status            # running, queued and recent tickets
+hauler await cc-12       # wait for a ticket; hauler result cc-12 for its output
+```
+
+`cargo run` and the game binaries stay direct. Claude Code enables the plugin
+for this project only. Codex has no project scope, so its hooks apply in every
+project, and Codex runs them only after you trust them once when it asks.
+Without cargo-hauler everything falls back to plain cargo.
+
 ## VibePod notes
 
 There is no root in a VibePod. Bevy's system headers were unpacked into
 `~/.local/sysdeps` and `~/.cargo/config.toml` points `PKG_CONFIG_PATH` there.
 Previews: `cyrus-web` (new game in the browser), `cyrus-retro` (original).
+A restart clears `~/.local`, which holds the global npm packages: run
+`dev/scripts/setup-hauler.sh` again afterwards.

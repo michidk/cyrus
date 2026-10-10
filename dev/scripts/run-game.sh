@@ -5,6 +5,7 @@
 # Builds locally, runs the binary inside dev/docker/dev (the container has the runtime libs).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+. dev/scripts/cargo.sh
 cargo build -p cyrus
 docker image inspect cyrus-dev:dev >/dev/null 2>&1 || docker build -t cyrus-dev:dev dev/docker/dev
 docker rm -f cyrus-dev >/dev/null 2>&1 || true

@@ -83,7 +83,10 @@ shapes; passing it proves nothing about where code came from.
 
 ## Changes
 
-- `just setup` once per clone (pre-commit hook, local agent config).
+- `just setup` once per clone (pre-commit hook, local agent config,
+  cargo-hauler). With cargo-hauler, agents' cargo commands and the build
+  scripts share one queue; `hauler status` shows what is running. Long
+  builds may return a ticket: `hauler await cc-N`, never retry them.
 - Conventional Commits: `type(scope): description`. Scopes: `game`, `scene`,
   `player`, `fidelity`, `control`, `mcp`, `docker`, `docs`, `skills`.
 - Gates before every commit: `just gates` (publish-check, fmt, clippy with
