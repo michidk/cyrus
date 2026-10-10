@@ -27,6 +27,14 @@ crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
    is registered under a fidelity `Area` and runs only in the configured `Mode`
    (`crates/cyrus-game/src/fidelity.rs`). The default of every area is
    `Faithful`. A deviation lives in a `Modern` branch, never in the shared path.
+   Faithful means the same player experience: visuals, audio, controls,
+   camera, game logic, timing of scripts and animations, and outcomes. It
+   never means reproducing technical limits. Loading time, frame rate,
+   memory use and responsiveness should be as good as the hardware allows;
+   do not add loading screens, frame caps or stalls to match the original,
+   and do not accept a slow implementation because the original was slow.
+   Where the original's behaviour depends on its frame rate or load timing,
+   reproduce the behaviour the player sees, not the mechanism.
 4. **Do not guess.** Derive constants, formulas, and behavior from game data,
    original-game observations, or preservation evidence, and state the source.
    When in doubt, inspect the original game's decompilation to resolve the

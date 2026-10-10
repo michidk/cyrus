@@ -12,6 +12,13 @@ Nothing is playable yet.
 - Faithful by default; modern controls, camera and graphics are opt-in
   switches in `cyrus-config/settings.toml`.
 
+"Faithful" means the player experiences the same game: what you see and
+hear, how the controls respond, the camera, the timing of scripts and
+animations, and how every quest plays out. It does not mean copying the
+original's limitations. cyrus loads quickly, runs smoothly and uses
+current hardware well; slow loading, low frame rates and other technical
+constraints are not part of what gets reproduced.
+
 File formats and engine documentation come from
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Related projects: [RGUnity](https://github.com/RGUnity/redguard-unity) (Unity).
