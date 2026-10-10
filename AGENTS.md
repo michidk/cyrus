@@ -82,10 +82,55 @@ crate you touch. The root `README.md` is for players.
   and say so.
 - Say what was verified and how: a test, a headless run, a screenshot
   compared with the original. "It compiles" is not verification.
+- Keep `docs/ROADMAP.md` current throughout the task: claim the relevant items
+  with your agent/session name when starting, update progress and blockers at
+  milestones, and release or hand off ownership when finished. Update resource
+  coverage when loading or runtime support changes. Mark items done only with
+  verification evidence; distinguish parsed data from working behavior. Preserve
+  other agents' entries and include roadmap updates with the relevant change.
 - Keep the three docs in `docs/` and this file in sync with behaviour changes.
   Do not add new top-level markdown files without a reason stated in the commit.
 - Bevy is pinned in `Cargo.toml` (`0.20`); do not migrate minor versions as a
   side effect. The `bevy-ecs` project skill carries the API conventions.
+
+## Structure and quality
+
+- Keep public APIs small and group crates by concern: assets, world, rendering,
+  player, and control. `rgpre` owns formats and engine facts. Agree on file
+  ownership before a crate split or other change across shared boundaries.
+- Keep dependencies one-way. Core rules must not depend on rendering, a window,
+  or networking. Use the browser build to check these boundaries.
+- Document public APIs with their invariants, units, and provenance where
+  applicable. Use explicit names that make the code readable without tracing
+  unrelated modules.
+- Delete dead and commented-out code. Give each TODO an owner or an issue.
+  Keep rustfmt and clippy green; explain every lint allowance.
+- Test contracts through public interfaces. Tests requiring an unavailable
+  install must report that they skipped, rather than silently passing.
+- Include the relevant file, world, and field in errors. Invalid or unsupported
+  install data must produce a contextual error, not a panic.
+- Prefer deletion and existing code over new abstractions. Before a broad
+  change, establish any missing responsibility or dependency boundary that the
+  change requires.
+
+## Reference projects
+
+Run `just reference` once per clone to fetch the gitignored reference checkouts
+under `magic/reference/`. Run it again to update them.
+
+- `redguard-preservation` contains `docs/formats`, `docs/engine`, `docs/config`,
+  and the `rgpre` parsers. Read the relevant format documentation before writing
+  a loader. The documentation is also
+  [published online](https://michidk.github.io/redguard-preservation/).
+- [redguard-unity](https://github.com/RGUnity/redguard-unity) has code under
+  `Assets/Scripts/`, including `Core`, `FFI`, and `GameTest`, and consumes `rgpre`
+  through FFI. Use its names and behavior as research hints;
+  never copy its code. Verify behavior against the original game, which remains
+  the specification. The roadmap records the source review's limitations.
+
+Reference setup belongs to roadmap step 0. Use the references for world playback
+in step 1, the player controller in step 2, and interaction and persistence in
+step 3; they do not create a separate feature-parity goal.
 
 ## Playtesting loop for agents
 

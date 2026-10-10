@@ -1,169 +1,278 @@
-# ROADMAP
+# Roadmap
 
-A delivery plan for a faithful rebuild of Redguard in Rust and Bevy. The original game, run from the player's own GOG install, is the specification. Scope is limited to the original single-player game: no multiplayer, new content, or functionality the original did not have.
+Rebuild the original single-player Redguard. No multiplayer, new content, or
+functionality the original did not have.
 
-## Current baseline
+**Start with development tooling. Then world playback, the player controller, and interaction and saves.**
 
-Documented baseline at commit 1df0990. These capabilities were not revalidated by the planning task.
+## At a glance
 
-- Workspace, fidelity settings, install discovery, startup preload, scene export/load, and WORLD.INI world selection exist.
-- TCP control, MCP control, DOSBox-X reference runner, and browser scene viewer exist.
-- Controllers remain placeholders. The first native virtual-display comparison and preload coverage report remain acceptance work.
+| Stage | Status | What it delivers |
+| --- | --- | --- |
+| Foundations | Done | Install loading, world exports, browser viewer, and development tools |
+| 0. Development tooling | In progress | Build, run, drive, and compare both games |
+| 1. Complete world playback | In progress | The whole world renders, animates, sounds, and runs scripts |
+| 2. Player controller | Later | Original movement, camera, collision, and interaction |
+| 3. Interaction and persistence | Later | Dialogue UI, inventory, scripted camera control, and save/load |
+| 4. Complete gameplay | Later | Dialogue, quests, combat, inventory, menus, and saves |
+| 5. Full-game fidelity | Later | A verified playthrough from new game to ending |
+| 6. Release | Later | A reproducible install and tested distribution |
 
-## Delivery sequence
+“Done” means the listed capability exists in committed code. It does not mean
+its appearance or behavior already matches the original.
 
-Stages 01 through 08 describe dependency order; 09 is cross-cutting tooling, not dates or completion percentages. After stage 05, full-content coverage can proceed alongside stage 06; both must finish before stage 07 is accepted.
+## Who is working on what
 
-## 01. Establish the reference
+Last checked: 10 October 2026. These are task claims, not completion claims.
+Update or release ownership when work changes.
 
-Status: Next. Depends on: None.
+| Roadmap items | Agent / session | Current work |
+| --- | --- | --- |
+| Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Previews restored; four environment tests passed before restart; new WASM visual check and fidelity comparison pending |
+| Step 0: debug menu and flycam controls | Codex: Increase Flycam Movement Speed | Gates and fresh WASM build passed; browser controls verified; debug-menu commit pending |
+| Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
+| Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
+| Steps 2–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
-Capture reproducible evidence before expanding gameplay.
+Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
+Later engine-cache edits are not marked complete here.
 
-- [ ] Run cyrus under docker/dev and the original under DOSBox-X. Capture the same scene, position, camera, and input sequence.
-- [ ] Inventory preload results by file type. Separate parsed, unsupported, and failed inputs; send format gaps to rgpre.
-- [ ] Define a comparison matrix for every WORLD.INI entry, including shared maps with different palettes. Keep captures and research under magic/ or cyrus-config/.
+## Done
 
-**Exit condition.** A repeatable first side-by-side comparison exists, and every install file type has an explicit coverage status.
+- [x] Rust/Bevy workspace, install discovery, settings, and fidelity switch.
+- [x] Startup preload, progress display, and parse-failure logging.
+- [x] Native scene loading and headless scene export.
+- [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
+- [x] Export all 29 installed worlds, with structural checks.
+- [x] Browser scene viewer with download progress and persistent GLB caching.
+- [x] Inspection flycam, TCP control, and MCP tools.
+- [x] DOSBox-X runner for observing the original game.
+- [x] Repository checks and CI.
 
-## 02. Make the worlds trustworthy
+Evidence: [foundation](https://github.com/michidk/cyrus/commit/8d179e4),
+[world exports](https://github.com/michidk/cyrus/commit/1df0990),
+[browser rendering](https://github.com/michidk/cyrus/commit/f3ff4ea),
+[GLB cache](https://github.com/michidk/cyrus/commit/24ee5c4), and
+[flycam](https://github.com/michidk/cyrus/commit/ce8ce02).
 
-Status: Planned. Depends on: 01.
+## Resource coverage
 
-Load the right world and reproduce its appearance.
+Parsing a file does not mean its behavior works in-game. This table covers
+committed support; unverified work stays in the TODO column.
 
-- [ ] Validate model placement, terrain, coordinate conversion, scale, textures, palettes, transparency, and world transitions against the original.
-- [ ] Reproduce sky, water, lighting, and visibility rules from evidence. Track visual differences per world instead of treating a successful export as fidelity.
-- [ ] Keep native scene loads and browser exports consistent. Verify numeric world IDs and map-stem aliases preserve the documented selection rules.
+| Resource | Already loaded or used | Still TODO |
+| --- | --- | --- |
+| `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
+| `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
+| `3D`, `3DC`, `ROB` | Model parsing and static model export | Actor and mesh animation |
+| `BSI`, `COL` | Textures and palettes in rendered worlds | Animated textures and water animation |
+| `GXA` | Preload parsing | Verified skies, sky layers, sun, and menu artwork |
+| `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
+| `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
+| `FNT` | Preload parsing | In-game text and menus |
+| `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
+| SOUP scripts | No working interpreter accepted | Execution, events, native bindings, and synchronization |
+| `KEYS.INI`, `COMBAT.INI`, `ITEM.INI`, `MENU.INI` | No gameplay integration accepted | Controls, combat, items, and menus |
+| CD audio | No playback accepted | Music playback, timing, and volume controls |
+| Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
-**Exit condition.** Every WORLD.INI entry loads or has an explicit blocker; representative viewpoints and all palette variants match an agreed reference comparison.
+Sky/water and sound playback modules remain uncommitted. The world-loading agent
+reports four environment tests passed before the restart: texture binding, time
+advance, unchanged shore geometry, and restoring Faithful mode. Structural checks
+covered all 29 environment sidecars; seven declare water. These checks do not
+establish visual fidelity. The new WASM build still needs a visual check.
+Configuration-selected language and audio assets also need runtime verification.
 
-## 03. Make movement playable
+The preload classifier now reports results by file type. Run and review its
+report to confirm installed-file coverage; parser availability alone is not proof.
 
-Status: Planned. Depends on: 01, 02.
+## 0. Development tooling
 
-Replace placeholder control with observed movement and collision.
-
-- [ ] Resolve the player start from game data. Read the keyboard mapping from KEYS.INI and verify it in the original.
-- [ ] Measure movement, turning, camera behavior, jumps, gravity, slopes, steps, walls, and ledges. Implement only supported behavior in Faithful mode.
-- [ ] Investigate swimming, climbing, falls, and scene exits where the original requires them. Exercise collision at boundaries and across frame rates.
-- [ ] Verify that controls and camera behavior reproduce the original. Alternative behavior is not a delivery goal.
-
-**Exit condition.** Recorded input routes reproduce movement and camera behavior, block solid geometry, and cross supported scene boundaries without trapping the player.
-
-## 04. Bring actors and scripts to life
-
-Status: Planned. Depends on: 02, 03.
-
-Give world objects their original behavior.
-
-- [ ] Load actors from RGM and validate animation timing, transforms, idle states, and movement against reference scenes.
-- [ ] Inventory SOUP operations used by shipped content. Build execution state, scheduling, variables, events, and native bindings from preservation facts.
-- [ ] Begin with an interpreter that reports unsupported operations. Expand it through observed interactions; never silently guess an operation.
-- [ ] Implement triggers, doors, object activation, and actor behavior required by the first playable route.
-
-**Exit condition.** A selected interaction sequence runs from trigger to visible result; unsupported operations identify the blocked content and fail explicitly.
-
-## 05. Complete one gameplay route
-
-Status: Planned. Depends on: 03, 04.
-
-Prove the systems together before broad content coverage.
-
-- [ ] Implement RTX dialogue, choices, conditions, and quest state for a bounded route observed in the original.
-- [ ] Implement inventory and item behavior from ITEM.INI, plus combat rules from COMBAT.INI and observed timing.
-- [ ] Connect damage, death, restart, pickups, and quest consequences to script and actor state.
-- [ ] Choose a route that includes a conversation, an item, combat, and a scene transition. Record its exact steps and expected outcomes.
-
-**Exit condition.** The same route completes in both games with matching observable outcomes and no unsupported operation on that route.
-
-## 06. Complete the player experience
-
-Status: Planned. Depends on: 05.
-
-Make progress persistent and the game usable outside a test session.
-
-- [ ] Reproduce menus, fonts, and interface artwork through MENU.INI, GXA, and supported font formats. Cover input, settings, pause, and feedback.
-- [ ] Implement save and load for world, player, script, inventory, and quest state. Verify interruption-safe writes into cyrus-config/, never the install.
-- [ ] Decide original-save compatibility only after format support is established. Document the supported boundary explicitly.
-- [ ] Add effects, speech, and music from the owned install and CD image. Establish an audio-enabled reference because the current retro container disables sound.
-- [ ] Verify animation, dialogue, and audio synchronization, volume controls, and missing-data errors.
-
-**Exit condition.** A player can start, play, save, restart, and resume the route with equivalent state, working menus, and reference-checked audio.
-
-## 07. Reach full-game fidelity
-
-Status: Planned. Depends on: 05, 06.
-
-Expand from the proven route to the whole original game.
-
-- [ ] Enumerate reachable worlds, quests, actors, script operations, items, combat encounters, and endings from the install and reference playthroughs.
-- [ ] Close coverage gaps in small verified changes. Exercise quest order, revisits, failure paths, death, and save/load across transitions.
-- [ ] Run a complete new-game-to-ending playthrough with checkpoint comparisons. Fix blockers and review every remaining unverified assumption.
-- [ ] Classify remaining differences by fidelity area and evidence. Resolve deviations from original behavior before claiming fidelity.
-
-**Exit condition.** A complete playthrough finishes without blockers; the content matrix has no unexplained omissions, and known differences have explicit evidence and disposition.
-
-## 08. Ship a reproducible release
-
-Status: Planned. Depends on: 07.
-
-Let an owner of Redguard install and play cyrus reliably.
-
-- [ ] Choose supported operating systems and hardware explicitly. Validate a clean setup, install discovery, error messages, and packaged binaries on that matrix.
-- [ ] Measure loading, memory, and frame pacing on representative worlds and declared hardware. Set budgets from those measurements and fix observed bottlenecks.
-- [ ] Run release gates, dependency/license review, and an artifact audit that excludes game data, research, caches, and credentials.
-- [ ] Publish player setup instructions, controls, supported features, known limitations, and recovery steps. Keep the browser scene viewer scope explicit unless gameplay parity is separately approved.
-
-**Exit condition.** A clean machine with a purchased GOG install can run the release, finish the validated route, and save/resume; packages contain no game assets.
-
-## 09. Development tooling
-
-Status: In progress. Depends on: None; cross-cutting.
+**In progress. Supports every stage.**
 
 Agents and developers must run, drive and compare both games on a machine without a GPU, a screen or root.
 
-- [x] Original game in DOSBox-X (Voodoo emulation) behind noVNC, mixer on so WAV capture works.
+- [x] Original game in DOSBox-X (Voodoo emulation) behind noVNC, mixer on so WAV capture works. Preview recovery after restart verified by health checks and a browser capture of ship combat, ocean, and sunset sky.
 - [x] Browser build with a download progress bar; stems or WORLD.INI indices select the scene.
 - [x] Headless mode, TCP control protocol, MCP server, project skills for Claude Code and Codex.
+- [x] `just reference` fetches and updates the preservation and RGUnity reference checkouts under gitignored `magic/reference/`.
 - [x] Preload coverage report per file type and unsupported extension (`cyrus-config/preload-report.json`).
+- [ ] World-resource audit: skipped placements, missing assets, failed animation/script initialization, and unsupported script operations.
+- [ ] Land the verified shared debug menu for native and WASM.
 - [ ] `just smoke-mcp` green on a built tree (headless game driven through the MCP server).
 - [ ] Native game under the virtual display (`just run-novnc`), image rebuilt when missing.
 - [ ] `just compare <label>`: the same scene from cyrus and the original into `cyrus-config/compare/`.
 - [ ] The fidelity switch gates graphics, not only the player controller.
-- [ ] Split `cyrus-game` into crates by concern (assets, world, rendering, control) once stage 02 has landed.
+- [ ] Split `cyrus-game` into crates by concern (assets, world, rendering, control) once stage 1 has landed.
 - [ ] Codex set up end to end from a fresh clone, including project trust.
 - [ ] CI green since the repository restructure.
 
-**Exit condition.** A fresh clone with a linked install builds, runs both games, is driven from an agent, and produces a comparison capture using only the commands in `docs/SETUP.md`.
+**Done when:** A fresh clone with a linked install builds, runs both games, is driven from an agent, and produces a comparison capture using only the commands in `docs/SETUP.md`.
 
-## Rules for every stage
+The debug-menu agent verified a fresh WASM build in the browser: F1 opens and
+closes the menu, changing speed from 100 to 500 changes movement, and switching
+ISLAND to START updates the URL and fetches the matching GLB and environment.
+Fidelity controls select live, and typing WASD in a text field does not move the
+player. Fresh loads showed no WebGL shader error. These checks establish debug
+controls, not faithful world playback.
 
-- Observe the original, specify behavior, implement one piece, and compare the same inputs. Run `just gates` before each commit.
-- `rgpre` owns formats and published engine facts. cyrus owns Bevy behavior, integration, fidelity modes, and player experience. Contribute discoveries upstream.
-- Read the install only. Keep saves and settings in `cyrus-config/`. Keep research and copyrighted captures in `magic/` or `cyrus-config/`, untracked.
-- Default to Faithful. The existing fidelity switch does not authorize new functionality or expand the scope beyond the original game.
-- Keep native filesystem, socket, and thread access out of the browser build.
+The shared gate log records formatting, strict workspace clippy, all 14
+executable tests, and the enabled doc-test targets passing. The WASM build and
+preview health checks also passed. Debug-menu code is verified but not yet
+committed, so its landing checkbox remains open.
 
-## Unknowns and decisions
+## 1. Complete world playback
 
-- Preload coverage determines required parser work. Unsupported data blocks the affected feature.
-- Inventory shipped SOUP operations before estimating gameplay coverage.
-- Standardize reference scene, camera, input timing, and capture conditions. The current retro container disables sound and cannot validate audio.
-- Decide original-save compatibility after format support is established.
-- Choose release platforms and hardware before setting performance budgets or release dates.
+**In progress.** Static loading works. Complete playback is still open.
 
-## Immediate next tasks
+- [x] Load and export worlds with their terrain, textures, and palettes.
+- [ ] Compare placement, scale, lighting, sky, transparency, and visibility with the original.
+- [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
+- [ ] Play water animations and other animated textures and effects.
+- [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.
+- [ ] Run SOUP control flow, variables, global flags, object references, main/interrupt execution, waits, and concurrent tasks.
+- [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
+- [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
+- [ ] Synchronize scripts, animation events, speech/subtitles, and sound; resume waiting scripts at the correct time.
+- [ ] Execute script-requested world loads and reinitialize playback state; player-facing transition UI follows in step 3.
+- [ ] Carry the required playback data into both native and browser world views.
+- [ ] Verify every world and palette variant with repeatable timed comparisons.
 
-1. Produce the first native scene capture beside the original and record reproduction steps locally.
-2. Report preload coverage by file type; assign failures to cyrus integration or rgpre format support.
-3. Create the world comparison matrix and verify START plus a shared-map palette variant.
-4. Resolve player spawn and input mapping from data, then measure a short movement route in both games.
+**Done when:** every world plays its required visuals, animations, sound, and
+scripts correctly against the original. Missing behavior remains a blocker.
+Use the inspection camera and controlled events until the player controller exists.
 
-## Out of scope
+**Next tasks:**
 
-Multiplayer, new content, and functionality absent from the original are excluded, not deferred. Decoders derived from third-party GPL sources are also excluded. The browser scene viewer does not commit the project to full browser gameplay.
+1. Capture the same scene in cyrus and the original.
+2. Run and review the preload classifier, including unsupported and failed data.
+3. Choose reference sequences that exercise animation, water, sound, and scripts.
+4. Verify reference audio now that the retro runner enables it.
+5. Inventory runtime data and SOUP bindings; record operations actually called by the reference sequences and unsupported paths.
 
-## Maintaining this plan
+## 2. Player controller
 
-This file is the source of truth. Change stage status only when its exit evidence exists. Later stages describe proposed work, not existing capabilities. Keep research and captures outside tracked documentation. Follow [METHOD.md](METHOD.md) for evidence and [SETUP.md](SETUP.md) to run both games.
+**Later. Requires complete world playback.**
+
+- [ ] Read the player start and keyboard mapping from game data.
+- [ ] Reproduce movement, turning, camera behavior, jumping, and gravity.
+- [ ] Match collision on walls, slopes, steps, and animated geometry; reproduce slope sliding.
+- [ ] Match ledge hanging, sideways movement, dropping, and pull-up clearance.
+- [ ] Carry the player on moving/rotating platforms and expose standing/contact state to scripts.
+- [ ] Support swimming, climbing, falls, and scene exits where the original does.
+- [ ] Connect player actions to world scripts, animations, and sound; hand control to scripted animations and restore it afterward.
+
+**Done when:** recorded input routes match the original and interact with the
+world correctly, including collision and scene transitions.
+
+## 3. Interaction and persistence
+
+**Later. Requires the player controller.**
+
+These are concrete gaps found in RGUnity's source, not a goal to copy RGUnity.
+Implement their original-game behavior, including the original UI.
+
+- [ ] Interaction prompts and one eligible target at a time, including overlapping pickups; collected objects stay removed on revisits.
+- [ ] One inventory shared by scripts, quantities/icons, active-item selection, item-use rules, and saves.
+- [ ] Dialogue choices, including disabled choices, and subtitles tied to speech and animation; return the selected choice to the waiting script.
+- [ ] Scripted camera shots and temporary player-control lockout, followed by a reliable return to player control.
+- [ ] World transitions with the correct destination spawn, orientation, and loading artwork; stop old sounds/scripts and remove transient objects.
+- [ ] Pause/resume for world simulation, scripts, animation, and audio; save/load menus with the original's slot-management behavior.
+- [ ] Save and restore world identity, player position, script inventory, NPC state, and changed world objects across revisits. Include script threads, waits, tasks, flags, and object references needed to resume. Write safely into `cyrus-config/`.
+
+**Done when:** a reference sequence can pick up an item, select it, make a
+dialogue choice, transition worlds, save, restart, and resume with the same state.
+Scripted camera sequences must restore control correctly.
+
+**Source check:** [RGUnity revision 6789058](https://github.com/RGUnity/redguard-unity/tree/678905846bec4942bf1492c54fdd6f479b1482fe),
+inspected as source only; not playtested here.
+
+RGUnity has separate execution paths. Its enabled build scenes are Launcher,
+Setup, ModelViewer, and IslandTest. The scripted GameTest scene and older Menu
+scene are excluded from that list. Source presence does not establish that a
+feature is reachable in the packaged game.
+
+| Source evidence | Implementation and limits | Our stage |
+| --- | --- | --- |
+| [Build scenes][rg-build] and [world loader][rg-worlds] | Packaged area viewer and separate scripted test world; scripts use an explicit object allowlist | 0, 1 |
+| [Model loader][rg-models] | Geometry, terrain, lights, colliders; texture frames decode, but no world frame-cycling consumer was found | 1 |
+| [Scripted objects][rg-scripts] | Task scheduler, animation, speech, camera and native commands; many operations stubbed, navigation incomplete | 1, 2 |
+| [Animation groups][rg-animation] | Frame sequences and transitions; sound/break/rumble markers skipped | 1 |
+| [Player prototype][rg-player] | Platform contact and script state; older ledge/slope controller is disconnected from scenes | 2 |
+| [Interaction and items][rg-interactions] | Older pickup/door prototypes; runtime activation can affect several nearby objects at once | 3 |
+| [Inventory UI][rg-inventory] and [runtime inventory][rg-store] | Separate string-keyed and numeric inventories; runtime item use unfinished | 3, 4 |
+| [Dialogue UI][rg-ui] | Speech/subtitle and selection bridge; disabled-choice flag ignored | 3 |
+| [Save system][rg-saves] and [menus][rg-menus] | Older scene/prefab prototypes; saves do not include the numeric script inventory | 3, 4 |
+
+No integrated world sky/water or music playback was established by this review.
+Sound handlers exist, but spatial/volume semantics remain incomplete. Script
+execution and decoded assets therefore cannot be treated as complete playback.
+
+These sources identify missing work. They do not prove faithful behavior or a
+complete game. RGUnity's model viewer, editor tools, and GLTF export add no
+gameplay scope.
+
+## 4. Complete gameplay
+
+**Later. Requires interaction and persistence.**
+
+- [ ] Complete dialogue conditions, quest state, and consequences across content.
+- [ ] Complete item-use rules, NPC navigation/perception, combat, damage, death, and restart.
+- [ ] Complete original fonts, settings, and remaining gameplay feedback.
+- [ ] Verify script and quest persistence across all content, including interrupted tasks and changed object attributes.
+- [ ] Verify the interaction and persistence systems across the full gameplay route.
+
+**Done when:** a reference route with dialogue, an item, combat, and a scene
+transition completes with matching outcomes, and can be saved and resumed.
+Original-save compatibility needs format evidence before a commitment.
+
+## 5. Full-game fidelity
+
+**Later. Requires complete gameplay.**
+
+- [ ] Cover all worlds, quests, actors, items, encounters, and endings.
+- [ ] Test revisits, alternate quest order, failure paths, and repeated transitions with active audio, animation, and scripts.
+- [ ] Finish a new-game-to-ending playthrough with reference checkpoints.
+- [ ] Resolve remaining blockers and unverified behavior.
+
+**Done when:** the full playthrough succeeds and the coverage list has no
+unexplained omissions or unsupported behavior required to finish the game.
+
+## 6. Release
+
+**Later. Requires full-game fidelity.**
+
+- [ ] Choose and test supported platforms and hardware.
+- [ ] Measure loading, frame pacing, and bounded memory across repeated world transitions; fix observed bottlenecks.
+- [ ] Verify a clean setup with a purchased GOG install.
+- [ ] Run release checks and audit packages for game data and research artifacts.
+- [ ] Publish setup instructions, controls, and known limitations.
+
+**Done when:** a clean machine can install, play, save, and resume the tested
+release. Distributed packages contain no game assets.
+
+## Rules throughout
+
+- The original game is the specification. RGUnity source helps identify missing work, not define behavior.
+- `rgpre` owns formats and engine facts; contribute discoveries there.
+- Read the install only. Keep local state in `cyrus-config/` and research untracked.
+- Default to Faithful. The fidelity switch does not authorize extra functionality.
+- Compare behavior before marking it done. Run `just gates` before each commit.
+- No decoders derived from third-party GPL sources.
+
+This file is the plan's source of truth. Update checkboxes when evidence exists.
+See [METHOD.md](METHOD.md) for verification and [SETUP.md](SETUP.md) to run both games.
+
+[rg-interactions]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/Interactables/Item.cs
+[rg-inventory]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/Inventory/InventoryUI.cs
+[rg-scripts]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/RGFileImport/RGMData/RGScriptedObject.cs
+[rg-ui]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/Core/UIManager.cs
+[rg-saves]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/Save%20System/GameSaver.cs
+[rg-menus]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/Menu/PauseMenuLoader.cs
+[rg-worlds]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/Core/WorldLoader.cs
+
+[rg-build]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/ProjectSettings/EditorBuildSettings.asset
+[rg-models]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/FFI/FFIModelLoader.cs
+[rg-animation]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/RGFileImport/RGMData/RGRGMAnimStore.cs
+[rg-player]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/GameTest/PlayerMain.cs
+[rg-store]: https://github.com/RGUnity/redguard-unity/blob/678905846bec4942bf1492c54fdd6f479b1482fe/Assets/Scripts/RGFileImport/RGMData/RGObjectStore.cs
