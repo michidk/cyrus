@@ -61,7 +61,7 @@ are gated with `in_mode(area, mode)`. Rules:
 ## Gates
 
 `just gates` runs: `cargo fmt --check`, `cargo clippy --workspace
---all-targets -- -D warnings`, and `cargo test --workspace`. Install-dependent tests skip without an install
+--all-targets -- -D warnings`, and `cargo test`. Install-dependent tests skip without an install
 and print that they did. CI mirrors the same list.
 
 ## Not in scope
