@@ -10,7 +10,8 @@ one JSON object per line over TCP, default `127.0.0.1:7117`.
 
 Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`,
 `input {key, action: press|release|tap}` (Bevy `KeyCode` names),
-`set_fidelity {area, mode}`, `skip_startup`, `load_scene {name}`, `quit`.
+`set_fidelity {area, mode}`, `skip_startup`, `load_scene {name}`, `play_sound {effect}`,
+`play_speech {label}`, `stop_sounds`, `quit`.
 
 `skip_startup` goes to the book menu. `load_scene` skips presentation or
 leaves the menu and enters a world. `state` includes `Loading`, `Menu`, or `InGame`.

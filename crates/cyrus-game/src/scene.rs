@@ -191,6 +191,11 @@ pub(crate) fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
         })
 }
 
+/// `WORLD.INI` index of a scene name: a world ID or a map stem.
+pub fn world_index(install: &GameInstall, name: &str) -> anyhow::Result<u32> {
+    Ok(resolve_world(&read_worlds(install)?, name)?.index)
+}
+
 fn read_worlds(install: &GameInstall) -> anyhow::Result<WorldIni> {
     let path = world_ini::find_world_ini(&install.root)
         .ok_or_else(|| anyhow::anyhow!("missing WORLD.INI"))?;

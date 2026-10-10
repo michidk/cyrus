@@ -48,6 +48,7 @@ impl Plugin for ControlPlugin {
             Err(e) => error!("control: cannot bind {addr}: {e}"),
         }
         app.insert_resource(Inbox(Mutex::new(rx)))
+            .add_message::<crate::sound::SoundRequest>()
             .init_resource::<TapRelease>()
             .add_systems(
                 PreUpdate,
@@ -98,6 +99,15 @@ fn release_taps(mut taps: ResMut<TapRelease>, mut keys: ResMut<ButtonInput<KeyCo
     }
 }
 
+/// Audio state for `handle`, grouped because Bevy systems take at most 16 parameters.
+#[derive(bevy::ecs::system::SystemParam)]
+struct Audio<'w> {
+    requests: MessageWriter<'w, crate::sound::SoundRequest>,
+    effects: Option<Res<'w, crate::sound::SoundEffects>>,
+    speech: Option<Res<'w, crate::sound::Speech>>,
+    music: Option<Res<'w, crate::music::Music>>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle(
     mut commands: Commands,
@@ -117,11 +127,14 @@ fn handle(
     ),
     preloaded: Option<Res<Preloaded>>,
     frames: Res<bevy::diagnostic::FrameCount>,
-    input: Res<crate::player::input::PlayerInput>,
-    flycam: Res<crate::player::FlycamSettings>,
+    (input, flycam): (
+        Res<crate::player::input::PlayerInput>,
+        Res<crate::player::FlycamSettings>,
+    ),
     camera: Query<&Transform, (With<crate::player::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
     mut exit: MessageWriter<AppExit>,
+    mut audio: Audio,
 ) {
     let rx = inbox.0.lock().unwrap();
     while let Ok(Pending { request, reply }) = rx.try_recv() {
@@ -137,7 +150,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": Preloaded::report_path()})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -204,6 +217,39 @@ fn handle(
                 } else {
                     Err("startup presentation is not active".into())
                 }
+            }
+            Command::PlaySound { effect } => {
+                match audio
+                    .effects
+                    .as_ref()
+                    .and_then(|e| e.0.get(effect)?.as_ref())
+                {
+                    Some(loaded) => {
+                        audio
+                            .requests
+                            .write(crate::sound::SoundRequest::Play(effect));
+                        Ok(json!({"effect": effect, "looping": loaded.looping}))
+                    }
+                    None => Err(format!("sound effect {effect} is not loaded")),
+                }
+            }
+            Command::PlaySpeech { label } => {
+                if audio
+                    .speech
+                    .as_ref()
+                    .is_some_and(|s| s.0.contains_key(&label))
+                {
+                    audio
+                        .requests
+                        .write(crate::sound::SoundRequest::Speech(label.clone()));
+                    Ok(json!({"label": label}))
+                } else {
+                    Err(format!("voice clip {label} is not loaded"))
+                }
+            }
+            Command::StopSounds => {
+                audio.requests.write(crate::sound::SoundRequest::StopAll);
+                Ok(json!("stopped"))
             }
             Command::Quit => {
                 exit.write(AppExit::Success);

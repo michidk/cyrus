@@ -39,6 +39,16 @@ pub enum Command {
     },
     /// Skip splash and title and stop at the book menu; does not start a world.
     SkipStartup,
+    /// Play effect `effect` (0-based index in `MAIN.SFX`); looping effects play until stopped.
+    PlaySound {
+        effect: usize,
+    },
+    /// Play the voice clip with this RTX label, e.g. `&005`.
+    PlaySpeech {
+        label: String,
+    },
+    /// Stop every effect and voice clip; music keeps playing.
+    StopSounds,
     Quit,
 }
 

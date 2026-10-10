@@ -14,11 +14,15 @@ pub mod fog;
 pub mod install;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod loading;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod music;
 pub mod player;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod scene;
 pub mod settings;
 mod sky;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sound;
 pub mod startup;
 mod water;
 
@@ -51,6 +55,8 @@ impl Plugin for GamePlugin {
                 scene::ScenePlugin,
                 player::PlayerPlugin,
                 control::ControlPlugin,
+                sound::SoundPlugin,
+                music::MusicPlugin,
             ));
     }
 }

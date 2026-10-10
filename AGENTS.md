@@ -81,7 +81,8 @@ shapes; passing it proves nothing about where code came from.
   bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
   load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
   `startup/` (installed splash/title playback and book menu),
-  `settings.rs` (`cyrus-config/settings.toml`), `control.rs` (TCP control server).
+  `settings.rs` (`cyrus-config/settings.toml`), `sound.rs` (SFX effects, RTX speech),
+  `music.rs` (CD tracks per world), `control.rs` (TCP control server).
 - `crates/cyrus-control` — the control protocol types and a blocking client.
 - `crates/cyrus-web` — browser build (wasm32). Shows scenes the native game
   exported to `cyrus-config/cache/`, served next to the page. Not a default
@@ -90,7 +91,8 @@ shapes; passing it proves nothing about where code came from.
   install access, threads and sockets behind `cfg(not(target_arch = "wasm32"))`.
 - `crates/cyrus-mcp` — MCP stdio server; `.mcp.json` (Claude) and
   `.codex/config.toml` (Codex) register it. Tools: ping, state, screenshot,
-  teleport, input, set_fidelity, skip_startup, load_scene, quit.
+  teleport, input, set_fidelity, skip_startup, load_scene, play_sound,
+  play_speech, stop_sounds, quit.
 - `dev/docker/retro` — the original game under DOSBox-X with Voodoo emulation,
   streamed over noVNC. `dev/docker/dev` — a virtual display with software
   Vulkan for running cyrus where there is no GPU or screen.

@@ -74,15 +74,15 @@ committed support; unverified work stays in the TODO column.
 | `GXA` | Startup title artwork and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
 | Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Full projection comparison, scrolling, tilt, and sun disc |
-| `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
-| `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
+| `SFX` | Every effect decoded at its stored rate and channel layout; playback by index with the file's loop flag, via the control/MCP `play_sound` command | Script, animation, ambient and surface triggers; positional and per-call volume; audible comparison with the original |
+| `RTX` | All voice clips of the `rtx_filename` container load in the background; playback by label via `play_speech`; `dialog_use_speech` honoured | Dialogue and combat triggers, subtitles and text, dialogue choices, and quest integration |
 | `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | No working interpreter accepted | Execution, events, native bindings, and synchronization |
 | `MENU.INI` | Main-page labels, layout, selection flags, texture slots and action IDs | Submenu behavior and supported positive actions |
 | `KEYS.INI` | Menu activation key and held player-input foundation | Gameplay locomotion |
 | `COMBAT.INI`, `ITEM.INI` | No gameplay integration accepted | Combat and items |
-| CD audio | No playback accepted | Music playback, timing, and volume controls |
+| CD audio | Each entered world's `world_redbook` track plays from GOG's CD image, repeats, and continues across worlds sharing it; `redbook` honoured | Menu and cutscene music, in-game music volume option, audible comparison with the original |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
 **Verified:** Glide sky textures, their independent COL palettes, and the static
@@ -113,7 +113,14 @@ Lighting, opening/closing motion, menu audio, mouse selection, gameplay snapshot
 and neighboring-page text remain unsupported. This is main-page presentation,
 not full menu functionality.
 
-Sound remains uncommitted and unverified.
+**Verified:** all 118 `MAIN.SFX` effects decode through Bevy's WAV decoder
+with their stored sample rate, channel count and sample count, all 3933 RTX
+voice clips load, and CD track 2 reads as 44.1 kHz stereo from the GOG image
+(install-backed tests). World music follows the `world_redbook` selection, repeat and
+same-track continuation rules [published for preservation review](https://github.com/michidk/redguard-preservation/compare/main...docs/redbook-music). Nothing in the world
+triggers effects or speech yet: script, animation-marker, dialogue, ambient
+and surface sounds, subtitles, distance attenuation, and per-call volume remain
+unsupported. Nothing has been compared by ear with the original.
 Configuration-selected language and audio assets also need runtime verification.
 
 The preload classifier now reports results by file type. Run and review its

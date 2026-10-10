@@ -31,7 +31,7 @@ a WORLD.INI index (`?scene=27`).
 ## Drive cyrus
 
 Prefer the MCP tools (`cyrus` server: `ping`, `state`, `screenshot`,
-`teleport`, `input`, `set_fidelity`, `load_scene`, `quit`). Without MCP, the
+`teleport`, `input`, `set_fidelity`, `load_scene`, `play_sound`, `play_speech`, `stop_sounds`, `quit`). Without MCP, the
 control port speaks one JSON object per line:
 
 ```sh

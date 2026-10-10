@@ -5,7 +5,8 @@ a fresh connection to the control port, so the server may start before the
 game and survives game restarts.
 
 Tools: `ping`, `state`, `screenshot` (returns the PNG), `teleport`, `input`,
-`set_fidelity`, `skip_startup`, `load_scene`, `quit`.
+`set_fidelity`, `skip_startup`, `load_scene`, `play_sound`, `play_speech`,
+`stop_sounds`, `quit`.
 
 `skip_startup` goes to the book menu. `load_scene {name}` enters a world
 directly from startup or the menu. Check `state` before driving player input.

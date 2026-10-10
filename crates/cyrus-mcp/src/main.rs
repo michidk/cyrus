@@ -64,6 +64,18 @@ struct ScreenshotParams {
     path: Option<String>,
 }
 
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct SoundParams {
+    #[schemars(description = "0-based effect index in the install's sound/MAIN.SFX")]
+    effect: usize,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct SpeechParams {
+    #[schemars(description = "4-character RTX label of a voice clip, e.g. &005")]
+    label: String,
+}
+
 #[derive(Clone)]
 struct Cyrus;
 
@@ -168,6 +180,29 @@ impl Cyrus {
     #[tool(description = "Skip the splash and title and stop at the book menu.")]
     fn skip_startup(&self) -> Result<CallToolResult, McpError> {
         text(call(Command::SkipStartup)?)
+    }
+
+    #[tool(
+        description = "Play a sound effect from MAIN.SFX; looping effects play until stop_sounds."
+    )]
+    fn play_sound(
+        &self,
+        Parameters(p): Parameters<SoundParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::PlaySound { effect: p.effect })?)
+    }
+
+    #[tool(description = "Play a voice clip from the install's RTX file by label.")]
+    fn play_speech(
+        &self,
+        Parameters(p): Parameters<SpeechParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::PlaySpeech { label: p.label })?)
+    }
+
+    #[tool(description = "Stop every playing sound effect and voice clip; music keeps playing.")]
+    fn stop_sounds(&self) -> Result<CallToolResult, McpError> {
+        text(call(Command::StopSounds)?)
     }
 
     #[tool(description = "Exit the game.")]
