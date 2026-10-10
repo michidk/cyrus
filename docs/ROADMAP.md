@@ -28,7 +28,7 @@ Update or release ownership when work changes.
 
 | Roadmap items | Agent / session | Current work |
 | --- | --- | --- |
-| Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Previews restored; four environment tests passed before restart; new WASM visual check and fidelity comparison pending |
+| Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Modern approximate sky/water verified in WASM; environment commit pending; original comparison, native verification, and sound remain open |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Steps 2–6 and remaining step-1 items | Unassigned | No confirmed active owner |
@@ -75,11 +75,18 @@ committed support; unverified work stays in the TODO column.
 | CD audio | No playback accepted | Music playback, timing, and volume controls |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
-Sky/water and sound playback modules remain uncommitted. The world-loading agent
-reports four environment tests passed before the restart: texture binding, time
-advance, unchanged shore geometry, and restoring Faithful mode. Structural checks
-covered all 29 environment sidecars; seven declare water. These checks do not
-establish visual fidelity. The new WASM build still needs a visual check.
+The world-loading agent verified the approximate Modern sky and animated water
+in ISLAND on the fresh WASM build. Paired fixed-camera frames show the sea
+changing while sampled land and sky stay identical. Selecting Faithful removes
+the approximate sky and restores static water. Local evidence is in
+`cyrus-config/screenshots/water-{modern,faithful}-{a,b}.png`.
+
+Four environment tests passed before the restart: texture binding, time advance,
+unchanged shore geometry, and restoring Faithful mode. Structural checks covered
+all 29 environment sidecars; seven declare water. The environment commit is
+pending. Matching the original and verifying the native artifact remain open;
+this Modern preview does not complete the faithful sky/water requirements.
+Sound remains uncommitted and unverified.
 Configuration-selected language and audio assets also need runtime verification.
 
 The preload classifier now reports results by file type. Run and review its
