@@ -30,7 +30,7 @@ Update or release ownership when work changes.
 | --- | --- | --- |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tracing the original walking startup discrepancy before locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; animation-gated walking startup documented; resolving fractional endpoints and movement eligibility before locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -180,11 +180,12 @@ Published prerequisites:
 
 FPS-derived frame-scale smoothing is now documented and checked against a native
 original-game recording ([16703d1](https://github.com/michidk/redguard-preservation/commit/16703d1)).
-Walking startup still needs animation-state and fractional-position evidence;
-recorded displacement alone does not establish its movement rule.
-The startup discrepancy reproduces in a second native recording. Runtime actor
-attributes and executable identity have been checked; tracing the original's
-movement calls is the next verification step.
+Forward-walking startup advances while animation can suppress translation.
+Live original-game observations confirm the first displacement can use a later
+startup phase ([e839ed8](https://github.com/michidk/redguard-preservation/commit/e839ed8)).
+This explains the recorded integer-position sequence, but its fractional endpoint
+still differs by two raw coordinate units. Complete animation eligibility,
+collision, and release timing remain unresolved; locomotion is not enabled.
 
 Input foundation: eight held directional/action bindings from
 `KEYS.INI`, Modern WASD/Space/held-Shift input, an independent debug flycam
