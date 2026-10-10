@@ -15,8 +15,12 @@ use serde::{Deserialize, Serialize};
 pub struct Environment {
     /// Decoded Glide BSI sky and its plane parameters, if the world declares a sky.
     pub sky: Option<SkyImage>,
-    /// Glide fog RGB background; `None` in older sidecars falls back to black.
-    pub background: Option<[u8; 3]>,
+    /// Glide fog and clear color as encoded RGB bytes.
+    pub background: [u8; 3],
+    /// Scene near/far clipping distances in engine units, from the install.
+    pub clipping: [f32; 2],
+    /// The 64-entry Glide scene fog density table, packed in groups of four.
+    pub fog_table: [[u8; 4]; 16],
     /// Terrain water mask and original wave parameters, if declared.
     pub water: Option<Water>,
 }
@@ -49,6 +53,12 @@ pub struct Water {
 
 impl Environment {
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.clipping.iter().all(|value| value.is_finite())
+                && self.clipping[0] > 0.0
+                && self.clipping[1] > self.clipping[0],
+            "invalid scene clipping distances"
+        );
         if let Some(sky) = &self.sky {
             anyhow::ensure!(
                 sky.width > 0 && sky.height > 0 && sky.width <= 8192 && sky.height <= 8192,
@@ -118,7 +128,7 @@ struct ActiveEnvironment {
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(crate::sky::SkyPlugin)
+        app.add_plugins((crate::sky::SkyPlugin, crate::fog::FogPlugin))
             .init_asset::<Environment>()
             .init_asset_loader::<EnvironmentLoader>()
             .init_resource::<EnvironmentRequest>()
@@ -141,6 +151,7 @@ fn apply_sky(
     mut materials: ResMut<Assets<SkyMaterial>>,
     cameras: Query<Entity, With<Camera3d>>,
     mut clear: ResMut<ClearColor>,
+    mut distance: ResMut<crate::fog::RenderDistance>,
 ) {
     if active.source == Some(request.0.id()) || cameras.is_empty() {
         return;
@@ -150,6 +161,7 @@ fn apply_sky(
         commands.entity(entity).despawn();
     }
     active.source = None;
+    distance.original = None;
     let Some(environment) = environments.get(&request.0) else {
         return;
     };
@@ -173,6 +185,7 @@ fn apply_sky(
         let material = materials.add(SkyMaterial {
             image: images.add(image),
             plane: Vec4::new(sky.level, sky.scale, sky.width as f32, sky.height as f32),
+            fog_rgb: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
         });
         let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
@@ -193,7 +206,8 @@ fn apply_sky(
                 .id(),
         );
     }
-    let [r, g, b] = environment.background.unwrap_or([0; 3]);
+    distance.original = Some(environment.clipping);
+    let [r, g, b] = environment.background;
     clear.0 = Color::srgb_u8(r, g, b);
     active.source = Some(request.0.id());
 }
@@ -232,12 +246,16 @@ mod tests {
                 level: -4500.0,
                 scale: 2000.0,
             }),
-            background: Some([0; 3]),
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
             water: None,
         });
         let indoor = environments.add(Environment {
             sky: None,
-            background: Some([10, 20, 30]),
+            background: [10, 20, 30],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
             water: None,
         });
         app.insert_resource(environments)
@@ -248,6 +266,7 @@ mod tests {
             .init_resource::<Assets<SkyMaterial>>()
             .init_resource::<Fidelity>()
             .init_resource::<ClearColor>()
+            .init_resource::<crate::fog::RenderDistance>()
             .init_resource::<Time<Real>>()
             .init_resource::<crate::water::WaterPlayback>()
             .add_systems(Update, apply_sky)
@@ -313,8 +332,8 @@ mod tests {
     }
     #[test]
     fn old_water_sidecars_require_reexport() {
-        let old = r#"{"sky":null,"background":null,"water":{"parameters":[24,28,5],"side":2,"vertices":[true,true,true,true]}}"#;
-        let error = serde_json::from_str::<Environment>(old).err().unwrap();
+        let old = serde_json::json!({"sky":null,"background":[0,0,0],"clipping":[7,3800],"fog_table": ([[0_u8;4];16]),"water":{"parameters":[24,28,5],"side":2,"vertices":[true,true,true,true]}}).to_string();
+        let error = serde_json::from_str::<Environment>(&old).err().unwrap();
         assert!(error.to_string().contains("animated_vertices"));
     }
 }

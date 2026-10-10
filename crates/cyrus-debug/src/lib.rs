@@ -6,6 +6,7 @@ use bevy_egui::{
 };
 use cyrus_game::{
     fidelity::{Area, Fidelity, Mode},
+    fog::RenderDistance,
     player::{FlycamSettings, Player},
 };
 
@@ -76,6 +77,8 @@ fn toggle_menu(
     }
 }
 
+// The menu edits independent game resources and reads the player pose.
+#[allow(clippy::too_many_arguments)]
 fn debug_menu(
     mut contexts: EguiContexts,
     mut menu: ResMut<DebugMenu>,
@@ -83,6 +86,7 @@ fn debug_menu(
     mut world: ResMut<WorldPicker>,
     mut flycam: ResMut<FlycamSettings>,
     mut fidelity: ResMut<Fidelity>,
+    mut distance: ResMut<RenderDistance>,
     player: Query<&Transform, With<Player>>,
 ) -> Result {
     let player_position = player.single().ok().map(|transform| transform.translation);
@@ -125,6 +129,23 @@ fn debug_menu(
                     .speed(1.0),
             );
         });
+
+        if let Some([near, original]) = distance.original {
+            let mut far = distance.effective(&fidelity).unwrap()[1];
+            ui.horizontal(|ui| {
+                ui.label("Render distance");
+                if ui.add(egui::DragValue::new(&mut far).range((near + 1.0)..=f32::MAX).speed(20.0))
+                    .on_hover_text("Engine units. Editing switches Graphics to Modern; the original fog curve stays fixed.")
+                    .changed() {
+                    distance.override_far = Some(far);
+                    fidelity.set(Area::Graphics, Mode::Modern);
+                }
+                if ui.button("Original").clicked() {
+                    distance.override_far = None;
+                }
+            });
+            ui.label(format!("Original render distance: {original:.0} game units"));
+        }
 
         ui.separator();
         ui.heading("Fidelity");

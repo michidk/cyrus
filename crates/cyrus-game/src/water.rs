@@ -243,7 +243,9 @@ mod tests {
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
             sky: None,
-            background: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
             water: Some(Water {
                 parameters: [24.0, 512.0, 0.0],
                 side: 2,
@@ -325,7 +327,9 @@ mod tests {
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
                 sky: None,
-                background: None,
+                background: [0; 3],
+                clipping: [7.0, 3800.0],
+                fog_table: [[0; 4]; 16],
                 water: Some(Water {
                     parameters: [0.0, 512.0, 0.0],
                     side: 2,

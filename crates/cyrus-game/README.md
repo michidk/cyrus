@@ -10,6 +10,7 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `player` | Held keyboard input from `KEYS.INI`, a stationary player entity, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
 | `fidelity` | The switch between `Faithful` and `Modern` per `Area`; `in_mode` is the run condition. Defaults are faithful. |
 | `environment` | Static Glide BSI sky and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
+| `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
 | `sky` | Static Glide sky material and shader, projected behind scene geometry. |
 | `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
 | `animation` | Loads per-world `.animations` assets with actor metadata and model frames; no automatic playback. |
@@ -63,3 +64,11 @@ tested against original heading and animation-gated startup observations.
 Walking supports actor step type 1 and advances startup during suppressed
 translation. Gameplay does not yet drive these cores: animation eligibility,
 collision, and simulation timing remain incomplete.
+
+Scene rendering uses the installed near/far planes, including a nonzero
+`world_back_plane` override. F1 exposes a render-distance override in game units;
+editing it switches Graphics to Modern. Faithful uses the original range.
+Both modes use the original fog tables and encoded RGB blend. The sky has its
+own fog table and clipping range. Re-export environments after this change.
+The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
+Hardware fog dithering and RGB565 quantization are not reproduced.

@@ -1,9 +1,11 @@
 import bevy_pbr::render::mesh_view_bindings::view;
 import constants::MATERIAL_BIND_GROUP;
+import package::glide_fog::{fog_coordinate, blend_fog};
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var sky: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
 @group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> plane: vec4<f32>;
+@group(MATERIAL_BIND_GROUP) @binding(3) var<uniform> fog_rgb: vec4<f32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -29,5 +31,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     // Verified texel mapping in preservation's docs/engine/sky.md; scene export flips X/Y.
     let uv = (-plane.y * relative_xz * 20.0 / 65000.0 - view.world_position.xz * 20.0 * 0.009) / plane.zw;
-    return vec4(textureSampleLevel(sky, sky_sampler, uv, 0.0).rgb, 1.0);
+    let coordinate = fog_coordinate(depth * 20.0);
+    let density = select(clamp(coordinate - 32.0, 0.0, 30.0) * 8.0,
+                         240.0 + (coordinate - 62.0) * 15.0, coordinate >= 62.0);
+    let color = textureSampleLevel(sky, sky_sampler, uv, 0.0).rgb;
+    return vec4(blend_fog(color, fog_rgb.rgb, density), 1.0);
 }

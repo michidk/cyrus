@@ -20,6 +20,9 @@ pub(crate) struct SkyMaterial {
     /// Engine level, UV half-span in texels, image width, image height.
     #[uniform(2)]
     pub plane: Vec4,
+    /// Encoded Glide fog color shared with the scene background.
+    #[uniform(3)]
+    pub fog_rgb: Vec4,
 }
 
 impl Material for SkyMaterial {

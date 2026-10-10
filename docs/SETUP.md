@@ -57,7 +57,7 @@ inputs. Animation playback and script-triggered transitions are not implemented
 yet. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
-### Sky and water
+### Sky, fog, and water
 
 Re-export worlds to regenerate `.environment` sidecars. Native and browser
 builds show the BSI sky in Faithful and Modern graphics. **Verified:** sky
@@ -67,6 +67,13 @@ Sky scrolling, tilt, and the sun remain unsupported. `sky_disable=1` in the
 install's `SYSTEM.INI` suppresses the sky. **Verified:** uncovered pixels use
 `world_fogrgb`, the Glide background-clear color. Re-export old sidecars to
 replace legacy palette background colors and the black fallback.
+
+Scene near/far clipping comes from the install. **Verified:** the shipped
+configuration uses 7 and 3800 engine units, with a separate sky range. F1 has a
+render-distance control and Original reset. Editing the distance selects Modern
+graphics; Faithful always uses the installed world range. Both graphics modes
+apply the original scene and sky fog tables without rescaling the fog curve.
+Re-export `.environment` files to include clipping and fog inputs.
 
 Water waves run in both graphics modes. Re-export worlds after this update;
 old water sidecars have incompatible masks. **Verified:** vertex selection,

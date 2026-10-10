@@ -8,3 +8,7 @@ until it supports Bevy 0.20.
 
 Flycam leaves the player in place. Turning it off returns the camera to the
 player pose; it does not change the fidelity settings.
+
+Render distance starts at the installed game's value. Changing it selects
+Modern graphics; Original clears the override, and Faithful always uses the
+installed value. The fog curve does not scale with the override.

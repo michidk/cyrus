@@ -188,7 +188,18 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
         let environment: cyrus_game::environment::Environment =
             serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
                 .unwrap();
-        assert_eq!(environment.background, Some(background), "world {world}");
+        assert_eq!(environment.background, background, "world {world}");
+        assert_eq!(environment.clipping, [7.0, 3800.0], "world {world}");
+        assert_eq!(
+            environment.fog_table[11],
+            [38, 76, 136, 196],
+            "world {world}"
+        );
+        assert_eq!(
+            environment.fog_table[15],
+            [255, 255, 255, 0],
+            "world {world}"
+        );
         let sky = environment.sky.unwrap();
         assert_eq!((sky.width, sky.height), (256, 256), "world {world}");
         assert_eq!(sky.level, -4500.0, "world {world}");

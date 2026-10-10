@@ -9,6 +9,7 @@ pub mod environment;
 #[cfg(not(target_arch = "wasm32"))]
 mod environment_export;
 pub mod fidelity;
+pub mod fog;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod install;
 #[cfg(not(target_arch = "wasm32"))]

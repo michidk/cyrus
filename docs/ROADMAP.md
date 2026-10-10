@@ -31,6 +31,7 @@ Update or release ownership when work changes.
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tested animation-gated walking startup core landed; movement eligibility and collision still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Native fog and original clipping verified; workspace gates pass; browser build and F1 runtime checks pending |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.

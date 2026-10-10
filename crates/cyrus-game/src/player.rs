@@ -49,6 +49,7 @@ impl Plugin for PlayerPlugin {
         app.init_resource::<input::PlayerBindings>()
             .init_resource::<input::PlayerInput>()
             .add_systems(Update, input::sample)
+            .init_resource::<crate::fog::RenderDistance>()
             .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
             .add_systems(OnEnter(AppState::InGame), spawn)
@@ -82,7 +83,12 @@ fn frame_scene(
     mut frame: ResMut<FrameScene>,
     meshes: Query<(&Aabb, &GlobalTransform), (With<Mesh3d>, Without<crate::sky::Sky>)>,
     mut player: Query<&mut Transform, With<ViewCamera>>,
+    distance: Res<crate::fog::RenderDistance>,
+    fidelity: Res<crate::fidelity::Fidelity>,
 ) {
+    let Some([_, far]) = distance.effective(&fidelity) else {
+        return;
+    };
     if meshes.is_empty() {
         return;
     }
@@ -98,7 +104,8 @@ fn frame_scene(
     };
     let center = (min + max) / 2.0;
     let size = (max - min).length().max(1.0);
-    t.translation = center + Vec3::new(0.0, size * 0.15, size * 0.35);
+    let offset = Vec3::new(0.0, size * 0.15, size * 0.35).clamp_length_max(far / 20.0 * 0.5);
+    t.translation = center + offset;
     t.look_at(center, Vec3::Y);
     frame.0 = false;
 }
