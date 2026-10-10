@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Side-by-side capture: one screenshot from cyrus (control port) and one from the
 # original in the retro container (screen grab), both into cyrus-config/compare/.
-# Usage: compare.sh <label>   Both games must already be running (just run-novnc / just retro).
+# Usage: compare.sh <label>   Both games must already be running (just run-native / just retro).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 label=${1:?usage: compare.sh <label>}

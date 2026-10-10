@@ -27,7 +27,7 @@ just run -- --scene START
 just run -- --scene 27    # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
 just run-headless        # no window: preload + scene export + control server
-just run-novnc           # in dev/docker/dev with a virtual display, served via VibePod preview "cyrus"
+just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
 
 Settings, caches and screenshots live in `cyrus-config/`.
@@ -81,4 +81,4 @@ printf '{"id":1,"cmd":{"type":"state"}}\n' | nc 127.0.0.1 7117
 
 There is no root in a VibePod. Bevy's system headers were unpacked into
 `~/.local/sysdeps` and `~/.cargo/config.toml` points `PKG_CONFIG_PATH` there.
-Previews: `cyrus` (new game via noVNC), `cyrus-retro` (original).
+Previews: `cyrus-web` (new game in the browser), `cyrus-retro` (original).

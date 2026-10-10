@@ -13,7 +13,7 @@ state dump, from both games where the change claims fidelity.
 | What | Command | Where it shows |
 |---|---|---|
 | cyrus, window | `just run -- --scene ISLAND` | local display |
-| cyrus, no display | `just run-novnc -- --scene ISLAND` | VibePod preview `cyrus` (noVNC, password from AGENTS of the VibePod repo) |
+| cyrus, no display | `just run-native -- --scene ISLAND` | control port only; `screenshot` over MCP, or `just run-web` for the browser build |
 | cyrus, loader only | `just run-headless` | log output |
 | original game | `just retro` | VibePod preview `cyrus-retro` |
 

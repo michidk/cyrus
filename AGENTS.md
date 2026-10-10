@@ -137,8 +137,9 @@ step 3; they do not create a separate feature-parity goal.
 
 ## Playtesting loop for agents
 
-1. Start the game: `just run` (window) or `just run-novnc` (browser via the
-   VibePod preview `cyrus`). `just run-headless` for loader and control only.
+1. Start the game: `just run` (window), `just run-native` (no display, control
+   port only; look at it through `just run-web`), or `just run-headless` for
+   loader and control only.
 2. Drive it through the MCP tools, or `cyrus-control` directly on
    `127.0.0.1:7117`. Screenshots land in `cyrus-config/screenshots/`.
 3. Compare against the original: `just retro` starts the GOG build in

@@ -23,8 +23,8 @@ run *ARGS:
 run-headless *ARGS:
     cargo run -p cyrus -- --headless {{ARGS}}
 
-# cyrus in dev/docker/dev (virtual display + software Vulkan), VibePod preview "cyrus"
-run-novnc *ARGS:
+# cyrus in dev/docker/dev (virtual display + software Vulkan), background container with the control port
+run-native *ARGS:
     dev/scripts/run-game.sh {{ARGS}}
 
 # the original game in dev/docker/retro, VibePod preview "cyrus-retro"
