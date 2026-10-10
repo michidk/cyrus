@@ -101,5 +101,6 @@ Without cargo-hauler everything falls back to plain cargo.
 There is no root in a VibePod. Bevy's system headers were unpacked into
 `~/.local/sysdeps` and `~/.cargo/config.toml` points `PKG_CONFIG_PATH` there.
 Previews: `cyrus-web` (new game in the browser), `cyrus-retro` (original).
-A restart clears `~/.local`, which holds the global npm packages: run
-`dev/scripts/setup-hauler.sh` again afterwards.
+A restart clears `~/.local`, which holds the global npm packages. Add a
+command schedule set to `@startup` in the VibePod control panel that runs
+`dev/scripts/setup-hauler.sh` in this checkout, so it is restored on every start.
