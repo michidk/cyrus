@@ -28,7 +28,7 @@ Update or release ownership when work changes.
 
 | Roadmap items | Agent / session | Current work |
 | --- | --- | --- |
-| Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Modern sky/water landed in [4a7696d](https://github.com/michidk/cyrus/commit/4a7696d); shared entry points released; original comparison, native verification, and sound remain open |
+| Step 1: animation resources and removal of unsupported sky/water approximations | Codex: Load All Worlds Correctly | Claims animation module/export, scene/lib wiring, game tests and README; investigating RAHD/RAAN/RAGR/3DC without guessed autoplay or timing. Sound remains unverified |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Steps 2–6 and remaining step-1 items | Unassigned | No confirmed active owner |
@@ -115,10 +115,11 @@ Agents and developers must run, drive and compare both games on a machine withou
 - [x] Preload coverage report per file type and unsupported extension (`cyrus-config/preload-report.json`).
 - [ ] World-resource audit: skipped placements, missing assets, failed animation/script initialization, and unsupported script operations.
 - [x] Shared debug menu for native and WASM ([`ba0ab4a`](https://github.com/michidk/cyrus/commit/ba0ab4a)).
-- [ ] `just smoke-mcp` green on a built tree (headless game driven through the MCP server).
-- [ ] Native game under the virtual display (`just run-novnc`), image rebuilt when missing.
-- [ ] `just compare <label>`: the same scene from cyrus and the original into `cyrus-config/compare/`.
-- [ ] The fidelity switch gates graphics, not only the player controller.
+- [x] `just smoke-mcp` drives the headless game through MCP; movement and the full loop verified in [c713082](https://github.com/michidk/cyrus/commit/c713082).
+- [x] Native game loads a scene under the virtual display; runtime image and asset-root fixes landed in [9535ce6](https://github.com/michidk/cyrus/commit/9535ce6).
+- [x] `just compare <label>` captures both games into `cyrus-config/compare/` ([9535ce6](https://github.com/michidk/cyrus/commit/9535ce6)).
+- [ ] Capture matching scenes and viewpoints with that command. The verified pair showed cyrus START and the original load-game book, not a matched comparison.
+- [x] The fidelity switch gates graphics; browser sky/water toggling verified in [4a7696d](https://github.com/michidk/cyrus/commit/4a7696d). This proves switching only; unsupported rendering approximations are being removed.
 - [ ] Split `cyrus-game` into crates by concern (assets, world, rendering, control) once stage 1 has landed.
 - [ ] Codex set up end to end from a fresh clone, including project trust.
 - [ ] CI green since the repository restructure.
@@ -134,8 +135,8 @@ controls, not faithful world playback.
 
 The shared gate log records formatting, strict workspace clippy, all 14
 executable tests, and the enabled doc-test targets passing. The WASM build and
-preview health checks also passed. Debug-menu code is verified but not yet
-committed, so its landing checkbox remains open.
+preview health checks also passed. The debug menu landed in
+[ba0ab4a](https://github.com/michidk/cyrus/commit/ba0ab4a).
 
 ## 1. Complete world playback
 
