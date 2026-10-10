@@ -9,5 +9,5 @@ docker rm -f cyrus-dev >/dev/null 2>&1 || true
 install=$(readlink -f "${REDGUARD_DIR:-redguard}")
 vibepod-preview run -port 36081 -title "cyrus (Bevy)" cyrus -- \
     docker run --rm --name cyrus-dev -p 127.0.0.1:36081:6080 -p 127.0.0.1:7117:7117 \
-        -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
+        -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
         cyrus-dev:dev /repo/target/debug/cyrus "$@"

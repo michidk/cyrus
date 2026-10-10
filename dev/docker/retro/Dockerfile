@@ -3,7 +3,7 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        dosbox-x xvfb x11vnc novnc websockify x11-utils xdotool \
+        dosbox-x xvfb x11vnc novnc websockify x11-utils xdotool scrot \
         libgl1-mesa-dri mesa-utils ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
