@@ -58,5 +58,8 @@ The debug flycam toggle moves only the view camera. Turning it off returns the
 view to the stationary player pose; it does not enable gameplay. Faithful
 keyboard actions preserve held and opposing inputs. Modern input samples WASD,
 Space, and held Shift run. Camera-relative movement and the mouse camera remain
-pending. The deterministic `player::turn` core is
-tested against original heading observations, but gameplay does not yet drive it.
+pending. The deterministic `player::turn` and `player::walk` cores are
+tested against original heading and animation-gated startup observations.
+Walking supports actor step type 1 and advances startup during suppressed
+translation. Gameplay does not yet drive these cores: animation eligibility,
+collision, and simulation timing remain incomplete.

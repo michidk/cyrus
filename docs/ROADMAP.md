@@ -30,7 +30,7 @@ Update or release ownership when work changes.
 | --- | --- | --- |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; animation-gated walking startup documented; resolving fractional endpoints and movement eligibility before locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tested animation-gated walking startup core landed; movement eligibility and collision still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -193,9 +193,11 @@ toggle, and input/camera-isolation tests. A deterministic ground-turn core
 matches captured original heading changes, including a frame-scale change and
 release. It is not connected to live gameplay while timing and state eligibility
 remain unresolved. Workspace tests, strict Clippy, formatting, publication checks,
-and an MCP smoke test pass using isolated worktree artifacts. The six player
-tests cover installed bindings, Modern input, camera isolation, and ground-turn
-arithmetic. Translation and the original follow camera remain unsupported.
+and an MCP smoke test pass using isolated worktree artifacts. Player tests cover
+installed bindings, Modern input, camera isolation, ground-turn arithmetic, and
+animation-gated walking startup. The walking core supports step
+type 1 and rejects other step types. It is not connected to gameplay. Translation
+and the original follow camera remain unsupported.
 
 - [x] Land and verify the keyboard-input and independent debug-flycam foundation.
 - [ ] Read and apply the original player spawn selection and position.
