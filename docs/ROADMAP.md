@@ -29,7 +29,6 @@ Update or release ownership when work changes.
 | Roadmap items | Agent / session | Current work |
 | --- | --- | --- |
 | Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Previews restored; four environment tests passed before restart; new WASM visual check and fidelity comparison pending |
-| Step 0: debug menu and flycam controls | Codex: Increase Flycam Movement Speed | Gates and fresh WASM build passed; browser controls verified; debug-menu commit pending |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Steps 2–6 and remaining step-1 items | Unassigned | No confirmed active owner |
@@ -98,7 +97,7 @@ Agents and developers must run, drive and compare both games on a machine withou
 - [x] `just reference` fetches and updates the preservation and RGUnity reference checkouts under gitignored `magic/reference/`.
 - [x] Preload coverage report per file type and unsupported extension (`cyrus-config/preload-report.json`).
 - [ ] World-resource audit: skipped placements, missing assets, failed animation/script initialization, and unsupported script operations.
-- [ ] Land the verified shared debug menu for native and WASM.
+- [x] Shared debug menu for native and WASM ([`ba0ab4a`](https://github.com/michidk/cyrus/commit/ba0ab4a)).
 - [ ] `just smoke-mcp` green on a built tree (headless game driven through the MCP server).
 - [ ] Native game under the virtual display (`just run-novnc`), image rebuilt when missing.
 - [ ] `just compare <label>`: the same scene from cyrus and the original into `cyrus-config/compare/`.
