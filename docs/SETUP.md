@@ -48,13 +48,16 @@ export command after loading changes. The browser keeps downloaded GLB files in
 Cache Storage and checks their timestamp and size before reusing them. Nothing
 from the install itself is served.
 
-### Sky and water preview
+### Sky and water
 
-Re-export worlds to generate their `.environment` sidecars, then open
-`?scene=ISLAND&graphics=modern` for animated water and the world's sky image.
-Native rendering uses the same implementation when graphics is set to Modern.
-The water mask and wave parameters come from the install. Sky projection,
-wave timing, and centering are approximate; Faithful graphics stays static.
+Re-export worlds to regenerate `.environment` sidecars. Native and browser
+builds show the BSI sky in Faithful and Modern graphics. **Verified:** sky
+texture selection, palette, and static plane projection follow preservation's
+sky documentation. Old sidecars lack the plane inputs and must be rebuilt.
+Sky scrolling, tilt, and the sun remain unsupported. `sky_disable=1` in the
+install's `SYSTEM.INI` suppresses the sky.
+
+Water motion remains unsupported in both graphics modes.
 
 ## The original game
 
