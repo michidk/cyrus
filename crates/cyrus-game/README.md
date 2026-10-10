@@ -47,9 +47,21 @@ render updates alone do not advance playback. The interpreter follows
 preservation's [animation facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md).
 BreakPoint markers retain the documented walking-translation gate until the
 cursor advances or a taken loop/exit jump clears it. Unsupported cues stop
-playback with a contextual error. Animated i16 frame
+playback with a contextual error.
+
+`ActorAnimation` is the separate request core for forward type-zero groups.
+The caller supplies the default group and nominal ticks. Ordinary requests
+replace one pending group by the original numeric priority; forced requests
+bypass that priority. End selects a pending or default group in the same call,
+reusing its tick input. `set_loop_count` supplies the finite count when a
+PushAnimation task becomes current. Returning to the same default keeps the
+group identity, so a finite count alone does not prove the waiting task completed.
+This core does not drive `AnimationPlayback` or activate world objects.
+
+Animated i16 frame
 interpretation, mesh replacement across models, automatic actor activation,
-script scheduling, default-group selection and the host-clock driver remain
+script scheduling, state-dependent default selection, other group types,
+cancellation requests and the host-clock driver remain
 unsupported. These APIs do not establish matched original-game playback.
 
 Re-export worlds after updating the sky renderer. Both native and browser builds

@@ -4,9 +4,11 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod actor;
 mod frame;
 mod playback;
 mod sequence;
+pub use actor::ActorAnimation;
 pub use frame::{AnimationPose, FrameGeometry, MeshFrameBinding};
 pub use playback::{AnimationPlayback, AnimationTick};
 pub use sequence::{FrameSequence, ModelFrame};
@@ -47,14 +49,19 @@ pub struct AnimationModel {
 }
 
 impl Animations {
-    /// Rejects inconsistent geometry before exposing an exported asset to the runtime.
-    pub fn validate(&self) -> anyhow::Result<()> {
+    fn require_version(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.version == 2,
             "world {}: animation schema {} unsupported; re-export the world",
             self.world,
             self.version
         );
+        Ok(())
+    }
+
+    /// Rejects inconsistent geometry before exposing an exported asset to the runtime.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.require_version()?;
         anyhow::ensure!(
             self.metadata["actors"].is_array(),
             "world {}: missing animation actors",

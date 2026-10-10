@@ -78,7 +78,7 @@ impl Animations {
         anyhow::bail!("{context}: outside RAAN frame table")
     }
 
-    fn actor(&self, name: &str) -> anyhow::Result<&serde_json::Value> {
+    pub(super) fn actor(&self, name: &str) -> anyhow::Result<&serde_json::Value> {
         self.metadata["actors"]
             .as_array()
             .with_context(|| format!("world {} actor {name}: actor table absent", self.world))?
@@ -94,7 +94,7 @@ impl Animations {
     /// Selects an explicitly requested forward group and its finite loop countdown.
     /// This does not run the actor script or choose a default animation.
     pub fn sequence(&self, actor: &str, group: u16, loops: u8) -> anyhow::Result<FrameSequence> {
-        self.validate()?;
+        self.require_version()?;
         let context = format!("world {} actor {actor} group {group}", self.world);
         let actor = self.actor(actor)?;
         let selected = actor["animation_groups"]
@@ -103,8 +103,25 @@ impl Animations {
             .iter()
             .find(|candidate| candidate["group_index"].as_u64() == Some(u64::from(group)))
             .with_context(|| format!("{context}: absent"))?;
+        FrameSequence::from_group(context, selected, loops, 0)
+    }
+}
+
+impl FrameSequence {
+    pub(super) fn from_group(
+        context: String,
+        selected: &serde_json::Value,
+        loops: u8,
+        modifier: u8,
+    ) -> anyhow::Result<Self> {
+        let group_type = u16::try_from(
+            selected["anim_type"]
+                .as_u64()
+                .with_context(|| format!("{context}: group type absent"))?,
+        )
+        .with_context(|| format!("{context}: group type outside u16 range"))?;
         anyhow::ensure!(
-            selected["anim_type"].as_u64() == Some(0),
+            group_type.to_le_bytes()[0] == 0,
             "{context}: group type unsupported"
         );
         let speed = u16::try_from(
@@ -113,7 +130,8 @@ impl Animations {
                 .with_context(|| format!("{context}: frame countdown absent"))?,
         )
         .with_context(|| format!("{context}: frame countdown outside u16 range"))?
-        .to_le_bytes()[0];
+        .to_le_bytes()[0]
+            .wrapping_add(modifier);
         let mut commands = Vec::new();
         for (index, command) in selected["commands"]
             .as_array()
@@ -159,9 +177,15 @@ impl Animations {
             translation_suppressed: false,
         })
     }
-}
 
-impl FrameSequence {
+    pub(super) fn set_loop_count(&mut self, count: u8) {
+        self.loops = count;
+    }
+
+    pub(super) fn exit_reached(&self) -> bool {
+        self.exit_reached
+    }
+
     /// The current group's BreakPoint marker, checked by ordinary forward walking.
     /// End does not select a replacement group or establish other movement eligibility.
     pub fn translation_suppressed(&self) -> bool {

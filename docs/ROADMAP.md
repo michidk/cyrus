@@ -34,7 +34,7 @@ Update or release ownership when work changes.
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range deployed; scrolling verified natively; independent Modern Water/Fog/Sky presets under verification |
 
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
-| Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding, animation tests and related scene wiring here; explicit forward groups and mesh poses verified by native contracts, installed FLAG2 binding, and WASM compilation; next owns original activation, group transitions, and clock research |
+| Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions verified by native contracts and WASM compilation; researching original eligibility, clock and script scheduling for automatic playback |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -174,11 +174,20 @@ preview health checks also passed. The debug menu landed in
 - [x] Apply explicit i32 model poses and forward groups using supplied simulation ticks. **Verified:** 17 native animation contracts, installed FLAG2 GLB deformation/restoration, and WASM compilation.
 - [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
   Explicit forward groups and source-mapped mesh poses are supported.
-  Automatic activation, the host-clock driver, default/queued transitions and
-  event cues remain unsupported. Original-game visual comparison is pending.
+  A separate forward type-zero request core handles ordinary numeric priority,
+  forced replacement, finite task loop counts, and explicit default fallback
+  in the same update. It does not drive rendered playback. Automatic activation,
+  the host-clock driver, state-dependent defaults, other group types, script
+  scheduling and event cues remain unsupported. Original-game visual comparison is pending.
   Frame reference, countdown and walking-marker facts are published in preservation
   commits `8c3856e`, `9b4206b` and `92b9933`. Request priority and default fallback
-  are documented in `84cc21d`; they are not integrated into playback yet.
+  are documented in `84cc21d`. Placed-actor initialization, spatial update
+  membership and forced requests are documented in `d1e8e46`; `64eca10` corrects
+  the activation-window center to the current view coordinates. `ea35fca`
+  documents advancement before the main script stage and immediate script
+  request advancement. All 28 native
+  pose, frame and request contracts pass, including installed FLAG2 deformation
+  and restoration. Automatic rendered playback remains unchecked.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.

@@ -86,8 +86,10 @@ each GLB. Native and browser scene loading retain animation groups, model
 references, frame geometry, original animation section payloads, and environment
 inputs. Re-export for animation schema 2 and source-mapped GLB geometry. Explicit
 group playback accepts supplied simulation ticks and updates private model
-meshes; automatic world activation, timing and script-triggered transitions
-remain unsupported. Missing animation models
+meshes. The separate actor request core accepts an explicit default group,
+ordinary/forced requests and finite loop counts; it does not activate world
+objects or drive rendered playback. Automatic world activation, timing and
+script execution remain unsupported. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
 ### Sky, fog, and water
