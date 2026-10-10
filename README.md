@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src=".github/workflows/cyrus-banner.webp" alt="A green dragon watches an airship cross Redguard's island landscape" width="1200">
+
 # cyrus
 
 **A faithful rebuild of *The Elder Scrolls Adventures: Redguard* in Rust and Bevy**
