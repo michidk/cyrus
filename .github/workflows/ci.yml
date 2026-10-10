@@ -32,9 +32,11 @@ jobs:
 
       - name: Cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       - name: Test
-        run: cargo test --all-features
+        run: cargo test --workspace --all-features
 
   lints:
     name: Lints
