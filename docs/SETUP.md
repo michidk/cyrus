@@ -75,8 +75,10 @@ from the install itself is served.
 Re-export worlds to generate `.animations` and `.environment` sidecars beside
 each GLB. Native and browser scene loading retain animation groups, model
 references, frame geometry, original animation section payloads, and environment
-inputs. Animation playback and script-triggered transitions are not implemented
-yet. Missing animation models
+inputs. Re-export for animation schema 2 and source-mapped GLB geometry. Explicit
+group playback accepts supplied simulation ticks and updates private model
+meshes; automatic world activation, timing and script-triggered transitions
+remain unsupported. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
 ### Sky, fog, and water

@@ -14,7 +14,7 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
 | `sky` | Static Glide sky material and shader, projected behind scene geometry. |
 | `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
-| `animation` | Loads per-world `.animations` assets with actor metadata and model frames; no automatic playback. |
+| `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation metadata and referenced 3D/3DC/ROB frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
@@ -34,8 +34,21 @@ Original RAHD, RAAN, RAGR and RANM payloads are retained too, including header
 fields not exposed by the decoded metadata. They are not interpreted by cyrus.
 Embedded ROB models are retained when matching archive payloads agree; conflicting
 payloads remain unsupported rather than selecting an archive without evidence.
-Native and browser scene loading retain this data. Playback, frame scheduling,
-script activation, and mapping frames onto rendered meshes are not implemented.
+Native and browser scene loading retain this data. Re-export worlds for schema 2
+and the GLB source vertex/face mapping. Older sidecars are rejected with a
+re-export error. Explicit model poses update private meshes, normals, and bounds;
+removing a pose or changing worlds restores the original mesh.
+
+`AnimationPlayback` consumes an explicitly selected forward group and finite
+loop count. `AnimationTick` supplies the original whole nominal-tick increment;
+render updates alone do not advance playback. The interpreter follows
+preservation's [animation facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md).
+BreakPoint markers retain the documented walking-translation gate until the
+cursor advances or a taken loop/exit jump clears it. Unsupported cues stop
+playback with a contextual error. Animated i16 frame
+interpretation, mesh replacement across models, automatic actor activation,
+script scheduling, default-group selection and the host-clock driver remain
+unsupported. These APIs do not establish matched original-game playback.
 
 Re-export worlds after updating the sky renderer. Both native and browser builds
 render the Glide BSI sky in Faithful graphics. **Verified:** source textures,

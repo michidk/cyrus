@@ -144,6 +144,7 @@ pub(crate) fn export(
             .map(|p| p.model_name.to_ascii_uppercase()),
     );
     let mut result = Animations {
+        version: 2,
         world,
         metadata,
         sections,

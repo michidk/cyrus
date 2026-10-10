@@ -34,6 +34,7 @@ Update or release ownership when work changes.
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Native fog and original clipping verified; workspace gates pass; browser build and F1 runtime checks pending |
 
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
+| Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding, animation tests and related scene wiring here; explicit forward groups and mesh poses verified by native contracts, installed FLAG2 binding, and WASM compilation; next owns original activation, group transitions, and clock research |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -68,7 +69,7 @@ committed support; unverified work stays in the TODO column.
 | --- | --- | --- |
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
-| `3D`, `3DC`, `ROB` | Static export and retained animation frame geometry, including unambiguous embedded models; settled book-menu geometry | Actor and mesh animation playback and book motion |
+| `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; settled book-menu geometry | Automatic actor playback, other frame encodings, model replacement, and book motion |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Startup title artwork and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
@@ -161,7 +162,14 @@ preview health checks also passed. The debug menu landed in
 - [x] Load and export worlds with their terrain, textures, and palettes.
 - [ ] Compare placement, scale, lighting, sky, transparency, and visibility with the original.
 - [x] Retain actor animation metadata, original section payloads and model frames in native/WASM assets. **Verified:** all 29 installed worlds export without unresolved animation models; native asset tests and WASM compilation pass.
+- [x] Apply explicit i32 model poses and forward groups using supplied simulation ticks. **Verified:** 17 native animation contracts, installed FLAG2 GLB deformation/restoration, and WASM compilation.
 - [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
+  Explicit forward groups and source-mapped mesh poses are supported.
+  Automatic activation, the host-clock driver, default/queued transitions and
+  event cues remain unsupported. Original-game visual comparison is pending.
+  Frame reference, countdown and walking-marker facts are published in preservation
+  commits `8c3856e`, `9b4206b` and `92b9933`. Request priority and default fallback
+  are documented in `84cc21d`; they are not integrated into playback yet.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.

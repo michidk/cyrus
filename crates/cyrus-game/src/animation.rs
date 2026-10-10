@@ -4,9 +4,19 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod frame;
+mod playback;
+mod sequence;
+pub use frame::{AnimationPose, FrameGeometry, MeshFrameBinding};
+pub use playback::{AnimationPlayback, AnimationTick};
+pub use sequence::{FrameSequence, ModelFrame};
+
 /// Per-world animation metadata and decoded geometry from preservation's parsers.
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct Animations {
+    /// Version 2 uses preservation's twenty-bit file frame references.
+    #[serde(default)]
+    pub version: u32,
     /// WORLD.INI identifier, retained even when several worlds share a map.
     pub world: u32,
     /// Preservation runtime metadata, including actor groups, RAAN references and MPOB IDs.
@@ -39,6 +49,12 @@ pub struct AnimationModel {
 impl Animations {
     /// Rejects inconsistent geometry before exposing an exported asset to the runtime.
     pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.version == 2,
+            "world {}: animation schema {} unsupported; re-export the world",
+            self.world,
+            self.version
+        );
         anyhow::ensure!(
             self.metadata["actors"].is_array(),
             "world {}: missing animation actors",
@@ -130,6 +146,8 @@ impl Plugin for AnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<Animations>()
             .init_asset_loader::<AnimationLoader>()
-            .init_resource::<AnimationRequest>();
+            .init_resource::<AnimationRequest>()
+            .add_message::<AnimationTick>()
+            .add_systems(PostUpdate, (playback::advance, frame::apply_poses).chain());
     }
 }
