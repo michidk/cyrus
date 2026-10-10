@@ -18,7 +18,11 @@ canvas{width:100%;height:100%;display:block;outline:none}
 <div id="hint">WASD move · right-drag look · Space/Shift up/down · ?scene=START</div>
 <script type="module">
 const label = document.getElementById("label"), fill = document.getElementById("fill");
-const scene = (new URLSearchParams(location.search).get("scene") || "ISLAND").toUpperCase();
+const scene = new URLSearchParams(location.search).get("scene")?.toUpperCase();
+if (!scene) {
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("hint").style.display = "none";
+}
 
 if ("serviceWorker" in navigator) {
   try {
@@ -45,7 +49,8 @@ async function download(url, name, onBytes) {
   // Last-Modified identifies the build; the loader below must come from the same one.
   return Object.assign(new Blob(chunks), { version: encodeURIComponent(res.headers.get("last-modified") || Date.now()) });
 }
-const steps = [["./pkg/cyrus-web_bg.wasm", "engine"], [`./cyrus-config/cache/${scene}.glb`, `scene ${scene}`]];
+const steps = [["./pkg/cyrus-web_bg.wasm", "engine"]];
+if (scene) steps.push([`./cyrus-config/cache/${scene}.glb`, `scene ${scene}`]);
 const progress = (i) => (got, total, name) => {
   const frac = total ? got / total : 0;
   fill.style.width = `${100 * (i + frac) / steps.length}%`;
@@ -54,13 +59,14 @@ const progress = (i) => (got, total, name) => {
 try {
   const wasm = await download(...steps[0], progress(0));
   // The scene goes through the browser cache; the engine fetches it again from there.
-  await download(...steps[1], progress(1));
+  if (scene) await download(...steps[1], progress(1));
   label.textContent = "Starting engine…";
   // The engine is revalidated by sw.js; a plain import could reuse an older loader from the HTTP cache.
   const { default: init } = await import(`./pkg/cyrus-web.js?v=${wasm.version}`);
   await init({ module_or_path: await wasm.arrayBuffer() }).catch(e => { if (!String(e).includes("Using exceptions for control flow")) throw e; });
   document.getElementById("loading").remove();
 } catch (e) {
+  document.getElementById("loading").style.display = "flex";
   label.textContent = `Failed: ${e.message}`;
   fill.style.background = "#c33";
   throw e;

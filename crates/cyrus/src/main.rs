@@ -15,9 +15,15 @@ struct Args {
     /// No window, no renderer: preload, scene export and the control server only.
     #[arg(long)]
     headless: bool,
+    /// Skip splash and title and open the placeholder menu. --scene loads a world directly.
+    #[arg(long)]
+    skip_startup: bool,
     /// Export every WORLD.INI world to the browser cache and exit.
     #[arg(long)]
     export_all_worlds: bool,
+    /// Export startup splash and title images to the browser cache and exit.
+    #[arg(long)]
+    export_startup: bool,
     /// Control server bind address.
     #[arg(long, env = "CYRUS_CONTROL_ADDR")]
     control: Option<String>,
@@ -25,13 +31,20 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let startup = args.scene.is_none() && !args.headless;
     let mut settings = Settings::load()?;
     if let Some(scene) = args.scene {
         settings.scene = scene;
     }
     let install = GameInstall::locate(args.install.as_deref())?;
+    if args.export_startup {
+        return cyrus_game::startup::export_startup(&install, &Settings::cache_dir());
+    }
     if args.export_all_worlds {
         return cyrus_game::scene::export_all_worlds(&install, &Settings::cache_dir());
+    }
+    if startup && !args.skip_startup {
+        cyrus_game::startup::export_startup(&install, &Settings::cache_dir())?;
     }
     let control = ControlAddr(
         args.control
@@ -61,8 +74,15 @@ fn main() -> anyhow::Result<()> {
         app.add_plugins((
             cyrus_game::environment::EnvironmentPlugin,
             cyrus_game::animation::AnimationPlugin,
-            cyrus_debug::DebugMenuPlugin,
         ));
+        if startup {
+            app.add_plugins(cyrus_game::startup::StartupPlugin);
+            if args.skip_startup {
+                app.insert_state(cyrus_game::AppState::Menu);
+            }
+        } else {
+            app.add_plugins(cyrus_debug::DebugMenuPlugin);
+        }
     }
     app.insert_resource(control)
         .add_plugins(GamePlugin { install, settings });

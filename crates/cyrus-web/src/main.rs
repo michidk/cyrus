@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
 use cyrus_game::player::PlayerPlugin;
 
-fn scene_from_query() -> String {
+fn scene_from_query() -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     if let Some(window) = web_sys::window()
         && let Ok(search) = window.location().search()
@@ -16,9 +16,9 @@ fn scene_from_query() -> String {
             .split('&')
             .find_map(|kv| kv.strip_prefix("scene="))
     {
-        return name.to_ascii_uppercase();
+        return Some(name.to_ascii_uppercase());
     }
-    "ISLAND".into()
+    None
 }
 
 fn modern_graphics() -> bool {
@@ -35,19 +35,27 @@ fn modern_graphics() -> bool {
 }
 
 fn main() {
+    let direct_scene = scene_from_query().is_some();
     let mut app = App::new();
     app.register_asset_source(
         "cache",
         AssetSourceBuilder::platform_default("cyrus-config/cache", None),
     );
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window {
-            title: "cyrus".into(),
-            fit_canvas_to_parent: true,
-            ..default()
-        }),
-        ..default()
-    }))
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "cyrus".into(),
+                    fit_canvas_to_parent: true,
+                    ..default()
+                }),
+                ..default()
+            })
+            .set(AssetPlugin {
+                meta_check: bevy::asset::AssetMetaCheck::Never,
+                ..default()
+            }),
+    )
     .insert_resource(Fidelity {
         graphics: if modern_graphics() {
             Mode::Modern
@@ -56,15 +64,23 @@ fn main() {
         },
         ..default()
     })
-    .insert_state(cyrus_game::AppState::InGame)
-    .add_plugins((
-        PlayerPlugin,
-        cyrus_game::environment::EnvironmentPlugin,
-        cyrus_game::animation::AnimationPlugin,
-        cyrus_debug::DebugMenuPlugin,
-    ))
-    .add_systems(Startup, spawn_scene)
-    .run();
+    .insert_state(if direct_scene {
+        cyrus_game::AppState::InGame
+    } else {
+        cyrus_game::AppState::Loading
+    })
+    .add_plugins(PlayerPlugin);
+    if direct_scene {
+        app.add_plugins((
+            cyrus_game::environment::EnvironmentPlugin,
+            cyrus_game::animation::AnimationPlugin,
+            cyrus_debug::DebugMenuPlugin,
+        ))
+        .add_systems(Startup, spawn_scene);
+    } else {
+        app.add_plugins(cyrus_game::startup::StartupPlugin);
+    }
+    app.run();
     let _ = Area::ALL;
 }
 
@@ -73,7 +89,9 @@ fn spawn_scene(
     assets: Res<AssetServer>,
     mut frame: ResMut<cyrus_game::player::FrameScene>,
 ) {
-    let name = scene_from_query();
+    let Some(name) = scene_from_query() else {
+        return;
+    };
     commands.insert_resource(cyrus_game::animation::AnimationRequest(
         assets.load(format!("cache://{name}.animations")),
     ));

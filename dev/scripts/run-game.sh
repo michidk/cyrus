@@ -11,7 +11,11 @@ cargo build -p cyrus
 docker build -q -t cyrus-dev:dev dev/docker/dev >/dev/null
 docker rm -f cyrus-dev >/dev/null 2>&1 || true
 install=$(readlink -f "${REDGUARD_DIR:-redguard}")
+startup_mount=()
+if [ -d "$install/../DOSBOX" ]; then
+    startup_mount=(-v "$install/../DOSBOX:/DOSBOX:ro")
+fi
 docker run -d --rm --name cyrus-dev -p 127.0.0.1:7117:7117 \
-    -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
+    "${startup_mount[@]}" -v "$PWD:/repo" -v "$install:/game:ro" -w /repo -e BEVY_ASSET_ROOT=/repo -e REDGUARD_DIR=/game -e CYRUS_CONTROL_ADDR=0.0.0.0:7117 \
     cyrus-dev:dev /repo/target/debug/cyrus "$@" >/dev/null
 echo "cyrus-dev running; control port 127.0.0.1:7117; logs: docker logs -f cyrus-dev; stop: docker rm -f cyrus-dev"

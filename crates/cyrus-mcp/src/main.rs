@@ -75,7 +75,7 @@ impl Cyrus {
     }
 
     #[tool(
-        description = "Current scene, player position/rotation, fidelity settings and frame counter."
+        description = "App state, current scene, player position/rotation, fidelity settings and frame counter."
     )]
     fn state(&self) -> Result<CallToolResult, McpError> {
         text(call(Command::State)?)
@@ -157,12 +157,17 @@ impl Cyrus {
         })?)
     }
 
-    #[tool(description = "Load another scene from the install.")]
+    #[tool(description = "Skip startup or leave the menu and load a world from the install.")]
     fn load_scene(
         &self,
         Parameters(p): Parameters<SceneParams>,
     ) -> Result<CallToolResult, McpError> {
         text(call(Command::LoadScene { name: p.name })?)
+    }
+
+    #[tool(description = "Skip the splash and title and stop at the placeholder menu.")]
+    fn skip_startup(&self) -> Result<CallToolResult, McpError> {
+        text(call(Command::SkipStartup)?)
     }
 
     #[tool(description = "Exit the game.")]

@@ -14,7 +14,7 @@ pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
     Ping,
-    /// Scene name, player transform, fidelity settings, frame counter.
+    /// App state, scene name, player transform, fidelity settings, frame counter.
     State,
     /// Capture the primary window to `path` (PNG). The file appears a frame or two later.
     Screenshot {
@@ -37,6 +37,8 @@ pub enum Command {
     LoadScene {
         name: String,
     },
+    /// Skip splash and title and stop at the placeholder menu; does not start a world.
+    SkipStartup,
     Quit,
 }
 

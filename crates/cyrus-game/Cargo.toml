@@ -17,6 +17,7 @@ walkdir = "2"
 # Native only: reads the install, spawns threads, listens on TCP.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 redguard-preservation.workspace = true
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 toml.workspace = true

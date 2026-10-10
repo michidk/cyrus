@@ -31,6 +31,7 @@ Update or release ownership when work changes.
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tracing the original walking startup discrepancy before locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Startup presentation | Released: Codex, Faithful Startup Sequence | Original-file splash/title through a placeholder menu; native/MCP entry paths and gates verified. Browser startup reaches the menu; final browser integration check with animation metadata remains pending |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -40,6 +41,7 @@ Later engine-cache edits are not marked complete here.
 
 - [x] Rust/Bevy workspace, install discovery, settings, and fidelity switch.
 - [x] Startup preload, progress display, and parse-failure logging.
+- [x] Installed 3dfx splash and title playback through a placeholder menu; CLI and MCP skip stop at the menu.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Export all 29 installed worlds, with structural checks.
@@ -65,11 +67,12 @@ committed support; unverified work stays in the TODO column.
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Static export and retained animation frame geometry, including unambiguous embedded models | Actor and mesh animation playback |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
-| `GXA` | Parsing | Software sky projection and menu artwork |
+| `GXA` | Startup title artwork and preload parsing | Software sky projection and menu artwork |
+| Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
 | Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
 | `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
-| `FNT` | Preload parsing | In-game text and menus |
+| `FNT` | Configured startup font and title labels; preload parsing | In-game text and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | No working interpreter accepted | Execution, events, native bindings, and synchronization |
 | `KEYS.INI`, `COMBAT.INI`, `ITEM.INI`, `MENU.INI` | No gameplay integration accepted | Controls, combat, items, and menus |

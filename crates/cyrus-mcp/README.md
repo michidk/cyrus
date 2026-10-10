@@ -5,7 +5,10 @@ a fresh connection to the control port, so the server may start before the
 game and survives game restarts.
 
 Tools: `ping`, `state`, `screenshot` (returns the PNG), `teleport`, `input`,
-`set_fidelity`, `load_scene`, `quit`.
+`set_fidelity`, `skip_startup`, `load_scene`, `quit`.
+
+`skip_startup` goes to the placeholder menu. `load_scene {name}` enters a world
+directly from startup or the menu. Check `state` before driving player input.
 
 Registered for Claude Code in `.mcp.json` (pre-approved by
 `.claude/settings.json`) and for Codex in `.codex/config.toml` (trusted

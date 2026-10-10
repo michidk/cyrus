@@ -1,5 +1,5 @@
-//! Portable player, fidelity, animation and environment plugins are shared with WASM.
-//! Install access, scene export and control sockets are native only.
+//! Portable startup, animation, environment, fidelity, player and settings plugins
+//! are shared with WASM. Install access, exports and control are native only.
 pub mod animation;
 #[cfg(not(target_arch = "wasm32"))]
 mod animation_export;
@@ -18,6 +18,7 @@ pub mod player;
 pub mod scene;
 pub mod settings;
 mod sky;
+pub mod startup;
 mod water;
 
 use bevy::prelude::*;
@@ -26,6 +27,7 @@ use bevy::prelude::*;
 pub enum AppState {
     #[default]
     Loading,
+    Menu,
     InGame,
 }
 

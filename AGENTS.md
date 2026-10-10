@@ -73,16 +73,17 @@ shapes; passing it proves nothing about where code came from.
   `install.rs` (find the install), `loading.rs` (startup preload with progress
   bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
   load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
+  `startup/` (installed splash/title playback and placeholder menu),
   `settings.rs` (`cyrus-config/settings.toml`), `control.rs` (TCP control server).
 - `crates/cyrus-control` — the control protocol types and a blocking client.
 - `crates/cyrus-web` — browser build (wasm32). Shows scenes the native game
   exported to `cyrus-config/cache/`, served next to the page. Not a default
   workspace member; `just web-build` / `just run-web`. Portable parts of
-  `cyrus-game` (`fidelity`, `player`, `settings`) are what it reuses; keep
+  `cyrus-game` (`startup`, `animation`, `environment`, `fidelity`, `player`, `settings`) are what it reuses; keep
   install access, threads and sockets behind `cfg(not(target_arch = "wasm32"))`.
 - `crates/cyrus-mcp` — MCP stdio server; `.mcp.json` (Claude) and
   `.codex/config.toml` (Codex) register it. Tools: ping, state, screenshot,
-  teleport, input, set_fidelity, load_scene, quit.
+  teleport, input, set_fidelity, skip_startup, load_scene, quit.
 - `dev/docker/retro` — the original game under DOSBox-X with Voodoo emulation,
   streamed over noVNC. `dev/docker/dev` — a virtual display with software
   Vulkan for running cyrus where there is no GPU or screen.
@@ -137,6 +138,25 @@ shapes; passing it proves nothing about where code came from.
   change requires.
 
 ## References and playtesting
+
+Default windowed and browser launches play the installed 3dfx splash and title,
+then stop at a placeholder menu. The menu and New Game introduction are not
+implemented. Startup uses original-file assets, never captured playback.
+Preservation owns extraction and rendering facts; cyrus owns presentation.
+
+For agent work, choose the entry point explicitly:
+
+- `cargo run -p cyrus -- --skip-startup` skips splash/title to the placeholder menu.
+- `cargo run -p cyrus -- --scene START` skips startup and loads that world directly.
+- `--headless --scene START` runs preload, export, and control without a window.
+- MCP `skip_startup` skips presentation to the menu; MCP `load_scene {name}`
+  bypasses presentation or leaves the menu to enter a world.
+- Browser `?scene=START` loads a world directly. Its default URL runs startup.
+
+Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
+player input. Skipping startup does not enable gameplay or implement the menu.
+Keep each worktree's Cargo target directory separate so verification cannot use
+another checkout's binary.
 
 Reference clones (`just reference`, under `magic/reference/`) are research
 hints, never proof; `docs/WORKFLOW.md` lists them and how to use them. The

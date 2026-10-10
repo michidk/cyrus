@@ -102,6 +102,11 @@ fn handle(
     mut fidelity: ResMut<Fidelity>,
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
+    (state, mut next): (
+        Res<State<crate::AppState>>,
+        ResMut<NextState<crate::AppState>>,
+    ),
+    startup: Option<Res<crate::startup::StartupPresentation>>,
     preloaded: Option<Res<Preloaded>>,
     frames: Res<bevy::diagnostic::FrameCount>,
     input: Res<crate::player::input::PlayerInput>,
@@ -124,7 +129,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": Preloaded::report_path()})
                 });
                 Ok(
-                    json!({"scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -177,7 +182,20 @@ fn handle(
             }
             Command::LoadScene { name } => {
                 scene_request.0 = name.clone();
+                if *state.get() != crate::AppState::InGame {
+                    next.set(crate::AppState::InGame);
+                }
                 Ok(json!({"scene": name}))
+            }
+            Command::SkipStartup => {
+                if startup.is_some() && *state.get() != crate::AppState::InGame {
+                    if *state.get() != crate::AppState::Menu {
+                        next.set(crate::AppState::Menu);
+                    }
+                    Ok(json!({"state": "Menu"}))
+                } else {
+                    Err("startup presentation is not active".into())
+                }
             }
             Command::Quit => {
                 exit.write(AppExit::Success);
