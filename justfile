@@ -3,14 +3,15 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 default:
     @just --list
 
-# once per clone: local agent config (.claude/, .codex/) that is not tracked
+# once per clone: the publish-check pre-commit hook and local agent config (.claude/, .codex/)
 setup:
+    git config core.hooksPath dev/hooks
     mkdir -p .claude .codex
     ln -sfn ../.agents/skills .claude/skills
     printf '{\n  "enabledMcpjsonServers": ["cyrus"]\n}\n' > .claude/settings.json
     printf '# Loaded only for a trusted project.\n[mcp_servers.cyrus]\ncommand = "cargo"\nargs = ["run", "-q", "-p", "cyrus-mcp"]\nenv = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }\n' > .codex/config.toml
 
-# fmt, clippy, tests
+# publish-check, fmt, clippy, tests
 gates:
     dev/scripts/gates.sh
 

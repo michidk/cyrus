@@ -10,7 +10,9 @@ Redguard's file formats and engine facts are owned by the sibling project
 Read in this order: this file, `docs/METHOD.md` (how a change is judged),
 `docs/SETUP.md` (running the new and the original game), `docs/ROADMAP.md`
 (delivery stages, what is done and what is next), then the `README.md` of the
-crate you touch. The root `README.md` is for players.
+crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
+(direct commits, roadmap ownership, `magic/` artifacts, handoff). The root
+`README.md` is for players, `CONTRIBUTING.md` for human contributors.
 
 ## Hard rules
 
@@ -41,6 +43,13 @@ crate you touch. The root `README.md` is for players.
 6. **No piracy.** Documentation tells readers to buy the game (GOG). No
    installer links, keys or game files anywhere in the repository.
 
+These rules govern what ships, not what may be said. That cyrus is informed by
+reverse engineering of the original, and which projects were read, is stated
+openly and credited in `README.md`. What stays out is the material itself:
+decompilation, dumps, addresses, journals. `dev/scripts/publish-check.sh` (run
+by `just gates`, the pre-commit hook and CI) greps the tracked tree for those
+shapes; passing it proves nothing about where code came from.
+
 ## Repository map
 
 - `crates/cyrus` — the binary: argument parsing, plugin assembly, `--headless`.
@@ -61,8 +70,9 @@ crate you touch. The root `README.md` is for players.
 - `dev/docker/retro` — the original game under DOSBox-X with Voodoo emulation,
   streamed over noVNC. `dev/docker/dev` — a virtual display with software
   Vulkan for running cyrus where there is no GPU or screen.
-- `dev/scripts/` — `gates.sh` (what must be green),
-  `run-retro.sh`, `run-game.sh`, `build-web.sh`, `run-web.sh`.
+- `dev/scripts/` — `gates.sh` (what must be green), `publish-check.sh`,
+  `run-retro.sh`, `run-game.sh`, `build-web.sh`, `run-web.sh`, `compare.sh`,
+  `smoke-mcp.sh`. `dev/hooks/` — the pre-commit hook `just setup` installs.
 - `.agents/skills/` — project skills for Codex and Claude Code (`just setup`
   links `.claude/skills` here). `.mcp.json` registers the MCP server for
   Claude Code and other tools that read it; `.claude/` and `.codex/` are
@@ -71,28 +81,19 @@ crate you touch. The root `README.md` is for players.
 - `magic/` — untracked working memory: the GOG installer, the extracted game,
   research, journals, specs. Its own `README.md` and `METHODOLOGY.md` live there.
 
-## Workflow
+## Changes
 
-- Once per clone run `just setup`; it writes the untracked local agent config
-  (`.claude/`, `.codex/`): the skills link, the MCP pre-approval, the Codex server.
-
-- `git pull` before starting. Commit completed, verified work directly to
-  `main` and push; no feature branches or pull requests unless asked.
+- `just setup` once per clone (pre-commit hook, local agent config).
 - Conventional Commits: `type(scope): description`. Scopes: `game`, `scene`,
   `player`, `fidelity`, `control`, `mcp`, `docker`, `docs`, `skills`.
-- Gates before every commit: `just gates` (fmt, clippy with `-D warnings`,
-  tests). Tests that need the install skip when it is absent
+- Gates before every commit: `just gates` (publish-check, fmt, clippy with
+  `-D warnings`, tests). Tests that need the install skip when it is absent
   and say so.
 - Say what was verified and how: a test, a headless run, a screenshot
-  compared with the original. "It compiles" is not verification.
-- Keep `docs/ROADMAP.md` current throughout the task: claim the relevant items
-  with your agent/session name when starting, update progress and blockers at
-  milestones, and release or hand off ownership when finished. Update resource
-  coverage when loading or runtime support changes. Mark items done only with
-  verification evidence; distinguish parsed data from working behavior. Preserve
-  other agents' entries and include roadmap updates with the relevant change.
-- Keep the three docs in `docs/` and this file in sync with behaviour changes.
-  Do not add new top-level markdown files without a reason stated in the commit.
+  compared with the original. "It compiles" is not verification. Say what was
+  not checked, and whether the root cause or a symptom was fixed.
+- Keep `docs/` and this file in sync with behaviour changes. Do not add new
+  top-level markdown files without a reason stated in the commit.
 - Bevy is pinned in `Cargo.toml` (`0.20`); do not migrate minor versions as a
   side effect. The `bevy-ecs` project skill carries the API conventions.
 
@@ -116,33 +117,9 @@ crate you touch. The root `README.md` is for players.
   change, establish any missing responsibility or dependency boundary that the
   change requires.
 
-## Reference projects
+## References and playtesting
 
-Run `just reference` once per clone to fetch the gitignored reference checkouts
-under `magic/reference/`. Run it again to update them.
-
-- `redguard-preservation` contains `docs/formats`, `docs/engine`, `docs/config`,
-  and the `rgpre` parsers. Read the relevant format documentation before writing
-  a loader. The documentation is also
-  [published online](https://michidk.github.io/redguard-preservation/).
-- [redguard-unity](https://github.com/RGUnity/redguard-unity) has code under
-  `Assets/Scripts/`, including `Core`, `FFI`, and `GameTest`, and consumes `rgpre`
-  through FFI. Use its names and behavior as research hints;
-  never copy its code. Verify behavior against the original game, which remains
-  the specification. The roadmap records the source review's limitations.
-
-Reference setup belongs to roadmap step 0. Use the references for world playback
-in step 1, the player controller in step 2, and interaction and persistence in
-step 3; they do not create a separate feature-parity goal.
-
-## Playtesting loop for agents
-
-1. Start the game: `just run` (window), `just run-native` (no display, control
-   port only; look at it through `just run-web`), or `just run-headless` for
-   loader and control only.
-2. Drive it through the MCP tools, or `cyrus-control` directly on
-   `127.0.0.1:7117`. Screenshots land in `cyrus-config/screenshots/`.
-3. Compare against the original: `just retro` starts the GOG build in
-   DOSBox-X behind the VibePod preview `cyrus-retro`. Note the scene, the
-   position and what differs; put the comparison in the commit message.
-4. Stop what you started (`just stop`).
+Reference clones (`just reference`, under `magic/reference/`) are research
+hints, never proof; `docs/WORKFLOW.md` lists them and how to use them. The
+`cyrus-playtest` skill is the loop for running cyrus, driving it over MCP and
+comparing with the original (`just retro`, `just compare`).

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Installed by `just setup` (core.hooksPath). Blocks commits that would put
+# local-only material into the tracked tree, `git add -f` included.
+exec "$(git rev-parse --show-toplevel)/dev/scripts/publish-check.sh"

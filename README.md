@@ -15,8 +15,13 @@ Nothing is playable yet.
 File formats and engine documentation come from
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
 Related projects: [RGUnity](https://github.com/RGUnity/redguard-unity) (Unity).
+cyrus is informed by reverse engineering of the original game; recovered
+format and engine facts are published in redguard-preservation, and no
+original code or data is part of this repository.
+
 Documentation: `docs/METHOD.md` (how changes are judged), `docs/SETUP.md`
-(running it), `docs/ROADMAP.md` (status), `AGENTS.md` (contract for
-contributors and agents), and a `README.md` in every crate.
+(running it), `docs/ROADMAP.md` (status), `CONTRIBUTING.md` (bug reports and
+pull requests), `AGENTS.md` (rules for every change and for coding agents),
+and a `README.md` in every crate.
 
 Not affiliated with Bethesda.
