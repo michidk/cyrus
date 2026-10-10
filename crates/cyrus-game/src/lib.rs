@@ -16,6 +16,7 @@ pub mod player;
 pub mod scene;
 pub mod settings;
 mod sky;
+mod water;
 
 use bevy::prelude::*;
 

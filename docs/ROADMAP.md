@@ -65,7 +65,7 @@ committed support; unverified work stays in the TODO column.
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Model parsing and static model export | Actor and mesh animation |
-| `BSI`, `COL` | Textures and palettes; exported water inputs without playback | Faithful water animation and other animated textures |
+| `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Parsing | Software sky projection and menu artwork |
 | Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
@@ -83,8 +83,17 @@ plane mapping are documented in preservation's
 Installed day, night, sunset, and Necro exports pass palette and plane checks;
 native Vulkan and browser WebGL runs show the static sky behind scene geometry.
 The former GXA cubemap and approximate water animation are removed. Sky
-scrolling, tilt, the sun disc, and water motion remain unsupported; a static
-sky does not establish complete original-game fidelity.
+scrolling, tilt, and the sun disc remain unsupported; a static sky does not
+establish complete original-game fidelity.
+
+**Verified:** terrain water uses preservation's corrected selected-corner mask,
+whole-grid spatial phase, quarter-shifted rotation table, half-amplitude bias,
+and BIOS-rate timing. Behavioral and installed-world export checks pass.
+Native Vulkan and headless browser WebGL rendering use private terrain meshes
+and shared displaced normals. A native loaded-world probe records changing
+water heights; scene cleanup and clock continuity pass behavioral tests.
+A matched original-game camera comparison remains unchecked.
+The session clock does not synchronize absolute phase with a DOS clock.
 
 Sound remains uncommitted and unverified.
 Configuration-selected language and audio assets also need runtime verification.
@@ -135,7 +144,8 @@ preview health checks also passed. The debug menu landed in
 - [x] Load and export worlds with their terrain, textures, and palettes.
 - [ ] Compare placement, scale, lighting, sky, transparency, and visibility with the original.
 - [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
-- [ ] Play water animations and other animated textures and effects.
+- [x] Play documented terrain water waves in native and browser builds.
+- [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.
 - [ ] Run SOUP control flow, variables, global flags, object references, main/interrupt execution, waits, and concurrent tasks.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.

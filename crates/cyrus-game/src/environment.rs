@@ -1,5 +1,5 @@
 //! Cached environment inputs shared by native and browser builds.
-//! Static Glide BSI sky projection follows preservation; sky motion and water playback remain unsupported.
+//! Static Glide BSI sky projection follows preservation; sky motion remains unsupported.
 
 use crate::sky::{Sky, SkyMaterial};
 use bevy::asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader};
@@ -43,8 +43,8 @@ pub struct Water {
     pub parameters: [f32; 3],
     /// Number of vertices along each side of the square terrain grid.
     pub side: usize,
-    /// Row-major mask identifying vertices belonging to four-corner water cells.
-    pub vertices: Vec<bool>,
+    /// Row-major mask of selected wave vertices, per preservation water docs.
+    pub animated_vertices: Vec<bool>,
 }
 
 impl Environment {
@@ -65,11 +65,15 @@ impl Environment {
         }
         if let Some(water) = &self.water {
             anyhow::ensure!(
-                (2..=256).contains(&water.side) && water.vertices.len() == water.side * water.side,
+                (2..=256).contains(&water.side)
+                    && water.animated_vertices.len() == water.side * water.side,
                 "invalid water grid"
             );
             anyhow::ensure!(
-                water.parameters.iter().all(|v| v.is_finite() && *v >= 0.0),
+                water.parameters.iter().all(|v| v.is_finite())
+                    && water.parameters[1..].iter().all(|v| v.fract() == 0.0
+                        && *v >= i32::MIN as f32
+                        && *v <= i32::MAX as f32),
                 "invalid wave parameters"
             );
         }
@@ -110,7 +114,7 @@ struct ActiveEnvironment {
     sky: Option<Entity>,
 }
 
-/// Renders the verified static Glide sky; water playback remains unsupported.
+/// Renders the verified static Glide sky and BIOS-timed terrain waves.
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
@@ -119,7 +123,9 @@ impl Plugin for EnvironmentPlugin {
             .init_asset_loader::<EnvironmentLoader>()
             .init_resource::<EnvironmentRequest>()
             .init_resource::<ActiveEnvironment>()
-            .add_systems(Update, apply_sky);
+            .init_resource::<crate::water::WaterPlayback>()
+            .add_systems(Update, apply_sky)
+            .add_systems(PostUpdate, crate::water::animate_water);
     }
 }
 
@@ -192,25 +198,18 @@ fn apply_sky(
     active.source = Some(request.0.id());
 }
 
-/// Four-corner water classification from preservation's water renderer documentation.
+/// Selected-corner water classification from preservation's water renderer documentation.
 pub fn water_vertices(textures: &[u8], side: usize) -> Vec<bool> {
     let mut vertices = vec![false; textures.len()];
-    for z in 0..side - 1 {
-        for x in 0..side - 1 {
-            let corners = [
-                x + z * side,
-                x + 1 + z * side,
-                x + (z + 1) * side,
-                x + 1 + (z + 1) * side,
-            ];
-            if corners
-                .iter()
-                .all(|&i| matches!(textures[i] & 63, 0 | 5 | 30 | 31))
-            {
-                for i in corners {
-                    vertices[i] = true;
-                }
-            }
+    assert!(side >= 2 && textures.len() == side * side);
+    for row in 1..side {
+        for x in 1..side {
+            let selected = x + row * side;
+            let neighbours = [selected - 1, selected - side, selected - side - 1];
+            vertices[selected] = matches!(textures[selected] & 63, 0 | 30 | 31)
+                && neighbours
+                    .iter()
+                    .all(|&i| matches!(textures[i] & 63, 0 | 5 | 30 | 31));
         }
     }
     vertices
@@ -249,7 +248,10 @@ mod tests {
             .init_resource::<Assets<SkyMaterial>>()
             .init_resource::<Fidelity>()
             .init_resource::<ClearColor>()
-            .add_systems(Update, apply_sky);
+            .init_resource::<Time<Real>>()
+            .init_resource::<crate::water::WaterPlayback>()
+            .add_systems(Update, apply_sky)
+            .add_systems(PostUpdate, crate::water::animate_water);
         app.world_mut().spawn(Camera3d::default());
         app.update();
         let entity = app.world().resource::<ActiveEnvironment>().sky.unwrap();
@@ -297,12 +299,22 @@ mod tests {
     }
 
     #[test]
-    fn water_requires_all_four_corners_and_ignores_rotation_bits() {
-        assert_eq!(water_vertices(&[0, 69, 158, 223], 2), vec![true; 4]);
+    fn water_selects_only_the_corner_and_ignores_rotation_bits() {
+        assert_eq!(
+            water_vertices(&[0, 69, 158, 223], 2),
+            vec![false, false, false, true]
+        );
+        assert_eq!(water_vertices(&[0, 30, 31, 5], 2), vec![false; 4]);
         assert_eq!(water_vertices(&[0, 5, 30, 2], 2), vec![false; 4]);
         assert_eq!(
             water_vertices(&[0, 0, 2, 0, 0, 2, 2, 2, 2], 3),
-            vec![true, true, false, true, true, false, false, false, false]
+            vec![false, false, false, false, true, false, false, false, false]
         );
+    }
+    #[test]
+    fn old_water_sidecars_require_reexport() {
+        let old = r#"{"sky":null,"background":null,"water":{"parameters":[24,28,5],"side":2,"vertices":[true,true,true,true]}}"#;
+        let error = serde_json::from_str::<Environment>(old).err().unwrap();
+        assert!(error.to_string().contains("animated_vertices"));
     }
 }

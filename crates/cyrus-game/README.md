@@ -9,8 +9,9 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `scene` | Resolve a world from `WORLD.INI` (map, terrain, palette), export it to a GLB in `cyrus-config/cache/`, spawn it. Native only. |
 | `player` | Held keyboard input from `KEYS.INI`, a stationary player entity, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
 | `fidelity` | The switch between `Faithful` and `Modern` per `Area`; `in_mode` is the run condition. Defaults are faithful. |
-| `environment` | Static Glide BSI sky in both graphics modes; cached water inputs without playback. Loads exported `.environment` sidecars. |
+| `environment` | Static Glide BSI sky and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
 | `sky` | Static Glide sky material and shader, projected behind scene geometry. |
+| `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
@@ -28,7 +29,15 @@ matching palettes, and the static plane projection follow preservation's
 [sky documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
 `SYSTEM.INI`'s `sky_disable=1` suppresses the sky. Indoor worlds remove it.
 
-Sky scrolling, tilting, the sun disc, and water motion remain unsupported.
+**Verified:** water uses preservation's [water documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/water.md):
+selected-corner mask, terrain-centered phase, quarter-shifted rotation table,
+and half-amplitude bias. Playback uses real elapsed time at the BIOS timer rate, preserving its clock across scenes.
+It deforms private copies of exported terrain meshes and recomputes shared
+normals across materials. Re-export worlds to replace old water masks.
+
+Absolute DOS clock phase is not synchronized. Terrain placement, base heights,
+and lighting retain the preservation export's existing limitations. Sky
+scrolling, tilting, and the sun disc remain unsupported.
 
 The debug flycam toggle moves only the view camera. Turning it off returns the
 view to the stationary player pose; it does not enable gameplay. Faithful

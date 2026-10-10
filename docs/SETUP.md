@@ -57,7 +57,12 @@ sky documentation. Old sidecars lack the plane inputs and must be rebuilt.
 Sky scrolling, tilt, and the sun remain unsupported. `sky_disable=1` in the
 install's `SYSTEM.INI` suppresses the sky.
 
-Water motion remains unsupported in both graphics modes.
+Water waves run in both graphics modes. Re-export worlds after this update;
+old water sidecars have incompatible masks. **Verified:** vertex selection,
+waveform, bias, and spatial phase follow preservation's water documentation.
+A BIOS-rate clock advances from application startup and persists across scenes.
+Its absolute phase is not synchronized with a DOS session. Terrain placement,
+base heights, and lighting retain the existing export limitations.
 
 ## The original game
 

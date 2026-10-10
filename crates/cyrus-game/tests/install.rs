@@ -119,3 +119,41 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
     );
     std::fs::remove_dir(output).unwrap();
 }
+
+#[test]
+fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
+    let Some(install) = install() else { return };
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("water-export-test-{}", std::process::id()));
+    // Verified installed WLD corner selections and WORLD.INI values.
+    for (world, parameters, selected) in [
+        ("1", [24.0, 28.0, 5.0], 49119),
+        ("6", [24.0, 28.0, 5.0], 62050),
+        ("17", [20.0, 18.0, 5.0], 64963),
+    ] {
+        let path = output.join(format!("{world}.glb"));
+        cyrus_game::scene::export_scene(&install, world, &path).unwrap();
+        let environment: cyrus_game::environment::Environment =
+            serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
+                .unwrap();
+        let water = environment.water.unwrap();
+        assert_eq!(water.parameters, parameters, "world {world}");
+        assert_eq!(water.side, 256);
+        assert_eq!(
+            water.animated_vertices.iter().filter(|&&v| v).count(),
+            selected,
+            "world {world}"
+        );
+        assert!(!water.animated_vertices[0]);
+        assert!(!water.animated_vertices[256]);
+        assert!(water.animated_vertices[257]);
+        for extension in ["environment", "animations", "sounds", "glb"] {
+            let file = path.with_extension(extension);
+            if file.exists() {
+                std::fs::remove_file(file).unwrap();
+            }
+        }
+    }
+    std::fs::remove_dir(output).unwrap();
+}

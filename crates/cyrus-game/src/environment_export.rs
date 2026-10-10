@@ -123,11 +123,15 @@ pub fn export(
     {
         let parameters: Vec<f32> = parameters
             .split(',')
-            .map(|v| v.trim().parse())
-            .collect::<Result<_, _>>()?;
-        let parameters: [f32; 3] = parameters
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("world_wave requires three parameters"))?;
+            .map(|v| v.trim().parse::<i32>().map(|v| v as f32))
+            .collect::<Result<_, _>>()
+            .with_context(|| format!("world {}: world_wave", entry.index))?;
+        let parameters: [f32; 3] = parameters.try_into().map_err(|_| {
+            anyhow::anyhow!(
+                "world {}: world_wave requires three parameters",
+                entry.index
+            )
+        })?;
         let textures = terrain.combined_map(2)?;
         let side = textures.len().isqrt();
         anyhow::ensure!(
@@ -137,7 +141,7 @@ pub fn export(
         Some(Water {
             parameters,
             side,
-            vertices: water_vertices(&textures, side),
+            animated_vertices: water_vertices(&textures, side),
         })
     } else {
         None
