@@ -87,6 +87,15 @@ unchanged shore geometry, and restoring Faithful mode. Structural checks covered
 all 29 environment sidecars; seven declare water. This implementation landed in
 [4a7696d](https://github.com/michidk/cyrus/commit/4a7696d). Matching the original and verifying the native artifact remain open;
 this Modern preview does not complete the faithful sky/water requirements.
+Water animation itself is documented in preservation's
+[water renderer notes](https://github.com/michidk/redguard-preservation/blob/896f76c/docs/engine/water.md).
+The current preview guesses the tick rate, speed conversion, sine-table values,
+centering bias, and terrain-window origin. Its normal calculation and wave-enable
+condition also need comparison with the documented renderer. Resolve these
+before accepting faithful water playback. Unchanged frames in Faithful mode
+prove only that the approximation is disabled; static water is not evidence of
+original-game behavior.
+
 Sound remains uncommitted and unverified.
 Configuration-selected language and audio assets also need runtime verification.
 
