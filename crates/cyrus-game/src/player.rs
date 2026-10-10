@@ -62,9 +62,11 @@ fn spawn(mut commands: Commands) {
     ));
 }
 
+// The scene-bounds query excludes the fullscreen sky.
+#[allow(clippy::type_complexity)]
 fn frame_scene(
     mut frame: ResMut<FrameScene>,
-    meshes: Query<(&Aabb, &GlobalTransform), With<Mesh3d>>,
+    meshes: Query<(&Aabb, &GlobalTransform), (With<Mesh3d>, Without<crate::sky::Sky>)>,
     mut player: Query<&mut Transform, With<Player>>,
 ) {
     if meshes.is_empty() {

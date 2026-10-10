@@ -64,8 +64,9 @@ committed support; unverified work stays in the TODO column.
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Model parsing and static model export | Actor and mesh animation |
-| `BSI`, `COL` | Textures and palettes; approximate Modern terrain-water animation verified in WASM | Faithful water animation and other animated textures |
-| `GXA` | Parsing and approximate Modern skybox verified in WASM | Faithful skies, sky layers, sun, and menu artwork |
+| `BSI`, `COL` | Textures and palettes; exported water inputs without playback | Faithful water animation and other animated textures |
+| `GXA` | Parsing | Software sky projection and menu artwork |
+| Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
 | `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
 | `FNT` | Preload parsing | In-game text and menus |
@@ -75,26 +76,14 @@ committed support; unverified work stays in the TODO column.
 | CD audio | No playback accepted | Music playback, timing, and volume controls |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
-The world-loading agent verified the approximate Modern sky and animated water
-in ISLAND on the fresh WASM build. Paired fixed-camera frames show the sea
-changing while sampled land and sky stay identical. Selecting Faithful removes
-the approximate sky and restores static water; paired Faithful sea captures
-showed zero changed pixels. Local evidence is in
-`cyrus-config/screenshots/water-{modern,faithful}-{a,b}.png`.
-
-Four environment tests passed before the restart: texture binding, time advance,
-unchanged shore geometry, and restoring Faithful mode. Structural checks covered
-all 29 environment sidecars; seven declare water. This implementation landed in
-[4a7696d](https://github.com/michidk/cyrus/commit/4a7696d). Matching the original and verifying the native artifact remain open;
-this Modern preview does not complete the faithful sky/water requirements.
-Water animation itself is documented in preservation's
-[water renderer notes](https://github.com/michidk/redguard-preservation/blob/896f76c/docs/engine/water.md).
-The current preview guesses the tick rate, speed conversion, sine-table values,
-centering bias, and terrain-window origin. Its normal calculation and wave-enable
-condition also need comparison with the documented renderer. Resolve these
-before accepting faithful water playback. Unchanged frames in Faithful mode
-prove only that the approximation is disabled; static water is not evidence of
-original-game behavior.
+**Verified:** Glide sky textures, their independent COL palettes, and the static
+plane mapping are documented in preservation's
+[sky renderer notes](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
+Installed day, night, sunset, and Necro exports pass palette and plane checks;
+native Vulkan and browser WebGL runs show the static sky behind scene geometry.
+The former GXA cubemap and approximate water animation are removed. Sky
+scrolling, tilt, the sun disc, and water motion remain unsupported; a static
+sky does not establish complete original-game fidelity.
 
 Sound remains uncommitted and unverified.
 Configuration-selected language and audio assets also need runtime verification.

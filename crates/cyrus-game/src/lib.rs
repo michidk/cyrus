@@ -15,6 +15,7 @@ pub mod player;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod scene;
 pub mod settings;
+mod sky;
 
 use bevy::prelude::*;
 
