@@ -5,6 +5,7 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | Module | Role |
 |---|---|
 | `install` | Locate and validate the player's GOG install; read-only. |
+| `startup` | Shared splash/title and data-defined book menu; native exporter renders installed Glide geometry into a local image cache. |
 | `loading` | Startup state: scans the install and parses every known file through `rgpre` behind a progress bar; the failures are the format-coverage report. |
 | `scene` | Resolve a world from `WORLD.INI` (map, terrain, palette), export it to a GLB in `cyrus-config/cache/`, spawn it. Native only. |
 | `player` | Held keyboard input from `KEYS.INI`, a stationary player entity, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
@@ -19,7 +20,7 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
-`animation`, `environment`, `fidelity`, `player` and `settings` compile on wasm and are reused by
+`startup` presentation, `animation`, `environment`, `fidelity`, `player` and `settings` compile on wasm and are reused by
 `cyrus-web`; everything that reads the install, spawns threads or opens
 sockets is gated with `cfg(not(target_arch = "wasm32"))`.
 
@@ -72,3 +73,20 @@ Both modes use the original fog tables and encoded RGB blend. The sky has its
 own fog table and clipping range. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
 Hardware fog dithering and RGB565 quantization are not reproduced.
+
+Default windowed startup plays the original authored 3dfx animation and decoded
+640×480 title image, then stops at the book menu. Preload runs concurrently.
+Timing is presentation policy; the original map-loading backend is not reproduced.
+The title uses the configured FNT font and documented bottom-label positions.
+The loading label says “Loading...” rather than reporting original map IDs.
+Splash rasterization currently uses supersampling and the largest texture mip;
+hardware edge coverage, mip selection, and shadow interpolation need a precise
+paired comparison before claiming pixel-exact rendering.
+
+The main menu derives its entries, layout, texture slots and action IDs from
+`MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md). It renders the settled installed book into selection
+images under `cache/menu/`; fonts retain indexed glyph shading on those pages.
+Navigation skips grayed/nonselectable/empty entries and wraps. Quit exits; other
+actions remain explicitly unavailable. Save and Continue are disabled without a
+resumable world. Opening/closing motion, lighting, menu audio, mouse selection,
+gameplay thumbnails, and neighboring-page text remain unsupported.

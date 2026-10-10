@@ -22,10 +22,12 @@ The link is gitignored. cyrus only reads from it.
 ## Run
 
 ```sh
-just run                 # window
-just run -- --scene START
-just run -- --scene 27    # WORLD.INI ID selects the night island variant
+just run                 # splash, title, then the book menu
+just run --skip-startup   # skip splash/title to the book menu
+just run --scene START
+just run --scene 27       # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
+cargo run -p cyrus -- --export-startup    # render startup and menu assets for the browser
 just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
@@ -39,7 +41,27 @@ rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # v
 just run-web             # VibePod preview "cyrus-web"; ?scene=START picks a scene
 ```
 
-The page loads `cyrus-config/cache/<SCENE>.glb`. Run
+Without a `scene` query, the page runs startup through the book menu.
+Export startup first with `cargo run -p cyrus -- --export-startup`. The exporter
+reads the sibling `DOSBOX/glide2x_emu.ovl`, `system/STARTUP2.GXA`, and the configured
+`gui_low_font` from the install; all generated images stay in
+`cyrus-config/cache/startup/`. Native windowed launch generates this cache when
+needed. Keep the GOG `DOSBOX` directory next to `Redguard`, or the supplied
+Glide overlay within `Redguard`. Enter, Space, or Escape advances startup.
+`--skip-startup` bypasses splash/title presentation and export; menu export still runs. `--scene` loads
+a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
+a world from startup or the menu. Control `state` reports the current app state.
+
+The book menu reads `MENU.INI` through rgpre, using original geometry, page
+textures, and indexed FNT glyphs. Up/Down navigates eligible entries; Enter or
+the configured B key in `KEYS.INI` activates them. Quit exits. Other actions
+report that they are unavailable; Save and Continue are grayed because there
+is no resumable world. Menu export writes `cyrus-config/cache/menu/`, including
+selection images, a descriptor, and an rgpre-generated font for status text.
+The menu currently displays settled geometry. Opening/closing motion, lighting,
+menu audio, mouse selection, runtime gameplay thumbnails, and neighboring-page text remain unsupported.
+
+With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 `cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry
 and its map-stem alias. Use `?scene=27` for a specific world variant or
 `?scene=START` for a map. Map stems select the lowest world ID using that map.

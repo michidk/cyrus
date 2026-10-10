@@ -175,7 +175,7 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
 }
 
 /// Case-insensitive lookup, because the GOG tree mixes upper and lower case.
-fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     std::fs::read_dir(dir)
         .ok()?
         .flatten()

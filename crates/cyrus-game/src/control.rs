@@ -49,7 +49,12 @@ impl Plugin for ControlPlugin {
         }
         app.insert_resource(Inbox(Mutex::new(rx)))
             .init_resource::<TapRelease>()
-            .add_systems(PreUpdate, (release_taps, handle).chain());
+            .add_systems(
+                PreUpdate,
+                (release_taps, handle)
+                    .chain()
+                    .after(bevy::input::InputSystems),
+            );
     }
 }
 
@@ -102,6 +107,14 @@ fn handle(
     mut fidelity: ResMut<Fidelity>,
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
+    (state, mut next): (
+        Res<State<crate::AppState>>,
+        ResMut<NextState<crate::AppState>>,
+    ),
+    (startup, menu): (
+        Option<Res<crate::startup::StartupPresentation>>,
+        Option<Res<crate::startup::MenuState>>,
+    ),
     preloaded: Option<Res<Preloaded>>,
     frames: Res<bevy::diagnostic::FrameCount>,
     input: Res<crate::player::input::PlayerInput>,
@@ -124,7 +137,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": Preloaded::report_path()})
                 });
                 Ok(
-                    json!({"scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -177,7 +190,20 @@ fn handle(
             }
             Command::LoadScene { name } => {
                 scene_request.0 = name.clone();
+                if *state.get() != crate::AppState::InGame {
+                    next.set(crate::AppState::InGame);
+                }
                 Ok(json!({"scene": name}))
+            }
+            Command::SkipStartup => {
+                if startup.is_some() && *state.get() != crate::AppState::InGame {
+                    if *state.get() != crate::AppState::Menu {
+                        next.set(crate::AppState::Menu);
+                    }
+                    Ok(json!({"state": "Menu"}))
+                } else {
+                    Err("startup presentation is not active".into())
+                }
             }
             Command::Quit => {
                 exit.write(AppExit::Success);
@@ -194,4 +220,53 @@ fn handle(
 /// `KeyCode` is a plain enum; its `Debug` names are the public key names.
 fn parse_key(name: &str) -> Option<KeyCode> {
     serde_json::from_value(json!(name)).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control_taps_survive_keyboard_update_and_release_next_frame() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::state::app::StatesPlugin,
+            bevy::input::InputPlugin,
+        ))
+        .init_state::<crate::AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<CurrentScene>()
+        .init_resource::<bevy::diagnostic::FrameCount>()
+        .init_resource::<crate::player::input::PlayerInput>()
+        .init_resource::<crate::player::FlycamSettings>()
+        .insert_resource(SceneRequest(String::new()))
+        .insert_resource(ControlAddr("127.0.0.1:0".into()))
+        .add_plugins(ControlPlugin);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, result) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 1,
+                cmd: Command::Input {
+                    key: "Enter".into(),
+                    action: InputAction::Tap,
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(result.try_recv().unwrap().ok);
+        assert!(
+            app.world()
+                .resource::<ButtonInput<KeyCode>>()
+                .just_pressed(KeyCode::Enter)
+        );
+        app.update();
+        let keys = app.world().resource::<ButtonInput<KeyCode>>();
+        assert!(!keys.pressed(KeyCode::Enter));
+        assert!(keys.just_released(KeyCode::Enter));
+    }
 }

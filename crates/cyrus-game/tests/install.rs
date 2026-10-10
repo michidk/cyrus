@@ -267,3 +267,67 @@ fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
     }
     std::fs::remove_dir(output).unwrap();
 }
+
+#[test]
+fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
+    let Some(install) = install() else { return };
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("startup-export-test-{}", std::process::id()));
+    cyrus_game::startup::export_startup(&install, &output).unwrap();
+    let splash = output.join("startup");
+    let image = |name: &str| image::open(splash.join(name)).unwrap().to_rgba8();
+    let first = image("splash-01.png");
+    let middle = image("splash-40.png");
+    let last = image("splash-74.png");
+    assert_eq!(middle.dimensions(), (640, 480));
+    let brightness = |image: &image::RgbaImage| {
+        image
+            .pixels()
+            .map(|p| u64::from(p[0]) + u64::from(p[1]) + u64::from(p[2]))
+            .sum::<u64>()
+    };
+    assert!(brightness(&middle) > brightness(&first));
+    assert!(brightness(&middle) > brightness(&last));
+    assert!(
+        middle
+            .pixels()
+            .filter(|p| p[0] > 0 || p[1] > 0 || p[2] > 0)
+            .count()
+            > 10000
+    );
+    assert!((1..75).all(|frame| splash.join(format!("splash-{frame:02}.png")).is_file()));
+    assert!(!splash.join("splash-00.png").exists());
+    let title = image("title.png");
+    let source = rgpre::import::gxa::parse_gxa_file(
+        &std::fs::read(install.root.join("system/STARTUP2.GXA")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        &title.as_raw()[..640 * 467 * 4],
+        &source.frames[0].rgba[..640 * 467 * 4]
+    );
+    assert!(
+        title
+            .enumerate_pixels()
+            .any(|(x, y, p)| x < 150 && y >= 467 && p.0 == [32, 32, 32, 255])
+    );
+    assert!(
+        title
+            .enumerate_pixels()
+            .any(|(x, y, p)| x > 500 && y >= 467 && p.0 == [50, 0, 0, 255])
+    );
+    let modified = std::fs::metadata(splash.join("title.png"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    cyrus_game::startup::export_startup(&install, &output).unwrap();
+    assert_eq!(
+        std::fs::metadata(splash.join("title.png"))
+            .unwrap()
+            .modified()
+            .unwrap(),
+        modified
+    );
+    std::fs::remove_dir_all(output).unwrap();
+}

@@ -23,3 +23,14 @@ fn error_response_omits_result() {
     let json = serde_json::to_string(&Response::err(1, "nope")).unwrap();
     assert_eq!(json, r#"{"id":1,"ok":false,"error":"nope"}"#);
 }
+
+#[test]
+fn startup_skip_has_no_world_parameter() {
+    let request: Request =
+        serde_json::from_str(r#"{"id":8,"cmd":{"type":"skip_startup"}}"#).unwrap();
+    assert_eq!(request.cmd, Command::SkipStartup);
+    assert_eq!(
+        serde_json::to_string(&request).unwrap(),
+        r#"{"id":8,"cmd":{"type":"skip_startup"}}"#
+    );
+}

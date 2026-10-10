@@ -21,12 +21,14 @@ def rpc(o):
 rpc({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}})
 p.stdin.write(json.dumps({"jsonrpc":"2.0","method":"notifications/initialized"}) + "\n"); p.stdin.flush()
 tools = {t["name"] for t in rpc({"jsonrpc":"2.0","id":1,"method":"tools/list"})["result"]["tools"]}
-assert {"ping","state","screenshot","teleport","input","set_fidelity","load_scene","quit"} <= tools, tools
+assert {"ping","state","screenshot","teleport","input","set_fidelity","skip_startup","load_scene","quit"} <= tools, tools
 def call(n, a={}):
     r = rpc({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":n,"arguments":a}})
     assert "error" not in r, (n, r)
     return json.loads(r["result"]["content"][0]["text"])
 initial = call("state")
+assert initial["state"] == "InGame", initial
+call("load_scene", {"name":"START"})
 before = initial["flycam"]["position"]
 call("input", {"key":"KeyW","action":"press"})
 import time; time.sleep(0.5)

@@ -45,6 +45,11 @@ impl PlayerBindings {
         Ok(Self(keys))
     }
 
+    /// Book-menu primary activation uses the configured B key.
+    pub(crate) fn menu_activation_key(&self) -> Option<KeyCode> {
+        self.0[5]
+    }
+
     /// Sample held keys without imposing movement priorities or cancelling
     /// opposing inputs; those belong to the original controller state machine.
     pub fn sample(&self, keys: &ButtonInput<KeyCode>) -> PlayerInput {

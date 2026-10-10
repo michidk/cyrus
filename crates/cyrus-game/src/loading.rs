@@ -69,11 +69,18 @@ struct Bar;
 #[derive(Component)]
 struct Label;
 
-fn start(mut commands: Commands, install: Res<GameInstall>) {
+fn start(
+    mut commands: Commands,
+    install: Res<GameInstall>,
+    startup: Option<Res<crate::startup::StartupPresentation>>,
+) {
     let (tx, rx) = channel();
     let root = install.root.clone();
     std::thread::spawn(move || preload(&root, &tx));
     commands.insert_resource(Channel(Arc::new(Mutex::new(rx))));
+    if startup.is_some() {
+        return;
+    }
     commands.spawn((
         LoadingUi,
         Node {
@@ -120,6 +127,7 @@ fn start(mut commands: Commands, install: Res<GameInstall>) {
 fn poll(
     mut commands: Commands,
     channel: Res<Channel>,
+    startup: Option<Res<crate::startup::StartupPresentation>>,
     mut bar: Query<&mut Node, With<Bar>>,
     mut label: Query<&mut Text, With<Label>>,
     mut next: ResMut<NextState<AppState>>,
@@ -151,7 +159,9 @@ fn poll(
                     warn!("preload: cannot write report: {e}");
                 }
                 commands.insert_resource(*preloaded);
-                next.set(AppState::InGame);
+                if startup.is_none() {
+                    next.set(AppState::InGame);
+                }
             }
         }
     }
