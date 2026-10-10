@@ -16,8 +16,11 @@ with evidence, in one small piece, with the gates green. Evidence means one of:
   and an input sequence, ideally with a DOSBox-X screenshot next to a cyrus one;
 - a documented engine fact in redguard-preservation's `docs/engine/`.
 
-A guess is allowed only when marked `// unverified` in code and named in the
-commit message. It is never the default of a fidelity area.
+Do not guess. When the evidence above leaves behavior uncertain, inspect the
+original game's decompilation and publish recovered facts in preservation's
+docs. Keep raw decompilation and research under `magic/`; implement from the
+documented facts. If uncertainty remains, leave the behavior explicitly
+unsupported. An `// unverified` comment or Modern mode does not authorize a guess.
 
 ## The loop
 

@@ -25,11 +25,14 @@ crate you touch. The root `README.md` is for players.
    is registered under a fidelity `Area` and runs only in the configured `Mode`
    (`crates/cyrus-game/src/fidelity.rs`). The default of every area is
    `Faithful`. A deviation lives in a `Modern` branch, never in the shared path.
-4. **Provenance over plausibility.** A constant, formula or branch is either
-   derived from a game file, from observing the original game, or from the
-   preservation docs, and the code says which; or it is marked
-   `// unverified` and listed in the commit message. No silent guesses, no
-   "looks right". Prefer an explicit unsupported path to a plausible wrong value.
+4. **Do not guess.** Derive constants, formulas, and behavior from game data,
+   original-game observations, or preservation evidence, and state the source.
+   When in doubt, inspect the original game's decompilation to resolve the
+   uncertainty. Publish recovered engine facts in redguard-preservation before
+   relying on them here. If evidence is still incomplete, leave the behavior
+   explicitly unsupported. Neither `// unverified` nor Modern mode authorizes
+   invented behavior. Keep raw decompilation and research under `magic/`;
+   implement from documented facts, never copied decompiled code.
 5. **Facts, not traces.** Tracked files carry no memory addresses, no
    executable offsets, no decompiler placeholder names, no "the original does X
    at ...". Engine facts are stated as facts and, where they are format or
