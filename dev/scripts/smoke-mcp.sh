@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Agent-loop smoke: starts the game headless, drives it through cyrus-mcp over stdio,
-# checks that state/input/fidelity/quit round-trip. Needs an install. Binaries are started
-# through `cargo run` so cargo's [env] (library paths on hosts without root) applies.
+# checks that state/input/fidelity/quit round-trip. Needs an install. The built binaries are
+# started directly so a concurrent cargo job holding the build lock cannot stall the run.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 cargo build -q -p cyrus -p cyrus-mcp
 log=$(mktemp)
-cargo run -q -p cyrus -- --headless --scene START >"$log" 2>&1 &
+target/debug/cyrus --headless --scene START >"$log" 2>&1 &
 game=$!
 trap 'kill $game 2>/dev/null || true' EXIT
 for _ in $(seq 1 120); do grep -q 'control: listening' "$log" && break; sleep 1; done
@@ -14,7 +14,7 @@ grep -q 'control: listening' "$log" || { echo "game did not start"; tail -20 "$l
 sleep 3
 python3 -I - <<'PY'
 import json, subprocess, sys
-p = subprocess.Popen(["cargo", "run", "-q", "-p", "cyrus-mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+p = subprocess.Popen(["target/debug/cyrus-mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 def rpc(o):
     p.stdin.write(json.dumps(o) + "\n"); p.stdin.flush(); return json.loads(p.stdout.readline())
 rpc({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}})
