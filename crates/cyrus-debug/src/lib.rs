@@ -91,7 +91,8 @@ fn debug_menu(
 ) -> Result {
     let player_position = player.single().ok().map(|transform| transform.translation);
 
-    egui::Window::new("cyrus debug").show(contexts.ctx_mut()?, |ui| {
+    let window = egui::Window::new("cyrus debug").vscroll(true);
+    window.show(contexts.ctx_mut()?, |ui| {
         ui.label("F1 toggles this menu");
         ui.separator();
         ui.label(format!("World: {}", world.current));
@@ -134,17 +135,26 @@ fn debug_menu(
             let mut far = distance.effective(&fidelity).unwrap()[1];
             ui.horizontal(|ui| {
                 ui.label("Render distance");
-                if ui.add(egui::DragValue::new(&mut far).range((near + 1.0)..=f32::MAX).speed(20.0))
-                    .on_hover_text("Engine units. Editing switches Graphics to Modern; the original fog curve stays fixed.")
-                    .changed() {
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut far)
+                            .range((near + 1.0)..=f32::MAX)
+                            .speed(20.0),
+                    )
+                    .on_hover_text("Engine units. Editing switches Fog to Modern.")
+                    .changed()
+                {
                     distance.override_far = Some(far);
-                    fidelity.set(Area::Graphics, Mode::Modern);
+                    fidelity.set(Area::Fog, Mode::Modern);
                 }
                 if ui.button("Original").clicked() {
                     distance.override_far = None;
+                    fidelity.set(Area::Fog, Mode::Faithful);
                 }
             });
-            ui.label(format!("Original render distance: {original:.0} game units"));
+            ui.label(format!(
+                "Original render distance: {original:.0} game units"
+            ));
         }
 
         ui.separator();
@@ -168,7 +178,9 @@ fn debug_menu(
             "Player controller",
         );
         fidelity_control(ui, &mut fidelity, Area::Camera, "Camera");
-        fidelity_control(ui, &mut fidelity, Area::Graphics, "Graphics");
+        fidelity_control(ui, &mut fidelity, Area::Water, "Water");
+        fidelity_control(ui, &mut fidelity, Area::Fog, "Fog");
+        fidelity_control(ui, &mut fidelity, Area::Sky, "Sky");
 
         ui.separator();
         let inspector_label = if menu.inspector_open {

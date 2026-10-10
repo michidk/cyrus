@@ -14,3 +14,24 @@ fn settings_toml_overrides_one_area() {
     assert_eq!(f.mode(Area::Camera), Mode::Modern);
     assert_eq!(f.mode(Area::PlayerController), Mode::Faithful);
 }
+
+#[test]
+fn environmental_modes_switch_independently_and_roundtrip() {
+    let mut fidelity = Fidelity::default();
+    for area in [Area::Water, Area::Fog, Area::Sky] {
+        fidelity.set(area, Mode::Modern);
+        let saved = toml::to_string(&fidelity).unwrap();
+        let restored: Fidelity = toml::from_str(&saved).unwrap();
+        for candidate in Area::ALL {
+            assert_eq!(
+                restored.mode(candidate),
+                if candidate == area {
+                    Mode::Modern
+                } else {
+                    Mode::Faithful
+                }
+            );
+        }
+        fidelity.set(area, Mode::Faithful);
+    }
+}

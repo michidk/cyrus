@@ -94,9 +94,12 @@ height. Re-export older assets that lack `map_position`.
 
 Scene rendering uses the installed near/far planes, including a nonzero
 `world_back_plane` override. F1 exposes a render-distance override in game units;
-editing it switches Graphics to Modern. Faithful uses the original range.
-Both modes use the original fog tables and encoded RGB blend. The sky has its
-own fog table and clipping range. Re-export environments after this change.
+editing it switches Fog to Modern. Faithful uses the original range and fog
+tables. Modern Fog defaults to four times the far distance and a gradual distant
+fade. Modern Sky is camera-centered; Modern Water adds smooth crossing waves,
+fine texture ripples, and view-dependent sheen while retaining the installed
+textures. Water, Fog, and Sky are independently switchable and default to
+Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
 Hardware fog dithering and RGB565 quantization are not reproduced.
 

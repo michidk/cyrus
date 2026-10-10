@@ -1,6 +1,7 @@
 //! Terrain wave playback from preservation's engine/water.md.
 
 use crate::environment::{Environment, EnvironmentRequest, Water};
+use crate::fidelity::{Area, Fidelity, Mode};
 use bevy::camera::primitives::MeshAabb;
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
@@ -22,9 +23,19 @@ pub(crate) struct WaterPlayback {
     base: Vec<[f32; 3]>,
     terrain: Vec<TerrainMesh>,
     tick: Option<u64>,
+    mode: Mode,
 }
 
 impl Water {
+    /// Modern art-style preset: two smooth crossing waves around the original mean height.
+    fn modern_displacement(&self, position: [f32; 3], seconds: f32) -> f32 {
+        let phase = (position[0] + position[2] * 0.35) / (CELL_SIZE * 6.0) * std::f32::consts::TAU
+            - seconds * 0.8;
+        let cross = (position[2] - position[0] * 0.6) / (CELL_SIZE * 2.5) * std::f32::consts::TAU
+            - seconds * 1.3;
+        self.parameters[0] / 20.0 * (0.5 + 0.35 * phase.sin() + 0.15 * cross.sin())
+    }
+
     /// Vertical offset for a grid vertex in exported units with positive Y up.
     /// `vertex` must be within the validated square grid; timing uses BIOS ticks.
     /// Phase starts at the application's clock origin; scene changes do not reset it.
@@ -48,6 +59,7 @@ pub(crate) fn animate_water(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     time: Res<Time<Real>>,
+    fidelity: Res<Fidelity>,
     mut playback: ResMut<WaterPlayback>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut entities: Query<(Entity, &mut Mesh3d)>,
@@ -119,6 +131,13 @@ pub(crate) fn animate_water(
                 vertices.push(vertex);
             }
             let mut animated_mesh = mesh.clone();
+            animated_mesh.insert_attribute(
+                Mesh::ATTRIBUTE_UV_1,
+                vertices
+                    .iter()
+                    .map(|&vertex| [u8::from(water.animated_vertices[vertex]) as f32, 0.0])
+                    .collect::<Vec<_>>(),
+            );
             if let Some(mut bounds) = mesh.get_aabb() {
                 bounds.half_extents.y += water.parameters[0].abs() * 1.5 / 20.0;
                 animated_mesh.final_aabb = Some(bounds.into());
@@ -136,14 +155,21 @@ pub(crate) fn animate_water(
         playback.source = Some(request.0.id());
     }
     let ticks = (time.elapsed_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
-    if playback.tick == Some(ticks) {
+    let mode = fidelity.mode(Area::Water);
+    if mode == Mode::Faithful && playback.mode == mode && playback.tick == Some(ticks) {
         return;
     }
     playback.tick = Some(ticks);
+    playback.mode = mode;
     let mut grid = playback.base.clone();
     for (vertex, position) in grid.iter_mut().enumerate() {
         if water.animated_vertices[vertex] {
-            position[1] += water.displacement(vertex, ticks);
+            position[1] += match mode {
+                Mode::Faithful => water.displacement(vertex, ticks),
+                Mode::Modern => {
+                    water.modern_displacement(playback.base[vertex], time.elapsed_secs())
+                }
+            };
         }
     }
     let normals = grid_normals(&grid, water.side);
@@ -256,6 +282,7 @@ mod tests {
             .insert_resource(EnvironmentRequest(outdoor.clone()))
             .init_resource::<Assets<Mesh>>()
             .init_resource::<WaterPlayback>()
+            .init_resource::<Fidelity>()
             .init_resource::<Time<Real>>()
             .add_systems(Update, animate_water);
         let a = [
@@ -303,6 +330,19 @@ mod tests {
         };
         assert_eq!(normal(&animated, 1), normal(&animated_other, 0));
         assert_ne!(normal(&animated, 1), [0.0, 1.0, 0.0]);
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Water, Mode::Modern);
+        app.update();
+        assert!(positions(&app, &animated)[1][1] >= 0.0);
+        assert_eq!(positions(&app, &animated)[0], a[0]);
+        assert_eq!(positions(&app, &first), a);
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Water, Mode::Faithful);
+        app.update();
+        // Returning to Faithful within the same tick restores its exact displacement.
+        assert!((positions(&app, &animated)[1][1] + 0.6).abs() < 0.00001);
         // Render updates in the same BIOS tick leave the mesh unchanged.
         app.update();
         assert!((positions(&app, &animated)[1][1] + 0.6).abs() < 0.00001);

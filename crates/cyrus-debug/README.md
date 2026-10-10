@@ -10,5 +10,6 @@ Flycam leaves the player in place. Turning it off returns the camera to the
 player pose; it does not change the fidelity settings.
 
 Render distance starts at the installed game's value. Changing it selects
-Modern graphics; Original clears the override, and Faithful always uses the
-installed value. The fog curve does not scale with the override.
+Modern Fog; Original clears the override and returns Fog to Faithful. Modern
+Fog defaults to four times the original distance with a gradual distant fade.
+Water, Fog, and Sky have independent Faithful/Modern buttons.

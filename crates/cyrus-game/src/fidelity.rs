@@ -18,11 +18,19 @@ pub enum Mode {
 pub enum Area {
     PlayerController,
     Camera,
-    Graphics,
+    Water,
+    Fog,
+    Sky,
 }
 
 impl Area {
-    pub const ALL: [Area; 3] = [Area::PlayerController, Area::Camera, Area::Graphics];
+    pub const ALL: [Area; 5] = [
+        Area::PlayerController,
+        Area::Camera,
+        Area::Water,
+        Area::Fog,
+        Area::Sky,
+    ];
 }
 
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
@@ -30,7 +38,9 @@ impl Area {
 pub struct Fidelity {
     pub player_controller: Mode,
     pub camera: Mode,
-    pub graphics: Mode,
+    pub water: Mode,
+    pub fog: Mode,
+    pub sky: Mode,
 }
 
 impl Fidelity {
@@ -38,14 +48,18 @@ impl Fidelity {
         match area {
             Area::PlayerController => self.player_controller,
             Area::Camera => self.camera,
-            Area::Graphics => self.graphics,
+            Area::Water => self.water,
+            Area::Fog => self.fog,
+            Area::Sky => self.sky,
         }
     }
     pub fn set(&mut self, area: Area, mode: Mode) {
         match area {
             Area::PlayerController => self.player_controller = mode,
             Area::Camera => self.camera = mode,
-            Area::Graphics => self.graphics = mode,
+            Area::Water => self.water = mode,
+            Area::Fog => self.fog = mode,
+            Area::Sky => self.sky = mode,
         }
     }
 }

@@ -21,7 +21,7 @@ fn scene_from_query() -> Option<String> {
     None
 }
 
-fn modern_graphics() -> bool {
+fn modern_area(_area: &str) -> bool {
     #[cfg(target_arch = "wasm32")]
     if let Some(window) = web_sys::window()
         && let Ok(search) = window.location().search()
@@ -29,7 +29,7 @@ fn modern_graphics() -> bool {
         return search
             .trim_start_matches('?')
             .split('&')
-            .any(|part| part == "graphics=modern");
+            .any(|part| part == format!("{_area}=modern"));
     }
     false
 }
@@ -57,7 +57,17 @@ fn main() {
             }),
     )
     .insert_resource(Fidelity {
-        graphics: if modern_graphics() {
+        water: if modern_area("water") {
+            Mode::Modern
+        } else {
+            Mode::Faithful
+        },
+        fog: if modern_area("fog") {
+            Mode::Modern
+        } else {
+            Mode::Faithful
+        },
+        sky: if modern_area("sky") {
             Mode::Modern
         } else {
             Mode::Faithful

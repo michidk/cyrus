@@ -31,7 +31,7 @@ Update or release ownership when work changes.
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; ground response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
-| Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Fog and original clipping deployed; F1 override/reset verified in WebGL; sky scrolling implementation under verification |
+| Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range deployed; scrolling verified natively; independent Modern Water/Fog/Sky presets under verification |
 
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
 | Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding, animation tests and related scene wiring here; explicit forward groups and mesh poses verified by native contracts, installed FLAG2 binding, and WASM compilation; next owns original activation, group transitions, and clock research |

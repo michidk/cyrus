@@ -296,7 +296,7 @@ mod tests {
             .unwrap();
         assert_eq!(image.data.as_ref().unwrap(), &pixels);
         assert_eq!(image.texture_descriptor.size.depth_or_array_layers, 1);
-        app.world_mut().resource_mut::<Fidelity>().graphics = Mode::Modern;
+        app.world_mut().resource_mut::<Fidelity>().sky = Mode::Modern;
         app.update();
         assert_eq!(
             app.world().resource::<ActiveEnvironment>().sky,

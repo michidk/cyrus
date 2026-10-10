@@ -56,7 +56,7 @@ coverage; visual fidelity still requires comparison with the original.
 ## The fidelity switch
 
 `Fidelity` is a resource with one `Mode` per `Area` (`player_controller`,
-`camera`, `graphics`; extend the enum when a new deviation needs one). Systems
+`camera`, `water`, `fog`, and `sky`; extend the enum when a new deviation needs one). Systems
 are gated with `in_mode(area, mode)`. Rules:
 
 - The faithful path is complete on its own; the modern path may reuse it.

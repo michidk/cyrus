@@ -14,12 +14,12 @@ use bevy::{
 };
 use std::collections::HashMap;
 
-/// Original scene clipping and a debug-only Modern graphics override, in engine units.
+/// Original scene clipping and a debug-only Modern fog override, in engine units.
 #[derive(Resource, Default)]
 pub struct RenderDistance {
     /// Near/far distances from the active world's environment. None while loading.
     pub original: Option<[f32; 2]>,
-    /// Optional far distance selected in the debug menu. Faithful graphics ignores it.
+    /// Optional far distance selected in the debug menu. Faithful fog ignores it.
     pub override_far: Option<f32>,
 }
 
@@ -29,8 +29,8 @@ impl RenderDistance {
         self.original.map(|[near, far]| {
             [
                 near,
-                if fidelity.mode(Area::Graphics) == Mode::Modern {
-                    self.override_far.unwrap_or(far)
+                if fidelity.mode(Area::Fog) == Mode::Modern {
+                    self.override_far.unwrap_or(far * 4.0)
                 } else {
                     far
                 },
@@ -40,6 +40,7 @@ impl RenderDistance {
 }
 
 type SceneMaterial = ExtendedMaterial<StandardMaterial, FogExtension>;
+type MaterialCache = HashMap<(AssetId<StandardMaterial>, bool), Handle<SceneMaterial>>;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone, PartialEq)]
 struct FogExtension {
@@ -49,6 +50,8 @@ struct FogExtension {
     clipping: Vec4,
     #[uniform(100)]
     table: [Vec4; 16],
+    #[uniform(100)]
+    water: Vec4,
 }
 
 impl MaterialExtension for FogExtension {
@@ -79,8 +82,10 @@ fn apply_scene_fog(
     mut cameras: Query<&mut Projection, With<ViewCamera>>,
     meshes: Query<(Entity, &MeshMaterial3d<StandardMaterial>)>,
     materials: Res<Assets<StandardMaterial>>,
+    names: Query<&Name>,
+    parents: Query<&ChildOf>,
     mut fog_materials: ResMut<Assets<SceneMaterial>>,
-    mut converted: Local<HashMap<AssetId<StandardMaterial>, Handle<SceneMaterial>>>,
+    mut converted: Local<MaterialCache>,
     mut previous: Local<Option<(AssetId<Environment>, FogExtension)>>,
 ) {
     let (Some(environment), Some([near, far])) =
@@ -98,7 +103,18 @@ fn apply_scene_fog(
     }
     let extension = FogExtension {
         color: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
-        clipping: Vec4::new(near, far, 0.0, 0.0),
+        clipping: Vec4::new(
+            near,
+            far,
+            u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
+            0.0,
+        ),
+        water: Vec4::new(
+            u8::from(fidelity.mode(Area::Water) == Mode::Modern) as f32,
+            0.0,
+            0.0,
+            0.0,
+        ),
         table: environment
             .fog_table
             .map(|values| Vec4::from_array(values.map(|value| value as f32))),
@@ -111,7 +127,9 @@ fn apply_scene_fog(
     }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
         for (_, material) in fog_materials.iter_mut() {
+            let terrain = material.extension.water.y;
             material.extension = extension.clone();
+            material.extension.water.y = terrain;
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
@@ -119,12 +137,21 @@ fn apply_scene_fog(
         let Some(base) = materials.get(&handle.0) else {
             continue;
         };
+        let terrain = std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|ancestor| {
+                names
+                    .get(ancestor)
+                    .is_ok_and(|name| name.as_str() == "Terrain")
+            });
         let material = converted
-            .entry(handle.0.id())
+            .entry((handle.0.id(), terrain))
             .or_insert_with(|| {
+                let mut extension = extension.clone();
+                extension.water.y = u8::from(terrain) as f32;
                 fog_materials.add(SceneMaterial {
                     base: base.clone(),
-                    extension: extension.clone(),
+                    extension,
                 })
             })
             .clone();
@@ -205,11 +232,11 @@ mod tests {
         for (mode, override_far, expected) in [
             (Mode::Faithful, Some(8000.0), 190.0),
             (Mode::Modern, Some(8000.0), 400.0),
-            (Mode::Modern, None, 190.0),
+            (Mode::Modern, None, 760.0),
         ] {
             app.world_mut()
                 .resource_mut::<Fidelity>()
-                .set(Area::Graphics, mode);
+                .set(Area::Fog, mode);
             app.world_mut()
                 .resource_mut::<RenderDistance>()
                 .override_far = override_far;

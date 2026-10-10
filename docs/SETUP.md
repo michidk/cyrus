@@ -92,28 +92,29 @@ are listed in the `.animations` asset's `unsupported` map.
 
 ### Sky, fog, and water
 
-Re-export worlds to regenerate `.environment` sidecars. Native and browser
-builds show the BSI sky in Faithful and Modern graphics. **Verified:** sky
-texture selection, palette, and static plane projection follow preservation's
-sky documentation. Old sidecars lack the plane inputs and must be rebuilt.
-Sky scrolling, tilt, and the sun remain unsupported. `sky_disable=1` in the
-install's `SYSTEM.INI` suppresses the sky. **Verified:** uncovered pixels use
-`world_fogrgb`, the Glide background-clear color. Re-export old sidecars to
-replace legacy palette background colors and the black fallback.
+Re-export worlds to regenerate `.environment` sidecars. F1 provides independent
+Faithful/Modern buttons for Water, Fog, and Sky. All default to Faithful.
 
-Scene near/far clipping comes from the install. **Verified:** the shipped
-configuration uses 7 and 3800 engine units, with a separate sky range. F1 has a
-render-distance control and Original reset. Editing the distance selects Modern
-graphics; Faithful always uses the installed world range. Both graphics modes
-apply the original scene and sky fog tables without rescaling the fog curve.
-Re-export `.environment` files to include clipping and fog inputs.
+**Verified:** Faithful sky uses the installed BSI/COL texture, camera-relative
+plane mapping, per-world scrolling speed, and BIOS timer documented by
+preservation. Tilt and the sun disc remain unsupported. The initial random
+scroll direction is not synchronized with an original session. Modern sky uses
+the same scrolling texture on a camera-centered background: translation cannot
+cross its surface. Both retain the world's colors and horizon haze.
 
-Water waves run in both graphics modes. Re-export worlds after this update;
-old water sidecars have incompatible masks. **Verified:** vertex selection,
-waveform, bias, and spatial phase follow preservation's water documentation.
-A BIOS-rate clock advances from application startup and persists across scenes.
-Its absolute phase is not synchronized with a DOS session. Terrain placement,
-base heights, and lighting retain the existing export limitations.
+**Verified:** Faithful fog uses the original tables and installed clipping
+range (7/3800 engine units in the shipped configuration). Modern fog defaults to
+four times that far distance and fades smoothly over the distant portion of
+the view. F1's distance control selects Modern Fog; Original resets the distance
+and returns Fog to Faithful. Water and Sky are unaffected.
+
+**Verified:** Faithful water follows preservation's vertex selection, waveform,
+bias, spatial phase, and BIOS-rate clock. Modern water keeps the same selected
+vertices and installed texture, with smooth crossing waves, small texture
+ripples, and a subtle view-dependent sheen. These are optional artistic effects,
+not recovered engine behavior. Returning to Faithful restores the original
+wave at the current clock tick. Terrain placement, base heights, and lighting
+retain the existing export limitations.
 
 ## The original game
 
