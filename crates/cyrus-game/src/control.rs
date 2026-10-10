@@ -104,6 +104,9 @@ fn handle(
     current: Res<CurrentScene>,
     preloaded: Option<Res<Preloaded>>,
     frames: Res<bevy::diagnostic::FrameCount>,
+    input: Res<crate::player::input::PlayerInput>,
+    flycam: Res<crate::player::FlycamSettings>,
+    camera: Query<&Transform, (With<crate::player::ViewCamera>, Without<Player>)>,
     mut player: Query<&mut Transform, With<Player>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -121,7 +124,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": Preloaded::report_path()})
                 });
                 Ok(
-                    json!({"scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload}),
+                    json!({"scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {

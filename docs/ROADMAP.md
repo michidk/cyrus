@@ -12,7 +12,7 @@ functionality the original did not have.
 | Foundations | Done | Install loading, world exports, browser viewer, and development tools |
 | 0. Development tooling | In progress | Build, run, drive, and compare both games |
 | 1. Complete world playback | In progress | The whole world renders, animates, sounds, and runs scripts |
-| 2. Player controller | Later | Original movement, camera, collision, and interaction |
+| 2. Player controller | In progress | Original movement, camera, collision, and interaction |
 | 3. Interaction and persistence | Later | Dialogue UI, inventory, scripted camera control, and save/load |
 | 4. Complete gameplay | Later | Dialogue, quests, combat, inventory, menus, and saves |
 | 5. Full-game fidelity | Later | A verified playthrough from new game to ending |
@@ -31,7 +31,8 @@ Update or release ownership when work changes.
 | Step 1: animation resources and removal of unsupported sky/water approximations | Codex: Load All Worlds Correctly | Claims animation module/export, scene/lib wiring, game tests and README; investigating RAHD/RAAN/RAGR/3DC without guessed autoplay or timing. Sound remains unverified |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Steps 2–6 and remaining step-1 items | Unassigned | No confirmed active owner |
+| Step 2: original player parity | Codex: player-parity worktree | Marker fix and initial movement facts published; original walking/turning observations captured. Controller implementation and verification remain open; `magic/artifacts/2026-10-10-player/` |
+| Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
 Later engine-cache edits are not marked complete here.
@@ -169,9 +170,33 @@ Use the inspection camera and controlled events until the player controller exis
 
 ## 2. Player controller
 
-**Later. Requires complete world playback.**
+**In progress. Gameplay integration requires animation and collision support.**
 
-- [ ] Read the player start and keyboard mapping from game data.
+Published prerequisites:
+
+- Marker-array decoding corrected in preservation ([c7aea52](https://github.com/michidk/redguard-preservation/commit/c7aea52)); validated against 215 markers in 27 installed maps, with parser regression tests.
+- Player coordinate units and ordinary ground-turn arithmetic documented ([1058051](https://github.com/michidk/redguard-preservation/commit/1058051)). Original walking and turning coordinates are captured, including the right-turn heading sign. These observations do not establish controller parity.
+
+FPS-derived frame-scale smoothing is now documented and checked against a native
+original-game recording ([16703d1](https://github.com/michidk/redguard-preservation/commit/16703d1)).
+Walking startup still needs animation-state and fractional-position evidence;
+recorded displacement alone does not establish its movement rule.
+
+Input foundation: eight held directional/action bindings from
+`KEYS.INI`, Modern WASD/Space/held-Shift input, an independent debug flycam
+toggle, and input/camera-isolation tests. A deterministic ground-turn core
+matches captured original heading changes, including a frame-scale change and
+release. It is not connected to live gameplay while timing and state eligibility
+remain unresolved. Workspace tests, strict Clippy, formatting, publication checks,
+and an MCP smoke test pass using isolated worktree artifacts. The six player
+tests cover installed bindings, Modern input, camera isolation, and ground-turn
+arithmetic. Translation and the original follow camera remain unsupported.
+
+- [x] Land and verify the keyboard-input and independent debug-flycam foundation.
+- [ ] Read and apply the original player spawn selection and position.
+- [ ] Implement quick actions and the walk-mode toggle, alongside the held bindings.
+- [ ] Establish a repeatable simulation-timing oracle and animation movement gates; compare the same walking/turning sequence in both games.
+- [ ] Add Modern camera-relative WASD, mouse camera, Space jump, and held Shift run.
 - [ ] Reproduce movement, turning, camera behavior, jumping, and gravity.
 - [ ] Match collision on walls, slopes, steps, and animated geometry; reproduce slope sliding.
 - [ ] Match ledge hanging, sideways movement, dropping, and pull-up clearance.

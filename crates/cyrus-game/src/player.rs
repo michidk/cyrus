@@ -1,10 +1,10 @@
-//! Player and camera. Two controllers exist behind the fidelity switch:
-//! `faithful` is a placeholder until the original scheme is derived from KEYS.INI
-//! and observation of the original game; `modern` is WASD + mouse look.
-//! Neither constant below is verified against the original.
+//! Inspection camera and the player input foundation. Faithful locomotion is
+//! unsupported until animation, collision and timing are established.
+
+pub mod input;
+pub mod turn;
 
 use crate::AppState;
-use crate::fidelity::{Area, Mode, in_mode};
 use bevy::camera::primitives::Aabb;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
@@ -14,49 +14,62 @@ pub struct PlayerPlugin;
 #[derive(Component)]
 pub struct Player;
 
+/// The view camera is independent of the player transform.
+#[derive(Component)]
+pub struct ViewCamera;
+
+/// Debug inspection controls, independent of fidelity settings.
 #[derive(Resource)]
 pub struct FlycamSettings {
+    pub enabled: bool,
     pub speed: f32,
 }
 
 impl Default for FlycamSettings {
     fn default() -> Self {
-        // unverified: inspection speed, adjustable from the debug menu.
-        Self { speed: 100.0 }
+        // Inspection starts enabled while gameplay locomotion is unsupported.
+        Self {
+            enabled: true,
+            speed: 150.0,
+        }
     }
 }
 
-/// Set when a freshly spawned scene should place the player at its bounds.
-/// shortcut: start positions come from the scene data in the original; until
-/// that is read, the player is framed on the scene's bounding box.
+/// Frame the inspection camera on a freshly loaded scene, without moving the player.
 #[derive(Resource, Default)]
 pub struct FrameScene(pub bool);
 
-// unverified placeholders; replace with values derived from the original.
-const MOVE_SPEED: f32 = 12.0;
-const TURN_SPEED: f32 = 2.0;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FrameScene>()
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Startup, input::load);
+        app.init_resource::<input::PlayerBindings>()
+            .init_resource::<input::PlayerInput>()
+            .add_systems(Update, input::sample)
+            .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(
                 Update,
                 (
-                    frame_scene.run_if(|f: Res<FrameScene>| f.0),
-                    faithful_controller.run_if(in_mode(Area::PlayerController, Mode::Faithful)),
-                    modern_controller.run_if(in_mode(Area::PlayerController, Mode::Modern)),
+                    frame_scene.run_if(|f: Res<FrameScene>, camera: Res<FlycamSettings>| {
+                        f.0 && camera.enabled
+                    }),
+                    flycam_controller.run_if(|f: Res<FlycamSettings>| f.enabled),
+                    follow_player.run_if(|f: Res<FlycamSettings>| !f.enabled),
                 )
+                    .chain()
                     .run_if(in_state(AppState::InGame)),
             );
     }
 }
 
 fn spawn(mut commands: Commands) {
+    commands.spawn((Player, Transform::default()));
     commands.spawn((
-        Player,
+        ViewCamera,
         Camera3d::default(),
         Transform::from_xyz(0.0, 60.0, 0.0).looking_at(Vec3::new(100.0, 40.0, 100.0), Vec3::Y),
     ));
@@ -65,7 +78,7 @@ fn spawn(mut commands: Commands) {
 fn frame_scene(
     mut frame: ResMut<FrameScene>,
     meshes: Query<(&Aabb, &GlobalTransform), With<Mesh3d>>,
-    mut player: Query<&mut Transform, With<Player>>,
+    mut player: Query<&mut Transform, With<ViewCamera>>,
 ) {
     if meshes.is_empty() {
         return;
@@ -87,43 +100,14 @@ fn frame_scene(
     frame.0 = false;
 }
 
-/// Tank-style: arrows turn and walk, no mouse.
-fn faithful_controller(
-    keys: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
-    mut player: Query<&mut Transform, With<Player>>,
-) {
-    let Ok(mut t) = player.single_mut() else {
-        return;
-    };
-    let dt = time.delta_secs();
-    let mut yaw = 0.0;
-    if keys.pressed(KeyCode::ArrowLeft) {
-        yaw += TURN_SPEED * dt;
-    }
-    if keys.pressed(KeyCode::ArrowRight) {
-        yaw -= TURN_SPEED * dt;
-    }
-    t.rotate_y(yaw);
-    let forward = t.forward();
-    let mut step = 0.0;
-    if keys.pressed(KeyCode::ArrowUp) {
-        step += MOVE_SPEED * dt;
-    }
-    if keys.pressed(KeyCode::ArrowDown) {
-        step -= MOVE_SPEED * dt;
-    }
-    t.translation += forward * step;
-}
-
 /// WASD + mouse look while the right button is held, Space/Shift for up/down.
-fn modern_controller(
+fn flycam_controller(
     keys: Res<ButtonInput<KeyCode>>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse: Res<AccumulatedMouseMotion>,
     flycam: Res<FlycamSettings>,
     time: Res<Time>,
-    mut player: Query<&mut Transform, With<Player>>,
+    mut player: Query<&mut Transform, With<ViewCamera>>,
 ) {
     let Ok(mut t) = player.single_mut() else {
         return;
@@ -156,5 +140,15 @@ fn modern_controller(
     }
     if dir != Vec3::ZERO {
         t.translation += dir.normalize() * flycam.speed * dt;
+    }
+}
+
+// shortcut: the player view uses its pose directly until the original follow camera is implemented.
+fn follow_player(
+    player: Query<&Transform, (With<Player>, Without<ViewCamera>)>,
+    mut camera: Query<&mut Transform, With<ViewCamera>>,
+) {
+    if let (Ok(player), Ok(mut camera)) = (player.single(), camera.single_mut()) {
+        *camera = *player;
     }
 }

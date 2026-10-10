@@ -97,6 +97,12 @@ fn debug_menu(
             ));
         }
 
+        ui.checkbox(&mut flycam.enabled, "Flycam (leave player in place)");
+        if flycam.enabled {
+            ui.label("WASD, right mouse to look, Space/Shift for up/down");
+        } else {
+            ui.label("Player movement and follow camera are not implemented yet.");
+        }
         ui.horizontal(|ui| {
             ui.label("Flycam speed");
             ui.add(

@@ -48,9 +48,7 @@ fn main() {
         }),
         ..default()
     }))
-    // The browser has no original keyboard scheme to be faithful to yet; mouse look is the usable default here.
     .insert_resource(Fidelity {
-        player_controller: Mode::Modern,
         graphics: if modern_graphics() {
             Mode::Modern
         } else {
