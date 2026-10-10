@@ -80,7 +80,7 @@ shapes; passing it proves nothing about where code came from.
   `install.rs` (find the install), `loading.rs` (startup preload with progress
   bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
   load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
-  `startup/` (installed splash/title playback and book menu),
+  `startup/` (installed splash/title playback, Options, and Movies browsing),
   `settings.rs` (`cyrus-config/settings.toml`), `sound.rs` (SFX effects, RTX speech),
   `music.rs` (CD tracks per world), `control.rs` (TCP control server).
 - `crates/cyrus-control` — the control protocol types and a blocking client.
@@ -149,9 +149,9 @@ shapes; passing it proves nothing about where code came from.
 ## References and playtesting
 
 Default windowed and browser launches play the installed 3dfx splash and title,
-then stop at the book menu. It supports settled main-page appearance, keyboard
-navigation, and Quit. Other actions and the New Game introduction remain
-unavailable. Startup uses original-file assets, never captured playback.
+then stop at the book menu. It supports Options, Display, Sound, Controls,
+Movies browsing, keyboard navigation, and Quit. New Game, saves, and cinematic
+playback remain unavailable. Startup uses original-file assets, never captured playback.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
 For agent work, choose the entry point explicitly:
@@ -167,7 +167,14 @@ Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
 Skipping startup does not enable gameplay. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
-Wait for `state.menu.ready` before sending menu input.
+Wait for `state.menu.ready` before sending menu input. Settings use original action
+units and persist outside the install in native `cyrus-config/menu.json` or
+browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
+including direct world launches. Audio, subtitle, voice, and interlace preferences
+persist; playback integration remains pending. Verify edits, restart persistence,
+and malformed-state protection through native MCP. Keep installed labels,
+visibility flags, widget positions, key names, and artwork data-driven; publish
+newly recovered menu rules in preservation before using them here.
 Keep each worktree's Cargo target directory separate so verification cannot use
 another checkout's binary.
 

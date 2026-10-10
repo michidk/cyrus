@@ -124,10 +124,19 @@ Splash rasterization currently uses supersampling and the largest texture mip;
 hardware edge coverage, mip selection, and shadow interpolation need a precise
 paired comparison before claiming pixel-exact rendering.
 
-The main menu derives its entries, layout, texture slots and action IDs from
-`MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md). It renders the settled installed book into selection
-images under `cache/menu/`; fonts retain indexed glyph shading on those pages.
-Navigation skips grayed/nonselectable/empty entries and wraps. Quit exits; other
-actions remain explicitly unavailable. Save and Continue are disabled without a
-resumable world. Opening/closing motion, lighting, menu audio, mouse selection,
-gameplay thumbnails, and neighboring-page text remain unsupported.
+The book menu derives entries, layout, texture slots, widgets, and action IDs
+from `MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md).
+Its portable `cache/menu/book.menu` retains installed geometry, textures, indexed
+fonts, previews, and defaults. Native and browser builds redraw settled pages
+when selection or preferences change, including neighboring-page text.
+Navigation skips disabled/hidden entries and wraps. Options opens Display, Sound,
+and Controls; Movies browses unlocked definitions and previews. Quit exits.
+New Game, saves, and cinematic playback remain explicitly unavailable.
+
+`MenuPreferences` stores original action units and fifteen binding codes in
+native `cyrus-config/menu.json` or browser localStorage. It validates local state,
+saves before applying edits, and leaves malformed files intact. Existing player
+input uses edited bindings, including direct scene launches. Audio, subtitle,
+voice, and interlace settings persist but their playback integration remains pending. Opening/closing
+motion, lighting, menu audio, mouse selection, and gameplay thumbnails remain
+unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.

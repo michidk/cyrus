@@ -45,11 +45,6 @@ impl PlayerBindings {
         Ok(Self(keys))
     }
 
-    /// Book-menu primary activation uses the configured B key.
-    pub(crate) fn menu_activation_key(&self) -> Option<KeyCode> {
-        self.0[5]
-    }
-
     /// Sample held keys without imposing movement priorities or cancelling
     /// opposing inputs; those belong to the original controller state machine.
     pub fn sample(&self, keys: &ButtonInput<KeyCode>) -> PlayerInput {
@@ -68,7 +63,7 @@ impl PlayerBindings {
     }
 }
 
-fn scan_key(code: u8) -> Option<KeyCode> {
+pub(crate) fn scan_key(code: u8) -> Option<KeyCode> {
     use KeyCode::*;
     Some(match code {
         1 => Escape,
@@ -122,6 +117,11 @@ fn scan_key(code: u8) -> Option<KeyCode> {
     })
 }
 
+/// Reverse physical-key mapping for the original Controls capture path.
+pub(crate) fn scan_code(key: KeyCode) -> Option<u8> {
+    (1..=127).find(|code| scan_key(*code) == Some(key))
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) fn load(mut commands: Commands, install: Option<Res<crate::install::GameInstall>>) {
     let Some(install) = install else {
@@ -131,7 +131,13 @@ pub(super) fn load(mut commands: Commands, install: Option<Res<crate::install::G
     let result = std::fs::read_to_string(&path)
         .map_err(|e| e.to_string())
         .and_then(|text| rgpre::import::keys_ini::KeysIni::parse(&text))
-        .and_then(|ini| PlayerBindings::from_codes(ini.keyboard_codes()));
+        .and_then(|ini| {
+            let local = crate::startup::MenuPreferences::load().map_err(|e| e.to_string())?;
+            PlayerBindings::from_codes(local.map_or_else(
+                || ini.keyboard_codes(),
+                |p| std::array::from_fn(|i| p.bindings[i]),
+            ))
+        });
     match result {
         Ok(bindings) => {
             commands.insert_resource(bindings);

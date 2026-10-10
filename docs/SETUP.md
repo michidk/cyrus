@@ -62,13 +62,30 @@ a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enter
 a world from startup or the menu. Control `state` reports the current app state.
 
 The book menu reads `MENU.INI` through rgpre, using original geometry, page
-textures, and indexed FNT glyphs. Up/Down navigates eligible entries; Enter or
-the configured B key in `KEYS.INI` activates them. Quit exits. Other actions
-report that they are unavailable; Save and Continue are grayed because there
-is no resumable world. Menu export writes `cyrus-config/cache/menu/`, including
-selection images, a descriptor, and an rgpre-generated font for status text.
-The menu currently displays settled geometry. Opening/closing motion, lighting,
-menu audio, mouse selection, runtime gameplay thumbnails, and neighboring-page text remain unsupported.
+textures, indexed FNT glyphs, and GXA widgets. Up/Down navigates eligible
+entries; Enter or the configured B key activates them. Options opens Display,
+Sound, and Controls. Left/Right adjusts toggles and bounded volume sliders;
+Enter toggles checkboxes or starts key capture. Escape cancels capture or
+returns to the parent page. Controls uses the installed key names and capture
+prompt, rejects reserved keys, and clears the first conflicting binding.
+The existing player-input actions use the edited bindings, including direct
+`--scene` launches. Extra gameplay actions remain pending their handlers.
+
+Changes persist to `cyrus-config/menu.json` on native builds and localStorage
+under `cyrus-menu` in browsers. Installed defaults apply when no local state
+exists. Malformed state disables edits without overwriting it; failed saves
+leave the previous runtime values intact. The install stays read-only.
+Audio volume, voice, subtitles, and movie interlace preferences are saved;
+their playback integration remains pending.
+
+Movies browses the initially unlocked entries and installed previews. The
+installed `force_movies` setting exposes all cinematic entries. Movie playback
+and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
+and Continue remain unavailable, with Save and Continue grayed without a
+resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
+status font. Runtime redraws the settled book, including neighboring-page text.
+Opening/closing motion, lighting, menu audio, mouse selection, and runtime
+gameplay thumbnails remain unsupported.
 
 With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 `cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry

@@ -19,3 +19,9 @@ leaves the menu and enters a world. `state` includes `Loading`, `Menu`, or `InGa
 `Client` is a blocking helper for tests and tools. The game side lives in
 `cyrus-game::control`; the agent side in `cyrus-mcp`. This crate has no Bevy
 dependency so drivers stay small.
+
+In `Menu`, `state.menu` reports the page, installed entries, current selection,
+preferences, and Controls capture action. Wait for `ready` before sending menu
+input. Drive Options and Movies with `input`; the same saved bindings and values
+apply after a native restart. Playback effects for volume, voice, subtitles, and
+interlace remain pending; Movies browsing does not play cinematics.

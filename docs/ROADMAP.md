@@ -32,8 +32,7 @@ Update or release ownership when work changes.
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; terrain support and an ordinary height-changing response verified against original traces; obstacle response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
-
-| Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
+| Startup and main menu | Codex: Faithful Startup Sequence | Options/settings and Movies browsing verified through native MCP; ownership released. Playback integration, browser verification, motion, lighting, saves, and New Game remain pending |
 | Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions verified by native contracts and WASM compilation; researching original eligibility, clock and script scheduling for automatic playback |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
@@ -45,7 +44,7 @@ Later engine-cache edits are not marked complete here.
 - [x] Rust/Bevy workspace, install discovery, settings, and fidelity switch.
 - [x] Startup preload, progress display, and parse-failure logging.
 - [x] Installed 3dfx splash and title playback through the book menu; CLI and MCP skip stop at the menu.
-- [x] MENU.INI-defined main-page appearance, keyboard selection and Quit, using installed geometry and rgpre fonts. Other actions remain unavailable.
+- [x] MENU.INI-defined book pages, keyboard selection, Options edits, Controls rebinding, Movies browsing, and Quit, using installed geometry and rgpre fonts. Settings persist; playback effects and remaining actions are pending.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Export all 29 installed worlds, with structural checks.
@@ -71,7 +70,7 @@ committed support; unverified work stays in the TODO column.
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; settled book-menu geometry | Automatic actor playback, other frame encodings, model replacement, and book motion |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
-| `GXA` | Startup title artwork and preload parsing | Software sky projection |
+| `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
 | Glide sky BSI/COL | Faithful sky plane, fog, and BIOS-timed scrolling; camera-centered Modern sky | Full projection/motion comparison, tilt, and sun disc |
 | `SFX` | Every effect decoded at its stored rate and channel layout; playback by index with the file's loop flag, via the control/MCP `play_sound` command | Script, animation, ambient and surface triggers; positional and per-call volume; audible comparison with the original |
@@ -79,8 +78,8 @@ committed support; unverified work stays in the TODO column.
 | `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | No working interpreter accepted | Execution, events, native bindings, and synchronization |
-| `MENU.INI` | Main-page labels, layout, selection flags, texture slots and action IDs | Submenu behavior and supported positive actions |
-| `KEYS.INI` | Menu activation key and held player-input foundation | Gameplay locomotion |
+| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, cinematic playback, and progression unlocks |
+| `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | No gameplay integration accepted | Combat and items |
 | CD audio | Each entered world's `world_redbook` track plays from GOG's CD image, repeats, and continues across worlds sharing it; `redbook` honoured | Menu and cutscene music, in-game music volume option, audible comparison with the original |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
@@ -111,9 +110,18 @@ The session clock does not synchronize absolute phase with a DOS clock.
 selection, repeat, unavailable actions, Quit, and startup/menu/world transitions.
 Editing the local MENU.INI label changes the displayed entry without changing
 its Quit handler. The original settled menu confirms framing and text styles.
-Lighting, opening/closing motion, menu audio, mouse selection, gameplay snapshots,
-and neighboring-page text remain unsupported. This is main-page presentation,
-not full menu functionality.
+Options, Display, Sound, Controls, and Movies browsing now render installed
+settled pages, including neighboring-page text, widgets, key names, and movie
+previews. Native MCP checks cover page navigation, bounded edits, reserved keys,
+capture cancellation, conflict clearing, the edited primary activation key,
+restart persistence, malformed state/cache protection, failed saves, and direct
+world entry.
+Installed export tests cover changed labels, forced movie visibility, configured
+prompt limits, and the Glide Display omissions. Lighting, opening/closing motion,
+menu audio, mouse selection, gameplay snapshots, saves, New Game, and cinematic
+playback remain unsupported. Audio, subtitle, voice, and interlace preferences
+persist; playback integration remains pending. Browser runtime verification of
+this menu slice remains pending.
 
 **Verified:** all 118 `MAIN.SFX` effects decode through Bevy's WAV decoder
 with their stored sample rate, channel count and sample count, all 3933 RTX

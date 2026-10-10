@@ -17,3 +17,9 @@ project). `CYRUS_CONTROL_ADDR` selects the game's control address.
 
 `just smoke-mcp` runs a headless game and drives it through this server end
 to end; run it after touching the control server, this crate or the player.
+
+In `Menu`, `state.menu` reports the page, installed entries, current selection,
+preferences, and Controls capture action. Wait for `ready` before sending menu
+input. Drive Options and Movies with `input`; the same saved bindings and values
+apply after a native restart. Playback effects for volume, voice, subtitles, and
+interlace remain pending; Movies browsing does not play cinematics.

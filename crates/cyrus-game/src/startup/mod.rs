@@ -2,9 +2,11 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod export;
 mod menu;
+mod menu_data;
+mod menu_preferences;
+pub use menu_preferences::MenuPreferences;
 #[cfg(not(target_arch = "wasm32"))]
 mod menu_export;
-#[cfg(not(target_arch = "wasm32"))]
 mod menu_raster;
 pub use menu::MenuState;
 #[cfg(not(target_arch = "wasm32"))]

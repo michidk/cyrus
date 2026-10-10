@@ -1,12 +1,18 @@
-//! Installed menu surfaces and geometry; rules are in preservation's engine/menu.md.
-use super::menu::{MenuAsset, MenuItem};
+//! Installed book geometry, text, widgets, and defaults for portable presentation.
+use super::{
+    menu::MenuItem,
+    menu_data::{
+        MenuAsset, MenuEntry, MenuFace, MenuFont, MenuGlyph, MenuPage, MenuPicture, PageTexture,
+    },
+    menu_preferences::MenuPreferences,
+};
 use crate::install::GameInstall;
 use anyhow::{Context, ensure};
-use image::RgbaImage;
 use rgpre::import::{
     bsi::parse_bsi_file,
-    fnt::{FntFile, parse_fnt},
-    menu_ini::MenuPage,
+    fnt::parse_fnt,
+    gxa::parse_gxa_file,
+    menu_ini,
     model3d::{Model3DFile, TextureData},
     palette::Palette,
     rob::parse_rob_file,
@@ -17,79 +23,60 @@ use std::{
     path::Path,
 };
 
-pub(super) struct BookModel {
-    pub data: Model3DFile,
-    pub position: [f32; 3],
-}
-
-/// Export the installed main menu without reading or writing save-game state.
+/// Export data-defined menus without reading or writing save-game state.
 pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let read = |name: &str| {
         std::fs::read(install.root.join(name)).with_context(|| format!("menu: reading {name}"))
     };
     let ini_bytes = read("MENU.INI")?;
     let ini = std::str::from_utf8(&ini_bytes).context("menu: MENU.INI is not UTF-8")?;
-    let mut page = MenuPage::parse(ini, 0).map_err(anyhow::Error::msg)?;
-    // No resumable world exists in the startup-only menu.
-    for entry in &mut page.entries {
-        if matches!(entry.action, 1 | -1) {
-            entry.grayed = true;
+    let general = menu_ini::MenuGeneral::parse(ini).map_err(anyhow::Error::msg)?;
+    let mut pages = BTreeMap::new();
+    for id in [0, 3, 4, 5, 6, 7] {
+        let mut page = menu_ini::MenuPage::parse(ini, id).map_err(anyhow::Error::msg)?;
+        if id == 0 {
+            for entry in &mut page.entries {
+                if matches!(entry.action, 1 | -1) {
+                    entry.grayed = true;
+                }
+            }
         }
+        if id == 5 {
+            page.entries.retain(|e| !matches!(e.action, 501..=503));
+        }
+        pages.insert(id as u8, page);
     }
-    let default = page
-        .entries
-        .iter()
-        .position(|entry| entry.default)
-        .unwrap_or(0);
-    let eligible = |index: usize| {
-        let entry = &page.entries[index];
-        entry.selectable && !entry.grayed && !entry.text.is_empty()
-    };
-    let selected = (0..page.entries.len())
-        .map(|step| (default + step) % page.entries.len())
-        .find(|index| eligible(*index));
     let keys_bytes = read("KEYS.INI")?;
     let keys = rgpre::import::keys_ini::KeysIni::parse(
         std::str::from_utf8(&keys_bytes).context("menu: KEYS.INI is not UTF-8")?,
     )
     .map_err(anyhow::Error::msg)?;
-    let bindings = crate::player::input::PlayerBindings::from_codes(keys.keyboard_codes())
-        .map_err(anyhow::Error::msg)?;
     let system_bytes = read("SYSTEM.INI")?;
-    let system = std::str::from_utf8(&system_bytes).context("menu: SYSTEM.INI is not UTF-8")?;
-    let mut dialog = false;
-    let mut repeat_ticks = None;
-    for line in system.lines().map(str::trim) {
-        if line.starts_with('[') {
-            dialog = line.eq_ignore_ascii_case("[dialog]");
-        } else if dialog
-            && let Some((key, value)) = line.split_once('=')
-            && key.trim().eq_ignore_ascii_case("menu_traverse_delay")
-        {
-            repeat_ticks = Some(
-                value
-                    .split(';')
-                    .next()
-                    .unwrap_or_default()
-                    .trim()
-                    .parse::<u32>()
-                    .context("menu: SYSTEM.INI [dialog] menu_traverse_delay")?,
-            );
-        }
-    }
-    let repeat_ticks =
-        repeat_ticks.context("menu: SYSTEM.INI [dialog] menu_traverse_delay is missing")?;
-    ensure!(
-        repeat_ticks > 0,
-        "menu: menu_traverse_delay must be positive"
-    );
+    let preferences = rgpre::import::menu_settings::MenuSettings::parse(
+        std::str::from_utf8(&system_bytes).context("menu: SYSTEM.INI is not UTF-8")?,
+    )
+    .map_err(anyhow::Error::msg)?;
+    let defaults = MenuPreferences {
+        values: [
+            (504, i32::from(preferences.subtitles)),
+            (505, i32::from(preferences.movie_interlace)),
+            (601, preferences.sound_volume.into()),
+            (602, preferences.music_volume.into()),
+            (603, i32::from(preferences.voice)),
+        ]
+        .into(),
+        bindings: keys.control_codes(),
+    };
     let archive_bytes = read("fxart/MENU.ROB")?;
     let palette_bytes = read("fxart/REDGUARD.COL")?;
     let normal_bytes = read("fonts/FONTNORM.FNT")?;
     let selected_bytes = read("fonts/FONTSEL.FNT")?;
-    let mut banks = BTreeMap::new();
+    let widget_bytes = [
+        read("system/MM_CHECK.GXA")?,
+        read("system/MM_SLIDE.GXA")?,
+        read("system/MM_MOVIE.GXA")?,
+    ];
     let archive = parse_rob_file(&archive_bytes).context("menu: MENU.ROB")?;
-    // These placements are recovered engine facts; entries/layout come from MENU.INI.
     let placements = [
         ("MENUA001", [384.0, 28.0, 396.0]),
         ("MB_PG01", [384.0, 28.0, 390.0]),
@@ -98,12 +85,13 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         ("MB_PG03", [384.0, 28.0, 394.0]),
     ];
     let mut models = Vec::new();
+    let mut banks = BTreeMap::new();
     for (name, position) in placements {
         let segment = archive
             .segments
             .iter()
-            .find(|segment| segment.name().eq_ignore_ascii_case(name))
-            .with_context(|| format!("menu: MENU.ROB model {name} is missing"))?;
+            .find(|s| s.name().eq_ignore_ascii_case(name))
+            .with_context(|| format!("menu: MENU.ROB model {name} missing"))?;
         let data = rgpre::import::model3d::parse_3d_file(&segment.data)
             .with_context(|| format!("menu: MENU.ROB model {name}"))?;
         ensure!(
@@ -112,229 +100,270 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
                 && data
                     .frame_vertex_data
                     .iter()
-                    .all(|frame| frame.coords.len() == data.vertex_coords.len()),
+                    .all(|f| f.coords.len() == data.vertex_coords.len()),
             "menu: MENU.ROB model {name} has incomplete frames"
         );
         for face in &data.face_data {
-            if let TextureData::Texture { texture_id, .. } = face.texture_data
-                && let std::collections::btree_map::Entry::Vacant(entry) = banks.entry(texture_id)
-            {
-                entry.insert(read(&format!("fxart/TEXBSI.{texture_id:03}"))?);
-            }
             ensure!(
                 face.face_vertices
                     .iter()
                     .all(|v| (v.vertex_index as usize) < data.vertex_coords.len()),
-                "menu: MENU.ROB model {name} has invalid face vertex"
+                "menu: MENU.ROB model {name} invalid face vertex"
             );
+            if let TextureData::Texture { texture_id, .. } = face.texture_data
+                && !banks.contains_key(&texture_id)
+            {
+                banks.insert(texture_id, read(&format!("fxart/TEXBSI.{texture_id:03}"))?);
+            }
         }
-        models.push(BookModel { data, position });
+        models.push((data, position));
     }
-    for texture in &page.textures {
-        if let std::collections::btree_map::Entry::Vacant(entry) = banks.entry(texture.set) {
-            entry.insert(read(&format!("fxart/TEXBSI.{:03}", texture.set))?);
+    for page in pages.values() {
+        for texture in page.textures.iter().flatten() {
+            if let std::collections::btree_map::Entry::Vacant(entry) = banks.entry(texture.set) {
+                entry.insert(read(&format!("fxart/TEXBSI.{:03}", texture.set))?);
+            }
         }
     }
     let output = cache.join("menu");
-    let stamp = output.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        3u32,
-        &keys_bytes,
+        6u32,
         &ini_bytes,
+        &keys_bytes,
         &system_bytes,
         &archive_bytes,
         &palette_bytes,
         &normal_bytes,
         &selected_bytes,
+        &widget_bytes,
         &banks,
     )
         .hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
-    if std::fs::read_to_string(&stamp).ok().as_deref() == Some(&fingerprint)
-        && output.join("main.menu").is_file()
+    if std::fs::read_to_string(output.join("source.txt"))
+        .ok()
+        .as_deref()
+        == Some(&fingerprint)
+        && output.join("book.menu").is_file()
         && output.join("font.ttf").is_file()
-        && (0..page.entries.len())
-            .all(|index| output.join(format!("selection-{index}.png")).is_file())
     {
         return Ok(());
     }
     std::fs::create_dir_all(&output)?;
-    if stamp.exists() {
-        std::fs::remove_file(&stamp)?;
-    }
     let palette = Palette::parse(&palette_bytes).context("menu: REDGUARD.COL")?;
-    let normal_font = parse_fnt(&normal_bytes).context("menu: FONTNORM.FNT")?;
-    let selected_font = parse_fnt(&selected_bytes).context("menu: FONTSEL.FNT")?;
-    let mut textures = BTreeMap::new();
-    let mut page_pixels = BTreeMap::new();
+    let mut textures = Vec::new();
+    let mut references = BTreeMap::new();
     for (set, bytes) in banks {
         let bank = parse_bsi_file(&bytes).with_context(|| format!("menu: TEXBSI.{set:03}"))?;
-        for (index, texture) in bank.images.iter().enumerate() {
-            ensure!(
-                texture.width > 0
-                    && texture.height > 0
-                    && texture.pixel_data.len()
-                        == usize::from(texture.width) * usize::from(texture.height),
-                "menu: TEXBSI.{set:03} image {index}: invalid dimensions/pixel count"
-            );
-            if page
-                .textures
-                .iter()
-                .any(|reference| reference.set == set && usize::from(reference.index) == index)
-            {
-                page_pixels.insert((set, index as u16), texture.pixel_data.clone());
-            }
-            let image = RgbaImage::from_raw(
-                texture.width.into(),
-                texture.height.into(),
-                texture.decode_rgba(Some(&palette)),
-            )
-            .with_context(|| format!("menu: TEXBSI.{set:03} image {index}: invalid pixel count"))?;
-            textures.insert((set, index as u16), image);
+        for (index, image) in bank.images.iter().enumerate() {
+            references.insert((set, index as u16), textures.len());
+            textures.push(PageTexture {
+                width: image.width,
+                height: image.height,
+                indices: image.pixel_data.clone(),
+                rgba: image.decode_rgba(Some(&palette)),
+            });
         }
     }
-    for texture in &page.textures {
-        ensure!(
-            textures.contains_key(&(texture.set, texture.index)),
-            "menu: missing TEXBSI.{} image {}",
-            texture.set,
-            texture.index
+    let mut exported_pages = BTreeMap::new();
+    for (id, page) in pages {
+        let surface = |slot: usize| -> anyhow::Result<usize> {
+            let texture = page.textures[slot].context("menu: undefined page texture slot")?;
+            references
+                .get(&(texture.set, texture.index))
+                .copied()
+                .with_context(|| {
+                    format!(
+                        "menu: page {id}: missing TEXBSI.{} image {}",
+                        texture.set, texture.index
+                    )
+                })
+        };
+        let mut entries = Vec::new();
+        for entry in &page.entries {
+            entries.push(MenuEntry {
+                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | 3 | 4 | 300 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
+                position: entry.position, output_position: entry.output_position, justify: entry.justify, output_justify: entry.output_justify, slider: entry.slider, texture: surface(entry.texture)?,
+            });
+        }
+        let default = if id == 5 {
+            entries.iter().position(|e| e.item.action == 504)
+        } else {
+            page.entries.iter().position(|e| e.default)
+        }
+        .unwrap_or(0);
+        let selected = (0..entries.len())
+            .map(|step| (default + step) % entries.len())
+            .find(|i| entries[*i].item.eligible());
+        let camera = match id {
+            3 => [336.0, 0.0, 0.0],
+            5 => [336.0, -128.0, 0.0],
+            6 => [336.0, 176.0, 0.0],
+            _ => [0.0; 3],
+        };
+        let frames = match id {
+            0 => [0; 5],
+            3 => [0, 8, 0, 0, 0],
+            7 => [0, 8, 0, 8, 8],
+            _ => [0, 8, 0, 8, 0],
+        };
+        let mut faces = Vec::new();
+        for (index, (model, placement)) in models.iter().enumerate() {
+            let mut placement = *placement;
+            if frames[index] == 8 {
+                placement[2] += if index == 1 {
+                    4.0
+                } else if index == 4 {
+                    -4.0
+                } else {
+                    0.0
+                };
+            }
+            faces.extend(project(
+                model,
+                frames[index],
+                placement,
+                camera,
+                &references,
+                &palette,
+            )?);
+        }
+        let surfaces = (0..2)
+            .filter(|i| page.textures[*i].is_some())
+            .map(surface)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        exported_pages.insert(
+            id,
+            MenuPage {
+                entries,
+                selected,
+                faces,
+                surfaces,
+            },
         );
     }
-    for model in &models {
-        for face in &model.data.face_data {
-            if let TextureData::Texture {
-                texture_id,
-                image_id,
-            } = face.texture_data
-            {
-                ensure!(
-                    textures.contains_key(&(texture_id, image_id.into())),
-                    "menu: missing TEXBSI.{texture_id} image {image_id}"
-                );
-            }
+    let font = |bytes: &[u8]| -> anyhow::Result<MenuFont> {
+        let data = parse_fnt(bytes).context("menu: FNT font")?;
+        Ok(MenuFont {
+            start: data.header.character_start,
+            glyphs: data
+                .glyphs
+                .iter()
+                .map(|g| MenuGlyph {
+                    enabled: g.enabled != 0,
+                    width: g.width,
+                    height: g.height,
+                    offset: [g.offset_left.into(), g.offset_top.into()],
+                    pixels: g.pixels.clone(),
+                })
+                .collect(),
+        })
+    };
+    let pictures = |bytes: &[u8]| -> anyhow::Result<Vec<MenuPicture>> {
+        Ok(parse_gxa_file(bytes)
+            .context("menu: widget GXA")?
+            .frames
+            .into_iter()
+            .map(|f| MenuPicture {
+                width: f.width,
+                height: f.height,
+                rgba: f.rgba,
+            })
+            .collect())
+    };
+    let mut movies = pictures(&widget_bytes[2])?;
+    for frame in &mut movies {
+        for pixel in frame.rgba.as_chunks_mut::<4>().0 {
+            pixel[3] = 255;
         }
     }
-    let mut images = Vec::new();
-    for selection in 0..page.entries.len() {
-        let mut surfaces = textures.clone();
-        let mut page_pixels = page_pixels.clone();
-        for (index, entry) in page.entries.iter().enumerate() {
-            let texture = page.textures[entry.texture];
-            let image = surfaces.get_mut(&(texture.set, texture.index)).unwrap();
-            let selected = selected.is_some() && index == selection && eligible(index);
-            let font = if selected {
-                &selected_font
-            } else {
-                &normal_font
-            };
-            let pixels = page_pixels
-                .get_mut(&(texture.set, texture.index))
-                .context("menu: missing indexed page surface")?;
-            paint_text(image, pixels, font, &palette, entry, selected)?;
-        }
-        let name = format!("menu/selection-{selection}.png");
-        super::menu_raster::render(&models, &surfaces, &palette)?.save(cache.join(&name))?;
-        images.push(name);
-    }
+    let book = MenuAsset {
+        pages: exported_pages,
+        textures,
+        palette: palette.colors.to_vec(),
+        fonts: [font(&normal_bytes)?, font(&selected_bytes)?],
+        checks: pictures(&widget_bytes[0])?,
+        sliders: pictures(&widget_bytes[1])?,
+        movies,
+        key_names: keys
+            .names
+            .into_iter()
+            .enumerate()
+            .map(|(code, name)| {
+                name.with_context(|| format!("menu: KEYS.INI [defined] key[{code}] missing"))
+                    .map(|name| name.chars().take(15).collect())
+            })
+            .collect::<anyhow::Result<_>>()?,
+        defaults,
+        waiting_message: keys.waiting_message.chars().take(15).collect(),
+        repeat_seconds: preferences.repeat_ticks as f32 / 18.2,
+    };
+    book.validate()?;
     std::fs::write(
         output.join("font.ttf"),
-        rgpre::import::fnt_ttf::build_ttf_from_fnt(&normal_font, "Redguard menu")?,
+        rgpre::import::fnt_ttf::build_ttf_from_fnt(&parse_fnt(&normal_bytes)?, "Redguard menu")?,
     )?;
-    let asset = MenuAsset {
-        entries: page
-            .entries
-            .iter()
-            .map(|entry| MenuItem {
-                text: entry.text.clone(),
-                action: entry.action,
-                selectable: entry.selectable,
-                grayed: entry.grayed,
-                implemented: entry.action == -2,
-            })
-            .collect(),
-        images,
-        selected,
-        repeat_seconds: repeat_ticks as f32 / 18.2,
-        activation_key: bindings.menu_activation_key(),
-    };
-    std::fs::write(output.join("main.menu"), serde_json::to_vec(&asset)?)?;
-    std::fs::write(stamp, fingerprint)?;
+    std::fs::write(output.join("book.menu"), serde_json::to_vec(&book)?)?;
+    std::fs::write(output.join("source.txt"), fingerprint)?;
     Ok(())
 }
 
-fn paint_text(
-    image: &mut RgbaImage,
-    page_pixels: &mut [u8],
-    font: &FntFile,
+fn project(
+    model: &Model3DFile,
+    frame: usize,
+    position: [f32; 3],
+    camera: [f32; 3],
+    references: &BTreeMap<(u16, u16), usize>,
     palette: &Palette,
-    entry: &rgpre::import::menu_ini::MenuEntry,
-    selected: bool,
-) -> anyhow::Result<()> {
-    let glyph = |ch: u8| {
-        usize::from(ch)
-            .checked_sub(usize::from(font.header.character_start))
-            .and_then(|i| font.glyphs.get(i))
-            .filter(|g| g.enabled != 0)
-    };
-    ensure!(
-        entry.text.is_ascii(),
-        "menu: unsupported non-ASCII text {:?}",
-        entry.text
-    );
-    let advance = |ch| {
-        glyph(ch).map_or(0, |g| {
-            i32::from(g.width)
-                + 1
-                + if ch == b' ' {
-                    font.glyphs.get(1).map_or(0, |g| i32::from(g.width))
-                } else {
-                    0
-                }
-        })
-    };
-    let width: i32 = entry.text.bytes().map(advance).sum();
-    let mut cursor = entry.position[0]
-        - match entry.justify {
-            1 => width / 2,
-            2 => width,
-            _ => 0,
-        };
-    for ch in entry.text.bytes() {
-        let glyph = glyph(ch)
-            .with_context(|| format!("menu: text {:?} has unsupported glyph {ch}", entry.text))?;
-        for y in 0..glyph.height {
-            for x in 0..glyph.width {
-                let pixel =
-                    glyph.pixels[usize::from(y) * usize::from(glyph.width) + usize::from(x)];
-                if pixel == 0 {
-                    continue;
-                }
-                let draw_x = cursor + i32::from(glyph.offset_left) + i32::from(x);
-                let draw_y = entry.position[1] + i32::from(glyph.offset_top) + i32::from(y);
-                if draw_x >= 0
-                    && draw_y >= 0
-                    && draw_x < image.width() as i32
-                    && draw_y < image.height() as i32
-                {
-                    let offset = draw_y as usize * image.width() as usize + draw_x as usize;
-                    let index = if selected {
-                        pixel
-                    } else if !entry.selectable {
-                        (pixel & 15) + 144
-                    } else if entry.grayed {
-                        page_pixels[offset].wrapping_add(4)
-                    } else {
-                        pixel.wrapping_add(5)
-                    };
-                    page_pixels[offset] = index;
-                    let [r, g, b] = palette.colors[usize::from(index)];
-                    image.put_pixel(draw_x as u32, draw_y as u32, image::Rgba([r, g, b, 255]));
-                }
+) -> anyhow::Result<Vec<MenuFace>> {
+    let mut faces = Vec::new();
+    for face in &model.face_data {
+        let vertices: Vec<_> = face
+            .face_vertices
+            .iter()
+            .map(|vertex| {
+                let point = model.frame_vertex_data[frame].coords[vertex.vertex_index as usize];
+                let [x, y, z] = [
+                    position[0] - point.x - camera[0],
+                    position[1] + point.y - camera[1],
+                    position[2] - point.z - camera[2],
+                ];
+                [
+                    320.0 + x / z * (320.0 / 0.788),
+                    240.0 + y / z * (320.0 / 0.788),
+                    z.recip(),
+                    vertex.u as f32 / 16.0,
+                    vertex.v as f32 / 16.0,
+                ]
+            })
+            .collect();
+        let (texture, color) = match face.texture_data {
+            TextureData::Texture {
+                texture_id,
+                image_id,
+            } => (
+                Some(
+                    *references
+                        .get(&(texture_id, image_id.into()))
+                        .with_context(|| {
+                            format!("menu: missing TEXBSI.{texture_id} image {image_id}")
+                        })?,
+                ),
+                [0; 4],
+            ),
+            TextureData::SolidColor(i) => {
+                let [r, g, b] = palette.colors[usize::from(i)];
+                (None, [r, g, b, 255])
             }
+        };
+        for corner in 1..vertices.len().saturating_sub(1) {
+            faces.push(MenuFace {
+                vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
+                texture,
+                color,
+            });
         }
-        cursor += advance(ch);
     }
-    Ok(())
+    Ok(faces)
 }
