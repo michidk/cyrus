@@ -12,16 +12,28 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `environment` | Static Glide BSI sky and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
 | `sky` | Static Glide sky material and shader, projected behind scene geometry. |
 | `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
+| `animation` | Loads per-world `.animations` assets with actor metadata and model frames; no automatic playback. |
+| `animation_export` | Retains RGM animation metadata and referenced 3D/3DC/ROB frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
-`environment`, `fidelity`, `player` and `settings` compile on wasm and are reused by
+`animation`, `environment`, `fidelity`, `player` and `settings` compile on wasm and are reused by
 `cyrus-web`; everything that reads the install, spawns threads or opens
 sockets is gated with `cfg(not(target_arch = "wasm32"))`.
 
 Tests in `tests/` use only the public API; the install-backed ones skip when
 no install is linked and say so.
+
+World exports include `.animations` sidecars containing actor animation groups,
+RAAN model references, and decoded model frame positions and normals. Missing or
+unsupported model references remain explicit in the asset's `unsupported` map.
+Original RAHD, RAAN, RAGR and RANM payloads are retained too, including header
+fields not exposed by the decoded metadata. They are not interpreted by cyrus.
+Embedded ROB models are retained when matching archive payloads agree; conflicting
+payloads remain unsupported rather than selecting an archive without evidence.
+Native and browser scene loading retain this data. Playback, frame scheduling,
+script activation, and mapping frames onto rendered meshes are not implemented.
 
 Re-export worlds after updating the sky renderer. Both native and browser builds
 render the Glide BSI sky in Faithful graphics. **Verified:** source textures,

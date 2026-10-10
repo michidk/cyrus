@@ -1,6 +1,8 @@
-//! `fidelity`, `player` and `settings` compile everywhere; the rest reads the
-//! install from disk and runs threads, so it is native only (`cyrus-web` reuses
-//! the portable part).
+//! Portable player, fidelity, animation and environment plugins are shared with WASM.
+//! Install access, scene export and control sockets are native only.
+pub mod animation;
+#[cfg(not(target_arch = "wasm32"))]
+mod animation_export;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;
 pub mod environment;

@@ -48,7 +48,12 @@ fn world_exports_include_declared_terrain_and_textures() {
     let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../cyrus-config")
         .join(format!("world-export-test-{}", std::process::id()));
-    for (name, terrain) in [("START", true), ("PALACE", false)] {
+    for (name, terrain) in [
+        ("START", true),
+        ("PALACE", false),
+        ("ISLAND", true),
+        ("CATACOMB", false),
+    ] {
         let path = output.join(format!("{name}.glb"));
         cyrus_game::scene::export_scene(&install, name, &path).unwrap();
         let bytes = std::fs::read(&path).unwrap();
@@ -65,6 +70,99 @@ fn world_exports_include_declared_terrain_and_textures() {
                 .unwrap();
         assert_eq!(environment.sky.is_some(), terrain);
         assert_eq!(environment.water.is_some(), terrain);
+        let animations: cyrus_game::animation::Animations =
+            serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap())
+                .unwrap();
+        animations.validate().unwrap();
+        assert!(
+            animations.unsupported.is_empty(),
+            "{name}: {:?}",
+            animations.unsupported
+        );
+        if name == "CATACOMB" {
+            let rat = &animations.models["RAT"];
+            assert_eq!(rat.encoding, "static_3d");
+            assert_eq!(rat.positions.len(), 1);
+            assert!(!rat.base_positions.is_empty());
+        }
+        let registry = registry::scan_dir(&install.root).unwrap();
+        let map = registry
+            .files
+            .values()
+            .filter(|entry| {
+                entry.file_type == rgpre::import::FileType::Rgm
+                    && entry.name.eq_ignore_ascii_case(name)
+            })
+            .min_by_key(|entry| registry.source_rank_key(&entry.path))
+            .unwrap();
+        let parsed_map =
+            rgpre::import::rgm::parse_rgm_file(&std::fs::read(&map.path).unwrap()).unwrap();
+        let original_header = parsed_map
+            .sections
+            .iter()
+            .find_map(|section| match section {
+                rgpre::import::rgm::RgmSection::Rahd(_, bytes) => Some(bytes),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            &animations.sections["RAHD"], original_header,
+            "{name}: actor header fields were lost"
+        );
+        let (model_name, exported, source) = animations
+            .models
+            .iter()
+            .find_map(|(name, model)| {
+                if model.positions.len() < 2 {
+                    return None;
+                }
+                registry
+                    .files
+                    .values()
+                    .filter(|entry| {
+                        entry.name.eq_ignore_ascii_case(name)
+                            && matches!(entry.file_type, rgpre::import::FileType::Model3dc)
+                    })
+                    .min_by_key(|entry| registry.source_rank_key(&entry.path))
+                    .map(|entry| (name, model, &entry.path))
+            })
+            .expect("scene must retain a referenced animated 3DC model");
+        let parsed =
+            rgpre::import::model3d::parse_3d_file(&std::fs::read(source).unwrap()).unwrap();
+        assert_eq!(
+            exported.positions.len(),
+            parsed.header.num_frames as usize,
+            "{model_name}"
+        );
+        for (frame, retained) in parsed.frame_vertex_data.iter().zip(&exported.positions) {
+            let expected: Vec<_> = frame.coords.iter().map(|v| [v.x, v.y, v.z]).collect();
+            assert_eq!(
+                retained, &expected,
+                "{model_name}: exported frame differs from parser"
+            );
+        }
+        for (frame, retained) in parsed.frame_normal_data.iter().zip(&exported.normals) {
+            let expected: Vec<_> = frame.face_normals.iter().map(|v| [v.x, v.y, v.z]).collect();
+            assert_eq!(
+                retained, &expected,
+                "{model_name}: exported normals differ from parser"
+            );
+        }
+
+        assert!(!animations.metadata["actors"].as_array().unwrap().is_empty());
+        assert!(!animations.models.is_empty());
+        assert!(
+            animations
+                .models
+                .values()
+                .any(|model| model.positions.len() > 1)
+        );
+        eprintln!(
+            "{name}: {} animation models, {} unsupported references",
+            animations.models.len(),
+            animations.unsupported.len()
+        );
+        std::fs::remove_file(path.with_extension("animations")).unwrap();
         std::fs::remove_file(path.with_extension("environment")).unwrap();
         std::fs::remove_file(path).unwrap();
     }

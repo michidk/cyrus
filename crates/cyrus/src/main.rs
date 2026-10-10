@@ -60,6 +60,7 @@ fn main() -> anyhow::Result<()> {
     if !args.headless {
         app.add_plugins((
             cyrus_game::environment::EnvironmentPlugin,
+            cyrus_game::animation::AnimationPlugin,
             cyrus_debug::DebugMenuPlugin,
         ));
     }

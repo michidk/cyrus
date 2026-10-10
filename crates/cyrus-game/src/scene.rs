@@ -90,6 +90,9 @@ fn load_requested(
         current.name = name;
         return;
     }
+    commands.insert_resource(crate::animation::AnimationRequest(
+        assets.load(format!("cache://{name}.animations")),
+    ));
     commands.insert_resource(crate::environment::EnvironmentRequest(
         assets.load(format!("cache://{name}.environment")),
     ));
@@ -130,10 +133,11 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
     let rgm_path = map_path(install, &entry.map)?;
     let rgm_bytes = std::fs::read(&rgm_path)?;
     let stem = rgm_path.file_stem().and_then(|s| s.to_str());
-    let (_rgm, models, lights) = rgm::parse_rgm_with_models_for_stem(&rgm_bytes, &registry, stem)?;
+    let (rgm, models, lights) = rgm::parse_rgm_with_models_for_stem(&rgm_bytes, &registry, stem)?;
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
+    crate::animation_export::export(&rgm, &models, &registry, entry.index, out)?;
     let (root, buffer) = match &entry.world {
         Some(path) => {
             let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
@@ -231,6 +235,10 @@ pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()
                     .to_ascii_uppercase();
                 if aliases.insert(stem.clone()) {
                     std::fs::copy(&path, out.join(format!("{stem}.glb")))?;
+                    std::fs::copy(
+                        path.with_extension("animations"),
+                        out.join(format!("{stem}.animations")),
+                    )?;
                     std::fs::copy(
                         path.with_extension("environment"),
                         out.join(format!("{stem}.environment")),

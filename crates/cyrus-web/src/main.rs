@@ -60,6 +60,7 @@ fn main() {
     .add_plugins((
         PlayerPlugin,
         cyrus_game::environment::EnvironmentPlugin,
+        cyrus_game::animation::AnimationPlugin,
         cyrus_debug::DebugMenuPlugin,
     ))
     .add_systems(Startup, spawn_scene)
@@ -73,6 +74,9 @@ fn spawn_scene(
     mut frame: ResMut<cyrus_game::player::FrameScene>,
 ) {
     let name = scene_from_query();
+    commands.insert_resource(cyrus_game::animation::AnimationRequest(
+        assets.load(format!("cache://{name}.animations")),
+    ));
     commands.insert_resource(cyrus_game::environment::EnvironmentRequest(
         assets.load(format!("cache://{name}.environment")),
     ));

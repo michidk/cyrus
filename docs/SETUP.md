@@ -48,6 +48,15 @@ export command after loading changes. The browser keeps downloaded GLB files in
 Cache Storage and checks their timestamp and size before reusing them. Nothing
 from the install itself is served.
 
+### Animation data
+
+Re-export worlds to generate `.animations` and `.environment` sidecars beside
+each GLB. Native and browser scene loading retain animation groups, model
+references, frame geometry, original animation section payloads, and environment
+inputs. Animation playback and script-triggered transitions are not implemented
+yet. Missing animation models
+are listed in the `.animations` asset's `unsupported` map.
+
 ### Sky and water
 
 Re-export worlds to regenerate `.environment` sidecars. Native and browser

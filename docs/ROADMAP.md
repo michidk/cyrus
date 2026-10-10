@@ -28,7 +28,6 @@ Update or release ownership when work changes.
 
 | Roadmap items | Agent / session | Current work |
 | --- | --- | --- |
-| Step 1: animation resources and removal of unsupported sky/water approximations | Codex: Load All Worlds Correctly | Claims animation module/export, scene/lib wiring, game tests and README; investigating RAHD/RAAN/RAGR/3DC without guessed autoplay or timing. Sound remains unverified |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Marker fix and initial movement facts published; original walking/turning observations captured. Controller implementation and verification remain open; `magic/artifacts/2026-10-10-player/` |
@@ -64,7 +63,7 @@ committed support; unverified work stays in the TODO column.
 | --- | --- | --- |
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
-| `3D`, `3DC`, `ROB` | Model parsing and static model export | Actor and mesh animation |
+| `3D`, `3DC`, `ROB` | Static export and retained animation frame geometry, including unambiguous embedded models | Actor and mesh animation playback |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Parsing | Software sky projection and menu artwork |
 | Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
@@ -143,6 +142,7 @@ preview health checks also passed. The debug menu landed in
 
 - [x] Load and export worlds with their terrain, textures, and palettes.
 - [ ] Compare placement, scale, lighting, sky, transparency, and visibility with the original.
+- [x] Retain actor animation metadata, original section payloads and model frames in native/WASM assets. **Verified:** all 29 installed worlds export without unresolved animation models; native asset tests and WASM compilation pass.
 - [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
