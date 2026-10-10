@@ -12,3 +12,4 @@
 # Local agent config, written by `just setup`.
 /.claude/
 /.codex/
+/.agents/skills/magic-*
