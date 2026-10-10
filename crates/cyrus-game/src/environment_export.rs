@@ -169,6 +169,10 @@ pub fn export(
                     rgba,
                     level: sky_parameter(&ini, "world_skylevel", entry.index, -3500)? as f32,
                     scale: sky_parameter(&ini, "world_skyscale", entry.index, 2000)? as f32,
+                    speed: value(&ini, "world_skyspeed", entry.index)
+                        .unwrap_or("0")
+                        .parse::<u8>()
+                        .with_context(|| format!("world {}: world_skyspeed", entry.index))?,
                 })
             })
             .transpose()

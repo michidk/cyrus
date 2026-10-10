@@ -6,6 +6,7 @@ import package::glide_fog::{fog_coordinate, blend_fog};
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
 @group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> plane: vec4<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(3) var<uniform> fog_rgb: vec4<f32>;
+@group(MATERIAL_BIND_GROUP) @binding(4) var<uniform> scroll: vec4<f32>;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -30,7 +31,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
     // Verified texel mapping in preservation's docs/engine/sky.md; scene export flips X/Y.
-    let uv = (-plane.y * relative_xz * 20.0 / 65000.0 - view.world_position.xz * 20.0 * 0.009) / plane.zw;
+    let uv = (-plane.y * relative_xz * 20.0 / 65000.0 - view.world_position.xz * 20.0 * 0.009 + scroll.xy) / plane.zw;
     let coordinate = fog_coordinate(depth * 20.0);
     let density = select(clamp(coordinate - 32.0, 0.0, 30.0) * 8.0,
                          240.0 + (coordinate - 62.0) * 15.0, coordinate >= 62.0);

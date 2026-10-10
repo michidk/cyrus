@@ -10,9 +10,9 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `scene` | Resolve a world from `WORLD.INI` (map, terrain, palette), export it to a GLB in `cyrus-config/cache/`, spawn it. Native only. |
 | `player` | Held keyboard input from `KEYS.INI`, marker-based initial player placement, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
 | `fidelity` | The switch between `Faithful` and `Modern` per `Area`; `in_mode` is the run condition. Defaults are faithful. |
-| `environment` | Static Glide BSI sky and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
+| `environment` | Glide BSI sky scrolling and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
 | `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
-| `sky` | Static Glide sky material and shader, projected behind scene geometry. |
+| `sky` | Glide sky playback, material and shader, projected behind scene geometry. |
 | `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
 | `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation metadata and referenced 3D/3DC/ROB frames through rgpre. |
@@ -69,7 +69,9 @@ normals across materials. Re-export worlds to replace old water masks.
 
 Absolute DOS clock phase is not synchronized. Terrain placement, base heights,
 and lighting retain the preservation export's existing limitations. Sky
-scrolling, tilting, and the sun disc remain unsupported.
+tilting and the sun disc remain unsupported. Scrolling advances texture coordinates
+on the documented BIOS timer, using the per-world speed and a random initial
+direction. The original session's random state is not synchronized.
 
 The debug flycam toggle moves only the view camera. Turning it off returns the
 view to the player pose; it does not enable gameplay. Faithful

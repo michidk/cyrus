@@ -204,6 +204,7 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
         assert_eq!((sky.width, sky.height), (256, 256), "world {world}");
         assert_eq!(sky.level, -4500.0, "world {world}");
         assert_eq!(sky.scale, scale, "world {world}");
+        assert_eq!(sky.speed, if world == "6" { 8 } else { 6 }, "world {world}");
         assert_eq!(&sky.rgba[..4], &first_pixel, "world {world}");
         assert!(
             sky.rgba

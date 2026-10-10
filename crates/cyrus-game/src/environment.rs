@@ -1,5 +1,5 @@
 //! Cached environment inputs shared by native and browser builds.
-//! Static Glide BSI sky projection follows preservation; sky motion remains unsupported.
+//! Glide BSI sky projection and scrolling follow preservation.
 
 use crate::sky::{Sky, SkyMaterial};
 use bevy::asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader};
@@ -38,6 +38,8 @@ pub struct SkyImage {
     pub level: f32,
     /// Half-span of plane texture coordinates in texels.
     pub scale: f32,
+    /// Raw WORLD.INI scrolling speed; one unit is 1/16 texel per BIOS tick.
+    pub speed: u8,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -124,7 +126,7 @@ struct ActiveEnvironment {
     sky: Option<Entity>,
 }
 
-/// Renders the verified static Glide sky and BIOS-timed terrain waves.
+/// Renders the Glide sky and BIOS-timed sky scrolling and terrain waves.
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
@@ -186,6 +188,7 @@ fn apply_sky(
             image: images.add(image),
             plane: Vec4::new(sky.level, sky.scale, sky.width as f32, sky.height as f32),
             fog_rgb: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
+            scroll: Vec4::ZERO,
         });
         let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
@@ -198,7 +201,7 @@ fn apply_sky(
         active.sky = Some(
             commands
                 .spawn((
-                    Sky,
+                    Sky::new(sky.speed),
                     Mesh3d(meshes.add(mesh)),
                     MeshMaterial3d(material),
                     NoFrustumCulling,
@@ -245,6 +248,7 @@ mod tests {
                 rgba: pixels.clone(),
                 level: -4500.0,
                 scale: 2000.0,
+                speed: 6,
             }),
             background: [0; 3],
             clipping: [7.0, 3800.0],
