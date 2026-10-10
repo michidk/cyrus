@@ -27,7 +27,7 @@ just run -- --scene START
 just run -- --scene 27    # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
 just run-headless        # no window: preload + scene export + control server
-just run-novnc           # in docker/dev with a virtual display, served via VibePod preview "cyrus"
+just run-novnc           # in dev/docker/dev with a virtual display, served via VibePod preview "cyrus"
 ```
 
 Settings, caches and screenshots live in `cyrus-config/`.
@@ -48,14 +48,22 @@ export command after loading changes. The browser keeps downloaded GLB files in
 Cache Storage and checks their timestamp and size before reusing them. Nothing
 from the install itself is served.
 
+### Sky and water preview
+
+Re-export worlds to generate their `.environment` sidecars, then open
+`?scene=ISLAND&graphics=modern` for animated water and the world's sky image.
+Native rendering uses the same implementation when graphics is set to Modern.
+The water mask and wave parameters come from the install. Sky projection,
+wave timing, and centering are approximate; Faithful graphics stays static.
+
 ## The original game
 
 ```sh
-just retro               # DOSBox-X + Voodoo emulation in docker/retro, VibePod preview "cyrus-retro"
+just retro               # DOSBox-X + Voodoo emulation in dev/docker/retro, VibePod preview "cyrus-retro"
 ```
 
 The retro runner needs a writable copy of the GOG `app/` directory (the game
-writes saves); `scripts/run-retro.sh` makes one under `magic/retro-run/` and
+writes saves); `dev/scripts/run-retro.sh` makes one under `magic/retro-run/` and
 copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
 

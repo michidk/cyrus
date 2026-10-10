@@ -90,6 +90,9 @@ fn load_requested(
         current.name = name;
         return;
     }
+    commands.insert_resource(crate::environment::EnvironmentRequest(
+        assets.load(format!("cache://{name}.environment")),
+    ));
     frame.0 = true;
     commands.spawn((
         SceneEntity,
@@ -128,11 +131,15 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
     let rgm_bytes = std::fs::read(&rgm_path)?;
     let stem = rgm_path.file_stem().and_then(|s| s.to_str());
     let (_rgm, models, lights) = rgm::parse_rgm_with_models_for_stem(&rgm_bytes, &registry, stem)?;
+    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
     let (root, buffer) = match &entry.world {
         Some(path) => {
-            let wld_file = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
+            let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
+            crate::environment_export::export(install, entry, &palette, Some(&terrain), out)?;
             convert_wld_scene_to_gltf(
-                &wld_file,
+                &terrain,
                 TERRAIN_TEXBSI_ID,
                 &models,
                 Some(&palette),
@@ -140,18 +147,18 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
                 false,
             )?
         }
-        None => convert_positioned_models_to_gltf(
-            &models,
-            &lights,
-            Some(&palette),
-            Some(&mut cache),
-            false,
-        )?,
+        None => {
+            crate::environment_export::export(install, entry, &palette, None, out)?;
+            convert_positioned_models_to_gltf(
+                &models,
+                &lights,
+                Some(&palette),
+                Some(&mut cache),
+                false,
+            )?
+        }
     };
     let glb = to_glb(&root, &buffer)?;
-    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)?;
-    }
     let temporary = out.with_extension("glb.tmp");
     std::fs::write(&temporary, glb)?;
     std::fs::rename(temporary, out)?;
@@ -224,6 +231,10 @@ pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()
                     .to_ascii_uppercase();
                 if aliases.insert(stem.clone()) {
                     std::fs::copy(&path, out.join(format!("{stem}.glb")))?;
+                    std::fs::copy(
+                        path.with_extension("environment"),
+                        out.join(format!("{stem}.environment")),
+                    )?;
                 }
                 println!("world {name}: {} -> {}", entry.map, path.display());
             }

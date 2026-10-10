@@ -58,7 +58,10 @@ fn main() -> anyhow::Result<()> {
         }));
     }
     if !args.headless {
-        app.add_plugins(cyrus_debug::DebugMenuPlugin);
+        app.add_plugins((
+            cyrus_game::environment::EnvironmentPlugin,
+            cyrus_debug::DebugMenuPlugin,
+        ));
     }
     app.insert_resource(control)
         .add_plugins(GamePlugin { install, settings });

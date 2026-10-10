@@ -60,6 +60,12 @@ fn world_exports_include_declared_terrain_and_textures() {
         assert_eq!(nodes.iter().any(|node| node["name"] == "Terrain"), terrain);
         assert!(!document["images"].as_array().unwrap().is_empty());
         assert!(nodes.iter().any(|node| node.get("mesh").is_some()));
+        let environment: cyrus_game::environment::Environment =
+            serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
+                .unwrap();
+        assert_eq!(environment.sky.is_some(), terrain);
+        assert_eq!(environment.water.is_some(), terrain);
+        std::fs::remove_file(path.with_extension("environment")).unwrap();
         std::fs::remove_file(path).unwrap();
     }
     std::fs::remove_dir(output).unwrap();

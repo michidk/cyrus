@@ -3,6 +3,9 @@
 //! the portable part).
 #[cfg(not(target_arch = "wasm32"))]
 pub mod control;
+pub mod environment;
+#[cfg(not(target_arch = "wasm32"))]
+mod environment_export;
 pub mod fidelity;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod install;
