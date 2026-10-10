@@ -14,6 +14,18 @@ pub struct PlayerPlugin;
 #[derive(Component)]
 pub struct Player;
 
+#[derive(Resource)]
+pub struct FlycamSettings {
+    pub speed: f32,
+}
+
+impl Default for FlycamSettings {
+    fn default() -> Self {
+        // unverified: inspection speed, adjustable from the debug menu.
+        Self { speed: 100.0 }
+    }
+}
+
 /// Set when a freshly spawned scene should place the player at its bounds.
 /// shortcut: start positions come from the scene data in the original; until
 /// that is read, the player is framed on the scene's bounding box.
@@ -22,13 +34,13 @@ pub struct FrameScene(pub bool);
 
 // unverified placeholders; replace with values derived from the original.
 const MOVE_SPEED: f32 = 12.0;
-const FLYCAM_SPEED: f32 = 100.0;
 const TURN_SPEED: f32 = 2.0;
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FrameScene>()
+            .init_resource::<FlycamSettings>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(
                 Update,
@@ -109,6 +121,7 @@ fn modern_controller(
     keys: Res<ButtonInput<KeyCode>>,
     buttons: Res<ButtonInput<MouseButton>>,
     mouse: Res<AccumulatedMouseMotion>,
+    flycam: Res<FlycamSettings>,
     time: Res<Time>,
     mut player: Query<&mut Transform, With<Player>>,
 ) {
@@ -142,6 +155,6 @@ fn modern_controller(
         dir -= Vec3::Y;
     }
     if dir != Vec3::ZERO {
-        t.translation += dir.normalize() * FLYCAM_SPEED * dt;
+        t.translation += dir.normalize() * flycam.speed * dt;
     }
 }

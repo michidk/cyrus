@@ -57,6 +57,9 @@ fn main() -> anyhow::Result<()> {
             ..default()
         }));
     }
+    if !args.headless {
+        app.add_plugins(cyrus_debug::DebugMenuPlugin);
+    }
     app.insert_resource(control)
         .add_plugins(GamePlugin { install, settings });
     if args.headless {

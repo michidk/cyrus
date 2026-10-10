@@ -14,5 +14,6 @@ starting Bevy. `?scene=START` or `?scene=27` picks a world (stem or
 WORLD.INI index). Reuses `cyrus-game`'s portable modules (`fidelity`,
 `player`, `settings`); the modern controller is the default here because the
 browser has no original keyboard scheme to be faithful to yet.
+Press F1 to choose a world, set flycam speed, and change runtime fidelity.
 
 Not a default workspace member so day-to-day builds and tests stay lean.

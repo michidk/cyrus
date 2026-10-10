@@ -6,6 +6,7 @@ edition.workspace = true
 
 [dependencies]
 bevy.workspace = true
+cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true
 cyrus-control.workspace = true
 anyhow.workspace = true

@@ -41,7 +41,7 @@ fn main() {
         ..default()
     })
     .insert_state(cyrus_game::AppState::InGame)
-    .add_plugins(PlayerPlugin)
+    .add_plugins((PlayerPlugin, cyrus_debug::DebugMenuPlugin))
     .add_systems(Startup, spawn_scene)
     .run();
     let _ = Area::ALL;
