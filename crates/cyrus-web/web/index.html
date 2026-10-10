@@ -16,7 +16,6 @@ canvas{width:100%;height:100%;display:block;outline:none}
 <div id="loading"><div id="label">Loading…</div><div id="bar"><div id="fill"></div></div></div>
 <div id="hint">WASD move · right-drag look · Space/Shift up/down · ?scene=START</div>
 <script type="module">
-import init from "./pkg/cyrus-web.js";
 const label = document.getElementById("label"), fill = document.getElementById("fill");
 const scene = (new URLSearchParams(location.search).get("scene") || "ISLAND").toUpperCase();
 
@@ -42,7 +41,8 @@ async function download(url, name, onBytes) {
     chunks.push(value); got += value.length;
     onBytes(got, total, name);
   }
-  return new Blob(chunks);
+  // Last-Modified identifies the build; the loader below must come from the same one.
+  return Object.assign(new Blob(chunks), { version: encodeURIComponent(res.headers.get("last-modified") || Date.now()) });
 }
 const steps = [["./pkg/cyrus-web_bg.wasm", "engine"], [`./cyrus-config/cache/${scene}.glb`, `scene ${scene}`]];
 const progress = (i) => (got, total, name) => {
@@ -55,6 +55,8 @@ try {
   // The scene goes through the browser cache; the engine fetches it again from there.
   await download(...steps[1], progress(1));
   label.textContent = "Starting engine…";
+  // The engine is revalidated by sw.js; a plain import could reuse an older loader from the HTTP cache.
+  const { default: init } = await import(`./pkg/cyrus-web.js?v=${wasm.version}`);
   await init({ module_or_path: await wasm.arrayBuffer() }).catch(e => { if (!String(e).includes("Using exceptions for control flow")) throw e; });
   document.getElementById("loading").remove();
 } catch (e) {
