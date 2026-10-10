@@ -12,13 +12,21 @@ impl WalkingStartup {
         (step_type == 1).then_some(Self { phase: 0 })
     }
 
+    /// Reset startup after an actor update that did not accept forward movement.
+    /// Animation suppression alone does not mean movement was rejected.
+    pub fn finish_update(&mut self, accepted_forward: bool) {
+        if !accepted_forward {
+            self.phase = 0;
+        }
+    }
+
     /// Advance one eligible walking update, returning distance before collision.
     ///
     /// `forward_walk` is the actor attribute, and `frame_scale` has eight
     /// fractional bits. The result is in runtime position units, also with eight
     /// fractional bits. Call only when walking is eligible; an animation that
-    /// suppresses translation still advances startup. The caller owns phase
-    /// reset, whose relationship to input release is not yet specified.
+    /// suppresses translation still advances startup. Finish each actor update
+    /// with [`Self::finish_update`], including updates without walking.
     pub fn advance(
         &mut self,
         forward_walk: u8,

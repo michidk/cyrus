@@ -30,7 +30,7 @@ Update or release ownership when work changes.
 | --- | --- | --- |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tested animation-gated walking startup core landed; movement eligibility and collision still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; ground response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Native fog and original clipping verified; workspace gates pass; browser build and F1 runtime checks pending |
 
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
@@ -207,9 +207,19 @@ original-game recording ([16703d1](https://github.com/michidk/redguard-preservat
 Forward-walking startup advances while animation can suppress translation.
 Live original-game observations confirm the first displacement can use a later
 startup phase ([e839ed8](https://github.com/michidk/redguard-preservation/commit/e839ed8)).
-This explains the recorded integer-position sequence, but its fractional endpoint
-still differs by two raw coordinate units. Complete animation eligibility,
-collision, and release timing remain unresolved; locomotion is not enabled.
+The recording lacks the settled fractional starting position, so its two-unit
+endpoint difference is not an established mismatch. Ordinary release resets
+startup after an update without accepted forward movement; marker entry and
+ground settling are separate ([fad0b00](https://github.com/michidk/redguard-preservation/commit/fad0b00)).
+A live player trace verifies the forward obstacle, slope, and terrain-support
+checks ([7d1fe5d](https://github.com/michidk/redguard-preservation/commit/7d1fe5d)).
+Actor bounds layout is corrected and checked across 806 installed records
+([9e93d4e](https://github.com/michidk/redguard-preservation/commit/9e93d4e));
+its parser correction is published in [29ac86b](https://github.com/michidk/redguard-preservation/commit/29ac86b).
+Upright collision spheres and the FPS measurement window are documented in
+[cd65049](https://github.com/michidk/redguard-preservation/commit/cd65049).
+Complete animation transitions and collision integration remain unresolved;
+locomotion is not enabled.
 
 Input foundation: eight held directional/action bindings from
 `KEYS.INI`, Modern WASD/Space/held-Shift input, an independent debug flycam
@@ -219,12 +229,19 @@ release. It is not connected to live gameplay while timing and state eligibility
 remain unresolved. Workspace tests, strict Clippy, formatting, publication checks,
 and an MCP smoke test pass using isolated worktree artifacts. Player tests cover
 installed bindings, Modern input, camera isolation, ground-turn arithmetic, and
-animation-gated walking startup. The walking core supports step
+animation-gated walking startup and release reset. The walking core supports step
 type 1 and rejects other step types. It is not connected to gameplay. Translation
 and the original follow camera remain unsupported.
 
+Initial marker placement uses exact exported map coordinates and retains the
+requested heading modulo 2048. A headless ISLAND load matches a fresh original
+marker-zero start-position query; debug flycam input leaves the player unchanged.
+Missing and unavailable markers remain explicit errors. Native workspace tests,
+strict Clippy, WASM compilation and MCP smoke pass. Ground settling and rendered
+heading are separate and remain unsupported.
+
 - [x] Land and verify the keyboard-input and independent debug-flycam foundation.
-- [ ] Read and apply the original player spawn selection and position.
+- [x] Apply explicit marker-based initial placement; scripted spawn selection and ground settling remain pending.
 - [ ] Implement quick actions and the walk-mode toggle, alongside the held bindings.
 - [ ] Establish a repeatable simulation-timing oracle and animation movement gates; compare the same walking/turning sequence in both games.
 - [ ] Add Modern camera-relative WASD, mouse camera, Space jump, and held Shift run.

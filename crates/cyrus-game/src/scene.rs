@@ -30,12 +30,16 @@ pub struct ScenePlugin;
 pub struct Headless;
 
 /// Must run before `AssetPlugin` is added (Bevy builds sources at that point).
-pub fn register_cache_source(app: &mut App) {
-    std::fs::create_dir_all(Settings::cache_dir()).ok();
-    app.register_asset_source(
-        "cache",
-        AssetSourceBuilder::platform_default(Settings::cache_dir().to_str().unwrap(), None),
-    );
+pub fn register_cache_source(app: &mut App) -> anyhow::Result<()> {
+    let cache = std::path::absolute(Settings::cache_dir())
+        .map_err(|error| anyhow::anyhow!("resolve scene cache directory: {error}"))?;
+    std::fs::create_dir_all(&cache)
+        .map_err(|error| anyhow::anyhow!("create scene cache {}: {error}", cache.display()))?;
+    let path = cache
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("scene cache path is not UTF-8"))?;
+    app.register_asset_source("cache", AssetSourceBuilder::platform_default(path, None));
+    Ok(())
 }
 
 /// WORLD.INI world ID or map stem to load, e.g. `27` or `ISLAND`.
@@ -86,13 +90,13 @@ fn load_requested(
     for e in &old {
         commands.entity(e).despawn();
     }
+    commands.insert_resource(crate::animation::AnimationRequest(
+        assets.load(format!("cache://{name}.animations")),
+    ));
     if headless.is_some() {
         current.name = name;
         return;
     }
-    commands.insert_resource(crate::animation::AnimationRequest(
-        assets.load(format!("cache://{name}.animations")),
-    ));
     commands.insert_resource(crate::environment::EnvironmentRequest(
         assets.load(format!("cache://{name}.environment")),
     ));

@@ -2,6 +2,7 @@
 //! unsupported until animation, collision and timing are established.
 
 pub mod input;
+pub mod placement;
 pub mod turn;
 pub mod walk;
 
@@ -50,12 +51,14 @@ impl Plugin for PlayerPlugin {
             .init_resource::<input::PlayerInput>()
             .add_systems(Update, input::sample)
             .init_resource::<crate::fog::RenderDistance>()
+            .init_resource::<placement::MarkerEntry>()
             .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(
                 Update,
                 (
+                    placement::enter_marker,
                     frame_scene.run_if(|f: Res<FrameScene>, camera: Res<FlycamSettings>| {
                         f.0 && camera.enabled
                     }),

@@ -8,7 +8,7 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `startup` | Shared splash/title and data-defined book menu; native exporter renders installed Glide geometry into a local image cache. |
 | `loading` | Startup state: scans the install and parses every known file through `rgpre` behind a progress bar; the failures are the format-coverage report. |
 | `scene` | Resolve a world from `WORLD.INI` (map, terrain, palette), export it to a GLB in `cyrus-config/cache/`, spawn it. Native only. |
-| `player` | Held keyboard input from `KEYS.INI`, a stationary player entity, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
+| `player` | Held keyboard input from `KEYS.INI`, marker-based initial player placement, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
 | `fidelity` | The switch between `Faithful` and `Modern` per `Area`; `in_mode` is the run condition. Defaults are faithful. |
 | `environment` | Static Glide BSI sky and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
 | `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
@@ -70,14 +70,23 @@ and lighting retain the preservation export's existing limitations. Sky
 scrolling, tilting, and the sun disc remain unsupported.
 
 The debug flycam toggle moves only the view camera. Turning it off returns the
-view to the stationary player pose; it does not enable gameplay. Faithful
+view to the player pose; it does not enable gameplay. Faithful
 keyboard actions preserve held and opposing inputs. Modern input samples WASD,
 Space, and held Shift run. Camera-relative movement and the mouse camera remain
 pending. The deterministic `player::turn` and `player::walk` cores are
 tested against original heading and animation-gated startup observations.
-Walking supports actor step type 1 and advances startup during suppressed
-translation. Gameplay does not yet drive these cores: animation eligibility,
-collision, and simulation timing remain incomplete.
+Walking supports actor step type 1, advances startup during suppressed
+translation, and resets after an update without accepted forward movement.
+Gameplay does not yet drive these cores: animation eligibility, collision, and
+simulation timing remain incomplete.
+
+Scene inspection places the player at available marker zero once the world's
+`.animations` data loads, using preservation's exact map coordinates. `MarkerEntry`
+selects a different marker and heading for explicit entries. `PlayerPose` retains
+runtime coordinates and the wrapped heading; the transform uses the existing
+scene export coordinates. Heading-to-render rotation and ground settling remain
+unsupported. The marker height is the initial height, not the settled ground
+height. Re-export older assets that lack `map_position`.
 
 Scene rendering uses the installed near/far planes, including a nonzero
 `world_back_plane` override. F1 exposes a render-distance override in game units;

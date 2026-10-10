@@ -34,6 +34,15 @@ just run-native          # in dev/docker/dev with a virtual display, no preview:
 
 Settings, caches and screenshots live in `cyrus-config/`.
 
+### Player placement
+
+Direct scene inspection uses available marker zero for initial player placement.
+Native, headless, and browser loading consume the same marker metadata. Re-export
+worlds after updating to populate exact marker coordinates in `.animations`.
+Unavailable markers report a player-entry error. Ground settling, locomotion,
+and the original follow camera remain unsupported; use the independent debug
+flycam to inspect the world.
+
 ## Browser build
 
 ```sh

@@ -291,3 +291,120 @@ fn walking_startup_uses_actor_speed_and_rejects_unsupported_step_types() {
     assert_eq!(walk.advance(0, 256, true), 0);
     assert_eq!(walk.advance(9, 256, true), 2304);
 }
+
+#[test]
+fn marker_entry_waits_for_world_data_and_keeps_exact_position() {
+    use cyrus_game::animation::{AnimationRequest, Animations};
+    use cyrus_game::player::placement::{MarkerEntry, PlayerPose};
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<AccumulatedMouseMotion>()
+        .init_resource::<Assets<Animations>>()
+        .init_resource::<AnimationRequest>()
+        .insert_resource(MarkerEntry {
+            marker: 0,
+            heading: -1,
+        })
+        .add_plugins(PlayerPlugin);
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    assert!(app.world().get::<PlayerPose>(player).is_none());
+    let data = Animations {
+        version: 2,
+        world: 1,
+        metadata: serde_json::json!({"markers": [
+            {"map_position": [40816, -699, 41024], "position": [-2040.8, 34.95, -1225.5998], "reserved": 1},
+            {"map_position": [0, 0, 0], "position": [0.0, 0.0, 0.0], "reserved": 0}
+        ]}),
+        sections: default(),
+        models: default(),
+        unsupported: default(),
+    };
+    let handle = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(data);
+    app.world_mut().resource_mut::<AnimationRequest>().0 = handle;
+    app.update();
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap(),
+        &PlayerPose {
+            position: [10_448_896, -178_944, 10_502_144],
+            heading: 2047,
+        }
+    );
+    assert_eq!(
+        app.world().get::<Transform>(player).unwrap().translation,
+        Vec3::new(-2040.8, 34.95, -1225.5998)
+    );
+    // Entry is one-shot; later updates must not undo movement or ground settling.
+    app.world_mut()
+        .get_mut::<Transform>(player)
+        .unwrap()
+        .translation
+        .y = 37.2;
+    app.update();
+    assert_eq!(
+        app.world().get::<Transform>(player).unwrap().translation.y,
+        37.2
+    );
+    app.world_mut().resource_mut::<MarkerEntry>().marker = 1;
+    app.update();
+    assert!(app.world().get::<PlayerPose>(player).is_none());
+    app.world_mut().resource_mut::<MarkerEntry>().marker = 9;
+    app.update();
+    assert!(app.world().get::<PlayerPose>(player).is_none());
+}
+
+#[test]
+fn walking_release_restarts_but_animation_suppression_does_not() {
+    let mut walk = cyrus_game::player::walk::WalkingStartup::new(1).unwrap();
+    assert_eq!(walk.advance(8, 256, false), 0);
+    walk.finish_update(true);
+    assert_eq!(walk.advance(8, 256, true), 682);
+    walk.finish_update(true);
+    assert_eq!(walk.advance(8, 256, true), 1024);
+    walk.finish_update(true);
+    assert_eq!(walk.advance(8, 256, true), 2048);
+    walk.finish_update(false);
+    walk.finish_update(false);
+    assert_eq!(walk.advance(8, 256, true), 512);
+}
+
+#[test]
+fn installed_island_marker_matches_observed_original_entry() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    let Ok(install) = cyrus_game::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipping marker observation check: no Redguard install");
+        return;
+    };
+    let path = std::fs::read_dir(install.maps())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("island.rgm")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
+    assert_eq!(
+        metadata["markers"][0]["map_position"],
+        serde_json::json!([40816, -699, 41024])
+    );
+    assert_eq!(metadata["markers"][0]["reserved"], 1);
+}

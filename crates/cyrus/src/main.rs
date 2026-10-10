@@ -56,7 +56,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     let mut app = App::new();
-    cyrus_game::scene::register_cache_source(&mut app);
+    cyrus_game::scene::register_cache_source(&mut app)?;
     if args.headless {
         app.add_plugins((
             MinimalPlugins,
@@ -74,11 +74,9 @@ fn main() -> anyhow::Result<()> {
             ..default()
         }));
     }
+    app.add_plugins(cyrus_game::animation::AnimationPlugin);
     if !args.headless {
-        app.add_plugins((
-            cyrus_game::environment::EnvironmentPlugin,
-            cyrus_game::animation::AnimationPlugin,
-        ));
+        app.add_plugins(cyrus_game::environment::EnvironmentPlugin);
         if startup {
             app.add_plugins(cyrus_game::startup::StartupPlugin);
             if args.skip_startup {
