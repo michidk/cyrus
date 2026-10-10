@@ -9,7 +9,7 @@ setup:
     mkdir -p .claude .codex
     ln -sfn ../.agents/skills .claude/skills
     printf '{\n  "enabledMcpjsonServers": ["cyrus"]\n}\n' > .claude/settings.json
-    printf '# Loaded only for a trusted project.\n[mcp_servers.cyrus]\ncommand = "cargo"\nargs = ["run", "-q", "-p", "cyrus-mcp"]\nenv = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }\n' > .codex/config.toml
+    printf '# Loaded only for a trusted project.\n[mcp_servers.cyrus]\ncommand = "dev/scripts/mcp.sh"\nenv = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }\n' > .codex/config.toml
     dev/scripts/setup-hauler.sh
 
 # publish-check, fmt, clippy, tests
@@ -33,13 +33,14 @@ run-native *ARGS:
 retro:
     dev/scripts/run-retro.sh
 
+# stop the previews and the native container
 stop:
-    -vibepod-preview stop cyrus
     -vibepod-preview stop cyrus-retro
     -vibepod-preview stop cyrus-web
+    -docker rm -f cyrus-dev
 
 mcp:
-    cargo run -q -p cyrus-mcp
+    dev/scripts/mcp.sh
 
 docker-build:
     docker build -t cyrus-retro:dev dev/docker/retro

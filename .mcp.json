@@ -1,9 +1,11 @@
 {
   "mcpServers": {
     "cyrus": {
-      "command": "cargo",
-      "args": ["run", "-q", "-p", "cyrus-mcp"],
-      "env": { "CYRUS_CONTROL_ADDR": "127.0.0.1:7117" }
+      "command": "dev/scripts/mcp.sh",
+      "args": [],
+      "env": {
+        "CYRUS_CONTROL_ADDR": "127.0.0.1:7117"
+      }
     }
   }
 }

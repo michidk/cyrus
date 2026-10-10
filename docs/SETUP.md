@@ -71,7 +71,9 @@ renders through the emulated Voodoo. Sound is off in the container.
 
 The game listens on `127.0.0.1:7117` (`--control`, `CYRUS_CONTROL_ADDR`, or
 `settings.toml`). `crates/cyrus-mcp` wraps it as MCP tools; Claude Code picks
-it up from `.mcp.json`, Codex from `.codex/config.toml` (trusted project).
+it up from `.mcp.json`, Codex from `.codex/config.toml` (trusted project). Both
+start `dev/scripts/mcp.sh`, which runs the built binary and builds it only when
+missing, so a busy build queue cannot keep the tools down.
 
 ```sh
 printf '{"id":1,"cmd":{"type":"state"}}\n' | nc 127.0.0.1 7117

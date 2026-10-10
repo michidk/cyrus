@@ -7,7 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 . dev/scripts/cargo.sh
 cargo build -p cyrus
-docker image inspect cyrus-dev:dev >/dev/null 2>&1 || docker build -t cyrus-dev:dev dev/docker/dev
+# Always build: the layer cache makes it quick, and a changed Dockerfile is never missed.
+docker build -q -t cyrus-dev:dev dev/docker/dev >/dev/null
 docker rm -f cyrus-dev >/dev/null 2>&1 || true
 install=$(readlink -f "${REDGUARD_DIR:-redguard}")
 docker run -d --rm --name cyrus-dev -p 127.0.0.1:7117:7117 \

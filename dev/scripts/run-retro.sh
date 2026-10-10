@@ -10,7 +10,8 @@ if [ ! -d "$run/Redguard" ]; then
     rsync -a --exclude DOSBOX --exclude __support --exclude webcache.zip --exclude Manual.pdf --exclude '*.dll' "$src/" "$run/"
     cp "$src/DOSBOX/glide2x_emu.ovl" "$run/Redguard/glide2x.ovl"
 fi
-docker image inspect cyrus-retro:dev >/dev/null 2>&1 || docker build -t cyrus-retro:dev dev/docker/retro
+# Always build: the layer cache makes it quick, and a changed Dockerfile is never missed.
+docker build -q -t cyrus-retro:dev dev/docker/retro >/dev/null
 docker rm -f cyrus-retro >/dev/null 2>&1 || true
 vibepod-preview run -port 36080 -title "Redguard (original, DOSBox-X)" cyrus-retro -- \
     docker run --rm --name cyrus-retro -p 127.0.0.1:36080:6080 -v "$PWD/$run:/game" cyrus-retro:dev
