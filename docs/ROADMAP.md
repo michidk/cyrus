@@ -30,7 +30,7 @@ Update or release ownership when work changes.
 | --- | --- | --- |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; ground response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
+| Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; terrain support and an ordinary height-changing response verified against original traces; obstacle response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
 
 | Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
@@ -236,6 +236,16 @@ Actor bounds layout is corrected and checked across 806 installed records
 its parser correction is published in [29ac86b](https://github.com/michidk/redguard-preservation/commit/29ac86b).
 Upright collision spheres and the FPS measurement window are documented in
 [cd65049](https://github.com/michidk/redguard-preservation/commit/cd65049).
+Terrain support sampling and surface-to-player height conversion are documented
+in [054369b](https://github.com/michidk/redguard-preservation/commit/054369b) and
+[1d68050](https://github.com/michidk/redguard-preservation/commit/1d68050).
+Original flat and sloped contact samples match the documented heights and normals;
+65,280 captured terrain height entries match installed data. An original
+four-stop walking trace verifies the subsequent ordinary height assignment while
+preserving X/Z and the previous position
+([d7de505](https://github.com/michidk/redguard-preservation/commit/d7de505)).
+Obstacle rollback, airborne responses and complete movement eligibility remain
+unverified.
 Complete animation transitions and collision integration remain unresolved;
 locomotion is not enabled.
 
