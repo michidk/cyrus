@@ -50,6 +50,14 @@ crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
    public record lives there.
 6. **No piracy.** Documentation tells readers to buy the game (GOG). No
    installer links, keys or game files anywhere in the repository.
+7. **Feed findings back to redguard-preservation.** When you find a bug in
+   it, a new format or engine fact, documentation that conflicts with what
+   the game data or the original shows, or anything it is missing, open a pull
+   request against [redguard-preservation](https://github.com/michidk/redguard-preservation)
+   with the fix or the documented fact and its evidence (counts, samples,
+   observations). Do not work around a preservation bug silently in cyrus:
+   link the pull request from the cyrus change, and keep any workaround
+   marked until the fix is released.
 
 These rules govern what ships, not what may be said. That cyrus is informed by
 reverse engineering of the original, and which projects were read, is stated
