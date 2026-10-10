@@ -28,7 +28,7 @@ Update or release ownership when work changes.
 
 | Roadmap items | Agent / session | Current work |
 | --- | --- | --- |
-| Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Modern approximate sky/water verified in WASM; environment commit pending; original comparison, native verification, and sound remain open |
+| Step 1: sky, water, sound; reference sequences and runtime/SOUP inventory | Codex: Load All Worlds Correctly | Modern sky/water landed in [4a7696d](https://github.com/michidk/cyrus/commit/4a7696d); shared entry points released; original comparison, native verification, and sound remain open |
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Steps 2–6 and remaining step-1 items | Unassigned | No confirmed active owner |
@@ -64,8 +64,8 @@ committed support; unverified work stays in the TODO column.
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Model parsing and static model export | Actor and mesh animation |
-| `BSI`, `COL` | Textures and palettes in rendered worlds | Animated textures and water animation |
-| `GXA` | Preload parsing | Verified skies, sky layers, sun, and menu artwork |
+| `BSI`, `COL` | Textures and palettes; approximate Modern terrain-water animation verified in WASM | Faithful water animation and other animated textures |
+| `GXA` | Parsing and approximate Modern skybox verified in WASM | Faithful skies, sky layers, sun, and menu artwork |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
 | `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
 | `FNT` | Preload parsing | In-game text and menus |
@@ -78,13 +78,14 @@ committed support; unverified work stays in the TODO column.
 The world-loading agent verified the approximate Modern sky and animated water
 in ISLAND on the fresh WASM build. Paired fixed-camera frames show the sea
 changing while sampled land and sky stay identical. Selecting Faithful removes
-the approximate sky and restores static water. Local evidence is in
+the approximate sky and restores static water; paired Faithful sea captures
+showed zero changed pixels. Local evidence is in
 `cyrus-config/screenshots/water-{modern,faithful}-{a,b}.png`.
 
 Four environment tests passed before the restart: texture binding, time advance,
 unchanged shore geometry, and restoring Faithful mode. Structural checks covered
-all 29 environment sidecars; seven declare water. The environment commit is
-pending. Matching the original and verifying the native artifact remain open;
+all 29 environment sidecars; seven declare water. This implementation landed in
+[4a7696d](https://github.com/michidk/cyrus/commit/4a7696d). Matching the original and verifying the native artifact remain open;
 this Modern preview does not complete the faithful sky/water requirements.
 Sound remains uncommitted and unverified.
 Configuration-selected language and audio assets also need runtime verification.
