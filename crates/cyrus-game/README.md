@@ -14,8 +14,8 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
 | `sky` | Glide sky playback, material and shader, projected behind scene geometry. |
 | `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
-| `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
-| `animation_export` | Retains RGM animation metadata and referenced 3D/3DC/ROB frames through rgpre. |
+| `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups and literal authored animation tasks to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
+| `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `sound` | `SYSTEM.INI` audio switches; `MAIN.SFX` effects by index (looping per the file's flag) and RTX voice clips by label. No in-game triggers yet. Native only. |
@@ -32,8 +32,9 @@ no install is linked and say so.
 World exports include `.animations` sidecars containing actor animation groups,
 RAAN model references, and decoded model frame positions and normals. Missing or
 unsupported model references remain explicit in the asset's `unsupported` map.
-Original RAHD, RAAN, RAGR and RANM payloads are retained too, including header
-fields not exposed by the decoded metadata. They are not interpreted by cyrus.
+Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
+retained too. Preservation supplies typed literal task/End decoding; cyrus exports
+portable program descriptors with names from the installed SOUP386.DEF.
 Embedded ROB models are retained when matching archive payloads agree; conflicting
 payloads remain unsupported rather than selecting an archive without evidence.
 Native and browser scene loading retain this data. Re-export worlds for schema 2
@@ -56,11 +57,21 @@ bypass that priority. End selects a pending or default group in the same call,
 reusing its tick input. `set_loop_count` supplies the finite count when a
 PushAnimation task becomes current. Returning to the same default keeps the
 group identity, so a finite count alone does not prove the waiting task completed.
-This core does not drive `AnimationPlayback` or activate world objects.
+`AnimationScript` supports authored literal `PushAnimation` tasks and `End`
+continuations. Its explicit stages preserve the request, count-start and wait
+phases; task completion can start the next instruction in the same stage. End
+stores its target and yields, so a later eligible stage can restart the authored
+sequence. Unsupported operands, tasks, interrupt entries and synchronization
+channels fail explicitly.
+
+`AnimationPlayback::new_scripted` connects these cores to private rendered meshes.
+Supplied ticks run ordinary advancement/default request, then the script stage;
+immediate script requests reuse the same ticks. This does not activate world
+objects. Render updates alone do not advance either core.
 
 Animated i16 frame
 interpretation, mesh replacement across models, automatic actor activation,
-script scheduling, state-dependent default selection, other group types,
+complete script scheduling, state-dependent default selection, other group types,
 cancellation requests and the host-clock driver remain
 unsupported. These APIs do not establish matched original-game playback.
 

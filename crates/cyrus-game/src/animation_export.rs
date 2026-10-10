@@ -13,6 +13,8 @@ use std::{
     path::Path,
 };
 
+mod script;
+
 fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
     let encoding = match model.frame_data.first().map(|frame| frame.frame_type) {
         Some(FrameType::Static3D) => "static_3d",
@@ -106,7 +108,9 @@ pub(crate) fn export(
     world: u32,
     out: &Path,
 ) -> anyhow::Result<()> {
-    let metadata = rgm::export_rgm_metadata_json(rgm, None);
+    let mut metadata = rgm::export_rgm_metadata_json(rgm, None);
+    metadata["animation_scripts"] = script::export(rgm, &registry.root_path)
+        .with_context(|| format!("world {world}: animation scripts for {}", out.display()))?;
     let mut sections = BTreeMap::new();
     for section in &rgm.sections {
         let (tag, bytes) = match section {
@@ -114,6 +118,10 @@ pub(crate) fn export(
             RgmSection::Raan(_, bytes) => ("RAAN", bytes),
             RgmSection::Ragr(_, bytes) => ("RAGR", bytes),
             RgmSection::Ranm(_, bytes) => ("RANM", bytes),
+            RgmSection::Rasc(_, bytes) => ("RASC", bytes),
+            RgmSection::Rast(_, bytes) => ("RAST", bytes),
+            RgmSection::Rasb(_, bytes) => ("RASB", bytes),
+            RgmSection::Rava(_, bytes) => ("RAVA", bytes),
             _ => continue,
         };
         anyhow::ensure!(

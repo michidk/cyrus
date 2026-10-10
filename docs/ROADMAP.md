@@ -33,7 +33,7 @@ Update or release ownership when work changes.
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; terrain support and an ordinary height-changing response verified against original traces; obstacle response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
 | Startup and main menu | Codex: Faithful Startup Sequence | Options/settings and Movies browsing verified through native MCP; ownership released. Playback integration, browser verification, motion, lighting, saves, and New Game remain pending |
-| Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions verified by native contracts and WASM compilation; researching original eligibility, clock and script scheduling for automatic playback |
+| Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions landed; literal authored task/End playback passes native contracts; WASM compilation and final workspace gates passed; original eligibility, clock and complete script scheduling remain open |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -77,7 +77,7 @@ committed support; unverified work stays in the TODO column.
 | `RTX` | All voice clips of the `rtx_filename` container load in the background; playback by label via `play_speech`; `dialog_use_speech` honoured | Dialogue and combat triggers, subtitles and text, dialogue choices, and quest integration |
 | `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
-| SOUP scripts | No working interpreter accepted | Execution, events, native bindings, and synchronization |
+| SOUP scripts | Original payloads and typed literal Task/End descriptors retained; explicit authored animation-task playback passes native contracts | Automatic activation, full control flow, events, other native bindings, interrupts, and synchronization |
 | `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, cinematic playback, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | No gameplay integration accepted | Combat and items |
@@ -184,18 +184,24 @@ preview health checks also passed. The debug menu landed in
   Explicit forward groups and source-mapped mesh poses are supported.
   A separate forward type-zero request core handles ordinary numeric priority,
   forced replacement, finite task loop counts, and explicit default fallback
-  in the same update. It does not drive rendered playback. Automatic activation,
-  the host-clock driver, state-dependent defaults, other group types, script
-  scheduling and event cues remain unsupported. Original-game visual comparison is pending.
+  in the same update. Literal PushAnimation/End programs are now connected to
+  explicit rendered playback. Native contracts verify their stage ordering and
+  installed FLAG2 transitions; WASM compilation and final workspace gates pass. Automatic activation,
+  the host-clock driver, state-dependent defaults, other group types, complete
+  script scheduling and event cues remain unsupported. Original-game visual comparison is pending.
   Frame reference, countdown and walking-marker facts are published in preservation
   commits `8c3856e`, `9b4206b` and `92b9933`. Request priority and default fallback
   are documented in `84cc21d`. Placed-actor initialization, spatial update
   membership and forced requests are documented in `d1e8e46`; `64eca10` corrects
   the activation-window center to the current view coordinates. `ea35fca`
   documents advancement before the main script stage and immediate script
-  request advancement. All 28 native
-  pose, frame and request contracts pass, including installed FLAG2 deformation
-  and restoration. Automatic rendered playback remains unchecked.
+  request advancement. Preservation `a1ffba6` documents the separate task-start
+  phase and authored End continuation; it corrects the permanent-stop assumption.
+  All 34 native animation
+  contracts pass in final workspace tests, including installed FLAG2 task
+  transitions, End restart, GLB deformation and restoration without skipping.
+  Final workspace formatting, strict all-target Clippy and tests pass.
+  Automatic rendered playback remains unchecked.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.

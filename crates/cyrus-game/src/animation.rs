@@ -7,10 +7,12 @@ use std::collections::BTreeMap;
 mod actor;
 mod frame;
 mod playback;
+pub(crate) mod script;
 mod sequence;
 pub use actor::ActorAnimation;
 pub use frame::{AnimationPose, FrameGeometry, MeshFrameBinding};
 pub use playback::{AnimationPlayback, AnimationTick};
+pub use script::AnimationScript;
 pub use sequence::{FrameSequence, ModelFrame};
 
 /// Per-world animation metadata and decoded geometry from preservation's parsers.
@@ -23,7 +25,7 @@ pub struct Animations {
     pub world: u32,
     /// Preservation runtime metadata, including actor groups, RAAN references and MPOB IDs.
     pub metadata: serde_json::Value,
-    /// Original RAHD, RAAN, RAGR and RANM payloads, including fields not decoded in metadata.
+    /// Original animation and script payloads, including fields not decoded in metadata.
     pub sections: BTreeMap<String, Vec<u8>>,
     /// Models keyed by uppercase filename stem; coordinates retain parser units and axes.
     pub models: BTreeMap<String, AnimationModel>,

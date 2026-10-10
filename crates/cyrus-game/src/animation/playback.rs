@@ -1,14 +1,25 @@
 //! Explicitly activated group playback. The game scheduler owns eligibility and timing.
-use super::{AnimationPose, AnimationRequest, Animations, FrameSequence};
+use super::{
+    ActorAnimation, AnimationPose, AnimationRequest, AnimationScript, Animations, FrameSequence,
+};
 use bevy::prelude::*;
 
-/// An activated forward group on one placed GLB node, bound to its source world asset.
-/// This component does not activate actors, run SOUP, or select a default group after End.
+/// Explicit playback on one placed GLB node, bound to its source world asset.
+/// The caller supplies eligibility and nominal ticks; no world activation is inferred.
 #[derive(Component)]
 pub struct AnimationPlayback {
     source: Handle<Animations>,
     actor: String,
-    sequence: FrameSequence,
+    playback: Playback,
+}
+
+enum Playback {
+    Group(FrameSequence),
+    Scripted {
+        animation: ActorAnimation,
+        script: AnimationScript,
+        default: u16,
+    },
 }
 
 impl AnimationPlayback {
@@ -23,8 +34,45 @@ impl AnimationPlayback {
         Ok(Self {
             source,
             actor: actor.into(),
-            sequence: animations.sequence(actor, group, loops)?,
+            playback: Playback::Group(animations.sequence(actor, group, loops)?),
         })
+    }
+
+    /// Connects a supported authored main program to mesh playback with a caller-selected
+    /// default group. Each supplied tick runs ordinary advancement/default request, then
+    /// the script stage. Actor movement, state selection and interrupt work are unsupported.
+    pub fn new_scripted(
+        source: Handle<Animations>,
+        animations: &Animations,
+        actor: &str,
+        default: u16,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            source,
+            actor: actor.into(),
+            playback: Playback::Scripted {
+                animation: animations.actor_animation(actor, default)?,
+                script: animations.animation_script(actor)?,
+                default,
+            },
+        })
+    }
+}
+
+impl Playback {
+    fn advance(&mut self, ticks: u32) -> anyhow::Result<Option<u32>> {
+        match self {
+            Self::Group(sequence) => sequence.advance(ticks, false),
+            Self::Scripted {
+                animation,
+                script,
+                default,
+            } => {
+                let frame = animation.advance(ticks)?;
+                let frame = animation.request(*default, 0, ticks)?.or(frame);
+                Ok(script.advance(animation, ticks)?.or(frame))
+            }
+        }
     }
 }
 
@@ -58,14 +106,11 @@ pub(super) fn advance(
             let Some(animations) = assets.get(&playback.source) else {
                 continue;
             };
-            let result = playback
-                .sequence
-                .advance(tick.ticks, false)
-                .and_then(|reference| {
-                    reference
-                        .map(|reference| animations.resolve_frame(&playback.actor, reference))
-                        .transpose()
-                });
+            let result = playback.playback.advance(tick.ticks).and_then(|reference| {
+                reference
+                    .map(|reference| animations.resolve_frame(&playback.actor, reference))
+                    .transpose()
+            });
             match result {
                 Ok(Some(frame)) => {
                     commands.entity(entity).insert(AnimationPose {
@@ -74,7 +119,9 @@ pub(super) fn advance(
                     });
                 }
                 Ok(None) => {
-                    commands.entity(entity).remove::<AnimationPlayback>();
+                    if matches!(playback.playback, Playback::Group(_)) {
+                        commands.entity(entity).remove::<AnimationPlayback>();
+                    }
                 }
                 Err(error) => {
                     error!(

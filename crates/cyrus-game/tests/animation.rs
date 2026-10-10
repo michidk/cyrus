@@ -735,6 +735,29 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     let data: Animations =
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
     data.validate().unwrap();
+    assert!(data.sections.contains_key("RASC"));
+    let mut script = data.animation_script("FLAG2").unwrap();
+    let mut actor = data.actor_animation("FLAG2", 0).unwrap();
+    let mut transitions = Vec::new();
+    let mut ended = false;
+    for _ in 0..10_000 {
+        actor.advance(1).unwrap();
+        actor.request(0, 0, 1).unwrap();
+        let before = script.program_counter();
+        script.advance(&mut actor, 1).unwrap();
+        if script.program_counter() != before {
+            if script.waiting_for_group().is_none() {
+                ended = true;
+                break;
+            }
+            transitions.push(script.waiting_for_group().unwrap());
+        }
+    }
+    assert!(ended, "the installed finite tasks must reach End");
+    assert_eq!(transitions, [1, 10, 1, 10]);
+    assert_eq!(script.program_counter(), 0);
+    script.advance(&mut actor, 1).unwrap();
+    assert_eq!(script.waiting_for_group(), Some(1));
     let resolved = data.resolve_frame("FLAG2", 2).unwrap();
     assert_eq!((&*resolved.model, resolved.frame), ("FLAGA01", 2));
     let bytes = std::fs::read(&path).unwrap();
