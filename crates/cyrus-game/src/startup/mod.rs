@@ -8,6 +8,8 @@ mod menu_preferences;
 mod movie;
 pub use menu_preferences::MenuPreferences;
 #[cfg(not(target_arch = "wasm32"))]
+pub use movie::MovieAudio;
+#[cfg(not(target_arch = "wasm32"))]
 mod menu_export;
 mod menu_raster;
 pub use menu::MenuState;

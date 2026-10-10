@@ -68,6 +68,10 @@ struct ScreenshotParams {
 struct SoundParams {
     #[schemars(description = "0-based effect index in the install's sound/MAIN.SFX")]
     effect: usize,
+    #[schemars(
+        description = "Optional world position [x, y, z]; the volume then falls off with the camera's distance"
+    )]
+    position: Option<[f32; 3]>,
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -189,7 +193,10 @@ impl Cyrus {
         &self,
         Parameters(p): Parameters<SoundParams>,
     ) -> Result<CallToolResult, McpError> {
-        text(call(Command::PlaySound { effect: p.effect })?)
+        text(call(Command::PlaySound {
+            effect: p.effect,
+            position: p.position,
+        })?)
     }
 
     #[tool(description = "Play a voice clip from the install's RTX file by label.")]

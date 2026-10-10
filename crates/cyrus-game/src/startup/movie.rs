@@ -53,8 +53,9 @@ struct Playing {
     started: bool,
     audio_started: bool,
 }
+/// The audio of the playing movie; CD music pauses while it exists.
 #[derive(Component)]
-struct MovieAudio;
+pub struct MovieAudio;
 struct Decoder {
     child: Mutex<Child>,
     frames: Mutex<mpsc::Receiver<anyhow::Result<Vec<u8>>>>,

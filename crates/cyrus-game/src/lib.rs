@@ -15,6 +15,7 @@ pub mod install;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod loading;
 #[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod music;
 pub mod player;
 #[cfg(not(target_arch = "wasm32"))]
@@ -24,6 +25,8 @@ mod sky;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod sound;
 pub mod startup;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod subtitles;
 mod water;
 
 use bevy::prelude::*;
@@ -57,6 +60,7 @@ impl Plugin for GamePlugin {
                 control::ControlPlugin,
                 sound::SoundPlugin,
                 music::MusicPlugin,
+                subtitles::SubtitlePlugin,
             ));
     }
 }

@@ -18,8 +18,9 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
-| `sound` | `SYSTEM.INI` audio switches; `MAIN.SFX` effects by index (looping per the file's flag) and RTX voice clips by label. No in-game triggers yet. Native only. |
-| `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it ([published for preservation review](https://github.com/michidk/redguard-preservation/compare/main...docs/redbook-music)). Native only. |
+| `sound` | `SYSTEM.INI` and Sound page audio settings; `MAIN.SFX` effects by index and RTX voice clips by label at their header base volume times the master volume, with optional distance falloff and stereo pan from the camera, through the original's Miles mixer gains. No in-game triggers yet. Native only. |
+| `subtitles` | Dialogue subtitles for voice clips: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
+| `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it; the book menu plays track 2; the Music slider sets the drive level (preservation `docs/engine/music.md`). Native only. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
 `startup` presentation, `animation`, `environment`, `fidelity`, `player` and `settings` compile on wasm and are reused by

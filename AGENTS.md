@@ -81,8 +81,9 @@ shapes; passing it proves nothing about where code came from.
   bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
   load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
   `startup/` (installed splash/title playback, Options, and Movies browsing),
-  `settings.rs` (`cyrus-config/settings.toml`), `sound.rs` (SFX effects, RTX speech),
-  `music.rs` (CD tracks per world), `control.rs` (TCP control server).
+  `settings.rs` (`cyrus-config/settings.toml`), `sound.rs` (SFX effects, RTX speech, volumes),
+  `music.rs` (CD tracks), `subtitles.rs`
+  (dialogue subtitles), `control.rs` (TCP control server).
 - `crates/cyrus-control` — the control protocol types and a blocking client.
 - `crates/cyrus-web` — browser build (wasm32). Shows scenes the native game
   exported to `cyrus-config/cache/`, served next to the page. Not a default

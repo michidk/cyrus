@@ -218,16 +218,17 @@ fn handle(
                     Err("startup presentation is not active".into())
                 }
             }
-            Command::PlaySound { effect } => {
+            Command::PlaySound { effect, position } => {
                 match audio
                     .effects
                     .as_ref()
                     .and_then(|e| e.0.get(effect)?.as_ref())
                 {
                     Some(loaded) => {
-                        audio
-                            .requests
-                            .write(crate::sound::SoundRequest::Play(effect));
+                        audio.requests.write(crate::sound::SoundRequest::Play {
+                            effect,
+                            position: position.map(Vec3::from_array),
+                        });
                         Ok(json!({"effect": effect, "looping": loaded.looping}))
                     }
                     None => Err(format!("sound effect {effect} is not loaded")),
