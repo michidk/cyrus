@@ -15,13 +15,13 @@ struct Args {
     /// No window, no renderer: preload, scene export and the control server only.
     #[arg(long)]
     headless: bool,
-    /// Skip splash and title and open the placeholder menu. --scene loads a world directly.
+    /// Skip splash and title and open the book menu. --scene loads a world directly.
     #[arg(long)]
     skip_startup: bool,
     /// Export every WORLD.INI world to the browser cache and exit.
     #[arg(long)]
     export_all_worlds: bool,
-    /// Export startup splash and title images to the browser cache and exit.
+    /// Export splash, title, and book-menu images to the browser cache and exit.
     #[arg(long)]
     export_startup: bool,
     /// Control server bind address.
@@ -38,10 +38,14 @@ fn main() -> anyhow::Result<()> {
     }
     let install = GameInstall::locate(args.install.as_deref())?;
     if args.export_startup {
+        cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
         return cyrus_game::startup::export_startup(&install, &Settings::cache_dir());
     }
     if args.export_all_worlds {
         return cyrus_game::scene::export_all_worlds(&install, &Settings::cache_dir());
+    }
+    if startup {
+        cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
     }
     if startup && !args.skip_startup {
         cyrus_game::startup::export_startup(&install, &Settings::cache_dir())?;

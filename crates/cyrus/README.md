@@ -9,11 +9,11 @@ cargo run -p cyrus -- --headless --scene 27 # preload, scene export and control 
 cargo run -p cyrus -- --export-all-worlds   # write every WORLD.INI world to cyrus-config/cache
 ```
 
-Without `--scene`, a windowed launch runs startup through a placeholder menu.
+Without `--scene`, a windowed launch runs startup through the book menu.
 `--scene` and headless launches retain direct scene loading.
-`--skip-startup` opens the placeholder menu without exporting startup assets.
+`--skip-startup` opens the book menu without exporting splash/title assets; it still exports the installed menu.
 
-Flags: `--export-startup` renders the startup image cache and exits; `--install PATH` (else `$REDGUARD_DIR`, else `./redguard`), `--scene STEM|ID`,
+Flags: `--export-startup` renders the startup and menu image caches and exits; `--install PATH` (else `$REDGUARD_DIR`, else `./redguard`), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
 Settings come from `cyrus-config/settings.toml`.
 With `--scene`, press F1 to choose a world, set flycam speed, and change runtime fidelity.

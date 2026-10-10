@@ -31,7 +31,7 @@ Update or release ownership when work changes.
 | Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam foundation landed; tracing the original walking startup discrepancy before locomotion integration; `magic/artifacts/2026-10-10-player/` |
-| Startup presentation | Released: Codex, Faithful Startup Sequence | Original-file splash/title through a placeholder menu; native/MCP entry paths and gates verified. Browser startup reaches the menu; final browser integration check with animation metadata remains pending |
+| Startup and main menu | Codex: Faithful Startup Sequence | Startup and settled main-page menu verified through native MCP; ownership released. Motion, lighting, remaining actions, and New Game introduction are still pending |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
 Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
@@ -41,7 +41,8 @@ Later engine-cache edits are not marked complete here.
 
 - [x] Rust/Bevy workspace, install discovery, settings, and fidelity switch.
 - [x] Startup preload, progress display, and parse-failure logging.
-- [x] Installed 3dfx splash and title playback through a placeholder menu; CLI and MCP skip stop at the menu.
+- [x] Installed 3dfx splash and title playback through the book menu; CLI and MCP skip stop at the menu.
+- [x] MENU.INI-defined main-page appearance, keyboard selection and Quit, using installed geometry and rgpre fonts. Other actions remain unavailable.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Export all 29 installed worlds, with structural checks.
@@ -65,17 +66,19 @@ committed support; unverified work stays in the TODO column.
 | --- | --- | --- |
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
-| `3D`, `3DC`, `ROB` | Static export and retained animation frame geometry, including unambiguous embedded models | Actor and mesh animation playback |
+| `3D`, `3DC`, `ROB` | Static export and retained animation frame geometry, including unambiguous embedded models; settled book-menu geometry | Actor and mesh animation playback and book motion |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
-| `GXA` | Startup title artwork and preload parsing | Software sky projection and menu artwork |
+| `GXA` | Startup title artwork and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
 | Glide sky BSI/COL | Static initial sky plane in both graphics modes, per preservation | Original comparison, scrolling, tilt, and sun disc |
 | `SFX` | Preload parsing | Verified sound playback and ambient/script triggers |
 | `RTX` | Preload parsing | Speech audio and text, subtitles, dialogue choices, and quest integration |
-| `FNT` | Configured startup font and title labels; preload parsing | In-game text and menus |
+| `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | No working interpreter accepted | Execution, events, native bindings, and synchronization |
-| `KEYS.INI`, `COMBAT.INI`, `ITEM.INI`, `MENU.INI` | No gameplay integration accepted | Controls, combat, items, and menus |
+| `MENU.INI` | Main-page labels, layout, selection flags, texture slots and action IDs | Submenu behavior and supported positive actions |
+| `KEYS.INI` | Menu activation key and held player-input foundation | Gameplay locomotion |
+| `COMBAT.INI`, `ITEM.INI` | No gameplay integration accepted | Combat and items |
 | CD audio | No playback accepted | Music playback, timing, and volume controls |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
@@ -96,6 +99,14 @@ and shared displaced normals. A native loaded-world probe records changing
 water heights; scene cleanup and clock continuity pass behavioral tests.
 A matched original-game camera comparison remains unchecked.
 The session clock does not synchronize absolute phase with a DOS clock.
+
+**Verified:** native MCP menu checks cover disabled-entry skipping, circular
+selection, repeat, unavailable actions, Quit, and startup/menu/world transitions.
+Editing the local MENU.INI label changes the displayed entry without changing
+its Quit handler. The original settled menu confirms framing and text styles.
+Lighting, opening/closing motion, menu audio, mouse selection, gameplay snapshots,
+and neighboring-page text remain unsupported. This is main-page presentation,
+not full menu functionality.
 
 Sound remains uncommitted and unverified.
 Configuration-selected language and audio assets also need runtime verification.

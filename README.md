@@ -5,10 +5,10 @@ Point it at your own GOG install and it loads the island, the models, the
 scripts and the sounds from there. No game data is bundled or distributed.
 
 Status: startup presentation and a world viewer. Default launch shows the
-original splash and title, then stops at a placeholder menu. Nothing is playable yet.
+original splash and title, then stops at the book menu. Nothing is playable yet.
 
 - Buy the game on GOG, extract it, link `redguard` to its `Redguard/` folder.
-- `just run` for startup, `just run --skip-startup` for the placeholder menu,
+- `just run` for startup, `just run --skip-startup` for the book menu,
   or `just run --scene START` for a world. See `docs/SETUP.md`.
 - Faithful by default; modern controls, camera and graphics are opt-in
   switches in `cyrus-config/settings.toml`.

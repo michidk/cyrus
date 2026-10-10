@@ -43,6 +43,13 @@ crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
    explicitly unsupported. Neither `// unverified` nor Modern mode authorizes
    invented behavior. Keep raw decompilation and research under `magic/`;
    implement from documented facts, never copied decompiled code.
+   **Use installed data as the source of truth.** Before implementing content,
+   look for its original configuration or asset definition. Read menu entries,
+   labels, layout, selection flags, and action IDs from `MENU.INI` through
+   `rgpre`; do not duplicate them in Rust tables. The same rule applies to other
+   data-defined content. Preservation owns parsing and recovered engine rules;
+   cyrus supplies presentation and the supported action handlers. Unimplemented
+   actions remain explicitly unavailable without replacing the original data.
 5. **Facts, not traces.** Tracked files carry no memory addresses, no
    executable offsets, no decompiler placeholder names, no "the original does X
    at ...". Engine facts are stated as facts and, where they are format or
@@ -73,7 +80,7 @@ shapes; passing it proves nothing about where code came from.
   `install.rs` (find the install), `loading.rs` (startup preload with progress
   bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
   load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
-  `startup/` (installed splash/title playback and placeholder menu),
+  `startup/` (installed splash/title playback and book menu),
   `settings.rs` (`cyrus-config/settings.toml`), `control.rs` (TCP control server).
 - `crates/cyrus-control` — the control protocol types and a blocking client.
 - `crates/cyrus-web` — browser build (wasm32). Shows scenes the native game
@@ -140,13 +147,14 @@ shapes; passing it proves nothing about where code came from.
 ## References and playtesting
 
 Default windowed and browser launches play the installed 3dfx splash and title,
-then stop at a placeholder menu. The menu and New Game introduction are not
-implemented. Startup uses original-file assets, never captured playback.
+then stop at the book menu. It supports settled main-page appearance, keyboard
+navigation, and Quit. Other actions and the New Game introduction remain
+unavailable. Startup uses original-file assets, never captured playback.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
 For agent work, choose the entry point explicitly:
 
-- `cargo run -p cyrus -- --skip-startup` skips splash/title to the placeholder menu.
+- `cargo run -p cyrus -- --skip-startup` skips splash/title to the book menu.
 - `cargo run -p cyrus -- --scene START` skips startup and loads that world directly.
 - `--headless --scene START` runs preload, export, and control without a window.
 - MCP `skip_startup` skips presentation to the menu; MCP `load_scene {name}`
@@ -154,7 +162,10 @@ For agent work, choose the entry point explicitly:
 - Browser `?scene=START` loads a world directly. Its default URL runs startup.
 
 Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
-player input. Skipping startup does not enable gameplay or implement the menu.
+player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
+Skipping startup does not enable gameplay. `state.menu` exposes the installed
+entries, action IDs, readiness, selection, and unavailable-action message.
+Wait for `state.menu.ready` before sending menu input.
 Keep each worktree's Cargo target directory separate so verification cannot use
 another checkout's binary.
 

@@ -1,6 +1,6 @@
 # cyrus-web
 
-The browser build (wasm32). Default launch shows startup through a placeholder menu.
+The browser build (wasm32). Default launch shows startup through the book menu.
 Export its assets with `cargo run -p cyrus -- --export-startup`. With `?scene=...`, it shows scenes the native game exported to
 `cyrus-config/cache/`, served next to the page; it does not read the install
 and has no preload or control port.

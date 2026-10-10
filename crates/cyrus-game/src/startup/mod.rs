@@ -1,6 +1,14 @@
 //! Startup images rendered from the install's authored splash and title assets.
 #[cfg(not(target_arch = "wasm32"))]
 mod export;
+mod menu;
+#[cfg(not(target_arch = "wasm32"))]
+mod menu_export;
+#[cfg(not(target_arch = "wasm32"))]
+mod menu_raster;
+pub use menu::MenuState;
+#[cfg(not(target_arch = "wasm32"))]
+pub use menu_export::export_menu;
 #[cfg(not(target_arch = "wasm32"))]
 mod raster;
 #[cfg(not(target_arch = "wasm32"))]
@@ -9,7 +17,7 @@ pub use export::export_startup;
 use crate::AppState;
 use bevy::{asset::LoadState, prelude::*};
 
-/// Plays installed startup images through the placeholder menu, before gameplay.
+/// Plays installed startup images through the installed book menu, before gameplay.
 pub struct StartupPlugin;
 
 /// Presence selects startup presentation instead of the scene-viewer preload UI.
@@ -37,8 +45,8 @@ impl Plugin for StartupPlugin {
                 (fit_image, advance).run_if(in_state(AppState::Loading)),
             )
             .add_systems(OnExit(AppState::Loading), remove_content)
-            .add_systems(OnEnter(AppState::Menu), placeholder_menu)
             .add_systems(OnExit(AppState::Menu), remove_content);
+        menu::register(app);
     }
 }
 
@@ -136,28 +144,6 @@ fn remove_content(mut commands: Commands, content: Query<Entity, With<StartupCon
         commands.entity(entity).despawn();
     }
     commands.remove_resource::<Playback>();
-}
-
-fn placeholder_menu(mut commands: Commands) {
-    commands.spawn((Camera2d, StartupContent));
-    commands.spawn((
-        StartupContent,
-        Node {
-            width: percent(100),
-            height: percent(100),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        children![(
-            Text::new("Main menu\nPlaceholder"),
-            TextFont {
-                font_size: FontSize::Px(24.0),
-                ..default()
-            },
-            TextLayout::justify(Justify::Center)
-        )],
-    ));
 }
 
 #[cfg(test)]

@@ -37,7 +37,7 @@ pub enum Command {
     LoadScene {
         name: String,
     },
-    /// Skip splash and title and stop at the placeholder menu; does not start a world.
+    /// Skip splash and title and stop at the book menu; does not start a world.
     SkipStartup,
     Quit,
 }

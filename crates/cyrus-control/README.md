@@ -12,7 +12,7 @@ Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`,
 `input {key, action: press|release|tap}` (Bevy `KeyCode` names),
 `set_fidelity {area, mode}`, `skip_startup`, `load_scene {name}`, `quit`.
 
-`skip_startup` goes to the placeholder menu. `load_scene` skips presentation or
+`skip_startup` goes to the book menu. `load_scene` skips presentation or
 leaves the menu and enters a world. `state` includes `Loading`, `Menu`, or `InGame`.
 
 `Client` is a blocking helper for tests and tools. The game side lives in

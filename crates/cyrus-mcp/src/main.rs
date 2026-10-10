@@ -165,7 +165,7 @@ impl Cyrus {
         text(call(Command::LoadScene { name: p.name })?)
     }
 
-    #[tool(description = "Skip the splash and title and stop at the placeholder menu.")]
+    #[tool(description = "Skip the splash and title and stop at the book menu.")]
     fn skip_startup(&self) -> Result<CallToolResult, McpError> {
         text(call(Command::SkipStartup)?)
     }
