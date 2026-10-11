@@ -3,11 +3,9 @@ use bevy::prelude::*;
 
 mod actor;
 mod playback;
-pub(crate) mod script;
 mod sequence;
 pub use actor::ActorAnimation;
 pub use playback::{AnimationPlayback, AnimationTick};
-pub use script::AnimationScript;
 pub use sequence::{AnimationSound, FrameSequence};
 
 use cyrus_assets::animation::AnimationLoader;

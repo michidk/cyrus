@@ -39,12 +39,20 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         std::fs::create_dir_all(parent)?;
     }
     crate::animation_export::export(&rgm, &models, &registry, entry.index, out)?;
-    crate::player_export::models::export(&rgm, &registry, &palette, &mut cache, out)?;
+    let player_model_radii =
+        crate::player_export::models::export(&rgm, &registry, &palette, &mut cache, out)?;
     let (root, buffer) = match &entry.world {
         Some(path) => {
             let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
             crate::environment_export::export(install, entry, Some(&terrain), out)?;
-            crate::player_export::export(&install.root, &rgm, Some(&terrain), entry.index, out)?;
+            crate::player_export::export(
+                &install.root,
+                &rgm,
+                Some(&terrain),
+                entry.index,
+                &player_model_radii,
+                out,
+            )?;
             convert_wld_scene_to_gltf(
                 &terrain,
                 TERRAIN_TEXBSI_ID,
@@ -56,7 +64,14 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         }
         None => {
             crate::environment_export::export(install, entry, None, out)?;
-            crate::player_export::export(&install.root, &rgm, None, entry.index, out)?;
+            crate::player_export::export(
+                &install.root,
+                &rgm,
+                None,
+                entry.index,
+                &player_model_radii,
+                out,
+            )?;
             convert_positioned_models_to_gltf(
                 &models,
                 &lights,
@@ -148,6 +163,10 @@ pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()
                     std::fs::copy(
                         path.with_extension("animations"),
                         out.join(format!("{stem}.animations")),
+                    )?;
+                    std::fs::copy(
+                        path.with_extension("scripts"),
+                        out.join(format!("{stem}.scripts")),
                     )?;
                     std::fs::copy(
                         path.with_extension("player"),

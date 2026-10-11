@@ -24,6 +24,8 @@ pub mod preferences;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod scene;
 pub mod script;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod script_export;
 pub mod sound;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod sound_export;

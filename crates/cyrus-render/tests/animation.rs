@@ -211,7 +211,7 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
     data.validate().unwrap();
     assert!(data.sections.contains_key("RASC"));
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "FLAG2").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "FLAG2").unwrap();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "FLAG2", 0).unwrap();
     let mut transitions = Vec::new();
     let mut ended = false;

@@ -12,6 +12,7 @@ bevy = { workspace = true, features = ["bevy_asset"] }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+blake3.workspace = true
 cyrus-text.workspace = true
 smk = "0.1"
 log.workspace = true

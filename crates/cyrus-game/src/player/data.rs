@@ -11,6 +11,8 @@ use cyrus_world::collision::{collision_world::StaticCollision, ground::TerrainGr
 #[derive(Asset, TypePath)]
 pub struct PlayerScene {
     pub world: u32,
+    /// Authored model radii in map units; absent entries require re-export.
+    pub model_radii: std::collections::BTreeMap<String, f32>,
     /// Installed keyboard defaults, independent of per-user menu preferences.
     pub keyboard_codes: Option<[u8; 8]>,
     pub settings: MovementSettings,
@@ -24,6 +26,27 @@ pub struct PlayerScene {
 }
 
 impl PlayerScene {
+    /// Select static candidates using the current player model's authored radius.
+    /// `None` means no active model; a named model missing cache data is an error.
+    pub fn candidates(
+        &self,
+        view: [i32; 2],
+        position: [i64; 3],
+        model: Option<&str>,
+    ) -> anyhow::Result<cyrus_world::collision::collision_world::StaticCandidates> {
+        let radius = model
+            .map(|name| {
+                self.model_radii.get(name).copied().with_context(|| {
+                    format!(
+                        "world {} player model {name}: radius absent; re-export world",
+                        self.world
+                    )
+                })
+            })
+            .transpose()?;
+        self.static_collision.candidates(view, position, radius)
+    }
+
     /// Resolve selected support without changing actor surface state or the shared veto.
     pub fn support_surface(
         &self,
@@ -69,6 +92,7 @@ pub struct PlayerSceneRequest(pub Handle<PlayerScene>);
 
 impl PlayerScene {
     fn from_data(data: SceneData) -> anyhow::Result<PlayerScene> {
+        data.validate()?;
         anyhow::ensure!(
             data.version == 2,
             "world {}: unsupported player schema {}; re-export",
@@ -102,6 +126,7 @@ impl PlayerScene {
             ),
         };
         Ok(PlayerScene {
+            model_radii: data.model_radii,
             world: data.world,
             keyboard_codes: data.keyboard_codes,
             settings: data.settings,

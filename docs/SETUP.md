@@ -54,6 +54,30 @@ Unavailable markers report a player-entry error. Ground settling, locomotion,
 and the original follow camera remain unsupported; use the independent debug
 flycam to inspect the world.
 
+## CI artifacts
+
+The `Build artifacts` workflow packages the native game for Linux x64,
+Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
+It also includes `cyrus-viewer` and its browser worker when the viewer crates
+are present in the checked-out revision. The viewer currently lives on its
+separate development branch; game revisions without it contain only the game.
+
+Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
+lint CI still runs on every push and pull request. Artifact builds run only for
+version tags and manual dispatch. Actions artifacts expire after seven days.
+Pushing a version tag matching `v*` builds its revision and creates
+a draft GitHub release with all archives and `SHA256SUMS` after every platform
+succeeds. Review the draft's assets and notes before publishing it; publishing
+does not rebuild them. A manual dispatch with `release_tag` set to an existing
+tag also attaches artifacts and creates a draft when no release exists.
+
+Archives contain application code and crate usage instructions. They contain
+no game files, exported previews, or local state. Native executables still need
+the player's GOG install. Browser bundles need locally exported game assets;
+the asset viewer needs privately served original files as described in its
+crate README. Downloading an artifact does not establish runtime or fidelity
+support on that platform.
+
 ## Browser build
 
 ```sh
@@ -136,10 +160,13 @@ each GLB. Native and browser scene loading retain animation groups, model
 references, frame geometry, original animation section payloads, and environment
 inputs. Re-export for animation schema 2 and source-mapped GLB geometry. Explicit
 group playback accepts supplied simulation ticks and updates private model
-meshes. Re-export again to retain script payloads and typed literal-task/End
-program descriptors. Explicit scripted playback accepts a caller-selected default,
+meshes. Re-export again to retain script payloads and version-2 typed SOUP
+program descriptors plus the independent `.scripts` sidecar. Explicit scripted playback accepts a caller-selected default,
 executes authored PushAnimation tasks, and applies their mesh frames. End stores
-its target for a later eligible stage. Automatic world activation, host timing,
+its target for a later eligible stage through the shared `cyrus-script` core.
+Control `state.scripts` reports cache readiness, program and unsupported counts,
+and bounded unsupported examples. Loaded scripts do not imply live execution.
+Automatic world activation, host timing,
 interrupts, synchronization channels and other script operations remain unsupported. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
@@ -237,3 +264,18 @@ response reports held `player_input` actions and the separate `flycam` position.
 Direct browser scene launches load exported keyboard defaults and saved local
 Controls overrides. Re-export worlds to include the keyboard defaults. Locomotion
 remains unsupported.
+
+### Explicit SOUP inspection
+
+Native control and MCP `scripts` return paged logical actor state after
+`state.scripts` reports `Loaded`. `step_script` takes the returned actor
+`generation`, `index`, and stage `main`, `interrupt`, or `tasks`. Actor IDs
+expire when a world is replaced, including a reload of the same cache handle.
+
+**Verified:** the portable core supports expressions, control flow, actor return
+state and shared task slots through explicit hosts. Installed programs and
+initial instance locals are retained independently of rendered meshes. The
+inspection host supports self `GetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag`
+and `TestGlobalFlag`; unsupported services produce a
+sticky contextual failure. Automatic actor eligibility, simulation timing,
+complete native handlers, progression and resumable saves remain unavailable.

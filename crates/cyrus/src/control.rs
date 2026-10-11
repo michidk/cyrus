@@ -73,6 +73,14 @@ struct Audio<'w> {
     music: Option<Res<'w, cyrus_render::music::Music>>,
 }
 
+#[derive(bevy::ecs::system::SystemParam)]
+struct Inspection<'w> {
+    preloaded: Option<Res<'w, Preloaded>>,
+    hud: Option<Res<'w, cyrus_render::hud::HudState>>,
+    scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
+    script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle(
     mut commands: Commands,
@@ -93,10 +101,12 @@ fn handle(
         Option<Res<cyrus_render::startup::StartupPresentation>>,
         Option<Res<cyrus_render::startup::MenuState>>,
     ),
-    (preloaded, hud): (
-        Option<Res<Preloaded>>,
-        Option<Res<cyrus_render::hud::HudState>>,
-    ),
+    Inspection {
+        preloaded,
+        hud,
+        scripts,
+        mut script_actors,
+    }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, flycam): (
         Res<cyrus_game::player::input::PlayerInput>,
@@ -121,7 +131,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": "cyrus-config/preload-report.json"})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "hud": hud.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "hud": hud.as_deref(), "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -233,6 +243,42 @@ fn handle(
                     .requests
                     .write(cyrus_render::sound::SoundRequest::StopAll);
                 Ok(json!("stopped"))
+            }
+            Command::Scripts { offset, limit } => {
+                match script_actors
+                    .as_ref()
+                    .and_then(|actors| actors.current.as_ref())
+                {
+                    Some(world) => Ok(world.inspect(offset, limit)),
+                    None => Err("script world is not prepared".into()),
+                }
+            }
+            Command::StepScript {
+                generation,
+                index,
+                stage,
+            } => {
+                match script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                {
+                    Some(world) => {
+                        let id = cyrus_game::script::ScriptActorId { generation, index };
+                        let result = match stage {
+                            cyrus_control::ScriptStage::Tasks => world.step_tasks(id),
+                            cyrus_control::ScriptStage::Main => {
+                                world.step(id, cyrus_game::script::Thread::Main, 100_000)
+                            }
+                            cyrus_control::ScriptStage::Interrupt => {
+                                world.step(id, cyrus_game::script::Thread::Interrupt, 100_000)
+                            }
+                        };
+                        result
+                            .map(|()| world.inspect(index, 1))
+                            .map_err(|error| format!("{error:#}"))
+                    }
+                    None => Err("script world is not prepared".into()),
+                }
             }
             Command::Quit => {
                 exit.write(AppExit::Success);

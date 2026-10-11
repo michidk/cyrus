@@ -78,7 +78,7 @@ Proposed responsibilities inside `crates/cyrus-script/src/`, with filenames fina
 
 - Program validation and lookup, using asset records rather than decoding installed bytes again.
 - Integer/expression evaluation, comparisons, local/global access, and object references.
-- Per-instance main/interrupt cursors, call stacks, return state, and explicit running/waiting/yielded/failed states.
+- Per-instance main/interrupt cursors, a shared actor return continuation, return state, and explicit running/waiting/yielded/failed states.
 - Blocking tasks, multitasks, completion identity, cancellation, and synchronization according to researched rules.
 - Structured failures containing world, actor, thread, instruction, operation, and relevant argument.
 
@@ -136,7 +136,7 @@ Phases 4 and later can build against synthetic records while upstream research c
 
 ## 8. Verification strategy
 
-Add public-interface synthetic tests to the new crate for expression modes, arithmetic edges, chained conditions, nested subroutines, bad branch targets, local/global initialization, and object-target calls. Include main/interrupt shared-local behavior, independent call stacks, task pause/completion, multitask cancellation, End restart, synchronization release, and runaway failure after their semantics are established.
+Add public-interface synthetic tests to the new crate for expression modes, arithmetic edges, chained conditions, subroutine continuation overwrite, bad branch targets, local/global initialization, and object-target calls. Include main/interrupt shared-local behavior, overwritten actor return continuations, task pause/completion, multitask cancellation, End restart, synchronization release, and runaway failure after their semantics are established.
 
 Preserve and migrate these existing contracts:
 
@@ -242,3 +242,22 @@ Track three distinct milestones:
 3. **Game support complete:** every operation needed by shipped progression works, dialogue/inventory/camera/combat/puzzles use the same authoritative state, world revisits and supported save points restore correctly, and full-game paths are verified.
 
 All milestones require contextual errors, unchanged installed files, portable dependency checks, no game data in tracked files, and honest resource-coverage documentation. A parsed script or successful opcode dispatch is not evidence that the game behavior works.
+
+## Implementation corrections
+
+**Verified:** subsequent original-interpreter research corrected the initial
+preservation and RG Unity assumptions. SOUP has a single shared actor return
+continuation, not general nested call stacks. Gosub overwrites it; Return
+restores a saved script-return byte. Active tasks reevaluate their encoded
+operands and use six actor-owned slots. Opcode 27 stops matching tasks; opcodes
+28 and 29 pause and resume them. Conditional operands can update their source
+before comparison. Native arguments evaluate from last to first, while handlers
+receive authored argument order. Global flag helpers maintain typed numeric values
+and separate latches. Object-targeted tasks belong to the receiver and allow the
+caller to continue. These contracts are published on the preservation
+[contribution branch](https://github.com/michidk/redguard-preservation/compare/main...feat/soup-runtime-records).
+
+These corrections supersede the corresponding proposed VM and test behavior
+above. Implementation remains incremental; portable execution and inspection
+do not satisfy the live scheduler, command-family, persistence or content exit
+gates.

@@ -59,6 +59,35 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
             .unwrap(),
         6
     );
+    let source_model = rgpre::import::model3d::parse_3d_file(
+        &std::fs::read(install.root.join("fxart/CYRSA001.3DC")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        scene.model_radii["CYRSA001"],
+        source_model.header.radius as f32 / 256.0
+    );
+    let position = [40816 * 256, -744 * 256, 41024 * 256];
+    assert_eq!(
+        scene
+            .candidates([40816, 41024], position, Some("CYRSA001"))
+            .unwrap(),
+        scene
+            .static_collision
+            .candidates(
+                [40816, 41024],
+                position,
+                Some(source_model.header.radius as f32 / 256.0)
+            )
+            .unwrap(),
+    );
+    assert!(
+        scene
+            .candidates([40816, 41024], position, Some("MISSING"))
+            .unwrap_err()
+            .to_string()
+            .contains("radius absent")
+    );
     let player = scene.definition.unwrap();
     assert_eq!(player.forward_walk, 8);
     let terrain = scene.terrain.unwrap();

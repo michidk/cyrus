@@ -2765,6 +2765,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bevy",
+ "blake3",
  "cyrus-text",
  "image",
  "log",
@@ -2802,6 +2803,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "cyrus-assets",
+ "cyrus-script",
  "cyrus-world",
  "log",
  "redguard-preservation",
@@ -2840,6 +2842,15 @@ dependencies = [
  "serde_json",
  "smk",
  "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "cyrus-script"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cyrus-assets",
+ "serde",
 ]
 
 [[package]]
@@ -5215,7 +5226,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -5629,7 +5640,7 @@ checksum = "a0d463f2884048e7153449a55166f91028d5b0ea53c79377099ce4e8cf0cf9bb"
 [[package]]
 name = "redguard-preservation"
 version = "0.6.2"
-source = "git+https://github.com/michidk/redguard-preservation?rev=2e9e3d7b396f65c2843d0298fb5174d6c5444366#2e9e3d7b396f65c2843d0298fb5174d6c5444366"
+source = "git+https://github.com/michidk/redguard-preservation?rev=641ca43b327de2f30bed05466f23d930db43c988#641ca43b327de2f30bed05466f23d930db43c988"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",
@@ -5646,6 +5657,7 @@ dependencies = [
  "log",
  "nom",
  "rayon",
+ "serde",
  "serde_json",
  "thiserror 2.0.21",
  "walkdir",

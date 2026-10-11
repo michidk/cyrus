@@ -58,6 +58,7 @@ mod tests {
     fn scene() -> PlayerScene {
         let collision = cyrus_assets::collision::CollisionScene::default();
         PlayerScene {
+            model_radii: Default::default(),
             world: 17,
             keyboard_codes: Some([72, 80, 75, 77, 42, 57, 56, 29]),
             settings: MovementSettings {

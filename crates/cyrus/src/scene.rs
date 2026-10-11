@@ -83,6 +83,7 @@ mod tests {
             MinimalPlugins,
             AssetPlugin::default(),
             cyrus_world::animation::AnimationPlugin,
+            cyrus_world::lifecycle::WorldPlugin,
         ))
         .insert_resource(GameInstall {
             root: std::env::temp_dir().join("cyrus-absent-install"),
@@ -93,7 +94,9 @@ mod tests {
             world: Some(17),
         })
         .add_systems(Update, load_requested);
-        let old = PreparedWorld::from_cache("OLD".into(), app.world().resource::<AssetServer>());
+        let mut old =
+            PreparedWorld::from_cache("OLD".into(), app.world().resource::<AssetServer>());
+        old.world = Some(17);
         let animations = old.animations.clone();
         app.insert_resource(old).update();
         assert_eq!(app.world().resource::<CurrentScene>().name, "OLD");

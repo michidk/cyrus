@@ -16,6 +16,9 @@ Without `--scene`, a windowed launch runs startup through the book menu.
 Flags: `--export-startup` renders startup images and exports the book-menu cache and exits; `--install PATH` (else `$REDGUARD_DIR`, else `./redguard`), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
 Settings come from `cyrus-config/settings.toml`.
+With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
+from a writable directory. On Windows the executable is `cyrus.exe`.
+The Linux archive uses Ubuntu 24.04 system libraries.
 With `--scene`, press F1 to choose a world, set flycam speed, and change runtime fidelity.
 
 This crate owns native settings and preference storage, binding initialization,

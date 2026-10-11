@@ -70,6 +70,9 @@ jobs:
       - name: Check the generated map
         run: dev/scripts/genmap.sh --check
 
+      - name: Check artifact packaging
+        run: python3 dev/scripts/test-build-artifacts.py
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check --color always
 

@@ -2,6 +2,7 @@
 use crate::animation::AnimationRequest;
 use bevy::{asset::AssetPath, prelude::*};
 use cyrus_assets::animation::Animations;
+use cyrus_assets::script::{ScriptLoader, Scripts};
 
 /// WORLD.INI ID or map stem, retaining the control protocol's scene string.
 #[derive(Resource, Debug, Clone)]
@@ -19,6 +20,8 @@ pub struct PreparedWorld {
     /// Native preparation can resolve this immediately; browser metadata loads asynchronously.
     pub world: Option<u32>,
     pub animations: Handle<Animations>,
+    /// Script records do not require a rendered mesh.
+    pub scripts: Handle<Scripts>,
     pub player_path: AssetPath<'static>,
     pub scene_path: AssetPath<'static>,
     pub environment_path: AssetPath<'static>,
@@ -29,6 +32,7 @@ impl PreparedWorld {
         Self {
             world: None,
             animations: assets.load(format!("cache://{name}.animations")),
+            scripts: assets.load(format!("cache://{name}.scripts")),
             player_path: format!("cache://{name}.player").into(),
             scene_path: format!("cache://{name}.glb").into(),
             environment_path: format!("cache://{name}.environment").into(),
@@ -42,7 +46,9 @@ pub struct WorldChange;
 pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CurrentScene>()
+        app.init_asset::<Scripts>()
+            .init_asset_loader::<ScriptLoader>()
+            .init_resource::<CurrentScene>()
             .init_resource::<WorldMetadataStatus>()
             .add_systems(
                 Update,

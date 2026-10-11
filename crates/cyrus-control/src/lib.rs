@@ -57,7 +57,31 @@ pub enum Command {
     },
     /// Stop every effect and voice clip; music keeps playing.
     StopSounds,
+    /// Inspect at most 64 logical script actors in the prepared world.
+    Scripts {
+        #[serde(default)]
+        offset: usize,
+        #[serde(default = "script_page_size")]
+        limit: usize,
+    },
+    /// Invoke one explicit stage; does not enable automatic gameplay.
+    StepScript {
+        generation: u64,
+        index: usize,
+        stage: ScriptStage,
+    },
     Quit,
+}
+
+fn script_page_size() -> usize {
+    32
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptStage {
+    Main,
+    Interrupt,
+    Tasks,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

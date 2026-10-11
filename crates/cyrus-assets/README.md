@@ -20,8 +20,13 @@ World exports include `.animations` sidecars containing actor animation groups,
 RAAN model references, and decoded model frame positions and normals. Missing or
 unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
-retained too. Preservation supplies typed literal task/End decoding; cyrus exports
-portable program descriptors with names from the installed SOUP386.DEF.
+retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
+program descriptors with names from the installed SOUP386.DEF. The independent
+`.scripts` sidecar retains definitions, fresh-game flag values, locals, strings,
+attributes, hooks and explicit unsupported records. Its content identity rejects
+changed metadata. Animation metadata retains the same script identity; preparation
+rejects animation/script sidecars from different exports. The animation inspection adapter also retains those same
+program descriptors in animation metadata.
 Embedded ROB models are retained when matching archive payloads agree; conflicting
 payloads remain unsupported rather than selecting an archive without evidence.
 Native and browser scene loading retain this data. Re-export worlds for schema 2
@@ -31,5 +36,7 @@ removing a pose or changing worlds restores the original mesh.
 
 World export also prepares CYRUS's standalone RAAN frame-source models under
 `<world>.player-models/`, with the world's palette, textures and source geometry
-mappings. Missing standalone player models report contextual export errors.
+mappings. The `.player` sidecar retains their authored model-header radii in map
+units for collision candidate selection. Missing standalone player models report
+contextual export errors.
 Re-export worlds before using explicit player model poses.

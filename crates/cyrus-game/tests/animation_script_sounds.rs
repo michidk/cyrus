@@ -16,8 +16,8 @@ fn asset() -> Animations {
                     {"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":2},
                     {"opcode":1}]}
             ]}],
-            "animation_scripts":{"ACTOR":{"version":1,"entry":0,"steps":{
-                "0":{"next":14,"operation":{"type":"task","function":"PushAnimation","arguments":[7,1]}},
+            "animation_scripts":{"ACTOR":{"version":2,"entry":0,"steps":{
+                "0":{"next":14,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]}}},
                 "14":{"next":19,"operation":{"type":"end","target":0}}
             }}}
         }),
@@ -31,7 +31,7 @@ fn asset() -> Animations {
 fn script_requests_dispatch_authored_cues_before_the_immediate_pose() {
     let data = asset();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     actor.request(0, 0, 1).unwrap();
     let mut events = Vec::new();
     let mut sounds = |event| {
@@ -87,7 +87,7 @@ fn script_requests_dispatch_authored_cues_before_the_immediate_pose() {
 fn script_sound_failures_keep_context_and_do_not_retry_the_cue() {
     let data = asset();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     let mut calls = 0;
     let mut sounds = |_| {
         calls += 1;

@@ -15,8 +15,8 @@ fn asset() -> Animations {
                     {"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":2},
                     {"opcode":1}]}
             ]}],
-            "animation_scripts":{"ACTOR":{"version":1,"entry":0,"steps":{
-                "0":{"next":14,"operation":{"type":"task","function":"PushAnimation","arguments":[7,1]}},
+            "animation_scripts":{"ACTOR":{"version":2,"entry":0,"steps":{
+                "0":{"next":14,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]}}},
                 "14":{"next":19,"operation":{"type":"end","target":0}}
             }}}
         }),
@@ -57,6 +57,7 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
             MinimalPlugins,
             AssetPlugin::default(),
             AnimationPlugin,
+            cyrus_game::script::ScriptPlugin,
             cyrus_render::animation::AnimationRenderPlugin,
             SoundPlugin,
         ))
@@ -103,20 +104,22 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
             .resource::<Assets<Animations>>()
             .get(&source)
             .unwrap();
-        let playback = if scripted {
-            AnimationPlayback::new_scripted(source.clone(), data, "ACTOR", 0).unwrap()
-        } else {
-            AnimationPlayback::new(source.clone(), data, "ACTOR", 7, 1).unwrap()
-        };
+        let group = (!scripted)
+            .then(|| AnimationPlayback::new(source.clone(), data, "ACTOR", 7, 1).unwrap());
+        let script = scripted.then(|| {
+            cyrus_game::script::ScriptedPlayback::new(source.clone(), data, "ACTOR", 0).unwrap()
+        });
         app.world_mut().resource_mut::<AnimationRequest>().0 = source;
         let actor = app
             .world_mut()
-            .spawn((
-                playback,
-                GlobalTransform::from_translation(Vec3::Z),
-                SoundSurface(0),
-            ))
+            .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(0)))
             .id();
+        if let Some(group) = group {
+            app.world_mut().entity_mut(actor).insert(group);
+        }
+        if let Some(script) = script {
+            app.world_mut().entity_mut(actor).insert(script);
+        }
         for (ticks, frame, sounds) in [
             (0, 1, 1),
             (0, 1, 1),
@@ -140,7 +143,9 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
             );
         }
         assert_eq!(
-            app.world().get::<AnimationPlayback>(actor).is_some(),
+            app.world()
+                .get::<cyrus_game::script::ScriptedPlayback>(actor)
+                .is_some(),
             scripted
         );
         if scripted {

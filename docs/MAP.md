@@ -8,7 +8,6 @@ module where it is defined and regenerate.
 
 - `src/animation.rs` — Validated animation cache records and source-frame lookup.
 - `src/animation_export.rs` — Native animation extraction through rgpre; no binary format parsing lives here.
-- `src/animation_export/script.rs` — Native script extraction through rgpre; portable playback reads descriptors only.
 - `src/audio.rs` — Native installed audio readers and PCM conversion.
 - `src/collision.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
 - `src/environment.rs` — Validated world environment records.
@@ -26,7 +25,9 @@ module where it is defined and regenerate.
 - `src/player_export/models.rs` — Textured player frame-source models, prepared for the shared GLB loader.
 - `src/preferences.rs` — Local book preferences, expressed in original menu action units.
 - `src/scene.rs` — Native scene export and installed world selection.
-- `src/script.rs` — Serialized explicit animation program descriptors.
+- `src/script.rs` — Portable SOUP programs and validated installed-definition records.
+- `src/script/validation.rs` — Validate portable operands before a script can issue host side effects.
+- `src/script_export.rs` — Native SOUP cache export through preservation's typed decoder and installed definitions.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/startup/export.rs` — (undocumented)
@@ -56,6 +57,12 @@ module where it is defined and regenerate.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
+- `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
+- `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
+- `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
+- `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
+- `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
+- `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 
@@ -81,6 +88,11 @@ module where it is defined and regenerate.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
+## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
+
+- `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
+- `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
+
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
 ## `cyrus-web` — shortcut: the browser loads GLBs that the native game exported into
@@ -94,7 +106,6 @@ module where it is defined and regenerate.
 - `src/animation.rs` — Retained animation inputs; playback timing and actor activation are not inferred.
 - `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
 - `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
-- `src/animation/script.rs` — Explicit main-script stages from preservation's SOUP and animation contracts.
 - `src/animation/sequence.rs` — Forward current-group playback from preservation's engine/animation.md.
 - `src/collision/collision_mesh.rs` — Authored model queries from preservation's segment and sphere admission rules.
 - `src/collision/collision_world.rs` — Original static spatial ordering and model ground probes, independent of rendering.

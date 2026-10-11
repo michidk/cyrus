@@ -1,8 +1,5 @@
 //! Explicitly activated group playback. The game scheduler owns eligibility and timing.
-use super::sequence::SoundDispatcher;
-use super::{
-    ActorAnimation, AnimationPose, AnimationRequest, AnimationScript, Animations, FrameSequence,
-};
+use super::{AnimationPose, AnimationRequest, Animations, FrameSequence};
 use crate::sound::SoundCue;
 use bevy::prelude::*;
 
@@ -12,16 +9,7 @@ use bevy::prelude::*;
 pub struct AnimationPlayback {
     source: Handle<Animations>,
     actor: String,
-    playback: Playback,
-}
-
-enum Playback {
-    Group(FrameSequence),
-    Scripted {
-        animation: ActorAnimation,
-        script: AnimationScript,
-        default: u16,
-    },
+    playback: FrameSequence,
 }
 
 impl AnimationPlayback {
@@ -36,55 +24,8 @@ impl AnimationPlayback {
         Ok(Self {
             source,
             actor: actor.into(),
-            playback: Playback::Group(crate::animation::FrameSequence::from_asset(
-                animations, actor, group, loops,
-            )?),
+            playback: crate::animation::FrameSequence::from_asset(animations, actor, group, loops)?,
         })
-    }
-
-    /// Connects a supported authored main program to mesh playback with a caller-selected
-    /// default group. Each supplied tick runs ordinary advancement/default request, then
-    /// the script stage. Actor movement, state selection and interrupt work are unsupported.
-    pub fn new_scripted(
-        source: Handle<Animations>,
-        animations: &Animations,
-        actor: &str,
-        default: u16,
-    ) -> anyhow::Result<Self> {
-        Ok(Self {
-            source,
-            actor: actor.into(),
-            playback: Playback::Scripted {
-                animation: crate::animation::ActorAnimation::from_asset(
-                    animations, actor, default,
-                )?,
-                script: crate::animation::AnimationScript::from_asset(animations, actor)?,
-                default,
-            },
-        })
-    }
-}
-
-impl Playback {
-    fn advance(
-        &mut self,
-        ticks: u32,
-        sounds: &mut SoundDispatcher<'_>,
-    ) -> anyhow::Result<Option<u32>> {
-        match self {
-            Self::Group(sequence) => sequence.advance_with_sounds(ticks, false, sounds),
-            Self::Scripted {
-                animation,
-                script,
-                default,
-            } => {
-                let frame = animation.advance_dispatch(ticks, sounds)?;
-                let frame = animation
-                    .request_dispatch(*default, 0, ticks, sounds)?
-                    .or(frame);
-                Ok(script.advance_dispatch(animation, ticks, sounds)?.or(frame))
-            }
-        }
     }
 }
 
@@ -127,9 +68,13 @@ pub(super) fn advance(
                     });
                     Ok(())
                 };
-                playback.playback.advance(tick.ticks, &mut Some(&mut emit))
+                playback
+                    .playback
+                    .advance_with_sounds(tick.ticks, false, &mut Some(&mut emit))
             } else {
-                playback.playback.advance(tick.ticks, &mut None)
+                playback
+                    .playback
+                    .advance_with_sounds(tick.ticks, false, &mut None)
             };
             let result = result.and_then(|reference| {
                 reference
@@ -144,8 +89,7 @@ pub(super) fn advance(
                     });
                 }
                 Ok(None) => {
-                    if matches!(&playback.playback, Playback::Group(sequence) if sequence.is_finished())
-                    {
+                    if playback.playback.is_finished() {
                         commands.entity(entity).remove::<AnimationPlayback>();
                     }
                 }
