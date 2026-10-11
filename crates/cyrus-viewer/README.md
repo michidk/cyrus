@@ -9,6 +9,10 @@ cargo run -p cyrus-viewer -- --install /path/to/Redguard
 # REDGUARD_DIR can supply the same explicit location.
 ```
 
+Prebuilt archives run with `./cyrus-viewer --install /path/to/Redguard` or
+`cyrus-viewer.exe --install C:\path\to\Redguard` on Windows.
+The Linux archive uses Ubuntu 24.04 system libraries.
+
 Choose a file format, search by name or source path, and select an item. RGM, WLD,
 ROB, 3D, and 3DC have separate categories. Numbered TEXBSI banks share one
 category; derived World previews and CD audio have their own entries.
@@ -43,6 +47,15 @@ Build without game files, then serve your original install at runtime:
 just viewer-web-build
 just run-viewer-web /path/to/Redguard
 ```
+
+For a prebuilt browser archive, use Python 3.11 or newer from its `browser/`
+directory:
+
+```sh
+python3 viewer-server.py --directory . --install /path/to/Redguard --port 8080
+```
+
+Open `http://127.0.0.1:8080/viewer.html`. The server binds to loopback.
 
 The browser worker parses the original files with the same Rust parsers as the
 native viewer. Selecting an entry produces its preview and media in browser

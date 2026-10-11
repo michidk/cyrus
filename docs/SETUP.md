@@ -56,6 +56,30 @@ The game and viewer share `target/web`, the loader, Cache Storage, and
 `cyrus-config/cache`. The viewer server also serves an explicit read-only install.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
 
+## CI artifacts
+
+The `Build artifacts` workflow packages the native game for Linux x64,
+Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
+It also includes `cyrus-viewer` and its browser worker when the viewer crates
+are present in the checked-out revision. The viewer currently lives on its
+separate development branch; game revisions without it contain only the game.
+
+Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
+lint CI still runs on every push and pull request. Artifact builds run only for
+version tags and manual dispatch. Actions artifacts expire after seven days.
+Pushing a version tag matching `v*` builds its revision and creates
+a draft GitHub release with all archives and `SHA256SUMS` after every platform
+succeeds. Review the draft's assets and notes before publishing it; publishing
+does not rebuild them. A manual dispatch with `release_tag` set to an existing
+tag also attaches artifacts and creates a draft when no release exists.
+
+Archives contain application code and crate usage instructions. They contain
+no game files, exported previews, or local state. Native executables still need
+the player's GOG install. Browser bundles need locally exported game assets;
+the asset viewer needs privately served original files as described in its
+crate README. Downloading an artifact does not establish runtime or fidelity
+support on that platform.
+
 ## Browser build
 
 ```sh
