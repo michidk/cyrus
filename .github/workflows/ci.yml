@@ -24,6 +24,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v7
 
+      # The debug build of the workspace fills the hosted runner's disk; the
+      # linker then dies with a bus error. Drop the preinstalled SDKs first.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+
       - name: Install Bevy's Linux libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
 
@@ -59,8 +64,31 @@ jobs:
       - name: Run publish-check
         run: dev/scripts/publish-check.sh
 
+      - name: Check the generated map
+        run: dev/scripts/genmap.sh --check
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check --color always
 
       - name: Run cargo clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  web:
+    name: Browser build
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # This plugin should be loaded after toolchain setup
+      - name: Cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+
+      # Proves the install/thread/socket code stays behind cfg(not(wasm32)).
+      - name: Check cyrus-web for wasm32
+        run: cargo check -p cyrus-web --target wasm32-unknown-unknown

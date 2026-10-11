@@ -1,0 +1,8 @@
+# START scene, one second of walking forward with the faithful controller.
+{"type":"set_fidelity","area":"player_controller","mode":"faithful"}
+{"type":"load_scene","name":"START"}
+{"sleep": 3}
+{"type":"input","key":"ArrowUp","action":"press"}
+{"sleep": 1}
+{"type":"input","key":"ArrowUp","action":"release"}
+{"sleep": 0.5}

@@ -5,7 +5,8 @@ self.addEventListener("activate", event => event.waitUntil(self.clients.claim())
 
 self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
-  if (event.request.method !== "GET" || url.origin !== self.location.origin || !url.pathname.endsWith(".glb")) return;
+  const cacheable = url.pathname.endsWith(".glb") || url.pathname.endsWith(".wasm");
+  if (event.request.method !== "GET" || url.origin !== self.location.origin || !cacheable) return;
 
   event.respondWith((async () => {
     const cache = await caches.open(GAME_FILE_CACHE);
@@ -26,7 +27,13 @@ self.addEventListener("fetch", event => {
     }
 
     const response = await fetch(event.request, { cache: "no-store" });
-    if (response.ok) await cache.put(event.request, response.clone());
+    if (response.ok) {
+      try {
+        await cache.put(event.request, response.clone());
+      } catch (error) {
+        console.warn("Download cache unavailable", error);
+      }
+    }
     return response;
   })());
 });

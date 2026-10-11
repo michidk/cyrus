@@ -1,4 +1,5 @@
-set shell := ["bash", "-euo", "pipefail", "-c"]
+# bash -euo pipefail, with the rootless toolchain from `just toolchain` when cargo is not on PATH
+set shell := ["dev/scripts/toolchain.sh", "-c"]
 
 default:
     @just --list
@@ -12,9 +13,17 @@ setup:
     printf '# Loaded only for a trusted project.\n[mcp_servers.cyrus]\ncommand = "dev/scripts/mcp.sh"\nenv = { CYRUS_CONTROL_ADDR = "127.0.0.1:7117" }\n' > .codex/config.toml
     dev/scripts/setup-hauler.sh
 
-# publish-check, fmt, clippy, tests
+# rootless Rust toolchain, wasm target, wasm-bindgen and Bevy's Linux libraries under magic/build-tools (no sudo)
+toolchain:
+    dev/scripts/toolchain.sh install
+
+# publish-check, generated map, fmt, clippy, tests (twice: with and without the install)
 gates:
     dev/scripts/gates.sh
+
+# regenerate docs/MAP.md from the sources
+genmap:
+    dev/scripts/genmap.sh
 
 build:
     cargo build --workspace
@@ -39,6 +48,7 @@ stop:
     -vibepod-preview stop cyrus-web
     -docker rm -f cyrus-dev
 
+# the MCP server for agents; its own target dir so it never waits for the game's build lock
 mcp:
     dev/scripts/mcp.sh
 
@@ -62,6 +72,10 @@ smoke-mcp:
 # same scene from cyrus and the original into cyrus-config/compare/<label>-{cyrus,original}.png
 compare LABEL:
     dev/scripts/compare.sh {{LABEL}}
+
+# replay a dev/fixtures/*.jsonl fixture over the control port, then compare (checks the baseline if one exists)
+replay FIXTURE LABEL:
+    dev/scripts/replay.sh {{FIXTURE}} {{LABEL}}
 
 # reference clones under magic/reference (untracked): format docs and the Unity reimplementation
 reference:

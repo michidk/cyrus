@@ -8,9 +8,9 @@ Redguard's file formats and engine facts are owned by the sibling project
 (crate `rgpre`); cyrus consumes that crate and sends format discoveries back there.
 
 Read in this order: this file, `docs/METHOD.md` (how a change is judged),
-`docs/SETUP.md` (running the new and the original game), `docs/ROADMAP.md`
-(delivery stages, what is done and what is next), then the `README.md` of the
-crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
+`docs/MAP.md` (every crate and module, generated), `docs/SETUP.md` (running
+the new and the original game), `docs/ROADMAP.md` (delivery stages, what is
+done and what is next), then the `README.md` of the crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
 (direct commits, roadmap ownership, `magic/` artifacts, handoff). The root
 `README.md` is for players, `CONTRIBUTING.md` for human contributors.
 
@@ -62,8 +62,11 @@ crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
    the game data or the original shows, or anything it is missing, open a pull
    request against [redguard-preservation](https://github.com/michidk/redguard-preservation)
    with the fix or the documented fact and its evidence (counts, samples,
-   observations). Do not work around a preservation bug silently in cyrus:
-   link the pull request from the cyrus change, and keep any workaround
+   observations). Preservation docs contain only durable format and engine
+   facts. Put verification methods in the pull request or commit, and keep
+   open questions, investigation plans, and cyrus implementation status out
+   of preservation docs. Do not work around a preservation bug silently in
+   cyrus: link the pull request from the cyrus change, and keep any workaround
    marked until the fix is released.
 
 These rules govern what ships, not what may be said. That cyrus is informed by
@@ -75,38 +78,13 @@ shapes; passing it proves nothing about where code came from.
 
 ## Repository map
 
-- `crates/cyrus` — the binary: argument parsing, plugin assembly, `--headless`.
-- `crates/cyrus-game` — the game as Bevy plugins; no window assumptions.
-  `install.rs` (find the install), `loading.rs` (startup preload with progress
-  bar, parses every known file through `rgpre`), `scene.rs` (WORLD.INI world resolution, full-world export and
-  load), `player.rs` (controllers behind the fidelity switch), `fidelity.rs`,
-  `startup/` (installed splash/title playback, Options, and Movies browsing),
-  `settings.rs` (`cyrus-config/settings.toml`), `sound.rs` (SFX effects, RTX speech, volumes),
-  `music.rs` (CD tracks), `subtitles.rs`
-  (dialogue subtitles), `control.rs` (TCP control server).
-- `crates/cyrus-control` — the control protocol types and a blocking client.
-- `crates/cyrus-web` — browser build (wasm32). Shows scenes the native game
-  exported to `cyrus-config/cache/`, served next to the page. Not a default
-  workspace member; `just web-build` / `just run-web`. Portable parts of
-  `cyrus-game` (`startup`, `animation`, `environment`, `fidelity`, `player`, `settings`) are what it reuses; keep
-  install access, threads and sockets behind `cfg(not(target_arch = "wasm32"))`.
-- `crates/cyrus-mcp` — MCP stdio server; `.mcp.json` (Claude) and
-  `.codex/config.toml` (Codex) register it. Tools: ping, state, screenshot,
-  teleport, input, set_fidelity, skip_startup, load_scene, play_sound,
-  play_speech, stop_sounds, quit.
-- `dev/docker/retro` — the original game under DOSBox-X with Voodoo emulation,
-  streamed over noVNC. `dev/docker/dev` — a virtual display with software
-  Vulkan for running cyrus where there is no GPU or screen.
-- `dev/scripts/` — `gates.sh` (what must be green), `publish-check.sh`,
-  `run-retro.sh`, `run-game.sh`, `build-web.sh`, `run-web.sh`, `compare.sh`,
-  `smoke-mcp.sh`. `dev/hooks/` — the pre-commit hook `just setup` installs.
-- `.agents/skills/` — project skills for Codex and Claude Code (`just setup`
-  links `.claude/skills` here). `.mcp.json` registers the MCP server for
-  Claude Code and other tools that read it; `.claude/` and `.codex/` are
-  untracked local config.
-- Each crate has a `README.md` with its role, modules and commands.
-- `magic/` — untracked working memory: the GOG installer, the extracted game,
-  research, journals, specs. Its own `README.md` and `METHODOLOGY.md` live there.
+`docs/MAP.md` lists every crate and module with its purpose; it is generated
+from the sources (`just genmap`) and the gates fail when it is stale. Beyond
+the crates: `dev/docker/retro` runs the original game under DOSBox-X,
+`dev/docker/dev` runs cyrus on a virtual display; `dev/scripts/` holds the
+gates, `publish-check`, `genmap`, the run and compare scripts; `dev/fixtures/`
+the replay fixtures; `.agents/skills/` the project skills; `magic/` is the
+untracked working memory. Each crate has a `README.md` with its commands.
 
 ## Changes
 
@@ -114,14 +92,22 @@ shapes; passing it proves nothing about where code came from.
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
   scripts share one queue; `hauler status` shows what is running. Long
   builds may return a ticket: `hauler await cc-N`, never retry them.
-- Conventional Commits: `type(scope): description`. Scopes: `game`, `scene`,
-  `player`, `fidelity`, `control`, `mcp`, `docker`, `docs`, `skills`.
-- Gates before every commit: `just gates` (publish-check, fmt, clippy with
-  `-D warnings`, tests). Tests that need the install skip when it is absent
-  and say so.
-- Say what was verified and how: a test, a headless run, a screenshot
-  compared with the original. "It compiles" is not verification. Say what was
-  not checked, and whether the root cause or a symptom was fixed.
+- Full workspace builds take a long time. During development, run the narrowest
+  relevant test and build small, isolated test scenes that exercise one system
+  without loading the full game. Run `just gates` before the commit.
+- Conventional Commits: `type(scope): description`. The scope is the crate
+  without its prefix (`game`, `web`, `mcp`), the module (`scene`, `player`,
+  `loading`), or `dev`, `docs`, `roadmap`, `agents`, `repo`.
+- Gates before every commit: `just gates` (publish-check, generated map
+  current, fmt, clippy with `-D warnings`, tests). Tests that need the install
+  skip when it is absent and say so; with an install linked, a skip fails the
+  gate, and the suite runs once more with the install unreachable.
+- Say what was verified and how: a test, a headless run, a replay compared
+  with the original. "It compiles" is not verification. Say what was not
+  checked, and whether the root cause or a symptom was fixed.
+- Label every claim about the game: **Verified** (game file, the original
+  observed, preservation doc), **Inferred** (follows from such facts) or
+  **Unknown**. An unlabelled claim is Unknown.
 - Keep `docs/` and this file in sync with behaviour changes. Do not add new
   top-level markdown files without a reason stated in the commit.
 - Bevy is pinned in `Cargo.toml` (`0.20`); do not migrate minor versions as a
@@ -193,4 +179,6 @@ another checkout's binary.
 Reference clones (`just reference`, under `magic/reference/`) are research
 hints, never proof; `docs/WORKFLOW.md` lists them and how to use them. The
 `cyrus-playtest` skill is the loop for running cyrus, driving it over MCP and
-comparing with the original (`just retro`, `just compare`).
+comparing with the original (`just retro`, `just replay <fixture> <label>`;
+`dev/fixtures/` holds the fixtures, so a comparison is something the next
+agent can rerun).

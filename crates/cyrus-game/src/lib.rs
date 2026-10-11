@@ -24,6 +24,9 @@ pub mod settings;
 mod sky;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod sound;
+pub mod sound_bank;
+#[cfg(not(target_arch = "wasm32"))]
+mod sound_export;
 pub mod startup;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod subtitles;

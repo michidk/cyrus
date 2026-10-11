@@ -28,3 +28,14 @@ docker exec -e DISPLAY=:1 cyrus-retro scrot -o "/game/capture/$label.png"
 docker cp "cyrus-retro:/game/capture/$label.png" "$out/$label-original.png"
 echo "$out/$label-cyrus.png"
 echo "$out/$label-original.png"
+
+# An accepted capture under baseline/ turns this into a regression check: normalised RMSE
+# above the tolerance fails. Accept a new look by copying the capture over the baseline.
+baseline=$out/baseline/$label-cyrus.png
+if [ -f "$baseline" ]; then
+    metric=$(compare -metric RMSE "$baseline" "$out/$label-cyrus.png" null: 2>&1) || [ "$?" -eq 1 ]
+    rmse=$(sed 's/.*(\(.*\))/\1/' <<<"$metric")
+    echo "baseline rmse $rmse (tolerance ${CYRUS_COMPARE_TOLERANCE:-0.02})"
+    awk -v r="$rmse" -v t="${CYRUS_COMPARE_TOLERANCE:-0.02}" 'BEGIN { exit !(r <= t) }' \
+        || { echo "compare: $label differs from its baseline"; exit 1; }
+fi

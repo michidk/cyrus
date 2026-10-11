@@ -31,8 +31,11 @@ unsupported. An `// unverified` comment or Modern mode does not authorize a gues
    short note in the commit or the docs. The spec carries no code.
 3. **Implement idiomatically.** Bevy ECS, plain Rust. Structure is free;
    behaviour is not.
-4. **Compare.** Same scene, same inputs, screenshot or state dump from both.
-   Put the comparison, or what could not be compared, in the commit message.
+4. **Compare.** Same scene, same inputs, screenshot or state dump from both,
+   from a fixture another agent can rerun (`just replay`). Then prove the
+   comparison can fail: change one constant in cyrus and confirm it is caught.
+   Put the comparison, the wrong-version check, or what could not be compared,
+   in the commit message.
 5. **Gates green, commit small.** `just gates`; one logical change per commit.
 
 ## Controller parity evidence

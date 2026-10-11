@@ -5,6 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 . dev/scripts/cargo.sh
+# The install is read-only (hard rule 2): path, size and mtime of every file before and after.
+manifest() { find -L redguard -type f -printf '%p %s %T@\n' | sort | sha256sum; }
+before=$(manifest)
 cargo build -q -p cyrus -p cyrus-mcp
 log=$(mktemp)
 "${CARGO_TARGET_DIR:-target}/debug/cyrus" --headless --scene START >"$log" 2>&1 &
@@ -43,4 +46,5 @@ print("smoke-mcp: ok", before, "->", after)
 PY
 wait $game || true
 grep -q panicked "$log" && { echo "game panicked:"; grep -A3 panicked "$log"; exit 1; }
+[ "$(manifest)" = "$before" ] || { echo "smoke-mcp: the run modified the install"; exit 1; }
 echo "smoke-mcp: green"

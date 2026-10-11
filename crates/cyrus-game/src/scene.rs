@@ -96,6 +96,9 @@ fn load_requested(
     commands.insert_resource(crate::player::data::PlayerSceneRequest(
         assets.load(format!("cache://{name}.player")),
     ));
+    if let Err(error) = crate::sound_export::export(&install, &Settings::cache_dir()) {
+        error!("sound export: {error}");
+    }
     if headless.is_some() {
         current.name = name;
         return;
@@ -232,6 +235,7 @@ fn map_path(install: &GameInstall, path: &str) -> anyhow::Result<PathBuf> {
 /// Rebuild every world variant plus the traditional map-stem aliases.
 /// Numeric filenames preserve worlds that share geometry but use different palettes.
 pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()> {
+    crate::sound_export::export(install, out)?;
     let worlds = read_worlds(install)?;
     anyhow::ensure!(!worlds.entries.is_empty(), "WORLD.INI contains no worlds");
     let mut aliases = std::collections::HashSet::new();
