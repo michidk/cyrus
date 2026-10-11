@@ -35,12 +35,18 @@ T3 turn does not establish completed feature work.
 | Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
 | Step 1: actor and mesh animation | Load All World Animations Correctly, `animation-playback` | Native cue wiring, actor eligibility, clock, and full script scheduling; type-1 core integrated |
-| Step 2: player | Investigate Player Controller Design, `player-parity` | Candidate eligibility/order, v4 runtime extents, support selection, grounded walking integration, timing and follow camera |
+| Step 2: player | Investigate Player Controller Design, `player-parity` | Dynamic/transient eligibility, v4 runtime extents, support selection, grounded walking integration, timing and follow camera |
 | Step 1: sky | Fix Faithful Mode Skybox, bounded research complete | Runtime filtering state, sun alpha rounding and world lighting evidence |
 | Step 1: sound | Implement Game Sound Effects, bounded research complete | Script, animation and ambient triggers; per-call volume/rate evidence |
 | HUD | Implement the Game Overlay UI, research handoff complete | Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook, prompts and F8 toggle remain unsupported |
 | Startup and book menu | Match Startup Screen Appearance, research handoff complete | Publish and implement book cues; resolve lighting propagation and reachable mouse consumers |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
+
+The HUD, sound, sky and startup bounded passes are complete, but the domain
+gaps in their rows still need implementation or original-game evidence. Their
+completed checkouts and the obsolete split checkout are archived. Resume future
+implementation from current main in fresh isolated checkouts. Player and animation
+keep their active worktrees.
 
 The old crate-split branch is an unfinished architectural experiment, not a
 replacement for the current implementation. Its history and pending files are
@@ -55,7 +61,8 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] MCP smoke against the integrated native binary passed, including independent flycam input and an unchanged install. The smoke script used the already-built test-profile executables.
 - [x] Compared 499 consecutive captured FLAG2 states through End/restart against the tested integrated library; a wrong asset schema is rejected. This proves supplied-tick state parity only.
 - [ ] Verify type-1 mesh transitions, native cues, eligibility, host timing and matched rendering. The five new transition/sound contracts pass.
-- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration.
+- [x] The ordered-contact regression retries a first-sphere miss, suppresses successful duplicates, and keeps omitted faces omitted. This tests a caller-supplied candidate list, not gameplay collision.
+- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration. Preservation PR #27 now retains authored model subsets and documents subgroup admission and static spatial ordering. Its 1,691-placement reconstruction matches 223 original active static nodes, including per-cell order; dynamic/transient eligibility, v4 extents and complete support selection remain open. The newer preservation parser is not yet wired into Cyrus collision export.
 - [ ] Verify sky tilt, sun, synchronized scrolling and fog in the integrated Bevy renderer and browser. Retain full original-game comparisons for filtering, alpha, lighting and hardware color precision. Capture filter/blend state after menu and world transitions, translucent sun edges and dither phases. World lighting still uses a fixed light; recover terrain/model lighting rules before replacing it.
 - [x] Native START screenshot shows the candle above health 100; retained frame handles fix unloading during flicker. The equal-count item icon regression passes.
 - [ ] Compare native/browser HUD layout with the original. The candle targets the documented 60 Hz Glide retrace rate independently of rendering; original in-world cadence, transparency and starting inventory still need comparison. Health, pickups and inventory integration remain separate work.
