@@ -142,12 +142,16 @@ fonts, previews, and defaults. Native and browser builds redraw settled pages
 when selection or preferences change, including neighboring-page text.
 Navigation skips disabled/hidden entries and wraps. Options opens Display, Sound,
 and Controls; Movies browses unlocked definitions and previews. Quit exits.
-New Game, saves, and cinematic playback remain explicitly unavailable.
+Native Movies playback reads installed Smacker files or the GOG CD image via
+rgpre and decodes them with FFmpeg. It retains menu selection, consumes original
+skip points and timed subtitle definitions, and exposes progress through menu
+control state. Browser cinematics, New Game, and saves remain unavailable.
 
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `cyrus-config/menu.json` or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
-input uses edited bindings, including direct scene launches. Audio, subtitle,
-voice, and interlace settings persist but their playback integration remains pending. Opening/closing
+input uses edited bindings, including direct scene launches. Subtitle and interlace
+settings apply to native cinematics; audio volume and voice preferences persist
+but their playback integration remains pending. Opening/closing
 motion, lighting, menu audio, mouse selection, and gameplay thumbnails remain
 unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.

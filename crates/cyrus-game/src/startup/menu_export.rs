@@ -128,7 +128,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let output = cache.join("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        6u32,
+        8u32,
         &ini_bytes,
         &keys_bytes,
         &system_bytes,
@@ -183,7 +183,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         let mut entries = Vec::new();
         for entry in &page.entries {
             entries.push(MenuEntry {
-                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | 3 | 4 | 300 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
+                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | 3 | 4 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
                 position: entry.position, output_position: entry.output_position, justify: entry.justify, output_justify: entry.output_justify, slider: entry.slider, texture: surface(entry.texture)?,
             });
         }

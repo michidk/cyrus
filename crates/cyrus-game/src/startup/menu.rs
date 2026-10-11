@@ -19,6 +19,23 @@ pub struct MenuItem {
     pub visible: bool,
 }
 
+/// Cinematic progress exposed through the existing menu control state.
+#[derive(Clone, Serialize)]
+pub struct MovieStatus {
+    /// Installed filename; empty until preparation completes.
+    pub name: String,
+    /// Last presented one-based frame, or zero before the first frame.
+    pub frame: u32,
+    /// Source frame count, or zero before preparation completes.
+    pub frames: u32,
+    /// Waiting for preparation or the first decoded frame.
+    pub loading: bool,
+}
+
+#[derive(Message)]
+#[cfg(not(target_arch = "wasm32"))]
+pub(super) struct MovieRequest(pub usize);
+
 impl MenuItem {
     pub(super) fn eligible(&self) -> bool {
         self.visible && self.selectable && !self.grayed && !self.text.is_empty()
@@ -32,6 +49,8 @@ pub struct MenuState {
     pub ready: bool,
     pub page: u8,
     pub capturing: Option<i32>,
+    /// Native cinematic loading/playback; menu input is suspended while present.
+    pub movie: Option<MovieStatus>,
     pub preferences: Option<MenuPreferences>,
     pub entries: Vec<MenuItem>,
     pub selected: Option<usize>,
@@ -45,7 +64,7 @@ pub struct MenuState {
     #[serde(skip)]
     blink_seconds: f32,
     #[serde(skip)]
-    dirty: bool,
+    pub(super) dirty: bool,
     #[serde(skip)]
     persistence_error: Option<String>,
     #[serde(skip)]
@@ -114,7 +133,7 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
     });
 }
 
-fn drive(
+pub(super) fn drive(
     assets: Res<AssetServer>,
     definitions: Res<Assets<MenuAsset>>,
     input: (Res<Time>, Res<ButtonInput<KeyCode>>),
@@ -162,6 +181,9 @@ fn drive(
         menu.open(book, 0);
         menu.blink_on = true;
         apply_bindings(&menu, &mut bindings);
+    }
+    if menu.movie.is_some() {
+        return;
     }
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
@@ -239,6 +261,11 @@ fn drive(
                 500 | 600 | 700 => menu.open(book, 4),
                 504 | 505 | 603 => adjust_value(book, &mut menu, 0, true),
                 601 | 602 => {}
+                #[cfg(not(target_arch = "wasm32"))]
+                301..=305 => {
+                    menu.unavailable = None;
+                    commands.write_message(MovieRequest((entry.action - 301) as usize));
+                }
                 710..=724 => {
                     menu.capturing = Some(entry.action);
                     menu.blink_on = true;
@@ -304,7 +331,15 @@ impl MenuState {
         self.entries = book.pages[&page]
             .entries
             .iter()
-            .map(|e| e.item.clone())
+            .map(|e| {
+                let item = e.item.clone();
+                #[cfg(target_arch = "wasm32")]
+                let item = MenuItem {
+                    implemented: item.implemented && !(301..=305).contains(&item.action),
+                    ..item
+                };
+                item
+            })
             .collect();
         self.selected = self.selections.get(&page).copied().flatten();
         self.unavailable = self.persistence_error.clone();
@@ -366,7 +401,7 @@ fn adjust_value(book: &MenuAsset, menu: &mut MenuState, direction: i32, toggle: 
 }
 
 #[derive(Component)]
-struct MenuNotice;
+pub(super) struct MenuNotice;
 fn notice(commands: &mut Commands, assets: &AssetServer, text: String) {
     commands.spawn((
         StartupContent,

@@ -32,7 +32,7 @@ Update or release ownership when work changes.
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam and initial marker placement verified; walking startup/release core tested; terrain support and an ordinary height-changing response verified against original traces; obstacle response and scheduler eligibility still block locomotion integration; `magic/artifacts/2026-10-10-player/` |
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
-| Startup and main menu | Codex: Faithful Startup Sequence | Options/settings and Movies browsing verified through native MCP; ownership released. Playback integration, browser verification, motion, lighting, saves, and New Game remain pending |
+| Startup and main menu | Codex: Faithful Startup Sequence | Native movie playback verified through MCP; owns authored book transitions next. Browser verification, audible playback, lighting, saves, and New Game remain pending |
 | Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions landed; literal authored task/End playback passes native contracts; WASM compilation and final workspace gates passed; original eligibility, clock and complete script scheduling remain open |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
@@ -45,6 +45,7 @@ Later engine-cache edits are not marked complete here.
 - [x] Startup preload, progress display, and parse-failure logging.
 - [x] Installed 3dfx splash and title playback through the book menu; CLI and MCP skip stop at the menu.
 - [x] MENU.INI-defined book pages, keyboard selection, Options edits, Controls rebinding, Movies browsing, and Quit, using installed geometry and rgpre fonts. Settings persist; playback effects and remaining actions are pending.
+- [x] Native installed Smacker playback with original skip points and subtitles; menu selection survives playback.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Export all 29 installed worlds, with structural checks.
@@ -78,9 +79,10 @@ committed support; unverified work stays in the TODO column.
 | `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | Original payloads and typed literal Task/End descriptors retained; explicit authored animation-task playback passes native contracts | Automatic activation, full control flow, events, other native bindings, interrupts, and synchronization |
-| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, cinematic playback, and progression unlocks |
+| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, browser cinematic playback, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | No gameplay integration accepted | Combat and items |
+| `SMK` | Native video and first embedded audio stream via FFmpeg, installed skip points and subtitle definitions | Browser playback, audible output and A/V synchronization comparison |
 | CD audio | Each entered world's `world_redbook` track plays from GOG's CD image, repeats, and continues across worlds sharing it; `redbook` honoured | Menu and cutscene music, in-game music volume option, audible comparison with the original |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
@@ -118,9 +120,13 @@ restart persistence, malformed state/cache protection, failed saves, and direct
 world entry.
 Installed export tests cover changed labels, forced movie visibility, configured
 prompt limits, and the Glide Display omissions. Lighting, opening/closing motion,
-menu audio, mouse selection, gameplay snapshots, saves, New Game, and cinematic
-playback remain unsupported. Audio, subtitle, voice, and interlace preferences
-persist; playback integration remains pending. Browser runtime verification of
+menu audio, mouse selection, gameplay snapshots, saves, and New Game remain
+unsupported. Native MCP checks cover all five browsable movies, forward skips,
+held-key handling, natural EOF, missing FFmpeg and unsupported-path recovery,
+Quit during playback, and decoder cleanup on world entry. Video and subtitle
+screenshots were inspected; the first audio stream decodes to a seekable WAV.
+Audible output and A/V synchronization remain unchecked. Subtitle/interlace
+preferences apply to cinematics; audio volume and voice integration remain pending. Browser runtime verification of
 this menu slice remains pending.
 
 **Verified:** all 118 `MAIN.SFX` effects decode through Bevy's WAV decoder

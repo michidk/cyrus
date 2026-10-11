@@ -150,8 +150,10 @@ shapes; passing it proves nothing about where code came from.
 
 Default windowed and browser launches play the installed 3dfx splash and title,
 then stop at the book menu. It supports Options, Display, Sound, Controls,
-Movies browsing, keyboard navigation, and Quit. New Game, saves, and cinematic
-playback remain unavailable. Startup uses original-file assets, never captured playback.
+Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
+installed Smacker files and requires FFmpeg on PATH. New Game, saves, and browser
+cinematic playback remain unavailable. Startup uses original-file assets, never
+captured playback.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
 For agent work, choose the entry point explicitly:
@@ -170,9 +172,13 @@ entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
 units and persist outside the install in native `cyrus-config/menu.json` or
 browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
-including direct world launches. Audio, subtitle, voice, and interlace preferences
-persist; playback integration remains pending. Verify edits, restart persistence,
-and malformed-state protection through native MCP. Keep installed labels,
+including direct world launches. Subtitle and interlace preferences affect native
+cinematics. Audio volume and voice preferences persist; their playback integration
+remains pending.
+`state.menu.movie` reports cinematic loading and one-based frame progress;
+menu input is suspended during playback. A new key press uses the installed
+forward skip points, then returns to the same selected entry. Verify edits, restart
+persistence, and malformed-state protection through native MCP. Keep installed labels,
 visibility flags, widget positions, key names, and artwork data-driven; publish
 newly recovered menu rules in preservation before using them here.
 Keep each worktree's Cargo target directory separate so verification cannot use

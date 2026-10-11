@@ -23,5 +23,7 @@ dependency so drivers stay small.
 In `Menu`, `state.menu` reports the page, installed entries, current selection,
 preferences, and Controls capture action. Wait for `ready` before sending menu
 input. Drive Options and Movies with `input`; the same saved bindings and values
-apply after a native restart. Playback effects for volume, voice, subtitles, and
-interlace remain pending; Movies browsing does not play cinematics.
+apply after a native restart. Native Movies playback uses the saved subtitle and
+interlace preferences and reports progress in `state.menu.movie`. A new key press
+advances to the next installed skip point, then returns to the menu. Volume and
+voice preference integration and browser cinematic playback remain pending.

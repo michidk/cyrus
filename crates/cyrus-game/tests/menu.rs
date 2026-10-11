@@ -62,8 +62,8 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
         [504, 505, 500]
     );
     assert_eq!(display[0]["output_position"], serde_json::json!([135, 160]));
-    assert_eq!(menu["defaults"]["values"]["601"], 20);
-    assert_eq!(menu["defaults"]["values"]["602"], 16);
+    assert_eq!(menu["defaults"]["values"]["601"], 19);
+    assert_eq!(menu["defaults"]["values"]["602"], 15);
     assert_eq!(menu["key_names"][72], "kbd up");
     assert_eq!(menu["pages"]["7"]["entries"][0]["item"]["action"], 710);
     assert_eq!(menu["pages"]["3"]["entries"].as_array().unwrap().len(), 6);

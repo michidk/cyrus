@@ -75,12 +75,20 @@ Changes persist to `cyrus-config/menu.json` on native builds and localStorage
 under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
-Audio volume, voice, subtitles, and movie interlace preferences are saved;
-their playback integration remains pending.
+Audio volume and voice preferences are saved; their playback integration
+remains pending. Native cinematics consume subtitle and interlace preferences.
 
-Movies browses the initially unlocked entries and installed previews. The
-installed `force_movies` setting exposes all cinematic entries. Movie playback
-and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
+Movies browses the initially unlocked entries and installed previews. Native
+playback requires FFmpeg on PATH and reads the configured movie file or GOG
+`game.gog` beside the install. The native virtual-display image includes FFmpeg;
+its runner mounts the CD image read-only. It decodes video and the first embedded audio
+stream, uses the installed subtitle definitions and GUI font, and applies the
+saved subtitle/interlace preferences. A key press advances to the next installed
+skip point, or finishes after the last one. Playback returns to the same menu
+selection. Extracted Smacker files and decoded audio stay in `cache/movies/`.
+MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
+installed `force_movies` setting exposes all cinematic entries. Browser movie
+playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
 and Continue remain unavailable, with Save and Continue grayed without a
 resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font. Runtime redraws the settled book, including neighboring-page text.
