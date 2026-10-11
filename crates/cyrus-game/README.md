@@ -5,7 +5,7 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | Module | Role |
 |---|---|
 | `install` | Locate and validate the player's GOG install; read-only. |
-| `startup` | Shared splash/title and data-defined book menu; native exporter renders installed Glide geometry into a local image cache. |
+| `startup` | Shared splash/title and data-defined book menu; native exporter renders the installed Windows Glide splash DLL into a local image cache. |
 | `loading` | Startup state: scans the install and parses every known file through `rgpre` behind a progress bar; the failures are the format-coverage report. |
 | `scene` | Resolve a world from `WORLD.INI` (map, terrain, palette), export it to a GLB in `cyrus-config/cache/`, spawn it. Native only. |
 | `player` | Held keyboard input from `KEYS.INI`, marker-based initial player placement, and a separate debug inspection camera. Locomotion and the original follow camera are unsupported. |
@@ -241,14 +241,17 @@ and horizontal then vertical integer rounding, following preservation
 Sun alpha rounding, other texture filtering, lighting, and physical-hardware
 pixel parity remain unverified.
 
-Default windowed startup plays the original authored 3dfx animation and decoded
+Default windowed startup plays the installed Windows Glide swoosh animation and decoded
 640×480 title image, then stops at the book menu. Preload runs concurrently.
 Timing is presentation policy; the original map-loading backend is not reproduced.
 The title uses the configured FNT font and documented bottom-label positions.
 The loading label says “Loading...” rather than reporting original map IDs.
-Splash rasterization currently uses supersampling and the largest texture mip;
-hardware edge coverage, mip selection, and shadow interpolation need a precise
-paired comparison before claiming pixel-exact rendering.
+**Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
+the authored fade. The cache regenerates when replacing the older DOS shield
+splash. The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
+documents the driver variants and DLL format. Splash rasterization uses
+supersampling; Glide edge coverage, floating-point approximations and pixel
+quantization need a hardware comparison before claiming pixel-exact rendering.
 
 The book menu derives entries, layout, texture slots, widgets, and action IDs
 from `MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md).

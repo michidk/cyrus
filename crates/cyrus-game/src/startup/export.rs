@@ -1,29 +1,34 @@
 use crate::install::GameInstall;
 use anyhow::Context;
-use rgpre::import::{fnt::parse_fnt, glide_splash::parse_glide_splash, gxa::parse_gxa_file};
+use rgpre::import::{
+    fnt::parse_fnt, glide_splash_dll::parse_windows_glide_splash, gxa::parse_gxa_file,
+};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     path::Path,
 };
 
-/// Generates local presentation images from the player's own overlay and GXA.
+/// Generates local presentation images from the player's own splash DLL and GXA.
 /// The install is read-only; every output stays under the supplied cache path.
 pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    let overlay = install
-        .root
-        .parent()
-        .context("install has no parent directory")?
-        .join("DOSBOX/glide2x_emu.ovl");
-    let overlay = if overlay.is_file() {
-        overlay
-    } else {
-        install.root.join("glide2x_emu.ovl")
-    };
+    let dll = crate::scene::find_file(&install.root, "3DfxSpl2.dll")
+        .or_else(|| {
+            install
+                .root
+                .parent()
+                .and_then(|parent| crate::scene::find_file(&parent.join("DOSBOX"), "3DfxSpl2.dll"))
+        })
+        .with_context(|| {
+            format!(
+                "startup: {}: installed 3DfxSpl2.dll is missing",
+                install.root.display()
+            )
+        })?;
     let title = install.root.join("system/STARTUP2.GXA");
     let read = |path: &Path| {
         std::fs::read(path).with_context(|| format!("startup: reading {}", path.display()))
     };
-    let overlay_bytes = read(&overlay)?;
+    let dll_bytes = read(&dll)?;
     let title_bytes = read(&title)?;
     let system = read(&install.root.join("SYSTEM.INI"))?;
     let system_text = std::str::from_utf8(&system).context("startup: SYSTEM.INI is not UTF-8")?;
@@ -58,18 +63,19 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path.display()))?,
     );
     let mut fingerprint = DefaultHasher::new();
-    (3u32, &overlay_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
+    (4u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
     let output = cache.join("startup");
     let stamp = output.join("source.txt");
     if std::fs::read_to_string(&stamp).ok().as_deref() == Some(&fingerprint)
-        && (1..75).all(|frame| output.join(format!("splash-{frame:02}.png")).is_file())
+        && (0..super::SPLASH_FRAMES)
+            .all(|frame| output.join(format!("splash-{frame:02}.png")).is_file())
         && output.join("title.png").is_file()
     {
         return Ok(());
     }
-    let splash = parse_glide_splash(&overlay_bytes)
-        .with_context(|| format!("startup: {}", overlay.display()))?;
+    let splash = parse_windows_glide_splash(&dll_bytes)
+        .with_context(|| format!("startup: {}", dll.display()))?;
     let decoded =
         parse_gxa_file(&title_bytes).with_context(|| format!("startup: {}", title.display()))?;
     let [title_frame] = decoded.frames.as_slice() else {
@@ -84,9 +90,31 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
     if stamp.exists() {
         std::fs::remove_file(&stamp)?;
     }
-    for frame in 1..75 {
+    let final_image = super::raster::render(&splash, &splash.final_draws, 1.0);
+    let mut fade_images = [final_image.clone(), final_image];
+    for frame in 0..super::SPLASH_FRAMES {
+        let image = if frame < splash.frames.len() {
+            let visibility = if frame < 24 {
+                0.0
+            } else {
+                ((frame - 24) as f32 / 8.0).min(1.0)
+            };
+            super::raster::render(&splash, &splash.frames[frame], visibility)
+        } else {
+            let step = frame - splash.frames.len();
+            let alpha = (102 * step.saturating_sub(1) / (2 * splash.frames_per_second as usize))
+                as f32
+                / 255.0;
+            let image = &mut fade_images[step % 2];
+            for pixel in image.pixels_mut() {
+                for channel in &mut pixel.0[..3] {
+                    *channel = (f32::from(*channel) * (1.0 - alpha)) as u8;
+                }
+            }
+            image.clone()
+        };
         let path = output.join(format!("splash-{frame:02}.png"));
-        super::raster::render(&splash, frame)
+        image
             .save(&path)
             .with_context(|| format!("startup: writing {}", path.display()))?;
     }
