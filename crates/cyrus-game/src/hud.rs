@@ -2,8 +2,9 @@
 //! active item with its count. Rules follow redguard-preservation's HUD documentation.
 use crate::AppState;
 use bevy::{
-    asset::{AssetLoader, LoadContext, io::Reader},
+    asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,10 @@ pub(crate) struct HudAsset {
     pub selected: Option<u16>,
     /// Installed KEYS.INI scan codes for menu actions 710 through 724.
     pub bindings: [u8; 15],
-    pub font: HudFont,
+    /// `fonts/REDSEL.FNT`; HUD text is drawn like an NPC subtitle line.
+    pub font: cyrus_text::Font,
+    /// SYSTEM.INI `[3dfx] font_sel` as main and shadow alpha.
+    pub text_alpha: [u8; 2],
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -37,66 +41,6 @@ pub(crate) struct HudItem {
     pub bitmap: u16,
     pub count: u32,
     pub size: [u16; 2],
-}
-
-/// REDSEL.FNT metrics; glyph images are `hud/glyph-CCC.png` by character code.
-#[derive(Serialize, Deserialize)]
-pub(crate) struct HudFont {
-    pub start: u16,
-    /// `None` for disabled glyphs, which advance 0 and are not drawn.
-    pub glyphs: Vec<Option<HudGlyph>>,
-    /// SYSTEM.INI `[3dfx] font_sel`: shadow value A and main alpha B.
-    pub font_sel: [u8; 2],
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-pub(crate) struct HudGlyph {
-    pub width: u16,
-    pub height: u16,
-    pub offset: [i16; 2],
-}
-
-impl HudFont {
-    fn glyph(&self, ch: u8) -> Option<HudGlyph> {
-        let index = usize::from(ch).checked_sub(usize::from(self.start))?;
-        *self.glyphs.get(index)?
-    }
-
-    fn advance(&self, ch: u8) -> i32 {
-        let Some(glyph) = self.glyph(ch) else {
-            return 0;
-        };
-        let extra = if ch == b' ' {
-            self.glyph(b'!').map_or(0, |g| i32::from(g.width))
-        } else {
-            0
-        };
-        i32::from(glyph.width) + 1 + extra
-    }
-
-    fn width(&self, text: &str) -> i32 {
-        text.bytes().map(|ch| self.advance(ch)).sum()
-    }
-
-    /// Glyph codes and top-left screen positions for `text` with its pen at `(x, y)`.
-    // shortcut: no wrap at x = 640; HUD numbers are short. Upgrade with activation prompts.
-    fn layout(&self, text: &str, mut x: i32, y: i32) -> Vec<(u8, [i32; 2], HudGlyph)> {
-        let mut placed = Vec::new();
-        for ch in text.bytes() {
-            if let Some(glyph) = self.glyph(ch) {
-                placed.push((
-                    ch,
-                    [
-                        x + i32::from(glyph.offset[0]),
-                        y + i32::from(glyph.offset[1]),
-                    ],
-                    glyph,
-                ));
-            }
-            x += self.advance(ch);
-        }
-        placed
-    }
 }
 
 /// The player's fixed maximum and spawn health; no INI key sets it.
@@ -166,6 +110,9 @@ pub struct HudState {
     /// Every SNUFF frame, held so swapping frames never unloads and reloads an image.
     #[serde(skip)]
     candle_frames: Vec<Handle<Image>>,
+    /// Text lines and pen positions currently drawn on the text layer.
+    #[serde(skip)]
+    text: Vec<(String, [i32; 2])>,
 }
 
 #[derive(Resource)]
@@ -182,8 +129,8 @@ struct CandleImage;
 
 #[derive(Component)]
 enum HudLayer {
-    Health,
     Item,
+    Text,
 }
 
 #[derive(Default, TypePath)]
@@ -257,39 +204,47 @@ fn place(at: [i32; 2], size: [u16; 2]) -> Node {
     }
 }
 
-/// A full-viewport layer holding `text` drawn like an NPC subtitle: shadow at (1, 1), then main.
-fn spawn_text(
-    commands: &mut Commands,
-    parent: Entity,
-    layer: HudLayer,
-    assets: &AssetServer,
-    font: &HudFont,
-    text: &str,
-    at: [i32; 2],
-) {
-    let [shadow, main] = [
-        u32::from(font.font_sel[0]) * 200 / 256,
-        u32::from(font.font_sel[1]),
-    ];
-    let glyphs = font.layout(text, at[0], at[1]);
-    commands.entity(parent).with_children(|viewport| {
-        viewport
-            .spawn((layer, place([0, 0], [640, 480])))
-            .with_children(|layer| {
-                for (offset, tint) in [
-                    (1, Color::srgba(0.0, 0.0, 0.0, shadow as f32 / 255.0)),
-                    (0, Color::srgba(1.0, 1.0, 1.0, main as f32 / 255.0)),
-                ] {
-                    for (ch, [x, y], glyph) in &glyphs {
-                        layer.spawn((
-                            ImageNode::new(assets.load(format!("cache://hud/glyph-{ch:03}.png")))
-                                .with_color(tint),
-                            place([x + offset, y + offset], [glyph.width, glyph.height]),
-                        ));
-                    }
-                }
-            });
-    });
+/// The health number below the candle (`candle_mode` 2) and the count beside an item
+/// owned more than once, as lines with their pen positions in 640×480 pixels.
+fn text_lines(hud: &HudAsset, health: u8, item: Option<&HudItem>) -> Vec<(String, [i32; 2])> {
+    let mut lines = Vec::new();
+    if hud.candle_mode == 2 {
+        let text = health.to_string();
+        let x = hud.candle[0] + i32::from(hud.candle_size[0]) / 2 - 5;
+        let at = [
+            x - hud.font.width(&text) / 2,
+            hud.candle[1] + i32::from(hud.candle_size[1]),
+        ];
+        lines.push((text, at));
+    }
+    if let Some(item) = item.filter(|i| i.count > 1) {
+        let at = [
+            hud.pickup[0] + i32::from(item.size[0]) - 32,
+            hud.pickup[1] + 8,
+        ];
+        lines.push((item.count.to_string(), at));
+    }
+    lines
+}
+
+/// Renders the HUD text lines into one 640×480 overlay image.
+fn text_image(hud: &HudAsset, lines: &[(String, [i32; 2])]) -> Image {
+    let mut rgba = vec![0; 640 * 480 * 4];
+    for (text, at) in lines {
+        hud.font
+            .draw_shadowed(&mut rgba, 640, text, *at, hud.text_alpha);
+    }
+    Image::new(
+        Extent3d {
+            width: 640,
+            height: 480,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        rgba,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
 }
 
 #[allow(clippy::too_many_arguments)] // One Bevy system owning the overlay's input, state and nodes.
@@ -303,6 +258,7 @@ fn update(
     mut candle: Query<&mut ImageNode, With<CandleImage>>,
     layers: Query<(Entity, &HudLayer)>,
     (keys, time): (Res<ButtonInput<KeyCode>>, Res<Time>),
+    mut images: ResMut<Assets<Image>>,
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -327,6 +283,7 @@ fn update(
             candle_frames: (0..81)
                 .map(|f| assets.load(format!("cache://hud/candle-{f:02}.png")))
                 .collect(),
+            text: Vec::new(),
         });
         if hud.candle_mode != 0 {
             commands.entity(viewport).with_children(|viewport| {
@@ -336,23 +293,6 @@ fn update(
                     place(hud.candle, hud.candle_size),
                 ));
             });
-        }
-        if hud.candle_mode == 2 {
-            let text = &MAX_HEALTH.to_string();
-            let x = hud.candle[0] + i32::from(hud.candle_size[0]) / 2 - 5;
-            let at = [
-                x - hud.font.width(text) / 2,
-                hud.candle[1] + i32::from(hud.candle_size[1]),
-            ];
-            spawn_text(
-                &mut commands,
-                viewport,
-                HudLayer::Health,
-                &assets,
-                &hud.font,
-                text,
-                at,
-            );
         }
         return;
     };
@@ -386,6 +326,25 @@ fn update(
     }
     let item = hud.items.iter().find(|i| Some(i.id) == state.selected);
     let count = item.map(|i| i.count);
+    let text = text_lines(hud, state.health, item);
+    if text != state.text {
+        for (entity, layer) in &layers {
+            if matches!(layer, HudLayer::Text) {
+                commands.entity(entity).despawn();
+            }
+        }
+        if !text.is_empty() {
+            let image = images.add(text_image(hud, &text));
+            // Above the item icon, which the count overlaps.
+            commands.entity(viewport).with_child((
+                HudLayer::Text,
+                ImageNode::new(image),
+                place([0, 0], [640, 480]),
+                ZIndex(1),
+            ));
+        }
+        state.text = text;
+    }
     if state.selected == previous_selection
         && state.count == count
         && layers.iter().any(|(_, l)| matches!(l, HudLayer::Item))
@@ -411,21 +370,6 @@ fn update(
                 ));
             });
     });
-    if item.count > 1 {
-        let at = [
-            hud.pickup[0] + i32::from(item.size[0]) - 32,
-            hud.pickup[1] + 8,
-        ];
-        spawn_text(
-            &mut commands,
-            viewport,
-            HudLayer::Item,
-            &assets,
-            &hud.font,
-            &item.count.to_string(),
-            at,
-        );
-    }
 }
 
 fn despawn(mut commands: Commands, content: Query<Entity, With<HudContent>>) {
@@ -470,27 +414,47 @@ mod tests {
     }
 
     #[test]
-    fn text_advances_by_width_plus_one_and_spaces_add_the_exclamation_width() {
-        let glyph = |width| {
-            Some(HudGlyph {
-                width,
-                height: 1,
-                offset: [1, 2],
-            })
+    fn text_lines_centre_health_under_the_candle_and_place_counts() {
+        let digit = cyrus_text::Glyph {
+            enabled: true,
+            width: 9,
+            ..default()
         };
-        let font = HudFont {
-            start: 32,
-            glyphs: vec![glyph(2), glyph(8), None, glyph(5)],
-            font_sel: [255, 255],
+        let mut hud = asset(2);
+        hud.font = cyrus_text::Font {
+            start: 48,
+            glyphs: vec![digit; 10],
+            ..default()
         };
-        assert_eq!(font.width(" !\"#"), 11 + 9 + 6);
-        let placed: Vec<_> = font
-            .layout(" #", 10, 20)
-            .into_iter()
-            .map(|(ch, at, _)| (ch, at))
-            .collect();
-        assert_eq!(placed, [(b' ', [11, 22]), (b'#', [22, 22])]);
+        let item = HudItem {
+            id: 2,
+            bitmap: 26,
+            count: 53,
+            size: [40, 30],
+        };
+        // "100" is 30 wide; the candle's centre minus 5 is 12 + 25 - 5 = 32.
+        assert_eq!(
+            text_lines(&hud, 100, Some(&item)),
+            [("100".into(), [17, 106]), ("53".into(), [20, 394])]
+        );
+        hud.candle_mode = 1;
+        assert!(text_lines(&hud, 100, Some(&HudItem { count: 1, ..item })).is_empty());
     }
+
+    fn asset(candle_mode: u8) -> HudAsset {
+        HudAsset {
+            candle_mode,
+            candle: [12, 8],
+            candle_size: [50, 98],
+            pickup: [12, 386],
+            items: vec![],
+            selected: None,
+            bindings: [0; 15],
+            font: default(),
+            text_alpha: [255, 199],
+        }
+    }
+
     #[test]
     fn changing_between_equal_count_items_updates_the_icon() {
         let mut app = App::new();
@@ -525,11 +489,8 @@ mod tests {
                 ],
                 selected: Some(1),
                 bindings,
-                font: HudFont {
-                    start: 0,
-                    glyphs: vec![],
-                    font_sel: [255, 255],
-                },
+                font: default(),
+                text_alpha: [255, 199],
             });
         app.world_mut().insert_resource(HudHandle(hud));
         app.world_mut().spawn(HudViewport);

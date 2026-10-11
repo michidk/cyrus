@@ -391,6 +391,8 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let candle = image::open(hud.join("candle-00.png")).unwrap().to_rgba8();
     assert_eq!(candle.as_raw(), &snuff.frames[0].rgba);
     assert!((0..81).all(|f| hud.join(format!("candle-{f:02}.png")).is_file()));
-    assert!(hud.join("item-07.png").is_file() && hud.join("glyph-049.png").is_file());
+    assert!(hud.join("item-07.png").is_file());
+    assert_eq!(data["text_alpha"], serde_json::json!([255, 199]));
+    assert_eq!(data["font"]["line_height"], 26, "REDSEL.FNT");
     std::fs::remove_dir_all(&output).unwrap();
 }

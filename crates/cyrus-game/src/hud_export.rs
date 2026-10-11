@@ -1,6 +1,6 @@
 //! Installed HUD artwork, font and layout exported for portable presentation.
 use crate::{
-    hud::{HudAsset, HudFont, HudGlyph, HudItem},
+    hud::{HudAsset, HudItem},
     install::GameInstall,
 };
 use anyhow::Context;
@@ -42,7 +42,7 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let stamp = output.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        3u32,
+        4u32,
         &system,
         &items,
         &keys,
@@ -76,15 +76,9 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         .ok()
         .filter(|mode| *mode <= 2)
         .context("hud: SYSTEM.INI [screen] candle_mode: expected 0, 1 or 2")?;
-    let font_sel: Vec<u8> = text(&system_fields, "SYSTEM.INI", "3dfx", "font_sel")?
-        .split(',')
-        .map(|v| v.trim().parse())
-        .collect::<Result<_, _>>()
-        .context("hud: SYSTEM.INI [3dfx] font_sel: expected two values 0..255")?;
-    let font_sel: [u8; 2] = font_sel
-        .try_into()
-        .ok()
-        .context("hud: SYSTEM.INI [3dfx] font_sel: expected two values 0..255")?;
+    let text_alpha =
+        cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_sel")?)
+            .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_sel: {e}"))?;
 
     let candle = parse_gxa_file(&candle_bytes).context("hud: system/SNUFF.GXA")?;
     anyhow::ensure!(
@@ -121,7 +115,7 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         .and_then(|id| u16::try_from(id).ok())
         .filter(|id| owned.iter().any(|i| i.id == *id));
 
-    let font = parse_fnt(&font_bytes).context("hud: fonts/REDSEL.FNT")?;
+    let font = cyrus_text::Font::from(&parse_fnt(&font_bytes).context("hud: fonts/REDSEL.FNT")?);
     let keys = KeysIni::parse(std::str::from_utf8(&keys).context("hud: KEYS.INI is not UTF-8")?)
         .map_err(|e| anyhow::anyhow!("hud: KEYS.INI: {e}"))?;
     let hud = HudAsset {
@@ -132,21 +126,8 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         items: owned,
         selected,
         bindings: keys.control_codes(),
-        font: HudFont {
-            start: font.header.character_start,
-            glyphs: font
-                .glyphs
-                .iter()
-                .map(|g| {
-                    (g.enabled != 0).then_some(HudGlyph {
-                        width: g.width,
-                        height: g.height,
-                        offset: [g.offset_left, g.offset_top],
-                    })
-                })
-                .collect(),
-            font_sel,
-        },
+        font,
+        text_alpha,
     };
 
     std::fs::create_dir_all(&output)
@@ -175,27 +156,6 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             frame.width.into(),
             frame.height.into(),
             frame.rgba,
-        )?;
-    }
-    for (index, glyph) in font.glyphs.iter().enumerate() {
-        if glyph.enabled == 0 || glyph.width == 0 || glyph.height == 0 {
-            continue;
-        }
-        // FNT palettes are 6-bit; index 0 is transparent.
-        let rgba = glyph
-            .pixels
-            .iter()
-            .flat_map(|i| match (*i, font.palette.colors.get(usize::from(*i))) {
-                (0, _) | (_, None) => [0; 4],
-                (_, Some([r, g, b])) => [r << 2, g << 2, b << 2, 255],
-            })
-            .collect();
-        let code = usize::from(font.header.character_start) + index;
-        save(
-            format!("glyph-{code:03}.png"),
-            glyph.width.into(),
-            glyph.height.into(),
-            rgba,
         )?;
     }
     std::fs::write(output.join("overlay.hud"), serde_json::to_vec(&hud)?)?;

@@ -5,7 +5,7 @@ use cyrus_game::sound::{
     SoundSettings, distance_volume, heading, load_speech, output_gain, pan, pan_gains, pcm_wav,
     read_settings, sfx_path, slider_volume,
 };
-use cyrus_game::subtitles::{draw, font_alpha, wrap};
+use cyrus_game::subtitles::{draw, font_alpha};
 use rgpre::import::sfx::parse_sfx_file;
 use std::path::Path;
 
@@ -144,13 +144,15 @@ fn subtitles_wrap_and_place_like_the_original() {
     let Some(install) = install("subtitle") else {
         return;
     };
-    let font = rgpre::import::fnt::parse_fnt(
-        &std::fs::read(install.root.join("fonts").join("REDSEL.FNT")).unwrap(),
-    )
-    .unwrap();
+    let font = cyrus_text::Font::from(
+        &rgpre::import::fnt::parse_fnt(
+            &std::fs::read(install.root.join("fonts").join("REDSEL.FNT")).unwrap(),
+        )
+        .unwrap(),
+    );
     let line = "YOU TWO DANCE VERY WELL, BUT, ALAS --";
-    assert_eq!(wrap(&font, line, 500), line, "fits one line at width 500");
-    let wrapped = wrap(&font, &format!("{line} {line}"), 500);
+    assert_eq!(font.wrap(line, 500), line, "fits one line at width 500");
+    let wrapped = font.wrap(&format!("{line} {line}"), 500);
     assert!(wrapped.contains('\n'), "two copies exceed width 500");
     assert!(
         wrapped

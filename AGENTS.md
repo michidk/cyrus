@@ -117,8 +117,8 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## Structure and quality
 
-- Keep public APIs small and group crates by concern: assets, world, rendering,
-  player, and control. `rgpre` owns formats and engine facts. Agree on file
+- Group crates by concern: assets, world, rendering, text, player, and
+  control. `rgpre` owns formats and engine facts. Agree on file
   ownership before a crate split or other change across shared boundaries.
 - Keep dependencies one-way. Core rules must not depend on rendering, a window,
   or networking. Use the browser build to check these boundaries.
@@ -156,7 +156,8 @@ For agent work, choose the entry point explicitly:
 
 Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
-Skipping startup does not enable gameplay. `state.menu` exposes the installed
+Skipping startup does not enable gameplay. In a world, `state.hud` reports health,
+candle visibility and frame, selected item and count. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
 units and persist outside the install in native `cyrus-config/menu.json` or

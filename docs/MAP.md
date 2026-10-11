@@ -63,6 +63,8 @@ module where it is defined and regenerate.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 
+## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
+
 ## `cyrus-web` — shortcut: the browser loads GLBs that the native game exported into
 
 ## `cyrus` — (undocumented)

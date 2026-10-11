@@ -1,10 +1,6 @@
 use crate::install::GameInstall;
 use anyhow::Context;
-use rgpre::import::{
-    fnt::{FntFile, parse_fnt},
-    glide_splash::parse_glide_splash,
-    gxa::parse_gxa_file,
-};
+use rgpre::import::{fnt::parse_fnt, glide_splash::parse_glide_splash, gxa::parse_gxa_file};
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     path::Path,
@@ -58,8 +54,9 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
             .with_context(|| format!("startup: gui_low_font file {font_name} is missing"))?;
     }
     let font_bytes = read(&font_path)?;
-    let font =
-        parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path.display()))?;
+    let font = cyrus_text::Font::from(
+        &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path.display()))?,
+    );
     let mut fingerprint = DefaultHasher::new();
     (3u32, &overlay_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
@@ -98,15 +95,7 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
         .context("startup: title pixel count is invalid")?;
     draw_text(&mut image, &font, "Version 1.0.1.0", 10, [32, 32, 32]);
     let text = "Loading...";
-    let width: i32 = text
-        .bytes()
-        .filter_map(|ch| {
-            font.glyphs
-                .get(usize::from(ch).checked_sub(usize::from(font.header.character_start))?)
-        })
-        .map(|glyph| i32::from(glyph.width) + 1)
-        .sum();
-    draw_text(&mut image, &font, text, 630 - width, [50, 0, 0]);
+    draw_text(&mut image, &font, text, 630 - font.width(text), [50, 0, 0]);
     image
         .save(&path)
         .with_context(|| format!("startup: writing {}", path.display()))?;
@@ -114,40 +103,21 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
     Ok(())
 }
 
+/// Draws one flat-colour line with its pen at (`x`, 467).
 fn draw_text(
     image: &mut image::RgbaImage,
-    font: &FntFile,
+    font: &cyrus_text::Font,
     text: &str,
-    mut cursor: i32,
+    x: i32,
     color: [u8; 3],
 ) {
-    for ch in text.bytes() {
-        let Some(index) = usize::from(ch).checked_sub(usize::from(font.header.character_start))
-        else {
-            continue;
-        };
-        let Some(glyph) = font.glyphs.get(index).filter(|glyph| glyph.enabled != 0) else {
-            continue;
-        };
-        for y in 0..glyph.height {
-            for x in 0..glyph.width {
-                if glyph.pixels[usize::from(y) * usize::from(glyph.width) + usize::from(x)] == 0 {
-                    continue;
-                }
-                let draw_x = cursor + i32::from(glyph.offset_left) + i32::from(x);
-                let draw_y = 467 + i32::from(glyph.offset_top) + i32::from(y);
-                if (0..640).contains(&draw_x) && (0..480).contains(&draw_y) {
-                    image.put_pixel(
-                        draw_x as u32,
-                        draw_y as u32,
-                        image::Rgba([color[0], color[1], color[2], 255]),
-                    );
-                }
-            }
+    font.draw(text, [x, 467], |x, y, _| {
+        if (0..640).contains(&x) && (0..480).contains(&y) {
+            image.put_pixel(
+                x as u32,
+                y as u32,
+                image::Rgba([color[0], color[1], color[2], 255]),
+            );
         }
-        cursor += i32::from(glyph.width) + 1;
-        if ch == b' ' {
-            cursor += font.glyphs.get(1).map_or(0, |glyph| i32::from(glyph.width));
-        }
-    }
+    });
 }

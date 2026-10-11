@@ -2779,6 +2779,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "cyrus-control",
+ "cyrus-text",
  "image",
  "log",
  "redguard-preservation",
@@ -2802,6 +2803,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "cyrus-text"
+version = "0.1.0"
+dependencies = [
+ "redguard-preservation",
+ "serde",
 ]
 
 [[package]]
