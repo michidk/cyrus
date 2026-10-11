@@ -7,7 +7,7 @@ use cyrus_assets::{Catalog, Category, Content, Preview};
 #[derive(Resource)]
 pub struct Viewer {
     pub catalog: Option<Catalog>,
-    pub category: Category,
+    pub format: String,
     pub search: String,
     pub selected: Option<usize>,
     pub archive: Option<String>,
@@ -59,6 +59,14 @@ impl Viewer {
             .map(|entry| &entry.id);
         self.selected =
             selected.and_then(|id| catalog.entries.iter().position(|entry| &entry.id == id));
+        if !catalog
+            .entries
+            .iter()
+            .any(|entry| entry_format(entry) == self.format)
+            && let Some(entry) = catalog.entries.first()
+        {
+            self.format = entry_format(entry).into();
+        }
         self.catalog = Some(catalog);
     }
 }
@@ -67,7 +75,7 @@ impl Default for Viewer {
     fn default() -> Self {
         Self {
             catalog: None,
-            category: Category::Models,
+            format: "3DC".into(),
             search: String::new(),
             selected: None,
             archive: None,
@@ -174,37 +182,28 @@ pub fn draw(
             ui.add_space(10.);
             ui.weak("LIBRARY");
             ui.separator();
-            for category in Category::ALL
-                .into_iter()
-                .filter(|category| *category != Category::Other)
-            {
-                let count = catalog.as_ref().map_or(0, |c| {
-                    c.entries
-                        .iter()
-                        .filter(|e| {
-                            e.category == category
-                                && !matches!(
-                                    e.source,
-                                    cyrus_assets::Source::Image(_)
-                                        | cyrus_assets::Source::Model(_)
-                                        | cyrus_assets::Source::Effect(_)
-                                        | cyrus_assets::Source::Speech(_)
-                                )
-                        })
-                        .count()
-                });
-                if ui
-                    .selectable_label(
-                        viewer.category == category,
-                        format!("{}  {count}", category.label()),
-                    )
-                    .clicked()
-                {
-                    viewer.category = category;
-                    viewer.archive = None;
-                    viewer.search.clear();
+            let mut formats = std::collections::BTreeMap::<&str, usize>::new();
+            if let Some(catalog) = &catalog {
+                for entry in &catalog.entries {
+                    if !is_member(entry) {
+                        *formats.entry(entry_format(entry)).or_default() += 1;
+                    }
                 }
             }
+            egui::ScrollArea::vertical()
+                .id_salt("formats")
+                .show(ui, |ui| {
+                    for (format, count) in formats {
+                        if ui
+                            .selectable_label(viewer.format == format, format!("{format}  {count}"))
+                            .clicked()
+                        {
+                            viewer.format = format.into();
+                            viewer.archive = None;
+                            viewer.search.clear();
+                        }
+                    }
+                });
         });
     egui::Panel::left("entries")
         .default_size(260.)
@@ -236,19 +235,13 @@ pub fn draw(
                 .iter()
                 .enumerate()
                 .filter(|(_, e)| {
-                    e.category == viewer.category
+                    entry_format(e) == viewer.format
                         && match &viewer.archive {
                             Some(path) => {
                                 e.path == *path
                                     && !matches!(e.source, cyrus_assets::Source::Archive)
                             }
-                            None => !matches!(
-                                e.source,
-                                cyrus_assets::Source::Image(_)
-                                    | cyrus_assets::Source::Model(_)
-                                    | cyrus_assets::Source::Effect(_)
-                                    | cyrus_assets::Source::Speech(_)
-                            ),
+                            None => !is_member(e),
                         }
                         && (query.is_empty()
                             || e.name.to_lowercase().contains(&query)
@@ -356,7 +349,7 @@ pub fn draw(
                                 {
                                     if ui.link(&entry.name).on_hover_text(&entry.path).clicked() {
                                         select = Some(i);
-                                        viewer.category = entry.category;
+                                        viewer.format = entry_format(entry).into();
                                         viewer.search.clear();
                                     }
                                 }
@@ -403,7 +396,11 @@ pub fn draw(
                                     }
                                     ui.weak("Textured · orbit / pan / zoom");
                                 });
-                                if viewer.category == Category::Models {
+                                if catalog
+                                    .as_ref()
+                                    .and_then(|c| viewer.selected.and_then(|i| c.entries.get(i)))
+                                    .is_some_and(|entry| entry.category == Category::Models)
+                                {
                                     let previous = viewer.model_palette.clone();
                                     egui::ComboBox::from_id_salt("model-palette")
                                         .selected_text(
@@ -860,5 +857,62 @@ fn data_tree(ui: &mut egui::Ui, key: &str, value: &serde_json::Value, filter: &s
                 );
             });
         }
+    }
+}
+
+/// Numbered texture banks share a format; derived previews are not source files.
+pub fn entry_format(entry: &cyrus_assets::Entry) -> &str {
+    match entry.source {
+        cyrus_assets::Source::World(_) => "World previews",
+        cyrus_assets::Source::CdTrack(_) => "CD audio",
+        _ if entry
+            .path
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.to_ascii_uppercase().starts_with("TEXBSI.")) =>
+        {
+            "TEXBSI"
+        }
+        _ => &entry.format,
+    }
+}
+fn is_member(entry: &cyrus_assets::Entry) -> bool {
+    matches!(
+        entry.source,
+        cyrus_assets::Source::Image(_)
+            | cyrus_assets::Source::Model(_)
+            | cyrus_assets::Source::Effect(_)
+            | cyrus_assets::Source::Speech(_)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn browsing_separates_extensions_and_groups_numbered_texture_banks() {
+        let mut entry = cyrus_assets::Entry {
+            id: String::new(),
+            name: String::new(),
+            path: "maps/ISLAND.RGM".into(),
+            category: Category::Worlds,
+            format: "RGM".into(),
+            source: cyrus_assets::Source::File,
+            bytes: 0,
+            error: None,
+        };
+        assert_eq!(entry_format(&entry), "RGM");
+        entry.path = "maps/ISLAND.WLD".into();
+        entry.format = "WLD".into();
+        assert_eq!(entry_format(&entry), "WLD");
+        entry.path = "fxart/TEXBSI.168".into();
+        entry.format = "168".into();
+        assert_eq!(entry_format(&entry), "TEXBSI");
+        entry.source = cyrus_assets::Source::Image(0);
+        assert_eq!(entry_format(&entry), "TEXBSI");
+        assert!(is_member(&entry));
+        entry.source = cyrus_assets::Source::World(1);
+        assert_eq!(entry_format(&entry), "World previews");
+        assert!(!is_member(&entry));
     }
 }

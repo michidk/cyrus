@@ -281,7 +281,7 @@ fn follow_link(
         if let Some(index) = catalog.entries.iter().position(|entry| entry.id == id) {
             *last_hash = hash;
             if viewer.selected != Some(index) || viewer.model_palette != palette {
-                viewer.category = catalog.entries[index].category;
+                viewer.format = crate::ui::entry_format(&catalog.entries[index]).into();
                 viewer.model_palette = palette;
                 viewer.search.clear();
                 crate::loading::select(index, &mut viewer, &mut commands, &assets, &worker);

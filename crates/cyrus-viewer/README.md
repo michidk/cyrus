@@ -9,7 +9,9 @@ cargo run -p cyrus-viewer -- --install /path/to/Redguard
 # REDGUARD_DIR can supply the same explicit location.
 ```
 
-Choose a category, search by name, source path, or format, and select an item.
+Choose a file format, search by name or source path, and select an item. RGM, WLD,
+ROB, 3D, and 3DC have separate categories. Numbered TEXBSI banks share one
+category; derived World previews and CD audio have their own entries.
 Up/Down changes selection when a text field is not focused. The Details panel
 shows source information and links to related archive members, textures, and
 world variants. Panels resize by dragging their boundaries.
