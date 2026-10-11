@@ -82,7 +82,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Native START screenshot shows the candle above health 100; retained frame handles fix unloading during flicker. The equal-count item icon regression passes.
 - [ ] Compare native/browser HUD layout with the original. The candle targets the documented 60 Hz Glide retrace rate independently of rendering; original in-world cadence, transparency and starting inventory still need comparison. Health, pickups and inventory integration remain separate work.
 - [x] All eleven installed movie definitions decode through their final video frame with the in-process decoder; their first audio stream decodes when present.
-- [ ] Finish the combined optimized browser bundle and repeat live activation/skip/menu-return/replay checks. Preserve verification artifacts, then remove the Movies worktree, its target/export cache and owned test processes; retain shared caches and the existing preview.
+- [ ] Rebuild the optimized browser bundle from combined main and repeat live activation/skip/menu-return/replay checks. The combined source passes a fresh WASM check; its optimized rebuild terminated before producing a final bundle. Headless runtime evidence uses the first Movies release.
 - [ ] Compare native/browser picture, audio, skip points, subtitles, interlace and menu return against the original. Check cancellation, browser download failure and skip responsiveness on player hardware. Browser seeks decode preceding delta frames cooperatively; keyframe seeking is not implemented. Progression-based movie unlocks remain unavailable.
 - [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
 - [x] Book/page/cover and direction/key-capture cues dispatch installed effects through the shared native/browser sound path, following [preservation PR #34](https://github.com/michidk/redguard-preservation/pull/34). Native MCP/PCM checks cover navigation, reserved/accepted capture, mute/unmute and authored Quit; the muted interval is silent. The cue contract catches a wrong-effect mutation. Menu-only export includes the effects bank and cue WAVs. Full gates pass with the install present and absent; the browser compile check passes.
@@ -198,7 +198,9 @@ to the same selected entry and replay. Browser audio and matched original timing
 unchecked. Full workspace gates pass with the install present and absent, with
 zero installed-test skips. Verification artifacts stay in the primary checkout
 under `magic/artifacts/2026-10-11-movies/`; task build outputs and runtime
-containers are disposable, while shared caches and the existing preview remain.
+containers are cleaned up after publication, while shared caches and the existing
+preview remain. The native/headless test processes are stopped and their small
+evidence archive is retained; worktree removal includes its target and export cache.
 
 **Verified:** book turns, cover crossings and direction/key-capture feedback emit
 installed effects through the portable `SoundCue::Flat` path. Sound preference
