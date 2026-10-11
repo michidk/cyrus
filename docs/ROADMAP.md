@@ -21,7 +21,8 @@ functionality the original did not have.
 “Done” means the listed capability exists in committed code. It does not mean
 its appearance or behavior already matches the original.
 
-Checklist items show three statuses: **Done**, **In progress**, and **To do**.
+Checked items are **Done**. Unchecked items are **To do**, or **In progress**
+when an active task owns them.
 An unchecked item prefixed with **In progress** has an active task claim;
 it remains incomplete until verified. The ownership table identifies its agent.
 Partial work marks only its current subtask, not the whole capability.
@@ -86,9 +87,10 @@ establish original-game timing, visual fidelity or audible parity.
 - [ ] Compare native/browser picture, audio, skip points, subtitles, interlace and menu return against the original. Check cancellation, browser download failure and skip responsiveness on player hardware. Browser seeks decode preceding delta frames cooperatively; keyframe seeking is not implemented. Progression-based movie unlocks remain unavailable.
 - [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
 - [x] **Verified: startup splash source corrected.** The DOS Glide overlay contains the older shield; the installed Windows `3DfxSpl2.dll` contains the metallic lowercase logo and orange swoosh. The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource) documents the driver variants, PE resource and rendering rules and supplies the parser. Both installed DLL payloads match; final preservation library/installed-DLL tests and strict Clippy pass. Cyrus renders the authored 90 timed frames plus fade, invalidates shield caches and loads the shared 150-frame sequence. The installed export contract checks the orange logo, initial black frame, dark final fade, cache reuse and missing-frame recovery; its color check rejects the shield reference. Native virtual-display captures show the corrected logo, fade, title and ready book menu after replacing a copied shield cache. CLI and MCP skip checks reach the ready menu without entering gameplay; the install is mounted read-only. Full gates pass on combined main with 171 tests and zero install skips. All 22 compiled test executables also pass with the install explicitly unavailable.
-- [ ] Rebuild and re-export browser startup, then verify the corrected splash, title/menu transition and skip controls in the browser. Compare Windows splash pixels and timing with the original driver; hardware edge coverage, reciprocal-square-root approximations and pixel quantization remain unchecked.
-- [ ] Land the published preservation splash contribution upstream; cyrus currently pins its review commit.
-- [ ] Set the larger loader-thread stack in native development launchers. **Verified:** the unoptimized test-profile binary aborts during installed-data preload with the default worker stack; normal startup and both skip checks pass with `RUST_MIN_STACK=8388608`, matching the test runner. Optimized release playback remains unchecked.
+
+Remaining intro implementation and verification are listed under
+[startup intro closeout](#startup-intro-closeout).
+
 - [x] Book/page/cover and direction/key-capture cues dispatch installed effects through the shared native/browser sound path, following [preservation PR #34](https://github.com/michidk/redguard-preservation/pull/34). Native MCP/PCM checks cover navigation, reserved/accepted capture, mute/unmute and authored Quit; the muted interval is silent. The cue contract catches a wrong-effect mutation. Menu-only export includes the effects bank and cue WAVs. Full gates pass with the install present and absent; the browser compile check passes.
 - [ ] Exercise startup and animated book transitions in the browser, saved settings after restart and actual browser audio. Recheck native playback on combined main; existing MCP/PCM evidence predates shared-text and menu-only sound export. Compare cues by ear with the original. Recover inherited startup lighting and camera-plane clipping before implementing them. **Verified:** preservation PR #34 and an original-game observation establish that the ordinary book menu has no pointer label selection; retain keyboard/action navigation rather than adding hitboxes. Mouse/joystick rebinding and gameplay snapshots remain unsupported.
 - [x] The integrated native F1 inspector opens Entities, Resources and Assets, checked through the live renderer.
@@ -272,6 +274,22 @@ The shared gate log records formatting, strict workspace clippy, all 14
 executable tests, and the enabled doc-test targets passing. The WASM build and
 preview health checks also passed. The debug menu landed in
 [ba0ab4a](https://github.com/michidk/cyrus/commit/ba0ab4a).
+
+### Startup intro closeout
+
+**Done:** the corrected native startup is on main in
+[35b980d](https://github.com/michidk/cyrus/commit/35b980d).
+The remaining work is unassigned.
+
+- [x] **Verified:** identify the driver-specific splash variants and publish the Windows DLL parser and rendering facts in the [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource).
+- [x] **Verified:** select the installed Windows splash, render its authored frames and fade, replace legacy shield caches, and recover missing cached frames in the shared native/browser export path.
+- [x] **Verified:** native playback reaches the title and ready book menu; CLI and MCP skip reach the menu. Full gates pass with 171 tests and zero install skips; all 22 compiled test executables also pass without the install.
+- [ ] **To do:** merge the preservation contribution upstream and update the rgpre pin to the accepted revision.
+- [ ] **To do:** rebuild and re-export browser startup; verify the corrected logo, title, ready menu and both skip routes in the browser.
+- [ ] **To do:** compare Windows-driver splash timing and pixels with the original, including hardware edge coverage, reciprocal-square-root approximations and pixel quantization.
+- [ ] **To do:** set the larger loader-thread stack in native development launchers. **Verified:** unoptimized installed-data preload aborts with the default worker stack; startup and both skip routes pass with `RUST_MIN_STACK=8388608`.
+- [ ] **To do:** verify optimized native release startup and skip playback.
+- [ ] **To do:** check startup audio on a machine with an audio device and the installed CD image; the native virtual-display check did not verify audio.
 
 ## Crate split proposal
 
