@@ -2,6 +2,7 @@
 pub mod contact;
 pub mod data;
 pub mod definition;
+pub mod grounded;
 pub mod input;
 pub mod motion;
 pub mod placement;

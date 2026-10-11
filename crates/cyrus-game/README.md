@@ -32,8 +32,15 @@ pending. The deterministic `player::turn` and `player::walk` cores are
 tested against original heading and animation-gated startup observations.
 Walking supports actor step type 1, advances startup during suppressed
 translation, and resets after an update without accepted forward movement.
-Gameplay does not yet drive these cores: animation eligibility, collision, and
-simulation timing remain incomplete.
+An explicit ordinary grounded update now composes animation advancement/default
+requests, forward support admission, walking translation, support-height assignment,
+ordered wall response, residual separation, and startup reset. It preserves
+separate animation invocations with the same caller-supplied nominal ticks.
+Callers still supply eligibility, default group, oriented probe, candidates,
+surface policy, and shared support state. Falling, water/lava transitions and
+special movement states remain unsupported. Gameplay does not yet drive this
+update; production timing, actor initialization and player mesh binding remain
+incomplete.
 
 Scene inspection places the player at available marker zero once the world's
 `.animations` data loads, using preservation's exact map coordinates. `MarkerEntry`

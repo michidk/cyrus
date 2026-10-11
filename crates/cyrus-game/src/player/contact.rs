@@ -7,6 +7,47 @@ pub enum WallResponse {
     Projected([i64; 3]),
 }
 
+/// Original integer contact inputs, after collision-query conversion.
+pub struct GroundedContact {
+    pub normal: [i32; 3],
+    /// Stored classification from the query, not recomputed after transformation.
+    pub classification: u8,
+}
+
+/// Process primary contacts in authored query order for an ordinary grounded actor.
+/// Sliding, airborne and special-state response must be dispatched separately.
+/// `attempted` is the position after the ground response. Residual separation follows.
+pub fn resolve_grounded_contacts(
+    previous: [i64; 3],
+    attempted: [i64; 3],
+    heading: &mut u16,
+    contacts: &[GroundedContact],
+    slide_range: i32,
+) -> [i64; 3] {
+    let movement = if previous[0] == attempted[0] && previous[2] == attempted[2] {
+        *heading
+    } else {
+        super::motion::displacement_heading(attempted[0] - previous[0], attempted[2] - previous[2])
+    };
+    let mut current = attempted;
+    for contact in contacts {
+        if contact.classification == 4 || facing_difference(movement, contact.normal).abs() >= 512 {
+            continue;
+        }
+        match resolve_wall(previous, attempted, current, contact.normal, slide_range) {
+            WallResponse::Rollback(position) => current = position,
+            WallResponse::Projected(position) => {
+                current = position;
+                if current != previous {
+                    *heading =
+                        wall_heading(*heading, movement, contact.normal).rem_euclid(2048) as u16;
+                }
+            }
+        }
+    }
+    current
+}
+
 fn normalized(vector: [i64; 3]) -> [i64; 3] {
     let length = vector
         .iter()
@@ -18,6 +59,19 @@ fn normalized(vector: [i64; 3]) -> [i64; 3] {
     }
     let divisor = (length / 65536.0) as f32;
     vector.map(|v| ((v as f64 / f64::from(divisor)) as f32).round_ties_even() as i64)
+}
+
+/// Original residual displacement length in runtime units, before the map-unit shift.
+/// Components and the square-root result are stored at single precision.
+pub fn residual_distance(previous: [i64; 3], current: [i64; 3]) -> anyhow::Result<u32> {
+    let x = f64::from((current[0] - previous[0]) as f32);
+    let z = f64::from((current[2] - previous[2]) as f32);
+    let distance = ((x * x + z * z).sqrt() as f32).round_ties_even();
+    anyhow::ensure!(
+        distance.is_finite() && f64::from(distance) <= f64::from(i32::MAX),
+        "residual displacement length outside original integer range"
+    );
+    Ok(distance as u32)
 }
 
 /// Resolve one eligible facing wall against the update's original displacement.
@@ -74,10 +128,7 @@ pub fn separate_residual(
     true
 }
 
-/// Facing adjustment after an eligible grounded wall projection.
-/// The result is unwrapped unless the backward-facing branch applies, matching
-/// the response rule. Heading consumers wrap it modulo 2048 when needed.
-pub fn wall_heading(actor: u16, movement: u16, normal: [i32; 3]) -> i32 {
+fn facing_difference(movement: u16, normal: [i32; 3]) -> i32 {
     let facing = (i32::from(super::motion::displacement_heading(
         i64::from(normal[0]),
         i64::from(normal[2]),
@@ -90,6 +141,13 @@ pub fn wall_heading(actor: u16, movement: u16, normal: [i32; 3]) -> i32 {
     } else if difference > 1024 {
         difference -= 2047;
     }
+    difference
+}
+
+/// Facing adjustment after a projected ordinary grounded contact, in heading units.
+pub fn wall_heading(actor: u16, movement: u16, normal: [i32; 3]) -> i32 {
+    let difference = facing_difference(movement, normal);
+    let movement = i32::from(movement & 2047);
     let result = movement - difference.clamp(-32, 32);
     let mut backward = i32::from(actor & 2047) - movement;
     if backward < -1024 {
@@ -101,5 +159,34 @@ pub fn wall_heading(actor: u16, movement: u16, normal: [i32; 3]) -> i32 {
         (result + 1024) & 2047
     } else {
         result
+    }
+}
+
+impl GroundedContact {
+    /// Convert the world normal before classification, per preservation's body adapter.
+    /// The original stores the scaled components at single precision without normalizing.
+    pub fn from_body(
+        contact: &cyrus_world::collision::collision_world::BodyContact,
+    ) -> anyhow::Result<Self> {
+        let scaled = contact.normal * 256.0;
+        anyhow::ensure!(
+            scaled.is_finite()
+                && scaled.to_array().iter().all(|&v| {
+                    let rounded = f64::from(v.round_ties_even());
+                    rounded >= f64::from(i32::MIN) && rounded <= f64::from(i32::MAX)
+                }),
+            "body contact model {} face {}: normal outside integer range",
+            contact.model,
+            contact.face
+        );
+        let normal = scaled.to_array().map(|v| v.round_ties_even() as i32);
+        Ok(Self {
+            normal,
+            classification: cyrus_world::collision::ground::GroundSupport {
+                height: 0.0,
+                normal,
+            }
+            .classification(),
+        })
     }
 }

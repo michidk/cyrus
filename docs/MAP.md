@@ -47,6 +47,7 @@ module where it is defined and regenerate.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
 - `src/player/definition.rs` — Player attributes and upright collision bounds from preservation's RGM metadata.
+- `src/player/grounded.rs` — Composed static ground queries from preservation's ordinary player update rules.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
 - `src/player/motion.rs` — Original heading projection, per preservation's player and water engine specs.
 - `src/player/placement.rs` — Marker-based entry from preservation's player and RGM documentation.
