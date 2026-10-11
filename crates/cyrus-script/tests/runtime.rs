@@ -17,6 +17,7 @@ impl Host for Service {
         _: CallKind,
         function: &str,
         _: &[Argument],
+        _: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         assert_eq!(target, &Target::Me);
@@ -28,7 +29,13 @@ impl Host for Service {
             _ => Ok(CallResult::Complete(0)),
         }
     }
-    fn poll(&mut self, task: u64, _: &[Argument], _: &mut [i32]) -> anyhow::Result<bool> {
+    fn poll(
+        &mut self,
+        task: u64,
+        _: &[Argument],
+        _: cyrus_script::Invocation,
+        _: &mut [i32],
+    ) -> anyhow::Result<bool> {
         assert_eq!(task, 9);
         Ok(self.ready)
     }
@@ -105,6 +112,7 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
             kind: CallKind,
             name: &str,
             arguments: &[Argument],
+            _: cyrus_script::Invocation,
             flags: &mut [i32],
         ) -> anyhow::Result<CallResult> {
             if name == "Bump" {
@@ -118,7 +126,13 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
                 CallResult::Pending(1)
             })
         }
-        fn poll(&mut self, _: u64, arguments: &[Argument], _: &mut [i32]) -> anyhow::Result<bool> {
+        fn poll(
+            &mut self,
+            _: u64,
+            arguments: &[Argument],
+            _: cyrus_script::Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<bool> {
             self.observed.push(arguments.to_vec());
             Ok(true)
         }
@@ -409,6 +423,7 @@ struct Tasks {
     arguments: Vec<(u64, Vec<Argument>)>,
     cancelled: Vec<u64>,
     ready: bool,
+    invocations: Vec<Invocation>,
 }
 impl Host for Tasks {
     fn call(
@@ -417,14 +432,23 @@ impl Host for Tasks {
         _: CallKind,
         _: &str,
         args: &[Argument],
+        invocation: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         self.next += 1;
+        self.invocations.push(invocation);
         self.arguments.push((self.next, args.to_vec()));
         Ok(CallResult::Pending(self.next))
     }
-    fn poll(&mut self, token: u64, args: &[Argument], _: &mut [i32]) -> anyhow::Result<bool> {
+    fn poll(
+        &mut self,
+        token: u64,
+        args: &[Argument],
+        invocation: cyrus_script::Invocation,
+        _: &mut [i32],
+    ) -> anyhow::Result<bool> {
         self.arguments.push((token, args.to_vec()));
+        self.invocations.push(invocation);
         Ok(self.ready)
     }
     fn cancel(&mut self, token: u64) -> anyhow::Result<()> {
@@ -579,4 +603,86 @@ fn object_tasks_fail_before_effects_instead_of_using_the_callers_slots() {
     assert!(error.contains("object task routing unsupported"));
     assert!(host.calls.is_empty());
     assert_eq!(vm.active_tasks(), 0);
+}
+
+#[test]
+fn task_elapsed_uses_current_scale_and_wrapping_counters() {
+    let mut vm = runtime(vec![
+        call("Observe", CallKind::Multitask),
+        Operation::Yield,
+        Operation::End { target: 1 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(host.invocations[0].elapsed, Some(0));
+    assert_eq!(host.invocations[0].unpaused_tasks, 0);
+    for scale in [256, 1024, 0, u32::MAX] {
+        vm.invoke_tasks_timed(&mut host, &mut [], scale).unwrap();
+    }
+    assert_eq!(
+        host.invocations
+            .iter()
+            .map(|input| input.elapsed)
+            .collect::<Vec<_>>(),
+        [Some(0), Some(1), Some(8), Some(0), Some(16777215)]
+    );
+    // The fourth pass left the counter at five. Advance to its last u16 value.
+    for _ in 5..65535 {
+        vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    }
+    for _ in 0..3 {
+        vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    }
+    assert_eq!(
+        host.invocations
+            .iter()
+            .rev()
+            .take(3)
+            .map(|input| input.elapsed)
+            .collect::<Vec<_>>(),
+        [Some(1), Some(0), Some(65535)]
+    );
+}
+
+#[test]
+fn paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions() {
+    let mut vm = runtime(vec![
+        call("Observe", CallKind::Multitask),
+        call("Observe", CallKind::Task),
+        Operation::Yield,
+        Operation::TaskPause { label: 0 },
+        Operation::Yield,
+        Operation::TaskResume { label: 0 },
+        Operation::Yield,
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(host.invocations[1].unpaused_tasks, 1);
+    host.ready = true;
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(host.invocations[2].unpaused_tasks, 2);
+    assert_eq!(host.invocations[2].unpaused_blocking_tasks, 1);
+    assert_eq!(host.invocations[3].unpaused_tasks, 1);
+    assert_eq!(host.invocations[3].unpaused_blocking_tasks, 1);
+
+    let mut vm = runtime(vec![
+        call("Observe", CallKind::Multitask),
+        Operation::TaskPause { label: 0 },
+        Operation::Yield,
+        Operation::TaskResume { label: 0 },
+        Operation::Yield,
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Tasks::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(host.invocations.len(), 1);
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    vm.invoke_tasks_timed(&mut host, &mut [], 512).unwrap();
+    assert_eq!(host.invocations[1].elapsed, Some(2));
 }

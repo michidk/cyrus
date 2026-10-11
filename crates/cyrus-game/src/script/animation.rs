@@ -131,6 +131,7 @@ impl Host for AnimationHost<'_, '_> {
         kind: CallKind,
         function: &str,
         arguments: &[Argument],
+        _: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         anyhow::ensure!(
@@ -158,7 +159,13 @@ impl Host for AnimationHost<'_, '_> {
         self.request()?;
         Ok(CallResult::Pending(1))
     }
-    fn poll(&mut self, token: u64, arguments: &[Argument], _: &mut [i32]) -> anyhow::Result<bool> {
+    fn poll(
+        &mut self,
+        token: u64,
+        arguments: &[Argument],
+        _: cyrus_script::Invocation,
+        _: &mut [i32],
+    ) -> anyhow::Result<bool> {
         anyhow::ensure!(token == 1, "animation task token unavailable");
         let [group, count] = arguments else {
             anyhow::bail!("PushAnimation requires two arguments")

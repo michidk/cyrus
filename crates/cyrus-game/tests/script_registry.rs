@@ -12,11 +12,18 @@ impl Host for NoServices {
         _: CallKind,
         _: &str,
         _: &[Argument],
+        _: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         anyhow::bail!("no native services")
     }
-    fn poll(&mut self, _: u64, _: &[Argument], _: &mut [i32]) -> anyhow::Result<bool> {
+    fn poll(
+        &mut self,
+        _: u64,
+        _: &[Argument],
+        _: cyrus_script::Invocation,
+        _: &mut [i32],
+    ) -> anyhow::Result<bool> {
         anyhow::bail!("no tasks")
     }
     fn end(&mut self, _: Thread) -> anyhow::Result<()> {
@@ -164,7 +171,7 @@ fn inspection_steps_logical_state_and_rejects_stale_generations() {
     );
     assert!(
         world
-            .step_tasks(old)
+            .step_tasks(old, Some(256))
             .unwrap_err()
             .to_string()
             .contains("stale")
@@ -418,4 +425,252 @@ fn native_flag_helpers_keep_type_behavior_numeric_values_and_latches_separate() 
             "{kind}"
         );
     }
+}
+
+fn wait_cache(ops: Vec<Operation>) -> Scripts {
+    let mut scripts = cache();
+    scripts.definition.functions.extend([
+        Function {
+            name: "Wait".into(),
+            param_count: 1,
+            kind: CallKind::Task,
+        },
+        Function {
+            name: "WaitOnTasks".into(),
+            param_count: 0,
+            kind: CallKind::Task,
+        },
+        Function {
+            name: "WaitNonMulti".into(),
+            param_count: 0,
+            kind: CallKind::Task,
+        },
+    ]);
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = ops
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+fn wait(id: u16, name: &str, kind: CallKind, args: Vec<Value>) -> Operation {
+    Operation::Call {
+        call: Call {
+            function_id: id,
+            function: name.into(),
+            target: Object::Me,
+            kind,
+            arguments: args,
+        },
+    }
+}
+fn set_flag(value: i32) -> Operation {
+    Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: Value::Integer { value },
+            rest: vec![],
+        },
+    }
+}
+#[test]
+fn wait_continues_to_flag_change_and_missing_scale_does_not_poison_actor() {
+    let scripts = wait_cache(vec![
+        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [12]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert!(
+        world
+            .step_tasks(id, None)
+            .unwrap_err()
+            .to_string()
+            .contains("requires frame_scale")
+    );
+    assert!(world.actors()[0].runtime().unwrap().failure().is_none());
+    world.step_tasks(id, Some(512)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [12]);
+    world.step_tasks(id, Some(0)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [12]);
+    world.step_tasks(id, Some(256)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(
+        world.actors()[1]
+            .runtime()
+            .unwrap()
+            .program_counter(Thread::Main),
+        Some(0)
+    );
+}
+#[test]
+fn wait_signed_duration_wrap_and_initial_count_excludes_unallocated_slot() {
+    for duration in [i32::MIN, -1, 0, 1, 2] {
+        let scripts = wait_cache(vec![
+            wait(
+                1,
+                "Wait",
+                CallKind::Task,
+                vec![Value::Integer { value: duration }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(world.flags(), [12]);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        world.step_tasks(id, Some(256)).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(world.flags()[0], if duration == i32::MIN { 12 } else { 7 });
+    }
+    for (id, name) in [(2, "WaitOnTasks"), (3, "WaitNonMulti")] {
+        let scripts = wait_cache(vec![
+            wait(id, name, CallKind::Task, vec![]),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let actor = world.id(0).unwrap();
+        world.step(actor, Thread::Main, 20).unwrap();
+        assert_eq!(world.flags(), [12]);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        world.step_tasks(actor, Some(256)).unwrap();
+        world.step(actor, Thread::Main, 20).unwrap();
+        assert_eq!(world.flags(), [7]);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+#[test]
+fn wait_on_tasks_ignores_paused_slots_and_stop_clears_native_bookkeeping() {
+    let scripts = wait_cache(vec![
+        wait(
+            1,
+            "Wait",
+            CallKind::Multitask,
+            vec![Value::Integer { value: 100 }],
+        ),
+        wait(
+            1,
+            "Wait",
+            CallKind::Multitask,
+            vec![Value::Integer { value: 100 }],
+        ),
+        wait(2, "WaitOnTasks", CallKind::Multitask, vec![]),
+        Operation::Yield,
+        Operation::TaskPause { label: 0 },
+        Operation::TaskPause { label: 1 },
+        Operation::Yield,
+        Operation::TaskResume { label: 0 },
+        Operation::TaskStop { label: 1 },
+        Operation::Yield,
+        Operation::TaskStop { label: 0 },
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+    world.step_tasks(id, Some(256)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+    world.step(id, Thread::Main, 20).unwrap();
+    world.step_tasks(id, Some(256)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
+    world.step(id, Thread::Main, 20).unwrap();
+    world.step_tasks(id, Some(256)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.flags(), [7]);
+    // A later authored pass allocates fresh host tokens after cancellation.
+    world.step(id, Thread::Main, 20).unwrap();
+    world.step_tasks(id, Some(256)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+}
+
+#[test]
+fn wait_non_multi_counts_blocking_slots_and_observes_same_pass_completion() {
+    let mut scripts = wait_cache(vec![
+        Operation::TaskPause { label: 6 },
+        wait(
+            1,
+            "Wait",
+            CallKind::Task,
+            vec![Value::Integer { value: 100 }],
+        ),
+        Operation::TaskResume { label: 6 },
+        wait(3, "WaitNonMulti", CallKind::Task, vec![]),
+        set_flag(7),
+        Operation::Endint,
+        wait(
+            1,
+            "Wait",
+            CallKind::Task,
+            vec![Value::Integer { value: 100 }],
+        ),
+        Operation::End { target: 6 },
+    ]);
+    scripts.actors.get_mut("LOGIC").unwrap().program.entry = 6;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    world.step(id, Thread::Interrupt, 20).unwrap();
+    world.step(id, Thread::Interrupt, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+    world.step_tasks(id, Some(256)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+    world.step_tasks(id, Some(12800)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    world.step(id, Thread::Interrupt, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+}
+
+#[test]
+fn wait_non_multi_ignores_multiple_unpaused_multitasks() {
+    let scripts = wait_cache(vec![
+        wait(
+            1,
+            "Wait",
+            CallKind::Multitask,
+            vec![Value::Integer { value: 100 }],
+        ),
+        wait(
+            1,
+            "Wait",
+            CallKind::Multitask,
+            vec![Value::Integer { value: 100 }],
+        ),
+        wait(3, "WaitNonMulti", CallKind::Task, vec![]),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [12]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+    world.step_tasks(id, Some(256)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
 }

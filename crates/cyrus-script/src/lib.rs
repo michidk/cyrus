@@ -46,11 +46,21 @@ impl Argument {
     }
 }
 
-/// A host-issued token identifies one blocking operation, never an audio/entity handle.
+/// Functions complete directly; tasks always retain a token until a later task pass.
+/// A token identifies actor-owned native state, never an audio/entity handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallResult {
     Complete(i32),
     Pending(u64),
+}
+
+/// Native task input follows preservation's counter and unpaused-slot rules.
+/// Function calls have no established elapsed input. Scale is supplied explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Invocation {
+    pub elapsed: Option<i32>,
+    pub unpaused_tasks: usize,
+    pub unpaused_blocking_tasks: usize,
 }
 
 /// Immediate state changes occur synchronously. Unsupported services return an error.
@@ -62,10 +72,17 @@ pub trait Host {
         kind: CallKind,
         function: &str,
         arguments: &[Argument],
+        invocation: Invocation,
         flags: &mut [i32],
     ) -> Result<CallResult>;
     /// Active task operands are evaluated again on each eligible task invocation.
-    fn poll(&mut self, task: u64, arguments: &[Argument], flags: &mut [i32]) -> Result<bool>;
+    fn poll(
+        &mut self,
+        task: u64,
+        arguments: &[Argument],
+        invocation: Invocation,
+        flags: &mut [i32],
+    ) -> Result<bool>;
     /// Removes task bookkeeping without reversing already issued effects.
     fn cancel(&mut self, task: u64) -> Result<()> {
         anyhow::bail!("task {task} cancellation unsupported")

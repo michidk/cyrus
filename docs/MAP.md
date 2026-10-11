@@ -63,6 +63,7 @@ module where it is defined and regenerate.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
+- `src/script/waits.rs` — Actor-owned wait tokens apply preservation's elapsed and unpaused-slot predicates.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 

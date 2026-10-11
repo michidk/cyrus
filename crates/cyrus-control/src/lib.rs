@@ -69,6 +69,9 @@ pub enum Command {
         generation: u64,
         index: usize,
         stage: ScriptStage,
+        /// Required for tasks; eight fractional bits, supplied by the inspection caller.
+        #[serde(default)]
+        frame_scale: Option<u32>,
     },
     Quit,
 }

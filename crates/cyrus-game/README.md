@@ -79,5 +79,11 @@ Native control and MCP `scripts` page through at most 64 actor diagnostics.
 `step_script` runs a selected main, interrupt or existing-task stage. The
 inspection host supports the researched self `GetMyAttr`, `SetGlobalFlag`,
 `ResetGlobalFlag` and `TestGlobalFlag` services. Flag numeric values and latches
-remain separate. Other native services remain explicit failures. End notifications with synchronization
+remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
+`WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
+requires `frame_scale` with eight fractional bits; omission fails before actor
+mutation. Native wait tokens belong to each logical instance. Initial waits always allocate;
+completion applies on a later task pass, including duration zero and one. Function-encoded
+waits remain unsupported because their timing context is not established.
+Other native services remain explicit failures. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.

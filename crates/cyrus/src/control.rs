@@ -257,6 +257,7 @@ fn handle(
                 generation,
                 index,
                 stage,
+                frame_scale,
             } => {
                 match script_actors
                     .as_mut()
@@ -265,7 +266,7 @@ fn handle(
                     Some(world) => {
                         let id = cyrus_game::script::ScriptActorId { generation, index };
                         let result = match stage {
-                            cyrus_control::ScriptStage::Tasks => world.step_tasks(id),
+                            cyrus_control::ScriptStage::Tasks => world.step_tasks(id, frame_scale),
                             cyrus_control::ScriptStage::Main => {
                                 world.step(id, cyrus_game::script::Thread::Main, 100_000)
                             }

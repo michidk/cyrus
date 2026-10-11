@@ -47,8 +47,14 @@ impl Runtime {
                 );
                 let target = self.target(&call.target)?;
                 let args = self.arguments(call, flags, host)?;
-                let CallResult::Complete(value) =
-                    host.call(&target, CallKind::Function, &call.function, &args, flags)?
+                let CallResult::Complete(value) = host.call(
+                    &target,
+                    CallKind::Function,
+                    &call.function,
+                    &args,
+                    self.invocation(None),
+                    flags,
+                )?
                 else {
                     anyhow::bail!("function {} returned a blocking task", call.function);
                 };

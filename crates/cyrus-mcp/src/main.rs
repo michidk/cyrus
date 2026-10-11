@@ -101,6 +101,10 @@ struct ScriptStepParams {
     index: usize,
     #[schemars(description = "main, interrupt, or tasks")]
     stage: String,
+    #[schemars(
+        description = "Required for tasks; original scale with eight fractional bits. No production clock is implied."
+    )]
+    frame_scale: Option<u32>,
 }
 
 #[derive(Clone)]
@@ -282,6 +286,7 @@ impl Cyrus {
             generation: p.generation,
             index: p.index,
             stage,
+            frame_scale: p.frame_scale,
         })?)
     }
 

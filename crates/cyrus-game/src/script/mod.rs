@@ -4,6 +4,7 @@ mod flags;
 mod playback;
 mod registry;
 mod status;
+mod waits;
 pub use animation::AnimationScript;
 use bevy::prelude::*;
 pub use cyrus_script::Thread;

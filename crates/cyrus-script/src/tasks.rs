@@ -1,5 +1,5 @@
 //! Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
-use super::{CallResult, Host, Runtime, Thread};
+use super::{CallResult, Host, Invocation, Runtime, Thread};
 use anyhow::{Context, Result};
 use cyrus_assets::script::{Call, CallKind, Operation};
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ pub(super) struct Task {
     pub owner: Thread,
     pub blocking: bool,
     pub paused: bool,
+    pub counter: u16,
 }
 impl Runtime {
     pub fn active_tasks(&self) -> usize {
@@ -26,10 +27,27 @@ impl Runtime {
     }
     /// Executes existing slots in allocation order. Newly issued tasks run in a later pass.
     pub fn invoke_tasks(&mut self, host: &mut dyn Host, flags: &mut [i32]) -> Result<()> {
+        self.task_pass(host, flags, None)
+    }
+    /// Scale has eight fractional bits; elapsed is recomputed, never accumulated.
+    pub fn invoke_tasks_timed(
+        &mut self,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        frame_scale: u32,
+    ) -> Result<()> {
+        self.task_pass(host, flags, Some(frame_scale))
+    }
+    fn task_pass(
+        &mut self,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        frame_scale: Option<u32>,
+    ) -> Result<()> {
         if let Some(error) = &self.state.failure {
             anyhow::bail!("{error}");
         }
-        let result = self.poll_tasks(host, flags);
+        let result = self.poll_tasks(host, flags, frame_scale);
         if let Err(error) = result {
             let error = format!("{} task stage: {error:#}", self.context);
             self.state.failure = Some(error.clone());
@@ -37,7 +55,31 @@ impl Runtime {
         }
         Ok(())
     }
-    fn poll_tasks(&mut self, host: &mut dyn Host, flags: &mut [i32]) -> Result<()> {
+    pub(super) fn invocation(&self, elapsed: Option<i32>) -> Invocation {
+        Invocation {
+            elapsed,
+            unpaused_tasks: self
+                .state
+                .tasks
+                .iter()
+                .flatten()
+                .filter(|task| !task.paused)
+                .count(),
+            unpaused_blocking_tasks: self
+                .state
+                .tasks
+                .iter()
+                .flatten()
+                .filter(|task| !task.paused && task.blocking)
+                .count(),
+        }
+    }
+    fn poll_tasks(
+        &mut self,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        frame_scale: Option<u32>,
+    ) -> Result<()> {
         let program = Arc::clone(&self.program);
         for index in 0..self.state.tasks.len() {
             let Some(task) = self.state.tasks[index].clone() else {
@@ -56,8 +98,12 @@ impl Runtime {
                 };
                 self.state.script_return = 0;
                 let arguments = self.arguments(call, flags, host)?;
-                host.poll(task.token, &arguments, flags)
-                    .with_context(|| format!("native {}", call.function))
+                let elapsed = frame_scale
+                    .map(|scale| (u32::from(task.counter).wrapping_mul(scale) >> 8) as i32);
+                let invocation = self.invocation(elapsed);
+                let result = host.poll(task.token, &arguments, invocation, flags);
+                self.state.tasks[index].as_mut().unwrap().counter = task.counter.wrapping_add(1);
+                result.with_context(|| format!("native {}", call.function))
             })()
             .with_context(|| {
                 format!(
@@ -100,8 +146,23 @@ impl Runtime {
         );
         let target = self.target(&call.target)?;
         let arguments = self.arguments(call, flags, host)?;
-        match host.call(&target, call.kind, &call.function, &arguments, flags)? {
-            CallResult::Complete(_) => Ok(false),
+        let invocation = self.invocation((call.kind != CallKind::Function).then_some(0));
+        match host.call(
+            &target,
+            call.kind,
+            &call.function,
+            &arguments,
+            invocation,
+            flags,
+        )? {
+            CallResult::Complete(_) => {
+                anyhow::ensure!(
+                    call.kind == CallKind::Function,
+                    "native task {} must retain a token for its later completion pass",
+                    call.function
+                );
+                Ok(false)
+            }
             CallResult::Pending(token) => {
                 anyhow::ensure!(
                     call.kind != CallKind::Function,
@@ -124,6 +185,7 @@ impl Runtime {
                     owner: thread,
                     blocking,
                     paused: false,
+                    counter: 1,
                 });
                 Ok(blocking)
             }

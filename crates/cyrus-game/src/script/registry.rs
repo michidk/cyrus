@@ -23,6 +23,7 @@ pub struct ScriptActor {
     runtime: Option<Runtime>,
     unavailable: Option<String>,
     attributes: Vec<u8>,
+    waits: super::waits::Waits,
 }
 impl ScriptActor {
     pub fn runtime(&self) -> Option<&Runtime> {
@@ -85,6 +86,7 @@ impl ScriptWorld {
                     namespace: metadata.and_then(|actor| actor.namespace.clone()),
                     runtime,
                     unavailable,
+                    waits: Default::default(),
                     attributes: (0..256)
                         .map(|index| {
                             metadata
@@ -134,12 +136,20 @@ impl ScriptWorld {
         })?;
         let mut host = InspectionHost {
             attributes: &actor.attributes,
+            waits: &mut actor.waits,
             flag_state: &mut self.flag_state,
         };
         runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
     }
-    pub fn step_tasks(&mut self, id: ScriptActorId) -> Result<()> {
+    /// Explicit task timing only. Missing scale fails before changing any actor state.
+    pub fn step_tasks(&mut self, id: ScriptActorId, frame_scale: Option<u32>) -> Result<()> {
         let index = self.resolve(id)?;
+        let frame_scale = frame_scale.with_context(|| {
+            format!(
+                "world {} instance {} task stage requires frame_scale",
+                self.world, index
+            )
+        })?;
         let actor = &mut self.actors[index];
         let runtime = actor.runtime.as_mut().with_context(|| {
             actor
@@ -147,12 +157,14 @@ impl ScriptWorld {
                 .clone()
                 .unwrap_or_else(|| "program absent".into())
         })?;
-        runtime.invoke_tasks(
+        runtime.invoke_tasks_timed(
             &mut InspectionHost {
                 attributes: &actor.attributes,
+                waits: &mut actor.waits,
                 flag_state: &mut self.flag_state,
             },
             &mut self.flags,
+            frame_scale,
         )
     }
     fn resolve(&self, actor: ScriptActorId) -> Result<usize> {
@@ -288,6 +300,7 @@ pub(super) fn prepare(
 struct InspectionHost<'a> {
     attributes: &'a [u8],
     flag_state: &'a mut super::flags::Flags,
+    waits: &'a mut super::waits::Waits,
 }
 impl Host for InspectionHost<'_> {
     fn call(
@@ -296,12 +309,16 @@ impl Host for InspectionHost<'_> {
         kind: CallKind,
         function: &str,
         arguments: &[Argument],
+        invocation: cyrus_script::Invocation,
         flags: &mut [i32],
     ) -> Result<CallResult> {
         anyhow::ensure!(
             target == &Target::Me,
             "inspection target {target:?} unsupported"
         );
+        if let Some(result) = self.waits.call(function, kind, arguments, invocation)? {
+            return Ok(result);
+        }
         anyhow::ensure!(
             kind == CallKind::Function,
             "native {:?} {function} unsupported by inspection host",
@@ -326,8 +343,17 @@ impl Host for InspectionHost<'_> {
             kind
         )
     }
-    fn poll(&mut self, token: u64, _: &[Argument], _: &mut [i32]) -> Result<bool> {
-        anyhow::bail!("inspection task {token} unavailable")
+    fn poll(
+        &mut self,
+        token: u64,
+        arguments: &[Argument],
+        invocation: cyrus_script::Invocation,
+        _: &mut [i32],
+    ) -> Result<bool> {
+        self.waits.poll(token, arguments, invocation)
+    }
+    fn cancel(&mut self, token: u64) -> Result<()> {
+        self.waits.cancel(token)
     }
     fn end(&mut self, _: Thread) -> Result<()> {
         anyhow::ensure!(
