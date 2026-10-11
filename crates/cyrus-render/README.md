@@ -130,4 +130,11 @@ Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
 The `animated_i16_absolute` encoding distinguishes these from older raw-delta
 caches, which require re-export for nonzero-frame playback. Installed Cyrus
 frames verify decoded export; projection has a separate contract test. Live
-visual parity and model replacement remain unchecked.
+visual parity remains unchecked.
+
+`PlayerModelPlugin` consumes explicit `AnimationPose` components on the player.
+It loads the matching textured GLB from the world's `.player-models/` cache,
+applies the requested frame, and replaces the model when the source changes.
+Removing the pose or player removes its model. The model stays hidden until its
+pose reaches the loaded node. Native and browser use the same loader path.
+This adds no animation interpreter, actor activation, or simulation clock.

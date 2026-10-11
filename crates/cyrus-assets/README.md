@@ -28,3 +28,8 @@ Native and browser scene loading retain this data. Re-export worlds for schema 2
 and the GLB source vertex/face mapping. Older sidecars are rejected with a
 re-export error. In `cyrus-render`, explicit model poses update private meshes, normals, and bounds;
 removing a pose or changing worlds restores the original mesh.
+
+World export also prepares CYRUS's standalone RAAN frame-source models under
+`<world>.player-models/`, with the world's palette, textures and source geometry
+mappings. Missing standalone player models report contextual export errors.
+Re-export worlds before using explicit player model poses.

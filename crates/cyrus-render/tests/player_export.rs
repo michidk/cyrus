@@ -74,5 +74,52 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         support.actor_height(player.positive_extent[1], scene.settings.standing_height),
         -190_464
     );
+    let animations: cyrus_assets::animation::Animations =
+        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+    for name in ["CYRSA001", "CYRSA012"] {
+        let bytes = std::fs::read(
+            path.with_extension("player-models")
+                .join(format!("{name}.glb")),
+        )
+        .unwrap();
+        let glb = bevy::gltf::gltf::Gltf::from_slice(&bytes).unwrap();
+        let node = glb.nodes().find(|node| node.name() == Some(name)).unwrap();
+        let mesh = node.mesh().unwrap();
+        assert!(mesh.primitives().len() > 0);
+        assert!(glb.textures().len() > 0);
+        for primitive in mesh.primitives() {
+            let extras: serde_json::Value =
+                serde_json::from_str(primitive.extras().as_ref().unwrap().get()).unwrap();
+            assert_eq!(extras["rgpre_geometry"]["version"], 1);
+            let binding: cyrus_render::animation::MeshFrameBinding =
+                serde_json::from_value(extras["rgpre_geometry"].clone()).unwrap();
+            let base = cyrus_render::animation::FrameGeometry::from_model(
+                &animations.models[name],
+                0,
+                &binding,
+            )
+            .unwrap();
+            let positions: Vec<_> = primitive
+                .reader(|_| glb.blob.as_deref())
+                .read_positions()
+                .unwrap()
+                .collect();
+            assert_eq!(positions, base.positions);
+            assert!(
+                cyrus_render::animation::FrameGeometry::from_model(
+                    &animations.models[name],
+                    1,
+                    &binding
+                )
+                .is_ok()
+            );
+            assert!(
+                !extras["rgpre_geometry"]["source_vertices"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
     std::fs::remove_dir_all(directory).unwrap();
 }

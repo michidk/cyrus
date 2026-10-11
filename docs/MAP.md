@@ -23,6 +23,7 @@ module where it is defined and regenerate.
 - `src/player.rs` — Serialized player scene inputs, before game-owned runtime preparation.
 - `src/player_export.rs` — Native extraction of player inputs through preservation's parsers.
 - `src/player_export/collision.rs` — Installed static placements and authored collision geometry for the portable player cache.
+- `src/player_export/models.rs` — Textured player frame-source models, prepared for the shared GLB loader.
 - `src/preferences.rs` — Local book preferences, expressed in original menu action units.
 - `src/scene.rs` — Native scene export and installed world selection.
 - `src/script.rs` — Serialized explicit animation program descriptors.
@@ -68,6 +69,7 @@ module where it is defined and regenerate.
 - `src/lighting.rs` — Terrain RGB and quantized normals from preservation's terrain-lighting contract.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
+- `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 - `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.

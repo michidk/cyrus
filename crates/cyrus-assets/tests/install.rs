@@ -183,7 +183,7 @@ fn world_exports_include_declared_terrain_and_textures() {
         std::fs::remove_file(path.with_extension("player")).unwrap();
         std::fs::remove_file(path).unwrap();
     }
-    std::fs::remove_dir(output).unwrap();
+    std::fs::remove_dir_all(output).unwrap();
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
         skies[0], skies[2],
         "day and sunset must use different sky assets"
     );
-    std::fs::remove_dir(output).unwrap();
+    std::fs::remove_dir_all(output).unwrap();
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
             }
         }
     }
-    std::fs::remove_dir(output).unwrap();
+    std::fs::remove_dir_all(output).unwrap();
 }
 
 #[test]

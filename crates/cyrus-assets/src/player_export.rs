@@ -5,6 +5,7 @@ use rgpre::import::{player_ini::PlayerConfig, rgm, soup_def, wld};
 use std::path::Path;
 
 mod collision;
+pub(crate) mod models;
 
 pub(crate) fn export(
     root: &Path,

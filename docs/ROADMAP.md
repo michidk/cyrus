@@ -358,7 +358,7 @@ for the ownership decisions and migration constraints.
   - [ ] Integrate actor activation and spatial/stage eligibility, including the selected-player caller; preserve separate invocations in the same update.
   - [ ] Implement evidence-backed state-dependent defaults, remaining group types, cancellation and authored event commands.
   - [x] Support explicitly supplied reconstructed i16 poses; installed CYRSA001 frames verify export and projection. Old raw-delta caches require re-export.
-  - [ ] Support model replacement across frame sources.
+  - [ ] Support model replacement across frame sources for all actors. Explicit player pose binding now loads and replaces textured source models; automatic player activation remains pending.
   - [ ] Verify world replacement and actor removal with active mesh, script and sound state.
   - [ ] Compare an actual rendered and audible authored sequence in both games, then repeat in the browser and across required worlds.
 

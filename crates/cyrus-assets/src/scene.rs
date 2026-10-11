@@ -39,6 +39,7 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         std::fs::create_dir_all(parent)?;
     }
     crate::animation_export::export(&rgm, &models, &registry, entry.index, out)?;
+    crate::player_export::models::export(&rgm, &registry, &palette, &mut cache, out)?;
     let (root, buffer) = match &entry.world {
         Some(path) => {
             let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
