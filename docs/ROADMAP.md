@@ -259,7 +259,7 @@ Agents and developers must run, drive and compare both games on a machine withou
 - [x] `just compare <label>` captures both games into `cyrus-config/compare/` ([9535ce6](https://github.com/michidk/cyrus/commit/9535ce6)).
 - [ ] Capture matching scenes and viewpoints with that command. The verified pair showed cyrus START and the original load-game book, not a matched comparison.
 - [x] The fidelity switch gates graphics; browser sky/water toggling verified in [4a7696d](https://github.com/michidk/cyrus/commit/4a7696d). This proves switching only; unsupported rendering approximations are being removed.
-- [ ] **In progress** Split `cyrus-game` into crates by concern in the separate `crate-split` worktree. See the [crate split proposal](#crate-split-proposal).
+- [x] Split assets, world execution and presentation out of `cyrus-game`; keep TCP transport in `cyrus-control` and platform adapters in the hosts. See [crate ownership](#crate-ownership).
 - [x] CI green since the repository restructure ([run 38053971267](https://github.com/michidk/cyrus/actions/runs/38053971267), revision `92aac25`). This run does not cover pending shared changes.
 
 **Done when:** A fresh clone with a linked install builds, runs both games, is driven from an agent, and produces a comparison capture using only the commands in `docs/SETUP.md`.
@@ -292,151 +292,44 @@ The remaining work is unassigned.
 - [ ] **To do:** verify optimized native release startup and skip playback.
 - [ ] **To do:** check startup audio on a machine with an audio device and the installed CD image; the native virtual-display check did not verify audio.
 
-## Crate split proposal
+## Crate ownership
 
-**In progress in the separate `crate-split` worktree. Not landed on main.**
+The split keeps dependencies one-way: presentation consumes gameplay and world
+state; world execution consumes portable assets. `rgpre` remains the owner of
+formats and recovered engine facts.
 
-The split now moves existing committed responsibilities. Future stage-1 script
-and playback systems follow these boundaries when they exist; the refactor
-does not complete world playback. Reconcile the proposal with landed APIs
-before each migration step.
-
-Keep `cyrus-game` as the gameplay core. Extract four substantial crates for
-assets, world simulation, presentation, and the native control server. Keep the
-existing protocol/client crate, `cyrus-control`. The result should let native,
-headless, and browser applications share world and gameplay code without
-bringing install access, a renderer, or TCP into the core.
-
-This needs more than moving files. `scene.rs` currently resolves worlds,
-exports assets, and spawns rendered scenes. `loading.rs` combines install
-scanning with progress UI. `player.rs` combines player state with the inspection
-camera. `control.rs` combines transport, gameplay commands, and screenshots.
-Native and browser entry points also duplicate scene spawning.
-
-### Responsibilities and public interfaces
-
-Names below are proposed destinations. Reuse existing types where their
-contracts fit; keep implementation helpers private.
-
-| Owner | Move here | Public contract |
-| --- | --- | --- |
-| New `cyrus-assets` | `install`, preload scanning, export preparation from `scene`, `animation_export`, `environment_export`, `sound_export`; retained animation/environment/sound records and their loaders | Portable `Animations`, `Environment`, sound metadata and an asset-loading plugin. Native-only `GameInstall`, preload reporting, `export_scene` and `export_all_worlds`. Validate sidecars with file/world/field context. Keep `rgpre` conversion private. |
-| New `cyrus-world` | `SceneRequest`, `CurrentScene`, world replacement/lifecycle from `scene`; stage-1 actor, script and animation scheduling once implemented | A `WorldPlugin`, a world request and observable load state. Own simulation entities, playback state, and unload cleanup. Read loaded data from assets; publish state and requests for gameplay and presentation without importing either. |
-| Existing `cyrus-game` | `AppState`, fidelity, player state, bindings and action rules; later locomotion and gameplay | `PlayerPlugin`, player/action state, `Fidelity` and its run conditions. Use world queries for collision and object state. Player rules must run without spawning a camera, reading the install, or opening a socket. |
-| New `cyrus-render` | GLB spawning, materials/lights, `ViewCamera`, `FlycamSettings`, `FrameScene`, framing and mouse-look; progress UI and sound playback | A presentation plugin, inspection-camera controls and frame-scene requests. Consume world lifecycle and animation state. Keep `AudioSource`, audio handles, mesh updates and screenshot rendering here. Verified sky/water rendering belongs here when available. |
-| New `cyrus-control-server` | TCP listener, connection handling and request/reply queue from `control` | A native-only server plugin and typed pending requests/replies using `cyrus-control`. No world, gameplay, camera or screenshot dependencies. Keep socket/thread internals private. |
-| Existing `cyrus`, `cyrus-web` | Plugin assembly and platform adapters | Native install/export startup, settings-file access and command application live in `cyrus`. Browser URL, DOM and cache-URL handling live in `cyrus-web`. Both use the same world and presentation plugins. |
-| Existing `cyrus-debug`, `cyrus-control`, `cyrus-mcp` | Keep their existing roles | Debug uses public game/world/presentation APIs and a frontend-supplied world list. Protocol/client and MCP remain independent of Bevy gameplay. Preserve the control wire format. |
-
-For example, a native world request resolves its WORLD.INI selection, prepares
-the existing cache assets, and hands their references to the world plugin. The
-browser starts from those exported references. Neither world simulation nor
-rendering knows an install path. An invalid selection must report a contextual
-error without partially replacing the current world.
-
-Retain the current request pattern, such as `AnimationRequest(Handle<Animations>)`,
-when extracting asset loaders. Separate sound metadata from its audio handles.
-Separate native KEYS.INI reading from portable binding/action sampling. Replace
-the input sampler's dependency on `FlycamSettings` with an explicit input-lock
-state that the camera/debug adapter sets. Enabling inspection must still leave
-the player in place and suppress gameplay input.
-
-Split `Settings` data from disk loading. Pass cache paths and the control address
-from the native host so gameplay no longer needs filesystem operations or a
-protocol dependency merely to obtain defaults. Keep serialized settings and
-their current defaults compatible.
-
-### Dependency rules
-
-Each row names dependencies allowed by this proposal. Dependencies point in
-one direction; lower-level crates never import their consumers.
-
-| Crate | Allowed project dependencies |
+| Crate | Responsibility |
 | --- | --- |
-| `cyrus-assets` | `rgpre` for native install parsing/export only |
-| `cyrus-world` | `cyrus-assets` |
-| `cyrus-game` | `cyrus-world`, `cyrus-assets` where gameplay consumes retained data |
-| `cyrus-render` | `cyrus-world`, `cyrus-game`, `cyrus-assets` |
-| `cyrus-debug` | Public APIs of world, game and render |
-| `cyrus-control-server` | `cyrus-control` |
-| `cyrus-mcp` | `cyrus-control` |
-| `cyrus`, `cyrus-web` | Their required plugins and platform adapters; the browser excludes the native server and install/export APIs |
+| `cyrus-assets` | Validated portable cache records and loaders. The native feature adds read-only install discovery, parsing, export and media reads. |
+| `cyrus-world` | World requests and committed metadata, explicit animation execution, sound intents, terrain and static collision queries. |
+| `cyrus-game` | App state, fidelity, player input and deterministic rules, player runtime sidecars, and the preference storage contract. |
+| `cyrus-render` | Shared native/browser world presentation, mesh animation, environment, inspection camera, startup/menu, HUD and media playback. |
+| `cyrus-control` | Existing protocol/client and a native std-only TCP server module. Command application belongs to the native host. |
+| `cyrus`, `cyrus-web` | Platform composition, preferences, binding initialization and world preparation. |
+| `cyrus-debug` | Inspection UI through public APIs and host-supplied world choices. |
 
-World scripts may emit typed gameplay requests that `cyrus-game` handles and
-answers through the world's contract. They must not import player/controller
-implementations. The native app's command dispatcher applies TCP requests to
-game, world and render APIs, then returns protocol replies. Screenshots must
-not make the transport crate depend on graphics.
+Native media tasks remain with presentation so extraction preserves cancellation
+and scheduling. Their file and parser access goes through `cyrus-assets`.
+Headless assembly omits camera and audio backends. Rendering-only control
+requests report their unavailable state; input does not enable unsupported movement.
 
-Use Rust privacy and Cargo dependencies to enforce these rules. Select minimal
-Bevy 0.20 component crates or explicit features for assets, world and gameplay.
-The current workspace Bevy defaults enable rendering; moving files alone will
-not remove it. Check the dependency graph for each core crate independently,
-because a full-workspace build can unify features enabled by the renderer.
-Guard native dependencies and APIs by target as well as any export feature.
-The browser build must remain valid even when native CI tests all features.
+`dev/scripts/check-core-boundaries.sh` builds an isolated consumer and rejects
+renderer, window, audio, install-parser and transport dependencies in portable
+assets/world/game. CI also checks the browser target. Contract tests belong to
+the crate that owns the behavior, including world replacement, explicit ticks,
+preference failure handling and TCP framing.
 
-### Migration order
+Verification covers the isolated portable dependency graph, native MCP
+state/input/fidelity/quit, rendered START/PALACE loading, invalid-world retention
+and camera/player independence. Browser release compilation is checked separately
+from live browser behavior. Matched original-game comparisons, audio parity and
+browser interaction checks remain required; extraction does not establish them.
 
-1. **Agree ownership and freeze contracts.** Work from committed `origin/main`
-   in the separate worktree. Record native, headless and WASM baselines. Recheck
-   this proposal against the landed APIs and reconcile concurrent changes when
-   rebasing. Do not move another agent's uncommitted work.
-2. **Extract assets.** Move validated records/loaders and native install,
-   preload and export code into `crates/cyrus-assets`. Separate scan results
-   from their progress UI. Migrate both frontends and asset/install tests in
-   the same commit, preserving cache paths and formats.
-3. **Extract world lifecycle.** Move world requests, state and cleanup into
-   `crates/cyrus-world`. Separate simulation lifetime from rendered entities.
-   Use exported assets in both frontends. Migrate stage-1 script and animation
-   scheduling with their behavior tests; do not implement missing behavior as
-   part of the move.
-4. **Extract presentation and narrow gameplay.** Move scene spawning, cameras,
-   progress UI and audio playback into `crates/cyrus-render`. Remove duplicate
-   browser scene spawning. Separate player input from install reads and camera
-   state. Keep the controller in `cyrus-game` until its size and contracts
-   justify a separate `cyrus-player` crate.
-5. **Extract transport.** Move TCP handling into `crates/cyrus-control-server`
-   and command application into the native app. Keep state, teleport, input,
-   fidelity, world loading, screenshots and quit compatible through MCP.
-6. **Finish assembly and documentation.** Replace the broad native
-   `GamePlugin` assembler with frontend composition and a gameplay-only plugin.
-   Delete the old modules and temporary re-exports as callers migrate. Update
-   workspace/default members, manifests, lockfile, crate READMEs, AGENTS.md,
-   SETUP.md, build scripts and CI wherever crate ownership changes.
-
-Each extraction is a separate verified commit. Move implementation, callers
-and tests together. Revert the failing unit before continuing if its contracts
-cannot be preserved. Do not create empty crates or maintain a second legacy API.
-Until this work starts, improve boundaries within existing modules where needed
-for stage 1; crate moves must not delay world playback.
-
-### Verification and completion
-
-Run `cargo test -p <changed-crate>` for quick feedback after each move, then
-`just gates` before its commit. Move the existing public-interface tests to
-their owners. Add only missing boundary checks needed to prove the split.
-
-| Check | Required result |
-| --- | --- |
-| Assets and exports | All 29 installed worlds, WORLD.INI numeric selections, aliases and palette variants resolve as before. GLB content and sidecar data remain equivalent, with unchanged cache paths/formats. Invalid assets report context; install-backed tests announce skips when absent. |
-| World/game core | A minimal headless Bevy app can load retained data, change worlds and run existing simulation/input contracts without window, GPU, audio playback or TCP plugins. Old world entities, waits and playback state are cleaned up as specified by the stage-1 baseline. |
-| Player and fidelity | Held/released actions, unsupported bindings, input lockout, independent flycam and Faithful defaults retain their tested behavior. No gameplay feature is marked complete by a crate move. |
-| Dependency graph | `cargo tree -p cyrus-world -e features` and `cargo tree -p cyrus-game -e features` show no renderer/window/socket path. Check portable assets without native export features too. |
-| Native control | `just smoke-mcp` and the native screenshot/load-scene checks retain the public JSON protocol and observable results. Record supported headless commands separately from rendering-only requests before migration. |
-| Browser | `cargo check -p cyrus-web --target wasm32-unknown-unknown` and `just web-build` succeed. Drive scene switching, sidecar loading, flycam and F1 controls in the browser. No install or native transport API enters WASM. |
-| End-to-end baseline | `cargo run -p cyrus -- --export-all-worlds`, native scene loading, headless startup and the browser viewer still work. Record the revision, commands and any unavailable verification in the roadmap. |
-
-**Done when:** both frontends share world and presentation code, the core can
-run headless without graphics or network dependencies, public contracts pass,
-and the old mixed modules are gone. Original-game comparisons remain required
-for fidelity; preserving today's behavior during the split does not prove it
-matches Redguard.
-
-The main risks are Cargo feature unification, changes to world-unload ordering,
-and confusing retained asset data with live playback. Build-time improvements
-are not promised without measurements. Keep Bevy 0.20, cache formats, protocol
-formats and gameplay scope unchanged during this refactor.
+The split does not provide automatic animation eligibility, a simulation clock,
+locomotion, script execution, combat or saves. Build-time gains and fidelity
+improvements are not claimed. See the
+[implementation plan](plans/2026-10-11-gitnexus-plan-game-crate-split.md)
+for the ownership decisions and migration constraints.
 
 ## 1. Complete world playback
 

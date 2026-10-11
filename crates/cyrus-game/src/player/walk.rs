@@ -19,11 +19,11 @@ impl WalkingStartup {
     /// Missing groups do not advance startup; sound errors propagate without translation.
     pub fn request(
         &mut self,
-        animation: &mut crate::animation::ActorAnimation,
+        animation: &mut cyrus_world::animation::ActorAnimation,
         definition: &super::definition::PlayerDefinition,
         frame_scale: u32,
         nominal_ticks: u32,
-        sounds: &mut dyn FnMut(crate::animation::AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<WalkingStep>> {
         if !animation.has_group(20) {
             return Ok(None);

@@ -63,7 +63,7 @@ impl PlayerBindings {
     }
 }
 
-pub(crate) fn scan_key(code: u8) -> Option<KeyCode> {
+pub fn scan_key(code: u8) -> Option<KeyCode> {
     use KeyCode::*;
     Some(match code {
         1 => Escape,
@@ -118,82 +118,18 @@ pub(crate) fn scan_key(code: u8) -> Option<KeyCode> {
 }
 
 /// Reverse physical-key mapping for the original Controls capture path.
-pub(crate) fn scan_code(key: KeyCode) -> Option<u8> {
+pub fn scan_code(key: KeyCode) -> Option<u8> {
     (1..=127).find(|code| scan_key(*code) == Some(key))
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub(super) fn load(mut commands: Commands, install: Option<Res<crate::install::GameInstall>>) {
-    let Some(install) = install else {
-        return;
-    };
-    let path = install.root.join("KEYS.INI");
-    let result = std::fs::read_to_string(&path)
-        .map_err(|e| e.to_string())
-        .and_then(|text| rgpre::import::keys_ini::KeysIni::parse(&text))
-        .and_then(|ini| {
-            let local = crate::startup::MenuPreferences::load().map_err(|e| e.to_string())?;
-            PlayerBindings::from_codes(local.map_or_else(
-                || ini.keyboard_codes(),
-                |p| std::array::from_fn(|i| p.bindings[i]),
-            ))
-        });
-    match result {
-        Ok(bindings) => {
-            commands.insert_resource(bindings);
-        }
-        Err(error) => error!(
-            "{}: {error}; player keyboard input disabled",
-            path.display()
-        ),
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-pub(super) fn load_scene_bindings(
-    request: Option<Res<super::data::PlayerSceneRequest>>,
-    scenes: Res<Assets<super::data::PlayerScene>>,
-    mut bindings: ResMut<PlayerBindings>,
-    mut applied: Local<Option<AssetId<super::data::PlayerScene>>>,
-) {
-    let Some(request) = request else {
-        return;
-    };
-    if *applied == Some(request.0.id()) {
-        return;
-    }
-    *bindings = PlayerBindings::default();
-    let Some(scene) = scenes.get(&request.0) else {
-        return;
-    };
-    let result = (|| {
-        let local = crate::startup::MenuPreferences::load().map_err(|e| e.to_string())?;
-        let codes = match local {
-            Some(preferences) => std::array::from_fn(|i| preferences.bindings[i]),
-            None => scene
-                .keyboard_codes
-                .ok_or("missing keyboard defaults; re-export world")?,
-        };
-        PlayerBindings::from_codes(codes)
-    })();
-    match result {
-        Ok(loaded) => *bindings = loaded,
-        Err(error) => error!(
-            "world {} player keyboard input disabled: {error}",
-            scene.world
-        ),
-    }
-    *applied = Some(request.0.id());
 }
 
 pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Res<PlayerBindings>,
-    flycam: Res<super::FlycamSettings>,
+    suppressed: Res<InputSuppressed>,
     fidelity: Res<Fidelity>,
     mut input: ResMut<PlayerInput>,
 ) {
-    if flycam.enabled {
+    if suppressed.0 {
         *input = PlayerInput::default();
         return;
     }
@@ -207,3 +143,9 @@ pub(super) fn sample(
         input.walk = !keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     }
 }
+
+/// Explicit inspection/UI input lock, sampled before gameplay input.
+#[derive(Resource, Default)]
+pub struct InputSuppressed(pub bool);
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct InputSample;

@@ -1,4 +1,4 @@
-use cyrus_game::player::ground::TerrainGround;
+use cyrus_world::collision::ground::TerrainGround;
 
 #[test]
 fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
@@ -34,7 +34,8 @@ fn unsupported_water_and_outside_grid_do_not_fabricate_support() {
 
 #[test]
 fn original_walking_route_uses_single_precision_heading_projection() {
-    use cyrus_game::player::{motion::translate, walk::WalkingStartup};
+    use cyrus_game::player::motion::translate;
+    use cyrus_game::player::walk::WalkingStartup;
     let mut startup = WalkingStartup::new(1).unwrap();
     let mut position = [10_446_802, -190_464, 10_818_615];
     for expected in [
@@ -60,7 +61,9 @@ fn original_walking_route_uses_single_precision_heading_projection() {
 
 #[test]
 fn original_wall_contacts_roll_back_or_project_and_separate() {
-    use cyrus_game::player::contact::{WallResponse, resolve_wall, separate_residual};
+    use cyrus_game::player::contact::WallResponse;
+    use cyrus_game::player::contact::resolve_wall;
+    use cyrus_game::player::contact::separate_residual;
     assert_eq!(
         resolve_wall(
             [10_449_205, -190_464, 10_770_526],
@@ -92,7 +95,7 @@ fn original_wall_contacts_roll_back_or_project_and_separate() {
 #[test]
 fn sphere_polygon_contact_keeps_plane_projection_and_boundary_equality() {
     use bevy::math::Vec3;
-    use cyrus_game::player::geometry::CollisionFace;
+    use cyrus_world::collision::geometry::CollisionFace;
     let face = CollisionFace::new(
         vec![
             Vec3::ZERO,
@@ -133,10 +136,11 @@ fn sphere_polygon_contact_keeps_plane_projection_and_boundary_equality() {
 
 #[test]
 fn installed_player_attributes_build_original_upright_spheres() {
-    use cyrus_game::player::definition::{BodySphere, PlayerDefinition};
+    use cyrus_game::player::definition::BodySphere;
+    use cyrus_game::player::definition::PlayerDefinition;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
-    let Ok(install) = cyrus_game::install::GameInstall::locate(Some(&root)) else {
-        eprintln!("skipping player body check: no Redguard install");
+    let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (player body check)");
         return;
     };
     let path = std::fs::read_dir(install.maps())
@@ -232,7 +236,8 @@ fn player_cache_rejects_partial_terrain_and_retains_unavailable_definition() {
 
 #[test]
 fn original_wall_slide_adjusts_quantized_movement_heading() {
-    use cyrus_game::player::{contact::wall_heading, motion::displacement_heading};
+    use cyrus_game::player::contact::wall_heading;
+    use cyrus_game::player::motion::displacement_heading;
     let movement = displacement_heading(-3341, 1893);
     assert_eq!(movement, 345);
     assert_eq!(wall_heading(344, movement, [256, 0, 0]), 313);
@@ -245,7 +250,9 @@ fn original_wall_slide_adjusts_quantized_movement_heading() {
 #[test]
 fn collision_traversal_retries_misses_and_keeps_first_success_order() {
     use bevy::math::Vec3;
-    use cyrus_game::player::geometry::{CollisionFace, SphereCandidates, ordered_contacts};
+    use cyrus_world::collision::geometry::CollisionFace;
+    use cyrus_world::collision::geometry::SphereCandidates;
+    use cyrus_world::collision::geometry::ordered_contacts;
     let square = |z| {
         CollisionFace::new(
             vec![

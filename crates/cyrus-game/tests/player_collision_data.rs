@@ -1,4 +1,5 @@
-use cyrus_game::player::collision_data::{CollisionModel, CollisionSubobject};
+use cyrus_assets::collision::CollisionModel;
+use cyrus_assets::collision::CollisionSubobject;
 
 #[test]
 fn authored_collision_preserves_subsets_and_rejects_invalid_references() {
@@ -21,13 +22,18 @@ fn authored_collision_preserves_subsets_and_rejects_invalid_references() {
     let decoded: CollisionModel = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(decoded.subobjects[0].faces, [0, 0]);
     assert!(decoded.subobjects[0].extents.is_none());
-    assert_eq!(decoded.polygons().unwrap().len(), 1);
+    assert_eq!(
+        cyrus_world::collision::geometry::CollisionFace::from_model(&decoded)
+            .unwrap()
+            .len(),
+        1
+    );
     model.subobjects[0].faces.push(1);
-    assert!(model.polygons().is_err());
+    assert!(cyrus_world::collision::geometry::CollisionFace::from_model(&model).is_err());
     model.subobjects[0].faces.pop();
     model.faces[0][2] = 3;
-    assert!(model.polygons().is_err());
+    assert!(cyrus_world::collision::geometry::CollisionFace::from_model(&model).is_err());
     model.faces[0][2] = 2;
     model.normals[0] = [0.0; 3];
-    assert!(model.polygons().is_err());
+    assert!(cyrus_world::collision::geometry::CollisionFace::from_model(&model).is_err());
 }

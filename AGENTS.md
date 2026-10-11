@@ -132,7 +132,8 @@ untracked working memory. Each crate has a `README.md` with its commands.
   control. `rgpre` owns formats and engine facts. Agree on file
   ownership before a crate split or other change across shared boundaries.
 - Keep dependencies one-way. Core rules must not depend on rendering, a window,
-  or networking. Use the browser build to check these boundaries.
+  or networking. Run `dev/scripts/check-core-boundaries.sh` for an isolated
+  consumer check and the browser build for platform boundaries.
 - Document public APIs with their invariants, units, and provenance where
   applicable. Use explicit names that make the code readable without tracing
   unrelated modules.

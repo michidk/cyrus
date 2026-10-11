@@ -2,7 +2,7 @@
 resolver = "3"
 members = ["crates/*"]
 # cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
-default-members = ["crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text"]
+default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,7 +10,7 @@ edition = "2024"
 repository = "https://github.com/michidk/cyrus"
 
 [workspace.dependencies]
-bevy = { version = "0.20", features = ["serialize"] }
+bevy = { version = "0.20", default-features = false, features = ["std", "async_executor", "multi_threaded", "serialize"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -19,6 +19,9 @@ clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
 redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "2e9e3d7b396f65c2843d0298fb5174d6c5444366" }
 cyrus-control = { path = "crates/cyrus-control" }
+cyrus-world = { path = "crates/cyrus-world" }
+cyrus-render = { path = "crates/cyrus-render" }
+cyrus-assets = { path = "crates/cyrus-assets" }
 cyrus-game = { path = "crates/cyrus-game" }
 cyrus-text = { path = "crates/cyrus-text" }
 

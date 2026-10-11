@@ -1,7 +1,7 @@
 //! Marker-based entry from preservation's player and RGM documentation.
 use super::Player;
-use crate::animation::{AnimationRequest, Animations};
 use bevy::prelude::*;
+use cyrus_world::animation::{AnimationRequest, Animations};
 use serde::Deserialize;
 
 /// Explicit marker entry for scene inspection. Scripted world transitions are not implemented.
@@ -87,3 +87,5 @@ pub(super) fn enter_marker(
     }
     *applied = Some(key);
 }
+
+use log::error;

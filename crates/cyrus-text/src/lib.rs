@@ -26,7 +26,7 @@ pub struct Glyph {
     pub pixels: Vec<u8>,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 impl From<&rgpre::import::fnt::FntFile> for Font {
     fn from(font: &rgpre::import::fnt::FntFile) -> Self {
         Self {

@@ -1,7 +1,13 @@
 //! Walking request ordering against the production animation interpreter.
-use cyrus_game::{
+use cyrus_assets::{
     animation::Animations,
-    player::{definition::PlayerDefinition, walk::WalkingStartup},
+    collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement},
+    player::MovementSettings,
+};
+use cyrus_game::player::{definition::PlayerDefinition, walk::WalkingStartup};
+use cyrus_world::collision::{
+    collision_world::{BodyContact, StaticCandidates, StaticCollision},
+    ground::{SupportHistory, TerrainGround},
 };
 
 fn data(groups: serde_json::Value) -> (PlayerDefinition, Animations) {
@@ -28,7 +34,8 @@ fn walking_request_reads_the_marker_after_immediate_animation_advance() {
             {"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":1},{"opcode":1}
         ]
     }]));
-    let mut animation = data.actor_animation("CYRUS", 0).unwrap();
+    let mut animation =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
     let mut walk = WalkingStartup::new(1).unwrap();
     let mut cues = Vec::new();
     let mut sounds = |cue| {
@@ -59,7 +66,8 @@ fn walking_request_reads_the_marker_after_immediate_animation_advance() {
 #[test]
 fn missing_walk_group_preserves_startup_and_zero_speed_uses_runtime_fallback() {
     let (definition, data) = data(serde_json::json!([]));
-    let mut animation = data.actor_animation("CYRUS", 0).unwrap();
+    let mut animation =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
     let mut walk = WalkingStartup::new(1).unwrap();
     assert!(
         walk.request(&mut animation, &definition, 256, 1, &mut |_| Ok(()))
@@ -75,12 +83,7 @@ fn missing_walk_group_preserves_startup_and_zero_speed_uses_runtime_fallback() {
 }
 
 fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
-    use cyrus_game::player::{
-        collision_data::CollisionScene,
-        collision_world::StaticCollision,
-        data::{MovementSettings, PlayerScene},
-        ground::TerrainGround,
-    };
+    use cyrus_game::player::data::PlayerScene;
     let (definition, _) = data(serde_json::json!([]));
     let collision = CollisionScene {
         texture_surfaces: Some(std::collections::BTreeMap::from([(
@@ -118,11 +121,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
 #[test]
 fn forward_query_commits_surface_state_before_admission() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_world::StaticCandidates,
-        ground::SupportHistory,
-        grounded::{StaticGroundQuery, SurfaceUpdate},
-    };
+    use cyrus_game::player::grounded::{StaticGroundQuery, SurfaceUpdate};
     let candidates = StaticCandidates {
         faces: vec![],
         actors: vec![],
@@ -161,11 +160,7 @@ fn forward_query_commits_surface_state_before_admission() {
 #[test]
 fn support_miss_commits_history_and_clears_assigned_surface() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_world::StaticCandidates,
-        ground::SupportHistory,
-        grounded::{StaticGroundQuery, SurfaceUpdate},
-    };
+    use cyrus_game::player::grounded::{StaticGroundQuery, SurfaceUpdate};
     let mut scene = ground_scene(6);
     scene.terrain = None;
     let candidates = StaticCandidates {
@@ -201,11 +196,7 @@ fn support_miss_commits_history_and_clears_assigned_surface() {
 #[test]
 fn steep_forward_probe_stops_before_support_state_updates() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_world::StaticCandidates,
-        ground::{SupportHistory, TerrainGround},
-        grounded::{StaticGroundQuery, SurfaceUpdate},
-    };
+    use cyrus_game::player::grounded::{StaticGroundQuery, SurfaceUpdate};
     let mut scene = ground_scene(6);
     // Raise the local slope without overflowing the original i16 grid.
     let mut heights = vec![0; 256 * 256];
@@ -249,10 +240,8 @@ fn steep_forward_probe_stops_before_support_state_updates() {
 #[test]
 fn composed_walk_translates_only_after_support_and_animation_admission() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_world::StaticCandidates,
-        ground::SupportHistory,
-        grounded::{ForwardWalk, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
+    use cyrus_game::player::grounded::{
+        ForwardWalk, GroundedWalk, StaticGroundQuery, SurfaceUpdate,
     };
     let candidates = StaticCandidates {
         faces: vec![],
@@ -274,7 +263,8 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
                 {"opcode":0,"frame_reference":0},{"opcode":1}
             ]
         }]));
-        let mut animation = data.actor_animation("CYRUS", 0).unwrap();
+        let mut animation =
+            cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
         let initial = [512 * 256, -64 * 256, 512 * 256];
         let mut walk = GroundedWalk {
             position: initial,
@@ -317,11 +307,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
 #[test]
 fn grounded_response_assigns_height_after_translation() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_world::StaticCandidates,
-        ground::SupportHistory,
-        grounded::{GroundedWalk, StaticGroundQuery, SurfaceUpdate},
-    };
+    use cyrus_game::player::grounded::{GroundedWalk, StaticGroundQuery, SurfaceUpdate};
     let scene = ground_scene(6);
     let candidates = StaticCandidates {
         faces: vec![],
@@ -354,32 +340,27 @@ fn grounded_response_assigns_height_after_translation() {
 #[test]
 fn body_normal_conversion_rounds_before_classification_without_normalizing() {
     use bevy::math::Vec3;
-    use cyrus_game::player::collision_world::BodyContact;
+
     let contact = BodyContact {
         model: 0,
         face: 0,
         point: Vec3::ZERO,
         normal: Vec3::new(0.5 / 256.0, -160.5 / 256.0, 1.5 / 256.0),
     };
-    let converted = contact.grounded().unwrap();
+    let converted = cyrus_game::player::contact::GroundedContact::from_body(&contact).unwrap();
     assert_eq!(converted.normal, [0, -160, 2]);
     assert_eq!(converted.classification, 2);
     let invalid = BodyContact {
         normal: Vec3::splat(f32::NAN),
         ..contact
     };
-    assert!(invalid.grounded().is_err());
+    assert!(cyrus_game::player::contact::GroundedContact::from_body(&invalid).is_err());
 }
 
 #[test]
 fn stationary_grounded_update_separates_remaining_wall_overlap() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_data::{CollisionModel, CollisionSubobject, StaticPlacement},
-        collision_world::StaticCollision,
-        ground::SupportHistory,
-        grounded::{GroundedWalk, StaticGroundQuery, SurfaceUpdate},
-    };
+    use cyrus_game::player::grounded::{GroundedWalk, StaticGroundQuery, SurfaceUpdate};
     let mut scene = ground_scene(6);
     scene.collision.models.insert(
         "wall".into(),
@@ -454,10 +435,8 @@ fn residual_distance_rounds_before_map_unit_shift() {
 #[test]
 fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
     use bevy::math::Mat3;
-    use cyrus_game::player::{
-        collision_world::StaticCandidates,
-        ground::SupportHistory,
-        grounded::{ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
+    use cyrus_game::player::grounded::{
+        ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate,
     };
     let scene = ground_scene(6);
     let candidates = StaticCandidates {
@@ -477,7 +456,8 @@ fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
         {"group_index":0,"anim_type":0,"anim_id":2,"commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]},
         {"group_index":20,"anim_type":0,"anim_id":2,"commands":[{"opcode":0,"frame_reference":20},{"opcode":1}]}
     ]));
-    let mut animation = data.actor_animation("CYRUS", 0).unwrap();
+    let mut animation =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
     let start = [512 * 256, -64 * 256, 512 * 256];
     let mut walk = GroundedWalk {
         position: start,

@@ -16,6 +16,9 @@ Its egui adapter is patched to the same released `bevy_egui` 0.43 used by Cyrus.
 Replace the pinned port when an upstream Bevy 0.20 release is available.
 Types without registered Bevy reflection cannot be edited by the inspector.
 
+Hosts populate `WorldPicker` and consume its pending selection; this crate does
+not read the install or browser DOM.
+
 Flycam leaves the player in place. Turning it off returns the camera to the
 player pose; it does not change the fidelity settings.
 

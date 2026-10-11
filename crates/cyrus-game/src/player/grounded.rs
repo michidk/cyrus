@@ -1,11 +1,11 @@
 //! Composed static ground queries from preservation's ordinary player update rules.
-use super::{
-    collision_world::StaticCandidates,
-    data::PlayerScene,
-    ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
-};
+use super::data::PlayerScene;
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
+use cyrus_world::collision::{
+    collision_world::StaticCandidates,
+    ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
+};
 
 /// Inputs supplied by the admitted ordinary movement stage.
 pub struct ForwardWalk {
@@ -41,8 +41,8 @@ impl GroundedWalk {
         query: &StaticGroundQuery<'_>,
         input: &mut GroundedUpdate,
         shared: (&mut SupportHistory, &mut i32),
-        animation: &mut crate::animation::ActorAnimation,
-        sounds: &mut dyn FnMut(crate::animation::AnimationSound) -> anyhow::Result<()>,
+        animation: &mut cyrus_world::animation::ActorAnimation,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
         shared.0.begin_player_update(input.motion.nominal_ticks);
@@ -99,7 +99,7 @@ impl GroundedWalk {
                 query.sidedness,
             )?
             .iter()
-            .map(|contact| contact.grounded())
+            .map(super::contact::GroundedContact::from_body)
             .collect::<anyhow::Result<Vec<_>>>()?;
         let support = query
             .support(self.position, history, &mut self.surface, surface_veto)?
@@ -110,7 +110,7 @@ impl GroundedWalk {
             .as_ref()
             .context("grounded response: player definition unavailable")?;
         anyhow::ensure!(
-            support.classification(query.collision_attribute) == 4,
+            super::support::classification(&support, query.collision_attribute) == 4,
             "grounded response: nonordinary support requires separate movement state"
         );
         self.position[1] = support.actor_height(
@@ -136,7 +136,9 @@ impl GroundedWalk {
                 query.sidedness,
             )?
             .iter()
-            .map(|contact| contact.grounded().map(|contact| contact.normal))
+            .map(|contact| {
+                super::contact::GroundedContact::from_body(contact).map(|contact| contact.normal)
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
         super::contact::separate_residual(
             distance,
@@ -156,8 +158,8 @@ impl GroundedWalk {
         query: &StaticGroundQuery<'_>,
         input: &ForwardWalk,
         shared: (&mut SupportHistory, &mut i32),
-        animation: &mut crate::animation::ActorAnimation,
-        sounds: &mut dyn FnMut(crate::animation::AnimationSound) -> anyhow::Result<()>,
+        animation: &mut cyrus_world::animation::ActorAnimation,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<super::walk::WalkingStep>> {
         if query
             .forward_support(input.probe, shared.0, &mut self.surface, shared.1)?
@@ -341,7 +343,8 @@ impl StaticGroundQuery<'_> {
             }
         }
         let selected = self.support(proposed, history, surface, surface_veto)?;
-        Ok(selected
-            .filter(|support| support.allows_forward(self.collision_attribute, *surface_veto)))
+        Ok(selected.filter(|support| {
+            super::support::allows_forward(support, self.collision_attribute, *surface_veto)
+        }))
     }
 }
