@@ -52,9 +52,21 @@ load faster, and run at a higher frame rate without changing game behavior.
 
 File formats and engine documentation come from
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
-[RGUnity](https://github.com/RGUnity/redguard-unity) is a related Unity project.
 cyrus publishes recovered format and engine facts through redguard-preservation.
 No original code or game data is part of this repository.
+
+## Acknowledgements
+
+[RGUnity](https://github.com/RGUnity/redguard-unity) inspired both cyrus and
+redguard-preservation, and provided foundational Redguard research used by both.
+RGUnity is a human-developed Unity reimplementation built without AI assistance.
+Its contributors focus on meticulous fidelity and the small details that make
+the original game behave correctly.
+
+cyrus and redguard-preservation use AI-assisted development to reach broad
+working coverage quickly. This complements RGUnity's detail-first work. We are
+grateful to its contributors for their research, implementation, and continued
+care for Redguard.
 
 ## Project documentation
 
