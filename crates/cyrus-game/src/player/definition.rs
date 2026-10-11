@@ -5,6 +5,8 @@ use serde::Deserialize;
 /// Installed CYRUS definition. Extents are nonnegative map units in original axes.
 #[derive(Debug)]
 pub struct PlayerDefinition {
+    /// Ordinary sheathed idle default from `attr_panic_group`, per preservation player.md.
+    pub ordinary_default_group: u8,
     pub forward_walk: u8,
     pub forward_speed: u8,
     pub step_type: u8,
@@ -90,6 +92,7 @@ impl PlayerDefinition {
         let scale =
             i16::try_from(scale).context("CYRUS RAEX: collision scale outside i16 range")?;
         Ok(Self {
+            ordinary_default_group: attribute("attr_panic_group")?,
             forward_walk: attribute("attr_forward_walk")?,
             forward_speed: attribute("attr_forward_speed")?,
             step_type: attribute("attr_step_type")?,
@@ -97,6 +100,31 @@ impl PlayerDefinition {
             negative_extent: bounds.neg_extent,
             collision_scale: if scale > 0 { i32::from(scale) } else { 256 },
         })
+    }
+
+    /// Build the forward clearance probe in runtime units using the actor matrix.
+    /// Preserves actor Y; conversion follows preservation player.md's forward probe rules.
+    pub fn forward_probe(
+        &self,
+        position: [i64; 3],
+        rotation: bevy::math::Mat3,
+    ) -> anyhow::Result<[i64; 3]> {
+        let distance = (i64::from(self.positive_extent[2]) + i64::from(self.forward_walk)) * 256;
+        let distance = i32::try_from(distance)
+            .context("CYRUS forward probe: local distance outside runtime i32 range")?
+            as f32;
+        let mut probe = position;
+        for axis in [0, 2] {
+            let offset = (rotation.z_axis[axis] * distance).round_ties_even();
+            anyhow::ensure!(
+                offset.is_finite() && (-2147483648.0..2147483648.0).contains(&f64::from(offset)),
+                "CYRUS forward probe axis {axis}: rotated offset outside runtime i32 range"
+            );
+            probe[axis] = position[axis]
+                .checked_add(offset as i64)
+                .with_context(|| format!("CYRUS forward probe axis {axis}: position overflow"))?;
+        }
+        Ok(probe)
     }
 
     /// Build the original upright body spheres using installed `post_collide_height`.

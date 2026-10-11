@@ -9,8 +9,6 @@ use cyrus_world::collision::{
 
 /// Inputs supplied by the admitted ordinary movement stage.
 pub struct ForwardWalk {
-    /// Oriented forward probe in runtime units; this is not the destination.
-    pub probe: [i64; 3],
     pub heading: u16,
     /// Eight fractional bits, distinct from the nominal animation tick count.
     pub frame_scale: u32,
@@ -21,7 +19,6 @@ pub struct ForwardWalk {
 pub struct GroundedUpdate {
     pub motion: ForwardWalk,
     pub walk: bool,
-    pub default_group: u16,
 }
 
 /// Player-local walking state; shared support history and veto remain caller-owned.
@@ -33,7 +30,7 @@ pub struct GroundedWalk {
 
 impl GroundedWalk {
     /// Run the admitted selected player's animation and ordinary walking stages.
-    /// The caller establishes eligibility/default and runs later script stages separately.
+    /// The caller admits the ordinary idle-default branch and runs later script stages separately.
     /// Each animation invocation reuses nominal ticks; they must not be combined.
     /// Returns the last produced file frame, preserving the previous pose on `None`.
     pub fn update(
@@ -46,10 +43,18 @@ impl GroundedWalk {
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
         shared.0.begin_player_update(input.motion.nominal_ticks);
-        animation.set_default_group(input.default_group);
+        let default_group = u16::from(
+            query
+                .scene
+                .definition
+                .as_ref()
+                .context("grounded update: player definition unavailable")?
+                .ordinary_default_group,
+        );
+        animation.set_default_group(default_group);
         let mut frame = animation.advance_with_sounds(input.motion.nominal_ticks, sounds)?;
         frame = animation
-            .request_with_sounds(input.default_group, 0, input.motion.nominal_ticks, sounds)?
+            .request_with_sounds(default_group, 0, input.motion.nominal_ticks, sounds)?
             .or(frame);
         let step = if input.walk {
             self.forward(
@@ -150,7 +155,7 @@ impl GroundedWalk {
     }
 
     /// Probe support, request the walking animation, then translate in original axes.
-    /// Caller establishes ordinary sheathed eligibility and supplies the oriented probe.
+    /// Caller establishes ordinary sheathed eligibility and supplies actor orientation.
     /// A successful zero-distance result still counts as accepted forward movement.
     /// Obstacle response and final support must follow before presenting the position.
     pub fn forward(
@@ -161,17 +166,18 @@ impl GroundedWalk {
         animation: &mut cyrus_world::animation::ActorAnimation,
         sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<super::walk::WalkingStep>> {
-        if query
-            .forward_support(input.probe, shared.0, &mut self.surface, shared.1)?
-            .is_none()
-        {
-            return Ok(None);
-        }
         let definition = query
             .scene
             .definition
             .as_ref()
             .context("forward walk: player definition unavailable")?;
+        let probe = definition.forward_probe(self.position, query.rotation)?;
+        if query
+            .forward_support(probe, shared.0, &mut self.surface, shared.1)?
+            .is_none()
+        {
+            return Ok(None);
+        }
         let step = self.startup.request(
             animation,
             definition,

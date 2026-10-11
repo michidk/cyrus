@@ -13,7 +13,7 @@ use cyrus_world::collision::{
 fn data(groups: serde_json::Value) -> (PlayerDefinition, Animations) {
     let metadata = serde_json::json!({
         "actors": [{"script_name":"CYRUS", "attributes":{
-            "attr_forward_walk":8,"attr_forward_speed":24,"attr_step_type":1
+            "attr_forward_walk":8,"attr_forward_speed":24,"attr_step_type":1,"attr_panic_group":3
         },"mpsz_bounds_primary":0,"raex":{"unknown_12":256},"animation_groups":groups}],
         "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,11],
             "neg_extent":[24,66,38],"center_offset":[0,0,0],"flags":0}]
@@ -274,7 +274,6 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
         let mut history = SupportHistory::new(0, 0);
         let mut veto = 0;
         let input = ForwardWalk {
-            probe: [initial[0], initial[1], initial[2] + 19 * 256],
             heading: 0,
             frame_scale: 256,
             nominal_ticks: 0,
@@ -453,7 +452,7 @@ fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
         surface_update: SurfaceUpdate::Assign,
     };
     let (_, data) = data(serde_json::json!([
-        {"group_index":0,"anim_type":0,"anim_id":2,"commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]},
+        {"group_index":3,"anim_type":0,"anim_id":2,"commands":[{"opcode":0,"frame_reference":10},{"opcode":1}]},
         {"group_index":20,"anim_type":0,"anim_id":2,"commands":[{"opcode":0,"frame_reference":20},{"opcode":1}]}
     ]));
     let mut animation =
@@ -466,13 +465,11 @@ fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
     };
     let mut input = GroundedUpdate {
         motion: ForwardWalk {
-            probe: [start[0], start[1], start[2] + 19 * 256],
             heading: 0,
             frame_scale: 256,
             nominal_ticks: 0,
         },
         walk: true,
-        default_group: 0,
     };
     let mut history = SupportHistory::new(0, 0);
     let mut veto = 0;
@@ -496,5 +493,36 @@ fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
         &mut |_| Ok(()),
     )
     .unwrap();
+    assert_eq!(animation.pending_group(), Some(3));
     assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
+}
+
+#[test]
+fn forward_probe_rotates_installed_extent_and_walk_distance_without_changing_height() {
+    use bevy::math::{Mat3, Vec3};
+    let (definition, _) = data(serde_json::json!([]));
+    let position = [100, -777, 200];
+    assert_eq!(
+        definition.forward_probe(position, Mat3::IDENTITY).unwrap(),
+        [100, -777, 5064]
+    );
+    let quarter_turn = Mat3::from_cols(Vec3::NEG_Z, Vec3::Y, Vec3::X);
+    assert_eq!(
+        definition.forward_probe(position, quarter_turn).unwrap(),
+        [4964, -777, 200]
+    );
+    let mut narrow = definition;
+    narrow.positive_extent[2] = 0;
+    narrow.forward_walk = 1;
+    let ties = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::new(0.5 / 256.0, 1.0, 1.5 / 256.0));
+    assert_eq!(
+        narrow.forward_probe(position, ties).unwrap(),
+        [100, -777, 202]
+    );
+    let negative_ties =
+        Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::new(-0.5 / 256.0, 1.0, -1.5 / 256.0));
+    assert_eq!(
+        narrow.forward_probe(position, negative_ties).unwrap(),
+        [100, -777, 198]
+    );
 }
