@@ -27,8 +27,8 @@ Drive Options and Movies with `input`; the same saved bindings and values
 apply after a native restart. Native Movies playback uses the saved subtitle and
 interlace preferences and reports progress in `state.menu.movie`. A new key press
 advances to the next installed skip point, then returns to the menu. Saved Sound
-preferences apply to native effects, speech, and CD music. Browser cinematic
-playback remains unavailable.
+preferences apply to native effects, speech, and CD music. Browser Movies shares
+playback rules using locally exported cinematic assets; it has no control port.
 
 `set_sky_scroll {direction, offset}` applies a captured original sky direction
 from 0 through 2047 and two texture offsets in texels from -256 through 256.

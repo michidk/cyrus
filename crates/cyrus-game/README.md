@@ -247,13 +247,16 @@ and Controls; Movies browses unlocked definitions and previews. Quit exits.
 Native Movies playback reads installed Smacker files or the GOG CD image via
 rgpre and decodes them in-process with the `smk` crate. It retains menu selection, consumes original
 skip points and timed subtitle definitions, and exposes progress through menu
-control state. Browser cinematics, New Game, and saves remain unavailable.
+control state. Browser Movies uses locally exported compressed video, first-track
+WAV audio, subtitle definitions, and the configured font, downloaded on demand.
+Native and browser playback share skip points, subtitles, interlace and menu return.
+New Game, saves, and progression unlocks remain unavailable.
 
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `cyrus-config/menu.json` or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
 input uses edited bindings, including direct scene launches. Subtitle and interlace
-settings apply to native cinematics; saved Sound preferences apply to native
+settings apply to cinematics; saved Sound preferences apply to native
 effects, speech, and CD music. Book motion and direction/capture feedback dispatch
 installed effects through the shared native/browser sound path, following
 preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).

@@ -5,11 +5,15 @@ mod export;
 mod menu;
 mod menu_data;
 mod menu_preferences;
-#[cfg(not(target_arch = "wasm32"))]
 mod movie;
+mod movie_data;
+#[cfg(not(target_arch = "wasm32"))]
+mod movie_native;
 pub use menu_preferences::MenuPreferences;
 #[cfg(not(target_arch = "wasm32"))]
 pub use movie::MovieAudio;
+#[cfg(not(target_arch = "wasm32"))]
+pub use movie_native::export_movies;
 #[cfg(not(target_arch = "wasm32"))]
 mod menu_export;
 mod menu_raster;
@@ -54,7 +58,6 @@ impl Plugin for StartupPlugin {
             .add_systems(OnExit(AppState::Loading), remove_content)
             .add_systems(OnExit(AppState::Menu), remove_content);
         menu::register(app);
-        #[cfg(not(target_arch = "wasm32"))]
         movie::register(app);
     }
 }

@@ -151,8 +151,9 @@ untracked working memory. Each crate has a `README.md` with its commands.
 Default windowed and browser launches play the installed 3dfx splash and title,
 then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
-installed Smacker files through the in-process decoder. New Game, saves, and browser
-cinematic playback remain unavailable. Startup uses original-file assets, never
+installed Smacker files through the in-process decoder. Browser Movies uses
+locally exported Smacker files and first-track WAV audio with shared playback rules.
+New Game, saves, and progression unlocks remain unavailable. Startup uses original-file assets, never
 captured playback.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
@@ -180,7 +181,7 @@ entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
 units and persist outside the install in native `cyrus-config/menu.json` or
 browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
-including direct world launches. Subtitle and interlace preferences affect native
+including direct world launches. Subtitle and interlace preferences affect
 cinematics. Native effects, speech, and CD music consume the saved Sound preferences;
 the menu plays its installed CD track.
 `state.menu.movie` reports cinematic loading and one-based frame progress;

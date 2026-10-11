@@ -36,7 +36,6 @@ pub struct MovieStatus {
 }
 
 #[derive(Message)]
-#[cfg(not(target_arch = "wasm32"))]
 pub(super) struct MovieRequest(pub usize);
 
 impl MenuItem {
@@ -52,7 +51,7 @@ pub struct MenuState {
     pub ready: bool,
     pub page: u8,
     pub capturing: Option<i32>,
-    /// Native cinematic loading/playback; menu input is suspended while present.
+    /// Cinematic loading/playback; menu input is suspended while present.
     pub movie: Option<MovieStatus>,
     pub preferences: Option<MenuPreferences>,
     pub entries: Vec<MenuItem>,
@@ -306,7 +305,6 @@ pub(super) fn drive(
                         adjust_value(book, &mut menu, 0, true);
                     }
                     601 | 602 => {}
-                    #[cfg(not(target_arch = "wasm32"))]
                     301..=305 => {
                         menu.unavailable = None;
                         commands.write_message(MovieRequest((entry.action - 301) as usize));
@@ -386,15 +384,7 @@ impl MenuState {
         self.entries = book.pages[&page]
             .entries
             .iter()
-            .map(|e| {
-                let item = e.item.clone();
-                #[cfg(target_arch = "wasm32")]
-                let item = MenuItem {
-                    implemented: item.implemented && !(301..=305).contains(&item.action),
-                    ..item
-                };
-                item
-            })
+            .map(|e| e.item.clone())
             .collect();
         self.selected = self.selections.get(&page).copied().flatten();
         self.unavailable = self.persistence_error.clone();
