@@ -186,9 +186,12 @@ Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
 framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
-shader arithmetic checks cover the dither matrix and fog boundaries. Texture
-filtering, sun alpha rounding, lighting, and physical-hardware pixel parity
-remain unverified.
+shader arithmetic checks cover the dither matrix and fog boundaries.
+Faithful sky filtering uses encoded palette bytes, four-bit subtexel fractions,
+and horizontal then vertical integer rounding, following preservation
+[sky filtering facts](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
+Sun alpha rounding, other texture filtering, lighting, and physical-hardware
+pixel parity remain unverified.
 
 Default windowed startup plays the original authored 3dfx animation and decoded
 640×480 title image, then stops at the book menu. Preload runs concurrently.
