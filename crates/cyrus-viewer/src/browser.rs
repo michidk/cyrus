@@ -38,15 +38,31 @@ impl BrowserWorker {
     pub fn open(&self) -> Result<()> {
         self.send("open", "source", &self.source)
     }
-    pub fn select(&self, entry: &cyrus_assets::Entry) -> Result<()> {
+    pub fn select(&self, entry: &cyrus_assets::Entry, palette: Option<&str>) -> Result<()> {
         if matches!(entry.source, cyrus_assets::Source::Archive) {
             self.send("expand", "path", &entry.path)?;
         } else {
-            self.send("preview", "id", &entry.id)?;
+            let message = js_sys::Object::new();
+            js_sys::Reflect::set(&message, &"kind".into(), &"preview".into()).map_err(js_error)?;
+            js_sys::Reflect::set(&message, &"id".into(), &entry.id.clone().into())
+                .map_err(js_error)?;
+            js_sys::Reflect::set(
+                &message,
+                &"palette".into(),
+                &palette.map(JsValue::from_str).unwrap_or(JsValue::NULL),
+            )
+            .map_err(js_error)?;
+            self.worker.post_message(&message).map_err(js_error)?;
         }
         if let Some(window) = web_sys::window() {
             let path = String::from(js_sys::encode_uri_component(&entry.path));
-            let hash = format!("#asset={}&file={path}", entry.id);
+            let mut hash = format!("#asset={}&file={path}", entry.id);
+            if let Some(palette) = palette {
+                hash.push_str(&format!(
+                    "&palette={}",
+                    String::from(js_sys::encode_uri_component(palette))
+                ));
+            }
             if window.location().hash().map_err(js_error)? != hash {
                 window.location().set_hash(&hash).map_err(js_error)?;
             }
@@ -246,13 +262,27 @@ fn follow_link(
         return;
     }
     if let Some(selection) = hash.strip_prefix("#asset=") {
+        let (selection, palette) = selection
+            .split_once("&palette=")
+            .map_or((selection, None), |(selection, palette)| {
+                (selection, Some(palette))
+            });
+        let palette = match palette.map(js_sys::decode_uri_component).transpose() {
+            Ok(palette) => palette.map(String::from),
+            Err(error) => {
+                viewer.error = Some(format!("Invalid palette link: {error:?}"));
+                *last_hash = hash;
+                return;
+            }
+        };
         let (id, path) = selection
             .split_once("&file=")
             .map_or((selection, None), |(id, path)| (id, Some(path)));
         if let Some(index) = catalog.entries.iter().position(|entry| entry.id == id) {
             *last_hash = hash;
-            if viewer.selected != Some(index) {
+            if viewer.selected != Some(index) || viewer.model_palette != palette {
                 viewer.category = catalog.entries[index].category;
+                viewer.model_palette = palette;
                 viewer.search.clear();
                 crate::loading::select(index, &mut viewer, &mut commands, &assets, &worker);
             }

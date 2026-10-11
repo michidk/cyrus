@@ -20,6 +20,7 @@ pub struct Library<R> {
     pub catalog: Catalog,
     input: RefCell<Option<(String, Arc<prepare::Input>)>>,
     indexed: std::collections::HashSet<String>,
+    model_palettes: RefCell<Option<BTreeMap<String, Vec<String>>>>,
     outputs: RefCell<BTreeMap<String, Vec<u8>>>,
 }
 impl<R: ReadAssets> Library<R> {
@@ -116,6 +117,7 @@ impl<R: ReadAssets> Library<R> {
             catalog,
             input: RefCell::new(None),
             indexed: Default::default(),
+            model_palettes: RefCell::new(None),
             outputs: RefCell::new(BTreeMap::new()),
         })
     }
@@ -182,7 +184,7 @@ impl<R: ReadAssets> Library<R> {
         Ok(())
     }
 
-    pub fn prepare(&mut self, id: &str) -> Result<Prepared> {
+    pub fn prepare(&mut self, id: &str, palette: Option<&str>) -> Result<Prepared> {
         let entry = self
             .catalog
             .entries
@@ -196,7 +198,7 @@ impl<R: ReadAssets> Library<R> {
             }
         }
         self.outputs.borrow_mut().clear();
-        let preview = match prepare::prepare(self, entry).and_then(|preview| {
+        let preview = match prepare::prepare(self, entry, palette).and_then(|preview| {
             preview.validate()?;
             Ok(preview)
         }) {

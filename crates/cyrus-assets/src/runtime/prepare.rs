@@ -12,7 +12,11 @@ use rgpre::{
 };
 use serde_json::json;
 
-pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Result<Preview> {
+pub(super) fn prepare<R: ReadAssets>(
+    library: &Library<R>,
+    entry: &Entry,
+    palette: Option<&str>,
+) -> Result<Preview> {
     if let Some(error) = &entry.error {
         anyhow::bail!("{error}");
     }
@@ -68,7 +72,10 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
             preview
                 .details
                 .push(("Models".into(), world.models.len().to_string()));
-            preview.content = Content::Model { frames: vec![url] };
+            preview.content = Content::Model {
+                frames: vec![url],
+                palettes: Vec::new(),
+            };
             let names: std::collections::BTreeSet<_> =
                 world.models.iter().map(|model| &model.model_name).collect();
             for name in names {
@@ -153,14 +160,14 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
                         candidates.len()
                     );
                     let bytes = library.source.read(&candidates[0].path)?;
-                    model(library, entry, &bytes, &mut preview)?
+                    model(library, entry, &bytes, &mut preview, palette)?
                 } else {
                     ensure!(
                         segment.has_embedded_3d_data() || segment.has_special_embedded_data(),
                         "unsupported ROB segment type {}",
                         segment.segment_type
                     );
-                    model(library, entry, &segment.data, &mut preview)?
+                    model(library, entry, &segment.data, &mut preview, palette)?
                 }
             } else {
                 Content::Data {
@@ -256,7 +263,7 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
             }
 
             Some(FileType::Model3d | FileType::Model3dc) => {
-                model(library, entry, bytes, &mut preview)?
+                model(library, entry, bytes, &mut preview, palette)?
             }
 
             Some(FileType::Rgm) => {
@@ -393,11 +400,95 @@ fn world_entries<R: ReadAssets>(library: &Library<R>) -> Result<import::world_in
     ))
 }
 
+// World membership comes from preservation's parsed placements and actor animation references.
+fn model_palettes<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Result<Vec<String>> {
+    if geometry::find_name(&library.source, "WORLD.INI").is_none() {
+        return Ok(Vec::new());
+    }
+    let worlds = world_entries(library)?;
+    if matches!(entry.source, Source::Model(_)) {
+        let mut palettes = worlds
+            .find_by_map_stem(stem(&entry.path))
+            .iter()
+            .map(|world| geometry::palette_path(&library.source, &world.palette))
+            .collect::<Result<Vec<_>>>()?;
+        palettes.sort();
+        palettes.dedup();
+        return Ok(palettes);
+    }
+    if library.model_palettes.borrow().is_none() {
+        let mut by_map: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for world in &worlds.entries {
+            let Some(path) = geometry::find_name(&library.source, &world.map) else {
+                continue;
+            };
+            by_map
+                .entry(path)
+                .or_default()
+                .push(geometry::palette_path(&library.source, &world.palette)?);
+        }
+        let mut by_model: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+        for (path, palettes) in by_map {
+            let bytes = library.source.read(&path)?;
+            let scene = import::rgm::parse_rgm_file(&bytes)
+                .with_context(|| format!("model palette references in {path}"))?;
+            let metadata = import::rgm::export_rgm_metadata_json(&scene, None);
+            let mut names = Vec::new();
+            for section in &scene.sections {
+                match section {
+                    import::rgm::RgmSection::Mps(_, records) => {
+                        names.extend(records.iter().map(|r| r.model_name()))
+                    }
+                    import::rgm::RgmSection::MpobParsed(_, records) => {
+                        names.extend(records.iter().map(|r| r.model_name()))
+                    }
+                    import::rgm::RgmSection::MprpParsed(_, records) => {
+                        for record in records {
+                            names.extend([record.rope_model.clone(), record.static_model.clone()]);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for actor in metadata["actors"].as_array().into_iter().flatten() {
+                for reference in actor["raan_entries"].as_array().into_iter().flatten() {
+                    if let Some(path) = reference["file_path"].as_str() {
+                        names.push(path.into());
+                    }
+                }
+            }
+            for name in names {
+                let name = name.rsplit(['/', '\\']).next().unwrap_or(&name);
+                let name = stem(name).to_ascii_uppercase();
+                if !name.is_empty() {
+                    by_model
+                        .entry(name)
+                        .or_default()
+                        .extend(palettes.iter().cloned());
+                }
+            }
+        }
+        for palettes in by_model.values_mut() {
+            palettes.sort();
+            palettes.dedup();
+        }
+        *library.model_palettes.borrow_mut() = Some(by_model);
+    }
+    Ok(library
+        .model_palettes
+        .borrow()
+        .as_ref()
+        .and_then(|models| models.get(&stem(&entry.path).to_ascii_uppercase()))
+        .cloned()
+        .unwrap_or_default())
+}
+
 fn model<R: ReadAssets>(
     library: &Library<R>,
     entry: &Entry,
     source: &[u8],
     preview: &mut Preview,
+    selected_palette: Option<&str>,
 ) -> Result<Content> {
     let mut model = import::model3d::parse_3d_file(source)?;
     preview.details.extend([
@@ -433,28 +524,20 @@ fn model<R: ReadAssets>(
             }
         }
     }
-    let worlds = if geometry::find_name(&library.source, "WORLD.INI").is_some() {
-        world_entries(library)?
-    } else {
-        import::world_ini::WorldIni::parse("")
-    };
-    let mut palette_names = worlds
-        .find_by_map_stem(stem(&entry.path))
-        .iter()
-        .map(|world| world.palette.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    palette_names.sort();
-    palette_names.dedup();
-    let palette = if palette_names.len() == 1 {
-        let path = geometry::palette_path(&library.source, &palette_names[0])?;
-        preview.details.push(("Palette".into(), path.clone()));
+    let palettes = model_palettes(library, entry)?;
+    let palette = if let Some(name) = selected_palette {
+        ensure!(
+            palettes.iter().any(|p| p == name),
+            "palette {name} is not used by this model's worlds"
+        );
+        preview.details.push(("Palette".into(), name.into()));
         Some(import::palette::Palette::parse(
-            &library.source.read(&path)?,
+            &library.source.read(name)?,
         )?)
     } else {
         preview.details.push((
             "Palette".into(),
-            "No unique world palette; embedded colors or grayscale indices".into(),
+            "Without palette · embedded colors or grayscale indices".into(),
         ));
         None
     };
@@ -518,7 +601,7 @@ fn model<R: ReadAssets>(
         "Appearance".into(),
         "Generic textured preview; world palette and lighting may differ.".into(),
     ));
-    Ok(Content::Model { frames })
+    Ok(Content::Model { frames, palettes })
 }
 fn audio<R: ReadAssets>(
     library: &Library<R>,

@@ -51,9 +51,9 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
         .iter()
         .find(|e| e.path == "notes.txt")
         .unwrap();
-    let preview = first.prepare(&entry.id).unwrap();
+    let preview = first.prepare(&entry.id, None).unwrap();
     std::fs::write(&preview, b"interrupted").unwrap();
-    first.prepare(&entry.id).unwrap();
+    first.prepare(&entry.id, None).unwrap();
     let decoded: Preview = serde_json::from_slice(&std::fs::read(preview).unwrap()).unwrap();
     assert!(matches!(decoded.content, Content::Data { .. }));
     std::fs::write(root.join("notes.txt"), "other").unwrap();
@@ -148,22 +148,19 @@ fn installed_asset_families_prepare_portable_previews() {
             .unwrap_or_else(|| panic!("no {family}"));
         eprintln!("preparing {family}: {}", entry.name);
         if matches!(entry.source, Source::World(_)) {
-            let manifest = library.cache.join(catalog.preview_path(entry));
+            let manifest = library.cache.join(catalog.preview_path(entry, None));
             if manifest.exists() {
                 std::fs::remove_file(manifest).unwrap();
             }
         }
-        let path = library.prepare(&entry.id).unwrap();
+        let path = library.prepare(&entry.id, None).unwrap();
         let preview: Preview = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         preview.validate().unwrap();
         if family == "archive model" {
-            assert!(
-                preview.details.iter().any(|(key, value)| {
-                    key == "Palette" && value.eq_ignore_ascii_case("fxart/island.COL")
-                }),
-                "mug must use its configured world palette: {:?}",
-                preview.details
-            );
+            let Content::Model { palettes, .. } = &preview.content else {
+                panic!("expected model");
+            };
+            assert_eq!(palettes, &["fxart/ISLAND.COL"]);
         }
         assert!(
             !matches!(preview.content, Content::Unavailable { .. }),
@@ -190,7 +187,7 @@ fn installed_asset_families_prepare_portable_previews() {
         }
         if let Content::Audio { wav, .. } = &preview.content {
             std::fs::remove_file(library.cache.join(wav)).unwrap();
-            library.prepare(&entry.id).unwrap();
+            library.prepare(&entry.id, None).unwrap();
             assert!(
                 library.cache.join(wav).is_file(),
                 "missing derived audio was not repaired"
@@ -230,4 +227,61 @@ fn model_texture_loading_reads_only_referenced_banks() {
     };
     cyrus_assets::runtime::geometry::textures(&source, None, Some(&[700].into())).unwrap();
     assert_eq!(*source.reads.borrow(), ["fxart/TEXBSI.188"]);
+}
+
+#[test]
+fn standalone_model_palette_choices_follow_world_usage_and_separate_cached_colors() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (model palette choices)");
+        return;
+    }
+    let scratch = Scratch::new();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    let entry = library
+        .catalog
+        .entries
+        .iter()
+        .find(|e| e.path.eq_ignore_ascii_case("fxart/AVIKA001.3DC"))
+        .unwrap();
+    let plain_path = library.prepare(&entry.id, None).unwrap();
+    let plain: Preview = serde_json::from_slice(&std::fs::read(&plain_path).unwrap()).unwrap();
+    let Content::Model { frames, palettes } = &plain.content else {
+        panic!("expected model: {:?}", plain.content);
+    };
+    assert_eq!(
+        palettes,
+        &["fxart/ISLAND.COL", "fxart/NIGHTSKY.COL", "fxart/sunset.col"]
+    );
+    let colored_path = library
+        .prepare(&entry.id, Some("fxart/ISLAND.COL"))
+        .unwrap();
+    assert_ne!(plain_path, colored_path);
+    let colored: Preview = serde_json::from_slice(&std::fs::read(&colored_path).unwrap()).unwrap();
+    let Content::Model {
+        frames: colored_frames,
+        ..
+    } = &colored.content
+    else {
+        panic!("expected colored model");
+    };
+    assert_ne!(frames, colored_frames);
+    assert_ne!(
+        std::fs::read(library.cache.join(&frames[0])).unwrap(),
+        std::fs::read(library.cache.join(&colored_frames[0])).unwrap()
+    );
+    assert_eq!(library.prepare(&entry.id, None).unwrap(), plain_path);
+    let unrelated_path = library
+        .prepare(&entry.id, Some("fxart/CATACOMB.COL"))
+        .unwrap();
+    let unrelated: Preview =
+        serde_json::from_slice(&std::fs::read(unrelated_path).unwrap()).unwrap();
+    assert!(matches!(unrelated.content, Content::Unavailable { .. }));
 }

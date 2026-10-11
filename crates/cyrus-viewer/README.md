@@ -18,6 +18,10 @@ Images support fit, zoom, animation-frame selection, and palette selection for
 indexed sources. Fonts show a sample and glyph atlas. Models and worlds have a
 textured orbit view, edge overlay, frame controls where supported, and automatic
 framing. Drag to orbit, right-drag to pan, and scroll to zoom.
+Models start without a scene palette. The palette selector lists only palettes
+from their referencing worlds, including time-of-day variants. Standalone model
+references are indexed from scene placement and actor metadata on first use,
+then reused; this does not run during startup.
 
 Archive categories initially list archives. Open one to read its member index,
 then select a member to load its contents. Search covers files and the currently
@@ -47,6 +51,7 @@ The game and viewer share the loader, loading overlay, and service-worker cache.
 Original downloads are cached by content digest. CD reads use byte ranges.
 The selected asset is encoded as `#asset=<id>&file=<source-path>` in the browser URL. Copy that
 URL to reopen the asset in the same installation; browser Back restores selection.
+A selected model palette is also preserved in the URL.
 Native cached previews remain on disk outside the install.
 
 For private static hosting, serve `target/web`, the original files beneath
@@ -65,10 +70,10 @@ to scan archive indexes to locate their member.
 ## Current limits
 
 The renderer is a generic inspection view. It does not claim Faithful game
-lighting, animation timing, or scene behavior. Archive models use their WORLD.INI
-palette when it is unambiguous. Other models
-use embedded texture palettes or display palette indices as grayscale; the Details
-panel states the palette choice. World previews use their WORLD.INI palette.
+lighting, animation timing, or scene behavior. Palette choices come from WORLD.INI and preservation's scene references. Without
+a palette, models use embedded texture colors or grayscale palette indices.
+Models with no known world reference have no scene palette choices. World
+previews use their configured palette.
 Supported integer model frames can be scrubbed; other encodings show base
 geometry with an explicit explanation. Preservation does not expose separate
 BSI mip levels, so no mip selector is shown.

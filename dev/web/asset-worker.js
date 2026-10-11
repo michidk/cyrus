@@ -20,7 +20,7 @@ self.onmessage = async ({ data }) => {
       self.postMessage({ kind: "catalog", catalog });
     } else if (kind === "preview") {
       if (!library) throw new Error("Asset library is not ready");
-      const result = library.preview(id);
+      const result = library.preview(id, data.palette);
       self.postMessage({ kind, id, ...result }, result.files.map(([, bytes]) => bytes.buffer));
     } else {
       throw new Error("Unknown asset-worker request");

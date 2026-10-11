@@ -201,10 +201,14 @@ impl AssetLibrary {
         }
         self.catalog()
     }
-    pub fn preview(&mut self, id: &str) -> std::result::Result<JsValue, JsValue> {
+    pub fn preview(
+        &mut self,
+        id: &str,
+        palette: Option<String>,
+    ) -> std::result::Result<JsValue, JsValue> {
         let prepared = self
             .library
-            .prepare(id)
+            .prepare(id, palette.as_deref())
             .map_err(|error| bridge_error(format!("{error:#}")))?;
         let message = js_sys::Object::new();
         js_sys::Reflect::set(

@@ -22,6 +22,7 @@ pub struct Viewer {
     pub font_textures: std::collections::HashMap<usize, egui::TextureHandle>,
     pub frame: usize,
     pub palette: Option<usize>,
+    pub model_palette: Option<String>,
     pub zoom: f32,
     pub fit: bool,
     pub wireframe: bool,
@@ -81,6 +82,7 @@ impl Default for Viewer {
             font_textures: Default::default(),
             frame: 0,
             palette: None,
+            model_palette: None,
             zoom: 1.,
             fit: true,
             wireframe: false,
@@ -376,7 +378,7 @@ pub fn draw(
         .show(&mut viewport_ui, |ui| {
             if let Some(preview) = &preview {
                 match &preview.content {
-                    Content::Model { frames } => {
+                    Content::Model { frames, palettes } => {
                         egui::Frame::new()
                             .fill(egui::Color32::from_black_alpha(200))
                             .inner_margin(8.)
@@ -400,6 +402,40 @@ pub fn draw(
                                         }
                                     }
                                     ui.weak("Textured · orbit / pan / zoom");
+                                });
+                                if viewer.category == Category::Models {
+                                    let previous = viewer.model_palette.clone();
+                                    egui::ComboBox::from_id_salt("model-palette")
+                                        .selected_text(
+                                            viewer
+                                                .model_palette
+                                                .as_deref()
+                                                .unwrap_or("Without palette"),
+                                        )
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(
+                                                &mut viewer.model_palette,
+                                                None,
+                                                "Without palette",
+                                            );
+                                            for palette in palettes {
+                                                ui.selectable_value(
+                                                    &mut viewer.model_palette,
+                                                    Some(palette.clone()),
+                                                    palette,
+                                                );
+                                            }
+                                        });
+                                    if previous != viewer.model_palette {
+                                        select = viewer.selected;
+                                    }
+                                }
+                                ui.horizontal(|ui| {
+                                    if let Some((_, palette)) =
+                                        preview.details.iter().find(|(key, _)| key == "Palette")
+                                    {
+                                        ui.weak(palette);
+                                    }
                                 });
                             });
                         let rect = ui.available_rect_before_wrap();
@@ -654,6 +690,9 @@ pub fn draw(
     viewer.preview = preview;
     viewer.catalog = catalog;
     if let Some(index) = select {
+        if viewer.selected != Some(index) {
+            viewer.model_palette = None;
+        }
         loading::select(
             index,
             &mut viewer,

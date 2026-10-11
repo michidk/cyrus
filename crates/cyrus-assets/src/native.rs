@@ -137,7 +137,7 @@ impl Library {
         runtime.expand(path)?;
         Ok(runtime.catalog.clone())
     }
-    pub fn prepare(&self, id: &str) -> Result<PathBuf> {
+    pub fn prepare(&self, id: &str, palette: Option<&str>) -> Result<PathBuf> {
         let mut runtime = self
             .runtime
             .lock()
@@ -148,7 +148,7 @@ impl Library {
             .iter()
             .find(|entry| entry.id == id)
             .context("unknown catalog item")?;
-        let path = self.cache.join(self.catalog.preview_path(entry));
+        let path = self.cache.join(self.catalog.preview_path(entry, palette));
         if let Ok(bytes) = std::fs::read(&path)
             && let Ok(preview) = serde_json::from_slice::<Preview>(&bytes)
             && preview.validate().is_ok()
@@ -161,7 +161,7 @@ impl Library {
         {
             return Ok(path);
         }
-        let prepared = runtime.prepare(id)?;
+        let prepared = runtime.prepare(id, palette)?;
         for (file, bytes) in prepared.files {
             publish(&self.cache.join(file), &bytes)?;
         }

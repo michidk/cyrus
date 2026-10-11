@@ -14,7 +14,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 4;
+pub const CATALOG_VERSION: u32 = 5;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,8 +123,11 @@ impl Catalog {
         }
         Ok(())
     }
-    pub fn preview_path(&self, entry: &Entry) -> String {
-        format!("viewer/{}/{}.preview", self.generation, entry.id)
+    pub fn preview_path(&self, entry: &Entry, palette: Option<&str>) -> String {
+        let variant = palette
+            .map(|p| format!("-{}", blake3::hash(p.as_bytes()).to_hex()))
+            .unwrap_or_default();
+        format!("viewer/{}/{}{variant}.preview", self.generation, entry.id)
     }
 }
 
@@ -189,6 +192,7 @@ pub enum Content {
     },
     Model {
         frames: Vec<String>,
+        palettes: Vec<String>,
     },
     Audio {
         wav: String,
@@ -218,7 +222,7 @@ impl Preview {
     /// Files required by this preview, relative to the shared cache.
     pub fn files(&self) -> Vec<&str> {
         match &self.content {
-            Content::Model { frames } => frames.iter().map(String::as_str).collect(),
+            Content::Model { frames, .. } => frames.iter().map(String::as_str).collect(),
             Content::Audio { wav, .. } => vec![wav],
             Content::Movie { smk, wav, .. } => std::iter::once(smk.as_str())
                 .chain(wav.as_deref())
@@ -238,7 +242,7 @@ impl Preview {
                     frame.validate()?;
                 }
             }
-            Content::Model { frames } => {
+            Content::Model { frames, .. } => {
                 ensure!(!frames.is_empty(), "preview has no model");
                 for path in frames {
                     validate_path(path)?;

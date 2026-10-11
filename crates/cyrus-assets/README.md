@@ -8,7 +8,9 @@ files, PCM conversion, and the portable movie decoder wrapper.
 Native callers open an explicit `GameInstall`, then `native::Library`. Discovery
 preserves files with duplicate names and lists archives without reading them.
 `expand` reads a selected archive index and gives members separate IDs; `prepare`
-decodes one selected member from its byte range at runtime.
+decodes one selected member from its byte range at runtime. Model previews accept
+an optional palette from their world references; absence means embedded colors
+or grayscale indices. Palette choices have separate cache identities.
 Unknown files and decoder failures remain inspectable catalog entries.
 The library retains the most recently used source or archive index, so members
 reuse indexing without retaining all payloads in memory.

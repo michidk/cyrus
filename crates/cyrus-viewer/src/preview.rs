@@ -55,7 +55,7 @@ pub fn sync(
         for (root, _) in &roots {
             commands.entity(root).despawn();
         }
-        if let Some(Content::Model { frames }) = viewer.preview.as_ref().map(|p| &p.content)
+        if let Some(Content::Model { frames, .. }) = viewer.preview.as_ref().map(|p| &p.content)
             && let Some(path) = frames.get(viewer.frame)
         {
             let handle =

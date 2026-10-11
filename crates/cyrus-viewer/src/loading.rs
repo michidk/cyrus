@@ -154,11 +154,16 @@ pub fn select(
     viewer.seek_dirty = false;
     viewer.preparing = !archive;
     viewer.indexing = archive;
+    let palette = if entry.category == cyrus_assets::Category::Models {
+        viewer.model_palette.clone()
+    } else {
+        None
+    };
     #[cfg(not(target_arch = "wasm32"))]
-    let path = catalog.preview_path(entry);
+    let path = catalog.preview_path(entry, palette.as_deref());
     #[cfg(target_arch = "wasm32")]
     {
-        if let Err(error) = worker.select(entry) {
+        if let Err(error) = worker.select(entry, palette.as_deref()) {
             viewer.error = Some(format!("{error:#}"));
             viewer.preparing = false;
             viewer.indexing = false;
@@ -178,7 +183,7 @@ pub fn select(
                         .map_err(|e| format!("{e:#}"));
                 }
                 library
-                    .prepare(&id)
+                    .prepare(&id, palette.as_deref())
                     .map(|_| Prepared::Preview(id, path))
                     .map_err(|e| format!("{e:#}"))
             },
