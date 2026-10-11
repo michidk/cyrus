@@ -57,16 +57,15 @@ No original code or game data is part of this repository.
 
 ## Acknowledgements
 
-[RGUnity](https://github.com/RGUnity/redguard-unity) inspired both cyrus and
-redguard-preservation, and provided foundational Redguard research used by both.
-RGUnity is a human-developed Unity reimplementation built without AI assistance.
-Its contributors focus on meticulous fidelity and the small details that make
-the original game behave correctly.
+[RGUnity](https://github.com/RGUnity/redguard-unity) inspired cyrus and provided
+foundational Redguard research used by this project. RGUnity is a human-developed
+Unity reimplementation built without AI assistance. Its contributors focus on
+meticulous fidelity and the small details that make the original game behave
+correctly.
 
-cyrus and redguard-preservation use AI-assisted development to reach broad
-working coverage quickly. This complements RGUnity's detail-first work. We are
-grateful to its contributors for their research, implementation, and continued
-care for Redguard.
+cyrus uses AI-assisted development to reach broad working coverage quickly. This
+complements RGUnity's detail-first work. We are grateful to its contributors for
+their research, implementation, and continued care for Redguard.
 
 ## Project documentation
 
