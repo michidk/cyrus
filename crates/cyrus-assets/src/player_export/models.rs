@@ -4,7 +4,10 @@ use rgpre::{
     gltf::{TextureCache, convert_positioned_models_to_gltf, to_glb},
     import::{FileType, model3d, palette::Palette, registry::Registry, rgm},
 };
-use std::{collections::BTreeSet, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 pub(crate) fn export(
     map: &rgm::RgmFile,
@@ -12,13 +15,13 @@ pub(crate) fn export(
     palette: &Palette,
     textures: &mut TextureCache,
     out: &Path,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<BTreeMap<String, f32>> {
     let metadata = rgm::export_rgm_metadata_json(map, None);
     let actors = metadata["actors"]
         .as_array()
         .context("player models: missing actors")?;
     let Some(actor) = actors.iter().find(|actor| actor["script_name"] == "CYRUS") else {
-        return Ok(());
+        return Ok(BTreeMap::new());
     };
     let entries = actor["raan_entries"]
         .as_array()
@@ -38,6 +41,7 @@ pub(crate) fn export(
     }
     let directory = out.with_extension("player-models");
     std::fs::create_dir_all(&directory)?;
+    let mut radii = BTreeMap::new();
     for name in names {
         let entry = registry
             .files
@@ -50,6 +54,7 @@ pub(crate) fn export(
             .with_context(|| format!("CYRUS model {name}: standalone frame source unavailable"))?;
         let model = model3d::parse_3d_file(&std::fs::read(&entry.path)?)
             .with_context(|| format!("CYRUS model {name}: {}", entry.path.display()))?;
+        radii.insert(name.clone(), model.header.radius as f32 / 256.0);
         let model = rgm::PositionedModel {
             model,
             transform: [
@@ -66,5 +71,5 @@ pub(crate) fn export(
         std::fs::write(&temporary, to_glb(&root, &buffer)?)?;
         std::fs::rename(&temporary, &path)?;
     }
-    Ok(())
+    Ok(radii)
 }

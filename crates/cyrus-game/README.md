@@ -40,6 +40,9 @@ The ordinary idle default comes from installed `attr_panic_group`, following
 [preservation](https://github.com/michidk/redguard-preservation/blob/976422b/docs/engine/player.md#ordinary-idle-animation-default).
 The forward probe uses installed bounds and walk distance with nearest-even
 integer rotation, following [preservation PR48](https://github.com/michidk/redguard-preservation/pull/48).
+Player caches retain authored frame-source model radii; candidate selection can
+resolve the radius by active model name. Missing named radii require re-export.
+The upright orientation helper reuses the original movement rotation table.
 Callers still supply eligibility, actor orientation, candidates,
 surface policy, and shared support state. Falling, water/lava transitions and
 special movement states remain unsupported. Gameplay does not yet drive this

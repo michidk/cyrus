@@ -93,6 +93,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
         ..Default::default()
     };
     PlayerScene {
+        model_radii: Default::default(),
         world: 1,
         keyboard_codes: None,
         settings: MovementSettings {
@@ -506,7 +507,7 @@ fn forward_probe_rotates_installed_extent_and_walk_distance_without_changing_hei
         definition.forward_probe(position, Mat3::IDENTITY).unwrap(),
         [100, -777, 5064]
     );
-    let quarter_turn = Mat3::from_cols(Vec3::NEG_Z, Vec3::Y, Vec3::X);
+    let quarter_turn = cyrus_game::player::motion::upright_rotation(1536);
     assert_eq!(
         definition.forward_probe(position, quarter_turn).unwrap(),
         [4964, -777, 200]

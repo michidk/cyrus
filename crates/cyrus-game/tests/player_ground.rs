@@ -199,7 +199,25 @@ fn player_cache_rejects_partial_terrain_and_retains_unavailable_definition() {
     assert_eq!(scene.world, 1);
     assert!(scene.terrain.is_none());
     assert!(scene.definition.is_none());
-    assert!(scene.unavailable.unwrap().contains("world 1 player: CYRUS"));
+    assert!(
+        scene
+            .unavailable
+            .as_ref()
+            .unwrap()
+            .contains("world 1 player: CYRUS")
+    );
+    assert!(scene.model_radii.is_empty());
+    let missing = scene.candidates([0, 0], [0; 3], Some("CYRSA001"));
+    assert!(missing.unwrap_err().to_string().contains("radius absent"));
+    let mut invalid_radius: serde_json::Value =
+        serde_json::from_slice(&bytes(2, serde_json::Value::Null, serde_json::Value::Null))
+            .unwrap();
+    invalid_radius["model_radii"] = serde_json::json!({"CYRSA001": -1.0});
+    let error = PlayerScene::decode(&serde_json::to_vec(&invalid_radius).unwrap())
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(error.contains("world 1 player model CYRSA001: invalid radius"));
     let mut stray_textures: serde_json::Value =
         serde_json::from_slice(&bytes(2, serde_json::Value::Null, serde_json::Value::Null))
             .unwrap();
@@ -377,4 +395,17 @@ fn ordered_grounded_contacts_preserve_displacement_and_filter_facing() {
         ),
         [10443970, -190464, 10771472]
     );
+}
+
+#[test]
+fn upright_orientation_retains_original_half_turn_residual_and_heading_sign() {
+    use bevy::math::Vec3;
+    use cyrus_game::player::motion::upright_rotation;
+    let half = upright_rotation(1024);
+    assert_eq!(half.x_axis, Vec3::new(-1.0, 0.0, -1.509958e-7));
+    assert_eq!(half.y_axis, Vec3::Y);
+    assert_eq!(half.z_axis, Vec3::new(1.509958e-7, 0.0, -1.0));
+    assert_eq!(upright_rotation(0), upright_rotation(2048));
+    assert!(upright_rotation(2036).z_axis.x > 0.0);
+    assert!(upright_rotation(12).z_axis.x < 0.0);
 }

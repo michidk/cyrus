@@ -16,6 +16,9 @@ pub struct MovementSettings {
 pub struct SceneData {
     pub version: u32,
     pub world: u32,
+    /// Player model header radii in map units, keyed by uppercase filename stem.
+    #[serde(default)]
+    pub model_radii: std::collections::BTreeMap<String, f32>,
     pub keyboard_codes: Option<[u8; 8]>,
     pub settings: MovementSettings,
     pub definition: serde_json::Value,
@@ -35,6 +38,13 @@ impl SceneData {
             self.world,
             self.version
         );
+        for (model, radius) in &self.model_radii {
+            anyhow::ensure!(
+                radius.is_finite() && *radius >= 0.0,
+                "world {} player model {model}: invalid radius {radius}",
+                self.world
+            );
+        }
         self.collision
             .as_ref()
             .with_context(|| {

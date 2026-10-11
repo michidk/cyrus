@@ -7,6 +7,19 @@ static ROTATION: LazyLock<[f32; 2560]> = LazyLock::new(|| {
     std::array::from_fn(|index| f64::from((index as f64 * 6.2831852 / 2048.0) as f32).sin() as f32)
 });
 
+/// Upright actor rotation in original axes, with heading in 1/2048 turns.
+/// Retains table residuals per preservation player.md's upright orientation rules.
+pub fn upright_rotation(heading: u16) -> bevy::math::Mat3 {
+    use bevy::math::{Mat3, Vec3};
+    let index = usize::from(heading.wrapping_neg() & 2047);
+    let (sine, cosine) = (ROTATION[index], ROTATION[index + 512]);
+    Mat3::from_cols(
+        Vec3::new(cosine, 0.0, -sine),
+        Vec3::Y,
+        Vec3::new(sine, 0.0, cosine),
+    )
+}
+
 /// Translate in original axes using an integer runtime distance. Y is unchanged.
 /// Positions and distance have eight fractional bits; heading uses 1/2048 turns.
 /// Single-precision coordinate addition is part of the original movement rule.

@@ -12,6 +12,7 @@ pub(crate) fn export(
     map: &rgm::RgmFile,
     terrain: Option<&wld::WldFile>,
     world: u32,
+    model_radii: &std::collections::BTreeMap<String, f32>,
     out: &Path,
 ) -> anyhow::Result<()> {
     let path =
@@ -88,6 +89,7 @@ pub(crate) fn export(
     );
     let data = SceneData {
         version: 2,
+        model_radii: model_radii.clone(),
         keyboard_codes: Some(keyboard_codes),
         world,
         settings,
