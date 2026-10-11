@@ -9,7 +9,7 @@ use bevy::{
     asset::embedded_asset,
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
-    render::render_resource::AsBindGroup,
+    render::render_resource::{AsBindGroup, ShaderType},
     shader::{ShaderRef, load_shader_library},
 };
 use std::collections::HashMap;
@@ -40,9 +40,25 @@ impl RenderDistance {
 }
 
 type SceneMaterial = ExtendedMaterial<StandardMaterial, FogExtension>;
-type MaterialCache = HashMap<(AssetId<StandardMaterial>, bool), Handle<SceneMaterial>>;
+type MaterialCache = HashMap<AssetId<StandardMaterial>, Handle<SceneMaterial>>;
+type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
-#[derive(Asset, TypePath, AsBindGroup, Clone, PartialEq)]
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+struct TerrainExtension {
+    #[uniform(100)]
+    fog: FogExtension,
+}
+
+impl MaterialExtension for TerrainExtension {
+    fn vertex_shader() -> ShaderRef {
+        "embedded://cyrus_game/terrain.wesl".into()
+    }
+    fn fragment_shader() -> ShaderRef {
+        "embedded://cyrus_game/terrain.wesl".into()
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, ShaderType, Clone, PartialEq)]
 struct FogExtension {
     #[uniform(100)]
     color: Vec4,
@@ -64,9 +80,14 @@ pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
         load_shader_library!(app, "glide_fog.wesl");
+        load_shader_library!(app, "scene_shading.wesl");
         embedded_asset!(app, "scene_fog.wesl");
+        embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
-            .add_plugins(MaterialPlugin::<SceneMaterial>::default())
+            .add_plugins((
+                MaterialPlugin::<SceneMaterial>::default(),
+                MaterialPlugin::<TerrainMaterial>::default(),
+            ))
             .add_systems(Update, apply_scene_fog);
     }
 }
@@ -86,6 +107,8 @@ fn apply_scene_fog(
     parents: Query<&ChildOf>,
     mut fog_materials: ResMut<Assets<SceneMaterial>>,
     mut converted: Local<MaterialCache>,
+    mut terrain_materials: ResMut<Assets<TerrainMaterial>>,
+    mut terrain_cache: Local<HashMap<AssetId<StandardMaterial>, Handle<TerrainMaterial>>>,
     mut previous: Local<Option<(AssetId<Environment>, FogExtension)>>,
 ) {
     let (Some(environment), Some([near, far])) =
@@ -124,12 +147,19 @@ fn apply_scene_fog(
         .is_none_or(|(source, _)| *source != request.0.id())
     {
         converted.clear();
+        terrain_cache.clear();
     }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
         for (_, material) in fog_materials.iter_mut() {
             let terrain = material.extension.water.y;
             material.extension = extension.clone();
             material.extension.water.y = terrain;
+        }
+    }
+    if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
+        for (_, material) in terrain_materials.iter_mut() {
+            material.extension.fog = extension.clone();
+            material.extension.fog.water.y = 1.0;
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
@@ -144,8 +174,26 @@ fn apply_scene_fog(
                     .get(ancestor)
                     .is_ok_and(|name| name.as_str() == "Terrain")
             });
+        if terrain && environment.terrain_lighting.is_some() {
+            let material = terrain_cache
+                .entry(handle.0.id())
+                .or_insert_with(|| {
+                    let mut fog = extension.clone();
+                    fog.water.y = 1.0;
+                    terrain_materials.add(TerrainMaterial {
+                        base: base.clone(),
+                        extension: TerrainExtension { fog },
+                    })
+                })
+                .clone();
+            commands
+                .entity(entity)
+                .remove::<MeshMaterial3d<StandardMaterial>>()
+                .insert(MeshMaterial3d(material));
+            continue;
+        }
         let material = converted
-            .entry((handle.0.id(), terrain))
+            .entry(handle.0.id())
             .or_insert_with(|| {
                 let mut extension = extension.clone();
                 extension.water.y = u8::from(terrain) as f32;
@@ -176,6 +224,12 @@ mod tests {
             clipping: [7.0, 3800.0],
             fog_table: [[0; 4]; 16],
             water: None,
+            terrain_lighting: Some(crate::lighting::TerrainLighting {
+                side: 2,
+                ambient: [64.0; 3],
+                directional: [255.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            }),
         });
         let mut materials = Assets::<StandardMaterial>::default();
         let base = materials.add(StandardMaterial {
@@ -189,6 +243,7 @@ mod tests {
             .insert_resource(EnvironmentRequest(environment))
             .insert_resource(materials)
             .init_resource::<Assets<SceneMaterial>>()
+            .init_resource::<Assets<TerrainMaterial>>()
             .init_resource::<Fidelity>()
             .insert_resource(RenderDistance {
                 original: Some([7.0, 3800.0]),
@@ -200,7 +255,12 @@ mod tests {
             .spawn((ViewCamera, Projection::default()))
             .id();
         let first = app.world_mut().spawn(MeshMaterial3d(base.clone())).id();
-        let second = app.world_mut().spawn(MeshMaterial3d(base)).id();
+        let second = app.world_mut().spawn(MeshMaterial3d(base.clone())).id();
+        let terrain_root = app.world_mut().spawn(Name::new("Terrain")).id();
+        let terrain = app
+            .world_mut()
+            .spawn((MeshMaterial3d(base), ChildOf(terrain_root)))
+            .id();
         app.update();
         let handle = app
             .world()
@@ -208,6 +268,19 @@ mod tests {
             .unwrap()
             .0
             .clone();
+        let terrain_handle = app
+            .world()
+            .get::<MeshMaterial3d<TerrainMaterial>>(terrain)
+            .unwrap()
+            .0
+            .clone();
+        let terrain_material = app
+            .world()
+            .resource::<Assets<TerrainMaterial>>()
+            .get(&terrain_handle)
+            .unwrap();
+        assert_eq!(terrain_material.base.alpha_mode, AlphaMode::Mask(0.4));
+        assert_eq!(terrain_material.extension.fog.water.y, 1.0);
         assert_eq!(
             app.world()
                 .get::<MeshMaterial3d<SceneMaterial>>(second)
@@ -255,6 +328,16 @@ mod tests {
                 .unwrap();
             assert_eq!(material.extension.clipping.y, expected * 20.0);
             assert_eq!(material.extension.table, [Vec4::ZERO; 16]);
+            let terrain_material = app
+                .world()
+                .resource::<Assets<TerrainMaterial>>()
+                .get(&terrain_handle)
+                .unwrap();
+            assert_eq!(
+                terrain_material.extension.fog.clipping,
+                material.extension.clipping
+            );
+            assert_eq!(terrain_material.extension.fog.water.y, 1.0);
         }
     }
 }

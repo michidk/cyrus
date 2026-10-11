@@ -23,9 +23,10 @@ module where it is defined and regenerate.
 - `src/environment_export.rs` — Native extraction of per-world environment assets into the browser cache.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
-- `src/hud.rs` — In-game overlay from installed HUD data: the health candle, its number, and the
+- `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Locating the player's own game files. The install is only ever read.
+- `src/lighting.rs` — Terrain RGB and quantized normals from preservation's terrain-lighting contract.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/player.rs` — Inspection camera and the player input foundation. Faithful locomotion is
@@ -59,9 +60,11 @@ module where it is defined and regenerate.
 - `src/startup/movie.rs` — Native installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/startup/raster.rs` — Projection and materials follow preservation's `docs/engine/startup.md`.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
-- `src/water.rs` — Terrain wave playback from preservation's engine/water.md.
+- `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
+
+## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
 ## `cyrus-web` — shortcut: the browser loads GLBs that the native game exported into
 

@@ -70,6 +70,21 @@ fn world_exports_include_declared_terrain_and_textures() {
                 .unwrap();
         assert_eq!(environment.sky.is_some(), terrain);
         assert_eq!(environment.water.is_some(), terrain);
+        assert_eq!(environment.terrain_lighting.is_some(), terrain);
+        if name == "ISLAND" {
+            let light = environment.terrain_lighting.as_ref().unwrap();
+            assert_eq!(light.side, 256);
+            assert_eq!(light.ambient, [64.0; 3]);
+            assert_eq!(light.directional, [255.0; 3]);
+            for (actual, expected) in
+                light
+                    .direction
+                    .into_iter()
+                    .zip([-0.49998432, -0.49998432, 0.7071289])
+            {
+                assert!((actual - expected).abs() < 0.000001);
+            }
+        }
         let animations: cyrus_game::animation::Animations =
             serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap())
                 .unwrap();
@@ -391,6 +406,39 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     let candle = image::open(hud.join("candle-00.png")).unwrap().to_rgba8();
     assert_eq!(candle.as_raw(), &snuff.frames[0].rgba);
     assert!((0..81).all(|f| hud.join(format!("candle-{f:02}.png")).is_file()));
-    assert!(hud.join("item-07.png").is_file() && hud.join("glyph-049.png").is_file());
+    assert!(hud.join("item-07.png").is_file());
+    assert_eq!(data["text_alpha"], serde_json::json!([255, 199]));
+    assert_eq!(data["font"]["line_height"], 26, "REDSEL.FNT");
+    assert_eq!(data["prompt"], serde_json::json!([12, 436]));
+    assert_eq!(data["override_ticks"], 24);
+    assert_eq!(data["compass"], serde_json::json!([546, 396]));
+    assert_eq!(data["compass_size"], serde_json::json!([73, 65]));
+    assert_eq!(data["world_compass"]["3"], 2000);
+    assert_eq!(data["world_compass"].as_object().unwrap().len(), 7);
+    assert_eq!(
+        data["powerup_slots"],
+        serde_json::json!([[576, 6], [576, 96]])
+    );
+    assert_eq!(
+        data["powerup_sizes"],
+        serde_json::json!([[39, 61], [54, 61]])
+    );
+    assert_eq!(data["logbook"], serde_json::json!([540, 20]));
+    assert_eq!(data["logbook_size"], serde_json::json!([73, 58]));
+    assert_eq!(
+        (&data["walk_mode"], &data["auto_defend"]),
+        (&false.into(), &true.into())
+    );
+    let notices = data["notices"].as_array().unwrap();
+    assert!(
+        notices
+            .iter()
+            .flat_map(|n| n.as_array().unwrap())
+            .all(|t| !t.as_str().unwrap().is_empty()),
+        "RTX notice texts: {notices:?}"
+    );
+    for (name, count) in [("compass", 32), ("logbook", 32), ("powerup", 2)] {
+        assert!((0..count).all(|f| hud.join(format!("{name}-{f:02}.png")).is_file()));
+    }
     std::fs::remove_dir_all(&output).unwrap();
 }

@@ -271,7 +271,20 @@ pub fn export(
     } else {
         None
     };
+    let terrain_lighting = terrain
+        .map(|terrain| -> anyhow::Result<_> {
+            let inputs = rgpre::import::world_lighting::WorldLighting::parse(&ini, entry.index)?;
+            let [x, y, z] = inputs.direction;
+            Ok(crate::lighting::TerrainLighting {
+                side: terrain.combined_map(0)?.len().isqrt(),
+                ambient: inputs.ambient,
+                directional: inputs.directional,
+                direction: [-x, -y, z],
+            })
+        })
+        .transpose()?;
     let environment = Environment {
+        terrain_lighting,
         sky,
         background,
         clipping,

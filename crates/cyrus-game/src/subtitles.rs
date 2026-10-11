@@ -16,13 +16,15 @@ use crate::sound::{SoundRequest, SoundSettings, Speech, ini_value};
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use rgpre::import::fnt::{FntFile, parse_fnt};
+use cyrus_text::Font;
+pub use cyrus_text::font_alpha;
+use rgpre::import::fnt::parse_fnt;
 
 const WIDTH: usize = 640;
 const HEIGHT: usize = 480;
-/// Game ticks per second assumed for the text-only countdown.
-// shortcut: the 12 Hz logic tick is inferred, not observed; confirm before relying on text-only timing.
-const TICKS_PER_SECOND: f64 = 12.0;
+/// Game ticks per second: `normal_frame_rate` (12) per 18 BIOS timer ticks of 18.2065 Hz
+/// (preservation `docs/engine/player.md#fps-derived-frame-scale`).
+const TICKS_PER_SECOND: f64 = 12.0 * 18.2065 / 18.0;
 
 pub struct SubtitlePlugin;
 
@@ -40,7 +42,7 @@ impl Plugin for SubtitlePlugin {
 /// REDSEL.FNT and the `[dialog]`/`[3dfx]` settings subtitles need.
 #[derive(Resource)]
 pub struct SubtitleFont {
-    font: FntFile,
+    font: Font,
     max_width: i32,
     /// Main and shadow alpha of the NPC copy: `B` and `A × 200 / 256` of `[3dfx] font_sel`.
     alpha: [u8; 2],
@@ -62,7 +64,7 @@ fn load_font(mut commands: Commands, install: Res<GameInstall>) {
         .map_err(|e| e.to_string())
         .and_then(|bytes| parse_fnt(&bytes).map_err(|e| e.to_string()))
     {
-        Ok(font) => font,
+        Ok(font) => Font::from(&font),
         Err(e) => return error!("subtitles: {}: {e}", font_path.display()),
     };
     let ini = std::fs::read_to_string(&system_path).unwrap_or_else(|e| {
@@ -89,19 +91,6 @@ fn load_font(mut commands: Commands, install: Res<GameInstall>) {
     });
 }
 
-/// `[3dfx] font_*` "A,B" → (main alpha B, shadow alpha A × 200 / 256).
-pub fn font_alpha(value: &str) -> Result<[u8; 2], String> {
-    let parts: Vec<u32> = value
-        .split(',')
-        .map(|v| v.trim().parse::<u32>().map_err(|e| format!("{value}: {e}")))
-        .collect::<Result<_, _>>()?;
-    let [a, b] = parts[..] else {
-        return Err(format!("{value}: expected two values"));
-    };
-    let byte = |v: u32| u8::try_from(v).map_err(|_| format!("{value}: {v} exceeds 255"));
-    Ok([byte(b)?, byte(a * 200 / 256)?])
-}
-
 fn start_lines(
     mut requests: MessageReader<SoundRequest>,
     speech: Res<Speech>,
@@ -122,7 +111,7 @@ fn start_lines(
                 } else {
                     (clip.seconds * 256.0).trunc() / (21.0 * TICKS_PER_SECOND)
                 };
-                let text = wrap(&font.font, &clip.text, font.max_width);
+                let text = font.font.wrap(&clip.text, font.max_width);
                 // Slot 0 belongs to Cyrus; other speakers take the lowest free slot or get none.
                 if let Some(slot) = font.slots.iter_mut().skip(1).find(|s| s.is_none()) {
                     *slot = Some(Line { text, remaining });
@@ -210,115 +199,17 @@ fn show_lines(
     font.overlay = Some((entity, image));
 }
 
-/// Pixel advance of one byte: glyph width + 1, plus the width of `!` for a space.
-fn advance(font: &FntFile, ch: u8) -> i32 {
-    let start = usize::from(font.header.character_start);
-    let glyph = |c: u8| {
-        usize::from(c)
-            .checked_sub(start)
-            .and_then(|i| font.glyphs.get(i))
-            .filter(|g| g.enabled != 0)
-    };
-    glyph(ch).map_or(0, |g| {
-        i32::from(g.width)
-            + 1
-            + if ch == b' ' {
-                glyph(b'!').map_or(0, |g| i32::from(g.width))
-            } else {
-                0
-            }
-    })
-}
-
-fn width(font: &FntFile, text: &str) -> i32 {
-    text.bytes().map(|ch| advance(font, ch)).sum()
-}
-
-/// Breaks `text` into lines: a token (optional leading space + word) joins the
-/// line while the running width stays strictly below `max_width`; after a break
-/// the running width keeps the dropped space's width, as the original does.
-pub fn wrap(font: &FntFile, text: &str, max_width: i32) -> String {
-    let mut out = String::new();
-    let mut current = 0;
-    let mut rest = text;
-    while !rest.is_empty() {
-        let lead = usize::from(rest.starts_with(' '));
-        let end = rest[lead..].find(' ').map_or(rest.len(), |i| i + lead);
-        let token = &rest[..end];
-        let token_width = width(font, token);
-        if current + token_width < max_width {
-            out.push_str(token);
-            current += token_width;
-        } else {
-            out.push('\n');
-            out.push_str(&token[lead..]);
-            current = token_width;
-        }
-        rest = &rest[end..];
-    }
-    out
-}
-
-/// Composites `colour` at `alpha` over the pixel (source-over, straight alpha).
-fn blend(pixel: &mut [u8], colour: [u8; 3], alpha: u8) {
-    let (sa, da) = (f32::from(alpha) / 255.0, f32::from(pixel[3]) / 255.0);
-    let out = sa + da * (1.0 - sa);
-    if out <= 0.0 {
-        return;
-    }
-    for c in 0..3 {
-        let mixed = (f32::from(colour[c]) * sa + f32::from(pixel[c]) * da * (1.0 - sa)) / out;
-        pixel[c] = mixed.round() as u8;
-    }
-    pixel[3] = (out * 255.0).round() as u8;
-}
-
 /// Renders wrapped subtitle text into a 640×480 RGBA overlay: centred on x = 320,
-/// first line top at `470 − 26 × (max(breaks, 1) + 1)`, a black shadow at (+1, +1)
-/// under each glyph, then the glyph in its palette colours.
-pub fn draw(font: &FntFile, text: &str, [main, shadow]: [u8; 2]) -> Vec<u8> {
+/// first line top at `470 − 26 × (max(breaks, 1) + 1)`, drawn by [`Font::draw_shadowed`].
+pub fn draw(font: &Font, text: &str, alpha: [u8; 2]) -> Vec<u8> {
     let mut rgba = vec![0u8; WIDTH * HEIGHT * 4];
-    let line_height = i32::from(font.header.line_height);
+    let line_height = i32::from(font.line_height);
     let lines: Vec<&str> = text.split('\n').collect();
     let breaks = lines.len() as i32 - 1;
     let mut top = 470 - line_height * (breaks.max(1) + 1);
-    let start = usize::from(font.header.character_start);
     for line in lines {
-        let mut pen = 320 + (-width(font, line)) / 2;
-        for ch in line.bytes() {
-            if let Some(glyph) = usize::from(ch)
-                .checked_sub(start)
-                .and_then(|i| font.glyphs.get(i))
-                .filter(|g| g.enabled != 0)
-            {
-                for (offset, alpha, shadow_copy) in [(1, shadow, true), (0, main, false)] {
-                    for y in 0..i32::from(glyph.height) {
-                        for x in 0..i32::from(glyph.width) {
-                            let index = glyph.pixels[(y * i32::from(glyph.width) + x) as usize];
-                            if index == 0 {
-                                continue;
-                            }
-                            let px = pen + i32::from(glyph.offset_left) + x + offset;
-                            let py = top + i32::from(glyph.offset_top) + y + offset;
-                            if !(0..WIDTH as i32).contains(&px) || !(0..HEIGHT as i32).contains(&py)
-                            {
-                                continue;
-                            }
-                            let colour = if shadow_copy {
-                                [0, 0, 0]
-                            } else {
-                                // FNT palettes hold 6-bit components.
-                                font.palette.colors[usize::from(index)]
-                                    .map(|c| (u32::from(c) * 255 / 63) as u8)
-                            };
-                            let at = (py as usize * WIDTH + px as usize) * 4;
-                            blend(&mut rgba[at..at + 4], colour, alpha);
-                        }
-                    }
-                }
-            }
-            pen += advance(font, ch);
-        }
+        let pen = 320 + (-font.width(line)) / 2;
+        font.draw_shadowed(&mut rgba, WIDTH, line, [pen, top], alpha);
         top += line_height;
     }
     rgba

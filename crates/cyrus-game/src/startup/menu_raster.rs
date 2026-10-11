@@ -3,7 +3,7 @@
 use super::{
     book_motion::BookPose,
     menu::MenuState,
-    menu_data::{MenuAsset, MenuFace, MenuFont, MenuPicture, PageTexture},
+    menu_data::{MenuAsset, MenuFace, MenuPicture, PageTexture},
 };
 use anyhow::{Context, ensure};
 use bevy::math::Vec2;
@@ -247,7 +247,7 @@ fn picture(surface: &mut PageTexture, picture: &MenuPicture, position: [i32; 2])
 
 fn text(
     surface: &mut PageTexture,
-    font: &MenuFont,
+    font: &cyrus_text::Font,
     palette: &[[u8; 3]],
     label: &str,
     position: [i32; 2],
@@ -259,63 +259,31 @@ fn text(
         "menu: unsupported non-ASCII text {label:?}"
     );
     let label = label.to_ascii_uppercase();
-    let glyph = |ch: u8| {
-        usize::from(ch)
-            .checked_sub(usize::from(font.start))
-            .and_then(|i| font.glyphs.get(i))
-            .filter(|g| g.enabled)
-    };
-    let advance = |ch| {
-        glyph(ch).map_or(0, |g| {
-            i32::from(g.width)
-                + 1
-                + if ch == b' ' {
-                    font.glyphs.get(1).map_or(0, |g| i32::from(g.width))
-                } else {
-                    0
-                }
-        })
-    };
-    let width: i32 = label.bytes().map(advance).sum();
-    let mut cursor = position[0]
+    if let Some(ch) = label.bytes().find(|&ch| font.glyph(ch).is_none()) {
+        anyhow::bail!("menu: text {label:?} has unsupported glyph {ch}");
+    }
+    let width = font.width(&label);
+    let x = position[0]
         - match justify {
             1 => width / 2,
             2 => width,
             _ => 0,
         };
-    for ch in label.bytes() {
-        let glyph = glyph(ch)
-            .with_context(|| format!("menu: text {label:?} has unsupported glyph {ch}"))?;
-        for y in 0..glyph.height {
-            for x in 0..glyph.width {
-                let pixel =
-                    glyph.pixels[usize::from(y) * usize::from(glyph.width) + usize::from(x)];
-                if pixel == 0 {
-                    continue;
-                }
-                let dx = cursor + glyph.offset[0] + i32::from(x);
-                let dy = position[1] + glyph.offset[1] + i32::from(y);
-                if dx < 0
-                    || dy < 0
-                    || dx >= i32::from(surface.width)
-                    || dy >= i32::from(surface.height)
-                {
-                    continue;
-                }
-                let offset = dy as usize * usize::from(surface.width) + dx as usize;
-                let index = match style {
-                    0 => pixel,
-                    2 => surface.indices[offset].wrapping_add(4),
-                    3 => (pixel & 15) + 144,
-                    _ => pixel.wrapping_add(5),
-                };
-                surface.indices[offset] = index;
-                let [r, g, b] = palette[usize::from(index)];
-                surface.rgba[offset * 4..offset * 4 + 4].copy_from_slice(&[r, g, b, 255]);
-            }
+    font.draw(&label, [x, position[1]], |dx, dy, pixel| {
+        if dx < 0 || dy < 0 || dx >= i32::from(surface.width) || dy >= i32::from(surface.height) {
+            return;
         }
-        cursor += advance(ch);
-    }
+        let offset = dy as usize * usize::from(surface.width) + dx as usize;
+        let index = match style {
+            0 => pixel,
+            2 => surface.indices[offset].wrapping_add(4),
+            3 => (pixel & 15) + 144,
+            _ => pixel.wrapping_add(5),
+        };
+        surface.indices[offset] = index;
+        let [r, g, b] = palette[usize::from(index)];
+        surface.rgba[offset * 4..offset * 4 + 4].copy_from_slice(&[r, g, b, 255]);
+    });
     Ok(())
 }
 

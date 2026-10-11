@@ -13,22 +13,24 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `environment` | Glide BSI sky scrolling and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
 | `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
 | `sky` | Glide sky playback, material and shader, projected behind scene geometry. |
-| `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
+| `water` | Private terrain meshes, BIOS-rate waves and shared shading normals. |
+| `lighting` | Original terrain vertex RGB and quantized normal calculation. |
 | `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups and literal authored animation tasks to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
-| `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
-| `hud` | In-game overlay from exported `.hud` data: SNUFF candle with health number (`candle_mode` 2), active item icon and count from `ITEM.INI`, prev/next item keys from `KEYS.INI`, REDSEL.FNT text ([HUD facts](https://github.com/michidk/redguard-preservation/pull/28)). Compass, power-ups, logbook, activation prompts and the candle toggle are unsupported. |
-| `hud_export` | Native extraction of HUD positions, starting inventory, candle frames, item icons and font glyphs into `cyrus-config/cache/hud/`. |
+| `environment_export` | Native extraction of per-world sky pixels, terrain lighting inputs, wave parameters, and water masks. |
+| `hud` | In-game overlay from exported `.hud` data, following preservation's [HUD documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md): SNUFF candle with its show timer and health number, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode and auto-defend notices, in the original draw order. REDSEL.FNT text through `cyrus-text`. F8, Tab and F7 toggles persist in `cyrus-config/hud.json` (browser localStorage `cyrus-hud`). Gameplay inputs (`set_health`, `set_sword_drawn`, `activate`, `show_bitmap`, `logbook_entry`, lockout, player type, heading, world, compass flag) have no caller yet. |
+| `hud_export` | Native extraction of HUD positions, timers, toggles, starting inventory, WORLD.INI compass offsets, RTX notice texts, REDSEL.FNT and the candle, compass, logbook, power-up and item frames into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `sound` | Sound preferences, effects and authored animation cues through the original mixer gains on native and browser. Animation surfaces other than a known zero remain unsupported. RTX speech remains native only. |
-| `subtitles` | Dialogue subtitles for voice clips: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
+| `subtitles` | Dialogue subtitles for voice clips through `cyrus-text`: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
 | `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it; the book menu plays track 2; the Music slider sets the drive level (preservation `docs/engine/music.md`). Native only. |
 | `sound_bank` | Portable `SoundCue` message, `SoundSurface`, and the browser's exported effects bank; `sound` plays cues on native and browser. |
 | `sound_export` | Exports MAIN.SFX to WAV files, bank metadata, and a browser audition page when loading a native scene. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
 `startup` presentation, `animation`, `environment`, `fidelity`, `hud`, `player` and `settings` compile on wasm and are reused by
-`cyrus-web`; everything that reads the install, spawns threads or opens
+`cyrus-web`. All FNT text (book menu, title, movie and dialogue subtitles, HUD)
+is laid out and rasterised by the `cyrus-text` crate; everything that reads the install, spawns threads or opens
 sockets is gated with `cfg(not(target_arch = "wasm32"))`.
 
 Tests in `tests/` use only the public API; the install-backed ones skip when
@@ -118,14 +120,23 @@ and half-amplitude bias. Playback uses real elapsed time at the BIOS timer rate,
 It deforms private copies of exported terrain meshes and recomputes shared
 normals across materials. Re-export worlds to replace old water masks.
 
-Absolute DOS clock phase is not synchronized. Terrain placement, base heights,
-and lighting retain the preservation export's existing limitations.
+Absolute DOS clock phase is not synchronized. Terrain placement and base heights
+retain the preservation export's existing limitations.
 
-**Verified:** the terrain vertex-lighting arithmetic and world RGB sources are documented in
-[preservation PR #33](https://github.com/michidk/redguard-preservation/pull/33).
-**Unknown:** the coordinate mapping and active runtime inputs needed to apply
-that contract to these exported meshes. Scene lighting still uses the fixed
-Bevy light; terrain lighting has not been replaced.
+**Verified:** terrain ambient/directional inputs, coordinate conversion and
+quantized shading normals follow preservation's
+[terrain-lighting contract](https://github.com/michidk/redguard-preservation/blob/feat/terrain-lighting-inputs/docs/engine/terrain-lighting.md).
+Native export retains the per-world inputs in `.environment`; native and browser
+playback shade private terrain meshes, including displaced water. Terrain uses
+screen-linear vertex RGB and texture modulation before the existing scene fog,
+without Bevy PBR or tone mapping. Models retain the existing fixed Bevy light.
+Re-export browser worlds to include the new lighting inputs.
+
+The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
+that reuses Faithful results. Existing Water and Fog switches remain independent.
+**Unknown:** full pixel parity, texture-filtering and combiner precision, and exact
+water-edge dirty-normal retention. A captured original water update retained two
+older normals that differ from a full recomputation. Cyrus recomputes the grid.
 
 Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
@@ -181,9 +192,12 @@ Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
 framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
-shader arithmetic checks cover the dither matrix and fog boundaries. Texture
-filtering, sun alpha rounding, lighting, and physical-hardware pixel parity
-remain unverified.
+shader arithmetic checks cover the dither matrix and fog boundaries.
+Faithful sky filtering uses encoded palette bytes, four-bit subtexel fractions,
+and horizontal then vertical integer rounding, following preservation
+[sky filtering facts](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
+Sun alpha rounding, other texture filtering, lighting, and physical-hardware
+pixel parity remain unverified.
 
 Default windowed startup plays the original authored 3dfx animation and decoded
 640×480 title image, then stops at the book menu. Preload runs concurrently.
@@ -220,5 +234,6 @@ establishes one candle update per rendered frame with a 60 Hz Glide retrace limi
 Cyrus advances the candle at that rate independently of rendering, without
 capping the application. `normal_frame_rate` is a simulation-tick input, not
 the candle cadence. Original in-world timing still needs a paired comparison.
-Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook,
-activation prompts and the F8 toggle remain unsupported.
+Every documented overlay element is implemented, but only the F8, Tab and F7
+toggles reach it from play; health, sword, lockout, heading, scripts and the
+logbook do not feed it yet (see the roadmap).

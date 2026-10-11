@@ -74,3 +74,6 @@ impl Plugin for GamePlugin {
             ));
     }
 }
+
+/// Faithful terrain lighting and shading normals.
+pub mod lighting;

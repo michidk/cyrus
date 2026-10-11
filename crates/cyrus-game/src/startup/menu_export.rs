@@ -2,8 +2,8 @@
 use super::{
     menu::MenuItem,
     menu_data::{
-        MenuAsset, MenuCorner, MenuEntry, MenuFont, MenuGlyph, MenuModel, MenuModelFace, MenuPage,
-        MenuPicture, PageTexture,
+        MenuAsset, MenuCorner, MenuEntry, MenuModel, MenuModelFace, MenuPage, MenuPicture,
+        PageTexture,
     },
     menu_preferences::MenuPreferences,
 };
@@ -129,7 +129,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let output = cache.join("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        9u32,
+        10u32,
         &ini_bytes,
         &keys_bytes,
         &system_bytes,
@@ -210,22 +210,10 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             },
         );
     }
-    let font = |bytes: &[u8]| -> anyhow::Result<MenuFont> {
-        let data = parse_fnt(bytes).context("menu: FNT font")?;
-        Ok(MenuFont {
-            start: data.header.character_start,
-            glyphs: data
-                .glyphs
-                .iter()
-                .map(|g| MenuGlyph {
-                    enabled: g.enabled != 0,
-                    width: g.width,
-                    height: g.height,
-                    offset: [g.offset_left.into(), g.offset_top.into()],
-                    pixels: g.pixels.clone(),
-                })
-                .collect(),
-        })
+    let font = |bytes: &[u8]| -> anyhow::Result<cyrus_text::Font> {
+        Ok(cyrus_text::Font::from(
+            &parse_fnt(bytes).context("menu: FNT font")?,
+        ))
     };
     let pictures = |bytes: &[u8]| -> anyhow::Result<Vec<MenuPicture>> {
         Ok(parse_gxa_file(bytes)

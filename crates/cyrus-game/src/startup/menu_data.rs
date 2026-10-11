@@ -12,7 +12,7 @@ pub(super) struct MenuAsset {
     pub models: Vec<MenuModel>,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
-    pub fonts: [MenuFont; 2],
+    pub fonts: [cyrus_text::Font; 2],
     pub checks: Vec<MenuPicture>,
     pub sliders: Vec<MenuPicture>,
     pub movies: Vec<MenuPicture>,
@@ -82,21 +82,6 @@ pub(super) struct MenuPicture {
     pub width: u16,
     pub height: u16,
     pub rgba: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(super) struct MenuFont {
-    pub start: u16,
-    pub glyphs: Vec<MenuGlyph>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(super) struct MenuGlyph {
-    pub enabled: bool,
-    pub width: u16,
-    pub height: u16,
-    pub offset: [i32; 2],
-    pub pixels: Vec<u8>,
 }
 
 impl MenuAsset {

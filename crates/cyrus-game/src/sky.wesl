@@ -28,6 +28,23 @@ fn sky_fog_density(depth: f32) -> f32 {
                   240.0 + (coordinate - 62.0) * 15.0, coordinate >= 62.0);
 }
 
+// Preservation sky filtering: encoded palette channels and four-bit fractions.
+fn faithful_cloud_sample(uv: vec2<f32>) -> vec3<f32> {
+    let size = vec2<i32>(textureDimensions(sky));
+    let texel = uv * vec2<f32>(size) - vec2(0.5);
+    let fraction = floor(fract(texel) * 16.0) / 16.0;
+    let origin = vec2<i32>(floor(texel));
+    let p0 = ((origin % size) + size) % size;
+    let p1 = (p0 + vec2(1)) % size;
+    let a = round(linear_to_srgb(textureLoad(sky, p0, 0).rgb) * 255.0);
+    let b = round(linear_to_srgb(textureLoad(sky, vec2(p1.x, p0.y), 0).rgb) * 255.0);
+    let c = round(linear_to_srgb(textureLoad(sky, vec2(p0.x, p1.y), 0).rgb) * 255.0);
+    let d = round(linear_to_srgb(textureLoad(sky, p1, 0).rgb) * 255.0);
+    let top = a + floor((b - a) * fraction.x);
+    let bottom = c + floor((d - c) * fraction.x);
+    return srgb_to_linear((top + floor((bottom - top) * fraction.y)) / 255.0);
+}
+
 fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     if plane.z == 0.0 { return srgb_to_linear(fog_rgb.rgb); }
     if scroll.z != 0.0 {
@@ -56,7 +73,7 @@ fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     }
     // Texture coordinates follow the untilted corners; scene export flips X/Y.
     let uv = (-plane.y * plane_xz * 20.0 / 65000.0 - view.world_position.xz * 20.0 * 0.009 + scroll.xy) / plane.zw;
-    let color = textureSampleLevel(sky, sky_sampler, uv, 0.0).rgb;
+    let color = faithful_cloud_sample(uv);
     if scroll.w != 0.0 { return blend_fog(color, fog_rgb.rgb, sky_fog_density(depth * 20.0)); }
     let position = fog_table_position(depth * 20.0);
     let current = select(f32(max(position.x, 32u) - 32u) * 8.0, 255.0, position.x == 63u);

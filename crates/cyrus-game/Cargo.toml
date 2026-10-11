@@ -7,6 +7,7 @@ edition.workspace = true
 [dependencies]
 bevy = { workspace = true, features = ["wav"] }
 cyrus-control.workspace = true
+cyrus-text.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
