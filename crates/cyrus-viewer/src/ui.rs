@@ -45,6 +45,15 @@ pub struct Viewer {
     data_filter: String,
     styled: bool,
 }
+impl Viewer {
+    pub fn set_catalog(&mut self, mut catalog: Catalog) {
+        catalog
+            .entries
+            .retain(|entry| entry.category != Category::Other);
+        self.catalog = Some(catalog);
+    }
+}
+
 impl Default for Viewer {
     fn default() -> Self {
         Self {
@@ -153,7 +162,10 @@ pub fn draw(
             ui.add_space(10.);
             ui.weak("LIBRARY");
             ui.separator();
-            for category in Category::ALL {
+            for category in Category::ALL
+                .into_iter()
+                .filter(|category| *category != Category::Other)
+            {
                 let count = catalog.as_ref().map_or(0, |c| {
                     c.entries.iter().filter(|e| e.category == category).count()
                 });

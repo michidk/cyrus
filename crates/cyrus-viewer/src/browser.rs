@@ -186,7 +186,7 @@ fn poll(
                 progress.fraction = Some(done as f32 / total.max(1) as f32);
             }
             Message::Catalog(catalog) => {
-                viewer.catalog = Some(catalog);
+                viewer.set_catalog(catalog);
                 viewer.loading_catalog = false;
                 progress.visible = false;
             }

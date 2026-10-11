@@ -184,7 +184,7 @@ pub fn poll(
         commands.remove_resource::<Preparation>();
         match result {
             Ok(Prepared::Catalog(library)) => {
-                viewer.catalog = Some(library.catalog.clone());
+                viewer.set_catalog(library.catalog.clone());
                 commands.insert_resource(NativeLibrary(std::sync::Arc::from(library)));
                 progress.visible = false;
             }
@@ -212,7 +212,7 @@ pub fn poll(
                     .map_err(anyhow::Error::from)
                     .and_then(|c| {
                         c.validate()?;
-                        viewer.catalog = Some(c);
+                        viewer.set_catalog(c);
                         Ok(())
                     })
             } else {

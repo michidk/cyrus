@@ -24,8 +24,8 @@ member loads its text or audio; labels are available after selection.
 
 Audio shows a waveform with playback, seeking, looping, and volume. Movies have
 video, audio, a timeline, and frame stepping. Definitions expose preservation's
-decoded fields and source lines. Unsupported files and malformed members remain
-visible with a reason.
+decoded fields and source lines. Malformed members of recognized asset types
+remain visible with a reason. Unrecognized files are excluded from the viewer.
 
 ## Browser build
 
@@ -72,7 +72,7 @@ BSI mip levels, so no mip selector is shown.
 
 Movie playback uses the first audio track. Seeking decodes forward in bounded
 batches and may pause while catching up. Browser audio requires a user gesture.
-Unknown formats remain listed. Scripts are inspected as data, never executed.
+Scripts are inspected as data, never executed.
 
 `cyrus-assets` tests the portable catalog/runtime contracts. Native and browser
 runtime checks are also needed to verify rendering, input, and media playback.
