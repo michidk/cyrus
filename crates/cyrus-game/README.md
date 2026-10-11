@@ -17,8 +17,8 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups and literal authored animation tasks to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
-| `hud` | In-game overlay from exported `.hud` data: SNUFF candle with health number (`candle_mode` 2), active item icon and count from `ITEM.INI`, prev/next item keys from `KEYS.INI`, REDSEL.FNT text drawn through `cyrus-text` like an NPC subtitle ([HUD facts](https://github.com/michidk/redguard-preservation/pull/28)). Candle show timers (`candle_mode` 0), sword-lock item cycling, compass, power-ups, logbook icon, activation prompts and the candle toggle are unsupported. |
-| `hud_export` | Native extraction of HUD positions, starting inventory, REDSEL.FNT, candle frames and item icons into `cyrus-config/cache/hud/`. |
+| `hud` | In-game overlay from exported `.hud` data, following preservation's [HUD documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md): SNUFF candle with its show timer and health number, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode and auto-defend notices, in the original draw order. REDSEL.FNT text through `cyrus-text`. F8, Tab and F7 toggles persist in `cyrus-config/hud.json` (browser localStorage `cyrus-hud`). Gameplay inputs (`set_health`, `set_sword_drawn`, `activate`, `show_bitmap`, `logbook_entry`, lockout, player type, heading, world, compass flag) have no caller yet. |
+| `hud_export` | Native extraction of HUD positions, timers, toggles, starting inventory, WORLD.INI compass offsets, RTX notice texts, REDSEL.FNT and the candle, compass, logbook, power-up and item frames into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `sound` | `SYSTEM.INI` and Sound page audio settings; `MAIN.SFX` effects by index and RTX voice clips by label at their header base volume times the master volume, with optional distance falloff and stereo pan from the camera, through the original's Miles mixer gains. No in-game triggers yet. Native only. |
 | `subtitles` | Dialogue subtitles for voice clips through `cyrus-text`: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
@@ -215,5 +215,6 @@ establishes one candle update per rendered frame with a 60 Hz Glide retrace limi
 Cyrus advances the candle at that rate independently of rendering, without
 capping the application. `normal_frame_rate` is a simulation-tick input, not
 the candle cadence. Original in-world timing still needs a paired comparison.
-Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook,
-activation prompts and the F8 toggle remain unsupported.
+Every documented overlay element is implemented, but only the F8, Tab and F7
+toggles reach it from play; health, sword, lockout, heading, scripts and the
+logbook do not feed it yet (see the roadmap).

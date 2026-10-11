@@ -40,7 +40,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Runtime filtering state and sun alpha rounding |
 | Step 1: terrain lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Implement the user-resumed terrain-only scope from established coordinates/live inputs |
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
-| HUD | Implement the Game Overlay UI, resumed | Shared `cyrus-text` crate landed; overlay timers, sword lock, compass, power-ups, logbook, prompts and F8 remain incomplete |
+| HUD | Implement the Game Overlay UI, resumed | Every documented overlay element is implemented; gameplay must still feed health, sword, lockout, player type, heading/world, compass flag, `Activate`/`ShowBitmap`/logbook events and walk/auto-defend behaviour |
 | Startup and book menu | Match Startup Screen Appearance, `t3/faithful-startup-sequence` | Published book-cue integration through shared native/browser sound; lighting remains unresolved |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
@@ -75,6 +75,8 @@ establish original-game timing, visual fidelity or audible parity.
 - [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
 - [ ] Exercise startup and animated book transitions in the browser, saved settings after restart, and native audible playback. Verify lighting and book cues after implementation. **Verified:** preservation PR #34 and an original-game observation establish that the ordinary book menu has no pointer label selection; retain keyboard/action navigation rather than adding hitboxes.
 - [x] The integrated native F1 inspector opens Entities, Resources and Assets, checked through the live renderer.
+- [ ] Wire the HUD inputs. Only F8 (candle mode), Tab (walk mode notice) and F7 (auto-defend notice) work today, persisted in `cyrus-config/hud.json` / localStorage `cyrus-hud`. No system yet calls `HudState::set_health`, `set_sword_drawn`, `activate`/`deactivate`, `show_bitmap`/`unshow_bitmap` or `logbook_entry`, or sets `lockout`, `player_type`, `heading`, `world` or `compass_on`; so the mode-0 show timer, sword-lock item cycling, compass, power-up slots, logbook icon and activation prompts never appear in play. The player does not consume walk mode or auto-defend. The inventory screen (candle pinned at 50), save-game storage of the timers, slots and compass flag, and the unknown player states that suppress prompts remain unsupported.
+- [ ] Screenshot-compare every HUD element and notice with the original; compass frame 0 direction, whether receiving item 0 turns the compass on, and the original in-world frame rate are unverified.
 - [ ] Repeat inspector/HUD/sky runtime checks in the browser; confirm served browser assets are current and cache reuse/invalidation works.
 
 ## Done
@@ -110,12 +112,12 @@ committed support; unverified work stays in the TODO column.
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; authored book frames and runtime menu motion | Automatic actor playback, other frame encodings, and model replacement |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
-| `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, HUD candle/item artwork, and preload parsing | Software sky projection |
+| `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, HUD candle, compass, logbook, power-up and item artwork, and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
 | Glide sky BSI/COL | Faithful tilted sky plane, sun, fog and synchronized scroll inputs; camera-centered Modern sky | Full original-game projection/motion, filtering, alpha and lighting comparison |
 | `SFX` | Every effect decoded at its stored rate and channel layout; playback by index with the file's loop flag and base volume, master volume, documented distance falloff and stereo pan, via `play_sound` | Script, animation, ambient and surface triggers; per-call volume and rate; audible comparison with the original |
 | `RTX` | All voice clips load in the background; playback by label via `play_speech` with dialogue subtitles; voice and subtitle preferences honoured | Dialogue and combat triggers, Cyrus' subtitle colour, dialogue choices, and quest integration |
-| `FNT` | Startup labels, book-menu glyphs, movie and dialogue subtitles, HUD numbers, and status font; one shared layout/raster crate (`cyrus-text`) | Remaining prompts and menus |
+| `FNT` | Startup labels, book-menu glyphs, movie and dialogue subtitles, HUD numbers, prompts and notices, and status font; one shared layout/raster crate (`cyrus-text`) | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | Original payloads and typed literal Task/End descriptors retained; explicit authored animation-task playback passes native contracts | Automatic activation, full control flow, events, other native bindings, interrupts, and synchronization |
 | `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, browser cinematic playback, and progression unlocks |

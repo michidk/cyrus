@@ -157,7 +157,9 @@ For agent work, choose the entry point explicitly:
 Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
 Skipping startup does not enable gameplay. In a world, `state.hud` reports health,
-candle visibility and frame, selected item and count. `state.menu` exposes the installed
+candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
+walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle
+candle mode, walk mode and auto-defend. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
 units and persist outside the install in native `cyrus-config/menu.json` or

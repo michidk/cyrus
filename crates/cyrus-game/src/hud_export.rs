@@ -4,7 +4,7 @@ use crate::{
     install::GameInstall,
 };
 use anyhow::Context;
-use rgpre::import::{fnt::parse_fnt, gxa::parse_gxa_file, keys_ini::KeysIni};
+use rgpre::import::{fnt::parse_fnt, gxa::parse_gxa_file, keys_ini::KeysIni, rtx::parse_rtx_file};
 use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -13,10 +13,11 @@ use std::{
 
 type Fields = BTreeMap<(String, String), String>;
 
-/// Writes `hud/overlay.hud` with candle, item, and glyph PNGs. The candle and font file
-/// names are fixed by the engine; positions, modes, and items come from the INI files.
+/// Writes `hud/overlay.hud` with the candle, compass, logbook, power-up and item PNGs.
+/// The candle, compass, logbook and font file names are fixed by the engine; positions,
+/// modes, items and the power-up atlas come from the INI files.
 pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    let read = |name: &str| -> anyhow::Result<Vec<u8>> {
+    let locate = |name: &str| -> anyhow::Result<std::path::PathBuf> {
         let mut path = install.root.clone();
         for part in name.split(['\\', '/']) {
             anyhow::ensure!(
@@ -26,29 +27,52 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             path = crate::scene::find_file(&path, part)
                 .with_context(|| format!("hud: {name} is missing"))?;
         }
+        Ok(path)
+    };
+    let read = |name: &str| -> anyhow::Result<Vec<u8>> {
+        let path = locate(name)?;
         std::fs::read(&path).with_context(|| format!("hud: reading {}", path.display()))
     };
     let system = read("SYSTEM.INI")?;
     let items = read("ITEM.INI")?;
     let keys = read("KEYS.INI")?;
+    let worlds = read("WORLD.INI")?;
     let system_fields = ini_fields(&system, "SYSTEM.INI")?;
     let item_fields = ini_fields(&items, "ITEM.INI")?;
     let atlas_name = text(&item_fields, "ITEM.INI", "items", "bitmap_file")?.to_owned();
+    let powerup_name = text(&system_fields, "SYSTEM.INI", "system", "game_bitmap")?.to_owned();
     let candle_bytes = read("system/SNUFF.GXA")?;
+    let compass_bytes = read("system/COMPASS2.GXA")?;
+    let logbook_bytes = read("system/SCROLL.GXA")?;
+    let powerup_bytes = read(&powerup_name)?;
     let atlas_bytes = read(&atlas_name)?;
     let font_bytes = read("fonts/REDSEL.FNT")?;
+    // The RTX file is large; its size and modification time stand in for its bytes.
+    let rtx_path = locate(text(
+        &system_fields,
+        "SYSTEM.INI",
+        "system",
+        "rtx_filename",
+    )?)?;
+    let rtx_stamp = std::fs::metadata(&rtx_path)
+        .and_then(|m| Ok((m.len(), m.modified()?)))
+        .with_context(|| format!("hud: reading {}", rtx_path.display()))?;
 
     let output = cache.join("hud");
     let stamp = output.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        4u32,
-        &system,
-        &items,
-        &keys,
-        &candle_bytes,
+        5u32,
+        (&system, &items, &keys, &worlds),
+        (
+            &candle_bytes,
+            &compass_bytes,
+            &logbook_bytes,
+            &powerup_bytes,
+        ),
         &atlas_bytes,
         &font_bytes,
+        rtx_stamp,
     )
         .hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
@@ -66,10 +90,11 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     };
     let system_number =
         |section: &str, key: &str| number(&system_fields, "SYSTEM.INI", section, key);
-    let position = |key: &str| -> anyhow::Result<[i32; 2]> {
+    // `{key}_xco{slot}` and `{key}_yco{slot}`; only the power-up slots have a suffix.
+    let position = |key: &str, slot: &str| -> anyhow::Result<[i32; 2]> {
         Ok([
-            i32::try_from(system_number("system", &format!("{key}_xco"))?)?,
-            i32::try_from(system_number("system", &format!("{key}_yco"))?)?,
+            i32::try_from(system_number("system", &format!("{key}_xco{slot}"))?)?,
+            i32::try_from(system_number("system", &format!("{key}_yco{slot}"))?)?,
         ])
     };
     let candle_mode = u8::try_from(system_number("screen", "candle_mode")?)
@@ -80,15 +105,59 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_sel")?)
             .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_sel: {e}"))?;
 
-    let candle = parse_gxa_file(&candle_bytes).context("hud: system/SNUFF.GXA")?;
+    let flag = |section: &str, key: &str| -> anyhow::Result<bool> {
+        Ok(system_number(section, key)? != 0)
+    };
+    // Fixed-size atlases: the runtime holds every frame and draws them at one size.
+    let uniform = |bytes: &[u8], name: &str, count: usize| {
+        let atlas = parse_gxa_file(bytes).with_context(|| format!("hud: {name}"))?;
+        anyhow::ensure!(
+            atlas.frames.len() == count
+                && atlas
+                    .frames
+                    .iter()
+                    .all(|f| (f.width, f.height) == (atlas.frames[0].width, atlas.frames[0].height)),
+            "hud: {name}: expected {count} equally sized frames"
+        );
+        Ok(atlas)
+    };
+    let candle = uniform(&candle_bytes, "system/SNUFF.GXA", 81)?;
+    let compass = uniform(&compass_bytes, "system/COMPASS2.GXA", 32)?;
+    let logbook = uniform(&logbook_bytes, "system/SCROLL.GXA", 32)?;
+    let powerup = parse_gxa_file(&powerup_bytes).with_context(|| format!("hud: {powerup_name}"))?;
     anyhow::ensure!(
-        candle.frames.len() == 81
-            && candle
-                .frames
-                .iter()
-                .all(|f| (f.width, f.height) == (candle.frames[0].width, candle.frames[0].height)),
-        "hud: system/SNUFF.GXA: expected 81 equally sized frames"
+        (1..=256).contains(&powerup.frames.len()),
+        "hud: {powerup_name}: expected 1 to 256 frames"
     );
+    let size = |frame: &rgpre::import::gxa::GxaFrame| [frame.width, frame.height];
+
+    let mut world_compass = BTreeMap::new();
+    for ((section, key), value) in ini_fields(&worlds, "WORLD.INI")? {
+        if let Some(id) = key
+            .strip_prefix("world_compass[")
+            .and_then(|k| k.strip_suffix(']'))
+            .filter(|_| section == "world")
+        {
+            let context = || format!("hud: WORLD.INI [world] {key} = {value:?}");
+            world_compass.insert(
+                id.parse::<u32>().with_context(context)?,
+                value.parse::<i32>().with_context(context)?,
+            );
+        }
+    }
+
+    let rtx =
+        std::fs::read(&rtx_path).with_context(|| format!("hud: reading {}", rtx_path.display()))?;
+    let labels = parse_rtx_file(&rtx)
+        .with_context(|| format!("hud: {}", rtx_path.display()))?
+        .build_label_map();
+    let label = |tag: &str| -> anyhow::Result<String> {
+        labels
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(tag))
+            .map(|(_, text)| text.clone())
+            .with_context(|| format!("hud: {}: no {tag} text", rtx_path.display()))
+    };
     let atlas = parse_gxa_file(&atlas_bytes).with_context(|| format!("hud: {atlas_name}"))?;
     let item_number = |key: &str| number(&item_fields, "ITEM.INI", "items", key);
     let mut owned = Vec::new();
@@ -120,9 +189,27 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("hud: KEYS.INI: {e}"))?;
     let hud = HudAsset {
         candle_mode,
-        candle: position("candle")?,
+        candle: position("candle", "")?,
         candle_size: [candle.frames[0].width, candle.frames[0].height],
-        pickup: position("pickup")?,
+        pickup: position("pickup", "")?,
+        prompt: [
+            position("pickup", "")?[0],
+            i32::try_from(system_number("system", "pickup_text_yco")?)?,
+        ],
+        override_ticks: u32::try_from(system_number("game", "rtx_pickup_override_time")?)?,
+        compass: position("compass", "")?,
+        compass_size: size(&compass.frames[0]),
+        world_compass,
+        powerup_slots: [position("game", "1")?, position("game", "2")?],
+        powerup_sizes: powerup.frames.iter().map(size).collect(),
+        logbook: position("logbook", "")?,
+        logbook_size: size(&logbook.frames[0]),
+        walk_mode: flag("cyrus", "walk_mode")?,
+        auto_defend: flag("cyrus", "auto_defend")?,
+        notices: [
+            [label("#wof")?, label("#won")?],
+            [label("#dof")?, label("#don")?],
+        ],
         items: owned,
         selected,
         bindings: keys.control_codes(),
@@ -142,21 +229,21 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             .save(&path)
             .with_context(|| format!("hud: writing {}", path.display()))
     };
-    for (index, frame) in candle.frames.into_iter().enumerate() {
-        save(
-            format!("candle-{index:02}.png"),
-            frame.width.into(),
-            frame.height.into(),
-            frame.rgba,
-        )?;
-    }
-    for (index, frame) in atlas.frames.into_iter().enumerate() {
-        save(
-            format!("item-{index:02}.png"),
-            frame.width.into(),
-            frame.height.into(),
-            frame.rgba,
-        )?;
+    for (name, atlas) in [
+        ("candle", candle),
+        ("compass", compass),
+        ("logbook", logbook),
+        ("powerup", powerup),
+        ("item", atlas),
+    ] {
+        for (index, frame) in atlas.frames.into_iter().enumerate() {
+            save(
+                format!("{name}-{index:02}.png"),
+                frame.width.into(),
+                frame.height.into(),
+                frame.rgba,
+            )?;
+        }
     }
     std::fs::write(output.join("overlay.hud"), serde_json::to_vec(&hud)?)?;
     std::fs::write(&stamp, fingerprint)?;

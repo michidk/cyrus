@@ -394,5 +394,36 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     assert!(hud.join("item-07.png").is_file());
     assert_eq!(data["text_alpha"], serde_json::json!([255, 199]));
     assert_eq!(data["font"]["line_height"], 26, "REDSEL.FNT");
+    assert_eq!(data["prompt"], serde_json::json!([12, 436]));
+    assert_eq!(data["override_ticks"], 24);
+    assert_eq!(data["compass"], serde_json::json!([546, 396]));
+    assert_eq!(data["compass_size"], serde_json::json!([73, 65]));
+    assert_eq!(data["world_compass"]["3"], 2000);
+    assert_eq!(data["world_compass"].as_object().unwrap().len(), 7);
+    assert_eq!(
+        data["powerup_slots"],
+        serde_json::json!([[576, 6], [576, 96]])
+    );
+    assert_eq!(
+        data["powerup_sizes"],
+        serde_json::json!([[39, 61], [54, 61]])
+    );
+    assert_eq!(data["logbook"], serde_json::json!([540, 20]));
+    assert_eq!(data["logbook_size"], serde_json::json!([73, 58]));
+    assert_eq!(
+        (&data["walk_mode"], &data["auto_defend"]),
+        (&false.into(), &true.into())
+    );
+    let notices = data["notices"].as_array().unwrap();
+    assert!(
+        notices
+            .iter()
+            .flat_map(|n| n.as_array().unwrap())
+            .all(|t| !t.as_str().unwrap().is_empty()),
+        "RTX notice texts: {notices:?}"
+    );
+    for (name, count) in [("compass", 32), ("logbook", 32), ("powerup", 2)] {
+        assert!((0..count).all(|f| hud.join(format!("{name}-{f:02}.png")).is_file()));
+    }
     std::fs::remove_dir_all(&output).unwrap();
 }
