@@ -66,7 +66,8 @@ establish original-game timing, visual fidelity or audible parity.
   **Verified:** 138 native workspace tests with zero install skips, strict
   workspace Clippy, WASM compilation, and the same compiled test executables
   with the install link absent. Thirteen focused animation/sound contracts
-  also pass after merging the newer main tree. The dedicated animation worktree
+  and the WASM check also pass after merging the newer main tree. Fresh combined
+  native/browser visual and audible playback remain unchecked. The dedicated animation worktree
   and build output can be removed; ignored research is retained centrally for
   the unfinished clock and eligibility work.
 - [ ] Verify type-1 mesh transitions, audible native/browser cues, eligibility, host timing and matched rendering. Preservation [PR #32](https://github.com/michidk/redguard-preservation/pull/32) documents static actor/stage eligibility gates; [PR #39](https://github.com/michidk/redguard-preservation/pull/39) documents caller/clock facts. Scale and nominal-tick recurrence match 659 archived transitions given observed FPS; the full BIOS/FPS replay fails at transition 8, so the production host clock remains unresolved. Recorded video frame rate is not simulation-tick evidence.
