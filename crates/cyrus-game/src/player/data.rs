@@ -1,23 +1,11 @@
 //! Player-owned scene inputs shared by native and browser runtimes.
-use super::{
-    collision_data::CollisionScene, collision_world::StaticCollision, definition::PlayerDefinition,
-    ground::TerrainGround,
-};
+use super::definition::PlayerDefinition;
 use anyhow::Context;
 use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::{Asset, Handle, Resource, TypePath};
-use serde::{Deserialize, Serialize};
-
-/// Installed ordinary-grounded movement settings, in original engine units.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MovementSettings {
-    pub standing_height: i32,
-    pub post_collide_height: u32,
-    pub slide_range: i32,
-    pub turn_speed: u32,
-    pub turn_max_speed: u32,
-    pub poly_push_units: u32,
-}
+use cyrus_assets::collision::CollisionScene;
+pub use cyrus_assets::player::{MovementSettings, SceneData};
+use cyrus_world::collision::{collision_world::StaticCollision, ground::TerrainGround};
 
 /// Validated player inputs. Loading this asset does not enable unsupported movement.
 #[derive(Asset, TypePath)]
@@ -39,14 +27,14 @@ impl PlayerScene {
     /// Resolve selected support without changing actor surface state or the shared veto.
     pub fn support_surface(
         &self,
-        support: &super::ground::SelectedSupport,
+        support: &cyrus_world::collision::ground::SelectedSupport,
         position: [i64; 3],
     ) -> anyhow::Result<u8> {
         match support.source() {
-            super::ground::SupportSource::Model { model, face } => {
+            cyrus_world::collision::ground::SupportSource::Model { model, face } => {
                 self.static_collision.face_surface(model, face)
             }
-            super::ground::SupportSource::Terrain => {
+            cyrus_world::collision::ground::SupportSource::Terrain => {
                 let context = || format!("world {} terrain surface", self.world);
                 let terrain = self
                     .terrain
@@ -71,7 +59,7 @@ impl PlayerScene {
 
     /// Decode the exported player cache, validating terrain before runtime queries.
     pub fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        serde_json::from_slice::<SceneData>(bytes)?.decode()
+        Self::from_data(serde_json::from_slice::<SceneData>(bytes)?)
     }
 }
 
@@ -79,57 +67,44 @@ impl PlayerScene {
 #[derive(Resource)]
 pub struct PlayerSceneRequest(pub Handle<PlayerScene>);
 
-#[derive(Serialize, Deserialize)]
-pub(crate) struct SceneData {
-    pub version: u32,
-    pub world: u32,
-    pub keyboard_codes: Option<[u8; 8]>,
-    pub settings: MovementSettings,
-    pub definition: serde_json::Value,
-    pub heights: Option<Vec<i16>>,
-    pub water: Option<Vec<bool>>,
-    pub terrain_textures: Option<Vec<u8>>,
-    pub collision: Option<CollisionScene>,
-}
-
-impl SceneData {
-    pub(crate) fn decode(self) -> anyhow::Result<PlayerScene> {
+impl PlayerScene {
+    fn from_data(data: SceneData) -> anyhow::Result<PlayerScene> {
         anyhow::ensure!(
-            self.version == 2,
+            data.version == 2,
             "world {}: unsupported player schema {}; re-export",
-            self.world,
-            self.version
+            data.world,
+            data.version
         );
-        let collision = self.collision.with_context(|| {
+        let collision = data.collision.with_context(|| {
             format!(
                 "world {}: missing player collision data; re-export",
-                self.world
+                data.world
             )
         })?;
         collision
             .validate()
-            .with_context(|| format!("world {} collision", self.world))?;
+            .with_context(|| format!("world {} collision", data.world))?;
         let static_collision = StaticCollision::new(&collision)
-            .with_context(|| format!("world {} static collision", self.world))?;
-        let terrain = match (self.heights, self.water, self.terrain_textures) {
+            .with_context(|| format!("world {} static collision", data.world))?;
+        let terrain = match (data.heights, data.water, data.terrain_textures) {
             (Some(heights), Some(water), textures) => Some(
                 TerrainGround::new(heights, water, textures)
-                    .with_context(|| format!("world {} player terrain", self.world))?,
+                    .with_context(|| format!("world {} player terrain", data.world))?,
             ),
             (None, None, None) => None,
-            _ => anyhow::bail!("world {}: incomplete player terrain", self.world),
+            _ => anyhow::bail!("world {}: incomplete player terrain", data.world),
         };
-        let (definition, unavailable) = match PlayerDefinition::from_metadata(&self.definition) {
+        let (definition, unavailable) = match PlayerDefinition::from_metadata(&data.definition) {
             Ok(definition) => (Some(definition), None),
             Err(error) => (
                 None,
-                Some(format!("world {} player: {error:#}", self.world)),
+                Some(format!("world {} player: {error:#}", data.world)),
             ),
         };
         Ok(PlayerScene {
-            world: self.world,
-            keyboard_codes: self.keyboard_codes,
-            settings: self.settings,
+            world: data.world,
+            keyboard_codes: data.keyboard_codes,
+            settings: data.settings,
             definition,
             terrain,
             collision,
@@ -159,5 +134,26 @@ impl AssetLoader for PlayerSceneLoader {
 
     fn extensions(&self) -> &[&str] {
         &["player"]
+    }
+}
+
+/// Host binding adapters run after this set to observe the new sidecar request.
+#[derive(bevy::prelude::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlayerSceneLoading;
+
+/// Starts game-owned runtime preparation from the committed world's sidecar path.
+pub(super) fn request(
+    mut commands: bevy::prelude::Commands,
+    assets: bevy::prelude::Res<bevy::prelude::AssetServer>,
+    prepared: Option<bevy::prelude::Res<cyrus_world::lifecycle::PreparedWorld>>,
+) {
+    use bevy::prelude::DetectChanges;
+    let Some(prepared) = prepared else {
+        return;
+    };
+    if prepared.is_changed() {
+        commands.insert_resource(PlayerSceneRequest(
+            assets.load(prepared.player_path.clone()),
+        ));
     }
 }

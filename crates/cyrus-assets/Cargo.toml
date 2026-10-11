@@ -1,0 +1,25 @@
+[package]
+name = "cyrus-assets"
+description = "Portable cache records and native install preparation."
+version.workspace = true
+edition.workspace = true
+
+[features]
+native = ["dep:redguard-preservation", "cyrus-text/native", "dep:walkdir", "dep:image"]
+
+[dependencies]
+bevy = { workspace = true, features = ["bevy_asset"] }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+cyrus-text.workspace = true
+smk = "0.1"
+log.workspace = true
+walkdir = { version = "2", optional = true }
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+redguard-preservation = { workspace = true, optional = true }
+
+[dev-dependencies]
+toml.workspace = true

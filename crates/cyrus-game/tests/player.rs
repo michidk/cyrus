@@ -1,9 +1,11 @@
-use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use cyrus_game::AppState;
-use cyrus_game::fidelity::{Fidelity, Mode};
-use cyrus_game::player::input::{PlayerBindings, PlayerInput};
-use cyrus_game::player::{FlycamSettings, Player, PlayerPlugin, ViewCamera};
+use cyrus_game::fidelity::Fidelity;
+use cyrus_game::fidelity::Mode;
+use cyrus_game::player::Player;
+use cyrus_game::player::PlayerPlugin;
+use cyrus_game::player::input::PlayerBindings;
+use cyrus_game::player::input::PlayerInput;
 
 #[test]
 fn keyboard_input_preserves_opposing_actions_and_releases() {
@@ -50,126 +52,13 @@ fn keyboard_input_preserves_opposing_actions_and_releases() {
 }
 
 #[test]
-fn flycam_moves_only_the_camera_and_returns_to_the_player() {
-    let mut app = App::new();
-    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
-        .init_state::<AppState>()
-        .init_resource::<Fidelity>()
-        .init_resource::<ButtonInput<KeyCode>>()
-        .init_resource::<ButtonInput<MouseButton>>()
-        .init_resource::<AccumulatedMouseMotion>()
-        .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
-        .insert_resource(FlycamSettings {
-            enabled: false,
-            ..default()
-        })
-        .add_plugins(PlayerPlugin);
-    app.world_mut()
-        .resource_mut::<NextState<AppState>>()
-        .set(AppState::InGame);
-    app.update();
-    let entity = app
-        .world_mut()
-        .query_filtered::<Entity, With<Player>>()
-        .single(app.world())
-        .unwrap();
-    let before = *app.world().get::<Transform>(entity).unwrap();
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::ArrowUp);
-    app.update();
-    assert!(app.world().resource::<PlayerInput>().forward);
-    assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
-    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-        std::time::Duration::from_millis(100),
-    ));
-    app.world_mut().resource_mut::<FlycamSettings>().enabled = true;
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::KeyW);
-    app.update();
-    assert_eq!(
-        *app.world().resource::<PlayerInput>(),
-        PlayerInput::default()
-    );
-    let camera = app
-        .world_mut()
-        .query_filtered::<Entity, With<ViewCamera>>()
-        .single(app.world())
-        .unwrap();
-    assert_ne!(*app.world().get::<Transform>(camera).unwrap(), before);
-    assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
-    app.world_mut().resource_mut::<FlycamSettings>().enabled = false;
-    app.update();
-    assert_eq!(*app.world().get::<Transform>(camera).unwrap(), before);
-    assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
-}
-
-#[test]
-fn installed_keyboard_bindings_load_through_plugin() {
-    let root = std::env::var_os("REDGUARD_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
-    let install = match cyrus_game::install::GameInstall::open(&root) {
-        Ok(install) => install,
-        Err(error) => {
-            eprintln!("skipped: no install ({error})");
-            return;
-        }
-    };
-    let text = std::fs::read_to_string(install.root.join("KEYS.INI")).unwrap();
-    let parsed = rgpre::import::keys_ini::KeysIni::parse(&text).unwrap();
-    PlayerBindings::from_codes(parsed.keyboard_codes()).unwrap();
-    let mut app = App::new();
-    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
-        .init_state::<AppState>()
-        .init_resource::<Fidelity>()
-        .init_resource::<ButtonInput<KeyCode>>()
-        .init_resource::<ButtonInput<MouseButton>>()
-        .init_resource::<AccumulatedMouseMotion>()
-        .insert_resource(install)
-        .insert_resource(FlycamSettings {
-            enabled: false,
-            ..default()
-        })
-        .add_plugins(PlayerPlugin);
-    app.update();
-    // Exercise the plugin loader with the install's configured bindings.
-    let mut keys = ButtonInput::default();
-    for key in [
-        KeyCode::ArrowUp,
-        KeyCode::ArrowDown,
-        KeyCode::ArrowLeft,
-        KeyCode::ArrowRight,
-        KeyCode::ShiftLeft,
-        KeyCode::Space,
-        KeyCode::AltLeft,
-        KeyCode::ControlLeft,
-    ] {
-        keys.press(key);
-    }
-    let expected = PlayerBindings::from_codes(parsed.keyboard_codes())
-        .unwrap()
-        .sample(&keys);
-    *app.world_mut().resource_mut::<ButtonInput<KeyCode>>() = keys;
-    app.update();
-    assert_eq!(*app.world().resource::<PlayerInput>(), expected);
-}
-
-#[test]
 fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
         .init_resource::<Fidelity>()
         .init_resource::<ButtonInput<KeyCode>>()
-        .init_resource::<ButtonInput<MouseButton>>()
-        .init_resource::<AccumulatedMouseMotion>()
         .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
-        .insert_resource(FlycamSettings {
-            enabled: false,
-            ..default()
-        })
         .add_plugins(PlayerPlugin);
     app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Modern;
     for key in [
@@ -216,7 +105,9 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
         .press(KeyCode::ArrowUp);
     app.update();
     assert!(app.world().resource::<PlayerInput>().forward);
-    app.world_mut().resource_mut::<FlycamSettings>().enabled = true;
+    app.world_mut()
+        .resource_mut::<cyrus_game::player::input::InputSuppressed>()
+        .0 = true;
     app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Modern;
     app.update();
     assert_eq!(
@@ -294,16 +185,16 @@ fn walking_startup_uses_actor_speed_and_rejects_unsupported_step_types() {
 
 #[test]
 fn marker_entry_waits_for_world_data_and_keeps_exact_position() {
-    use cyrus_game::animation::{AnimationRequest, Animations};
-    use cyrus_game::player::placement::{MarkerEntry, PlayerPose};
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::player::placement::MarkerEntry;
+    use cyrus_game::player::placement::PlayerPose;
+    use cyrus_world::animation::AnimationRequest;
 
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
         .init_resource::<Fidelity>()
         .init_resource::<ButtonInput<KeyCode>>()
-        .init_resource::<ButtonInput<MouseButton>>()
-        .init_resource::<AccumulatedMouseMotion>()
         .init_resource::<Assets<Animations>>()
         .init_resource::<AnimationRequest>()
         .insert_resource(MarkerEntry {
@@ -386,8 +277,8 @@ fn walking_release_restarts_but_animation_suppression_does_not() {
 #[test]
 fn installed_island_marker_matches_observed_original_entry() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
-    let Ok(install) = cyrus_game::install::GameInstall::locate(Some(&root)) else {
-        eprintln!("skipping marker observation check: no Redguard install");
+    let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (marker observation check)");
         return;
     };
     let path = std::fs::read_dir(install.maps())

@@ -2747,10 +2747,33 @@ dependencies = [
  "anyhow",
  "bevy",
  "clap",
+ "cyrus-assets",
  "cyrus-control",
  "cyrus-debug",
  "cyrus-game",
+ "cyrus-render",
+ "cyrus-world",
+ "serde",
+ "serde_json",
+ "toml 0.9.12+spec-1.1.0",
  "winit",
+]
+
+[[package]]
+name = "cyrus-assets"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "cyrus-text",
+ "image",
+ "log",
+ "redguard-preservation",
+ "serde",
+ "serde_json",
+ "smk",
+ "toml 0.9.12+spec-1.1.0",
+ "walkdir",
 ]
 
 [[package]]
@@ -2769,7 +2792,7 @@ dependencies = [
  "bevy-inspector-egui",
  "bevy_egui",
  "cyrus-game",
- "web-sys",
+ "cyrus-render",
 ]
 
 [[package]]
@@ -2778,17 +2801,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bevy",
- "cyrus-control",
- "cyrus-text",
- "image",
+ "cyrus-assets",
+ "cyrus-world",
  "log",
  "redguard-preservation",
  "serde",
  "serde_json",
- "smk",
  "toml 0.9.12+spec-1.1.0",
- "walkdir",
- "web-sys",
 ]
 
 [[package]]
@@ -2806,6 +2825,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrus-render"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "cyrus-assets",
+ "cyrus-game",
+ "cyrus-text",
+ "cyrus-world",
+ "image",
+ "redguard-preservation",
+ "serde",
+ "serde_json",
+ "smk",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "cyrus-text"
 version = "0.1.0"
 dependencies = [
@@ -2817,11 +2854,26 @@ dependencies = [
 name = "cyrus-web"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bevy",
+ "cyrus-assets",
  "cyrus-debug",
  "cyrus-game",
+ "cyrus-render",
+ "cyrus-world",
  "getrandom 0.3.4",
  "web-sys",
+]
+
+[[package]]
+name = "cyrus-world"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "cyrus-assets",
+ "log",
+ "serde_json",
 ]
 
 [[package]]

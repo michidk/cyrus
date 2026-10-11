@@ -8,10 +8,8 @@ edition.workspace = true
 doctest = false
 
 [dependencies]
-bevy.workspace = true
+cyrus-render.workspace = true
+bevy = { workspace = true, features = ["default"] }
 bevy_egui = { version = "=0.43.0", default-features = false, features = ["default_fonts", "render"] }
 bevy-inspector-egui = { git = "https://github.com/taboky-dev/bevy-inspector-egui", rev = "6c4689637f289647ecad5897da35c29032fcc086", default-features = false, features = ["3d"] }
 cyrus-game.workspace = true
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Document", "Element", "Window", "Location"] }

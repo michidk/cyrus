@@ -14,9 +14,10 @@ just run-web     # serve target/web behind the VibePod preview "cyrus-web"
 
 `web/index.html` streams the engine before starting Bevy. Direct scene launches
 also download the scene with a progress bar. `?scene=START` or `?scene=27` picks a world (stem or
-WORLD.INI index). Reuses `cyrus-game`'s portable modules (`startup`, `animation`, `environment`,
-`fidelity`, `player`, `settings`); the modern controller is the default here because the
-browser has no original keyboard scheme to be faithful to yet.
+WORLD.INI index). It shares `cyrus-world`, `cyrus-game` and `cyrus-render`
+plugins with native. This host owns URL/DOM world selection and localStorage
+persistence. Direct scene launches wait for exported keyboard defaults and apply
+saved bindings; controller fidelity defaults to Faithful.
 With a scene URL, press F1 to choose a world, set flycam speed, and change runtime fidelity.
 
 Not a default workspace member so day-to-day builds and tests stay lean.

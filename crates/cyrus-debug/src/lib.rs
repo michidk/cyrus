@@ -6,11 +6,12 @@ use bevy_egui::{
     EguiPrimaryContextPass, PrimaryEguiContext, egui,
 };
 use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_inspector};
-use cyrus_game::{
-    fidelity::{Area, Fidelity, Mode},
-    fog::RenderDistance,
-    player::{FlycamSettings, Player},
-};
+use cyrus_game::fidelity::Area;
+use cyrus_game::fidelity::Fidelity;
+use cyrus_game::fidelity::Mode;
+use cyrus_game::player::Player;
+use cyrus_render::camera::FlycamSettings;
+use cyrus_render::fog::RenderDistance;
 
 pub struct DebugMenuPlugin;
 
@@ -21,11 +22,11 @@ struct DebugMenu {
 }
 
 #[derive(Resource, Default)]
-struct WorldPicker {
-    current: String,
-    selected: String,
-    options: Vec<String>,
-    pending: Option<String>,
+pub struct WorldPicker {
+    pub current: String,
+    pub selected: String,
+    pub options: Vec<String>,
+    pub pending: Option<String>,
 }
 
 impl Plugin for DebugMenuPlugin {
@@ -57,13 +58,6 @@ impl Plugin for DebugMenuPlugin {
             // WebGL cannot parse this bindless-only extension, even when bindless mode is disabled.
             *source = source.replace("enable wgpu_binding_array;", "").into();
         }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        app.add_systems(Startup, initialize_native_worlds)
-            .add_systems(Update, update_native_world);
-        #[cfg(target_arch = "wasm32")]
-        app.add_systems(Startup, initialize_web_world)
-            .add_systems(Update, update_web_world);
     }
 }
 
@@ -240,108 +234,9 @@ fn fidelity_control(ui: &mut egui::Ui, fidelity: &mut Fidelity, area: Area, labe
     });
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn initialize_native_worlds(mut picker: ResMut<WorldPicker>) {
-    picker.options = std::fs::read_dir(cyrus_game::settings::Settings::cache_dir())
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            (path.extension().and_then(|extension| extension.to_str()) == Some("glb"))
-                .then(|| path.file_stem()?.to_str().map(str::to_owned))
-                .flatten()
-        })
-        .collect();
-    picker.options.sort();
-    picker.options.dedup();
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn update_native_world(
-    mut picker: ResMut<WorldPicker>,
-    current: Res<cyrus_game::scene::CurrentScene>,
-    mut request: ResMut<cyrus_game::scene::SceneRequest>,
-) {
-    picker.current.clone_from(&current.name);
-    if picker.selected.is_empty() {
-        picker.selected.clone_from(&request.0);
-    }
-    if let Some(requested) = picker.pending.take() {
-        request.0 = requested;
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn initialize_web_world(mut picker: ResMut<WorldPicker>) {
-    let current = web_scene();
-    picker.current.clone_from(&current);
-    picker.selected.clone_from(&current);
-    picker.options = web_worlds();
-    if !picker.options.contains(&current) {
-        picker.options.push(current);
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn update_web_world(mut picker: ResMut<WorldPicker>) {
-    let Some(requested) = picker.pending.take() else {
-        return;
-    };
-    if let Some(window) = web_sys::window()
-        && let Err(error) = window.location().set_search(&format!("?scene={requested}"))
-    {
-        error!("load world {requested}: {error:?}");
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn web_scene() -> String {
-    web_sys::window()
-        .and_then(|window| window.location().search().ok())
-        .and_then(|search| {
-            search
-                .trim_start_matches('?')
-                .split('&')
-                .find_map(|part| part.strip_prefix("scene="))
-                .map(str::to_ascii_uppercase)
-        })
-        .unwrap_or_else(|| "ISLAND".into())
-}
-
-#[cfg(target_arch = "wasm32")]
-fn web_worlds() -> Vec<String> {
-    let worlds = web_sys::window()
-        .and_then(|window| window.document())
-        .and_then(|document| document.query_selector("meta[name='cyrus-worlds']").ok()?)
-        .and_then(|element| element.get_attribute("content"))
-        .unwrap_or_default();
-    parse_worlds(&worlds)
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-fn parse_worlds(worlds: &str) -> Vec<String> {
-    let mut worlds = worlds
-        .split(',')
-        .filter(|world| !world.is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    worlds.sort();
-    worlds.dedup();
-    worlds
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn world_options_are_sorted_and_unique() {
-        assert_eq!(
-            parse_worlds("START,2,ISLAND,START"),
-            ["2", "ISLAND", "START"]
-        );
-    }
 
     #[test]
     fn world_inspector_renders_the_full_world_tree() {

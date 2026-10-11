@@ -16,9 +16,10 @@ Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`,
 `skip_startup` goes to the book menu. `load_scene` skips presentation or
 leaves the menu and enters a world. `state` includes `Loading`, `Menu`, or `InGame`.
 
-`Client` is a blocking helper for tests and tools. The game side lives in
-`cyrus-game::control`; the agent side in `cyrus-mcp`. This crate has no Bevy
-dependency so drivers stay small.
+`Client` is a blocking helper for tests and tools. `server::listen` owns native
+TCP framing and sends pending requests to the host. `cyrus/src/control.rs` applies
+them on the game thread and replies; `cyrus-mcp` supplies the agent adapter.
+This crate has no Bevy dependency.
 
 In `Menu`, `state.menu` reports the page, installed entries, current selection,
 preferences, and Controls capture action. Wait for `ready` before sending menu

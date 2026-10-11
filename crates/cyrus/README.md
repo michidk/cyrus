@@ -1,7 +1,7 @@
 # cyrus (binary)
 
 The game executable. Parses arguments, finds the install, assembles the Bevy
-app from `cyrus-game` plugins, and runs it.
+app from assets, world, game and presentation plugins, and runs it.
 
 ```sh
 cargo run -p cyrus -- --scene START         # window
@@ -18,5 +18,7 @@ Flags: `--export-startup` renders startup images and exports the book-menu cache
 Settings come from `cyrus-config/settings.toml`.
 With `--scene`, press F1 to choose a world, set flycam speed, and change runtime fidelity.
 
-This crate holds no game logic; it only wires plugins. Window-dependent
-plugins are added here so `cyrus-game` stays free of them.
+This crate owns native settings and preference storage, binding initialization,
+scene preparation, debug world options and control-command application.
+`cyrus-control::server` handles TCP framing. Headless assembly omits the camera
+and audio backend; windowed assembly adds the shared presentation plugins.

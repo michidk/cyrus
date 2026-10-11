@@ -95,3 +95,12 @@ jobs:
       # Proves the install/thread/socket code stays behind cfg(not(wasm32)).
       - name: Check cyrus-web for wasm32
         run: cargo check -p cyrus-web --target wasm32-unknown-unknown
+
+  core:
+    name: Portable core boundaries
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+      - run: dev/scripts/check-core-boundaries.sh

@@ -32,6 +32,10 @@ just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
 
+Headless mode creates no camera or audio backend. Control state reports a null
+flycam position; player input, preload, world export and protocol commands remain
+available. Use a windowed run for flycam and screenshot checks.
+
 Settings, caches and screenshots live in `cyrus-config/`.
 
 Unoptimized native loader threads need a larger stack. Launch such binaries
