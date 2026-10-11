@@ -21,9 +21,9 @@ fn asset() -> Animations {
                     {"group_index":10,"anim_type":0,"anim_id":1,"commands":[
                         {"opcode":0,"frame_reference":0},{"opcode":2,"value":0},{"opcode":1}]}
                 ]}],
-            "animation_scripts":{"ACTOR":{"version":1,"entry":0,"steps":{
-                "0":{"next":14,"operation":{"type":"task","function":"PushAnimation","arguments":[7,1]}},
-                "14":{"next":28,"operation":{"type":"task","function":"PushAnimation","arguments":[10,257]}},
+            "animation_scripts":{"ACTOR":{"version":2,"entry":0,"steps":{
+                "0":{"next":14,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]}}},
+                "14":{"next":28,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":10},{"type":"integer","value":257}]}}},
                 "28":{"next":33,"operation":{"type":"end","target":0}}
             }}}
         }
@@ -34,7 +34,7 @@ fn asset() -> Animations {
 fn request_count_wait_and_end_restart_are_separate_script_stages() {
     let data = asset();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "actor").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "actor").unwrap();
     actor.request(1, 0, 0).unwrap();
     assert_eq!(script.advance(&mut actor, 0).unwrap(), Some(1));
     assert_eq!(script.program_counter(), 14);
@@ -82,7 +82,7 @@ fn a_task_already_current_starts_its_count_without_restarting_the_frame() {
     let data = asset();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
     actor.request(7, 0, 0).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
     assert_eq!(actor.advance(1).unwrap(), Some(1));
     assert_eq!(actor.advance(1).unwrap(), Some(0));
@@ -98,11 +98,11 @@ fn a_default_group_task_does_not_finish_when_the_same_group_restarts() {
         .as_array_mut()
         .unwrap()
         .push(serde_json::json!({"opcode":1}));
-    data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["arguments"] =
-        serde_json::json!([1, 1]);
+    data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["call"]["arguments"] =
+        serde_json::json!([{"type":"integer","value":1},{"type":"integer","value":1}]);
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
     actor.request(1, 0, 0).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     script.advance(&mut actor, 0).unwrap();
     actor.advance(1).unwrap();
     actor.advance(1).unwrap();
@@ -119,14 +119,14 @@ fn a_default_group_task_does_not_finish_when_the_same_group_restarts() {
 #[test]
 fn unsupported_operations_stop_with_a_sticky_world_actor_and_instruction_error() {
     let mut data = asset();
-    data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["function"] =
+    data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["call"]["function"] =
         "Sound".into();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     let error = script.advance(&mut actor, 0).unwrap_err().to_string();
     assert_eq!(
         error,
-        "world 17 actor ACTOR script instruction 0: task Sound unsupported"
+        "world 17 actor ACTOR script instruction 0 thread Main: task Sound unsupported"
     );
     assert_eq!(
         script.advance(&mut actor, 1).unwrap_err().to_string(),
@@ -139,7 +139,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
     let mut data = asset();
     data.metadata["animation_scripts"]["ACTOR"]["version"] = 99.into();
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
@@ -148,7 +148,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
     let mut data = asset();
     data.metadata["animation_scripts"]["ACTOR"]["entry"] = 14.into();
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
@@ -157,7 +157,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
     let mut data = asset();
     data.metadata["actors"][0]["attributes"] = serde_json::json!({"attr_29":1});
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
@@ -165,7 +165,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
     );
     data.metadata["actors"][0]["attributes"]["attr_29"] = (-1).into();
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
@@ -174,20 +174,20 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
     let mut data = asset();
     data.metadata["animation_scripts"]["ACTOR"]["steps"]["28"]["operation"]["target"] = 1.into();
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
-            .contains("End target 1")
+            .contains("target 1")
     );
     let mut data = asset();
     data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["next"] = 0.into();
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
-            .contains("task continuation")
+            .contains("invalid continuation")
     );
     let mut data = asset();
     data.metadata
@@ -195,7 +195,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
         .unwrap()
         .remove("animation_scripts");
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
@@ -204,7 +204,7 @@ fn unsupported_entry_channels_and_invalid_cache_continuations_are_rejected() {
     let mut data = asset();
     data.version = 1;
     assert!(
-        cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR")
+        cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR")
             .err()
             .unwrap()
             .to_string()
@@ -219,7 +219,7 @@ fn an_animation_task_keeps_waiting_while_its_current_group_is_delayed() {
         {"opcode":12,"value":2}, {"opcode":0,"frame_reference":1}, {"opcode":1}
     ]);
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
-    let mut script = cyrus_world::animation::AnimationScript::from_asset(&data, "ACTOR").unwrap();
+    let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "ACTOR").unwrap();
     actor.advance(0).unwrap();
     assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
     for ticks in [0, 1] {

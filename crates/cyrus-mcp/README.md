@@ -32,3 +32,9 @@ playback rules using locally exported cinematic assets; it has no control port.
 from 0 through 2047 and two texture offsets in texels from -256 through 256.
 Use it after loading the reference world. It synchronizes sky motion for
 comparison; it does not synchronize other users of the original random stream.
+
+`scripts {offset, limit}` returns bounded logical actor state. `step_script
+{generation, index, stage, frame_scale}` selects `main`, `interrupt`, or `tasks`.
+`tasks` requires an explicit unsigned `frame_scale` with eight fractional bits.
+For example, 256 supplies scale one; zero is accepted. Main and interrupt body
+steps do not poll existing tasks. These inspection tools do not enable gameplay.

@@ -2,6 +2,7 @@
 pub mod fidelity;
 pub mod player;
 pub mod preferences;
+pub mod script;
 use bevy::prelude::*;
 /// Engine-to-export unit divisor, matching preservation's GLB conversion.
 pub const ENGINE_UNIT_SCALE: f32 = 20.0;
@@ -18,6 +19,6 @@ impl Plugin for GamePlugin {
         app.init_resource::<preferences::Preferences>()
             .init_state::<AppState>()
             .init_resource::<fidelity::Fidelity>()
-            .add_plugins(player::PlayerPlugin);
+            .add_plugins((player::PlayerPlugin, script::ScriptPlugin));
     }
 }

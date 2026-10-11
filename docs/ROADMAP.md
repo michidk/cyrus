@@ -36,8 +36,8 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 
 | Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
-| Step 0: artifact CI | Codex, `t3/ci-platform-build-artifacts` | Build and package native/browser applications; measure hosted duration. Evidence: `magic/artifacts/2026-10-11-ci-artifacts/` |
 | Step 1: actor and mesh animation | Published animation increments; remaining work unassigned | Explicit pose, type-1 transitions and native/browser cue adapter implemented; production clock, actor eligibility and full script scheduling remain open |
+| Step 1: SOUP execution and stages 3–4 script integration | Implement SOUP plan, `t3/plan-soupscript-support` | Installed script census, preservation decoding, portable VM and game handlers; `magic/artifacts/2026-10-11-soup-implementation/` |
 | Step 2: player | Investigate Player Controller Design, `player-parity` | Active-world archive selection and runtime collision queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
 | Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Capture sun blend/alpha output and filtering across world/menu transitions; integrated visual comparison |
 | Step 1: rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Terrain lighting shipped; next: water-edge normal retention and matched native/browser terrain views; model/local-light inputs and runtime shading remain open |
@@ -120,12 +120,15 @@ Remaining intro implementation and verification are listed under
 - [x] In-game HUD from installed data: candle, health number and show timer, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode/auto-defend notices; F8/Tab/F7 toggles persist locally. Gameplay inputs are not wired (see stages 1–3).
 - [x] DOSBox-X runner for observing the original game.
 - [x] Repository checks and CI.
+- [x] Release-tag and manual artifact builds for Linux x64, Windows x64, macOS Intel/Apple Silicon, and browsers. The asset-viewer branch uses the same workflow; version tags create draft releases with archives and checksums. Hosted game and viewer matrices passed, with archive contents and native executable architectures checked.
 
 Evidence: [foundation](https://github.com/michidk/cyrus/commit/8d179e4),
 [world exports](https://github.com/michidk/cyrus/commit/1df0990),
 [browser rendering](https://github.com/michidk/cyrus/commit/f3ff4ea),
 [GLB cache](https://github.com/michidk/cyrus/commit/24ee5c4), and
-[flycam](https://github.com/michidk/cyrus/commit/ce8ce02).
+[flycam](https://github.com/michidk/cyrus/commit/ce8ce02),
+[game artifacts](https://github.com/michidk/cyrus/actions/runs/38178965225), and
+[asset-viewer artifacts](https://github.com/michidk/cyrus/actions/runs/38181794700).
 
 ## Resource coverage
 
@@ -145,7 +148,7 @@ committed support; unverified work stays in the TODO column.
 | `RTX` | All voice clips load in the background; playback by label via `play_speech` with dialogue subtitles; voice and subtitle preferences honoured | Dialogue and combat triggers, Cyrus' subtitle colour, dialogue choices, and quest integration |
 | `FNT` | Startup labels, book-menu glyphs, movie and dialogue subtitles, HUD numbers, prompts and notices, and status font; one shared layout/raster crate (`cyrus-text`) | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
-| SOUP scripts | Original payloads and typed literal Task/End descriptors retained; explicit authored animation-task playback passes native contracts | Automatic activation, full control flow, events, other native bindings, interrupts, and synchronization |
+| SOUP scripts | Versioned installed definitions and logical actors retained; one portable core executes control flow, values and shared task slots through explicit hosts; supplied-tick animation playback and MCP inspection use that core; explicit frame-scale task passes support researched wait commands | Automatic actor scheduling and timing, receiver-owned tasks, other native bindings, hooks, synchronization, progression and saves |
 | `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | Starting-item HUD icons and counts from ITEM.INI | Combat, item use, pickups and shared inventory |
@@ -386,7 +389,8 @@ for the ownership decisions and migration constraints.
   - [ ] Script sound calls (`Sound`, `FlatSound`, `AmbientSound`, `AmbientRTX`, `EndSound`, `EndMySound(s)`, `StopAllSounds`, `KillMe`/`Resurrect`) once the script engine exposes them.
   - [ ] Rope sounds from MPRP thresholds and the torch loop (effect 25), once rope and torch objects exist at runtime.
   - [ ] Refresh positional volume and pan while a sound plays.
-- [ ] Run SOUP control flow, variables, global flags, object references, main/interrupt execution, waits, and concurrent tasks.
+- [x] **Verified:** portable SOUP cache and execution core, independent actor locals, shared flags, six task slots, pause/resume/stop, animation migration and bounded MCP stepping. Explicit hosts support researched flag helpers, attribute queries and wait commands through explicit frame-scale task passes; this does not enable ordinary gameplay.
+- [ ] Run SOUP automatically with actor eligibility/timing, object references and receiver-owned tasks, main/interrupt execution, waits, hooks and synchronization.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
 - [ ] Synchronize scripts, animation events, speech/subtitles, and sound; resume waiting scripts at the correct time.

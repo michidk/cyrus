@@ -14,6 +14,7 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
         MinimalPlugins,
         AssetPlugin::default(),
         AnimationPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
         PlayerModelPlugin,
     ))
     .init_asset::<WorldAsset>();

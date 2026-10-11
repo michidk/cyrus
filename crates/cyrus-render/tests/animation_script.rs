@@ -21,9 +21,9 @@ fn asset() -> Animations {
                     {"group_index":10,"anim_type":0,"anim_id":1,"commands":[
                         {"opcode":0,"frame_reference":0},{"opcode":2,"value":0},{"opcode":1}]}
                 ]}],
-            "animation_scripts":{"ACTOR":{"version":1,"entry":0,"steps":{
-                "0":{"next":14,"operation":{"type":"task","function":"PushAnimation","arguments":[7,1]}},
-                "14":{"next":28,"operation":{"type":"task","function":"PushAnimation","arguments":[10,257]}},
+            "animation_scripts":{"ACTOR":{"version":2,"entry":0,"steps":{
+                "0":{"next":14,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]}}},
+                "14":{"next":28,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":10},{"type":"integer","value":257}]}}},
                 "28":{"next":33,"operation":{"type":"end","target":0}}
             }}}
         }
@@ -38,7 +38,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
         mesh::{PrimitiveTopology, VertexAttributeValues},
         prelude::*,
     };
-    use cyrus_world::animation::AnimationPlayback;
+    use cyrus_game::script::ScriptedPlayback;
     use cyrus_world::animation::AnimationPlugin;
     use cyrus_world::animation::AnimationPose;
     use cyrus_world::animation::AnimationRequest;
@@ -48,6 +48,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
         MinimalPlugins,
         AssetPlugin::default(),
         AnimationPlugin,
+        cyrus_game::script::ScriptPlugin,
         cyrus_render::animation::AnimationRenderPlugin,
     ))
     .init_asset::<Mesh>();
@@ -56,7 +57,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
         .world_mut()
         .resource_mut::<Assets<Animations>>()
         .add(data);
-    let playback = AnimationPlayback::new_scripted(
+    let playback = cyrus_game::script::ScriptedPlayback::new(
         source.clone(),
         app.world()
             .resource::<Assets<Animations>>()
@@ -120,7 +121,7 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
     );
     app.world_mut().resource_mut::<AnimationRequest>().0 = Handle::default();
     app.update();
-    assert!(app.world().get::<AnimationPlayback>(node).is_none());
+    assert!(app.world().get::<ScriptedPlayback>(node).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());
     assert_eq!(app.world().get::<Mesh3d>(primitive).unwrap().0, original);
 }

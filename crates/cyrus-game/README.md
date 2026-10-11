@@ -4,7 +4,7 @@ Portable gameplay state, fidelity policy, player input and deterministic control
 rules. Depends on `cyrus-world` and `cyrus-assets`; it does not load an install,
 open sockets, spawn a camera, or play audio.
 
-`GamePlugin` installs app state, fidelity and `PlayerPlugin`. The host supplies
+`GamePlugin` installs app state, fidelity, `PlayerPlugin` and `ScriptPlugin`. The host supplies
 Bevy's asset/input/state infrastructure and `Preferences` with a concrete
 `PreferenceStore`. Menu load errors remain errors; each consumer owns its fallback.
 Successful saves precede runtime application.
@@ -68,3 +68,34 @@ default group zero, makes both ordinary setup requests, then forces the default.
 It retains the selected file frame for presentation, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 This explicit entry API does not choose a production clock or enable locomotion.
+
+`script::ScriptPlugin` reports script cache preparation and advances explicitly
+attached `ScriptedPlayback` with supplied `AnimationTick` messages. Its
+`AnimationScript` is a PushAnimation host for the shared `cyrus-script::Runtime`,
+not another interpreter. Animation request/count/wait, same-stage continuation,
+End restart, synchronous cues and sticky failures remain intact. Interrupt and
+synchronization behavior is still unavailable in this animation host.
+
+`ScriptStatus` distinguishes preparation from live execution. Loaded programs,
+unsupported counts and bounded examples are visible in native control `state`.
+Automatic actor activation, production timing, other native game handlers and
+saves remain pending. No current inspection launch enables gameplay.
+
+`ScriptWorld` prepares logical instances in authored placement order, sharing
+immutable instructions and global inspection flags while retaining separate
+initial locals. Generations reject stale explicit invocations. This is fresh
+inspection state, not progression, revisit or save semantics. Preparation does
+not grant update eligibility. Removing the prepared world clears this registry.
+
+Native control and MCP `scripts` page through at most 64 actor diagnostics.
+`step_script` runs a selected main, interrupt or existing-task stage. The
+inspection host supports the researched self `GetMyAttr`, `SetGlobalFlag`,
+`ResetGlobalFlag` and `TestGlobalFlag` services. Flag numeric values and latches
+remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
+`WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
+requires `frame_scale` with eight fractional bits; omission fails before actor
+mutation. Native wait tokens belong to each logical instance. Initial waits always allocate;
+completion applies on a later task pass, including duration zero and one. Function-encoded
+waits remain unsupported because their timing context is not established.
+Other native services remain explicit failures. End notifications with synchronization
+channels remain unsupported. These tools do not start New Game.

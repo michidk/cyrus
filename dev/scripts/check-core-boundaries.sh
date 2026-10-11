@@ -18,11 +18,13 @@ edition = "2024"
 cyrus-assets = { path = "$root/crates/cyrus-assets" }
 cyrus-world = { path = "$root/crates/cyrus-world" }
 cyrus-game = { path = "$root/crates/cyrus-game" }
+cyrus-script = { path = "$root/crates/cyrus-script" }
 MANIFEST
 cat > "$probe/src/lib.rs" <<'RUST'
 pub use cyrus_assets::animation::Animations;
 pub use cyrus_world::{animation::AnimationPlugin, lifecycle::WorldPlugin};
 pub use cyrus_game::GamePlugin;
+pub use cyrus_script::Runtime;
 RUST
 cargo tree --manifest-path "$probe/Cargo.toml" --edges normal,build --prefix none > "$probe/tree"
 if grep -E '^(bevy_(render|window|winit|audio|pbr|gltf|mesh|image)|redguard-preservation|cyrus-(render|control)|wgpu|winit|cpal|rodio) ' "$probe/tree"; then

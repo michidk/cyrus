@@ -165,6 +165,10 @@ pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()
                         out.join(format!("{stem}.animations")),
                     )?;
                     std::fs::copy(
+                        path.with_extension("scripts"),
+                        out.join(format!("{stem}.scripts")),
+                    )?;
+                    std::fs::copy(
                         path.with_extension("player"),
                         out.join(format!("{stem}.player")),
                     )?;

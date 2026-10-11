@@ -13,7 +13,7 @@ sidecars are ready.
 
 `AnimationPlugin` loads animation data and advances explicitly attached playback
 only for supplied `AnimationTick` messages. `FrameSequence::from_asset`,
-`ActorAnimation::from_asset` and `AnimationScript::from_asset` construct runtime
+`ActorAnimation::from_asset` construct runtime
 state from records. No production clock, actor activation or unsupported script
 operation is inferred. Pose application belongs to `cyrus-render`.
 
@@ -56,24 +56,10 @@ original walking cues and automatic runtime scheduling remain unverified. The
 [sound facts](https://github.com/michidk/redguard-preservation/blob/a0e7b16/docs/engine/sound.md#animation-playsound)
 define this boundary.
 
-`AnimationScript` supports authored literal `PushAnimation` tasks and `End`
-continuations. Its explicit stages preserve the request, count-start and wait
-phases; task completion can start the next instruction in the same stage. End
-stores its target and yields, so a later eligible stage can restart the authored
-sequence. Unsupported operands, tasks, interrupt entries and synchronization
-channels fail explicitly.
-`AnimationScript::advance_with_sounds` carries the same actor handler through
-immediate task requests. Callback failures retain their script context and stop
-later invocations from retrying the cue.
-
-`AnimationPlayback::new_scripted` connects these cores to explicit pose updates; render applies those poses to private meshes.
-Active group and scripted playback send authored cues through the shared native
-and browser sound adapter in the same update. Without the adapter, sound-bearing
-commands fail explicitly. The ground caller must supply the actor's known
-`SoundSurface`; no surface or actor activation is inferred.
-Supplied ticks run ordinary advancement/default request, then the script stage;
-immediate script requests reuse the same ticks. This does not activate world
-objects. Render updates alone do not advance either core.
+SOUP execution belongs to `cyrus-script`; game-owned hosts and explicit scripted
+playback belong to `cyrus-game::script`. `cyrus-world` supplies animation and
+sound services without depending on either executor or gameplay handlers.
+`PreparedWorld` also retains the independently exported `.scripts` asset.
 
 Animated i16 frame
 interpretation, mesh replacement across models, automatic actor activation,

@@ -13,8 +13,6 @@ use std::{
     path::Path,
 };
 
-mod script;
-
 fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
     let encoding = match model.frame_data.first().map(|frame| frame.frame_type) {
         Some(FrameType::Static3D) => "static_3d",
@@ -109,8 +107,16 @@ pub(crate) fn export(
     out: &Path,
 ) -> anyhow::Result<()> {
     let mut metadata = rgm::export_rgm_metadata_json(rgm, None);
-    metadata["animation_scripts"] = script::export(rgm, &registry.root_path)
-        .with_context(|| format!("world {world}: animation scripts for {}", out.display()))?;
+    let scripts = crate::script_export::prepare(rgm, &registry.root_path, world)?;
+    metadata["script_content_id"] = serde_json::json!(scripts.content_id);
+    metadata["animation_scripts"] = serde_json::to_value(
+        scripts
+            .actors
+            .iter()
+            .map(|(name, actor)| (name, &actor.program))
+            .collect::<BTreeMap<_, _>>(),
+    )?;
+    crate::script_export::export(&scripts, out)?;
     let mut sections = BTreeMap::new();
     for section in &rgm.sections {
         let (tag, bytes) = match section {
