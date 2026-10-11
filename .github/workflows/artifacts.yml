@@ -136,5 +136,5 @@ jobs:
           cd dist
           sha256sum ./*.tar.gz > SHA256SUMS
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
-            gh release create "$RELEASE_TAG" --draft --verify-tag --title "$RELEASE_TAG"
+            gh release create "$RELEASE_TAG" --draft --verify-tag --title "$RELEASE_TAG" --notes ""
           gh release upload "$RELEASE_TAG" ./*.tar.gz SHA256SUMS --clobber
