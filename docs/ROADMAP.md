@@ -35,11 +35,11 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 
 | Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
-| Step 1: actor and mesh animation | Load All World Animations Correctly, `animation-playback` | Native cue wiring, actor eligibility, clock, and full script scheduling; type-1 core integrated |
+| Step 1: actor and mesh animation | Load All World Animations Correctly, `animation-playback` | Explicit pose, type-1 transitions and native/browser cue adapter implemented; production clock, actor eligibility and full script scheduling remain open |
 | Step 2: player | Investigate Player Controller Design, `player-parity` | Active-world archive selection and runtime collision queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
 | Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Runtime filtering state and sun alpha rounding |
 | Step 1: terrain lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Implement the user-resumed terrain-only scope from established coordinates/live inputs |
-| Step 1: sound | Implement Game Sound Effects, resumed | Script, animation and ambient triggers; per-call volume/rate evidence |
+| Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Current user request: shared text rendering and documentation cleanup; overlay timers, sword lock, compass, power-ups, logbook, prompts and F8 remain incomplete |
 | Startup and book menu | Match Startup Screen Appearance, `t3/faithful-startup-sequence` | Published book-cue integration through shared native/browser sound; lighting remains unresolved |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
@@ -61,7 +61,8 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Integrated `just gates`: publication/map/format/strict-Clippy and workspace tests passed with the install present and absent on 2026-10-11; zero installed tests skipped. The updated WASM target passes `cargo check`.
 - [x] MCP smoke against the integrated native binary passed, including independent flycam input and an unchanged install. The smoke script used the already-built test-profile executables.
 - [x] Compared 499 consecutive captured FLAG2 states through End/restart against the tested integrated library; a wrong asset schema is rejected. This proves supplied-tick state parity only.
-- [ ] Verify type-1 mesh transitions, native cues, eligibility, host timing and matched rendering. The five new transition/sound contracts pass. Preservation PR #32 documents static actor/stage eligibility gates. Scale and nominal-tick recurrence match 659 archived transitions given observed FPS; the full BIOS/FPS replay fails at transition 8, so host timing remains unresolved.
+- [x] Explicit group/script sound dispatch passes headless runtime contracts with the native backend: pose updates, zero supplied ticks, starts, stops, script restart and multiple invocations in one update. The 16-channel limit and same-update Start/Stop regressions pass. These checks use synthetic audio and do not prove audible fidelity.
+- [ ] Verify type-1 mesh transitions, audible native/browser cues, eligibility, host timing and matched rendering. Preservation [PR #32](https://github.com/michidk/redguard-preservation/pull/32) documents static actor/stage eligibility gates; [PR #39](https://github.com/michidk/redguard-preservation/pull/39) documents caller/clock facts. Scale and nominal-tick recurrence match 659 archived transitions given observed FPS; the full BIOS/FPS replay fails at transition 8, so the production host clock remains unresolved. Recorded video frame rate is not simulation-tick evidence.
 - [x] The ordered-contact regression retries a first-sphere miss, suppresses successful duplicates, and keeps omitted faces omitted. This tests a caller-supplied candidate list, not gameplay collision.
 - [x] Polygon-segment contacts and ground-support selection pass integrated gates and WASM compilation. Four new contracts cover the model fraction scale, crossing/containment, terrain truncation, different rank scales and later-equal replacement. These cores still require caller-supplied admission, transforms and candidate order; live walking is not enabled.
 - [x] Schema-2 collision export retains installed static placement order, ROB flags, original polygons and ordered subobject lists in the common native/browser asset. Installed ISLAND export covers 1,691 placements; ambiguous archive names remain explicit errors for future runtime queries.
@@ -108,12 +109,12 @@ committed support; unverified work stays in the TODO column.
 | --- | --- | --- |
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
-| `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; authored book frames and runtime menu motion | Automatic actor playback, other frame encodings, and model replacement |
+| `3D`, `3DC`, `ROB` | Static export, retained animation frames, explicit source-mapped i32 mesh poses, forward type-0/type-1 request core and literal animation-task playback; authored book frames and runtime menu motion | Automatic actor eligibility and host clock, other frame encodings, model replacement and matched original playback |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, HUD candle/item artwork, and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
 | Glide sky BSI/COL | Faithful tilted sky plane, sun, fog and synchronized scroll inputs; camera-centered Modern sky | Full original-game projection/motion, filtering, alpha and lighting comparison |
-| `SFX` | Every effect decoded at its stored rate and channel layout; playback by index with the file's loop flag and base volume, master volume, documented distance falloff and stereo pan, via `play_sound` | Script, animation, ambient and surface triggers; per-call volume and rate; audible comparison with the original |
+| `SFX` | Every effect decoded at its stored format; native/browser flat and explicit animation cues share 16 channels, loop flags, volume/rate clamps, positional gains and per-actor Stop/Forget; native `play_sound` remains available | Automatic world/script/ambient triggers, nonzero surface remapping, channel ownership, moving-emitter refresh and audible comparison with the original |
 | `RTX` | All voice clips load in the background; playback by label via `play_speech` with dialogue subtitles; voice and subtitle preferences honoured | Dialogue and combat triggers, Cyrus' subtitle colour, dialogue choices, and quest integration |
 | `FNT` | Startup labels, book-menu glyphs, dialogue subtitles, HUD numbers, and status font | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
@@ -383,35 +384,38 @@ formats and gameplay scope unchanged during this refactor.
 - [ ] Compare placement, scale, lighting, sky, transparency, and visibility with the original.
 - [x] Retain actor animation metadata, original section payloads and model frames in native/WASM assets. **Verified:** all 29 installed worlds export without unresolved animation models; native asset tests and WASM compilation pass.
 - [x] Apply explicit i32 model poses and forward groups using supplied simulation ticks. **Verified:** 17 native animation contracts, installed FLAG2 GLB deformation/restoration, and WASM compilation.
+- [x] Implement forward type-0/type-1 requests, numeric priority, pending/default transitions, forced replacement, finite task loop counts, delay precedence and type-1 exit tails. Public-interface contracts and the 13-update original walking-exit comparison cover core identifiers, groups and markers.
+- [x] Connect literal `PushAnimation`/`End` programs to explicit mesh playback: preserve request/start/wait phases, same-stage continuation, End restart, synchronous sound handlers and sticky contextual failures. Installed FLAG2 contracts cover source mapping and mesh restoration; 499 captured states match supplied-tick core output, and a wrong schema is rejected.
+- [x] Dispatch authored animation sound markers through the native/browser adapter during supplied-tick updates. Thirteen focused animation/sound contracts pass, including shared-channel capacity and queued Start/Stop. Audible original parity remains unverified.
 - [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
-  Explicit forward groups and source-mapped mesh poses are supported.
-  A separate forward type-zero request core handles ordinary numeric priority,
-  forced replacement, finite task loop counts, and explicit default fallback
-  in the same update. Literal PushAnimation/End programs are now connected to
-  explicit rendered playback. Native contracts verify their stage ordering and
-  installed FLAG2 transitions; WASM compilation and final workspace gates pass. Automatic activation,
-  the host-clock driver, state-dependent defaults, other group types, complete
-  script scheduling and event cues remain unsupported. Original-game visual comparison is pending.
-  Frame reference, countdown and walking-marker facts are published in preservation
-  commits `8c3856e`, `9b4206b` and `92b9933`. Request priority and default fallback
-  are documented in `84cc21d`. Placed-actor initialization, spatial update
-  membership and forced requests are documented in `d1e8e46`; `64eca10` corrects
-  the activation-window center to the current view coordinates. `ea35fca`
-  documents advancement before the main script stage and immediate script
-  request advancement. Preservation `a1ffba6` documents the separate task-start
-  phase and authored End continuation; it corrects the permanent-stop assumption.
-  All 34 native animation
-  contracts pass in final workspace tests, including installed FLAG2 task
-  transitions, End restart, GLB deformation and restoration without skipping.
-  Final workspace formatting, strict all-target Clippy and tests pass.
-  The integrated core also handles delay precedence, forward type-1 exits and
-  explicit sound handlers, documented in preservation [PR #30](https://github.com/michidk/redguard-preservation/pull/30).
-  Native sound dispatch is not wired. A narrow 13-update original walking exit
-  comparison covers identifiers, groups and markers only. Automatic rendered
-  playback, mesh and audio parity remain unchecked.
+  - [ ] Resolve the original clock entry and transition-8 discrepancy, then wire a supported production tick source. Supplied ticks remain explicit; no fixed-rate substitute is authorized.
+  - [ ] Integrate actor activation and spatial/stage eligibility, including the selected-player caller; preserve separate invocations in the same update.
+  - [ ] Implement evidence-backed state-dependent defaults, remaining group types, cancellation and authored event commands.
+  - [ ] Support animated i16 geometry and model replacement across frame sources.
+  - [ ] Verify world replacement and actor removal with active mesh, script and sound state.
+  - [ ] Compare an actual rendered and audible authored sequence in both games, then repeat in the browser and across required worlds.
+
+  **Verified provenance:** frame/countdown/walking-marker facts are published in
+  preservation `8c3856e`, `9b4206b` and `92b9933`; request/default rules in
+  `84cc21d`; initialization/spatial membership/forced requests in `d1e8e46`
+  and corrected view-centered activation in `64eca10`; ordinary/script stage
+  ordering in `ea35fca`; task-start and End continuation in `a1ffba6`.
+  Delay, type-1 and sound contracts are documented in
+  [PR #30](https://github.com/michidk/redguard-preservation/pull/30), with
+  caller/eligibility evidence in PRs #32 and #39. These facts and core comparisons
+  establish supported increments, not automatic world playback or full fidelity.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.
+  - [x] Portable `SoundCue` (flat and animation cues) plays through 16 shared channels on native and browser, with original start-index, volume and rate clamps, per-actor last-sound Stop/Forget, `SYSTEM.INI sound=0`, and browser cues retained until the effects bank loads.
+  - [x] Explicit animation playback emits authored sound markers through `SoundCue`; same-update starts/stops and the 16-channel limit pass runtime contracts.
+  - [ ] Startup book cues emit `SoundCue`.
+  - [ ] Parse SURFACE.INI's sound remap in rgpre and remap animation sounds by surface; animation sounds currently play only on surface 0.
+  - [ ] Ground/collision sets each actor's `SoundSurface`.
+  - [ ] Record each channel's owner and requested effect for `EndSound`, `EndMySound(s)` and `KillMe`.
+  - [ ] Script sound calls (`Sound`, `FlatSound`, `AmbientSound`, `AmbientRTX`, `EndSound`, `EndMySound(s)`, `StopAllSounds`, `KillMe`/`Resurrect`) once the script engine exposes them.
+  - [ ] Rope sounds from MPRP thresholds and the torch loop (effect 25), once rope and torch objects exist at runtime.
+  - [ ] Refresh positional volume and pan while a sound plays.
 - [ ] Run SOUP control flow, variables, global flags, object references, main/interrupt execution, waits, and concurrent tasks.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
@@ -439,6 +443,7 @@ Use the inspection camera and controlled events until the player controller exis
 3. Choose reference sequences that exercise animation, water, sound, and scripts.
 4. Verify reference audio now that the retro runner enables it.
 5. Inventory runtime data and SOUP bindings; record operations actually called by the reference sequences and unsupported paths.
+6. Resolve the animation clock discrepancy and eligible callers, then connect production playback and compare mesh/audio outcomes. Coordinate surface identity with player collision and SURFACE.INI parsing with the sound owner.
 
 ## 2. Player controller
 

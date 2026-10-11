@@ -156,3 +156,149 @@ fn forced_replacement_forgets_the_prior_sound_before_its_immediate_cue() {
         ]
     );
 }
+
+#[test]
+fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
+    use bevy::{audio::AudioSource, prelude::*};
+    use cyrus_game::{
+        animation::{
+            AnimationPlayback, AnimationPlugin, AnimationPose, AnimationRequest, AnimationTick,
+        },
+        install::GameInstall,
+        player::ViewCamera,
+        sound::{
+            Effect, Panned, PlayingSound, SoundEffects, SoundPlugin, SoundSettings, SoundSurface,
+            pcm_wav,
+        },
+    };
+    use rgpre::import::sfx::AudioType;
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (animation runtime sound)");
+        return;
+    };
+    for scripted in [false, true] {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            AnimationPlugin,
+            SoundPlugin,
+        ))
+        .init_asset::<AudioSource>()
+        .init_asset::<Panned>()
+        .insert_resource(install.clone());
+        app.update();
+        let audio = app
+            .world_mut()
+            .resource_mut::<Assets<AudioSource>>()
+            .add(AudioSource {
+                bytes: pcm_wav(AudioType::Mono8, 11025, &[128; 64]).unwrap().into(),
+            });
+        app.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
+        app.insert_resource(SoundEffects(vec![Some(Effect {
+            audio,
+            looping: true,
+            base_volume: 64,
+            sample_rate: 11025,
+        })]));
+        app.world_mut()
+            .spawn((ViewCamera, GlobalTransform::default()));
+        let mut data = asset();
+        data.metadata["actors"][0]["animation_groups"][0]["commands"][0]["frame_reference"] =
+            json!(0);
+        data.metadata["actors"][0]["animation_groups"][1]["commands"][0]["sound_param"] = json!(0);
+        data.metadata["actors"][0]["raan_entries"] =
+            json!([{"file_path":"test.3dc","frame_count":3}]);
+        data.models.insert(
+            "TEST".into(),
+            serde_json::from_value(json!({
+                "base_positions":[[0,0,0]], "base_normals":[], "faces":[],
+                "encoding":"animated_i32", "positions":[[[0,0,0]],[[0,0,1]],[[0,0,2]]],
+                "normals":[[],[],[]]
+            }))
+            .unwrap(),
+        );
+        let source = app
+            .world_mut()
+            .resource_mut::<Assets<Animations>>()
+            .add(data);
+        let data = app
+            .world()
+            .resource::<Assets<Animations>>()
+            .get(&source)
+            .unwrap();
+        let playback = if scripted {
+            AnimationPlayback::new_scripted(source.clone(), data, "ACTOR", 0).unwrap()
+        } else {
+            AnimationPlayback::new(source.clone(), data, "ACTOR", 7, 1).unwrap()
+        };
+        app.world_mut().resource_mut::<AnimationRequest>().0 = source;
+        let actor = app
+            .world_mut()
+            .spawn((
+                playback,
+                GlobalTransform::from_translation(Vec3::Z),
+                SoundSurface(0),
+            ))
+            .id();
+        for (ticks, frame, sounds) in [
+            (0, 1, 1),
+            (0, 1, 1),
+            (1, 1, 1),
+            (1, 2, 1),
+            (1, if scripted { 0 } else { 2 }, 0),
+        ] {
+            app.world_mut().write_message(AnimationTick { ticks });
+            app.update();
+            assert_eq!(
+                app.world().get::<AnimationPose>(actor).unwrap().frame,
+                frame
+            );
+            let mut playing = app
+                .world_mut()
+                .query_filtered::<Entity, With<PlayingSound>>();
+            assert_eq!(
+                playing.iter(app.world()).count(),
+                sounds,
+                "scripted={scripted} tick={ticks}"
+            );
+        }
+        assert_eq!(
+            app.world().get::<AnimationPlayback>(actor).is_some(),
+            scripted
+        );
+        if scripted {
+            app.world_mut().write_message(AnimationTick { ticks: 0 });
+            app.update();
+            assert_eq!(app.world().get::<AnimationPose>(actor).unwrap().frame, 1);
+            let mut playing = app
+                .world_mut()
+                .query_filtered::<Entity, With<PlayingSound>>();
+            assert_eq!(playing.iter(app.world()).count(), 1);
+        } else {
+            let source = app.world().resource::<AnimationRequest>().0.clone();
+            let data = app
+                .world()
+                .resource::<Assets<Animations>>()
+                .get(&source)
+                .unwrap();
+            let playback = AnimationPlayback::new(source.clone(), data, "ACTOR", 7, 1).unwrap();
+            app.world_mut().entity_mut(actor).insert(playback);
+            for ticks in [0, 1, 1, 1] {
+                app.world_mut().write_message(AnimationTick { ticks });
+            }
+            app.update();
+            assert_eq!(app.world().get::<AnimationPose>(actor).unwrap().frame, 2);
+            let mut playing = app
+                .world_mut()
+                .query_filtered::<Entity, With<PlayingSound>>();
+            assert_eq!(
+                playing.iter(app.world()).count(),
+                0,
+                "same-update End stops the queued start"
+            );
+        }
+    }
+}

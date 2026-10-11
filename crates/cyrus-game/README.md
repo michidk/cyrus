@@ -20,10 +20,10 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `hud` | In-game overlay from exported `.hud` data: SNUFF candle with health number (`candle_mode` 2), active item icon and count from `ITEM.INI`, prev/next item keys from `KEYS.INI`, REDSEL.FNT text ([HUD facts](https://github.com/michidk/redguard-preservation/pull/28)). Compass, power-ups, logbook, activation prompts and the candle toggle are unsupported. |
 | `hud_export` | Native extraction of HUD positions, starting inventory, candle frames, item icons and font glyphs into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
-| `sound` | `SYSTEM.INI` and Sound page audio settings; `MAIN.SFX` effects by index and RTX voice clips by label at their header base volume times the master volume, with optional distance falloff and stereo pan from the camera, through the original's Miles mixer gains. No in-game triggers yet. Native only. |
+| `sound` | Sound preferences, effects and authored animation cues through the original mixer gains on native and browser. Animation surfaces other than a known zero remain unsupported. RTX speech remains native only. |
 | `subtitles` | Dialogue subtitles for voice clips: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
 | `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it; the book menu plays track 2; the Music slider sets the drive level (preservation `docs/engine/music.md`). Native only. |
-| `sound_bank` | Portable exported effects bank and opt-in playback plugin; native control playback uses `sound`. |
+| `sound_bank` | Portable `SoundCue` message, `SoundSurface`, and the browser's exported effects bank; `sound` plays cues on native and browser. |
 | `sound_export` | Exports MAIN.SFX to WAV files, bank metadata, and a browser audition page when loading a native scene. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
@@ -73,9 +73,8 @@ with delays checked first. These rules are
 `request_with_sounds`, `force_request_with_sounds`, and `advance_with_sounds` accept a synchronous handler for
 signed effect requests, rate offsets in hertz, End stops and replacement handle
 resets. The handler owns the original surface remapping, positional gains and
-channel allocation. Without it, sound commands still fail explicitly. Native
-sound dispatch, audible walking cues and automatic runtime scheduling remain
-unsupported. The
+channel allocation. Without it, sound commands still fail explicitly. Audible
+original walking cues and automatic runtime scheduling remain unverified. The
 [sound facts](https://github.com/michidk/redguard-preservation/blob/a0e7b16/docs/engine/sound.md#animation-playsound)
 define this boundary.
 
@@ -90,6 +89,10 @@ immediate task requests. Callback failures retain their script context and stop
 later invocations from retrying the cue.
 
 `AnimationPlayback::new_scripted` connects these cores to private rendered meshes.
+Active group and scripted playback send authored cues through the shared native
+and browser sound adapter in the same update. Without the adapter, sound-bearing
+commands fail explicitly. The ground caller must supply the actor's known
+`SoundSurface`; no surface or actor activation is inferred.
 Supplied ticks run ordinary advancement/default request, then the script stage;
 immediate script requests reuse the same ticks. This does not activate world
 objects. Render updates alone do not advance either core.

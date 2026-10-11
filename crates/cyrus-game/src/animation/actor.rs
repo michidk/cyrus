@@ -216,7 +216,7 @@ impl ActorAnimation {
         self.advance_dispatch(ticks, &mut Some(sounds))
     }
 
-    fn advance_dispatch(
+    pub(super) fn advance_dispatch(
         &mut self,
         ticks: u32,
         sounds: &mut SoundDispatcher<'_>,
