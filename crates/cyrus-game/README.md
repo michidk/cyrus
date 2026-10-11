@@ -113,8 +113,15 @@ It deforms private copies of exported terrain meshes and recomputes shared
 normals across materials. Re-export worlds to replace old water masks.
 
 Absolute DOS clock phase is not synchronized. Terrain placement, base heights,
-and lighting retain the preservation export's existing limitations. Sky
-tilting and the sun disc follow the documented plane transform and billboard
+and lighting retain the preservation export's existing limitations.
+
+**Verified:** the terrain vertex-lighting arithmetic and world RGB sources are documented in
+[preservation PR #33](https://github.com/michidk/redguard-preservation/pull/33).
+**Unknown:** the coordinate mapping and active runtime inputs needed to apply
+that contract to these exported meshes. Scene lighting still uses the fixed
+Bevy light; terrain lighting has not been replaced.
+
+Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
 on the documented BIOS timer, using the per-world speed and a random initial
 direction. `SkyScrollSync` and MCP `set_sky_scroll` accept a captured direction
@@ -130,6 +137,14 @@ Walking supports actor step type 1, advances startup during suppressed
 translation, and resets after an update without accepted forward movement.
 Gameplay does not yet drive these cores: animation eligibility, collision, and
 simulation timing remain incomplete.
+
+**Verified:** the independent polygon-segment and ground-support selection cores
+follow [preservation PR #27](https://github.com/michidk/redguard-preservation/pull/27).
+They retain distinct terrain/model rank scales and replace earlier equal-ranked
+contacts. Callers still supply admission, transforms and traversal order; these
+cores do not activate gameplay collision. Nearest-even segment conversion follows
+the documented default rounding evidence; a live halfway-boundary comparison
+remains unchecked.
 
 World exports also write a `.player` sidecar containing installed movement
 settings, named CYRUS attributes and bounds, decoded terrain heights, and the

@@ -29,24 +29,25 @@ Partial work marks only its current subtask, not the whole capability.
 ## Who is working on what
 
 Domain sessions resumed on 2026-10-11. The captured implementation milestones
-are consolidated; player and animation research continues separately. A completed
-T3 turn does not establish completed feature work.
+are consolidated; implementation continues against each original brief and later
+user clarifications. A research handoff or isolated core does not complete a
+requested runtime feature. Reduce repeated verification, not implementation scope.
 
 | Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
 | Step 1: actor and mesh animation | Load All World Animations Correctly, `animation-playback` | Native cue wiring, actor eligibility, clock, and full script scheduling; type-1 core integrated |
-| Step 2: player | Investigate Player Controller Design, `player-parity` | Dynamic/transient eligibility, v4 runtime extents, support selection, grounded walking integration, timing and follow camera |
-| Step 1: sky | Fix Faithful Mode Skybox, bounded research complete | Runtime filtering state, sun alpha rounding and world lighting evidence |
-| Step 1: sound | Implement Game Sound Effects, bounded research complete | Script, animation and ambient triggers; per-call volume/rate evidence |
-| HUD | Implement the Game Overlay UI, research handoff complete | Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook, prompts and F8 toggle remain unsupported |
-| Startup and book menu | Match Startup Screen Appearance, research handoff complete | Publish and implement book cues; resolve lighting propagation and reachable mouse consumers |
+| Step 2: player | Investigate Player Controller Design, `player-parity` | Installed collision model/list export and runtime queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
+| Step 1: sky | Prior sky snapshot integrated; remaining work unassigned | Runtime filtering state and sun alpha rounding |
+| Step 1: terrain lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Verify coordinates/live inputs, then implement the user-resumed terrain-only scope |
+| Step 1: sound | Implement Game Sound Effects, resumed | Script, animation and ambient triggers; per-call volume/rate evidence |
+| HUD | Implement the Game Overlay UI, resumed | Current user request: shared text rendering and documentation cleanup; overlay timers, sword lock, compass, power-ups, logbook, prompts and F8 remain incomplete |
+| Startup and book menu | Match Startup Screen Appearance, `t3/faithful-startup-sequence` | Mouse interaction research first, then published book-cue integration; lighting remains unresolved |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
-The HUD, sound, sky and startup bounded passes are complete, but the domain
-gaps in their rows still need implementation or original-game evidence. Their
-completed checkouts and the obsolete split checkout are archived. Resume future
-implementation from current main in fresh isolated checkouts. Player and animation
-keep their active worktrees.
+Earlier bounded research milestones remain published, with their limitations
+recorded below. They are not feature-completion claims. Obsolete checkouts were
+archived; resumed work uses isolated branches and retains the research evidence.
+The separate asset-viewer project is outside this game-domain closeout.
 
 The old crate-split branch is an unfinished architectural experiment, not a
 replacement for the current implementation. Its history and pending files are
@@ -60,10 +61,12 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Integrated `just gates`: publication/map/format/strict-Clippy and workspace tests passed with the install present and absent on 2026-10-11; zero installed tests skipped. The updated WASM target passes `cargo check`.
 - [x] MCP smoke against the integrated native binary passed, including independent flycam input and an unchanged install. The smoke script used the already-built test-profile executables.
 - [x] Compared 499 consecutive captured FLAG2 states through End/restart against the tested integrated library; a wrong asset schema is rejected. This proves supplied-tick state parity only.
-- [ ] Verify type-1 mesh transitions, native cues, eligibility, host timing and matched rendering. The five new transition/sound contracts pass.
+- [ ] Verify type-1 mesh transitions, native cues, eligibility, host timing and matched rendering. The five new transition/sound contracts pass. Preservation PR #32 documents static actor/stage eligibility gates. Scale and nominal-tick recurrence match 659 archived transitions given observed FPS; the full BIOS/FPS replay fails at transition 8, so host timing remains unresolved.
 - [x] The ordered-contact regression retries a first-sphere miss, suppresses successful duplicates, and keeps omitted faces omitted. This tests a caller-supplied candidate list, not gameplay collision.
-- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration. Preservation PR #27 now retains authored model subsets and documents subgroup admission and static spatial ordering. Its 1,691-placement reconstruction matches 223 original active static nodes, including per-cell order; dynamic/transient eligibility, v4 extents and complete support selection remain open. The newer preservation parser is not yet wired into Cyrus collision export.
+- [x] Polygon-segment contacts and ground-support selection pass integrated gates and WASM compilation. Four new contracts cover the model fraction scale, crossing/containment, terrain truncation, different rank scales and later-equal replacement. These cores still require caller-supplied admission, transforms and candidate order; live walking is not enabled.
+- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration. Preservation PR #27 now retains authored model subsets and documents subgroup admission and static spatial ordering. Its 1,691-placement reconstruction matches 223 original active static nodes, including per-cell order; segment subgroup admission, dynamic/transient eligibility and v4 extents remain open. Published support ranking retains different terrain/model scales and later-equal replacement; full support integration remains open. The newer preservation parser is not yet wired into Cyrus collision export.
 - [ ] Verify sky tilt, sun, synchronized scrolling and fog in the integrated Bevy renderer and browser. Retain full original-game comparisons for filtering, alpha, lighting and hardware color precision. Capture filter/blend state after menu and world transitions, translucent sun edges and dither phases. World lighting still uses a fixed light; recover terrain/model lighting rules before replacing it.
+- **Verified, bounded terrain research:** [preservation PR #33](https://github.com/michidk/redguard-preservation/pull/33) documents the Glide terrain ambient/directional RGB contract. Original-machine-code checks cover 192 inputs; a reversed light sign fails 88 cases. **Unknown:** original-to-export coordinate mapping and live terrain input/output agreement. No terrain shader change or visual parity claim follows from this arithmetic check.
 - [x] Native START screenshot shows the candle above health 100; retained frame handles fix unloading during flicker. The equal-count item icon regression passes.
 - [ ] Compare native/browser HUD layout with the original. The candle targets the documented 60 Hz Glide retrace rate independently of rendering; original in-world cadence, transparency and starting inventory still need comparison. Health, pickups and inventory integration remain separate work.
 - [x] All eleven installed movie definitions decode through their final video frame with the in-process decoder; their first audio stream decodes when present.
