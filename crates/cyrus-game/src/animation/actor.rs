@@ -50,6 +50,17 @@ impl Animations {
 }
 
 impl ActorAnimation {
+    /// Select the caller-established state default before ordinary advancement.
+    /// This alone does not request, restart or advance any group.
+    pub fn set_default_group(&mut self, group: u16) {
+        self.default = group;
+    }
+
+    /// Whether an authored group exists, before request fallback rules are applied.
+    pub fn has_group(&self, group: u16) -> bool {
+        self.groups.contains_key(&group)
+    }
+
     /// Current group number, independent of whether its mesh frame changed.
     pub fn current_group(&self) -> Option<u16> {
         self.current.as_ref().map(|(group, _)| *group)

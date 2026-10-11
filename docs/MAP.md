@@ -40,6 +40,7 @@ module where it is defined and regenerate.
 - `src/player/export/collision.rs` — Installed static placements and authored collision geometry for the portable player cache.
 - `src/player/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
 - `src/player/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
+- `src/player/grounded.rs` — Composed static ground queries from preservation's ordinary player update rules.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
 - `src/player/motion.rs` — Original heading projection, per preservation's player and water engine specs.
 - `src/player/placement.rs` — Marker-based entry from preservation's player and RGM documentation.

@@ -11,6 +11,7 @@ pub mod definition;
 pub(crate) mod export;
 pub mod geometry;
 pub mod ground;
+pub mod grounded;
 pub mod input;
 pub mod motion;
 pub mod placement;

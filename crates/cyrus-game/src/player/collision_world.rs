@@ -42,6 +42,29 @@ pub struct BodyContact {
     pub normal: Vec3,
 }
 
+impl BodyContact {
+    /// Convert the world normal before classification, per preservation's body adapter.
+    /// The original stores the scaled components at single precision without normalizing.
+    pub fn grounded(&self) -> anyhow::Result<super::contact::GroundedContact> {
+        let scaled = self.normal * 256.0;
+        anyhow::ensure!(
+            scaled.is_finite()
+                && scaled.to_array().iter().all(|&v| {
+                    let rounded = f64::from(v.round_ties_even());
+                    rounded >= f64::from(i32::MIN) && rounded <= f64::from(i32::MAX)
+                }),
+            "body contact model {} face {}: normal outside integer range",
+            self.model,
+            self.face
+        );
+        let normal = scaled.to_array().map(|v| v.round_ties_even() as i32);
+        Ok(super::contact::GroundedContact {
+            normal,
+            classification: super::ground::classify_normal(normal[1]),
+        })
+    }
+}
+
 impl StaticCollision {
     /// Metadata committed by a successful support query; terrain clears the byte.
     /// Preserve the previous byte on a miss instead of calling this with no support.

@@ -49,7 +49,7 @@ fn original_walking_route_uses_single_precision_heading_projection() {
         [10_447_127, -190_464, 10_827_449],
     ] {
         let permits_translation = expected != [10_446_802, -190_464, 10_818_615];
-        let distance = startup.advance(8, 170, permits_translation);
+        let distance = startup.advance(8, 0, 170, permits_translation);
         if permits_translation {
             position = translate(position, 2036, distance as i64);
         }
@@ -292,5 +292,82 @@ fn collision_traversal_retries_misses_and_keeps_first_success_order() {
             true
         )
         .is_err()
+    );
+}
+
+#[test]
+fn ordered_grounded_contacts_preserve_displacement_and_filter_facing() {
+    use cyrus_game::player::contact::{GroundedContact, resolve_grounded_contacts};
+    let previous = [10447534, -190464, 10771472];
+    let attempted = [10444193, -190464, 10773365];
+    let mut heading = 344;
+    assert_eq!(
+        resolve_grounded_contacts(
+            previous,
+            attempted,
+            &mut heading,
+            &[GroundedContact {
+                normal: [256, 0, 0],
+                classification: 1
+            }],
+            -60000
+        ),
+        [10447534, -190464, 10773491]
+    );
+    assert_eq!(heading, 313);
+    for (normal, classification) in [([256, 0, 0], 4), ([-256, 0, 0], 1)] {
+        let mut heading = 344;
+        assert_eq!(
+            resolve_grounded_contacts(
+                previous,
+                attempted,
+                &mut heading,
+                &[GroundedContact {
+                    normal,
+                    classification
+                }],
+                -60000
+            ),
+            attempted
+        );
+        assert_eq!(heading, 344);
+    }
+    // The original 2047 wrap admits one geometric quarter-turn boundary.
+    for (normal, distance) in [([256, 0, 0], 256), ([-256, 0, 0], 4096)] {
+        let mut heading = 0;
+        assert_eq!(
+            resolve_grounded_contacts(
+                [0; 3],
+                [0, 0, 256],
+                &mut heading,
+                &[GroundedContact {
+                    normal,
+                    classification: 1
+                }],
+                -60000
+            ),
+            [0, 0, distance]
+        );
+    }
+    // A second contact uses the original heading and displacement, not the first projection.
+    let mut heading = 344;
+    assert_eq!(
+        resolve_grounded_contacts(
+            previous,
+            attempted,
+            &mut heading,
+            &[
+                GroundedContact {
+                    normal: [256, 0, 0],
+                    classification: 1
+                },
+                GroundedContact {
+                    normal: [0, 0, -256],
+                    classification: 1
+                }
+            ],
+            -60000
+        ),
+        [10443970, -190464, 10771472]
     );
 }

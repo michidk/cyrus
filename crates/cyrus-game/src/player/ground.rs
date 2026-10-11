@@ -279,7 +279,7 @@ impl GroundSupport {
     }
 }
 
-fn classify_normal(y: i32) -> u8 {
+pub(crate) fn classify_normal(y: i32) -> u8 {
     match y {
         ..=-161 => 4,
         -160..=-42 => 2,
