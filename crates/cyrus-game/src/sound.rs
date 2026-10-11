@@ -4,22 +4,32 @@
 //! plays at its stored sample rate; effects loop when their loop flag is
 //! non-zero (preservation `docs/formats/SFX.md`, `docs/formats/RTX.md`).
 //!
-//! Volume follows preservation `docs/engine/sound.md`: a non-positional start
-//! plays at the clip's base volume; a positional one falls off linearly with
-//! the distance from the camera within `sound_distance × 36` world units; both
-//! are scaled by `[system] volume`.
+//! Every start follows preservation `docs/engine/sound.md`: 16 channels taken
+//! from a start index and never stolen, a rate clamped to 512–44000 Hz, and the master volume. A
+//! non-positional start plays at the clip's base volume plus its offset; a
+//! positional one falls off linearly with the distance from the camera within
+//! `sound_distance × 36` world units and pans by the emitter's heading, with the
+//! Miles mixer's gains (`output_gain`, `pan_gains`).
 //!
-//! Positional effects pan by the emitter's heading from the camera, using
-//! Miles' pan law; gains follow the original's Miles mixer (`output_gain`, `pan_gains`).
+//! Triggers arrive as [`SoundCue`] (game code) or [`SoundRequest`] (control).
+//! Native builds read the install; the browser plays the exported bank.
 //!
-//! Unsupported until evidence is published: script, animation, dialogue and
-//! ambient triggers, volume and pan refresh while playing, and surface remapping.
+//! Unsupported until their callers exist: script (`Sound`, `AmbientSound`,
+//! `AmbientRTX`, `EndSound`), rope, torch and combat starts, volume refresh while
+//! playing, and SURFACE.INI remapping: animation sounds play only for actors
+//! whose [`SoundSurface`] is known to be 0 (no SURFACE.INI parser yet).
 
+use crate::animation::AnimationSound;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::install::GameInstall;
-use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
+pub use crate::sound_bank::{SoundCue, SoundSurface};
+use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
+#[cfg(not(target_arch = "wasm32"))]
 use rgpre::import::rtx::{RtxEntry, parse_rtx_file};
+#[cfg(not(target_arch = "wasm32"))]
 use rgpre::import::sfx::{AudioType, parse_sfx_file};
 use std::collections::HashMap;
 
@@ -31,16 +41,34 @@ impl Plugin for SoundPlugin {
             bevy::audio::AddAudioSource::add_audio_source::<Panned>(app);
         }
         app.add_message::<SoundRequest>()
-            .add_systems(Startup, load_effects)
+            .add_message::<SoundCue>()
+            .init_resource::<SoundEffects>()
+            .init_resource::<Speech>()
+            .init_resource::<Channels>()
             .add_systems(
                 Update,
                 (
                     apply_menu.run_if(resource_exists_and_changed::<crate::startup::MenuState>),
-                    finish_speech,
                     play_requests,
+                    play_cues,
                 )
                     .chain(),
             );
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Startup, load_effects)
+            .add_systems(Update, finish_speech.before(play_requests));
+        #[cfg(target_arch = "wasm32")]
+        app.init_asset::<crate::sound_bank::SoundBank>()
+            .init_asset_loader::<crate::sound_bank::SoundBankLoader>()
+            .add_systems(
+                Startup,
+                |mut commands: Commands, assets: Res<AssetServer>| {
+                    commands.insert_resource(crate::sound_bank::SoundBankHandle(
+                        assets.load("cache://sounds/bank.sounds"),
+                    ));
+                },
+            )
+            .add_systems(Update, finish_bank.before(play_requests));
     }
 }
 
@@ -117,6 +145,7 @@ pub struct Effect {
     pub looping: bool,
     /// Header volume of non-positional starts, 0..=127.
     pub base_volume: u8,
+    pub sample_rate: u32,
 }
 
 /// Voice clips by RTX label. Empty until the background load finishes.
@@ -133,6 +162,7 @@ pub struct VoiceClip<A> {
 }
 
 // shortcut: holds every voice clip's PCM in memory; read clips on demand once rgpre exposes the RTX index.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
 struct SpeechLoad(Task<Result<HashMap<String, VoiceClip<AudioSource>>, String>>);
 
@@ -147,14 +177,16 @@ pub enum SoundRequest {
     StopAll,
 }
 
-/// A playing effect or voice clip started through [`SoundRequest`].
+/// A playing effect or voice clip.
 #[derive(Component)]
 pub struct PlayingSound;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn sfx_path(install: &GameInstall) -> std::path::PathBuf {
     install.root.join("sound").join("MAIN.SFX")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn read_settings(install: &GameInstall) -> SoundSettings {
     let path = install.root.join("SYSTEM.INI");
     SoundSettings::parse(&std::fs::read_to_string(&path).unwrap_or_else(|e| {
@@ -164,6 +196,7 @@ pub fn read_settings(install: &GameInstall) -> SoundSettings {
 }
 
 /// `Assets<AudioSource>` is absent without `AudioPlugin` (headless); then nothing loads.
+#[cfg(not(target_arch = "wasm32"))]
 fn load_effects(
     mut commands: Commands,
     install: Res<GameInstall>,
@@ -175,8 +208,6 @@ fn load_effects(
         Ok(None) => {}
         Err(e) => warn!("sound: {e:#}; using SYSTEM.INI volumes"),
     }
-    commands.init_resource::<SoundEffects>();
-    commands.init_resource::<Speech>();
     commands.insert_resource(settings.clone());
     let Some(mut audio) = audio else {
         info!("sound: no audio plugin, nothing loaded");
@@ -215,6 +246,7 @@ fn load_effects(
                     }),
                     looping: effect.loop_flag != 0,
                     base_volume: effect.base_volume,
+                    sample_rate: effect.sample_rate,
                 }),
                 Err(e) => {
                     warn!("sound: {} effect {index}: {e}", path.display());
@@ -227,6 +259,7 @@ fn load_effects(
 }
 
 /// Voice clips of an RTX file keyed by label; clips whose PCM cannot be played are skipped.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_speech(
     path: &std::path::Path,
 ) -> Result<HashMap<String, VoiceClip<AudioSource>>, String> {
@@ -265,6 +298,7 @@ pub fn load_speech(
     Ok(clips)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn finish_speech(
     mut commands: Commands,
     load: Option<ResMut<SpeechLoad>>,
@@ -300,6 +334,161 @@ fn finish_speech(
     }
 }
 
+/// The original's 16 sample channels. A start takes the first idle channel at or
+/// above a start index and is dropped when none is idle; playing sounds are never
+/// stolen. The start index is 0 at boot; animation and speech starts set it to 6.
+#[derive(Resource, Default)]
+pub(crate) struct Channels {
+    slots: [Option<Channel>; 16],
+    start: usize,
+    /// The last sound each animated actor started, for its EndAnimation.
+    animation: HashMap<Entity, Entity>,
+}
+
+// shortcut: channels record only their sound; add the owner and requested effect with EndSound, EndMySound(s) and KillMe.
+struct Channel {
+    sound: Entity,
+}
+
+/// One start: volume 0..=127 before the master volume, Miles pan (`None` = centre).
+struct Start {
+    audio: Handle<AudioSource>,
+    looping: bool,
+    volume: u8,
+    pan: Option<u8>,
+    speed: f32,
+    start_index: usize,
+}
+
+/// Mixer state a start needs: the master volume and the audio assets.
+struct Mixer<'a> {
+    master: i32,
+    sources: Option<&'a Assets<AudioSource>>,
+    panned: Option<&'a mut Assets<Panned>>,
+}
+
+impl Channels {
+    fn reclaim(&mut self, alive: &Query<(), With<PlayingSound>>) {
+        for slot in &mut self.slots {
+            if slot
+                .as_ref()
+                .is_some_and(|channel| !alive.contains(channel.sound))
+            {
+                *slot = None;
+            }
+        }
+    }
+
+    /// Starts `start` on the first idle channel at or above its start index; a silent
+    /// start still occupies its channel. Returns the playing entity.
+    fn start(
+        &mut self,
+        commands: &mut Commands,
+        mixer: &mut Mixer,
+        start: Start,
+    ) -> Option<Entity> {
+        let slot = (start.start_index..16).find(|&i| self.slots[i].is_none())?;
+        let gain = output_gain(start.volume, mixer.master);
+        let playback = if start.looping {
+            PlaybackSettings::LOOP
+        } else {
+            PlaybackSettings::DESPAWN
+        }
+        .with_speed(start.speed);
+        let sound = match start.pan {
+            None => commands
+                .spawn((
+                    PlayingSound,
+                    AudioPlayer(start.audio),
+                    playback.with_volume(Volume::Linear(gain)),
+                ))
+                .id(),
+            Some(pan) => {
+                let (Some(panned), Some(source)) = (
+                    mixer.panned.as_mut(),
+                    mixer.sources.and_then(|s| s.get(&start.audio)),
+                ) else {
+                    return None;
+                };
+                let [left, right] = pan_gains(pan);
+                let audio = panned.add(Panned {
+                    source: source.clone(),
+                    gains: [left * gain, right * gain],
+                });
+                commands
+                    .spawn((PlayingSound, AudioPlayer(audio), playback))
+                    .id()
+            }
+        };
+        self.slots[slot] = Some(Channel { sound });
+        Some(sound)
+    }
+
+    /// The original's `FlatSound`: `(effect, volume offset, rate offset in Hz)` at pan 64
+    /// from the current start index. An index beyond MAIN.SFX starts nothing.
+    fn start_flat(
+        &mut self,
+        commands: &mut Commands,
+        mixer: &mut Mixer,
+        effects: &SoundEffects,
+        (index, volume, rate_offset_hz): (usize, i32, i32),
+    ) {
+        let Some(effect) = effects.0.get(index).and_then(Option::as_ref) else {
+            return;
+        };
+        let start_index = self.start;
+        self.start(
+            commands,
+            mixer,
+            Start {
+                audio: effect.audio.clone(),
+                looping: effect.looping,
+                volume: (i32::from(effect.base_volume) + volume).clamp(0, 127) as u8,
+                pan: None,
+                speed: playback_speed(effect.sample_rate, rate_offset_hz),
+                start_index,
+            },
+        );
+    }
+
+    fn stop_all(&mut self, commands: &mut Commands) {
+        for channel in self.slots.iter_mut().filter_map(Option::take) {
+            commands.entity(channel.sound).try_despawn();
+        }
+        self.animation.clear();
+    }
+}
+
+/// Playback speed for a rate offset: `clamp(rate + offset, 512, 44000) / rate`.
+pub fn playback_speed(sample_rate: u32, rate_offset_hz: i32) -> f32 {
+    let rate = i64::from(sample_rate);
+    (rate + i64::from(rate_offset_hz)).clamp(512, 44000) as f32 / rate.max(1) as f32
+}
+
+/// Volume and pan of an emitter at Bevy `position` heard from `camera`, with a
+/// per-call volume offset.
+fn positional(
+    position: Vec3,
+    camera: &GlobalTransform,
+    sound_distance: i32,
+    offset: i32,
+) -> Result<(u8, u8), String> {
+    // Bevy space is engine space ÷ 20 with X mirrored; the original works in 1/256 world units.
+    let raw = |bevy: f32, sign: f32| {
+        (f64::from(bevy * sign * crate::ENGINE_UNIT_SCALE) * 256.0).round() as i64
+    };
+    let offset_vector = position - camera.translation();
+    let world_units = offset_vector.length() * crate::ENGINE_UNIT_SCALE;
+    let volume = distance_volume(sound_distance, world_units, offset)?;
+    let forward = camera.forward();
+    let yaw = heading(raw(forward.x, -65536.0), raw(forward.z, 65536.0));
+    let pan = pan(
+        heading(raw(offset_vector.x, -1.0), raw(offset_vector.z, 1.0)),
+        yaw,
+    );
+    Ok((volume, pan))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn play_requests(
     mut commands: Commands,
@@ -308,11 +497,17 @@ fn play_requests(
     speech: Res<Speech>,
     settings: Option<Res<SoundSettings>>,
     camera: Query<&GlobalTransform, With<crate::player::ViewCamera>>,
-    playing: Query<Entity, With<PlayingSound>>,
+    alive: Query<(), With<PlayingSound>>,
     sources: Option<Res<Assets<AudioSource>>>,
     mut panned: Option<ResMut<Assets<Panned>>>,
+    mut channels: ResMut<Channels>,
 ) {
-    let master = settings.as_ref().map_or(256, |s| s.master_volume);
+    channels.reclaim(&alive);
+    let mut mixer = Mixer {
+        master: settings.as_ref().map_or(256, |s| s.master_volume),
+        sources: sources.as_deref(),
+        panned: panned.as_deref_mut(),
+    };
     for request in requests.read() {
         match request {
             SoundRequest::Play {
@@ -323,60 +518,38 @@ fn play_requests(
                     warn!("sound: effect {index} is not loaded");
                     continue;
                 };
-                let playback = if effect.looping {
-                    PlaybackSettings::LOOP
-                } else {
-                    PlaybackSettings::DESPAWN
-                };
-                let Some(position) = position else {
-                    let gain = output_gain(effect.base_volume.min(127), master);
-                    commands.spawn((
-                        PlayingSound,
-                        AudioPlayer(effect.audio.clone()),
-                        playback.with_volume(bevy::audio::Volume::Linear(gain)),
-                    ));
-                    continue;
-                };
-                let (Some(distance), Ok(camera)) = (
-                    settings.as_ref().and_then(|s| s.sound_distance),
-                    camera.single(),
-                ) else {
-                    warn!("sound: effect {index}: no camera or SYSTEM.INI sound_distance");
-                    continue;
-                };
-                let (Some(panned), Some(source)) = (
-                    panned.as_mut(),
-                    sources.as_ref().and_then(|s| s.get(&effect.audio)),
-                ) else {
-                    continue;
-                };
-                // Bevy space is engine space ÷ 20 with X mirrored; the original works in 1/256 world units.
-                let raw = |bevy: f32, sign: f32| {
-                    (f64::from(bevy * sign * crate::scene::ENGINE_UNIT_SCALE) * 256.0).round()
-                        as i64
-                };
-                let offset = *position - camera.translation();
-                let world_units = offset.length() * crate::scene::ENGINE_UNIT_SCALE;
-                let volume = match distance_volume(distance, world_units, 0) {
-                    Ok(volume) => volume,
-                    Err(e) => {
-                        warn!("sound: effect {index}: {e}");
-                        continue;
+                let (volume, pan) = match position {
+                    None => (effect.base_volume.min(127), None),
+                    Some(position) => {
+                        let (Some(distance), Ok(camera)) = (
+                            settings.as_ref().and_then(|s| s.sound_distance),
+                            camera.single(),
+                        ) else {
+                            warn!("sound: effect {index}: no camera or SYSTEM.INI sound_distance");
+                            continue;
+                        };
+                        match positional(*position, camera, distance, 0) {
+                            Ok((volume, pan)) => (volume, Some(pan)),
+                            Err(e) => {
+                                warn!("sound: effect {index}: {e}");
+                                continue;
+                            }
+                        }
                     }
                 };
-                let forward = camera.forward();
-                let yaw = heading(raw(forward.x, -65536.0), raw(forward.z, 65536.0));
-                let pan = pan(heading(raw(offset.x, -1.0), raw(offset.z, 1.0)), yaw);
-                let gain = output_gain(volume, master);
-                let [left, right] = pan_gains(pan);
-                commands.spawn((
-                    PlayingSound,
-                    AudioPlayer(panned.add(Panned {
-                        source: source.clone(),
-                        gains: [left * gain, right * gain],
-                    })),
-                    playback,
-                ));
+                let start_index = channels.start;
+                channels.start(
+                    &mut commands,
+                    &mut mixer,
+                    Start {
+                        audio: effect.audio.clone(),
+                        looping: effect.looping,
+                        volume,
+                        pan,
+                        speed: 1.0,
+                        start_index,
+                    },
+                );
             }
             SoundRequest::Speech(label) => {
                 if !settings.as_ref().is_some_and(|s| s.speech) {
@@ -386,21 +559,213 @@ fn play_requests(
                     warn!("sound: voice clip {label} is not loaded");
                     continue;
                 };
-                commands.spawn((
-                    PlayingSound,
-                    AudioPlayer(clip.audio.clone()),
-                    PlaybackSettings::DESPAWN.with_volume(bevy::audio::Volume::Linear(
-                        output_gain(clip.base_volume.min(127), master),
-                    )),
-                ));
+                channels.start(
+                    &mut commands,
+                    &mut mixer,
+                    Start {
+                        audio: clip.audio.clone(),
+                        looping: false,
+                        volume: clip.base_volume.min(127),
+                        pan: None,
+                        speed: 1.0,
+                        start_index: 0,
+                    },
+                );
+                channels.start = 6;
             }
-            SoundRequest::StopAll => {
-                for entity in &playing {
-                    commands.entity(entity).despawn();
-                }
-            }
+            SoundRequest::StopAll => channels.stop_all(&mut commands),
         }
     }
+}
+
+/// Plays [`SoundCue`]s from game code through the same channels as control requests.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn play_cues(
+    mut commands: Commands,
+    mut cues: MessageReader<SoundCue>,
+    effects: Res<SoundEffects>,
+    settings: Option<Res<SoundSettings>>,
+    camera: Query<&GlobalTransform, With<crate::player::ViewCamera>>,
+    actors: Query<(
+        &GlobalTransform,
+        Option<&SoundSurface>,
+        Has<crate::player::Player>,
+    )>,
+    alive: Query<(), With<PlayingSound>>,
+    sources: Option<Res<Assets<AudioSource>>>,
+    mut panned: Option<ResMut<Assets<Panned>>>,
+    mut channels: ResMut<Channels>,
+    #[cfg(target_arch = "wasm32")] mut pending: Local<Vec<(usize, i32, i32)>>,
+    #[cfg(target_arch = "wasm32")] bank_loading: Option<Res<crate::sound_bank::SoundBankHandle>>,
+) {
+    channels.reclaim(&alive);
+    let mut mixer = Mixer {
+        master: settings.as_ref().map_or(256, |s| s.master_volume),
+        sources: sources.as_deref(),
+        panned: panned.as_deref_mut(),
+    };
+    // Cues held while the bank loaded play once it has; a failed or disabled bank drops them.
+    #[cfg(target_arch = "wasm32")]
+    if bank_loading.is_none() {
+        for flat in pending.drain(..) {
+            channels.start_flat(&mut commands, &mut mixer, &effects, flat);
+        }
+    }
+    // A despawned actor's remembered sound is forgotten, not stopped.
+    channels
+        .animation
+        .retain(|actor, _| actors.contains(*actor));
+    for cue in cues.read() {
+        match cue {
+            SoundCue::Flat {
+                effect,
+                volume,
+                rate_offset_hz,
+            } => {
+                // Browser cues wait for the exported bank instead of being lost.
+                #[cfg(target_arch = "wasm32")]
+                if bank_loading.is_some() {
+                    pending.push((*effect, *volume, *rate_offset_hz));
+                    continue;
+                }
+                channels.start_flat(
+                    &mut commands,
+                    &mut mixer,
+                    &effects,
+                    (*effect, *volume, *rate_offset_hz),
+                );
+            }
+            SoundCue::Animation { actor, sound } => match sound {
+                AnimationSound::Play {
+                    effect: requested,
+                    rate_offset_hz,
+                } => {
+                    channels.animation.remove(actor);
+                    let Some((index, effect)) = usize::try_from(*requested)
+                        .ok()
+                        .and_then(|i| Some((i, effects.0.get(i)?.as_ref()?)))
+                    else {
+                        continue;
+                    };
+                    let Ok((transform, surface, is_player)) = actors.get(*actor) else {
+                        warn!("sound: animation cue for {actor} without a transform");
+                        continue;
+                    };
+                    // The original remaps by the actor's surface; only a known surface 0 needs no table.
+                    match surface {
+                        Some(SoundSurface(0)) => {}
+                        Some(SoundSurface(surface)) => {
+                            warn_once!(
+                                "sound: SURFACE.INI remap for surface {surface} is unsupported; animation sounds on it are not played"
+                            );
+                            continue;
+                        }
+                        None => {
+                            warn_once!(
+                                "sound: animation sound for an actor without a known surface is unsupported"
+                            );
+                            continue;
+                        }
+                    }
+                    let (Some(distance), Ok(camera)) = (
+                        settings.as_ref().and_then(|s| s.sound_distance),
+                        camera.single(),
+                    ) else {
+                        continue;
+                    };
+                    let (volume, pan) =
+                        match positional(transform.translation(), camera, distance, 0) {
+                            Ok(mix) => mix,
+                            Err(e) => {
+                                warn!("sound: effect {index}: {e}");
+                                continue;
+                            }
+                        };
+                    let started = channels.start(
+                        &mut commands,
+                        &mut mixer,
+                        Start {
+                            audio: effect.audio.clone(),
+                            looping: effect.looping,
+                            volume,
+                            pan: Some(pan),
+                            speed: playback_speed(effect.sample_rate, *rate_offset_hz),
+                            start_index: if is_player { 0 } else { 6 },
+                        },
+                    );
+                    channels.start = 6;
+                    if let Some(sound) = started {
+                        channels.animation.insert(*actor, sound);
+                    }
+                }
+                AnimationSound::Stop => {
+                    if let Some(sound) = channels.animation.remove(actor) {
+                        for slot in &mut channels.slots {
+                            if slot.as_ref().is_some_and(|channel| channel.sound == sound) {
+                                *slot = None;
+                            }
+                        }
+                        commands.entity(sound).try_despawn();
+                    }
+                }
+                AnimationSound::Forget => {
+                    channels.animation.remove(actor);
+                }
+            },
+        }
+    }
+}
+
+/// Browser: fills the effects and settings from the exported bank once it has loaded.
+#[cfg(target_arch = "wasm32")]
+fn finish_bank(
+    mut commands: Commands,
+    handle: Option<Res<crate::sound_bank::SoundBankHandle>>,
+    banks: Res<Assets<crate::sound_bank::SoundBank>>,
+    assets: Res<AssetServer>,
+    menu: Option<Res<crate::startup::MenuState>>,
+) {
+    let Some(handle) = handle else {
+        return;
+    };
+    match assets.recursive_dependency_load_state(&handle.0) {
+        bevy::asset::RecursiveDependencyLoadState::Loaded => {}
+        bevy::asset::RecursiveDependencyLoadState::Failed(e) => {
+            warn!("sound: exported bank: {e}");
+            commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
+            return;
+        }
+        _ => return,
+    }
+    commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
+    let Some(bank) = banks.get(&handle.0) else {
+        return;
+    };
+    let mut settings = SoundSettings::parse("");
+    settings.master_volume = bank.master_volume;
+    settings.sound_distance = bank.sound_distance;
+    settings.effects = bank.enabled;
+    if let Some(preferences) = menu.as_ref().and_then(|m| m.preferences.as_ref()) {
+        settings.apply_menu(preferences);
+    }
+    commands.insert_resource(settings);
+    if !bank.enabled {
+        return;
+    }
+    commands.insert_resource(SoundEffects(
+        bank.effects
+            .iter()
+            .zip(&bank.audio)
+            .map(|(effect, audio)| {
+                Some(Effect {
+                    audio: audio.clone(),
+                    looping: effect.looping,
+                    base_volume: effect.base_volume,
+                    sample_rate: effect.sample_rate,
+                })
+            })
+            .collect(),
+    ));
 }
 
 /// Positional volume 0..=127 for an emitter `world_units` from the listener,
@@ -425,8 +790,11 @@ pub fn distance_volume(sound_distance: i32, world_units: f32, offset: i32) -> Re
 }
 
 /// Keeps the sound settings in step with the book's Sound page.
-fn apply_menu(menu: Res<crate::startup::MenuState>, mut settings: ResMut<SoundSettings>) {
-    if let Some(preferences) = &menu.preferences {
+pub(crate) fn apply_menu(
+    menu: Res<crate::startup::MenuState>,
+    settings: Option<ResMut<SoundSettings>>,
+) {
+    if let (Some(preferences), Some(mut settings)) = (&menu.preferences, settings) {
         let mut next = settings.clone();
         next.apply_menu(preferences);
         if (next.master_volume, next.redbook_volume, next.speech)
@@ -595,6 +963,7 @@ pub(crate) fn ini_value<'a>(ini: &'a str, section: &str, key: &str) -> Option<&'
     None
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// Wraps PCM in a RIFF/WAVE header. SFX, RTX and Red Book PCM is already
 /// WAV's layout: unsigned 8-bit or signed little-endian 16-bit, interleaved.
 pub fn pcm_wav(audio_type: AudioType, sample_rate: u32, pcm: &[u8]) -> Result<Vec<u8>, String> {

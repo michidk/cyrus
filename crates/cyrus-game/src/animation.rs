@@ -157,6 +157,12 @@ impl Plugin for AnimationPlugin {
             .init_asset_loader::<AnimationLoader>()
             .init_resource::<AnimationRequest>()
             .add_message::<AnimationTick>()
-            .add_systems(PostUpdate, (playback::advance, frame::apply_poses).chain());
+            .add_systems(
+                Update,
+                playback::advance
+                    .after(crate::sound::apply_menu)
+                    .before(crate::sound::play_cues),
+            )
+            .add_systems(PostUpdate, frame::apply_poses);
     }
 }

@@ -149,6 +149,43 @@ pub(super) fn load(mut commands: Commands, install: Option<Res<crate::install::G
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+pub(super) fn load_scene_bindings(
+    request: Option<Res<super::data::PlayerSceneRequest>>,
+    scenes: Res<Assets<super::data::PlayerScene>>,
+    mut bindings: ResMut<PlayerBindings>,
+    mut applied: Local<Option<AssetId<super::data::PlayerScene>>>,
+) {
+    let Some(request) = request else {
+        return;
+    };
+    if *applied == Some(request.0.id()) {
+        return;
+    }
+    *bindings = PlayerBindings::default();
+    let Some(scene) = scenes.get(&request.0) else {
+        return;
+    };
+    let result = (|| {
+        let local = crate::startup::MenuPreferences::load().map_err(|e| e.to_string())?;
+        let codes = match local {
+            Some(preferences) => std::array::from_fn(|i| preferences.bindings[i]),
+            None => scene
+                .keyboard_codes
+                .ok_or("missing keyboard defaults; re-export world")?,
+        };
+        PlayerBindings::from_codes(codes)
+    })();
+    match result {
+        Ok(loaded) => *bindings = loaded,
+        Err(error) => error!(
+            "world {} player keyboard input disabled: {error}",
+            scene.world
+        ),
+    }
+    *applied = Some(request.0.id());
+}
+
 pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Res<PlayerBindings>,

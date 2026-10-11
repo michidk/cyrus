@@ -12,10 +12,14 @@ pub struct CollisionScene {
     pub models: BTreeMap<String, CollisionModel>,
     /// Missing or ambiguous installed models. They must not become empty collision geometry.
     pub unsupported: BTreeMap<String, String>,
+    /// Nonzero SURFACE.INI assignments keyed by packed texture set/image.
+    /// Missing keys mean surface zero; a missing table means an old cache.
+    #[serde(default)]
+    pub texture_surfaces: Option<BTreeMap<u16, u8>>,
 }
 
 /// Authored placement coordinates and Q4.28 matrix, before renderer conversion.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StaticPlacement {
     pub id: u32,
     pub model: String,
@@ -26,20 +30,27 @@ pub struct StaticPlacement {
 /// Model-local map units, original polygons, and the named ROB segment's flags.
 #[derive(Serialize, Deserialize)]
 pub struct CollisionModel {
+    /// Original model version; missing in older caches.
+    #[serde(default)]
+    pub version: Option<[u8; 4]>,
     pub radius: f32,
     pub flags: u8,
     pub vertices: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub faces: Vec<Vec<usize>>,
+    /// Per-face texture set/image, or no texture for a solid-color face.
+    /// Absent in older caches; surface-dependent behavior must request re-export.
+    #[serde(default)]
+    pub textures: Option<Vec<Option<[u16; 2]>>>,
     pub subobjects: Vec<CollisionSubobject>,
 }
 
 /// Authored subgroup order and duplicate face references are significant.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CollisionSubobject {
     pub center: [f32; 3],
     pub radius: f32,
-    /// Absent v4 extents remain unsupported for admission, rather than defaulting.
+    /// Authored v4 nodes lack extents and are discarded by runtime preparation.
     pub extents: Option<[f32; 3]>,
     pub faces: Vec<usize>,
 }
@@ -54,6 +65,12 @@ impl CollisionModel {
         anyhow::ensure!(
             self.faces.len() == self.normals.len(),
             "face/normal count mismatch"
+        );
+        anyhow::ensure!(
+            self.textures
+                .as_ref()
+                .is_none_or(|textures| textures.len() == self.faces.len()),
+            "face/texture count mismatch"
         );
         anyhow::ensure!(
             self.vertices.iter().flatten().all(|v| v.is_finite()),

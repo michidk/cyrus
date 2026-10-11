@@ -1,7 +1,9 @@
 //! Explicitly activated group playback. The game scheduler owns eligibility and timing.
+use super::sequence::SoundDispatcher;
 use super::{
     ActorAnimation, AnimationPose, AnimationRequest, AnimationScript, Animations, FrameSequence,
 };
+use crate::sound::SoundCue;
 use bevy::prelude::*;
 
 /// Explicit playback on one placed GLB node, bound to its source world asset.
@@ -60,17 +62,23 @@ impl AnimationPlayback {
 }
 
 impl Playback {
-    fn advance(&mut self, ticks: u32) -> anyhow::Result<Option<u32>> {
+    fn advance(
+        &mut self,
+        ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         match self {
-            Self::Group(sequence) => sequence.advance(ticks, false),
+            Self::Group(sequence) => sequence.advance_with_sounds(ticks, false, sounds),
             Self::Scripted {
                 animation,
                 script,
                 default,
             } => {
-                let frame = animation.advance(ticks)?;
-                let frame = animation.request(*default, 0, ticks)?.or(frame);
-                Ok(script.advance(animation, ticks)?.or(frame))
+                let frame = animation.advance_dispatch(ticks, sounds)?;
+                let frame = animation
+                    .request_dispatch(*default, 0, ticks, sounds)?
+                    .or(frame);
+                Ok(script.advance_dispatch(animation, ticks, sounds)?.or(frame))
             }
         }
     }
@@ -89,6 +97,7 @@ pub(super) fn advance(
     request: Res<AnimationRequest>,
     assets: Res<Assets<Animations>>,
     mut ticks: MessageReader<AnimationTick>,
+    mut sound_cues: Option<ResMut<Messages<SoundCue>>>,
     mut nodes: Query<(Entity, &mut AnimationPlayback)>,
 ) {
     for (entity, playback) in &nodes {
@@ -106,7 +115,19 @@ pub(super) fn advance(
             let Some(animations) = assets.get(&playback.source) else {
                 continue;
             };
-            let result = playback.playback.advance(tick.ticks).and_then(|reference| {
+            let result = if let Some(cues) = &mut sound_cues {
+                let mut emit = |sound| {
+                    cues.write(SoundCue::Animation {
+                        actor: entity,
+                        sound,
+                    });
+                    Ok(())
+                };
+                playback.playback.advance(tick.ticks, &mut Some(&mut emit))
+            } else {
+                playback.playback.advance(tick.ticks, &mut None)
+            };
+            let result = result.and_then(|reference| {
                 reference
                     .map(|reference| animations.resolve_frame(&playback.actor, reference))
                     .transpose()

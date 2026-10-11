@@ -199,7 +199,7 @@ fn handle(
                         Ok(json!(*fidelity))
                     }
                     _ => Err(
-                        "area must be player_controller|camera|water|fog|sky, mode faithful|modern"
+                        "area must be player_controller|camera|water|fog|sky|lighting, mode faithful|modern"
                             .into(),
                     ),
                 }

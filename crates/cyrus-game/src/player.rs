@@ -2,6 +2,8 @@
 //! unsupported until animation, collision and timing are established.
 
 pub mod collision_data;
+pub mod collision_mesh;
+pub mod collision_world;
 pub mod contact;
 pub mod data;
 pub mod definition;
@@ -60,6 +62,8 @@ impl Plugin for PlayerPlugin {
         }
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Startup, input::load);
+        #[cfg(target_arch = "wasm32")]
+        app.add_systems(Update, input::load_scene_bindings.before(input::sample));
         app.init_resource::<input::PlayerBindings>()
             .init_resource::<input::PlayerInput>()
             .add_systems(Update, input::sample)

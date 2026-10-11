@@ -1,4 +1,4 @@
-//! Terrain wave playback from preservation's engine/water.md.
+//! Private terrain meshes, shading normals and wave playback from preservation.
 
 use crate::environment::{Environment, EnvironmentRequest, Water};
 use crate::fidelity::{Area, Fidelity, Mode};
@@ -66,7 +66,12 @@ pub(crate) fn animate_water(
     names: Query<&Name>,
     parents: Query<&ChildOf>,
 ) {
-    if playback.source != Some(request.0.id()) {
+    if playback.source != Some(request.0.id())
+        || playback
+            .terrain
+            .iter()
+            .any(|terrain| entities.get(terrain.entity).is_err())
+    {
         for terrain in &playback.terrain {
             if let Ok((_, mut mesh)) = entities.get_mut(terrain.entity)
                 && mesh.0 == terrain.animated
@@ -79,12 +84,17 @@ pub(crate) fn animate_water(
         }
         *playback = WaterPlayback::default();
     }
-    let Some(water) = environments.get(&request.0).and_then(|e| e.water.as_ref()) else {
+    let Some(environment) = environments.get(&request.0) else {
         return;
     };
-    if water.parameters[0] == 0.0 {
+    let lighting = environment.terrain_lighting.as_ref();
+    let water = environment
+        .water
+        .as_ref()
+        .filter(|w| w.parameters[0] != 0.0);
+    let Some(side) = lighting.map(|l| l.side).or_else(|| water.map(|w| w.side)) else {
         return;
-    }
+    };
     if playback.terrain.is_empty() {
         let terrain: Vec<_> = entities
             .iter()
@@ -106,7 +116,7 @@ pub(crate) fn animate_water(
         {
             return;
         }
-        playback.base = vec![[0.0; 3]; water.side * water.side];
+        playback.base = vec![[0.0; 3]; side * side];
         for (entity, original) in terrain {
             let mesh = meshes.get(&original).unwrap();
             let Ok(VertexAttributeValues::Float32x3(positions)) =
@@ -119,14 +129,11 @@ pub(crate) fn animate_water(
             for &position in positions {
                 let x = (-position[0] / CELL_SIZE).round() as usize;
                 let row = (-position[2] / CELL_SIZE).round() as usize;
-                if x >= water.side || row >= water.side {
-                    error!(
-                        "water terrain {entity}: vertex outside {}-wide grid",
-                        water.side
-                    );
+                if x >= side || row >= side {
+                    error!("water terrain {entity}: vertex outside {}-wide grid", side);
                     return;
                 }
-                let vertex = x + row * water.side;
+                let vertex = x + row * side;
                 playback.base[vertex] = position;
                 vertices.push(vertex);
             }
@@ -135,11 +142,16 @@ pub(crate) fn animate_water(
                 Mesh::ATTRIBUTE_UV_1,
                 vertices
                     .iter()
-                    .map(|&vertex| [u8::from(water.animated_vertices[vertex]) as f32, 0.0])
+                    .map(|&vertex| {
+                        [
+                            u8::from(water.is_some_and(|w| w.animated_vertices[vertex])) as f32,
+                            0.0,
+                        ]
+                    })
                     .collect::<Vec<_>>(),
             );
             if let Some(mut bounds) = mesh.get_aabb() {
-                bounds.half_extents.y += water.parameters[0].abs() * 1.5 / 20.0;
+                bounds.half_extents.y += water.map_or(0.0, |w| w.parameters[0].abs()) * 1.5 / 20.0;
                 animated_mesh.final_aabb = Some(bounds.into());
                 commands.entity(entity).insert(bounds);
             }
@@ -156,14 +168,17 @@ pub(crate) fn animate_water(
     }
     let ticks = (time.elapsed_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
     let mode = fidelity.mode(Area::Water);
-    if mode == Mode::Faithful && playback.mode == mode && playback.tick == Some(ticks) {
+    if playback.tick.is_some()
+        && (water.is_none()
+            || (mode == Mode::Faithful && playback.mode == mode && playback.tick == Some(ticks)))
+    {
         return;
     }
     playback.tick = Some(ticks);
     playback.mode = mode;
     let mut grid = playback.base.clone();
     for (vertex, position) in grid.iter_mut().enumerate() {
-        if water.animated_vertices[vertex] {
+        if let Some(water) = water.filter(|w| w.animated_vertices[vertex]) {
             position[1] += match mode {
                 Mode::Faithful => water.displacement(vertex, ticks),
                 Mode::Modern => {
@@ -172,11 +187,22 @@ pub(crate) fn animate_water(
             };
         }
     }
-    let normals = grid_normals(&grid, water.side);
+    // shortcut: original water edges can retain old normals; replace full recomputation when dirty admission is established.
+    let normals = crate::lighting::grid_normals(&grid, side);
     for terrain in &playback.terrain {
         let Some(mut mesh) = meshes.get_mut(&terrain.animated) else {
             continue;
         };
+        if let Some(lighting) = lighting {
+            mesh.insert_attribute(
+                Mesh::ATTRIBUTE_COLOR,
+                terrain
+                    .vertices
+                    .iter()
+                    .map(|&vertex| lighting.color(normals[vertex]))
+                    .collect::<Vec<_>>(),
+            );
+        }
         if let Ok(VertexAttributeValues::Float32x3(positions)) =
             mesh.try_attribute_mut(Mesh::ATTRIBUTE_POSITION)
         {
@@ -192,29 +218,6 @@ pub(crate) fn animate_water(
             }
         }
     }
-}
-
-fn grid_normals(grid: &[[f32; 3]], side: usize) -> Vec<[f32; 3]> {
-    let mut normals = vec![Vec3::ZERO; grid.len()];
-    for row in 0..side - 1 {
-        for x in 0..side - 1 {
-            let tl = x + row * side;
-            let tr = tl + 1;
-            let bl = tl + side;
-            let br = bl + 1;
-            for [a, b, c] in [[tl, br, tr], [br, tl, bl]] {
-                let face = (Vec3::from(grid[b]) - Vec3::from(grid[a]))
-                    .cross(Vec3::from(grid[c]) - Vec3::from(grid[a]));
-                for vertex in [a, b, c] {
-                    normals[vertex] += face;
-                }
-            }
-        }
-    }
-    normals
-        .into_iter()
-        .map(|normal| normal.normalize_or(Vec3::Y).to_array())
-        .collect()
 }
 
 #[cfg(test)]
@@ -272,6 +275,12 @@ mod tests {
             background: [0; 3],
             clipping: [7.0, 3800.0],
             fog_table: [[0; 4]; 16],
+            terrain_lighting: Some(crate::lighting::TerrainLighting {
+                side: 2,
+                ambient: [64.0; 3],
+                directional: [128.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            }),
             water: Some(Water {
                 parameters: [24.0, 512.0, 0.0],
                 side: 2,
@@ -314,6 +323,23 @@ mod tests {
         let animated = app.world().get::<Mesh3d>(entity).unwrap().0.clone();
         let animated_other = app.world().get::<Mesh3d>(other).unwrap().0.clone();
         assert_ne!(animated, first);
+        let colors = |app: &App, handle: &Handle<Mesh>| {
+            let mesh = app.world().resource::<Assets<Mesh>>().get(handle).unwrap();
+            match mesh.attribute(Mesh::ATTRIBUTE_COLOR).unwrap() {
+                VertexAttributeValues::Float32x4(values) => values.clone(),
+                _ => panic!("wrong terrain color format"),
+            }
+        };
+        let initial_colors = colors(&app, &animated);
+        assert_eq!(initial_colors[1], colors(&app, &animated_other)[0]);
+        assert!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&first)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_COLOR)
+                .is_none()
+        );
         assert_eq!(positions(&app, &first), a);
         assert_eq!(app.world().get::<Mesh3d>(model).unwrap().0, first);
         assert!((positions(&app, &animated)[1][1] + 0.6).abs() < 0.00001);
@@ -351,6 +377,7 @@ mod tests {
             .advance_by(Duration::from_millis(110));
         app.update();
         assert!((positions(&app, &animated)[1][1] - 1.8).abs() < 0.00001);
+        assert_ne!(colors(&app, &animated), initial_colors);
         app.world_mut().resource_mut::<EnvironmentRequest>().0 = Handle::default();
         app.update();
         assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, first);
@@ -370,6 +397,7 @@ mod tests {
                 background: [0; 3],
                 clipping: [7.0, 3800.0],
                 fog_table: [[0; 4]; 16],
+                terrain_lighting: None,
                 water: Some(Water {
                     parameters: [0.0, 512.0, 0.0],
                     side: 2,
@@ -380,5 +408,49 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, first);
         assert_eq!(positions(&app, &first), a);
+        let dry = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(Environment {
+                sky: None,
+                background: [0; 3],
+                clipping: [7.0, 3800.0],
+                fog_table: [[0; 4]; 16],
+                water: None,
+                terrain_lighting: Some(crate::lighting::TerrainLighting {
+                    side: 2,
+                    ambient: [32.0, 64.0, 128.0],
+                    directional: [0.0; 3],
+                    direction: [0.0, -1.0, 0.0],
+                }),
+            });
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = dry;
+        app.update();
+        let dry_mesh = app.world().get::<Mesh3d>(entity).unwrap().0.clone();
+        assert_eq!(positions(&app, &dry_mesh), a);
+        assert_eq!(
+            colors(&app, &dry_mesh),
+            vec![[32.0 / 255.0, 64.0 / 255.0, 128.0 / 255.0, 1.0]; 3]
+        );
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Lighting, Mode::Modern);
+        app.update();
+        assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, dry_mesh);
+        assert_eq!(positions(&app, &first), a);
+        app.world_mut().despawn(entity);
+        app.world_mut().despawn(other);
+        let replacement = app
+            .world_mut()
+            .spawn((Mesh3d(first.clone()), ChildOf(parent)))
+            .id();
+        app.world_mut().spawn((Mesh3d(second), ChildOf(parent)));
+        app.update();
+        let rebound = app.world().get::<Mesh3d>(replacement).unwrap().0.clone();
+        assert_ne!(
+            rebound, first,
+            "reloading the same world must bind its new terrain entities"
+        );
+        assert_eq!(colors(&app, &rebound), colors(&app, &dry_mesh));
     }
 }

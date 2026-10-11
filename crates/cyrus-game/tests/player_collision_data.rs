@@ -3,6 +3,8 @@ use cyrus_game::player::collision_data::{CollisionModel, CollisionSubobject};
 #[test]
 fn authored_collision_preserves_subsets_and_rejects_invalid_references() {
     let mut model = CollisionModel {
+        version: Some(*b"v5.0"),
+        textures: None,
         radius: 20.0,
         flags: 0,
         vertices: vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],

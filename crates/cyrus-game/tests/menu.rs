@@ -25,7 +25,14 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     std::fs::create_dir_all(&temp).unwrap();
     // Only this temporary definition is writable; assets remain in the read-only install.
     #[cfg(unix)]
-    for name in ["fxart", "fonts", "SYSTEM.INI", "KEYS.INI", "system"] {
+    for name in [
+        "fxart",
+        "fonts",
+        "SYSTEM.INI",
+        "KEYS.INI",
+        "system",
+        "sound",
+    ] {
         std::os::unix::fs::symlink(
             install.root.join(name).canonicalize().unwrap(),
             temp.join(name),
@@ -38,6 +45,13 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let cache = temp.join("cache");
     let edited = GameInstall { root: temp.clone() };
     export_menu(&edited, &cache).unwrap();
+    let sounds: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(cache.join("sounds/bank.sounds")).unwrap()).unwrap();
+    assert_eq!(sounds["effects"].as_array().unwrap().len(), 118);
+    for effect in [13, 18, 64, 65, 66, 67, 68] {
+        assert_eq!(sounds["effects"][effect]["base_volume"], 100);
+        assert!(cache.join(format!("sounds/{effect:03}.wav")).is_file());
+    }
     let menu: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
     assert_eq!(menu["models"].as_array().unwrap().len(), 5);

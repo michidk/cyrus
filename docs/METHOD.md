@@ -36,7 +36,10 @@ unsupported. An `// unverified` comment or Modern mode does not authorize a gues
    comparison can fail: change one constant in cyrus and confirm it is caught.
    Put the comparison, the wrong-version check, or what could not be compared,
    in the commit message.
-5. **Gates green, commit small.** `just gates`; one logical change per commit.
+5. **Verify, then commit small.** Run the checks required by `AGENTS.md`; one
+   logical change per commit. Run `just gates` once for code and build changes,
+   after the final relevant edit. Do not run Cargo for documentation-only
+   changes.
 
 ## Controller parity evidence
 
@@ -59,7 +62,7 @@ coverage; visual fidelity still requires comparison with the original.
 ## The fidelity switch
 
 `Fidelity` is a resource with one `Mode` per `Area` (`player_controller`,
-`camera`, `water`, `fog`, and `sky`; extend the enum when a new deviation needs one). Systems
+`camera`, `water`, `fog`, `sky`, and `lighting`; extend the enum when a new deviation needs one). Systems
 are gated with `in_mode(area, mode)`. Rules:
 
 - The faithful path is complete on its own; the modern path may reuse it.
@@ -77,9 +80,11 @@ are gated with `in_mode(area, mode)`. Rules:
 
 ## Gates
 
-`just gates` runs: `cargo fmt --check`, `cargo clippy --workspace
---all-targets -- -D warnings`, and `cargo test --workspace`. Install-dependent tests skip without an install
-and print that they did. CI mirrors the same list.
+For code and build changes, `just gates` runs `cargo fmt --check`, `cargo
+clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
+Install-dependent tests skip without an install and print that they did. CI
+mirrors the same list. `AGENTS.md` defines the smaller checks for documentation
+changes and the required playtests for runtime behavior.
 
 ## Not in scope
 

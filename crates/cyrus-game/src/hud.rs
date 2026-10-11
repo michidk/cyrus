@@ -1,33 +1,60 @@
-//! In-game overlay from installed HUD data: the health candle, its number, and the
-//! active item with its count. Rules follow redguard-preservation's HUD documentation.
+//! In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
+//! power-up slots, active item, prompt text. Rules follow redguard-preservation's HUD documentation.
 use crate::AppState;
 use bevy::{
-    asset::{AssetLoader, LoadContext, io::Reader},
+    asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Shows the exported `hud/overlay.hud` over gameplay, fitted like the original 640×480 viewport.
 pub struct HudPlugin;
 
-/// Installed HUD data, exported natively from SYSTEM.INI, ITEM.INI, KEYS.INI, GXA and FNT files.
+/// Installed HUD data, exported natively from SYSTEM.INI, ITEM.INI, KEYS.INI, WORLD.INI,
+/// the RTX file, GXA and FNT files. Positions are top-left corners in 640×480 pixels.
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub(crate) struct HudAsset {
-    /// SYSTEM.INI `[screen] candle_mode`: 0 shows the candle only after a show trigger,
-    /// 1 always, 2 always with the health number.
+    /// SYSTEM.INI `[screen] candle_mode`: 0 shows the candle only while the show timer
+    /// runs, 1 always, 2 always with the health number.
     pub candle_mode: u8,
-    /// Top-left of the candle in 640×480 screen pixels, SYSTEM.INI `candle_xco/yco`.
+    /// SYSTEM.INI `candle_xco/yco`.
     pub candle: [i32; 2],
     pub candle_size: [u16; 2],
-    /// Top-left of the active item icon, SYSTEM.INI `pickup_xco/yco`.
+    /// SYSTEM.INI `pickup_xco/yco`.
     pub pickup: [i32; 2],
+    /// Pen of the prompt line: `pickup_xco`, `pickup_text_yco`.
+    pub prompt: [i32; 2],
+    /// SYSTEM.INI `rtx_pickup_override_time`, in ticks.
+    pub override_ticks: u32,
+    /// SYSTEM.INI `compass_xco/yco`; COMPASS2.GXA has 32 frames.
+    pub compass: [i32; 2],
+    pub compass_size: [u16; 2],
+    /// WORLD.INI `world_compass[N]` by world ID; other worlds use 0.
+    pub world_compass: BTreeMap<u32, i32>,
+    /// SYSTEM.INI `game_xco1/yco1` and `game_xco2/yco2`.
+    pub powerup_slots: [[i32; 2]; 2],
+    /// Frame sizes of `[system] game_bitmap`.
+    pub powerup_sizes: Vec<[u16; 2]>,
+    /// SYSTEM.INI `logbook_xco/yco`; SCROLL.GXA has 32 frames.
+    pub logbook: [i32; 2],
+    pub logbook_size: [u16; 2],
+    /// SYSTEM.INI `[cyrus] walk_mode` and `auto_defend`.
+    pub walk_mode: bool,
+    pub auto_defend: bool,
+    /// RTX notice texts, off then on: walk mode `#WOF`/`#WON`, auto-defend `#DOF`/`#DON`.
+    pub notices: [[String; 2]; 2],
     /// Owned, unhidden starting items in item ID order.
     pub items: Vec<HudItem>,
     /// ITEM.INI `start_item_select`, if owned.
     pub selected: Option<u16>,
     /// Installed KEYS.INI scan codes for menu actions 710 through 724.
     pub bindings: [u8; 15],
-    pub font: HudFont,
+    /// `fonts/REDSEL.FNT`; HUD text is drawn like an NPC subtitle line.
+    pub font: cyrus_text::Font,
+    /// SYSTEM.INI `[3dfx] font_sel` as main and shadow alpha.
+    pub text_alpha: [u8; 2],
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -39,68 +66,17 @@ pub(crate) struct HudItem {
     pub size: [u16; 2],
 }
 
-/// REDSEL.FNT metrics; glyph images are `hud/glyph-CCC.png` by character code.
-#[derive(Serialize, Deserialize)]
-pub(crate) struct HudFont {
-    pub start: u16,
-    /// `None` for disabled glyphs, which advance 0 and are not drawn.
-    pub glyphs: Vec<Option<HudGlyph>>,
-    /// SYSTEM.INI `[3dfx] font_sel`: shadow value A and main alpha B.
-    pub font_sel: [u8; 2],
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-pub(crate) struct HudGlyph {
-    pub width: u16,
-    pub height: u16,
-    pub offset: [i16; 2],
-}
-
-impl HudFont {
-    fn glyph(&self, ch: u8) -> Option<HudGlyph> {
-        let index = usize::from(ch).checked_sub(usize::from(self.start))?;
-        *self.glyphs.get(index)?
-    }
-
-    fn advance(&self, ch: u8) -> i32 {
-        let Some(glyph) = self.glyph(ch) else {
-            return 0;
-        };
-        let extra = if ch == b' ' {
-            self.glyph(b'!').map_or(0, |g| i32::from(g.width))
-        } else {
-            0
-        };
-        i32::from(glyph.width) + 1 + extra
-    }
-
-    fn width(&self, text: &str) -> i32 {
-        text.bytes().map(|ch| self.advance(ch)).sum()
-    }
-
-    /// Glyph codes and top-left screen positions for `text` with its pen at `(x, y)`.
-    // shortcut: no wrap at x = 640; HUD numbers are short. Upgrade with activation prompts.
-    fn layout(&self, text: &str, mut x: i32, y: i32) -> Vec<(u8, [i32; 2], HudGlyph)> {
-        let mut placed = Vec::new();
-        for ch in text.bytes() {
-            if let Some(glyph) = self.glyph(ch) {
-                placed.push((
-                    ch,
-                    [
-                        x + i32::from(glyph.offset[0]),
-                        y + i32::from(glyph.offset[1]),
-                    ],
-                    glyph,
-                ));
-            }
-            x += self.advance(ch);
-        }
-        placed
-    }
-}
-
 /// The player's fixed maximum and spawn health; no INI key sets it.
 const MAX_HEALTH: u8 = 100;
+/// Game ticks per second: 12 per 18 BIOS timer ticks (preservation player doc).
+const TICKS_PER_SECOND: f64 = 12.0 * 18.2065 / 18.0;
+/// Show timer values: a trigger shows the candle for 25 ticks; 50 pins it and never decays.
+const SHOW_TICKS: u32 = 25;
+const SHOW_PINNED: u32 = 50;
+/// Activation hold-off after an activation fires, in ticks.
+const ACTIVATION_HOLD_OFF: u32 = 22;
+/// Walk-mode and auto-defend notices last 24 ticks.
+const NOTICE_TICKS: u32 = 24;
 
 /// Candle level for player health: 0 is the full candle, 11 the snuffed one.
 fn candle_level(health: u8) -> u8 {
@@ -148,24 +124,266 @@ impl Candle {
     }
 }
 
-/// Live overlay state, reported by the control server.
+/// COMPASS2.GXA frame for a heading in 2048-unit turns and the world's `world_compass`.
+fn compass_frame(heading: u16, world_compass: i32) -> u8 {
+    ((-(i32::from(heading) + world_compass)).rem_euclid(2048) >> 6) as u8
+}
+
+/// Player-facing toggles kept outside the install: native `cyrus-config/hud.json`,
+/// browser localStorage `cyrus-hud`. The original writes them to SYSTEM.INI.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+struct HudPreferences {
+    candle_mode: u8,
+    walk_mode: bool,
+    auto_defend: bool,
+}
+
+impl HudPreferences {
+    fn load() -> anyhow::Result<Option<Self>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        let text = match std::fs::read_to_string(Self::path()) {
+            Ok(text) => Some(text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return anyhow::Context::context(Err(e), "reading local HUD preferences"),
+        };
+        #[cfg(target_arch = "wasm32")]
+        let text = Self::storage()?
+            .get_item("cyrus-hud")
+            .map_err(|e| anyhow::anyhow!("reading HUD preferences: {e:?}"))?;
+        text.map(|text| {
+            let preferences: Self =
+                anyhow::Context::context(serde_json::from_str(&text), "local HUD preferences")?;
+            anyhow::ensure!(
+                preferences.candle_mode <= 2,
+                "local HUD preferences: candle_mode must be 0, 1 or 2"
+            );
+            Ok(preferences)
+        })
+        .transpose()
+    }
+
+    fn save(&self) -> anyhow::Result<()> {
+        let text = serde_json::to_string_pretty(self)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let path = Self::path();
+            std::fs::create_dir_all(crate::settings::CONFIG_DIR)?;
+            let temporary = path.with_extension("json.tmp");
+            anyhow::Context::context(
+                std::fs::write(&temporary, text),
+                "writing local HUD preferences",
+            )?;
+            anyhow::Context::context(
+                std::fs::rename(temporary, path),
+                "saving local HUD preferences",
+            )?;
+        }
+        #[cfg(target_arch = "wasm32")]
+        Self::storage()?
+            .set_item("cyrus-hud", &text)
+            .map_err(|e| anyhow::anyhow!("saving HUD preferences: {e:?}"))?;
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn path() -> std::path::PathBuf {
+        std::path::Path::new(crate::settings::CONFIG_DIR).join("hud.json")
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn storage() -> anyhow::Result<web_sys::Storage> {
+        web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+            .ok_or_else(|| anyhow::anyhow!("browser local storage unavailable"))
+    }
+}
+
+/// Live overlay state, reported by the control server. The inputs marked *unwired* have
+/// no gameplay system writing them yet; they keep the defaults of a fresh session.
 #[derive(Resource, Serialize, Debug)]
 pub struct HudState {
-    /// Player health, 0..=100. The player spawns at the maximum; nothing changes it yet.
+    /// Player health, 0..=100. Use [`HudState::set_health`]; *unwired*, stays at 100.
     pub health: u8,
+    /// Candle visibility mode; F8 cycles 0 → 1 → 2 → 0.
+    pub candle_mode: u8,
     pub candle_visible: bool,
     candle: Candle,
+    /// Candle show timer in ticks (25 after a trigger, 50 pinned).
+    show_timer: u32,
+    /// Value last passed to the script function `LockoutPlayer`; *unwired*.
+    pub lockout: u8,
+    /// Sword drawn; use [`HudState::set_sword_drawn`]. *Unwired*.
+    pub sword_drawn: bool,
+    /// SOUP386.DEF `attr_player_type`: 1 (`ply_gremlin`) hides the icon and compass. *Unwired*.
+    pub player_type: u8,
+    /// Player heading in 2048-unit turns and the WORLD.INI world ID, for the compass. *Unwired*.
+    pub heading: u16,
+    pub world: Option<u32>,
+    /// Compass display flag, toggled by using item 0. *Unwired*.
+    pub compass_on: bool,
+    pub compass_frame: Option<u8>,
+    /// Power-up slots as `(id, frame)`; see [`HudState::show_bitmap`]. *Unwired*.
+    pub powerups: [Option<(u8, u8)>; 2],
+    /// The slot `show_bitmap` chooses when both are full.
+    next_slot: usize,
+    /// Logbook icon frame while it plays; see [`HudState::logbook_entry`].
+    pub logbook_frame: Option<u8>,
+    /// Walk mode (Tab) and auto-defend (F7); the player does not consume them yet.
+    pub walk_mode: bool,
+    pub auto_defend: bool,
+    /// Remaining ticks of the walk-mode and auto-defend notices.
+    notices: [u32; 2],
+    /// Activation prompt offered this frame; see [`HudState::activate`].
+    pub prompt: Option<String>,
+    /// Activation hold-off and prompt override timers, in ticks.
+    hold_off: u32,
+    prompt_override: u32,
     /// Selected item ID, or `None` when nothing is owned.
     pub selected: Option<u16>,
     pub count: Option<u32>,
     #[serde(skip)]
     elapsed: f32,
+    #[serde(skip)]
+    ticks: f64,
     /// Edited bindings when present, else the installed ones; read on entering a world.
     #[serde(skip)]
     bindings: [u8; 15],
-    /// Every SNUFF frame, held so swapping frames never unloads and reloads an image.
+    /// Every frame of the fixed atlases, held so swapping frames never reloads an image.
     #[serde(skip)]
-    candle_frames: Vec<Handle<Image>>,
+    frames: Frames,
+    /// Text lines and pen positions currently drawn on the text layer.
+    #[serde(skip)]
+    text: Vec<(String, [i32; 2])>,
+}
+
+#[derive(Default, Debug)]
+struct Frames {
+    candle: Vec<Handle<Image>>,
+    compass: Vec<Handle<Image>>,
+    logbook: Vec<Handle<Image>>,
+    powerup: Vec<Handle<Image>>,
+}
+
+impl HudState {
+    fn new(hud: &HudAsset, preferences: Option<HudPreferences>, frames: Frames) -> Self {
+        let preferences = preferences.unwrap_or(HudPreferences {
+            candle_mode: hud.candle_mode,
+            walk_mode: hud.walk_mode,
+            auto_defend: hud.auto_defend,
+        });
+        Self {
+            health: MAX_HEALTH,
+            candle_mode: preferences.candle_mode,
+            candle_visible: preferences.candle_mode != 0,
+            candle: Candle::default(),
+            show_timer: 0,
+            lockout: 0,
+            sword_drawn: false,
+            player_type: 0,
+            heading: 0,
+            world: None,
+            compass_on: false,
+            compass_frame: None,
+            powerups: [None; 2],
+            next_slot: 0,
+            logbook_frame: None,
+            walk_mode: preferences.walk_mode,
+            auto_defend: preferences.auto_defend,
+            notices: [0; 2],
+            prompt: None,
+            hold_off: 0,
+            prompt_override: 0,
+            selected: hud.selected.or_else(|| hud.items.first().map(|i| i.id)),
+            count: None,
+            elapsed: 0.0,
+            ticks: 0.0,
+            bindings: crate::startup::MenuPreferences::load()
+                .ok()
+                .flatten()
+                .map_or(hud.bindings, |p| p.bindings),
+            frames,
+            text: Vec::new(),
+        }
+    }
+
+    /// Sets player health (clamped to 100); a change shows the candle for 25 ticks
+    /// unless the timer is pinned.
+    pub fn set_health(&mut self, health: u8) {
+        let health = health.min(MAX_HEALTH);
+        if health != self.health && self.show_timer < SHOW_PINNED {
+            self.show_timer = SHOW_TICKS;
+        }
+        self.health = health;
+    }
+
+    /// Drawing or sheathing the sword shows the candle for 25 ticks.
+    pub fn set_sword_drawn(&mut self, drawn: bool) {
+        if drawn != self.sword_drawn {
+            self.show_timer = SHOW_TICKS;
+        }
+        self.sword_drawn = drawn;
+    }
+
+    /// Script `Activate`: offers `text` as this frame's prompt. With the use key held the
+    /// activation fires instead, blanking the item area for 22 ticks, and returns true.
+    /// Unknown further player-state conditions are not modelled.
+    pub fn activate(&mut self, text: &str, use_held: bool) -> bool {
+        if self.lockout == 1 || self.sword_drawn || self.hold_off > 0 || self.prompt.is_some() {
+            return false;
+        }
+        if use_held {
+            self.hold_off = ACTIVATION_HOLD_OFF;
+            return true;
+        }
+        self.prompt = Some(text.to_owned());
+        false
+    }
+
+    /// Script `Deactivate`: clears the activation hold-off.
+    pub fn deactivate(&mut self) {
+        self.hold_off = 0;
+    }
+
+    /// Script `ShowBitmap(id, frame)`: `id` 0 or 1, `frame` a `game_bitmap` frame.
+    pub fn show_bitmap(&mut self, id: u8, frame: u8) -> Result<(), String> {
+        if id > 1 || usize::from(frame) >= self.frames.powerup.len() {
+            return Err(format!("ShowBitmap({id}, {frame}): invalid id or frame"));
+        }
+        if self.powerups.iter().flatten().any(|(_, f)| *f == frame) {
+            return Ok(());
+        }
+        let slot = self
+            .powerups
+            .iter()
+            .position(Option::is_none)
+            .unwrap_or(self.next_slot);
+        self.powerups[slot] = Some((id, frame));
+        self.next_slot = 1 - slot;
+        Ok(())
+    }
+
+    /// Script `UnShowBitmap(id)`: clears slot 1 if its id matches, else slot 2.
+    pub fn unshow_bitmap(&mut self, id: u8) {
+        if let Some(slot) = self
+            .powerups
+            .iter_mut()
+            .find(|s| s.is_some_and(|(i, _)| i == id))
+        {
+            *slot = None;
+        }
+    }
+
+    /// A new logbook entry plays the scroll icon once unless it is already playing.
+    pub fn logbook_entry(&mut self) {
+        self.logbook_frame.get_or_insert(0);
+    }
+
+    /// Advances the per-rendered-frame animations by one original frame.
+    fn advance_frame(&mut self) {
+        let health = self.health;
+        self.candle.advance(health);
+        self.logbook_frame = self.logbook_frame.and_then(|f| (f < 31).then_some(f + 1));
+    }
 }
 
 #[derive(Resource)]
@@ -177,14 +395,27 @@ struct HudContent;
 #[derive(Component)]
 struct HudViewport;
 
-#[derive(Component)]
-struct CandleImage;
-
-#[derive(Component)]
-enum HudLayer {
-    Health,
+/// One bitmap element; spawned hidden and updated every frame, in draw order.
+#[derive(Component, Clone, Copy, PartialEq, Debug)]
+enum HudSprite {
+    Compass,
+    Candle,
+    Logbook,
+    Powerup(usize),
     Item,
 }
+
+const SPRITES: [HudSprite; 6] = [
+    HudSprite::Compass,
+    HudSprite::Candle,
+    HudSprite::Logbook,
+    HudSprite::Powerup(0),
+    HudSprite::Powerup(1),
+    HudSprite::Item,
+];
+
+#[derive(Component)]
+struct HudText;
 
 #[derive(Default, TypePath)]
 struct HudLoader;
@@ -257,39 +488,53 @@ fn place(at: [i32; 2], size: [u16; 2]) -> Node {
     }
 }
 
-/// A full-viewport layer holding `text` drawn like an NPC subtitle: shadow at (1, 1), then main.
-fn spawn_text(
-    commands: &mut Commands,
-    parent: Entity,
-    layer: HudLayer,
-    assets: &AssetServer,
-    font: &HudFont,
-    text: &str,
-    at: [i32; 2],
-) {
-    let [shadow, main] = [
-        u32::from(font.font_sel[0]) * 200 / 256,
-        u32::from(font.font_sel[1]),
-    ];
-    let glyphs = font.layout(text, at[0], at[1]);
-    commands.entity(parent).with_children(|viewport| {
-        viewport
-            .spawn((layer, place([0, 0], [640, 480])))
-            .with_children(|layer| {
-                for (offset, tint) in [
-                    (1, Color::srgba(0.0, 0.0, 0.0, shadow as f32 / 255.0)),
-                    (0, Color::srgba(1.0, 1.0, 1.0, main as f32 / 255.0)),
-                ] {
-                    for (ch, [x, y], glyph) in &glyphs {
-                        layer.spawn((
-                            ImageNode::new(assets.load(format!("cache://hud/glyph-{ch:03}.png")))
-                                .with_color(tint),
-                            place([x + offset, y + offset], [glyph.width, glyph.height]),
-                        ));
-                    }
-                }
-            });
-    });
+/// Pen position that centres `text` on `x` by the subtitle rule.
+fn centred(hud: &HudAsset, text: &str, x: i32, y: i32) -> [i32; 2] {
+    [x - hud.font.width(text) / 2, y]
+}
+
+/// The health number below a drawn candle in mode 2, then the count beside an item
+/// owned more than once, as lines with their pen positions in 640×480 pixels.
+fn text_lines(
+    hud: &HudAsset,
+    health: Option<u8>,
+    item: Option<&HudItem>,
+) -> Vec<(String, [i32; 2])> {
+    let mut lines = Vec::new();
+    if let Some(health) = health {
+        let text = health.to_string();
+        let x = hud.candle[0] + i32::from(hud.candle_size[0]) / 2 - 5;
+        let at = centred(hud, &text, x, hud.candle[1] + i32::from(hud.candle_size[1]));
+        lines.push((text, at));
+    }
+    if let Some(item) = item.filter(|i| i.count > 1) {
+        let at = [
+            hud.pickup[0] + i32::from(item.size[0]) - 32,
+            hud.pickup[1] + 8,
+        ];
+        lines.push((item.count.to_string(), at));
+    }
+    lines
+}
+
+/// Renders the HUD text lines into one 640×480 overlay image.
+fn text_image(hud: &HudAsset, lines: &[(String, [i32; 2])]) -> Image {
+    let mut rgba = vec![0; 640 * 480 * 4];
+    for (text, at) in lines {
+        hud.font
+            .draw_shadowed(&mut rgba, 640, text, *at, hud.text_alpha);
+    }
+    Image::new(
+        Extent3d {
+            width: 640,
+            height: 480,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        rgba,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
 }
 
 #[allow(clippy::too_many_arguments)] // One Bevy system owning the overlay's input, state and nodes.
@@ -300,9 +545,10 @@ fn update(
     data: Res<Assets<HudAsset>>,
     state: Option<ResMut<HudState>>,
     viewport: Query<Entity, With<HudViewport>>,
-    mut candle: Query<&mut ImageNode, With<CandleImage>>,
-    layers: Query<(Entity, &HudLayer)>,
+    mut sprites: Query<(&HudSprite, &mut ImageNode, &mut Node, &mut Visibility)>,
+    text_layer: Query<Entity, With<HudText>>,
     (keys, time): (Res<ButtonInput<KeyCode>>, Res<Time>),
+    mut images: ResMut<Assets<Image>>,
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -311,120 +557,220 @@ fn update(
         return;
     };
     let Some(mut state) = state else {
-        let selected = hud.selected.or_else(|| hud.items.first().map(|i| i.id));
-        commands.insert_resource(HudState {
-            health: MAX_HEALTH,
-            candle_visible: hud.candle_mode != 0,
-            candle: Candle::default(),
-            selected,
-            count: None,
-            elapsed: 0.0,
-            bindings: crate::startup::MenuPreferences::load()
-                .ok()
-                .flatten()
-                .map_or(hud.bindings, |p| p.bindings),
-            // The exporter validates SNUFF.GXA's 81 frames.
-            candle_frames: (0..81)
-                .map(|f| assets.load(format!("cache://hud/candle-{f:02}.png")))
-                .collect(),
+        let load = |name: &str, count: usize| -> Vec<Handle<Image>> {
+            (0..count)
+                .map(|f| assets.load(format!("cache://hud/{name}-{f:02}.png")))
+                .collect()
+        };
+        // The exporter validates these frame counts.
+        let frames = Frames {
+            candle: load("candle", 81),
+            compass: load("compass", 32),
+            logbook: load("logbook", 32),
+            powerup: load("powerup", hud.powerup_sizes.len()),
+        };
+        let preferences = HudPreferences::load().unwrap_or_else(|e| {
+            warn!("hud: {e:#}");
+            None
         });
-        if hud.candle_mode != 0 {
-            commands.entity(viewport).with_children(|viewport| {
+        commands.insert_resource(HudState::new(hud, preferences, frames));
+        commands.entity(viewport).with_children(|viewport| {
+            for (z, sprite) in SPRITES.into_iter().enumerate() {
                 viewport.spawn((
-                    CandleImage,
+                    sprite,
                     ImageNode::default(),
-                    place(hud.candle, hud.candle_size),
+                    Node::default(),
+                    Visibility::Hidden,
+                    ZIndex(z as i32),
                 ));
-            });
-        }
-        if hud.candle_mode == 2 {
-            let text = &MAX_HEALTH.to_string();
-            let x = hud.candle[0] + i32::from(hud.candle_size[0]) / 2 - 5;
-            let at = [
-                x - hud.font.width(text) / 2,
-                hud.candle[1] + i32::from(hud.candle_size[1]),
-            ];
-            spawn_text(
-                &mut commands,
-                viewport,
-                HudLayer::Health,
-                &assets,
-                &hud.font,
-                text,
-                at,
-            );
-        }
+            }
+        });
         return;
     };
+    let state = &mut *state;
+
+    // Fixed, non-configurable keys: F8 candle mode, Tab walk mode, F7 auto-defend.
+    let mut toggled = false;
+    if keys.just_pressed(KeyCode::F8) {
+        state.candle_mode = (state.candle_mode + 1) % 3;
+        toggled = true;
+    }
+    for (notice, key) in [KeyCode::Tab, KeyCode::F7].into_iter().enumerate() {
+        if keys.just_pressed(key) {
+            let flag = if notice == 0 {
+                &mut state.walk_mode
+            } else {
+                &mut state.auto_defend
+            };
+            *flag = !*flag;
+            state.notices[notice] = NOTICE_TICKS;
+            toggled = true;
+        }
+    }
+    if toggled {
+        let preferences = HudPreferences {
+            candle_mode: state.candle_mode,
+            walk_mode: state.walk_mode,
+            auto_defend: state.auto_defend,
+        };
+        if let Err(e) = preferences.save() {
+            warn!("hud: {e:#}");
+        }
+    }
 
     // Preservation HUD facts: Glide swaps at 60 Hz; keep that animation rate independent of rendering.
     state.elapsed += time.delta_secs();
     let period = 1.0 / 60.0;
     while state.elapsed >= period {
         state.elapsed -= period;
-        let health = state.health;
-        state.candle.advance(health);
+        state.advance_frame();
     }
-    if let Ok(mut image) = candle.single_mut() {
-        image.image = state.candle_frames[usize::from(state.candle.frame)].clone();
+    state.ticks += time.delta_secs_f64() * TICKS_PER_SECOND;
+    let ticks = state.ticks.floor() as u32;
+    state.ticks -= f64::from(ticks);
+
+    // Candle.
+    if state.sword_drawn && state.lockout == 0 {
+        state.show_timer = SHOW_PINNED;
+    }
+    state.candle_visible = (state.show_timer != 0 || state.candle_mode != 0) && state.lockout == 0;
+    if state.candle_visible && state.show_timer < SHOW_PINNED {
+        state.show_timer = state.show_timer.saturating_sub(ticks);
     }
 
-    let previous_selection = state.selected;
+    // Item selection. A pending prompt blocks cycling unless the override runs; holding
+    // a cycle key starts the override (its first press does not cycle, inferred order).
     let bindings = state.bindings;
-    // Menu actions 723 and 724: next and previous item.
-    let pressed = |action: usize| {
-        crate::player::input::scan_key(bindings[action]).is_some_and(|k| keys.just_pressed(k))
-    };
-    let position = hud.items.iter().position(|i| Some(i.id) == state.selected);
-    let step = match (pressed(14), pressed(13)) {
-        (true, false) => hud.items.len().checked_sub(1),
-        (false, true) => Some(1),
-        _ => None,
-    };
-    if let (Some(position), Some(step)) = (position, step) {
-        state.selected = Some(hud.items[(position + step) % hud.items.len()].id);
-    }
-    let item = hud.items.iter().find(|i| Some(i.id) == state.selected);
-    let count = item.map(|i| i.count);
-    if state.selected == previous_selection
-        && state.count == count
-        && layers.iter().any(|(_, l)| matches!(l, HudLayer::Item))
-    {
-        return;
-    }
-    state.count = count;
-    for (entity, layer) in &layers {
-        if matches!(layer, HudLayer::Item) {
-            commands.entity(entity).despawn();
+    let scan = |action: usize| crate::player::input::scan_key(bindings[action]);
+    let pressed = |action: usize| scan(action).is_some_and(|k| keys.just_pressed(k));
+    let held = |action: usize| scan(action).is_some_and(|k| keys.pressed(k));
+    let blocked = state.prompt.is_some() && state.prompt_override == 0;
+    if !state.sword_drawn && !blocked {
+        // Menu actions 723 and 724: next and previous item.
+        let position = hud.items.iter().position(|i| Some(i.id) == state.selected);
+        let step = match (pressed(14), pressed(13)) {
+            (true, false) => hud.items.len().checked_sub(1),
+            (false, true) => Some(1),
+            _ => None,
+        };
+        if let (Some(position), Some(step)) = (position, step) {
+            state.selected = Some(hud.items[(position + step) % hud.items.len()].id);
         }
     }
-    let Some(item) = item else {
-        return;
-    };
-    commands.entity(viewport).with_children(|viewport| {
-        viewport
-            .spawn((HudLayer::Item, place([0, 0], [640, 480])))
-            .with_children(|layer| {
-                layer.spawn((
-                    ImageNode::new(assets.load(format!("cache://hud/item-{:02}.png", item.bitmap))),
-                    place(hud.pickup, item.size),
-                ));
-            });
-    });
-    if item.count > 1 {
-        let at = [
-            hud.pickup[0] + i32::from(item.size[0]) - 32,
-            hud.pickup[1] + 8,
-        ];
-        spawn_text(
-            &mut commands,
-            viewport,
-            HudLayer::Item,
-            &assets,
-            &hud.font,
-            &item.count.to_string(),
-            at,
+
+    // Item area: lockout 1 freezes it; the hold-off blanks it; a prompt replaces the icon.
+    let item = hud.items.iter().find(|i| Some(i.id) == state.selected);
+    let mut shown_item = None;
+    let mut prompt = None;
+    if state.lockout != 1 {
+        if state.prompt.is_none() {
+            state.prompt_override = 0;
+        } else if held(13) || held(14) {
+            state.prompt_override = hud.override_ticks;
+        } else {
+            state.prompt_override = state.prompt_override.saturating_sub(ticks);
+        }
+        if state.hold_off > 0 {
+            state.hold_off = state.hold_off.saturating_sub(ticks);
+        } else if state.prompt.is_some() && state.prompt_override == 0 {
+            prompt = state.prompt.clone();
+        } else if state.player_type != 1 {
+            shown_item = item;
+        }
+    }
+    // Scripts offer the prompt anew every frame.
+    state.prompt = None;
+    state.count = shown_item.map(|i| i.count);
+
+    // Compass: owning item 0 and its display flag.
+    let owns_compass = hud.items.iter().any(|i| i.id == 0 && i.count > 0);
+    state.compass_frame =
+        (state.lockout != 1 && state.player_type != 1 && owns_compass && state.compass_on).then(
+            || {
+                let world = state.world.and_then(|w| hud.world_compass.get(&w));
+                compass_frame(state.heading, world.copied().unwrap_or(0))
+            },
         );
+
+    for notice in &mut state.notices {
+        *notice = notice.saturating_sub(ticks);
+    }
+
+    for (sprite, mut image, mut node, mut visibility) in &mut sprites {
+        let frames = &state.frames;
+        let target =
+            match *sprite {
+                HudSprite::Compass => state.compass_frame.map(|f| {
+                    (
+                        frames.compass[usize::from(f)].clone(),
+                        hud.compass,
+                        hud.compass_size,
+                    )
+                }),
+                HudSprite::Candle => state.candle_visible.then(|| {
+                    let frame = usize::from(state.candle.frame);
+                    (frames.candle[frame].clone(), hud.candle, hud.candle_size)
+                }),
+                HudSprite::Logbook => state.logbook_frame.map(|f| {
+                    (
+                        frames.logbook[usize::from(f)].clone(),
+                        hud.logbook,
+                        hud.logbook_size,
+                    )
+                }),
+                HudSprite::Powerup(slot) => state.powerups[slot]
+                    .filter(|_| state.lockout == 0)
+                    .map(|(_, f)| {
+                        let f = usize::from(f);
+                        (
+                            frames.powerup[f].clone(),
+                            hud.powerup_slots[slot],
+                            hud.powerup_sizes[f],
+                        )
+                    }),
+                HudSprite::Item => shown_item.map(|item| {
+                    let path = format!("cache://hud/item-{:02}.png", item.bitmap);
+                    (assets.load(path), hud.pickup, item.size)
+                }),
+            };
+        let Some((frame, at, size)) = target else {
+            visibility.set_if_neq(Visibility::Hidden);
+            continue;
+        };
+        if image.image != frame {
+            image.image = frame;
+        }
+        node.set_if_neq(place(at, size));
+        visibility.set_if_neq(Visibility::Inherited);
+    }
+
+    // Text drawn last: none of its lines overlaps a later bitmap in the original order.
+    let health = (state.candle_visible && state.candle_mode == 2).then_some(state.health);
+    let mut text = text_lines(hud, health, shown_item);
+    for (notice, y) in [(0, 10), (1, 30)] {
+        if state.notices[notice] > 0 {
+            let on = [state.walk_mode, state.auto_defend][notice];
+            let line = hud.notices[notice][usize::from(on)].clone();
+            text.push((line.clone(), centred(hud, &line, 320, y)));
+        }
+    }
+    if let Some(prompt) = prompt {
+        text.push((prompt, hud.prompt));
+    }
+    if text != state.text {
+        for entity in &text_layer {
+            commands.entity(entity).despawn();
+        }
+        if !text.is_empty() {
+            let image = images.add(text_image(hud, &text));
+            commands.entity(viewport).with_child((
+                HudText,
+                ImageNode::new(image),
+                place([0, 0], [640, 480]),
+                ZIndex(SPRITES.len() as i32),
+            ));
+        }
+        state.text = text;
     }
 }
 
@@ -470,27 +816,128 @@ mod tests {
     }
 
     #[test]
-    fn text_advances_by_width_plus_one_and_spaces_add_the_exclamation_width() {
-        let glyph = |width| {
-            Some(HudGlyph {
-                width,
-                height: 1,
-                offset: [1, 2],
-            })
-        };
-        let font = HudFont {
-            start: 32,
-            glyphs: vec![glyph(2), glyph(8), None, glyph(5)],
-            font_sel: [255, 255],
-        };
-        assert_eq!(font.width(" !\"#"), 11 + 9 + 6);
-        let placed: Vec<_> = font
-            .layout(" #", 10, 20)
+    fn compass_frames_follow_the_published_table() {
+        let frames: Vec<_> = [(0, 0), (1985, 0), (2047, 0), (1984, 0), (1024, 0), (65, 0)]
             .into_iter()
-            .map(|(ch, at, _)| (ch, at))
+            .chain([(1, 0), (64, 0), (0, 2000), (1000, 2000)])
+            .map(|(heading, world)| compass_frame(heading, world))
             .collect();
-        assert_eq!(placed, [(b' ', [11, 22]), (b'#', [22, 22])]);
+        assert_eq!(frames, [0, 0, 0, 1, 16, 30, 31, 31, 0, 17]);
     }
+
+    #[test]
+    fn powerup_slots_fill_then_alternate_and_clear_by_id() {
+        let mut state = HudState::new(
+            &asset(2),
+            None,
+            Frames {
+                powerup: vec![default(); 2],
+                ..default()
+            },
+        );
+        state.show_bitmap(0, 0).unwrap();
+        state.show_bitmap(1, 0).unwrap();
+        assert_eq!(
+            state.powerups,
+            [Some((0, 0)), None],
+            "a shown frame is kept"
+        );
+        state.show_bitmap(1, 1).unwrap();
+        assert_eq!(state.powerups, [Some((0, 0)), Some((1, 1))]);
+        state.unshow_bitmap(0);
+        state.show_bitmap(0, 0).unwrap();
+        assert_eq!(state.powerups, [Some((0, 0)), Some((1, 1))]);
+        assert!(state.show_bitmap(2, 0).is_err() && state.show_bitmap(0, 2).is_err());
+    }
+
+    #[test]
+    fn show_timer_and_logbook_follow_their_triggers() {
+        let mut state = HudState::new(&asset(0), None, Frames::default());
+        state.set_health(80);
+        assert_eq!(state.show_timer, SHOW_TICKS);
+        state.show_timer = SHOW_PINNED;
+        state.set_health(70);
+        assert_eq!(state.show_timer, SHOW_PINNED, "a pinned timer is kept");
+        state.logbook_entry();
+        for _ in 0..31 {
+            state.advance_frame();
+        }
+        assert_eq!(state.logbook_frame, Some(31));
+        state.logbook_entry();
+        state.advance_frame();
+        assert_eq!(state.logbook_frame, None, "plays once, 32 frames");
+    }
+
+    #[test]
+    fn activation_fires_with_use_and_holds_off() {
+        let mut state = HudState::new(&asset(2), None, Frames::default());
+        assert!(!state.activate("Open", false));
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
+        state.prompt = None;
+        assert!(state.activate("Open", true));
+        assert_eq!(state.hold_off, ACTIVATION_HOLD_OFF);
+        assert!(!state.activate("Open", false), "hold-off blocks prompts");
+        state.deactivate();
+        state.set_sword_drawn(true);
+        assert!(
+            !state.activate("Open", false),
+            "a drawn sword blocks prompts"
+        );
+    }
+
+    #[test]
+    fn text_lines_centre_health_under_the_candle_and_place_counts() {
+        let digit = cyrus_text::Glyph {
+            enabled: true,
+            width: 9,
+            ..default()
+        };
+        let mut hud = asset(2);
+        hud.font = cyrus_text::Font {
+            start: 48,
+            glyphs: vec![digit; 10],
+            ..default()
+        };
+        let item = HudItem {
+            id: 2,
+            bitmap: 26,
+            count: 53,
+            size: [40, 30],
+        };
+        // "100" is 30 wide; the candle's centre minus 5 is 12 + 25 - 5 = 32.
+        assert_eq!(
+            text_lines(&hud, Some(100), Some(&item)),
+            [("100".into(), [17, 106]), ("53".into(), [20, 394])]
+        );
+        assert!(text_lines(&hud, None, Some(&HudItem { count: 1, ..item })).is_empty());
+    }
+
+    fn asset(candle_mode: u8) -> HudAsset {
+        HudAsset {
+            candle_mode,
+            candle: [12, 8],
+            candle_size: [50, 98],
+            pickup: [12, 386],
+            prompt: [12, 436],
+            override_ticks: 24,
+            compass: [546, 396],
+            compass_size: [73, 65],
+            world_compass: BTreeMap::new(),
+            powerup_slots: [[576, 6], [576, 96]],
+            powerup_sizes: vec![[39, 61], [54, 61]],
+            logbook: [540, 20],
+            logbook_size: [73, 58],
+            walk_mode: false,
+            auto_defend: true,
+            notices: default(),
+            items: vec![],
+            selected: None,
+            bindings: [0; 15],
+            font: default(),
+            text_alpha: [255, 199],
+        }
+    }
+
     #[test]
     fn changing_between_equal_count_items_updates_the_icon() {
         let mut app = App::new();
@@ -501,35 +948,20 @@ mod tests {
             .add_systems(Update, update);
         let mut bindings = [0; 15];
         bindings[13] = 0x34;
+        let item = |id| HudItem {
+            id,
+            bitmap: id,
+            count: 1,
+            size: [1, 1],
+        };
         let hud = app
             .world_mut()
             .resource_mut::<Assets<HudAsset>>()
             .add(HudAsset {
-                candle_mode: 0,
-                candle: [0, 0],
-                candle_size: [1, 1],
-                pickup: [0, 0],
-                items: vec![
-                    HudItem {
-                        id: 1,
-                        bitmap: 1,
-                        count: 1,
-                        size: [1, 1],
-                    },
-                    HudItem {
-                        id: 2,
-                        bitmap: 2,
-                        count: 1,
-                        size: [1, 1],
-                    },
-                ],
+                items: vec![item(1), item(2)],
                 selected: Some(1),
                 bindings,
-                font: HudFont {
-                    start: 0,
-                    glyphs: vec![],
-                    font_sel: [255, 255],
-                },
+                ..asset(0)
             });
         app.world_mut().insert_resource(HudHandle(hud));
         app.world_mut().spawn(HudViewport);
@@ -545,12 +977,13 @@ mod tests {
             .world()
             .resource::<AssetServer>()
             .load("cache://hud/item-02.png");
-        let images: Vec<_> = app
+        let (image, visibility) = app
             .world_mut()
-            .query::<&ImageNode>()
+            .query::<(&HudSprite, &ImageNode, &Visibility)>()
             .iter(app.world())
-            .map(|node| node.image.clone())
-            .collect();
-        assert_eq!(images, [expected]);
+            .find(|(sprite, ..)| **sprite == HudSprite::Item)
+            .map(|(_, node, visibility)| (node.image.clone(), *visibility))
+            .unwrap();
+        assert_eq!((image, visibility), (expected, Visibility::Inherited));
     }
 }

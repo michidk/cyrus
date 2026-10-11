@@ -19,23 +19,75 @@ pub struct GroundSupport {
 /// A model contact after placement transformation and integer probe conversion.
 pub struct ModelSupport {
     pub model: usize,
+    pub face: usize,
     pub support: GroundSupport,
     /// Stored segment fraction scaled by 32,768, unchanged by the integer adapter.
     pub rank: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 /// Identity of the selected surface, retained independently of its height.
 pub enum SupportSource {
     Terrain,
-    Model(usize),
+    Model { model: usize, face: usize },
 }
 
 /// Selected support and its identity for subsequent actor/contact state updates.
 #[derive(Debug, PartialEq)]
-pub struct SelectedSupport {
-    pub source: SupportSource,
-    pub support: GroundSupport,
+pub enum SelectedSupport {
+    Primary {
+        source: SupportSource,
+        support: GroundSupport,
+    },
+    /// Secondary sphere support retains the actor origin instead of using a plane height.
+    Fallback {
+        model: usize,
+        face: usize,
+        normal: [i32; 3],
+        actor_height: i64,
+    },
+}
+
+impl SelectedSupport {
+    /// Identity used for texture/surface lookup and supporting-model state.
+    pub fn source(&self) -> SupportSource {
+        match self {
+            Self::Primary { source, .. } => *source,
+            Self::Fallback { model, face, .. } => SupportSource::Model {
+                model: *model,
+                face: *face,
+            },
+        }
+    }
+
+    /// Actor origin in runtime units; fallback retains even its fractional Y bits.
+    pub fn actor_height(&self, positive_y_extent: i32, standing_height: i32) -> i64 {
+        match self {
+            Self::Primary { support, .. } => {
+                support.actor_height(positive_y_extent, standing_height)
+            }
+            Self::Fallback { actor_height, .. } => *actor_height,
+        }
+    }
+
+    /// Stored support class, including the original collision-attribute steep-ground override.
+    pub fn classification(&self, collision_attribute: u8) -> u8 {
+        let class = match self {
+            Self::Primary { support, .. } => support.classification(),
+            Self::Fallback { normal, .. } => classify_normal(normal[1]),
+        };
+        if class == 2 && collision_attribute & 2 == 0 {
+            4
+        } else {
+            class
+        }
+    }
+
+    /// Final forward admission after the support updater has run.
+    /// `surface_veto` is the updater's retained shared value, not a recomputed material flag.
+    pub fn allows_forward(&self, collision_attribute: u8, surface_veto: i32) -> bool {
+        self.classification(collision_attribute) != 2 && surface_veto != 1
+    }
 }
 
 /// Ordinary vertical probe in integer map units. Engine Y increases downward.
@@ -43,6 +95,42 @@ pub struct GroundProbe {
     start: [i32; 3],
     end: [i32; 3],
     distance: i32,
+}
+
+/// Selected-player secondary sphere, used only after the primary support query misses.
+pub struct FallbackProbe {
+    pub(crate) center: [i32; 3],
+    pub(crate) radius: f32,
+    pub(crate) actor_height: i64,
+}
+
+impl FallbackProbe {
+    /// Position has eight fractional bits; collision offsets/extents use map units.
+    /// `support_history_active` means the original shared support counter is nonzero.
+    pub fn new(
+        position: [i64; 3],
+        center_offset: [i32; 3],
+        positive_y_extent: i32,
+        support_history_active: bool,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            positive_y_extent >= 0,
+            "fallback probe: negative positive Y extent"
+        );
+        let mut center = [0; 3];
+        for axis in 0..3 {
+            let mut coordinate = (position[axis] >> 8) + i64::from(center_offset[axis]);
+            if axis == 1 {
+                coordinate += i64::from(positive_y_extent) - 3;
+            }
+            center[axis] = i32::try_from(coordinate)?;
+        }
+        Ok(Self {
+            center,
+            radius: if support_history_active { 14.0 } else { 10.0 },
+            actor_height: position[1],
+        })
+    }
 }
 
 impl GroundProbe {
@@ -70,6 +158,34 @@ impl GroundProbe {
         (self.start, self.end)
     }
 
+    /// Select the proposed-position surface for the separate forward slope check.
+    /// Uses distance from segment midpoint, preserving the first equal model contact.
+    pub fn slope_surface(
+        &self,
+        terrain: Option<GroundSupport>,
+        models: &[ModelSupport],
+    ) -> Option<GroundSupport> {
+        let center = i64::from(self.start[1]) + i64::from(self.distance);
+        let mut rank = 999_999;
+        let mut height = 9_999_999;
+        let mut selected = None;
+        for model in models {
+            let distance = i64::from(model.rank).abs_diff(16_384);
+            if matches!(model.support.classification(), 2 | 4) && distance < rank {
+                rank = distance;
+                height = model.support.height as i64;
+                selected = Some(model.support);
+            }
+        }
+        if let Some(support) = terrain.filter(|support| support.height <= f64::from(self.end[1])) {
+            let distance = (support.height - center as f64).trunc().abs();
+            if distance < height.abs_diff(center) as f64 {
+                selected = Some(support);
+            }
+        }
+        selected
+    }
+
     /// Selects from caller-admitted model contacts in original traversal order.
     /// A missing result still requires the original secondary probe/falling response.
     pub fn select(
@@ -86,7 +202,7 @@ impl GroundProbe {
                 let delta = support.height.trunc() as i64 - i64::from(self.start[1]);
                 (((16_777_216 / (2 * i64::from(self.distance))) * delta) >> 8) as u32
             };
-            selected = Some(SelectedSupport {
+            selected = Some(SelectedSupport::Primary {
                 source: SupportSource::Terrain,
                 support,
             });
@@ -94,8 +210,11 @@ impl GroundProbe {
         for model in models {
             if matches!(model.support.classification(), 2 | 4) && model.rank <= rank {
                 rank = model.rank;
-                selected = Some(SelectedSupport {
-                    source: SupportSource::Model(model.model),
+                selected = Some(SelectedSupport::Primary {
+                    source: SupportSource::Model {
+                        model: model.model,
+                        face: model.face,
+                    },
                     support: model.support,
                 });
             }
@@ -107,12 +226,7 @@ impl GroundProbe {
 impl GroundSupport {
     /// Original contact classification. A steep surface is not ordinary walkable ground.
     pub fn classification(&self) -> u8 {
-        match self.normal[1] {
-            ..=-161 => 4,
-            -160..=-42 => 2,
-            -41..=160 => 1,
-            _ => 8,
-        }
+        classify_normal(self.normal[1])
     }
 
     /// Actor origin in runtime units with eight fractional bits.
@@ -120,6 +234,15 @@ impl GroundSupport {
     pub fn actor_height(&self, positive_y_extent: i32, standing_height: i32) -> i64 {
         (self.height.trunc() as i64 - i64::from(positive_y_extent) + i64::from(standing_height))
             * 256
+    }
+}
+
+fn classify_normal(y: i32) -> u8 {
+    match y {
+        ..=-161 => 4,
+        -160..=-42 => 2,
+        -41..=160 => 1,
+        _ => 8,
     }
 }
 

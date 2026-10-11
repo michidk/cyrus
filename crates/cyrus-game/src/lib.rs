@@ -27,7 +27,6 @@ pub mod player;
 pub mod scene;
 pub mod settings;
 mod sky;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod sound;
 pub mod sound_bank;
 #[cfg(not(target_arch = "wasm32"))]
@@ -38,6 +37,9 @@ pub mod subtitles;
 mod water;
 
 use bevy::prelude::*;
+
+/// Engine-to-export unit divisor used by the preservation crate's GLB export.
+pub const ENGINE_UNIT_SCALE: f32 = 20.0;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
@@ -72,3 +74,6 @@ impl Plugin for GamePlugin {
             ));
     }
 }
+
+/// Faithful terrain lighting and shading normals.
+pub mod lighting;

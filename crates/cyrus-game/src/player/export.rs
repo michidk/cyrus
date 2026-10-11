@@ -58,17 +58,41 @@ pub(crate) fn export(
     } else {
         (None, None)
     };
+    let keys_path =
+        crate::scene::find_file(root, "KEYS.INI").context("player export: missing KEYS.INI")?;
+    let keys_text = std::fs::read_to_string(&keys_path)
+        .with_context(|| format!("world {world}: read {}", keys_path.display()))?;
+    let keyboard_codes = rgpre::import::keys_ini::KeysIni::parse(&keys_text)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| format!("world {world}: parse {}", keys_path.display()))?
+        .keyboard_codes();
+    let surface_path = crate::scene::find_file(root, "SURFACE.INI")
+        .context("player export: missing SURFACE.INI")?;
+    let surfaces = rgpre::import::surface_ini::SurfaceAssignments::parse(
+        &std::fs::read_to_string(&surface_path)
+            .with_context(|| format!("world {world}: read {}", surface_path.display()))?,
+    )
+    .map_err(anyhow::Error::msg)
+    .with_context(|| format!("world {world}: parse {}", surface_path.display()))?;
+    let mut collision = collision::export(root, map, world)
+        .with_context(|| format!("world {world}: collision export"))?;
+    collision.texture_surfaces = Some(
+        (0..=u16::MAX)
+            .filter_map(|key| {
+                let surface = surfaces.surface(key);
+                (surface != 0).then_some((key, surface))
+            })
+            .collect(),
+    );
     let data = SceneData {
         version: 2,
+        keyboard_codes: Some(keyboard_codes),
         world,
         settings,
         definition,
         heights,
         water,
-        collision: Some(
-            collision::export(root, map)
-                .with_context(|| format!("world {world}: collision export"))?,
-        ),
+        collision: Some(collision),
     };
     let bytes = serde_json::to_vec(&data)
         .with_context(|| format!("world {world}: serialize player inputs"))?;

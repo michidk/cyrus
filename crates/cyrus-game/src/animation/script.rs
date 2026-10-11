@@ -1,5 +1,6 @@
 //! Explicit main-script stages from preservation's SOUP and animation contracts.
-use super::{ActorAnimation, Animations};
+use super::sequence::SoundDispatcher;
+use super::{ActorAnimation, AnimationSound, Animations};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -140,10 +141,30 @@ impl AnimationScript {
         animation: &mut ActorAnimation,
         ticks: u32,
     ) -> anyhow::Result<Option<u32>> {
+        self.advance_dispatch(animation, ticks, &mut None)
+    }
+
+    /// Runs an eligible script stage with the actor's existing synchronous sound handler.
+    /// Immediate task requests share the same tick and handle lifecycle as ordinary advances.
+    pub fn advance_with_sounds(
+        &mut self,
+        animation: &mut ActorAnimation,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.advance_dispatch(animation, ticks, &mut Some(sounds))
+    }
+
+    pub(super) fn advance_dispatch(
+        &mut self,
+        animation: &mut ActorAnimation,
+        ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         if let Some(message) = &self.failure {
             anyhow::bail!("{message}");
         }
-        let result = self.advance_stage(animation, ticks);
+        let result = self.advance_stage(animation, ticks, sounds);
         if let Err(error) = &result {
             let message = format!("{} instruction {}: {error:#}", self.context, self.cursor);
             self.failure = Some(message.clone());
@@ -156,6 +177,7 @@ impl AnimationScript {
         &mut self,
         animation: &mut ActorAnimation,
         ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
         if let Some(task) = &mut self.task {
             if task.started {
@@ -164,7 +186,7 @@ impl AnimationScript {
                 }
                 self.task = None;
             } else {
-                return task.invoke(animation, ticks);
+                return task.invoke(animation, ticks, sounds);
             }
         }
         let step = self
@@ -195,7 +217,7 @@ impl AnimationScript {
                     count: *count as u8,
                     started: false,
                 };
-                let frame = task.invoke(animation, ticks)?;
+                let frame = task.invoke(animation, ticks, sounds)?;
                 self.task = Some(task);
                 self.cursor = step.next;
                 Ok(frame)
@@ -214,13 +236,14 @@ impl BlockingTask {
         &mut self,
         animation: &mut ActorAnimation,
         ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
         if animation.current_group() == Some(self.group) {
             animation.set_loop_count(self.count)?;
             self.started = true;
             Ok(None)
         } else {
-            animation.request(self.group, 0, ticks)
+            animation.request_dispatch(self.group, 0, ticks, sounds)
         }
     }
 }

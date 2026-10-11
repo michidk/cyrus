@@ -24,6 +24,8 @@ pub struct Environment {
     pub fog_table: [[u8; 4]; 16],
     /// Terrain water mask and original wave parameters, if declared.
     pub water: Option<Water>,
+    /// Original per-world terrain shading inputs, absent for worlds without terrain.
+    pub terrain_lighting: Option<crate::lighting::TerrainLighting>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -103,6 +105,26 @@ impl Environment {
                 sun.center.iter().all(|v| v.is_finite())
                     && sun.half_size.iter().all(|v| v.is_finite() && *v > 0.0),
                 "invalid sun geometry"
+            );
+        }
+        if let Some(light) = &self.terrain_lighting {
+            anyhow::ensure!(
+                (2..=256).contains(&light.side)
+                    && light
+                        .ambient
+                        .iter()
+                        .chain(&light.directional)
+                        .chain(&light.direction)
+                        .all(|v| v.is_finite())
+                    && (Vec3::from(light.direction) == Vec3::ZERO
+                        || (Vec3::from(light.direction).length_squared() - 1.0).abs() < 0.00001),
+                "invalid terrain lighting grid, strengths or direction"
+            );
+            anyhow::ensure!(
+                self.water
+                    .as_ref()
+                    .is_none_or(|water| water.side == light.side),
+                "terrain lighting/water grid mismatch"
             );
         }
         if let Some(water) = &self.water {
@@ -328,6 +350,7 @@ mod tests {
             clipping: [7.0, 3800.0],
             fog_table: [[0; 4]; 16],
             water: None,
+            terrain_lighting: None,
         });
         let indoor = environments.add(Environment {
             sky: None,
@@ -335,6 +358,7 @@ mod tests {
             clipping: [7.0, 3800.0],
             fog_table: [[0; 4]; 16],
             water: None,
+            terrain_lighting: None,
         });
         app.insert_resource(environments)
             .insert_resource(EnvironmentRequest(outdoor.clone()))

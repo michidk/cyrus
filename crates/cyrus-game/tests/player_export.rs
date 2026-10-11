@@ -21,10 +21,27 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     let scene =
         PlayerScene::decode(&std::fs::read(path.with_extension("player")).unwrap()).unwrap();
     assert!(scene.unavailable.is_none(), "{:?}", scene.unavailable);
+    let keys = rgpre::import::keys_ini::KeysIni::parse(
+        &std::fs::read_to_string(install.root.join("KEYS.INI")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(scene.keyboard_codes, Some(keys.keyboard_codes()));
     assert_eq!(scene.settings.standing_height, -2);
     assert_eq!(scene.collision.placements.len(), 1691);
     assert_eq!(scene.collision.models["PLANT000"].flags, 2);
-    assert!(scene.collision.unsupported["BARREL"].contains("conflicting ROB"));
+    assert_eq!(scene.collision.models["BARREL"].flags, 1);
+    assert!(scene.collision.unsupported.is_empty());
+    let surfaces = scene.collision.texture_surfaces.as_ref().unwrap();
+    let source = rgpre::import::surface_ini::SurfaceAssignments::parse(
+        &std::fs::read_to_string(install.root.join("surface.ini")).unwrap(),
+    )
+    .unwrap();
+    for key in 0..=u16::MAX {
+        assert_eq!(
+            surfaces.get(&key).copied().unwrap_or(0),
+            source.surface(key)
+        );
+    }
     let player = scene.definition.unwrap();
     assert_eq!(player.forward_walk, 8);
     let support = scene

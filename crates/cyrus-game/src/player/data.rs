@@ -1,5 +1,8 @@
 //! Player-owned scene inputs shared by native and browser runtimes.
-use super::{collision_data::CollisionScene, definition::PlayerDefinition, ground::TerrainGround};
+use super::{
+    collision_data::CollisionScene, collision_world::StaticCollision, definition::PlayerDefinition,
+    ground::TerrainGround,
+};
 use anyhow::Context;
 use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::{Asset, Handle, Resource, TypePath};
@@ -20,10 +23,14 @@ pub struct MovementSettings {
 #[derive(Asset, TypePath)]
 pub struct PlayerScene {
     pub world: u32,
+    /// Installed keyboard defaults, independent of per-user menu preferences.
+    pub keyboard_codes: Option<[u8; 8]>,
     pub settings: MovementSettings,
     pub definition: Option<PlayerDefinition>,
     pub terrain: Option<TerrainGround>,
     pub collision: CollisionScene,
+    /// Prepared original polygons for runtime instance queries.
+    pub static_collision: StaticCollision,
     /// Why the installed player definition cannot be used in this world.
     pub unavailable: Option<String>,
 }
@@ -43,6 +50,7 @@ pub struct PlayerSceneRequest(pub Handle<PlayerScene>);
 pub(crate) struct SceneData {
     pub version: u32,
     pub world: u32,
+    pub keyboard_codes: Option<[u8; 8]>,
     pub settings: MovementSettings,
     pub definition: serde_json::Value,
     pub heights: Option<Vec<i16>>,
@@ -67,6 +75,8 @@ impl SceneData {
         collision
             .validate()
             .with_context(|| format!("world {} collision", self.world))?;
+        let static_collision = StaticCollision::new(&collision)
+            .with_context(|| format!("world {} static collision", self.world))?;
         let terrain = match (self.heights, self.water) {
             (Some(heights), Some(water)) => Some(
                 TerrainGround::new(heights, water)
@@ -84,10 +94,12 @@ impl SceneData {
         };
         Ok(PlayerScene {
             world: self.world,
+            keyboard_codes: self.keyboard_codes,
             settings: self.settings,
             definition,
             terrain,
             collision,
+            static_collision,
             unavailable,
         })
     }

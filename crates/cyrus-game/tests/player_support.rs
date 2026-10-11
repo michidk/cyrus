@@ -88,14 +88,18 @@ fn original_model_support_replaces_terrain_and_preserves_actor_height() {
         .select(
             Some(support(-287.5)),
             &[ModelSupport {
+                face: 3,
                 model: 7,
                 support: support(-325.0),
                 rank: 17_039,
             }],
         )
         .unwrap();
-    assert_eq!(selected.source, SupportSource::Model(7));
-    assert_eq!(selected.support.actor_height(61, -2), -99_328);
+    assert_eq!(
+        selected.source(),
+        SupportSource::Model { model: 7, face: 3 }
+    );
+    assert_eq!(selected.actor_height(61, -2), -99_328);
 }
 
 #[test]
@@ -103,16 +107,19 @@ fn terrain_rank_truncates_height_and_equal_model_ranks_keep_last_contact() {
     let probe = GroundProbe::new([0, -327 * 256, 0], 0, 50).unwrap();
     let candidates = [
         ModelSupport {
+            face: 3,
             model: 1,
             support: support(-323.0),
             rank: 17_650,
         },
         ModelSupport {
+            face: 3,
             model: 2,
             support: support(-323.0),
             rank: 17_650,
         },
         ModelSupport {
+            face: 3,
             model: 3,
             support: GroundSupport {
                 height: -350.0,
@@ -125,12 +132,12 @@ fn terrain_rank_truncates_height_and_equal_model_ranks_keep_last_contact() {
         probe
             .select(Some(support(-350.5)), &candidates)
             .unwrap()
-            .source,
-        SupportSource::Model(2),
+            .source(),
+        SupportSource::Model { model: 2, face: 3 },
     );
     assert!(probe.select(Some(support(-276.0)), &[]).is_none());
     assert_eq!(
-        probe.select(Some(support(-400.0)), &[]).unwrap().source,
+        probe.select(Some(support(-400.0)), &[]).unwrap().source(),
         SupportSource::Terrain
     );
     assert!(GroundProbe::new([0; 3], 0, 0).is_err());
