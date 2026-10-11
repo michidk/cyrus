@@ -37,7 +37,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | --- | --- | --- |
 | Step 1: actor and mesh animation | Load All World Animations Correctly, `animation-playback` | Native cue wiring, actor eligibility, clock, and full script scheduling; type-1 core integrated |
 | Step 2: player | Investigate Player Controller Design, `player-parity` | Active-world archive selection and runtime collision queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
-| Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Runtime filtering state and sun alpha rounding |
+| Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Land the tested cloud-filtering correction; capture sun blend/alpha output and filtering across world/menu transitions; integrated visual comparison |
 | Step 1: terrain lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Implement the user-resumed terrain-only scope from established coordinates/live inputs |
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Every documented overlay element is implemented; gameplay must still feed health, sword, lockout, player type, heading/world, compass flag, `Activate`/`ShowBitmap`/logbook events and walk/auto-defend behaviour |
@@ -78,6 +78,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [ ] Wire the HUD inputs. Only F8 (candle mode), Tab (walk mode notice) and F7 (auto-defend notice) work today, persisted in `cyrus-config/hud.json` / localStorage `cyrus-hud`. No system yet calls `HudState::set_health`, `set_sword_drawn`, `activate`/`deactivate`, `show_bitmap`/`unshow_bitmap` or `logbook_entry`, or sets `lockout`, `player_type`, `heading`, `world` or `compass_on`; so the mode-0 show timer, sword-lock item cycling, compass, power-up slots, logbook icon and activation prompts never appear in play. The player does not consume walk mode or auto-defend. The inventory screen (candle pinned at 50), save-game storage of the timers, slots and compass flag, and the unknown player states that suppress prompts remain unsupported.
 - [ ] Screenshot-compare every HUD element and notice with the original; compass frame 0 direction, whether receiving item 0 turns the compass on, and the original in-world frame rate are unverified.
 - [ ] Repeat inspector/HUD/sky runtime checks in the browser; confirm served browser assets are current and cache reuse/invalidation works.
+  **Verified:** the restored preview passes local/public HTTP health checks and serves the engine, menu and scene assets. Its release build uses `bdff0f5` plus the pending cloud-filtering patch, before the later shared-text/HUD changes. Startup and START browser automation timed out, so rendered output and interaction remain unverified. Rebuild from the integrated revision before checking those newer changes.
 
 ## Done
 
@@ -384,6 +385,13 @@ formats and gameplay scope unchanged during this refactor.
 
 - [x] Load and export worlds with their terrain, textures, and palettes.
 - [ ] Compare placement, scale, lighting, sky, transparency, and visibility with the original.
+- [x] Faithful sky plane, tilt, sun and synchronized scrolling; original fog/range defaults; independent Water, Fog and Sky fidelity buttons and F1 render-distance override.
+- [x] Modern presentation keeps installed artwork: camera-centered sky, extended distance with distant fog, and smoother water waves, texture ripples and sheen. These are optional artistic effects, not original-game parity claims.
+- [ ] **In progress: sky filtering.** Sun bilinear selection is published in [preservation PR #40](https://github.com/michidk/redguard-preservation/pull/40). Initial START cloud filtering state and software Voodoo interpolation are published on [the filtering evidence branch](https://github.com/michidk/redguard-preservation/compare/main...docs/sky-filter-precision); merge remains pending. The Faithful cloud correction is implemented locally and included in the preview, but is not committed to cyrus. **Verified:** isolated GPU output checks cover interpolation, wrapping and sRGB conversion, including a deliberately incorrect variant that fails; the browser release build passes. Full integration gates and rendered comparison remain open.
+- [ ] Capture the original sun's active blend state and translucent edge output, then implement any warranted alpha-rounding correction. **Unknown:** exact sun-edge parity; entering the sun routine without a visible draw does not establish it.
+- [ ] Check sky/sun filtering after menu and world transitions, plus other texture filtering and physical-hardware color precision. The initial START observation does not establish every draw state.
+- [ ] Compare native and browser sky tilt, scroll direction/phase, sun motion, above-plane flycam behavior, fog and clipping against the same original-game view. Isolated shader checks cover plane crossing, Modern camera-translation invariance and fog/dither arithmetic; they do not establish integrated visual parity.
+- [ ] Verify Water/Fog/Sky switching and F1 render-distance editing/reset in the current integrated browser build. Retain original defaults in Faithful and confirm the Modern sky stays camera-centered during translation.
 - [x] Retain actor animation metadata, original section payloads and model frames in native/WASM assets. **Verified:** all 29 installed worlds export without unresolved animation models; native asset tests and WASM compilation pass.
 - [x] Apply explicit i32 model poses and forward groups using supplied simulation ticks. **Verified:** 17 native animation contracts, installed FLAG2 GLB deformation/restoration, and WASM compilation.
 - [ ] Play actor and mesh-frame animations, including loops, exit sequences, queued transitions, and animation event cues.
