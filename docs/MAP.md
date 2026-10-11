@@ -33,8 +33,8 @@ module where it is defined and regenerate.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
 - `src/player/definition.rs` — Player attributes and upright collision bounds from preservation's RGM metadata.
 - `src/player/export.rs` — Native extraction of player inputs through preservation's parsers.
-- `src/player/geometry.rs` — Sphere-to-polygon contacts from preservation's engine/player.md.
-- `src/player/ground.rs` — Terrain support in original map coordinates, per preservation's engine/player.md.
+- `src/player/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
+- `src/player/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
 - `src/player/motion.rs` — Original heading projection, per preservation's player and water engine specs.
 - `src/player/placement.rs` — Marker-based entry from preservation's player and RGM documentation.

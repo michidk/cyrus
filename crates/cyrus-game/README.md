@@ -138,6 +138,14 @@ translation, and resets after an update without accepted forward movement.
 Gameplay does not yet drive these cores: animation eligibility, collision, and
 simulation timing remain incomplete.
 
+**Verified:** the independent polygon-segment and ground-support selection cores
+follow [preservation PR #27](https://github.com/michidk/redguard-preservation/pull/27).
+They retain distinct terrain/model rank scales and replace earlier equal-ranked
+contacts. Callers still supply admission, transforms and traversal order; these
+cores do not activate gameplay collision. Nearest-even segment conversion follows
+the documented default rounding evidence; a live halfway-boundary comparison
+remains unchecked.
+
 World exports also write a `.player` sidecar containing installed movement
 settings, named CYRUS attributes and bounds, decoded terrain heights, and the
 water mask. Native, headless, and browser entry load the same validated asset.
