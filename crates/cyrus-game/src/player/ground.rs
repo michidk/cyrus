@@ -32,6 +32,40 @@ pub enum SupportSource {
     Model { model: usize, face: usize },
 }
 
+/// Shared fallback history, including metadata retained by a failed support query.
+/// Seed from the caller's runtime state; actor activation and reset are separate.
+pub struct SupportHistory {
+    ticks: u32,
+    metadata: u8,
+}
+
+impl SupportHistory {
+    pub fn new(ticks: u32, metadata: u8) -> Self {
+        Self { ticks, metadata }
+    }
+
+    /// Remaining nominal ticks, used to select the fallback sphere radius.
+    pub fn ticks(&self) -> u32 {
+        self.ticks
+    }
+
+    /// Run once at the designated player's admitted update, before animation/movement.
+    pub fn begin_player_update(&mut self, nominal_ticks: u32) {
+        self.ticks = self.ticks.saturating_sub(nominal_ticks);
+    }
+
+    /// Finish any actor's support query. `None` is a miss, which retains metadata.
+    /// Temporary forward probes also commit these changes when position is restored.
+    pub fn finish_query(&mut self, metadata: Option<u8>, designated_player: bool) {
+        if let Some(metadata) = metadata {
+            self.metadata = metadata;
+        }
+        if designated_player && self.metadata & 4 != 0 {
+            self.ticks = 12;
+        }
+    }
+}
+
 /// Selected support and its identity for subsequent actor/contact state updates.
 #[derive(Debug, PartialEq)]
 pub enum SelectedSupport {

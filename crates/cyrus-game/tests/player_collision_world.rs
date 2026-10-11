@@ -32,6 +32,71 @@ fn placement(id: u32, position: [i32; 3], model: &str) -> StaticPlacement {
 }
 
 #[test]
+fn support_metadata_retains_all_model_flags_and_terrain_clears_them() {
+    use cyrus_game::player::ground::SupportSource;
+    let mut scene = CollisionScene::default();
+    scene.models.insert("floor".into(), model(0x84));
+    scene.placements.push(placement(7, [600, 0, 600], "floor"));
+    let world = StaticCollision::new(&scene).unwrap();
+    assert_eq!(
+        world
+            .support_metadata(SupportSource::Model { model: 0, face: 0 })
+            .unwrap(),
+        0x84
+    );
+    assert_eq!(world.support_metadata(SupportSource::Terrain).unwrap(), 0);
+    assert!(
+        world
+            .support_metadata(SupportSource::Model { model: 1, face: 0 })
+            .is_err()
+    );
+}
+
+#[test]
+fn selected_player_query_commits_history_on_hits_and_misses() {
+    use cyrus_game::player::ground::{FallbackProbe, GroundSupport, SupportHistory};
+    let mut scene = CollisionScene::default();
+    scene.models.insert("floor".into(), model(4));
+    scene.placements.push(placement(7, [600, 0, 600], "floor"));
+    let world = StaticCollision::new(&scene).unwrap();
+    let position = [600 * 256, 0, 600 * 256];
+    let candidates = world.candidates([5000, 5000], position, None).unwrap();
+    let mut history = SupportHistory::new(0, 0);
+    let query = |position, terrain, history: &mut SupportHistory| {
+        world
+            .selected_player_support(
+                &candidates,
+                &GroundProbe::new(position, 0, 50).unwrap(),
+                terrain,
+                &FallbackProbe::new(position, [0; 3], 0, history.ticks() != 0).unwrap(),
+                true,
+                history,
+            )
+            .unwrap()
+    };
+    assert!(query(position, None, &mut history).is_some());
+    assert_eq!(history.ticks(), 12);
+    history.begin_player_update(5);
+    let missed_position = [1000 * 256, 0, 1000 * 256];
+    assert!(query(missed_position, None, &mut history).is_none());
+    assert_eq!(history.ticks(), 12);
+    assert!(
+        query(
+            missed_position,
+            Some(GroundSupport {
+                height: 0.0,
+                normal: [0, -256, 0],
+            }),
+            &mut history
+        )
+        .is_some()
+    );
+    history.begin_player_update(5);
+    assert!(query(missed_position, None, &mut history).is_none());
+    assert_eq!(history.ticks(), 7);
+}
+
+#[test]
 fn static_candidates_keep_cells_reverse_authored_order_and_separate_flags() {
     let mut scene = CollisionScene::default();
     scene.models.insert("floor".into(), model(0));

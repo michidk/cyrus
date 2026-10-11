@@ -4,6 +4,30 @@ use cyrus_game::player::{
     ground::{GroundProbe, GroundSupport, ModelSupport, SupportSource},
 };
 
+#[test]
+fn support_history_keeps_probe_changes_and_miss_metadata_across_actors() {
+    use cyrus_game::player::ground::SupportHistory;
+    let mut history = SupportHistory::new(0, 0);
+    history.finish_query(Some(4), true);
+    assert_eq!(history.ticks(), 12);
+    history.begin_player_update(5);
+    assert_eq!(history.ticks(), 7);
+    history.finish_query(None, true);
+    assert_eq!(history.ticks(), 12);
+    history.begin_player_update(0);
+    assert_eq!(history.ticks(), 12);
+    history.begin_player_update(20);
+    assert_eq!(history.ticks(), 0);
+    history.finish_query(Some(4), false);
+    assert_eq!(history.ticks(), 0);
+    history.finish_query(None, true);
+    assert_eq!(history.ticks(), 12);
+    history.finish_query(Some(0), false);
+    history.begin_player_update(5);
+    history.finish_query(None, true);
+    assert_eq!(history.ticks(), 7);
+}
+
 fn floor() -> CollisionFace {
     CollisionFace::new(
         vec![

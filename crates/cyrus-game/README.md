@@ -192,6 +192,10 @@ geometric support alone does not authorize forward movement.
 When primary support is absent, the selected-player fallback uses the caller's
 support-history state and retains the actor's runtime Y at the first accepted
 non-side contact. This follows the [published fallback rules](https://github.com/michidk/redguard-preservation/blob/3c5be4a/docs/engine/player.md#selected-player-fallback-support).
+Explicit selected-player queries also commit shared support history. Misses retain
+metadata, so they can reset the fallback timer; temporary forward probes retain
+those changes when position is restored. The caller supplies initial state and
+nominal ticks, following the [support-state rules](https://github.com/michidk/redguard-preservation/blob/ed296ed/docs/engine/player.md#support-query-misses).
 Ground support reads only face-model candidates. Actor-style obstacle response
 remains unsupported.
 This data does not activate ground settling or locomotion. Re-export cached

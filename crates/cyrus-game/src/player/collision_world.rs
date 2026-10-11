@@ -2,7 +2,9 @@
 use super::{
     collision_data::{CollisionScene, StaticPlacement},
     collision_mesh::CollisionMesh,
-    ground::{FallbackProbe, GroundProbe, GroundSupport, ModelSupport, SelectedSupport},
+    ground::{
+        FallbackProbe, GroundProbe, GroundSupport, ModelSupport, SelectedSupport, SupportSource,
+    },
 };
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
@@ -41,6 +43,29 @@ pub struct BodyContact {
 }
 
 impl StaticCollision {
+    /// Metadata committed by a successful support query; terrain clears the byte.
+    /// Preserve the previous byte on a miss instead of calling this with no support.
+    pub fn support_metadata(&self, source: SupportSource) -> anyhow::Result<u8> {
+        match source {
+            SupportSource::Terrain => Ok(0),
+            SupportSource::Model { model, .. } => {
+                let placement = self
+                    .placements
+                    .get(model)
+                    .with_context(|| format!("support placement {model} outside world"))?;
+                self.models
+                    .get(&placement.model)
+                    .map(|model| model.flags)
+                    .with_context(|| {
+                        format!(
+                            "support placement {} model {} unavailable",
+                            placement.id, placement.model
+                        )
+                    })
+            }
+        }
+    }
+
     pub fn new(scene: &CollisionScene) -> anyhow::Result<Self> {
         anyhow::ensure!(
             scene
@@ -385,6 +410,28 @@ impl StaticCollision {
             }
         }
         Ok(None)
+    }
+
+    /// Query admitted static support and commit the designated player's shared history.
+    /// Slope rollback, surface-state updates and dynamic candidates remain caller-owned.
+    /// Build the fallback probe using the history at query entry, before this update.
+    pub fn selected_player_support(
+        &self,
+        candidates: &StaticCandidates,
+        probe: &GroundProbe,
+        terrain: Option<GroundSupport>,
+        fallback: &FallbackProbe,
+        sidedness: bool,
+        history: &mut super::ground::SupportHistory,
+    ) -> anyhow::Result<Option<SelectedSupport>> {
+        let selected =
+            self.forward_support(candidates, probe, terrain, false, Some(fallback), sidedness)?;
+        let metadata = selected
+            .as_ref()
+            .map(|support| self.support_metadata(support.source()))
+            .transpose()?;
+        history.finish_query(metadata, true);
+        Ok(selected)
     }
 
     /// Ground contacts in face-model order; the original support query ignores the actor list.
