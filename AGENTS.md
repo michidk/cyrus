@@ -96,14 +96,25 @@ untracked working memory. Each crate has a `README.md` with its commands.
   builds may return a ticket: `hauler await cc-N`, never retry them.
 - Full workspace builds take a long time. During development, run the narrowest
   relevant test and build small, isolated test scenes that exercise one system
-  without loading the full game. Run `just gates` before the commit.
+  without loading the full game.
 - Conventional Commits: `type(scope): description`. The scope is the crate
   without its prefix (`game`, `web`, `mcp`), the module (`scene`, `player`,
   `loading`), or `dev`, `docs`, `roadmap`, `agents`, `repo`.
-- Gates before every commit: `just gates` (publish-check, generated map
-  current, fmt, clippy with `-D warnings`, tests). Tests that need the install
-  skip when it is absent and say so; with an install linked, a skip fails the
-  gate, and the suite runs once more with the install unreachable.
+- Match verification to the change before committing:
+  - Documentation-only changes, including Rust doc comments, need
+    `dev/scripts/publish-check.sh` and `git diff --check`. Also run
+    `dev/scripts/genmap.sh --check` when module documentation may affect
+    `docs/MAP.md`. Do not run Cargo for these changes.
+  - Rust, Cargo, build-script and gate changes need the narrowest relevant test
+    during development, then one `just gates` run after the final relevant edit.
+    Tests that need the install skip when it is absent and say so; with an
+    install linked, a skip fails the gate, and the suite runs once more with the
+    install unreachable.
+  - Runtime and fidelity changes also need the relevant headless run, replay or
+    original-game comparison. Generic workspace tests do not replace it.
+- Do not repeat `just gates` when the tested tree and gate inputs are unchanged.
+  A commit, wait, or rebase alone is not a reason to rerun it. CI supplies the
+  full-workspace check after every push.
 - Say what was verified and how: a test, a headless run, a replay compared
   with the original. "It compiles" is not verification. Say what was not
   checked, and whether the root cause or a symptom was fixed.
