@@ -92,6 +92,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Export all 29 installed worlds, with structural checks.
 - [x] Browser scene viewer with download progress, persistent GLB/engine caching, and cache-write failure fallback.
 - [x] Inspection flycam, TCP control, and MCP tools.
+- [x] In-game HUD from installed data: candle, health number and show timer, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode/auto-defend notices; F8/Tab/F7 toggles persist locally. Gameplay inputs are not wired (see stages 1–3).
 - [x] DOSBox-X runner for observing the original game.
 - [x] Repository checks and CI.
 
@@ -426,6 +427,7 @@ formats and gameplay scope unchanged during this refactor.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
 - [ ] Synchronize scripts, animation events, speech/subtitles, and sound; resume waiting scripts at the correct time.
+- [ ] HUD script inputs: `Activate`/`TorchActivate`/`Deactivate` prompts, `ShowBitmap`/`UnShowBitmap` power-up slots, `LockoutPlayer` lockout and logbook entries feed `HudState`. **To do:** no caller yet; catalogue which shipped scripts call them.
 - [ ] Execute script-requested world loads and reinitialize playback state; player-facing transition UI follows in step 3.
 - [ ] Carry the required playback data into both native and browser world views.
 - [ ] Verify every world and palette variant with repeatable timed comparisons.
@@ -509,7 +511,8 @@ heading are separate and remain unsupported.
 
 - [x] Land and verify the keyboard-input and independent debug-flycam foundation.
 - [x] Apply explicit marker-based initial placement; scripted spawn selection and ground settling remain pending.
-- [ ] Implement quick actions and the walk-mode toggle, alongside the held bindings.
+- [ ] Implement quick actions and the walk-mode toggle, alongside the held bindings. The HUD Tab/F7 toggles and notices exist; movement must consume `HudState::walk_mode` and `auto_defend`.
+- [ ] Feed the HUD from the player: `set_health`, `set_sword_drawn` (show timer, sword-lock item cycling), `attr_player_type`, heading and world ID (compass).
 - [ ] Establish a repeatable simulation-timing oracle and animation movement gates; compare the same walking/turning sequence in both games.
 - [ ] Reproduce movement, turning, camera behavior, jumping, and gravity.
 - [ ] Add Modern controls: camera-relative WASD, mouse camera, Space jump, and held Shift to run. Keep the original controls in Faithful mode and the debug flycam independent of both modes.
@@ -535,7 +538,8 @@ These are concrete gaps found in RGUnity's source, not a goal to copy RGUnity.
 Implement their original-game behavior, including the original UI.
 
 - [ ] Interaction prompts and one eligible target at a time, including overlapping pickups; collected objects stay removed on revisits.
-- [ ] One inventory shared by scripts, quantities/icons, active-item selection, item-use rules, and saves.
+- [ ] One inventory shared by scripts, quantities/icons, active-item selection, item-use rules, and saves. The HUD still reads the exported starting items: selection must follow count changes, using item 0 toggles the compass flag, and the inventory screen pins the candle (show timer 50, 0 on exit).
+- [ ] Save and restore the HUD show timer, power-up slots and compass flag.
 - [ ] Dialogue choices, including disabled choices, and subtitles tied to speech and animation; return the selected choice to the waiting script.
 - [ ] Scripted camera shots and temporary player-control lockout, followed by a reliable return to player control.
 - [ ] World transitions with the correct destination spawn, orientation, and loading artwork; stop old sounds/scripts and remove transient objects.
