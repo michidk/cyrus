@@ -13,6 +13,11 @@ self.onmessage = async ({ data }) => {
         self.postMessage({ kind: "progress", done, total, name });
       });
       self.postMessage({ kind: "catalog", catalog: library.catalog() });
+    } else if (kind === "expand" || kind === "resolve") {
+      if (!library) throw new Error("Asset library is not ready");
+      const selection = kind === "resolve" ? JSON.parse(data.selection) : null;
+      const catalog = kind === "expand" ? library.expand(data.path) : library.resolve(selection.id, selection.path);
+      self.postMessage({ kind: "catalog", catalog });
     } else if (kind === "preview") {
       if (!library) throw new Error("Asset library is not ready");
       const result = library.preview(id);

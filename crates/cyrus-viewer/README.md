@@ -19,8 +19,10 @@ indexed sources. Fonts show a sample and glyph atlas. Models and worlds have a
 textured orbit view, edge overlay, frame controls where supported, and automatic
 framing. Drag to orbit, right-drag to pan, and scroll to zoom.
 
-Speech archives list original entry IDs using only their directory. Selecting a
-member loads its text or audio; labels are available after selection.
+Archive categories initially list archives. Open one to read its member index,
+then select a member to load its contents. Search covers files and the currently
+opened archive. Speech entries use original IDs; labels become available after
+selection.
 
 Audio shows a waveform with playback, seeking, looping, and volume. Movies have
 video, audio, a timeline, and frame stepping. Definitions expose preservation's
@@ -43,7 +45,7 @@ export is required.
 
 The game and viewer share the loader, loading overlay, and service-worker cache.
 Original downloads are cached by content digest. CD reads use byte ranges.
-The selected asset is encoded as `#asset=<id>` in the browser URL. Copy that
+The selected asset is encoded as `#asset=<id>&file=<source-path>` in the browser URL. Copy that
 URL to reopen the asset in the same installation; browser Back restores selection.
 Native cached previews remain on disk outside the install.
 
@@ -56,8 +58,9 @@ The host must support HTTP byte ranges. The HTML `cyrus-assets` meta element
 sets the original-file base URL.
 
 Original files and generated previews contain game data. Keep them private,
-outside source control and application releases. Initial browser indexing reads
-archives to discover their members.
+outside source control and application releases. Startup reads the file listing and small palette/configuration files. Archive
+indexes are read only when opened. Older links without a source path may need
+to scan archive indexes to locate their member.
 
 ## Current limits
 

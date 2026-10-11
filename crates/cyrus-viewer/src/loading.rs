@@ -51,6 +51,7 @@ pub struct Preparation(pub bevy::tasks::Task<Result<Prepared, String>>);
 #[cfg(not(target_arch = "wasm32"))]
 pub enum Prepared {
     Catalog(Box<cyrus_assets::native::Library>),
+    Expanded(Catalog),
     Preview(String, String),
 }
 
@@ -115,6 +116,23 @@ pub fn select(
     let Some(entry) = catalog.entries.get(index) else {
         return;
     };
+    let archive = matches!(entry.source, cyrus_assets::Source::Archive);
+    if archive
+        || matches!(
+            entry.source,
+            cyrus_assets::Source::Image(_)
+                | cyrus_assets::Source::Model(_)
+                | cyrus_assets::Source::Effect(_)
+                | cyrus_assets::Source::Speech(_)
+        )
+    {
+        viewer.archive = Some(entry.path.clone());
+    } else {
+        viewer.archive = None;
+    }
+    if archive {
+        viewer.search.clear();
+    }
     viewer.selected = Some(index);
     viewer.preview = None;
     viewer.pending = None;
@@ -134,22 +152,31 @@ pub fn select(
     viewer.needs_frame = false;
     viewer.decoding = false;
     viewer.seek_dirty = false;
-    viewer.preparing = true;
+    viewer.preparing = !archive;
+    viewer.indexing = archive;
     #[cfg(not(target_arch = "wasm32"))]
     let path = catalog.preview_path(entry);
     #[cfg(target_arch = "wasm32")]
     {
-        if let Err(error) = worker.select(&entry.id) {
+        if let Err(error) = worker.select(entry) {
             viewer.error = Some(format!("{error:#}"));
             viewer.preparing = false;
+            viewer.indexing = false;
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(library) = library {
         let library = library.0.clone();
         let id = entry.id.clone();
+        let source = entry.path.clone();
         commands.insert_resource(Preparation(bevy::tasks::IoTaskPool::get().spawn(
             async move {
+                if archive {
+                    return library
+                        .expand(&source)
+                        .map(Prepared::Expanded)
+                        .map_err(|e| format!("{e:#}"));
+                }
                 library
                     .prepare(&id)
                     .map(|_| Prepared::Preview(id, path))
@@ -188,6 +215,10 @@ pub fn poll(
                 commands.insert_resource(NativeLibrary(std::sync::Arc::from(library)));
                 progress.visible = false;
             }
+            Ok(Prepared::Expanded(catalog)) => {
+                viewer.set_catalog(catalog);
+                viewer.indexing = false;
+            }
             Ok(Prepared::Preview(id, path)) => {
                 viewer.preparing = false;
                 if viewer
@@ -201,6 +232,7 @@ pub fn poll(
             Err(error) => {
                 viewer.preparing = false;
                 viewer.error = Some(error);
+                viewer.indexing = false;
                 progress.visible = false;
             }
         }

@@ -10,6 +10,8 @@ pub struct Viewer {
     pub category: Category,
     pub search: String,
     pub selected: Option<usize>,
+    pub archive: Option<String>,
+    pub indexing: bool,
     pub preview: Option<Preview>,
     pub error: Option<String>,
     pub pending: Option<Handle<loading::Blob>>,
@@ -50,6 +52,12 @@ impl Viewer {
         catalog
             .entries
             .retain(|entry| entry.category != Category::Other);
+        let selected = self
+            .selected
+            .and_then(|i| self.catalog.as_ref()?.entries.get(i))
+            .map(|entry| &entry.id);
+        self.selected =
+            selected.and_then(|id| catalog.entries.iter().position(|entry| &entry.id == id));
         self.catalog = Some(catalog);
     }
 }
@@ -61,6 +69,8 @@ impl Default for Viewer {
             category: Category::Models,
             search: String::new(),
             selected: None,
+            archive: None,
+            indexing: false,
             preview: None,
             error: None,
             pending: None,
@@ -167,7 +177,19 @@ pub fn draw(
                 .filter(|category| *category != Category::Other)
             {
                 let count = catalog.as_ref().map_or(0, |c| {
-                    c.entries.iter().filter(|e| e.category == category).count()
+                    c.entries
+                        .iter()
+                        .filter(|e| {
+                            e.category == category
+                                && !matches!(
+                                    e.source,
+                                    cyrus_assets::Source::Image(_)
+                                        | cyrus_assets::Source::Model(_)
+                                        | cyrus_assets::Source::Effect(_)
+                                        | cyrus_assets::Source::Speech(_)
+                                )
+                        })
+                        .count()
                 });
                 if ui
                     .selectable_label(
@@ -177,6 +199,8 @@ pub fn draw(
                     .clicked()
                 {
                     viewer.category = category;
+                    viewer.archive = None;
+                    viewer.search.clear();
                 }
             }
         });
@@ -186,6 +210,13 @@ pub fn draw(
         .resizable(true)
         .show(&mut viewport_ui, |ui| {
             ui.add_space(8.);
+            if let Some(path) = viewer.archive.clone() {
+                if ui.button("← All archives and files").clicked() {
+                    viewer.archive = None;
+                    viewer.search.clear();
+                }
+                ui.label(path);
+            }
             ui.add(
                 egui::TextEdit::singleline(&mut viewer.search)
                     .id(egui::Id::new("asset-search"))
@@ -204,6 +235,19 @@ pub fn draw(
                 .enumerate()
                 .filter(|(_, e)| {
                     e.category == viewer.category
+                        && match &viewer.archive {
+                            Some(path) => {
+                                e.path == *path
+                                    && !matches!(e.source, cyrus_assets::Source::Archive)
+                            }
+                            None => !matches!(
+                                e.source,
+                                cyrus_assets::Source::Image(_)
+                                    | cyrus_assets::Source::Model(_)
+                                    | cyrus_assets::Source::Effect(_)
+                                    | cyrus_assets::Source::Speech(_)
+                            ),
+                        }
                         && (query.is_empty()
                             || e.name.to_lowercase().contains(&query)
                             || e.path.to_lowercase().contains(&query)
@@ -251,7 +295,11 @@ pub fn draw(
                 for index in range {
                     let index = matching[index];
                     let e = &catalog.entries[index];
-                    let label = format!("{}\n{}", e.name, e.path);
+                    let label = if matches!(e.source, cyrus_assets::Source::Archive) {
+                        format!("{}\nOpen archive →", e.path)
+                    } else {
+                        format!("{}\n{}", e.name, e.path)
+                    };
                     let response = ui.add_sized(
                         [ui.available_width(), 46.],
                         egui::Button::new(label).selected(viewer.selected == Some(index)),
@@ -586,9 +634,13 @@ pub fn draw(
             } else {
                 ui.vertical_centered(|ui| {
                     ui.add_space((ui.available_height() * 0.5 - 40.).max(0.));
-                    if viewer.preparing || viewer.pending.is_some() {
+                    if viewer.indexing || viewer.preparing || viewer.pending.is_some() {
                         ui.add(egui::Spinner::new().size(32.));
-                        ui.heading("Loading selected asset…");
+                        ui.heading(if viewer.indexing {
+                            "Reading archive index…"
+                        } else {
+                            "Loading selected asset…"
+                        });
                     } else if let Some(error) = &viewer.error {
                         ui.heading("Preview could not load");
                         ui.label(error);

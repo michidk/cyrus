@@ -18,6 +18,12 @@ test("browser loader hands its existing overlay to the application", async () =>
       headers: { "content-length": "1", "last-modified": "test" },
     });
     for (const application of [true, false]) {
+      const listeners = {};
+      let resumes = 0;
+      globalThis.AudioContext = class extends EventTarget {
+        state = "suspended";
+        async resume() { resumes++; this.state = "running"; }
+      };
       let removed = false;
       const elements = {
         loading: { remove: () => { removed = true; } },
@@ -25,16 +31,31 @@ test("browser loader hands its existing overlay to the application", async () =>
         fill: { style: {} },
       };
       globalThis.document = {
+        addEventListener: (event, callback) => { listeners[event] = callback; },
         body: { dataset: { engine: "test", loading: application ? "application" : undefined } },
         getElementById: id => elements[id],
       };
       await import(pathToFileURL(path.join(directory, "loader.mjs")) + "?application=" + application);
+      const context = new globalThis.AudioContext();
+      assert.equal(resumes, 0, "audio must wait for a user gesture");
+      listeners.pointerup();
+      assert.equal(resumes, 1, "a click resumes suspended audio");
+      listeners.keydown();
+      assert.equal(resumes, 1, "running contexts are left alone");
+      context.state = "suspended";
+      listeners.touchend();
+      assert.equal(resumes, 2, "later browser suspension can recover");
+      context.state = "closed";
+      context.dispatchEvent(new Event("statechange"));
+      context.state = "suspended";
+      listeners.pointerup();
+      assert.equal(resumes, 2, "closed contexts are forgotten");
       assert.equal(removed, !application, "only the application may hide its loading overlay");
       assert.equal(elements.label.textContent, "Starting application…");
       assert.equal(elements.fill.style.width, "100%");
     }
   } finally {
-    for (const key of ["document", "location", "navigator", "fetch"]) {
+    for (const key of ["document", "location", "navigator", "fetch", "AudioContext"]) {
       if (original[key]) Object.defineProperty(globalThis, key, original[key]);
       else delete globalThis[key];
     }

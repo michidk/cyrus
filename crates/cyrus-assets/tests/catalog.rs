@@ -95,13 +95,20 @@ fn installed_asset_families_prepare_portable_previews() {
     let scratch = Scratch::new();
     let cache = scratch.0.join("cache");
     let library = Library::open(install, cache, |_, _, _| {}).unwrap();
+    let archives: Vec<_> = library
+        .catalog
+        .entries
+        .iter()
+        .filter(|entry| matches!(entry.source, Source::Archive))
+        .map(|entry| entry.path.clone())
+        .collect();
+    let mut catalog = library.catalog.clone();
+    for path in archives {
+        catalog = library.expand(&path).unwrap();
+    }
     for category in Category::ALL {
         assert!(
-            library
-                .catalog
-                .entries
-                .iter()
-                .any(|e| e.category == category),
+            catalog.entries.iter().any(|e| e.category == category),
             "missing category {category:?}"
         );
     }
@@ -134,15 +141,14 @@ fn installed_asset_families_prepare_portable_previews() {
         ),
     ];
     for (family, predicate) in predicates {
-        let entry = library
-            .catalog
+        let entry = catalog
             .entries
             .iter()
             .find(|e| predicate(e))
             .unwrap_or_else(|| panic!("no {family}"));
         eprintln!("preparing {family}: {}", entry.name);
         if matches!(entry.source, Source::World(_)) {
-            let manifest = library.cache.join(library.catalog.preview_path(entry));
+            let manifest = library.cache.join(catalog.preview_path(entry));
             if manifest.exists() {
                 std::fs::remove_file(manifest).unwrap();
             }

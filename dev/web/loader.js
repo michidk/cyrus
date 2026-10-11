@@ -1,3 +1,28 @@
+// Bevy owns the output context; resume it inside the browser's trusted input event.
+if (globalThis.AudioContext) {
+  const contexts = new Set();
+  const AudioContext = globalThis.AudioContext;
+  globalThis.AudioContext = class extends AudioContext {
+    constructor(...args) {
+      super(...args);
+      contexts.add(this);
+      this.addEventListener("statechange", () => {
+        if (this.state === "closed") contexts.delete(this);
+      });
+    }
+  };
+  const resume = () => {
+    for (const context of contexts) {
+      if (context.state === "suspended") {
+        context.resume().catch(error => console.warn("Audio resume failed", error));
+      }
+    }
+  };
+  for (const event of ["pointerup", "keydown", "touchend"]) {
+    document.addEventListener(event, resume, { capture: true, passive: true });
+  }
+}
+
 const label = document.getElementById("label");
 const fill = document.getElementById("fill");
 const engine = document.body.dataset.engine;

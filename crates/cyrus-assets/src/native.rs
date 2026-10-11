@@ -128,8 +128,21 @@ impl Library {
             runtime: Mutex::new(runtime),
         })
     }
+    /// Reads an archive index and returns the updated runtime catalog.
+    pub fn expand(&self, path: &str) -> Result<Catalog> {
+        let mut runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("asset decoder unavailable"))?;
+        runtime.expand(path)?;
+        Ok(runtime.catalog.clone())
+    }
     pub fn prepare(&self, id: &str) -> Result<PathBuf> {
-        let entry = self
+        let mut runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("asset decoder unavailable"))?;
+        let entry = runtime
             .catalog
             .entries
             .iter()
@@ -148,11 +161,7 @@ impl Library {
         {
             return Ok(path);
         }
-        let prepared = self
-            .runtime
-            .lock()
-            .map_err(|_| anyhow::anyhow!("asset decoder unavailable"))?
-            .prepare(id)?;
+        let prepared = runtime.prepare(id)?;
         for (file, bytes) in prepared.files {
             publish(&self.cache.join(file), &bytes)?;
         }

@@ -54,9 +54,14 @@ globalThis.XMLHttpRequest = class {
   }
 };
 await init({ module_or_path: fs.readFileSync(path.join(packageDir, "cyrus-assets-worker_bg.wasm")) });
-const manifest = JSON.stringify({ files: [{ path: "ENGLISH.RTX", bytes: original.length, digest: "a".repeat(64) }] });
+const manifest = JSON.stringify({ files: ["ENGLISH.RTX", "fxart/TEST.ROB", "fxart/TEXBSI.001", "TEST.SFX"].map(path => ({
+  path, bytes: original.length, digest: "a".repeat(64),
+})) });
 const progress = [];
 const library = new AssetLibrary("https://example.test/original/", manifest, (...args) => progress.push(args));
+assert.deepEqual(requests, [], "startup must not read archive bytes");
+assert.ok(JSON.parse(library.catalog()).entries.every(entry => entry.source === "Archive"));
+library.expand("ENGLISH.RTX");
 assert.deepEqual(requests, [[original.length - 12, original.length - 1], [index, index + 11]], "catalog reads only footer and directory");
 const catalog = JSON.parse(library.catalog());
 const clip = catalog.entries.find(entry => entry.source.Speech === 0);
@@ -67,8 +72,16 @@ assert.ok(progress.some(([done, total, name]) => done > 0 && done < total && nam
 assert.ok(JSON.parse(preview.preview).content.Audio);
 assert.deepEqual(Buffer.from(preview.files[0][1]).subarray(44), pcm, "chunk boundaries preserve the audio bytes");
 library.free();
+for (const sourcePath of ["ENGLISH.RTX", undefined]) {
+  requests.length = 0;
+  const linked = new AssetLibrary("https://example.test/original/", manifest, () => {});
+  const resolved = JSON.parse(linked.resolve(clip.id, sourcePath));
+  assert.ok(resolved.entries.some(entry => entry.id === clip.id), "new and legacy links find the member");
+  assert.deepEqual(requests, [[original.length - 12, original.length - 1], [index, index + 11]]);
+  linked.free();
+}
 malformed = true;
 const broken = new AssetLibrary("https://example.test/original/", manifest, () => {});
-assert.match(JSON.parse(broken.catalog()).entries[0].error, /server must support byte-range requests/);
+assert.throws(() => broken.expand("ENGLISH.RTX"), /server must support byte-range requests/);
 broken.free();
 console.log("WASM index-only startup, selected speech, chunking, progress and range validation passed");

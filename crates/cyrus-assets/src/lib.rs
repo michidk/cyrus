@@ -14,7 +14,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 3;
+pub const CATALOG_VERSION: u32 = 4;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +63,7 @@ impl Category {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Source {
     File,
+    Archive,
     Image(usize),
     Model(usize),
     Effect(usize),

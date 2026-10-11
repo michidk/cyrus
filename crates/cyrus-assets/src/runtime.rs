@@ -2,7 +2,7 @@
 use crate::source::{AssetFile, ReadAssets};
 use crate::{CATALOG_VERSION, Catalog, Category, Content, Entry, Palette, Preview, Source};
 use anyhow::{Context, Result};
-use rgpre::import::{FileType, bsi, palette, rob, rtx, sfx, world_ini};
+use rgpre::import::{FileType, palette, world_ini};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, sync::Arc};
 
 mod definitions;
@@ -19,6 +19,7 @@ pub struct Library<R> {
     pub source: R,
     pub catalog: Catalog,
     input: RefCell<Option<(String, Arc<prepare::Input>)>>,
+    indexed: std::collections::HashSet<String>,
     outputs: RefCell<BTreeMap<String, Vec<u8>>>,
 }
 impl<R: ReadAssets> Library<R> {
@@ -35,7 +36,7 @@ impl<R: ReadAssets> Library<R> {
         };
         let files = &source.manifest().files;
         for (index, file) in files.iter().enumerate() {
-            progress(index, files.len(), &file.path);
+            progress(index, files.len(), &format!("Listing {}", file.path));
             if file.path.starts_with("disc/") || file.path.starts_with("splash/") {
                 continue;
             }
@@ -46,7 +47,16 @@ impl<R: ReadAssets> Library<R> {
                 Source::File,
                 &file.path,
             );
-            if let Err(error) = discover(&source, Path::new(&file.path), &mut parent, &mut catalog)
+            if let Some(category) = archive_category(&file.path) {
+                parent = entry(
+                    &file.path,
+                    file.bytes,
+                    category,
+                    Source::Archive,
+                    &file.path,
+                );
+            } else if let Err(error) =
+                discover(&source, Path::new(&file.path), &mut parent, &mut catalog)
             {
                 parent.error = Some(format!("{error:#}"));
             }
@@ -105,9 +115,73 @@ impl<R: ReadAssets> Library<R> {
             source,
             catalog,
             input: RefCell::new(None),
+            indexed: Default::default(),
             outputs: RefCell::new(BTreeMap::new()),
         })
     }
+    /// Adds an archive's member index without reading its resource payloads.
+    pub fn expand(&mut self, path: &str) -> Result<()> {
+        if self.indexed.contains(path) {
+            return Ok(());
+        }
+        let parent = self
+            .catalog
+            .entries
+            .iter()
+            .find(|entry| entry.path == path && matches!(entry.source, Source::Archive))
+            .context("unknown archive")?
+            .clone();
+        let input = prepare::Input::read(path, &self.source)?;
+        let members: Vec<(Category, Source, String)> = match &input {
+            prepare::Input::Bsi(bank) => bank
+                .images
+                .iter()
+                .enumerate()
+                .map(|(i, image)| {
+                    (
+                        Category::Images,
+                        Source::Image(i),
+                        format!("{} · {}", image.image_index, image.name),
+                    )
+                })
+                .collect(),
+            prepare::Input::Rob(bank) => bank
+                .segments
+                .iter()
+                .enumerate()
+                .map(|(i, segment)| (Category::Models, Source::Model(i), segment.name()))
+                .collect(),
+            prepare::Input::Sfx(bank) => bank
+                .effects
+                .iter()
+                .enumerate()
+                .map(|(i, _)| (Category::Audio, Source::Effect(i), format!("Effect {i}")))
+                .collect(),
+            prepare::Input::Rtx(bank) => bank
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(i, clip)| {
+                    (
+                        Category::Speech,
+                        Source::Speech(i),
+                        String::from_utf8_lossy(&clip.tag).into_owned(),
+                    )
+                })
+                .collect(),
+            prepare::Input::File(_) => anyhow::bail!("{path}: not an indexed archive"),
+        };
+        for (category, source, name) in members {
+            self.catalog
+                .entries
+                .push(entry(path, parent.bytes, category, source, &name));
+        }
+        self.catalog.validate()?;
+        *self.input.borrow_mut() = Some((path.into(), Arc::new(input)));
+        self.indexed.insert(path.into());
+        Ok(())
+    }
+
     pub fn prepare(&mut self, id: &str) -> Result<Prepared> {
         let entry = self
             .catalog
@@ -217,6 +291,16 @@ pub(super) fn entry(
         error: None,
     }
 }
+fn archive_category(path: &str) -> Option<Category> {
+    match FileType::from_path(Path::new(path))? {
+        FileType::Bsi => Some(Category::Images),
+        FileType::Rob => Some(Category::Models),
+        FileType::Sfx => Some(Category::Audio),
+        FileType::Rtx => Some(Category::Speech),
+        _ => None,
+    }
+}
+
 fn discover(
     source: &dyn ReadAssets,
     path: &Path,
@@ -248,54 +332,12 @@ fn discover(
             _ => Category::Other,
         },
     };
-    let mut member = |category, source, name: String| {
-        let mut child = entry(&parent.path, parent.bytes, category, source, &name);
-        child.format = parent.format.clone();
-        catalog.entries.push(child);
-    };
-    match kind {
-        Some(FileType::Bsi) => {
-            let data = bsi::parse_bsi_file(&source.read(&parent.path)?)?;
-            parent.category = Category::Data;
-            for (i, image) in data.images.iter().enumerate() {
-                member(
-                    Category::Images,
-                    Source::Image(i),
-                    format!("{} · {}", image.image_index, image.name),
-                );
-            }
-        }
-        Some(FileType::Rob) => {
-            let archive = rob::parse_rob_file(&source.read(&parent.path)?)?;
-            for (i, model) in archive.segments.iter().enumerate() {
-                member(Category::Models, Source::Model(i), model.name());
-            }
-        }
-        Some(FileType::Sfx) => {
-            let bank = sfx::parse_sfx_file(&source.read(&parent.path)?)?;
-            for i in 0..bank.effects.len() {
-                member(Category::Audio, Source::Effect(i), format!("Effect {i}"));
-            }
-        }
-        Some(FileType::Rtx) => {
-            let mut file = AssetFile::open(source, &parent.path)?.without_read_ahead();
-            let bank = rtx::RtxIndex::read(&mut file)?;
-            for (i, clip) in bank.entries.iter().enumerate() {
-                member(
-                    Category::Speech,
-                    Source::Speech(i),
-                    String::from_utf8_lossy(&clip.tag).into_owned(),
-                );
-            }
-        }
-        Some(FileType::Col) => {
-            let palette = palette::Palette::parse(&source.read(&parent.path)?)?;
-            catalog.palettes.push(Palette {
-                name: parent.path.clone(),
-                colors: palette.colors.to_vec(),
-            });
-        }
-        _ => {}
+    if kind == Some(FileType::Col) {
+        let palette = palette::Palette::parse(&source.read(&parent.path)?)?;
+        catalog.palettes.push(Palette {
+            name: parent.path.clone(),
+            colors: palette.colors.to_vec(),
+        });
     }
     if path
         .file_name()

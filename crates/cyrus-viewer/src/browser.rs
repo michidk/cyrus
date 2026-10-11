@@ -38,15 +38,27 @@ impl BrowserWorker {
     pub fn open(&self) -> Result<()> {
         self.send("open", "source", &self.source)
     }
-    pub fn select(&self, id: &str) -> Result<()> {
-        self.send("preview", "id", id)?;
+    pub fn select(&self, entry: &cyrus_assets::Entry) -> Result<()> {
+        if matches!(entry.source, cyrus_assets::Source::Archive) {
+            self.send("expand", "path", &entry.path)?;
+        } else {
+            self.send("preview", "id", &entry.id)?;
+        }
         if let Some(window) = web_sys::window() {
-            let hash = format!("#asset={id}");
+            let path = String::from(js_sys::encode_uri_component(&entry.path));
+            let hash = format!("#asset={}&file={path}", entry.id);
             if window.location().hash().map_err(js_error)? != hash {
                 window.location().set_hash(&hash).map_err(js_error)?;
             }
         }
         Ok(())
+    }
+    fn resolve(&self, id: &str, path: Option<String>) -> Result<()> {
+        self.send(
+            "resolve",
+            "selection",
+            &serde_json::json!({"id":id,"path":path}).to_string(),
+        )
     }
     fn send(&self, kind: &str, key: &str, value: &str) -> Result<()> {
         let message = js_sys::Object::new();
@@ -182,12 +194,13 @@ fn poll(
             .map(|entry| entry.id.as_str());
         match message {
             Message::Progress(done, total, name) => {
-                progress.label = format!("Reading {name} ({done}/{total})");
+                progress.label = format!("{name} ({done}/{total})");
                 progress.fraction = Some(done as f32 / total.max(1) as f32);
             }
             Message::Catalog(catalog) => {
                 viewer.set_catalog(catalog);
                 viewer.loading_catalog = false;
+                viewer.indexing = false;
                 progress.visible = false;
             }
             Message::Preview(id, preview, files) if selected == Some(&id) => {
@@ -207,6 +220,7 @@ fn poll(
                 viewer.error = Some(error);
                 viewer.preparing = false;
                 viewer.loading_catalog = false;
+                viewer.indexing = false;
                 progress.visible = false;
             }
             _ => {}
@@ -219,6 +233,7 @@ fn follow_link(
     assets: Res<AssetServer>,
     worker: NonSend<BrowserWorker>,
     mut last_hash: Local<String>,
+    mut requested_hash: Local<String>,
     mut viewer: ResMut<Viewer>,
 ) {
     let Some(catalog) = &viewer.catalog else {
@@ -227,20 +242,36 @@ fn follow_link(
     let hash = web_sys::window()
         .and_then(|window| window.location().hash().ok())
         .unwrap_or_default();
-    if hash != *last_hash {
-        *last_hash = hash.clone();
-        if let Some(id) = hash.strip_prefix("#asset=") {
-            if let Some(index) = catalog.entries.iter().position(|entry| entry.id == id) {
-                if viewer.selected != Some(index) {
-                    viewer.category = catalog.entries[index].category;
-                    viewer.search.clear();
-                    crate::loading::select(index, &mut viewer, &mut commands, &assets, &worker);
-                }
-            } else {
-                viewer.error = Some("The linked asset is not in this installation.".into());
+    if hash == *last_hash {
+        return;
+    }
+    if let Some(selection) = hash.strip_prefix("#asset=") {
+        let (id, path) = selection
+            .split_once("&file=")
+            .map_or((selection, None), |(id, path)| (id, Some(path)));
+        if let Some(index) = catalog.entries.iter().position(|entry| entry.id == id) {
+            *last_hash = hash;
+            if viewer.selected != Some(index) {
+                viewer.category = catalog.entries[index].category;
+                viewer.search.clear();
+                crate::loading::select(index, &mut viewer, &mut commands, &assets, &worker);
             }
-        } else if hash.is_empty() {
+        } else if hash != *requested_hash {
+            *requested_hash = hash.clone();
+            let path = path.map(js_sys::decode_uri_component).transpose();
+            let result = path
+                .map_err(js_error)
+                .and_then(|path| worker.resolve(id, path.map(String::from)));
+            viewer.indexing = result.is_ok();
+            viewer.error = result.err().map(|error| format!("{error:#}"));
+        } else if !viewer.indexing {
+            *last_hash = hash;
+        }
+    } else {
+        *last_hash = hash.clone();
+        if hash.is_empty() {
             viewer.selected = None;
+            viewer.archive = None;
             viewer.preview = None;
             viewer.preparing = false;
             viewer.scene_dirty = true;

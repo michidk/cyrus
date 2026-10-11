@@ -32,7 +32,8 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
             .filter(|e| {
                 e.path == entry.path
                     && e.id != entry.id
-                    && (matches!(entry.source, Source::File) || matches!(e.source, Source::File))
+                    && (matches!(entry.source, Source::File | Source::Archive)
+                        || matches!(e.source, Source::File | Source::Archive))
             })
             .map(|e| e.id.clone())
             .collect(),
@@ -94,7 +95,8 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
     preview.content = match input.as_ref() {
         Input::Bsi(archive) => {
             if let Source::Image(index) = entry.source {
-                let image = archive.images.get(index).context("image member missing")?;
+                let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
+                let image = archive.read_image(&mut file, index)?;
                 preview.details.extend([
                     ("Width".into(), image.width.to_string()),
                     ("Height".into(), image.height.to_string()),
@@ -124,13 +126,14 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
                 Content::Images { frames }
             } else {
                 Content::Data {
-                    value: json!({"images":archive.images.iter().map(|i|json!({"name":i.name,"index":i.image_index,"width":i.width,"height":i.height,"frames":i.frame_count})).collect::<Vec<_>>()}),
+                    value: json!({"images":archive.images.iter().map(|i|json!({"name":i.name,"index":i.image_index,"loading":"Select an image to decode its dimensions and frames"})).collect::<Vec<_>>()}),
                 }
             }
         }
         Input::Rob(archive) => {
             if let Source::Model(index) = entry.source {
-                let segment = archive.segments.get(index).context("ROB member missing")?;
+                let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
+                let segment = archive.read_segment(&mut file, index)?;
                 if segment.points_to_external_file() {
                     let name = segment.name();
                     related_name(library, &mut preview, &name);
@@ -167,7 +170,8 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
         }
         Input::Sfx(bank) => {
             if let Source::Effect(index) = entry.source {
-                let effect = bank.effects.get(index).context("SFX member missing")?;
+                let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
+                let effect = bank.read_effect(&mut file, index)?;
                 preview.details.extend([
                     ("Sample rate".into(), effect.sample_rate.to_string()),
                     ("Channels".into(), effect.audio_type.channels().to_string()),
@@ -581,26 +585,23 @@ fn text_data(bytes: &[u8], path: &str) -> Result<Content> {
     })
 }
 
-/// Only the most recently used file is retained, including its decoded archive members.
+/// Only the most recently used file is retained, including its archive index.
 pub(super) enum Input {
-    Bsi(import::bsi::BsiFile),
-    Rob(import::rob::RobFile),
-    Sfx(import::sfx::SfxFile),
+    Bsi(import::bsi::BsiIndex),
+    Rob(import::rob::RobIndex),
+    Sfx(import::sfx::SfxIndex),
     Rtx(import::rtx::RtxIndex),
     File(Vec<u8>),
 }
 impl Input {
     pub(super) fn read(path: &str, source: &dyn ReadAssets) -> Result<Self> {
-        if FileType::from_path(std::path::Path::new(path)) == Some(FileType::Rtx) {
-            let mut file = AssetFile::open(source, path)?.without_read_ahead();
-            return Ok(Self::Rtx(import::rtx::RtxIndex::read(&mut file)?));
-        }
-        let bytes = source.read(path)?;
+        let mut file = AssetFile::open(source, path)?.without_read_ahead();
         Ok(match FileType::from_path(std::path::Path::new(path)) {
-            Some(FileType::Bsi) => Self::Bsi(import::bsi::parse_bsi_file(&bytes)?),
-            Some(FileType::Rob) => Self::Rob(import::rob::parse_rob_file(&bytes)?),
-            Some(FileType::Sfx) => Self::Sfx(import::sfx::parse_sfx_file(&bytes)?),
-            _ => Self::File(bytes),
+            Some(FileType::Bsi) => Self::Bsi(import::bsi::BsiIndex::read(&mut file)?),
+            Some(FileType::Rob) => Self::Rob(import::rob::RobIndex::read(&mut file)?),
+            Some(FileType::Sfx) => Self::Sfx(import::sfx::SfxIndex::read(&mut file)?),
+            Some(FileType::Rtx) => Self::Rtx(import::rtx::RtxIndex::read(&mut file)?),
+            _ => Self::File(source.read(path)?),
         })
     }
 }
