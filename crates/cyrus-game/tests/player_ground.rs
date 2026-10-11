@@ -230,3 +230,56 @@ fn original_wall_slide_adjusts_quantized_movement_heading() {
         assert_eq!(displacement_heading(x, z), heading);
     }
 }
+
+#[test]
+fn collision_traversal_retries_misses_and_keeps_first_success_order() {
+    use bevy::math::Vec3;
+    use cyrus_game::player::geometry::{CollisionFace, SphereCandidates, ordered_contacts};
+    let square = |z| {
+        CollisionFace::new(
+            vec![
+                Vec3::new(0.0, 0.0, z),
+                Vec3::new(100.0, 0.0, z),
+                Vec3::new(100.0, 100.0, z),
+                Vec3::new(0.0, 100.0, z),
+            ],
+            Vec3::Z,
+        )
+        .unwrap()
+    };
+    let faces = [square(0.0), square(30.0), square(30.0)];
+    let spheres = [
+        SphereCandidates {
+            center: Vec3::new(50.0, 50.0, 32.0),
+            radius: 4.0,
+            faces: &[0, 1, 1],
+        },
+        SphereCandidates {
+            center: Vec3::new(50.0, 50.0, 2.0),
+            radius: 4.0,
+            faces: &[0, 1, 0],
+        },
+    ];
+    let contacts = ordered_contacts(&faces, &spheres, true).unwrap();
+    assert_eq!(
+        contacts
+            .iter()
+            .map(|contact| contact.face)
+            .collect::<Vec<_>>(),
+        [1, 0]
+    );
+    assert_eq!(contacts[0].projection, Vec3::new(50.0, 50.0, 30.0));
+    assert_eq!(contacts[1].projection, Vec3::new(50.0, 50.0, 0.0));
+    assert!(
+        ordered_contacts(
+            &faces,
+            &[SphereCandidates {
+                center: Vec3::ZERO,
+                radius: 1.0,
+                faces: &[3],
+            }],
+            true
+        )
+        .is_err()
+    );
+}

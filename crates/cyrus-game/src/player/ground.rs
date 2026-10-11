@@ -1,4 +1,4 @@
-//! Terrain support in original map coordinates, per preservation's engine/player.md.
+//! Ground support in original map coordinates, per preservation's engine/player.md.
 use bevy::math::DVec3;
 
 /// Decoded WLD heights in source row order. Engine Y is positive down.
@@ -9,11 +9,99 @@ pub struct TerrainGround {
 }
 
 /// A terrain plane result before converting its height to the actor origin.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GroundSupport {
     pub height: f64,
     /// Face normal in original engine axes, scaled by 256 and rounded to even.
     pub normal: [i32; 3],
+}
+
+/// A model contact after placement transformation and integer probe conversion.
+pub struct ModelSupport {
+    pub model: usize,
+    pub support: GroundSupport,
+    /// Stored segment fraction scaled by 32,768, unchanged by the integer adapter.
+    pub rank: u32,
+}
+
+#[derive(Debug, PartialEq)]
+/// Identity of the selected surface, retained independently of its height.
+pub enum SupportSource {
+    Terrain,
+    Model(usize),
+}
+
+/// Selected support and its identity for subsequent actor/contact state updates.
+#[derive(Debug, PartialEq)]
+pub struct SelectedSupport {
+    pub source: SupportSource,
+    pub support: GroundSupport,
+}
+
+/// Ordinary vertical probe in integer map units. Engine Y increases downward.
+pub struct GroundProbe {
+    start: [i32; 3],
+    end: [i32; 3],
+    distance: i32,
+}
+
+impl GroundProbe {
+    /// Converts runtime coordinates before applying the body extent and search distance.
+    pub fn new(position: [i64; 3], positive_y_extent: i32, distance: u32) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            distance > 0,
+            "ground probe: search distance must be positive"
+        );
+        let distance = i32::try_from(distance)?;
+        let x = i32::try_from(position[0] >> 8)?;
+        let z = i32::try_from(position[2] >> 8)?;
+        let center = (position[1] >> 8) + i64::from(positive_y_extent);
+        let start_y = i32::try_from(center - i64::from(distance))?;
+        let end_y = i32::try_from(center + i64::from(distance))?;
+        Ok(Self {
+            start: [x, start_y, z],
+            end: [x, end_y, z],
+            distance,
+        })
+    }
+
+    /// Upper and lower segment endpoints in integer map coordinates.
+    pub fn endpoints(&self) -> ([i32; 3], [i32; 3]) {
+        (self.start, self.end)
+    }
+
+    /// Selects from caller-admitted model contacts in original traversal order.
+    /// A missing result still requires the original secondary probe/falling response.
+    pub fn select(
+        &self,
+        terrain: Option<GroundSupport>,
+        models: &[ModelSupport],
+    ) -> Option<SelectedSupport> {
+        let mut rank = 65_536;
+        let mut selected = None;
+        if let Some(support) = terrain.filter(|support| support.height <= f64::from(self.end[1])) {
+            rank = if support.height < f64::from(self.start[1]) {
+                65_535
+            } else {
+                let delta = support.height.trunc() as i64 - i64::from(self.start[1]);
+                (((16_777_216 / (2 * i64::from(self.distance))) * delta) >> 8) as u32
+            };
+            selected = Some(SelectedSupport {
+                source: SupportSource::Terrain,
+                support,
+            });
+        }
+        for model in models {
+            if matches!(model.support.classification(), 2 | 4) && model.rank <= rank {
+                rank = model.rank;
+                selected = Some(SelectedSupport {
+                    source: SupportSource::Model(model.model),
+                    support: model.support,
+                });
+            }
+        }
+        selected
+    }
 }
 
 impl GroundSupport {
