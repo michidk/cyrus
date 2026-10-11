@@ -143,7 +143,15 @@ pub fn select(
     viewer.movie_blob = None;
     viewer.error = None;
     viewer.frame = 0;
-    viewer.palette = None;
+    viewer.palette = if catalog.palettes.is_empty() {
+        crate::ui::ImagePalette::Indices
+    } else {
+        crate::ui::ImagePalette::Catalog(0)
+    };
+    viewer.frame_elapsed = 0.;
+    viewer.data_mode = 0;
+    viewer.data_text.clear();
+    viewer.load_status.clear();
     viewer.playing = false;
     viewer.position = 0.;
     viewer.scene_dirty = true;
@@ -257,7 +265,7 @@ pub fn poll(
                     .map_err(anyhow::Error::from)
                     .and_then(|p| {
                         p.validate()?;
-                        viewer.preview = Some(p);
+                        viewer.set_preview(p);
                         viewer.scene_dirty = true;
                         viewer.audio_dirty = true;
                         Ok(())

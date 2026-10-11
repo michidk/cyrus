@@ -28,6 +28,7 @@ original.writeUInt32LE(index, index + 16);
 original.writeUInt32LE(1, index + 20);
 const requests = [];
 let malformed = false;
+let transportFailures = 1;
 globalThis.XMLHttpRequest = class {
   open(method, url, async) {
     assert.equal(method, "GET");
@@ -40,6 +41,7 @@ globalThis.XMLHttpRequest = class {
     return malformed ? null : this.contentRange;
   }
   send() {
+    if (transportFailures > 0) { transportFailures--; throw new Error("temporary transport failure"); }
     assert.equal(this.timeout, 30000);
     const match = /^bytes=(\d+)-(\d+)$/.exec(this.range);
     assert.ok(match, "large originals must use ranges");

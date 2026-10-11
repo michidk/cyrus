@@ -27,14 +27,16 @@ self.addEventListener("fetch", event => {
     const range = original && url.searchParams.get("range");
     const validRange = !range || response.headers.get("content-range")?.startsWith("bytes " + range + "/");
     if (response.ok && validRange) {
-      try {
-        // Cache Storage rejects 206; the digest and explicit range identify this chunk.
-        const stored = original && response.status === 206
-          ? new Response(await response.clone().arrayBuffer(), { headers: response.headers })
-          : response.clone();
-        await cache.put(key, stored);
-      }
-      catch (error) { console.warn("Asset cache write failed", error); }
+      event.waitUntil((async () => {
+        try {
+          // Cache Storage rejects 206; the digest and explicit range identify this chunk.
+          const stored = original && response.status === 206
+            ? new Response(await response.clone().arrayBuffer(), { headers: response.headers })
+            : response.clone();
+          await cache.put(key, stored);
+        }
+        catch (error) { console.warn("Asset cache write failed", error); }
+      })());
     }
     return response;
   })());

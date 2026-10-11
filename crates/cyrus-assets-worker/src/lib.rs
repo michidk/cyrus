@@ -16,6 +16,14 @@ impl ReadAssets for HttpFiles {
     fn manifest(&self) -> &Manifest {
         &self.manifest
     }
+    fn progress(&self, done: usize, total: usize, label: &str) {
+        let _ = self.progress.call3(
+            &JsValue::NULL,
+            &JsValue::from_f64(done as f64),
+            &JsValue::from_f64(total as f64),
+            &JsValue::from_str(label),
+        );
+    }
     fn read_range(&self, path: &str, start: u64, length: usize) -> Result<Vec<u8>> {
         let file = self
             .manifest
@@ -34,6 +42,11 @@ impl ReadAssets for HttpFiles {
             .map(|part| String::from(js_sys::encode_uri_component(part)))
             .collect::<Vec<_>>()
             .join("/");
+        self.progress(
+            start as usize,
+            file.bytes as usize,
+            &format!("Reading {path}"),
+        );
         const CHUNK: usize = 1024 * 1024;
         let mut bytes = vec![0; length];
         for offset in (0..length).step_by(CHUNK) {
@@ -50,18 +63,22 @@ impl ReadAssets for HttpFiles {
                 url.push_str(&format!("&range={start}-{end}"));
             }
             let request = web_sys::XmlHttpRequest::new().map_err(js_error)?;
-            request
-                .open_with_async("GET", &url, false)
-                .map_err(js_error)?;
-            request.set_timeout(30_000);
-            request.set_response_type(web_sys::XmlHttpRequestResponseType::Arraybuffer);
-            if partial {
+            let fetch = || -> Result<()> {
                 request
-                    .set_request_header("Range", &format!("bytes={start}-{end}"))
+                    .open_with_async("GET", &url, false)
                     .map_err(js_error)?;
-            }
-            request.send().map_err(js_error).with_context(|| {
-                format!("fetch original {path}, bytes {start}-{end} (30-second timeout)")
+                request.set_timeout(30_000);
+                request.set_response_type(web_sys::XmlHttpRequestResponseType::Arraybuffer);
+                if partial {
+                    request
+                        .set_request_header("Range", &format!("bytes={start}-{end}"))
+                        .map_err(js_error)?;
+                }
+                request.send().map_err(js_error)
+            };
+            // Digest-addressed original reads are safe to retry after a transport failure.
+            fetch().or_else(|_| fetch()).with_context(|| {
+                format!("fetch original {path}, bytes {start}-{end} failed after retry (30-second timeout per attempt)")
             })?;
             let status = request.status().map_err(js_error)?;
             ensure!(matches!(status, 200 | 206), "{path}: HTTP {status}");
@@ -83,7 +100,7 @@ impl ReadAssets for HttpFiles {
                 chunk.length()
             );
             chunk.copy_to(&mut bytes[offset..offset + length]);
-            if bytes.len() > CHUNK {
+            if bytes.len() >= CHUNK {
                 let received = offset + length;
                 let name = format!(
                     "{path} · {:.1} / {:.1} MiB",

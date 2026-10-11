@@ -4,6 +4,13 @@ use bevy::prelude::*;
 use cyrus_app::bevy_egui::{EguiContexts, egui};
 use cyrus_assets::{Catalog, Category, Content, Preview};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImagePalette {
+    Embedded,
+    Catalog(usize),
+    Indices,
+}
+
 #[derive(Resource)]
 pub struct Viewer {
     pub catalog: Option<Catalog>,
@@ -18,10 +25,17 @@ pub struct Viewer {
     pub loading_catalog: bool,
     pub preparing: bool,
     pub textures: Vec<egui::TextureHandle>,
-    pub texture_key: Option<(usize, Option<usize>)>,
+    pub texture_key: Option<(usize, ImagePalette)>,
     pub font_textures: std::collections::HashMap<usize, egui::TextureHandle>,
     pub frame: usize,
-    pub palette: Option<usize>,
+    pub frame_ms: f64,
+    pub frame_elapsed: f64,
+    pub load_status: String,
+    pub data_mode: usize,
+    pub data_text: String,
+    pub spatial_depth: u32,
+    pub slice_y: f32,
+    pub palette: ImagePalette,
     pub model_palette: Option<String>,
     pub zoom: f32,
     pub fit: bool,
@@ -49,10 +63,26 @@ pub struct Viewer {
     styled: bool,
 }
 impl Viewer {
-    pub fn set_catalog(&mut self, mut catalog: Catalog) {
-        catalog
-            .entries
-            .retain(|entry| entry.category != Category::Other);
+    pub fn set_preview(&mut self, preview: Preview) {
+        if let Content::Spatial { cells, .. } = &preview.content {
+            self.spatial_depth = 3.min(cells.iter().map(|cell| cell.depth).max().unwrap_or(0));
+            self.slice_y = cells
+                .iter()
+                .filter(|cell| cell.depth == self.spatial_depth)
+                .max_by_key(|cell| cell.visible_indices)
+                .map_or(0., |cell| cell.center[1]);
+        }
+        if let Content::Images { frames } = &preview.content
+            && frames
+                .first()
+                .is_some_and(|picture| picture.embedded_palette)
+        {
+            self.palette = ImagePalette::Embedded;
+        }
+        self.data_text.clear();
+        self.preview = Some(preview);
+    }
+    pub fn set_catalog(&mut self, catalog: Catalog) {
         let selected = self
             .selected
             .and_then(|i| self.catalog.as_ref()?.entries.get(i))
@@ -89,7 +119,14 @@ impl Default for Viewer {
             texture_key: None,
             font_textures: Default::default(),
             frame: 0,
-            palette: None,
+            frame_ms: 100.,
+            frame_elapsed: 0.,
+            load_status: String::new(),
+            data_mode: 0,
+            data_text: String::new(),
+            spatial_depth: 3,
+            slice_y: 0.,
+            palette: ImagePalette::Embedded,
             model_palette: None,
             zoom: 1.,
             fit: true,
@@ -150,7 +187,25 @@ pub fn draw(
             .max_rect(ctx.viewport_rect()),
     );
     let catalog = viewer.catalog.take();
-    let mut select = None;
+    let mut select = if !viewer.indexing && viewer.error.is_none() && viewer.preview.is_none() {
+        catalog.as_ref().and_then(|catalog| {
+            let entry = catalog.entries.get(viewer.selected?)?;
+            if !matches!(entry.source, cyrus_assets::Source::Archive)
+                || entry.category != Category::Images
+            {
+                return None;
+            }
+            let mut members = catalog
+                .entries
+                .iter()
+                .enumerate()
+                .filter(|(_, member)| member.path == entry.path && is_member(member));
+            let (index, _) = members.next()?;
+            members.next().is_none().then_some(index)
+        })
+    } else {
+        None
+    };
     egui::Panel::top("title").show(&mut viewport_ui, |ui| {
         ui.add_space(6.);
         ui.horizontal(|ui| {
@@ -235,14 +290,7 @@ pub fn draw(
                 .iter()
                 .enumerate()
                 .filter(|(_, e)| {
-                    entry_format(e) == viewer.format
-                        && match &viewer.archive {
-                            Some(path) => {
-                                e.path == *path
-                                    && !matches!(e.source, cyrus_assets::Source::Archive)
-                            }
-                            None => !is_member(e),
-                        }
+                    in_listing(e, &viewer.format, viewer.archive.as_deref())
                         && (query.is_empty()
                             || e.name.to_lowercase().contains(&query)
                             || e.path.to_lowercase().contains(&query)
@@ -250,13 +298,24 @@ pub fn draw(
                 })
                 .map(|(i, _)| i)
                 .collect();
-            ui.weak(format!("{} results", matching.len()));
+            if viewer.indexing {
+                ui.label("Reading archive index…");
+            } else if matching.is_empty() {
+                ui.label(if viewer.error.is_some() {
+                    "Archive could not load"
+                } else if !query.is_empty() {
+                    "No matching entries"
+                } else {
+                    "No entries in this archive"
+                });
+            } else {
+                ui.weak(format!("{} results", matching.len()));
+            }
+            if viewer.format == "WAV" {
+                ui.weak("Standalone WAV files. More audio is in SFX, RTX and CD audio.");
+            }
             ui.separator();
-            if !ctx.memory(|memory| {
-                ["asset-search", "font-sample", "data-filter"]
-                    .iter()
-                    .any(|id| memory.has_focus(egui::Id::new(id)))
-            }) {
+            if !ctx.egui_wants_keyboard_input() {
                 let delta = ctx.input(|i| {
                     if i.key_pressed(egui::Key::ArrowDown) {
                         1
@@ -363,7 +422,7 @@ pub fn draw(
         .as_ref()
         .is_some_and(|p| matches!(p.content, Content::Model { .. }));
     egui::CentralPanel::default()
-        .frame(if model {
+        .frame(if model && viewer.data_mode == 0 {
             egui::Frame::NONE
         } else {
             egui::Frame::central_panel(&ctx.style_of(egui::Theme::Dark))
@@ -371,12 +430,27 @@ pub fn draw(
         .show(&mut viewport_ui, |ui| {
             if let Some(preview) = &preview {
                 match &preview.content {
-                    Content::Model { frames, palettes } => {
+                    Content::Model {
+                        frames,
+                        palettes,
+                        data,
+                    } => {
+                        let panel_rect = ui.available_rect_before_wrap();
+                        if let Some(data) = data {
+                            ui.horizontal(|ui| {
+                                ui.selectable_value(&mut viewer.data_mode, 0, "Visualization");
+                                ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
+                            });
+                            if viewer.data_mode == 1 {
+                                json_view(ui, &mut viewer, data);
+                                return;
+                            }
+                        }
                         egui::Frame::new()
                             .fill(egui::Color32::from_black_alpha(200))
                             .inner_margin(8.)
                             .show(ui, |ui| {
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.checkbox(&mut viewer.wireframe, "Edges");
                                     if ui.button("Frame object").clicked() {
                                         viewer.needs_frame = true;
@@ -396,6 +470,7 @@ pub fn draw(
                                     }
                                     ui.weak("Textured · orbit / pan / zoom");
                                 });
+                                frame_transport(ui, &mut viewer, frames.len());
                                 if catalog
                                     .as_ref()
                                     .and_then(|c| viewer.selected.and_then(|i| c.entries.get(i)))
@@ -407,14 +482,17 @@ pub fn draw(
                                             viewer
                                                 .model_palette
                                                 .as_deref()
+                                                .filter(|p| !p.is_empty())
+                                                .or_else(|| {
+                                                    if viewer.model_palette.is_none() {
+                                                        palettes.first().map(String::as_str)
+                                                    } else {
+                                                        None
+                                                    }
+                                                })
                                                 .unwrap_or("Without palette"),
                                         )
                                         .show_ui(ui, |ui| {
-                                            ui.selectable_value(
-                                                &mut viewer.model_palette,
-                                                None,
-                                                "Without palette",
-                                            );
                                             for palette in palettes {
                                                 ui.selectable_value(
                                                     &mut viewer.model_palette,
@@ -422,6 +500,11 @@ pub fn draw(
                                                     palette,
                                                 );
                                             }
+                                            ui.selectable_value(
+                                                &mut viewer.model_palette,
+                                                Some(String::new()),
+                                                "Without palette",
+                                            );
                                         });
                                     if previous != viewer.model_palette {
                                         select = viewer.selected;
@@ -435,7 +518,7 @@ pub fn draw(
                                     }
                                 });
                             });
-                        let rect = ui.available_rect_before_wrap();
+                        let rect = ui.available_rect_before_wrap().intersect(panel_rect);
                         viewer.viewport = rect;
                         viewer.pixels_per_point = ctx.pixels_per_point();
                         let response = ui.allocate_rect(rect, egui::Sense::drag());
@@ -459,14 +542,33 @@ pub fn draw(
                     }
                     Content::Images { frames } => {
                         let indexed = frames[viewer.frame].indices.is_some();
-                        image_controls(ui, &mut viewer, frames.len(), catalog.as_ref(), indexed);
+                        image_controls(
+                            ui,
+                            &mut viewer,
+                            frames.len(),
+                            catalog.as_ref(),
+                            indexed,
+                            frames[0].embedded_palette,
+                        );
                         let picture = &frames[viewer.frame];
                         let key = (viewer.frame, viewer.palette);
                         if viewer.texture_key != Some(key) || viewer.textures.is_empty() {
-                            let palette = viewer
-                                .palette
-                                .and_then(|i| catalog.as_ref()?.palettes.get(i));
-                            let rgba = picture.pixels(palette);
+                            let palette = match viewer.palette {
+                                ImagePalette::Catalog(i) => {
+                                    catalog.as_ref().and_then(|c| c.palettes.get(i))
+                                }
+                                _ => None,
+                            };
+                            let mut rgba = picture.pixels(palette);
+                            if viewer.palette == ImagePalette::Indices
+                                && let Some(indices) = &picture.indices
+                            {
+                                for (pixel, index) in
+                                    rgba.as_chunks_mut::<4>().0.iter_mut().zip(indices)
+                                {
+                                    pixel[..3].fill(*index);
+                                }
+                            }
                             preview::texture(
                                 &ctx,
                                 &mut viewer,
@@ -622,7 +724,8 @@ pub fn draw(
                             let frame = movie.frame as usize;
                             let (width, height, display_height) =
                                 (movie.width, movie.height, movie.display_height);
-                            let pixels = if viewer.texture_key != Some((frame, None))
+                            let pixels = if viewer.texture_key
+                                != Some((frame, ImagePalette::Embedded))
                                 || viewer.textures.is_empty()
                             {
                                 Some(movie.rgba())
@@ -631,7 +734,7 @@ pub fn draw(
                             };
                             if let Some(pixels) = pixels {
                                 preview::texture(&ctx, &mut viewer, pixels, width, height);
-                                viewer.texture_key = Some((frame, None));
+                                viewer.texture_key = Some((frame, ImagePalette::Embedded));
                             }
                             if let Some(texture) = viewer.textures.first() {
                                 picture_view(
@@ -642,22 +745,76 @@ pub fn draw(
                                     true,
                                 );
                             }
+                        } else if let Some(error) = &viewer.error {
+                            ui.label(error);
                         } else {
                             ui.spinner();
                             ui.label("Loading movie…");
                         }
                     }
+                    Content::Spatial { cells, value } => {
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(&mut viewer.data_mode, 0, "Visualization");
+                            ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
+                        });
+                        if viewer.data_mode == 1 {
+                            json_view(ui, &mut viewer, value);
+                        } else {
+                            visibility_view(ui, &mut viewer, cells);
+                        }
+                    }
                     Content::Data { value } => {
-                        ui.heading("Decoded data");
+                        ui.heading("Asset data");
+                        let source = value["source_lines"].as_array().map(|lines| {
+                            lines
+                                .iter()
+                                .filter_map(serde_json::Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        });
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(
+                                &mut viewer.data_mode,
+                                0,
+                                if source.is_some() { "Source" } else { "Tree" },
+                            );
+                            ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
+                            if source.is_some() {
+                                ui.selectable_value(&mut viewer.data_mode, 2, "Decoded fields");
+                            }
+                        });
                         ui.add(
                             egui::TextEdit::singleline(&mut viewer.data_filter)
                                 .id(egui::Id::new("data-filter"))
                                 .hint_text("Find fields or values…"),
                         );
                         let filter = viewer.data_filter.to_lowercase();
-                        egui::ScrollArea::both().show(ui, |ui| {
-                            data_tree(ui, "Asset", value, &filter, 0);
-                        });
+                        egui::ScrollArea::both()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                if viewer.data_mode == 1
+                                    || (viewer.data_mode == 0 && source.is_some())
+                                {
+                                    let text = if viewer.data_mode == 1 {
+                                        if viewer.data_text.is_empty() {
+                                            viewer.data_text = serde_json::to_string_pretty(value)
+                                                .unwrap_or_default();
+                                        }
+                                        viewer.data_text.clone()
+                                    } else {
+                                        source.unwrap_or_default()
+                                    };
+                                    let mut text = text.as_str();
+                                    ui.add(
+                                        egui::TextEdit::multiline(&mut text)
+                                            .code_editor()
+                                            .desired_width(f32::INFINITY),
+                                    );
+                                } else {
+                                    data_tree(ui, "Asset", value, &filter, 0);
+                                }
+                            });
                     }
                     Content::Unavailable { reason } => {
                         ui.heading("Preview unavailable");
@@ -674,9 +831,16 @@ pub fn draw(
                         } else {
                             "Loading selected asset…"
                         });
+                        ui.label(&viewer.load_status);
                     } else if let Some(error) = &viewer.error {
                         ui.heading("Preview could not load");
                         ui.label(error);
+                        if ui.button("Retry").clicked() {
+                            select = viewer.selected;
+                        }
+                    } else if viewer.archive.is_some() {
+                        ui.heading("Archive contents");
+                        ui.label("Select a member from the list to inspect it.");
                     } else {
                         ui.heading("Explore Redguard");
                         ui.label("Choose a category and an asset to inspect.");
@@ -709,8 +873,9 @@ fn image_controls(
     count: usize,
     catalog: Option<&Catalog>,
     indexed: bool,
+    embedded: bool,
 ) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut viewer.fit, "Fit");
         if ui.button("1:1").clicked() {
             viewer.fit = false;
@@ -723,24 +888,63 @@ fn image_controls(
             ui.add(egui::Slider::new(&mut viewer.frame, 0..=count - 1).text("Frame"));
         }
     });
+    frame_transport(ui, viewer, count);
     if indexed {
         egui::ComboBox::from_id_salt("palette-choice")
-            .selected_text(
-                viewer
-                    .palette
-                    .and_then(|i| catalog?.palettes.get(i))
-                    .map_or("Embedded / indices", |p| p.name.as_str()),
-            )
+            .selected_text(match viewer.palette {
+                ImagePalette::Embedded => "Embedded palette",
+                ImagePalette::Catalog(i) => catalog
+                    .and_then(|c| c.palettes.get(i))
+                    .map_or("Without palette", |p| p.name.as_str()),
+                ImagePalette::Indices => "Without palette",
+            })
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut viewer.palette, None, "Embedded / indices");
+                if embedded {
+                    ui.selectable_value(
+                        &mut viewer.palette,
+                        ImagePalette::Embedded,
+                        "Embedded palette",
+                    );
+                }
                 if let Some(catalog) = catalog {
                     for (i, p) in catalog.palettes.iter().enumerate() {
-                        ui.selectable_value(&mut viewer.palette, Some(i), &p.name);
+                        ui.selectable_value(&mut viewer.palette, ImagePalette::Catalog(i), &p.name);
                     }
                 }
+                ui.selectable_value(
+                    &mut viewer.palette,
+                    ImagePalette::Indices,
+                    "Without palette",
+                );
             });
     }
     ui.separator();
+}
+fn frame_transport(ui: &mut egui::Ui, viewer: &mut Viewer, count: usize) {
+    if count < 2 {
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button(if viewer.playing { "Pause" } else { "Play" })
+            .clicked()
+        {
+            if viewer.frame + 1 == count {
+                viewer.frame = 0;
+                viewer.scene_dirty = true;
+            }
+            viewer.playing = !viewer.playing;
+            viewer.frame_elapsed = 0.;
+        }
+        ui.checkbox(&mut viewer.looping, "Loop");
+        ui.label("Frame time");
+        ui.add(
+            egui::DragValue::new(&mut viewer.frame_ms)
+                .range(10.0..=10000.0)
+                .suffix(" ms"),
+        );
+        ui.weak(format!("{} / {count}", viewer.frame + 1));
+    });
 }
 fn picture_view(ui: &mut egui::Ui, id: egui::TextureId, size: egui::Vec2, zoom: f32, fit: bool) {
     let available = ui.available_size();
@@ -777,7 +981,7 @@ fn picture_view(ui: &mut egui::Ui, id: egui::TextureId, size: egui::Vec2, zoom: 
     });
 }
 fn transport(ui: &mut egui::Ui, viewer: &mut Viewer, duration: f64) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui
             .button(if viewer.playing { "Pause" } else { "Play" })
             .clicked()
@@ -873,9 +1077,17 @@ pub fn entry_format(entry: &cyrus_assets::Entry) -> &str {
         {
             "TEXBSI"
         }
+        _ if entry.category == Category::Other => "Other",
         _ => &entry.format,
     }
 }
+fn in_listing(entry: &cyrus_assets::Entry, format: &str, archive: Option<&str>) -> bool {
+    match archive {
+        Some(path) => entry.path == path && is_member(entry),
+        None => !is_member(entry) && entry_format(entry) == format,
+    }
+}
+
 fn is_member(entry: &cyrus_assets::Entry) -> bool {
     matches!(
         entry.source,
@@ -886,9 +1098,159 @@ fn is_member(entry: &cyrus_assets::Entry) -> bool {
     )
 }
 
+fn json_view(ui: &mut egui::Ui, viewer: &mut Viewer, value: &serde_json::Value) {
+    if viewer.data_text.is_empty() {
+        viewer.data_text = serde_json::to_string_pretty(value).unwrap_or_default();
+    }
+    egui::ScrollArea::both()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            let mut text = viewer.data_text.as_str();
+            ui.add(
+                egui::TextEdit::multiline(&mut text)
+                    .code_editor()
+                    .desired_width(f32::INFINITY),
+            );
+        });
+}
+
+fn visibility_view(ui: &mut egui::Ui, viewer: &mut Viewer, cells: &[cyrus_assets::SpatialCell]) {
+    let Some(root) = cells.first() else {
+        ui.label("No visibility cells");
+        return;
+    };
+    ui.label("Visibility octree · top view (X / Z), sliced at Y. Brighter cells contain more visibility indices.");
+    let depth = cells.iter().map(|c| c.depth).max().unwrap_or(0);
+    ui.add(egui::Slider::new(&mut viewer.spatial_depth, 0..=depth).text("Depth"));
+    let min_y = root.center[1] - root.half_extent;
+    let max_y = root.center[1] + root.half_extent;
+    viewer.slice_y = viewer.slice_y.clamp(min_y, max_y);
+    ui.add(egui::Slider::new(&mut viewer.slice_y, min_y..=max_y).text("Y slice"));
+    let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+    let scale = rect.width().min(rect.height()) / (root.half_extent * 2.).max(1.);
+    let project = |x: f32, z: f32| {
+        rect.center() + egui::vec2((x - root.center[0]) * scale, (z - root.center[2]) * scale)
+    };
+    for cell in cells.iter().filter(|c| {
+        c.depth == viewer.spatial_depth
+            && viewer.slice_y <= c.center[1] + c.half_extent
+            && (viewer.slice_y > c.center[1] - c.half_extent
+                || (viewer.slice_y == min_y && c.center[1] - c.half_extent == min_y))
+    }) {
+        let center = project(cell.center[0], cell.center[2]);
+        let bounds =
+            egui::Rect::from_center_size(center, egui::Vec2::splat(cell.half_extent * 2. * scale));
+        let shade = (cell.visible_indices as f32 + 1.).ln().min(10.) / 10.;
+        ui.painter().rect_filled(
+            bounds,
+            0.,
+            egui::Color32::from_rgb(25, (50. + shade * 180.) as u8, (60. + shade * 170.) as u8),
+        );
+        ui.painter().rect_stroke(
+            bounds,
+            0.,
+            egui::Stroke::new(0.5, egui::Color32::GRAY),
+            egui::StrokeKind::Inside,
+        );
+        if response.hover_pos().is_some_and(|p| bounds.contains(p)) {
+            response.clone().on_hover_text(format!(
+                "Center {:?}\nHalf extent {}\n{} visibility indices",
+                cell.center, cell.half_extent, cell.visible_indices
+            ));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn image_palette_defaults_preserve_embedded_artwork() {
+        let mut viewer = Viewer {
+            palette: ImagePalette::Catalog(0),
+            ..default()
+        };
+        let mut preview = Preview {
+            content: Content::Images {
+                frames: vec![cyrus_assets::Picture {
+                    label: "test".into(),
+                    width: 1,
+                    height: 1,
+                    rgba: vec![10, 20, 30, 255],
+                    indices: Some(vec![1]),
+                    embedded_palette: true,
+                }],
+            },
+            details: vec![],
+            related: vec![],
+        };
+        viewer.set_preview(preview.clone());
+        assert_eq!(viewer.palette, ImagePalette::Embedded);
+        if let Content::Images { frames } = &mut preview.content {
+            frames[0].embedded_palette = false;
+        }
+        viewer.palette = ImagePalette::Catalog(0);
+        viewer.set_preview(preview);
+        assert_eq!(viewer.palette, ImagePalette::Catalog(0));
+    }
+    #[test]
+    fn spatial_preview_opens_on_a_populated_layer() {
+        let mut viewer = Viewer::default();
+        viewer.set_preview(Preview {
+            content: Content::Spatial {
+                cells: vec![
+                    cyrus_assets::SpatialCell {
+                        center: [0.; 3],
+                        half_extent: 8.,
+                        depth: 0,
+                        visible_indices: 0,
+                    },
+                    cyrus_assets::SpatialCell {
+                        center: [1., 5., 1.],
+                        half_extent: 1.,
+                        depth: 3,
+                        visible_indices: 4,
+                    },
+                ],
+                value: serde_json::Value::Null,
+            },
+            details: vec![],
+            related: vec![],
+        });
+        assert_eq!(viewer.spatial_depth, 3);
+        assert_eq!(viewer.slice_y, 5.);
+    }
+    #[test]
+    fn archive_members_are_visible_independently_of_format_labels() {
+        let member = cyrus_assets::Entry {
+            id: String::new(),
+            name: "member".into(),
+            path: "fxart/DRINT.ROB".into(),
+            category: Category::Models,
+            format: "Model".into(),
+            source: cyrus_assets::Source::Model(0),
+            bytes: 0,
+            error: None,
+        };
+        assert!(in_listing(&member, "ROB", Some("fxart/DRINT.ROB")));
+        assert!(!in_listing(&member, "ROB", Some("fxart/OTHER.ROB")));
+        assert!(!in_listing(&member, "Model", None));
+        let other = cyrus_assets::Entry {
+            category: Category::Other,
+            source: cyrus_assets::Source::File,
+            ..member
+        };
+        let mut viewer = Viewer::default();
+        viewer.set_catalog(Catalog {
+            version: cyrus_assets::CATALOG_VERSION,
+            generation: String::new(),
+            entries: vec![other],
+            palettes: vec![],
+        });
+        assert_eq!(viewer.catalog.as_ref().unwrap().entries.len(), 1);
+        assert_eq!(viewer.format, "Other");
+    }
     #[test]
     fn browsing_separates_extensions_and_groups_numbered_texture_banks() {
         let mut entry = cyrus_assets::Entry {

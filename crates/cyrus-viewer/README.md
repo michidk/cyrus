@@ -20,24 +20,30 @@ Up/Down changes selection when a text field is not focused. The Details panel
 shows source information and links to related archive members, textures, and
 world variants. Panels resize by dragging their boundaries.
 
-Images support fit, zoom, animation-frame selection, and palette selection for
-indexed sources. Fonts show a sample and glyph atlas. Models and worlds have a
+Images support fit, zoom, frame selection, and palette selection for indexed
+sources. Animated images and models have Play/Pause, Loop, and an editable frame
+interval in milliseconds. Fonts show a sample and glyph atlas. Models and worlds have a
 textured orbit view, edge overlay, frame controls where supported, and automatic
 framing. Drag to orbit, right-drag to pan, and scroll to zoom.
-Models start without a scene palette. The palette selector lists only palettes
-from their referencing worlds, including time-of-day variants. Standalone model
+Models start with the first available scene palette. The palette selector lists
+palettes from their referencing worlds, including time-of-day variants, with
+Without palette last. Indexed images use their embedded palette first when present; otherwise they
+default to the first catalog palette. Without palette shows grayscale indices. Standalone model
 references are indexed from scene placement and actor metadata on first use,
 then reused; this does not run during startup.
 
 Archive categories initially list archives. Open one to read its member index,
-then select a member to load its contents. Search covers files and the currently
+then select a member to load its contents. A BSI bank with one member opens that
+image directly after indexing. Search covers files and the currently
 opened archive. Speech entries use original IDs; labels become available after
 selection.
 
 Audio shows a waveform with playback, seeking, looping, and volume. Movies have
-video, audio, a timeline, and frame stepping. Definitions expose preservation's
-decoded fields and source lines. Malformed members of recognized asset types
-remain visible with a reason. Unrecognized files are excluded from the viewer.
+video, audio, a timeline, and frame stepping. Definitions offer readable source and JSON views alongside preservation's decoded
+fields. RGM world previews and WLD terrain geometry can switch to JSON. PVO files
+show a top-down octree slice with depth and height controls plus a JSON view.
+Malformed members remain visible with a reason. Unrecognized files appear under
+Other. WAV lists standalone files; SFX, RTX, and CD audio contain additional sounds.
 
 ## Browser build
 
@@ -89,12 +95,15 @@ lighting, animation timing, or scene behavior. Palette choices come from WORLD.I
 a palette, models use embedded texture colors or grayscale palette indices.
 Models with no known world reference have no scene palette choices. World
 previews use their configured palette.
-Supported integer model frames can be scrubbed; other encodings show base
-geometry with an explicit explanation. Preservation does not expose separate
+Model playback uses preservation's frame conversion and the chosen inspection
+interval. It does not execute the original animation scripts. Unknown encodings
+or incomplete frames report an explicit error. Preservation does not expose separate
 BSI mip levels, so no mip selector is shown.
 
-Movie playback uses the first audio track. Seeking decodes forward in bounded
-batches and may pause while catching up. Browser audio requires a user gesture.
+Movie playback uses the first audio track. The selected movie is downloaded and
+its audio prepared before playback; progress identifies reading and decoding.
+Large movies still require the full original movie bytes. Seeking decodes forward
+in bounded batches and may pause while catching up. Browser audio requires a user gesture.
 Scripts are inspected as data, never executed.
 
 `cyrus-assets` tests the portable catalog/runtime contracts. Native and browser

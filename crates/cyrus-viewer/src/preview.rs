@@ -13,6 +13,8 @@ pub struct ViewCamera;
 #[derive(Component)]
 pub struct PreviewRoot;
 #[derive(Component)]
+pub struct PreviewFrame(usize);
+#[derive(Component)]
 pub struct PreviewAudio;
 
 pub fn setup(mut commands: Commands) {
@@ -28,6 +30,10 @@ pub fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         ViewCamera,
+        AmbientLight {
+            brightness: 1000.,
+            ..default()
+        },
         Projection::Perspective(PerspectiveProjection {
             near: 0.01,
             far: 1_000_000.,
@@ -37,7 +43,7 @@ pub fn setup(mut commands: Commands) {
     ));
     commands.spawn((
         DirectionalLight {
-            illuminance: 8000.,
+            illuminance: 20000.,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.9, 0.4, 0.)),
@@ -47,26 +53,52 @@ pub fn sync(
     mut commands: Commands,
     mut viewer: ResMut<Viewer>,
     assets: Res<AssetServer>,
-    roots: Query<(Entity, &WorldAssetRoot), With<PreviewRoot>>,
+    mut roots: Query<(Entity, &WorldAssetRoot, &PreviewFrame, &mut Visibility), With<PreviewRoot>>,
+    mut loaded_model: Local<Option<String>>,
     audio: Query<(Entity, &AudioPlayer<AudioSource>), With<PreviewAudio>>,
 ) {
     let selection_changed = viewer.scene_dirty;
     if viewer.scene_dirty {
-        for (root, _) in &roots {
-            commands.entity(root).despawn();
-        }
-        if let Some(Content::Model { frames, .. }) = viewer.preview.as_ref().map(|p| &p.content)
-            && let Some(path) = frames.get(viewer.frame)
-        {
-            let handle =
-                assets.load(GltfAssetLabel::Scene(0).from_asset(format!("cache://{path}")));
-            commands.spawn((PreviewRoot, WorldAssetRoot(handle)));
-            viewer.needs_frame = true;
+        let frames = viewer.preview.as_ref().and_then(|p| match &p.content {
+            Content::Model { frames, .. } => Some(frames),
+            _ => None,
+        });
+        let key = frames.and_then(|frames| frames.first()).cloned();
+        if key != *loaded_model {
+            for (root, _, _, _) in &mut roots {
+                commands.entity(root).despawn();
+            }
+            if let Some(frames) = frames {
+                for (index, path) in frames.iter().enumerate() {
+                    let handle =
+                        assets.load(GltfAssetLabel::Scene(0).from_asset(format!("cache://{path}")));
+                    commands.spawn((
+                        PreviewRoot,
+                        PreviewFrame(index),
+                        WorldAssetRoot(handle),
+                        if index == viewer.frame {
+                            Visibility::Inherited
+                        } else {
+                            Visibility::Hidden
+                        },
+                    ));
+                }
+                viewer.needs_frame = true;
+            }
+            *loaded_model = key;
+        } else {
+            for (_, _, frame, mut visibility) in &mut roots {
+                *visibility = if frame.0 == viewer.frame {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
+            }
         }
         viewer.scene_dirty = false;
     }
     if !selection_changed {
-        for (_, root) in &roots {
+        for (_, root, _, _) in &roots {
             if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(root.0.id())
             {
                 viewer.error = Some(format!("Model load: {error}"));
@@ -156,6 +188,11 @@ pub fn frame_camera(
         viewer.needs_frame = false;
     }
     if let Ok((mut transform, mut camera, _)) = cameras.single_mut() {
+        camera.is_active = viewer.data_mode == 0
+            && viewer
+                .preview
+                .as_ref()
+                .is_some_and(|p| matches!(p.content, Content::Model { .. }));
         let rotation = Quat::from_euler(EulerRot::YXZ, viewer.yaw, viewer.pitch, 0.);
         transform.translation = viewer.center + rotation * Vec3::new(0., 0., viewer.distance);
         transform.look_at(viewer.center, Vec3::Y);
@@ -382,5 +419,75 @@ pub fn edges(
             Mesh3d(handle),
             MeshMaterial3d(material),
         ));
+    }
+}
+
+/// Inspection timing is user-controlled and does not reproduce game script timing.
+pub fn animate(mut viewer: ResMut<Viewer>, time: Res<Time>) {
+    let count = match viewer.preview.as_ref().map(|p| &p.content) {
+        Some(Content::Images { frames }) => frames.len(),
+        Some(Content::Model { frames, .. }) => frames.len(),
+        _ => return,
+    };
+    if !viewer.playing || count < 2 {
+        return;
+    }
+    viewer.frame_elapsed += time.delta_secs_f64() * 1000.;
+    let steps = (viewer.frame_elapsed / viewer.frame_ms) as usize;
+    if steps == 0 {
+        return;
+    }
+    viewer.frame_elapsed %= viewer.frame_ms;
+    let next = viewer.frame.saturating_add(steps);
+    viewer.frame = if viewer.looping {
+        next % count
+    } else {
+        next.min(count - 1)
+    };
+    if !viewer.looping && next >= count - 1 {
+        viewer.playing = false;
+    }
+    viewer.position = viewer.frame as f64 * viewer.frame_ms / 1000.;
+    viewer.scene_dirty = true;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn frame_playback_advances_stops_and_loops() {
+        let mut app = App::new();
+        let mut viewer = Viewer::default();
+        viewer.set_preview(cyrus_assets::Preview {
+            content: Content::Model {
+                frames: vec!["a.glb".into(), "b.glb".into(), "c.glb".into()],
+                palettes: vec![],
+                data: None,
+            },
+            details: vec![],
+            related: vec![],
+        });
+        viewer.playing = true;
+        viewer.frame_ms = 100.;
+        app.insert_resource(viewer)
+            .init_resource::<Time>()
+            .add_systems(Update, animate);
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(150));
+        app.update();
+        assert_eq!(app.world().resource::<Viewer>().frame, 1);
+        app.update();
+        assert_eq!(app.world().resource::<Viewer>().frame, 2);
+        assert!(!app.world().resource::<Viewer>().playing);
+        {
+            let mut viewer = app.world_mut().resource_mut::<Viewer>();
+            viewer.playing = true;
+            viewer.looping = true;
+            viewer.frame_elapsed = 0.;
+        }
+        app.update();
+        assert_eq!(app.world().resource::<Viewer>().frame, 0);
+        assert!(app.world().resource::<Viewer>().playing);
     }
 }

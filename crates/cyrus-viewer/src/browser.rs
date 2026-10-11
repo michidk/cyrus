@@ -210,7 +210,8 @@ fn poll(
             .map(|entry| entry.id.as_str());
         match message {
             Message::Progress(done, total, name) => {
-                progress.label = format!("{name} ({done}/{total})");
+                viewer.load_status = format!("{name} ({done}/{total})");
+                progress.label = viewer.load_status.clone();
                 progress.fraction = Some(done as f32 / total.max(1) as f32);
             }
             Message::Catalog(catalog) => {
@@ -227,7 +228,7 @@ fn poll(
                     media.root.insert_asset(Path::new(&path), bytes);
                     media.paths.push(path);
                 }
-                viewer.preview = Some(preview);
+                viewer.set_preview(preview);
                 viewer.preparing = false;
                 viewer.scene_dirty = true;
                 viewer.audio_dirty = true;

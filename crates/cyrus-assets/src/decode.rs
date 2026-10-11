@@ -39,6 +39,7 @@ pub fn font(font: &rgpre::import::fnt::FntFile) -> Result<Content> {
             height,
             rgba,
             indices: None,
+            embedded_palette: true,
         };
         picture.validate()?;
         glyphs.push(picture);

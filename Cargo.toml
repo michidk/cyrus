@@ -17,7 +17,7 @@ serde_json = "1"
 toml = "0.9"
 clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
-redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "8c7a3f0f2866976d2a5885706b3fb7f007f02697" }
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "39d74ff8b0fb8f6b7feda333c251be521eb1a811" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-game = { path = "crates/cyrus-game" }
 

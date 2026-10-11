@@ -7,11 +7,13 @@ const saved = new Map();
 const calls = [];
 let offline = false;
 let ignoresRange = false;
+let finishWrite;
+let delayWrite = false;
 const base = "https://example.test/tools/";
 const context = {
   URL, console, Request, Response,
   self: { location: new URL(base + "sw.js"), addEventListener: (name, fn) => events[name] = fn },
-  caches: { open: async () => ({ match: async req => saved.get(req.url), put: async (req, value) => saved.set(req.url, value) }) },
+  caches: { open: async () => ({ match: async req => saved.get(req.url), put: async (req, value) => { if (delayWrite) await new Promise(resolve => finishWrite = resolve); saved.set(req.url, value); } }) },
   fetch: async (request, options) => {
     calls.push([typeof request === "string" ? request : request.url, options]);
     if (offline) throw new Error("offline");
@@ -23,10 +25,11 @@ const context = {
   },
 };
 vm.runInNewContext(fs.readFileSync(__dirname + "/sw.js", "utf8"), context);
-function request(path, origin = base) {
+function request(path, origin = base, drain = true) {
   let response;
-  events.fetch({ request: { method: "GET", url: origin + path }, respondWith: promise => response = promise });
-  return response;
+  const background = [];
+  events.fetch({ request: { method: "GET", url: origin + path }, respondWith: promise => response = promise, waitUntil: promise => background.push(promise) });
+  return response?.then(async value => { if (drain) await Promise.all(background); return value; });
 }
 (async () => {
   const immutable = "cyrus-config/cache/viewer/" + "a".repeat(64) + "/model.glb";
@@ -55,6 +58,15 @@ function request(path, origin = base) {
   await request(badChunk);
   await request(badChunk);
   assert.equal(calls.length, beforeBadRange + 2, "a host ignoring Range must not poison the chunk cache");
+  delayWrite = true;
+  const responsive = await Promise.race([
+    request(source + "&write-test=1", base, false),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("cache write blocked the response")), 1000)),
+  ]);
+  assert.equal(await responsive.text(), "preview");
+  assert.equal(typeof finishWrite, "function");
+  finishWrite();
+  delayWrite = false;
   offline = true;
   assert.ok(await request("cyrus-config/cache/viewer/catalog.json"), "cached catalog remains available offline");
   assert.equal(request("cyrus-config/menu.json"), undefined, "local settings must not enter asset caching");

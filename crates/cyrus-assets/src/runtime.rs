@@ -184,6 +184,8 @@ impl<R: ReadAssets> Library<R> {
         Ok(())
     }
 
+    /// Prepares one selection. No palette selects the first known world palette;
+    /// an explicitly empty string requests embedded colors or raw indices instead.
     pub fn prepare(&mut self, id: &str, palette: Option<&str>) -> Result<Prepared> {
         let entry = self
             .catalog
@@ -310,9 +312,6 @@ fn discover(
     catalog: &mut Catalog,
 ) -> Result<()> {
     let kind = FileType::from_path(path);
-    if let Some(kind) = kind {
-        parent.format = kind.display_name().into();
-    }
     parent.category = match kind {
         Some(FileType::Bsi | FileType::Gxa) => Category::Images,
         Some(FileType::Col) => Category::Palettes,

@@ -44,6 +44,8 @@ impl Manifest {
 /// Implementations must reject truncated responses and keep the original files read-only.
 pub trait ReadAssets {
     fn manifest(&self) -> &Manifest;
+    /// Optional progress for a selected resource, outside initial catalog loading.
+    fn progress(&self, _done: usize, _total: usize, _label: &str) {}
     fn read_range(&self, path: &str, start: u64, length: usize) -> Result<Vec<u8>>;
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let file = self

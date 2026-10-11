@@ -170,3 +170,72 @@ pub fn resolve_world<'a>(
     };
     entry.with_context(|| format!("no world {name} in WORLD.INI"))
 }
+
+/// Octants and root half-extent follow preservation's PVO format contract.
+pub fn visibility_cells(tree: &rgpre::import::pvo::PvoFile) -> Result<Vec<crate::SpatialCell>> {
+    use rgpre::import::pvo::{CHILD_REF_EMPTY, LEAF_REF_NONE};
+    let nodes: HashMap<_, _> = tree
+        .octr_nodes
+        .iter()
+        .map(|n| (n.byte_offset as u32, n))
+        .collect();
+    let leaves: HashMap<_, _> = tree
+        .plst_leaves
+        .iter()
+        .map(|leaf| (leaf.byte_offset as u32, leaf))
+        .collect();
+    let mut pending = vec![(
+        0,
+        [
+            tree.header.center_x as f32,
+            tree.header.center_y as f32,
+            tree.header.center_z as f32,
+        ],
+        tree.header.cell_size as f32,
+        0,
+    )];
+    let mut cells = Vec::new();
+    while let Some((id, center, half_extent, depth)) = pending.pop() {
+        anyhow::ensure!(
+            cells.len() < 1_000_000,
+            "PVO visualization exceeds one million spatial cells"
+        );
+        anyhow::ensure!(
+            depth <= tree.header.depth,
+            "PVO node {id}: exceeds declared depth"
+        );
+        let node = nodes
+            .get(&id)
+            .with_context(|| format!("PVO node {id}: missing child"))?;
+        let visible_indices = if node.leaf_ref == LEAF_REF_NONE {
+            0
+        } else {
+            leaves
+                .get(&node.leaf_ref)
+                .with_context(|| format!("PVO node {id}: missing leaf"))?
+                .entries
+                .iter()
+                .map(|e| usize::from(e.count))
+                .sum()
+        };
+        cells.push(crate::SpatialCell {
+            center,
+            half_extent,
+            depth,
+            visible_indices,
+        });
+        for &(octant, child) in &node.child_refs {
+            if child == CHILD_REF_EMPTY {
+                continue;
+            }
+            let half = half_extent * 0.5;
+            let child_center = [
+                center[0] + if octant & 4 != 0 { half } else { -half },
+                center[1] + if octant & 2 != 0 { half } else { -half },
+                center[2] + if octant & 1 != 0 { half } else { -half },
+            ];
+            pending.push((child, child_center, half, depth + 1));
+        }
+    }
+    Ok(cells)
+}

@@ -5,10 +5,7 @@ use crate::{Content, Entry, Picture, Preview, Source, media};
 use anyhow::{Context, Result, ensure};
 use rgpre::{
     gltf,
-    import::{
-        self, FileType,
-        model3d::{FrameType, TextureData},
-    },
+    import::{self, FileType, model3d::TextureData},
 };
 use serde_json::json;
 
@@ -58,6 +55,7 @@ pub(super) fn prepare<R: ReadAssets>(
                     height: texture.height,
                     rgba: texture.rgba.clone(),
                     indices: None,
+                    embedded_palette: false,
                 }],
             };
             return Ok(preview);
@@ -75,6 +73,7 @@ pub(super) fn prepare<R: ReadAssets>(
             preview.content = Content::Model {
                 frames: vec![url],
                 palettes: Vec::new(),
+                data: Some(import::rgm::export_rgm_metadata_json(&world.rgm, None)),
             };
             let names: std::collections::BTreeSet<_> =
                 world.models.iter().map(|model| &model.model_name).collect();
@@ -112,7 +111,7 @@ pub(super) fn prepare<R: ReadAssets>(
                         if image.palette.is_some() {
                             "Embedded"
                         } else {
-                            "Choose a palette; default shows indices"
+                            "Indexed; choose a display palette"
                         }
                         .into(),
                     ),
@@ -120,6 +119,7 @@ pub(super) fn prepare<R: ReadAssets>(
                 let frames = (0..=image.extra_frames.len())
                     .map(|i| Picture {
                         label: format!("Frame {i}"),
+                        embedded_palette: image.palette.is_some(),
                         width: image.width.into(),
                         height: image.height.into(),
                         rgba: image.decode_frame_rgba(i, None).unwrap_or_default(),
@@ -246,6 +246,7 @@ pub(super) fn prepare<R: ReadAssets>(
                             height: f.height.into(),
                             rgba: f.rgba,
                             indices: None,
+                            embedded_palette: false,
                         })
                         .collect(),
                 }
@@ -274,11 +275,21 @@ pub(super) fn prepare<R: ReadAssets>(
                     .iter()
                     .filter(|w| stem(&w.map).eq_ignore_ascii_case(stem(&entry.path)))
                     .collect();
-                for world in matching {
+                for world in &matching {
                     related_world(library, &mut preview, world.index);
                 }
-                Content::Data {
-                    value: import::rgm::export_rgm_metadata_json(&map, None),
+                let value = import::rgm::export_rgm_metadata_json(&map, None);
+                if let Some(world) = matching.first() {
+                    let world = geometry::world(&library.source, &world.index.to_string())?;
+                    let url = library.output(&entry.id, "glb");
+                    library.publish(&url, &world.glb)?;
+                    Content::Model {
+                        frames: vec![url],
+                        palettes: Vec::new(),
+                        data: Some(value),
+                    }
+                } else {
+                    Content::Data { value }
                 }
             }
             Some(FileType::Wld) => {
@@ -291,13 +302,22 @@ pub(super) fn prepare<R: ReadAssets>(
                 }) {
                     related_world(library, &mut preview, world.index);
                 }
-                Content::Data {
-                    value: json!({"terrain":format!("{:#?}",terrain.header),"world_previews":"Choose a related world for the authored palette and placements."}),
+                let (json, binary) =
+                    gltf::convert_wld_scene_to_gltf(&terrain, 0, &[], None, None, false)?;
+                let url = library.output(&entry.id, "glb");
+                library.publish(&url, &gltf::to_glb(&json, &binary)?)?;
+                Content::Model {
+                    frames: vec![url],
+                    palettes: Vec::new(),
+                    data: Some(
+                        json!({"header_fields":terrain.header.fields.as_slice(),"sections":terrain.sections.len(),"world_previews":"Choose a related world for the authored palette and placements."}),
+                    ),
                 }
             }
             Some(FileType::Pvo) => {
                 let tree = import::pvo::parse_pvo_file(bytes)?;
-                Content::Data {
+                Content::Spatial {
+                    cells: geometry::visibility_cells(&tree)?,
                     value: json!({
                 "depth":tree.header.depth,"center":[tree.header.center_x,tree.header.center_y,tree.header.center_z],"cell_size":tree.header.cell_size,
                 "nodes":tree.octr_nodes.iter().map(|n|json!({"id":n.byte_offset,"leaf":n.leaf_ref,"children":n.child_refs})).collect::<Vec<_>>(),
@@ -315,7 +335,9 @@ pub(super) fn prepare<R: ReadAssets>(
                 ),
             },
             None if entry.category == crate::Category::Images => {
-                let image = image::load_from_memory(bytes)?.into_rgba8();
+                let image = image::load_from_memory(bytes)
+                    .with_context(|| format!("Original image is malformed or uses an unsupported encoding ({} source bytes); the original file was not modified", bytes.len()))?
+                    .into_rgba8();
                 Content::Images {
                     frames: vec![Picture {
                         label: entry.name.clone(),
@@ -323,6 +345,7 @@ pub(super) fn prepare<R: ReadAssets>(
                         height: image.height(),
                         rgba: image.into_raw(),
                         indices: None,
+                        embedded_palette: false,
                     }],
                 }
             }
@@ -490,7 +513,7 @@ fn model<R: ReadAssets>(
     preview: &mut Preview,
     selected_palette: Option<&str>,
 ) -> Result<Content> {
-    let mut model = import::model3d::parse_3d_file(source)?;
+    let model = import::model3d::parse_3d_file(source)?;
     preview.details.extend([
         ("Vertices".into(), model.header.num_vertices.to_string()),
         ("Faces".into(), model.header.num_faces.to_string()),
@@ -525,6 +548,9 @@ fn model<R: ReadAssets>(
         }
     }
     let palettes = model_palettes(library, entry)?;
+    let selected_palette = selected_palette
+        .or_else(|| palettes.first().map(String::as_str))
+        .filter(|name| !name.is_empty());
     let palette = if let Some(name) = selected_palette {
         ensure!(
             palettes.iter().any(|p| p == name),
@@ -557,39 +583,20 @@ fn model<R: ReadAssets>(
         }),
         Some(&banks),
     )?;
-    let count = if model
-        .frame_data
-        .first()
-        .is_some_and(|f| f.frame_type == FrameType::AnimatedI32)
-    {
-        model.frame_vertex_data.len()
-    } else {
-        1
-    };
-    if model.header.num_frames > 1 && count == 1 {
-        preview.details.push((
-            "Frame limit".into(),
-            "Only base geometry is supported for this encoding.".into(),
-        ));
-    }
+    let count = (model.header.num_frames as usize).max(1);
     let mut frames = Vec::new();
     for i in 0..count {
+        if i % 8 == 0 {
+            library.source.progress(i, count, "Preparing model frames");
+        }
         let url = library.output(&media_id, &format!("{i}.glb"));
         if library.cached(&url) {
             frames.push(url);
             continue;
         }
-        if i > 0 {
-            model.vertex_coords = model.frame_vertex_data[i].coords.clone();
-            model.face_normals = model
-                .frame_normal_data
-                .get(i)
-                .context("missing frame normals")?
-                .face_normals
-                .clone();
-        }
+        let posed = model.at_frame(i)?;
         let (json, bytes) = gltf::convert_models_to_gltf(
-            std::slice::from_ref(&model),
+            std::slice::from_ref(&posed),
             palette.as_ref(),
             Some(&mut textures),
             false,
@@ -601,7 +608,11 @@ fn model<R: ReadAssets>(
         "Appearance".into(),
         "Generic textured preview; world palette and lighting may differ.".into(),
     ));
-    Ok(Content::Model { frames, palettes })
+    Ok(Content::Model {
+        frames,
+        palettes,
+        data: None,
+    })
 }
 fn audio<R: ReadAssets>(
     library: &Library<R>,
@@ -622,6 +633,7 @@ fn audio<R: ReadAssets>(
 }
 fn movie<R: ReadAssets>(library: &Library<R>, entry: &Entry, bytes: &[u8]) -> Result<Content> {
     let header = import::smacker::SmackerHeader::parse(bytes).map_err(anyhow::Error::msg)?;
+    library.source.progress(0, 1, "Opening movie decoder");
     let mut decoder = smk::Smk::open_memory(bytes)?;
     let info = decoder.info();
     let audio = decoder.info_audio();
@@ -633,6 +645,13 @@ fn movie<R: ReadAssets>(library: &Library<R>, entry: &Entry, bytes: &[u8]) -> Re
         let mut pcm = Vec::new();
         decoder.first_frame()?;
         for i in 0..info.frame_count {
+            if i % 120 == 0 {
+                library.source.progress(
+                    i as usize,
+                    info.frame_count as usize,
+                    "Decoding movie audio",
+                );
+            }
             if i > 0 {
                 decoder.next_frame()?;
             }

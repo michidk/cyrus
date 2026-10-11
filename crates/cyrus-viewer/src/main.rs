@@ -60,6 +60,7 @@ fn application() -> anyhow::Result<App> {
         Update,
         (
             loading::poll,
+            preview::animate,
             preview::sync,
             preview::frame_camera,
             preview::movie,

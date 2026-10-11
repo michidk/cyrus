@@ -251,9 +251,12 @@ fn standalone_model_palette_choices_follow_world_usage_and_separate_cached_color
         .iter()
         .find(|e| e.path.eq_ignore_ascii_case("fxart/AVIKA001.3DC"))
         .unwrap();
-    let plain_path = library.prepare(&entry.id, None).unwrap();
+    let plain_path = library.prepare(&entry.id, Some("")).unwrap();
     let plain: Preview = serde_json::from_slice(&std::fs::read(&plain_path).unwrap()).unwrap();
-    let Content::Model { frames, palettes } = &plain.content else {
+    let Content::Model {
+        frames, palettes, ..
+    } = &plain.content
+    else {
         panic!("expected model: {:?}", plain.content);
     };
     assert_eq!(
@@ -277,11 +280,92 @@ fn standalone_model_palette_choices_follow_world_usage_and_separate_cached_color
         std::fs::read(library.cache.join(&frames[0])).unwrap(),
         std::fs::read(library.cache.join(&colored_frames[0])).unwrap()
     );
-    assert_eq!(library.prepare(&entry.id, None).unwrap(), plain_path);
+    assert_eq!(library.prepare(&entry.id, Some("")).unwrap(), plain_path);
+    let default_path = library.prepare(&entry.id, None).unwrap();
+    let default_preview: Preview =
+        serde_json::from_slice(&std::fs::read(default_path).unwrap()).unwrap();
+    let Content::Model {
+        frames: default_frames,
+        ..
+    } = default_preview.content
+    else {
+        panic!("expected default model")
+    };
+    assert_eq!(&default_frames, colored_frames);
     let unrelated_path = library
         .prepare(&entry.id, Some("fxart/CATACOMB.COL"))
         .unwrap();
     let unrelated: Preview =
         serde_json::from_slice(&std::fs::read(unrelated_path).unwrap()).unwrap();
     assert!(matches!(unrelated.content, Content::Unavailable { .. }));
+}
+
+#[test]
+fn installed_reported_archives_and_animation_have_content() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (reported viewer assets)");
+        return;
+    }
+    let scratch = Scratch::new();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    for path in ["fxart/DRINT.ROB", "sound/MAIN.SFX", "ENGLISH.RTX"] {
+        let catalog = library.expand(path).unwrap();
+        let members: Vec<_> = catalog
+            .entries
+            .iter()
+            .filter(|e| e.path == path && !matches!(e.source, Source::Archive))
+            .collect();
+        assert!(!members.is_empty(), "{path}: no indexed members");
+        eprintln!("{path}: {} members", members.len());
+        let output = library.prepare(&members[0].id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        assert!(
+            !matches!(preview.content, Content::Unavailable { .. }),
+            "{path}: {:?}",
+            preview.content
+        );
+    }
+    for entry in library
+        .catalog
+        .entries
+        .iter()
+        .filter(|entry| entry.path.to_ascii_uppercase().ends_with(".PVO"))
+    {
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        let Content::Spatial { cells, .. } = preview.content else {
+            panic!("{}: {:?}", entry.path, preview.content)
+        };
+        assert!(!cells.is_empty());
+        assert_eq!(cells[0].depth, 0);
+        assert!(cells.iter().any(|cell| cell.visible_indices > 0));
+    }
+    let avik = library
+        .catalog
+        .entries
+        .iter()
+        .find(|e| e.path == "fxart/AVIKA001.3DC")
+        .unwrap();
+    let output = library.prepare(&avik.id, None).unwrap();
+    let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+    let Content::Model {
+        frames, palettes, ..
+    } = preview.content
+    else {
+        panic!("Avik: {:?}", preview.content)
+    };
+    assert_eq!(frames.len(), 124);
+    assert_eq!(palettes.first().unwrap(), "fxart/ISLAND.COL");
+    assert_ne!(
+        std::fs::read(library.cache.join(&frames[0])).unwrap(),
+        std::fs::read(library.cache.join(&frames[1])).unwrap()
+    );
 }

@@ -14,7 +14,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 5;
+pub const CATALOG_VERSION: u32 = 7;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,6 +139,8 @@ pub struct Picture {
     pub height: u32,
     pub rgba: Vec<u8>,
     pub indices: Option<Vec<u8>>,
+    /// The decoded RGBA contains colors from the image's own palette.
+    pub embedded_palette: bool,
 }
 impl Picture {
     pub fn validate(&self) -> Result<()> {
@@ -176,6 +178,15 @@ impl Picture {
     }
 }
 
+/// A decoded visibility cell in original engine coordinates, before rendering transforms.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpatialCell {
+    pub center: [f32; 3],
+    pub half_extent: f32,
+    pub depth: u32,
+    pub visible_indices: usize,
+}
+
 /// Preview payloads are produced once and read by both native and browser UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Content {
@@ -193,6 +204,11 @@ pub enum Content {
     Model {
         frames: Vec<String>,
         palettes: Vec<String>,
+        data: Option<serde_json::Value>,
+    },
+    Spatial {
+        cells: Vec<SpatialCell>,
+        value: serde_json::Value,
     },
     Audio {
         wav: String,
@@ -273,6 +289,16 @@ impl Preview {
                     "invalid movie duration"
                 );
             }
+            Content::Spatial { cells, .. } => {
+                ensure!(
+                    cells
+                        .iter()
+                        .all(|cell| cell.center.iter().all(|n| n.is_finite())
+                            && cell.half_extent.is_finite()
+                            && cell.half_extent > 0.),
+                    "invalid visibility cell bounds"
+                );
+            }
             Content::Palette { colors } => ensure!(colors.len() == 256, "invalid palette"),
             _ => {}
         }
@@ -332,6 +358,7 @@ mod tests {
             height: 1,
             rgba: vec![1, 2, 3, 0],
             indices: Some(vec![0]),
+            embedded_palette: true,
         };
         let palette = Palette {
             name: "test".into(),
