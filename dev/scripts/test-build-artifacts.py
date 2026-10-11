@@ -62,6 +62,7 @@ if [[ "$1" = cyrus-viewer ]]; then
     done
 fi
 ''')
+        (scripts / "viewer-server.py").write_text("# Local viewer server\n")
         self.env = dict(os.environ, PATH=f"{bindir}:/usr/bin:/bin")
 
     def build(self, *args):
@@ -100,7 +101,7 @@ fi
         (self.root / "crates/cyrus-viewer/Cargo.toml").touch()
         self.build("web")
         expected.update(f"browser/{name}" for name in (
-            "viewer.html", "loader.js", "loading.css", "asset-worker.js", "VIEWER.md",
+            "viewer.html", "loader.js", "loading.css", "asset-worker.js", "VIEWER.md", "viewer-server.py",
             "pkg/cyrus-viewer.js", "pkg/cyrus-viewer_bg.wasm",
             "pkg/cyrus-assets-worker.js", "pkg/cyrus-assets-worker_bg.wasm"))
         self.assertEqual(self.members("cyrus-browser.tar.gz"), expected)

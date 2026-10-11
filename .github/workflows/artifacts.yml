@@ -2,6 +2,7 @@ name: Build artifacts
 
 on:
   push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -13,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: artifacts-${{ github.event_name }}-${{ inputs.release_tag || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
+  group: artifacts-${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_INCREMENTAL: 0

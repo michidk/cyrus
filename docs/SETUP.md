@@ -62,9 +62,10 @@ It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. The viewer currently lives on its
 separate development branch; game revisions without it contain only the game.
 
-Builds initially run on pushes to measure hosted duration against a ten-minute
-budget. Actions artifacts expire after seven days. Manual dispatch also builds
-artifacts. Pushing a version tag matching `v*` builds its revision and creates
+Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
+lint CI still runs on every push and pull request. Artifact builds run only for
+version tags and manual dispatch. Actions artifacts expire after seven days.
+Pushing a version tag matching `v*` builds its revision and creates
 a draft GitHub release with all archives and `SHA256SUMS` after every platform
 succeeds. Review the draft's assets and notes before publishing it; publishing
 does not rebuild them. A manual dispatch with `release_tag` set to an existing

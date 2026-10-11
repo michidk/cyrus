@@ -44,6 +44,7 @@ case "${1:-}" in
             cp target/web/pkg/cyrus-assets-worker.js target/web/pkg/cyrus-assets-worker_bg.wasm \
                 "$stage/browser/pkg/"
             cp crates/cyrus-viewer/README.md "$stage/browser/VIEWER.md"
+            cp dev/scripts/viewer-server.py "$stage/browser/"
         fi
         tar -czf target/artifacts/cyrus-browser.tar.gz -C "$stage" browser
         ;;
