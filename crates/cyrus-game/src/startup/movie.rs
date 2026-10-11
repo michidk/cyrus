@@ -16,7 +16,7 @@ use bevy::{
 };
 use rgpre::import::{
     cdrom::CdImage,
-    fnt::{FntFile, parse_fnt},
+    fnt::parse_fnt,
     menu_movies::{MovieDefinition, parse_menu_movies},
     sfx::AudioType,
     smacker::SmackerHeader,
@@ -38,7 +38,7 @@ struct Prepared {
     data: Arc<[u8]>,
     definition: MovieDefinition,
     header: SmackerHeader,
-    font: FntFile,
+    font: cyrus_text::Font,
     line_height: u16,
     font_color: [u8; 3],
     audio: Option<AudioSource>,
@@ -147,11 +147,12 @@ fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
         font_path = crate::scene::find_file(&font_path, part)
             .with_context(|| format!("movie: gui_low_font {font_name} missing"))?;
     }
-    let font = parse_fnt(&std::fs::read(&font_path)?).context("movie: gui_low_font")?;
-    let line_height = usize::from(b'W')
-        .checked_sub(font.header.character_start.into())
-        .and_then(|i| font.glyphs.get(i))
-        .filter(|g| g.enabled != 0 && g.width > 0)
+    let font = cyrus_text::Font::from(
+        &parse_fnt(&std::fs::read(&font_path)?).context("movie: gui_low_font")?,
+    );
+    let line_height = font
+        .glyph(b'W')
+        .filter(|g| g.width > 0)
         .context("movie: gui_low_font has no W glyph for line spacing")?
         .width;
     let palette =
@@ -490,7 +491,7 @@ fn subtitle_lines(text: &str) -> Vec<&str> {
 
 fn paint_subtitles(
     pixels: &mut [u8],
-    font: &FntFile,
+    font: &cyrus_text::Font,
     line_height: u16,
     color: [u8; 3],
     movie: &MovieDefinition,
@@ -505,47 +506,15 @@ fn paint_subtitles(
         return;
     };
     let lines = subtitle_lines(&subtitle.text);
-    let glyph = |ch: u8| {
-        usize::from(ch)
-            .checked_sub(font.header.character_start.into())
-            .and_then(|i| font.glyphs.get(i))
-            .filter(|g| g.enabled != 0)
-    };
     for (row, line) in lines.iter().enumerate() {
-        let advance = |ch| {
-            glyph(ch).map_or(0, |g| {
-                i32::from(g.width)
-                    + 1
-                    + if ch == b' ' {
-                        font.glyphs
-                            .get(usize::from(ch) - usize::from(font.header.character_start) + 1)
-                            .map_or(0, |g| i32::from(g.width))
-                    } else {
-                        0
-                    }
-            })
-        };
-        let width: i32 = line.bytes().map(advance).sum();
-        let mut x = 320 - width / 2;
+        let x = 320 - font.width(line) / 2;
         let y = 470 - (lines.len() - row) as i32 * i32::from(line_height);
-        for ch in line.bytes() {
-            let Some(g) = glyph(ch) else {
-                continue;
-            };
-            for gy in 0..g.height {
-                for gx in 0..g.width {
-                    let value = g.pixels[usize::from(gy) * usize::from(g.width) + usize::from(gx)];
-                    let px = x + i32::from(g.offset_left) + i32::from(gx);
-                    let py = y + i32::from(g.offset_top) + i32::from(gy);
-                    if value != 0 && (0..640).contains(&px) && (0..480).contains(&py) {
-                        let offset = (py as usize * 640 + px as usize) * 4;
-                        pixels[offset..offset + 4]
-                            .copy_from_slice(&[color[0], color[1], color[2], 255]);
-                    }
-                }
+        font.draw(line, [x, y], |px, py, _| {
+            if (0..640).contains(&px) && (0..480).contains(&py) {
+                let offset = (py as usize * 640 + px as usize) * 4;
+                pixels[offset..offset + 4].copy_from_slice(&[color[0], color[1], color[2], 255]);
             }
-            x += advance(ch);
-        }
+        });
     }
 }
 
@@ -622,7 +591,7 @@ mod tests {
 
     #[test]
     fn subtitles_obey_frame_bounds_and_always_flag() {
-        let font = FntFile {
+        let font = rgpre::import::fnt::FntFile {
             chunk_order: vec![],
             header: rgpre::import::fnt::FntHeader {
                 description_raw: [0; 32],
@@ -670,7 +639,7 @@ mod tests {
             let mut pixels = vec![0; 640 * 480 * 4];
             paint_subtitles(
                 &mut pixels,
-                &font,
+                &cyrus_text::Font::from(&font),
                 2,
                 [240, 240, 240],
                 movie,
@@ -703,7 +672,15 @@ mod tests {
         font.glyphs[2].pixels = vec![0; 3];
         movie.subtitles[0].text = " A".into();
         let mut pixels = vec![0; 640 * 480 * 4];
-        paint_subtitles(&mut pixels, &font, 2, [240; 3], &movie, 10, true);
+        paint_subtitles(
+            &mut pixels,
+            &cyrus_text::Font::from(&font),
+            2,
+            [240; 3],
+            &movie,
+            10,
+            true,
+        );
         let offset = (468 * 640 + 322) * 4;
         assert_eq!(&pixels[offset..offset + 4], &[240, 240, 240, 255]);
     }

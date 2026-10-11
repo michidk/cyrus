@@ -186,24 +186,30 @@ fn player_cache_rejects_partial_terrain_and_retains_unavailable_definition() {
             "settings": {"standing_height": -2, "post_collide_height": 50, "slide_range": -60000, "turn_speed": 12, "turn_max_speed": 48, "poly_push_units": 16},
             "heights": heights,
             "water": water,
+            "collision": {"placements": [], "models": {}, "unsupported": {}},
         }))
         .unwrap()
     };
     let scene =
-        PlayerScene::decode(&bytes(1, serde_json::Value::Null, serde_json::Value::Null)).unwrap();
+        PlayerScene::decode(&bytes(2, serde_json::Value::Null, serde_json::Value::Null)).unwrap();
     assert_eq!(scene.world, 1);
     assert!(scene.terrain.is_none());
     assert!(scene.definition.is_none());
     assert!(scene.unavailable.unwrap().contains("world 1 player: CYRUS"));
     assert!(
-        PlayerScene::decode(&bytes(2, serde_json::Value::Null, serde_json::Value::Null)).is_err()
+        PlayerScene::decode(&bytes(
+            999,
+            serde_json::Value::Null,
+            serde_json::Value::Null
+        ))
+        .is_err()
     );
     assert!(
-        PlayerScene::decode(&bytes(1, serde_json::json!([]), serde_json::Value::Null)).is_err()
+        PlayerScene::decode(&bytes(2, serde_json::json!([]), serde_json::Value::Null)).is_err()
     );
-    assert!(PlayerScene::decode(&bytes(1, serde_json::json!([]), serde_json::json!([]))).is_err());
+    assert!(PlayerScene::decode(&bytes(2, serde_json::json!([]), serde_json::json!([]))).is_err());
     let scene = PlayerScene::decode(&bytes(
-        1,
+        2,
         serde_json::json!(vec![-680; 256 * 256]),
         serde_json::json!(vec![false; 256 * 256]),
     ))

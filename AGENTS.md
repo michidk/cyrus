@@ -61,13 +61,15 @@ done and what is next), then the `README.md` of the crate you touch. The maintai
    it, a new format or engine fact, documentation that conflicts with what
    the game data or the original shows, or anything it is missing, open a pull
    request against [redguard-preservation](https://github.com/michidk/redguard-preservation)
-   with the fix or the documented fact and its evidence (counts, samples,
-   observations). Preservation docs contain only durable format and engine
-   facts. Put verification methods in the pull request or commit, and keep
-   open questions, investigation plans, and cyrus implementation status out
-   of preservation docs. Do not work around a preservation bug silently in
-   cyrus: link the pull request from the cyrus change, and keep any workaround
-   marked until the fix is released.
+   with the fix or documented fact. Preservation docs contain only durable
+   format and engine facts, stated directly without verification labels or
+   research narrative. Put supporting samples, observation logs, traces,
+   debugger details, and validation-only counts in the pull request or commit.
+   Stable counts that are part of the format may remain in the docs as direct
+   facts. Keep open questions, investigation plans, and cyrus implementation
+   status out of preservation docs. Do not work around a preservation bug
+   silently in cyrus: link the pull request from the cyrus change, and keep any
+   workaround marked until the fix is released.
 
 These rules govern what ships, not what may be said. That cyrus is informed by
 reverse engineering of the original, and which projects were read, is stated
@@ -115,8 +117,8 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## Structure and quality
 
-- Keep public APIs small and group crates by concern: assets, world, rendering,
-  player, and control. `rgpre` owns formats and engine facts. Agree on file
+- Group crates by concern: assets, world, rendering, text, player, and
+  control. `rgpre` owns formats and engine facts. Agree on file
   ownership before a crate split or other change across shared boundaries.
 - Keep dependencies one-way. Core rules must not depend on rendering, a window,
   or networking. Use the browser build to check these boundaries.
@@ -154,7 +156,10 @@ For agent work, choose the entry point explicitly:
 
 Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
-Skipping startup does not enable gameplay. `state.menu` exposes the installed
+Skipping startup does not enable gameplay. In a world, `state.hud` reports health,
+candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
+walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle
+candle mode, walk mode and auto-defend. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
 units and persist outside the install in native `cyrus-config/menu.json` or

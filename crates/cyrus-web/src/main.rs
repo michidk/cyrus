@@ -79,7 +79,11 @@ fn main() {
     } else {
         cyrus_game::AppState::Loading
     })
-    .add_plugins((PlayerPlugin, cyrus_game::hud::HudPlugin));
+    .add_plugins((
+        PlayerPlugin,
+        cyrus_game::hud::HudPlugin,
+        cyrus_game::sound::SoundPlugin,
+    ));
     if direct_scene {
         app.add_plugins((
             cyrus_game::environment::EnvironmentPlugin,

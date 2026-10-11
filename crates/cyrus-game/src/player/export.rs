@@ -4,6 +4,8 @@ use anyhow::Context;
 use rgpre::import::{player_ini::PlayerConfig, rgm, soup_def, wld};
 use std::path::Path;
 
+mod collision;
+
 pub(crate) fn export(
     root: &Path,
     map: &rgm::RgmFile,
@@ -57,12 +59,16 @@ pub(crate) fn export(
         (None, None)
     };
     let data = SceneData {
-        version: 1,
+        version: 2,
         world,
         settings,
         definition,
         heights,
         water,
+        collision: Some(
+            collision::export(root, map)
+                .with_context(|| format!("world {world}: collision export"))?,
+        ),
     };
     let bytes = serde_json::to_vec(&data)
         .with_context(|| format!("world {world}: serialize player inputs"))?;

@@ -84,15 +84,20 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             sample_rate: effect.sample_rate,
             channels: effect.audio_type.channels(),
             bits_per_sample: effect.audio_type.bits_per_sample(),
+            base_volume: effect.base_volume,
         });
         html.push_str(&format!("<p>Effect {i} <audio aria-label=\"Effect {i}\" controls preload=\"none\" {} src=\"{i:03}.wav\"></audio></p>",if effect.loop_flag != 0 {"loop"} else {""}));
     }
     html.push_str("</body></html>");
     std::fs::write(out.join("index.html"), html)?;
+    let settings = crate::sound::read_settings(install);
     std::fs::write(
         out.join("bank.sounds"),
         serde_json::to_vec(&SoundBank {
             effects,
+            enabled: settings.effects,
+            master_volume: settings.master_volume,
+            sound_distance: settings.sound_distance,
             audio: Vec::new(),
         })?,
     )?;

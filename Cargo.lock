@@ -2779,6 +2779,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "cyrus-control",
+ "cyrus-text",
  "image",
  "log",
  "redguard-preservation",
@@ -2802,6 +2803,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "cyrus-text"
+version = "0.1.0"
+dependencies = [
+ "redguard-preservation",
+ "serde",
 ]
 
 [[package]]
@@ -5568,7 +5577,7 @@ checksum = "a0d463f2884048e7153449a55166f91028d5b0ea53c79377099ce4e8cf0cf9bb"
 [[package]]
 name = "redguard-preservation"
 version = "0.6.2"
-source = "git+https://github.com/michidk/redguard-preservation?rev=5552e550d16d5fe3c39d6bb433f4e2f84ac8ea79#5552e550d16d5fe3c39d6bb433f4e2f84ac8ea79"
+source = "git+https://github.com/michidk/redguard-preservation?rev=4ad5e824d1ec5b957cba485d0453a539e36a5701#4ad5e824d1ec5b957cba485d0453a539e36a5701"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",

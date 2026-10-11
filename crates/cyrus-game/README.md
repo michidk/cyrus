@@ -18,18 +18,19 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups and literal authored animation tasks to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, terrain lighting inputs, wave parameters, and water masks. |
-| `hud` | In-game overlay from exported `.hud` data: SNUFF candle with health number (`candle_mode` 2), active item icon and count from `ITEM.INI`, prev/next item keys from `KEYS.INI`, REDSEL.FNT text ([HUD facts](https://github.com/michidk/redguard-preservation/pull/28)). Compass, power-ups, logbook, activation prompts and the candle toggle are unsupported. |
-| `hud_export` | Native extraction of HUD positions, starting inventory, candle frames, item icons and font glyphs into `cyrus-config/cache/hud/`. |
+| `hud` | In-game overlay from exported `.hud` data, following preservation's [HUD documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md): SNUFF candle with its show timer and health number, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode and auto-defend notices, in the original draw order. REDSEL.FNT text through `cyrus-text`. F8, Tab and F7 toggles persist in `cyrus-config/hud.json` (browser localStorage `cyrus-hud`). Gameplay inputs (`set_health`, `set_sword_drawn`, `activate`, `show_bitmap`, `logbook_entry`, lockout, player type, heading, world, compass flag) have no caller yet. |
+| `hud_export` | Native extraction of HUD positions, timers, toggles, starting inventory, WORLD.INI compass offsets, RTX notice texts, REDSEL.FNT and the candle, compass, logbook, power-up and item frames into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `sound` | `SYSTEM.INI` and Sound page audio settings; `MAIN.SFX` effects by index and RTX voice clips by label at their header base volume times the master volume, with optional distance falloff and stereo pan from the camera, through the original's Miles mixer gains. No in-game triggers yet. Native only. |
-| `subtitles` | Dialogue subtitles for voice clips: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
+| `subtitles` | Dialogue subtitles for voice clips through `cyrus-text`: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
 | `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it; the book menu plays track 2; the Music slider sets the drive level (preservation `docs/engine/music.md`). Native only. |
-| `sound_bank` | Portable exported effects bank and opt-in playback plugin; native control playback uses `sound`. |
+| `sound_bank` | Portable `SoundCue` message, `SoundSurface`, and the browser's exported effects bank; `sound` plays cues on native and browser. |
 | `sound_export` | Exports MAIN.SFX to WAV files, bank metadata, and a browser audition page when loading a native scene. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
 `startup` presentation, `animation`, `environment`, `fidelity`, `hud`, `player` and `settings` compile on wasm and are reused by
-`cyrus-web`; everything that reads the install, spawns threads or opens
+`cyrus-web`. All FNT text (book menu, title, movie and dialogue subtitles, HUD)
+is laid out and rasterised by the `cyrus-text` crate; everything that reads the install, spawns threads or opens
 sockets is gated with `cfg(not(target_arch = "wasm32"))`.
 
 Tests in `tests/` use only the public API; the install-backed ones skip when
@@ -158,7 +159,10 @@ remains unchecked.
 
 World exports also write a `.player` sidecar containing installed movement
 settings, named CYRUS attributes and bounds, decoded terrain heights, and the
-water mask. Native, headless, and browser entry load the same validated asset.
+water mask. Schema 2 also retains original static placement order, model polygons,
+ROB collision flags and ordered subobject face lists. Missing or conflicting
+models remain explicitly unsupported; absent v4 extent factors are retained.
+Native, headless, and browser entry load the same validated asset.
 Missing or unsupported actor definitions retain a contextual unavailable reason.
 This data does not activate ground settling or locomotion. Re-export cached
 worlds after updating.
@@ -221,5 +225,6 @@ establishes one candle update per rendered frame with a 60 Hz Glide retrace limi
 Cyrus advances the candle at that rate independently of rendering, without
 capping the application. `normal_frame_rate` is a simulation-tick input, not
 the candle cadence. Original in-world timing still needs a paired comparison.
-Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook,
-activation prompts and the F8 toggle remain unsupported.
+Every documented overlay element is implemented, but only the F8, Tab and F7
+toggles reach it from play; health, sword, lockout, heading, scripts and the
+logbook do not feed it yet (see the roadmap).

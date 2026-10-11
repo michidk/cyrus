@@ -23,17 +23,19 @@ module where it is defined and regenerate.
 - `src/environment_export.rs` — Native extraction of per-world environment assets into the browser cache.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
-- `src/hud.rs` — In-game overlay from installed HUD data: the health candle, its number, and the
+- `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Locating the player's own game files. The install is only ever read.
 - `src/lighting.rs` — Terrain RGB and quantized normals from preservation's terrain-lighting contract.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/player.rs` — Inspection camera and the player input foundation. Faithful locomotion is
+- `src/player/collision_data.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
 - `src/player/definition.rs` — Player attributes and upright collision bounds from preservation's RGM metadata.
 - `src/player/export.rs` — Native extraction of player inputs through preservation's parsers.
+- `src/player/export/collision.rs` — Installed static placements and authored collision geometry for the portable player cache.
 - `src/player/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
 - `src/player/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
@@ -45,7 +47,7 @@ module where it is defined and regenerate.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
-- `src/sound_bank.rs` — Original effects bank, loaded without inventing script or ambient triggers.
+- `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/startup/export.rs` — (undocumented)
@@ -61,6 +63,8 @@ module where it is defined and regenerate.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
+
+## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
 ## `cyrus-web` — shortcut: the browser loads GLBs that the native game exported into
 
