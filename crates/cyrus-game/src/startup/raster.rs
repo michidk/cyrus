@@ -1,8 +1,11 @@
-//! Projection and materials follow preservation's `docs/engine/startup.md`.
+//! Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 
 use bevy::math::{Mat4, Vec2, Vec3};
 use image::RgbaImage;
-use rgpre::import::glide_splash::{GlideSplash, SplashTexture};
+use rgpre::import::{
+    glide_splash::SplashTexture,
+    glide_splash_dll::{WindowsGlideSplash, WindowsSplashDraw},
+};
 
 const WIDTH: usize = 1280;
 const HEIGHT: usize = 960;
@@ -12,31 +15,7 @@ struct Vertex {
     screen: Vec2,
     inverse_z: f32,
     uv: Vec2,
-    normal: Vec3,
-    brightness: f32,
-}
-
-impl Vertex {
-    fn projected(position: Vec3, uv: Vec2, normal: Vec3) -> Self {
-        let inverse_z = position.z.recip();
-        Self {
-            screen: Vec2::new(
-                (position.x * inverse_z * 0.75 + 0.5) * WIDTH as f32,
-                (0.5 - position.y * inverse_z) * HEIGHT as f32,
-            ),
-            inverse_z,
-            uv,
-            normal,
-            brightness: (normal.dot(Vec3::splat(-0.57735)) + 1.0) * 0.5,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Pass {
-    Surface(u32),
-    Highlight,
-    Shadow,
+    color: Vec3,
 }
 
 struct Canvas {
@@ -45,17 +24,9 @@ struct Canvas {
 }
 
 impl Canvas {
-    fn triangle(
-        &mut self,
-        vertices: [Vertex; 3],
-        pass: Pass,
-        splash: &GlideSplash,
-        fade: f32,
-        write_depth: bool,
-    ) {
+    fn triangle(&mut self, vertices: [Vertex; 3], texture: &SplashTexture, alpha: f32) {
         let [a, b, c] = vertices.map(|v| v.screen);
         let area = (b - a).perp_dot(c - a);
-        // The lower-left Glide viewport reverses winding relative to this image.
         if !area.is_finite()
             || area >= -0.0001
             || vertices
@@ -83,32 +54,18 @@ impl Canvas {
                 }
                 let inverse_z: f32 = (0..3).map(|i| weights[i] * vertices[i].inverse_z).sum();
                 let index = y * WIDTH + x;
-                if !matches!(pass, Pass::Shadow) && inverse_z + 0.0000001 < self.depth[index] {
+                if inverse_z + 0.0000001 < self.depth[index] {
                     continue;
                 }
-                let uv: Vec2 = (0..3)
+                let uv = (0..3)
                     .map(|i| vertices[i].uv * (weights[i] * vertices[i].inverse_z))
                     .sum::<Vec2>()
                     / inverse_z;
-                let brightness: f32 = (0..3).map(|i| weights[i] * vertices[i].brightness).sum();
-                let color = match pass {
-                    Pass::Shadow => sample(&splash.textures[2], uv),
-                    Pass::Highlight | Pass::Surface(1) => sample(&splash.textures[1], uv) * fade,
-                    Pass::Surface(0) => sample(&splash.textures[0], uv) * brightness * fade,
-                    Pass::Surface(2) => Vec3::new(10.0, 75.0, 120.0) * brightness * fade,
-                    Pass::Surface(3) => Vec3::splat(255.0 * brightness * fade),
-                    Pass::Surface(4) => Vec3::new(248.0, 204.0, 0.0) * brightness * fade,
-                    Pass::Surface(_) => unreachable!("parser validates materials"),
-                };
-                self.color[index] = match pass {
-                    Pass::Shadow => self.color[index] * color / 255.0,
-                    Pass::Highlight => self.color[index] + color,
-                    Pass::Surface(_) => color,
-                }
-                .clamp(Vec3::ZERO, Vec3::splat(255.0));
-                if write_depth {
-                    self.depth[index] = inverse_z;
-                }
+                let color = (0..3).map(|i| vertices[i].color * weights[i]).sum::<Vec3>()
+                    * sample(texture, uv)
+                    / 255.0;
+                self.color[index] = color * alpha + self.color[index] * (1.0 - alpha);
+                self.depth[index] = inverse_z;
             }
         }
     }
@@ -138,95 +95,87 @@ fn sample(texture: &SplashTexture, uv: Vec2) -> Vec3 {
         .lerp(texel(0, 1).lerp(texel(1, 1), fraction.x), fraction.y)
 }
 
-pub(super) fn render(splash: &GlideSplash, frame: usize) -> RgbaImage {
+fn lighting(normal: Vec3, light: Vec3, view: Vec3) -> f32 {
+    let dot = normal.dot(light);
+    let reflection = (2.0 * normal * dot - light).normalize();
+    dot.max(0.0) + reflection.dot(view).max(0.0).powi(8)
+}
+
+pub(super) fn render(
+    splash: &WindowsGlideSplash,
+    draws: &[WindowsSplashDraw],
+    visibility: f32,
+) -> RgbaImage {
+    if visibility == 0.0 {
+        return RgbaImage::from_pixel(640, 480, image::Rgba([0, 0, 0, 255]));
+    }
     let mut canvas = Canvas {
         color: vec![Vec3::ZERO; WIDTH * HEIGHT],
         depth: vec![0.0; WIDTH * HEIGHT],
     };
-    let matrices = splash.frames[frame].map(|m| Mat4::from_cols_array(&m));
-    let fade = if frame < 22 {
-        ((255 * (frame + 1) / 22) as f32) / 255.0
-    } else if frame > 60 {
-        ((255 * (75 - frame) / 15) as f32) / 255.0
-    } else {
-        1.0
-    };
-    let transformed: [Vec<Vertex>; 3] = std::array::from_fn(|mesh| {
-        splash.meshes[mesh]
+    for draw in draws {
+        let camera = Mat4::from_cols_array(&draw.camera);
+        let matrix = camera * Mat4::from_cols_array(&draw.transform);
+        let scale = WIDTH as f32 / (2.0 * (draw.horizontal_fov / 2.0).tan());
+        let view = (camera.z_axis.truncate() * Vec3::new(1.0, 1.0, -1.0)).normalize();
+        let mesh = &splash.meshes[draw.mesh];
+        let vertices: Vec<_> = mesh
             .vertices
             .iter()
             .map(|vertex| {
-                Vertex::projected(
-                    matrices[mesh].transform_point3(vertex.position.into()),
-                    vertex.uv.into(),
-                    matrices[mesh].transform_vector3(vertex.normal.into()),
-                )
+                let position =
+                    matrix.transform_point3(vertex.position.into()) * Vec3::new(1.0, 1.0, -1.0);
+                let normal = (matrix.transform_vector3(vertex.normal.into())
+                    * Vec3::new(1.0, 1.0, -1.0))
+                .normalize();
+                let inverse_z = position.z.recip();
+                let uv = if splash.sphere_mapped[draw.mesh] {
+                    let dot = normal.dot(position);
+                    let discriminant = dot * dot - (position.length_squared() - 160000.0);
+                    if discriminant > 0.0 {
+                        let intersection = position + normal * (discriminant.sqrt() - dot);
+                        (intersection.truncate() / 400.0 + Vec2::ONE) * 204.8
+                    } else {
+                        Vec2::ZERO
+                    }
+                } else {
+                    Vec2::from(vertex.uv) * 256.0
+                };
+                let to_light = Vec3::from(draw.light_position) - position;
+                let distance_squared = to_light.length_squared();
+                let attenuation = (4000000.0 / distance_squared).min(1.0).powi(4);
+                let positional = lighting(normal, to_light.normalize(), view) * attenuation;
+                let directional = lighting(normal, Vec3::new(1.0, 1.0, -1.0) / 3.0f32.sqrt(), view);
+                let color = (Vec3::from(draw.light_color) * (255.0 * positional)
+                    + Vec3::splat(255.0 * directional + 16.0))
+                .clamp(Vec3::ZERO, Vec3::splat(255.0));
+                Vertex {
+                    screen: Vec2::new(
+                        position.x * inverse_z * scale + WIDTH as f32 / 2.0,
+                        HEIGHT as f32 / 2.0 - position.y * inverse_z * scale,
+                    ),
+                    inverse_z,
+                    uv,
+                    color,
+                }
             })
-            .collect::<Vec<_>>()
-    });
-    for mesh in [2, 0] {
-        for face in &splash.meshes[mesh].faces {
+            .collect();
+        for face in &mesh.faces {
             canvas.triangle(
-                face.vertices.map(|i| transformed[mesh][i]),
-                Pass::Surface(face.material),
-                splash,
-                fade,
-                false,
+                face.vertices.map(|index| vertices[index]),
+                &splash.textures[draw.texture],
+                f32::from(draw.alpha) / 255.0,
             );
         }
     }
-    let shield_z = matrices[0].w_axis.z;
-    let light = Vec3::new(5.0, 300.0, shield_z - 1500.0);
-    let corners = [
-        Vec3::new(-280.0, 0.0, -160.0),
-        Vec3::new(-280.0, 0.0, 150.0),
-        Vec3::new(280.0, 0.0, 150.0),
-        Vec3::new(280.0, 0.0, -160.0),
-    ];
-    let uv = [
-        Vec2::new(10.5, 127.5),
-        Vec2::new(10.5, 0.5),
-        Vec2::new(255.0, 0.5),
-        Vec2::new(255.0, 127.5),
-    ];
-    // shortcut: shadows use reciprocal Z; add per-TMU W when its effective sampling behavior is verified.
-    let shadow = std::array::from_fn::<_, 4, _>(|i| {
-        let direction = matrices[1].transform_point3(corners[i]) - light;
-        let position = light + direction * ((shield_z - 26.0 - light.z) / direction.z);
-        Vertex::projected(position, uv[i], Vec3::ZERO)
-    });
-    for indices in [[0, 1, 2], [0, 2, 3], [0, 2, 1], [0, 3, 2]] {
-        canvas.triangle(indices.map(|i| shadow[i]), Pass::Shadow, splash, 1.0, true);
-    }
-    for face in &splash.meshes[1].faces {
-        let mut triangle = face.vertices.map(|i| transformed[1][i]);
-        if face.material == 1 {
-            for vertex in &mut triangle {
-                vertex.uv = Vec2::splat(128.0) + vertex.normal.truncate() * 128.0;
-            }
-        }
-        canvas.triangle(triangle, Pass::Surface(face.material), splash, fade, true);
-    }
-    for face in splash.meshes[1]
-        .faces
-        .iter()
-        .filter(|face| face.material == 0)
-    {
-        let triangle = face.vertices.map(|i| {
-            let mut vertex = transformed[1][i];
-            vertex.uv = Vec2::splat(128.0) + vertex.normal.truncate() * 128.0;
-            vertex
-        });
-        canvas.triangle(triangle, Pass::Highlight, splash, fade, true);
-    }
-    // shortcut: supersampling replaces Glide edge coverage and uses the largest mip; refine after a paired pixel comparison.
+    // shortcut: supersampling approximates Glide edge antialiasing; refine after a hardware pixel comparison.
     RgbaImage::from_fn(640, 480, |x, y| {
         let index = y as usize * 2 * WIDTH + x as usize * 2;
         let color = (canvas.color[index]
             + canvas.color[index + 1]
             + canvas.color[index + WIDTH]
             + canvas.color[index + WIDTH + 1])
-            / 4.0;
+            * (visibility / 4.0);
         image::Rgba([color.x as u8, color.y as u8, color.z as u8, 255])
     })
 }

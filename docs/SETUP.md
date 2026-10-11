@@ -34,6 +34,11 @@ just run-native          # in dev/docker/dev with a virtual display, no preview:
 
 Settings, caches and screenshots live in `cyrus-config/`.
 
+Unoptimized native loader threads need a larger stack. Launch such binaries
+with `RUST_MIN_STACK=8388608`; container launches also need
+`-e RUST_MIN_STACK=8388608`. The test runner sets this automatically; native
+development launchers do not yet supply it by default.
+
 ### Player placement
 
 Direct scene inspection uses available marker zero for initial player placement.
@@ -54,11 +59,14 @@ just run-web             # VibePod preview "cyrus-web"; ?scene=START picks a sce
 
 Without a `scene` query, the page runs startup through the book menu.
 Export startup first with `cargo run -p cyrus -- --export-startup`. The exporter
-reads the sibling `DOSBOX/glide2x_emu.ovl`, `system/STARTUP2.GXA`, and the configured
+reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 `gui_low_font` from the install; all generated images stay in
 `cyrus-config/cache/startup/`. Native windowed launch generates this cache when
-needed. Keep the GOG `DOSBOX` directory next to `Redguard`, or the supplied
-Glide overlay within `Redguard`. Enter, Space, or Escape advances startup.
+needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
+directory as a fallback. **Verified:** its metallic logo and orange swoosh are
+the Windows Glide splash; the full DOS overlay contains the older shield logo.
+The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
+documents both paths. Re-export browser startup caches after updating. Enter, Space, or Escape advances startup.
 `--skip-startup` bypasses splash/title presentation and export; menu export still runs. `--scene` loads
 a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.

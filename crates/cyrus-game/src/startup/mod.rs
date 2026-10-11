@@ -62,8 +62,11 @@ impl Plugin for StartupPlugin {
     }
 }
 
+// The supported ANIM resource has 90 timed frames at 30 fps, then 60 fade swaps.
+const SPLASH_FRAMES: usize = 150;
+
 fn setup(mut commands: Commands, assets: Res<AssetServer>) {
-    let frames: Vec<_> = (1..75)
+    let frames: Vec<_> = (0..SPLASH_FRAMES)
         .map(|frame| assets.load(format!("cache://startup/splash-{frame:02}.png")))
         .collect();
     commands.spawn((Camera2d, StartupContent));

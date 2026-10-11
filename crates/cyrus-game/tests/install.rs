@@ -309,9 +309,9 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
     cyrus_game::startup::export_startup(&install, &output).unwrap();
     let splash = output.join("startup");
     let image = |name: &str| image::open(splash.join(name)).unwrap().to_rgba8();
-    let first = image("splash-01.png");
-    let middle = image("splash-40.png");
-    let last = image("splash-74.png");
+    let first = image("splash-00.png");
+    let middle = image("splash-89.png");
+    let last = image("splash-149.png");
     assert_eq!(middle.dimensions(), (640, 480));
     let brightness = |image: &image::RgbaImage| {
         image
@@ -328,8 +328,8 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
             .count()
             > 10000
     );
-    assert!((1..75).all(|frame| splash.join(format!("splash-{frame:02}.png")).is_file()));
-    assert!(!splash.join("splash-00.png").exists());
+    assert!((0..150).all(|frame| splash.join(format!("splash-{frame:02}.png")).is_file()));
+    assert!(!splash.join("splash-150.png").exists());
     let title = image("title.png");
     let source = rgpre::import::gxa::parse_gxa_file(
         &std::fs::read(install.root.join("system/STARTUP2.GXA")).unwrap(),

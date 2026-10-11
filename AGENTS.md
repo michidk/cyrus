@@ -148,13 +148,14 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## References and playtesting
 
-Default windowed and browser launches play the installed 3dfx splash and title,
+Default windowed and browser launches play the installed Windows Glide 3dfx splash and title,
 then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
 installed Smacker files through the in-process decoder. Browser Movies uses
 locally exported Smacker files and first-track WAV audio with shared playback rules.
 New Game, saves, and progression unlocks remain unavailable. Startup uses original-file assets, never
-captured playback.
+captured playback. **Verified:** the metallic logo and orange swoosh come from
+`3DfxSpl2.dll`; the full DOS Glide overlay contains the older shield variant.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
 For agent work, choose the entry point explicitly:

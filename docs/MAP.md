@@ -62,7 +62,7 @@ module where it is defined and regenerate.
 - `src/startup/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
 - `src/startup/movie_data.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
-- `src/startup/raster.rs` — Projection and materials follow preservation's `docs/engine/startup.md`.
+- `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
