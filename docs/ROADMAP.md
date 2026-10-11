@@ -39,7 +39,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Step 2: player | Investigate Player Controller Design, `player-parity` | Active-world archive selection and runtime collision queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
 | Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Runtime filtering state and sun alpha rounding |
 | Step 1: terrain lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Implement the user-resumed terrain-only scope from established coordinates/live inputs |
-| Step 1: sound | Implement Game Sound Effects, resumed | Script, animation and ambient triggers; per-call volume/rate evidence |
+| Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Current user request: shared text rendering and documentation cleanup; overlay timers, sword lock, compass, power-ups, logbook, prompts and F8 remain incomplete |
 | Startup and book menu | Match Startup Screen Appearance, `t3/faithful-startup-sequence` | Published book-cue integration through shared native/browser sound; lighting remains unresolved |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
@@ -406,12 +406,20 @@ formats and gameplay scope unchanged during this refactor.
   Final workspace formatting, strict all-target Clippy and tests pass.
   The integrated core also handles delay precedence, forward type-1 exits and
   explicit sound handlers, documented in preservation [PR #30](https://github.com/michidk/redguard-preservation/pull/30).
-  Native sound dispatch is not wired. A narrow 13-update original walking exit
+  Animation sound markers do not yet emit `SoundCue`. A narrow 13-update original walking exit
   comparison covers identifiers, groups and markers only. Automatic rendered
   playback, mesh and audio parity remain unchecked.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.
+  - [x] Portable `SoundCue` (flat and animation cues) plays through 16 shared channels on native and browser, with original start-index, volume and rate clamps, per-actor last-sound Stop/Forget, `SYSTEM.INI sound=0`, and browser cues retained until the effects bank loads.
+  - [ ] Startup book cues and animation sound markers emit `SoundCue`.
+  - [ ] Parse SURFACE.INI's sound remap in rgpre and remap animation sounds by surface; animation sounds currently play only on surface 0.
+  - [ ] Ground/collision sets each actor's `SoundSurface`.
+  - [ ] Record each channel's owner and requested effect for `EndSound`, `EndMySound(s)` and `KillMe`.
+  - [ ] Script sound calls (`Sound`, `FlatSound`, `AmbientSound`, `AmbientRTX`, `EndSound`, `EndMySound(s)`, `StopAllSounds`, `KillMe`/`Resurrect`) once the script engine exposes them.
+  - [ ] Rope sounds from MPRP thresholds and the torch loop (effect 25), once rope and torch objects exist at runtime.
+  - [ ] Refresh positional volume and pan while a sound plays.
 - [ ] Run SOUP control flow, variables, global flags, object references, main/interrupt execution, waits, and concurrent tasks.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
