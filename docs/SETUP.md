@@ -76,8 +76,8 @@ Changes persist to `cyrus-config/menu.json` on native builds and localStorage
 under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
-Audio volume and voice preferences are saved; their playback integration
-remains pending. Native cinematics consume subtitle and interlace preferences.
+Saved Sound preferences apply to native effects, speech, and CD music; the book
+menu plays its installed CD track. Native cinematics consume subtitle and interlace preferences.
 
 Movies browses the initially unlocked entries and installed previews. Native
 playback requires FFmpeg on PATH and reads the configured movie file or GOG
@@ -92,9 +92,13 @@ installed `force_movies` setting exposes all cinematic entries. Browser movie
 playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
 and Continue remain unavailable, with Save and Continue grayed without a
 resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
-status font. Runtime redraws the settled book, including neighboring-page text.
-Opening/closing motion, lighting, menu audio, mouse selection, and runtime
-gameplay thumbnails remain unsupported.
+status font. Runtime redraws authored book frames and neighboring-page text during
+startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
+motion to settle; MCP drivers must wait for `state.menu.ready` after each page
+change. Timing uses the startup presentation cadence rather than original update
+performance. Re-export browser caches for the authored-model schema. Lighting,
+camera-plane clipping, book sound cues, mouse selection, and runtime gameplay thumbnails
+remain unsupported.
 
 With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 `cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry

@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub(super) struct MenuAsset {
     pub pages: BTreeMap<u8, MenuPage>,
+    /// Cover, page one, table, page two, page three, in that order.
+    pub models: Vec<MenuModel>,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
     pub fonts: [MenuFont; 2],
@@ -24,7 +26,6 @@ pub(super) struct MenuAsset {
 pub(super) struct MenuPage {
     pub entries: Vec<MenuEntry>,
     pub selected: Option<usize>,
-    pub faces: Vec<MenuFace>,
     pub surfaces: Vec<usize>,
 }
 
@@ -37,6 +38,27 @@ pub(super) struct MenuEntry {
     pub output_justify: u8,
     pub slider: [i32; 2],
     pub texture: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(super) struct MenuModel {
+    pub position: [f32; 3],
+    /// Authored coordinates before the menu's half-revolution placement.
+    pub frames: Vec<Vec<[f32; 3]>>,
+    pub faces: Vec<MenuModelFace>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(super) struct MenuModelFace {
+    pub corners: Vec<MenuCorner>,
+    pub texture: Option<usize>,
+    pub color: [u8; 4],
+}
+
+#[derive(Serialize, Deserialize)]
+pub(super) struct MenuCorner {
+    pub vertex: usize,
+    pub uv: [f32; 2],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -152,14 +174,28 @@ impl MenuAsset {
                     entry.item.text
                 );
             }
-            for face in &page.faces {
+        }
+        ensure!(self.models.len() == 5, "menu: invalid model count");
+        for (index, model) in self.models.iter().enumerate() {
+            let expected_frames = if index == 2 { 1 } else { 9 };
+            let vertices = model.frames.first().map_or(0, Vec::len);
+            ensure!(
+                model.position.iter().all(|v| v.is_finite())
+                    && model.frames.len() == expected_frames
+                    && vertices > 0
+                    && model.frames.iter().all(|frame| {
+                        frame.len() == vertices && frame.iter().flatten().all(|v| v.is_finite())
+                    }),
+                "menu: model {index}: invalid authored frames"
+            );
+            for face in &model.faces {
                 ensure!(
                     face.texture.is_none_or(|i| i < self.textures.len())
-                        && face
-                            .vertices
-                            .iter()
-                            .all(|v| v.iter().all(|x| x.is_finite()) && v[2] > 0.0),
-                    "menu: page {id}: invalid triangle"
+                        && face.corners.len() >= 3
+                        && face.corners.iter().all(|corner| {
+                            corner.vertex < vertices && corner.uv.iter().all(|v| v.is_finite())
+                        }),
+                    "menu: model {index}: invalid face"
                 );
             }
         }

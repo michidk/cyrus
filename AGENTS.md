@@ -174,14 +174,19 @@ Wait for `state.menu.ready` before sending menu input. Settings use original act
 units and persist outside the install in native `cyrus-config/menu.json` or
 browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
 including direct world launches. Subtitle and interlace preferences affect native
-cinematics. Audio volume and voice preferences persist; their playback integration
-remains pending.
+cinematics. Native effects, speech, and CD music consume the saved Sound preferences;
+the menu plays its installed CD track.
 `state.menu.movie` reports cinematic loading and one-based frame progress;
 menu input is suspended during playback. A new key press uses the installed
-forward skip points, then returns to the same selected entry. Verify edits, restart
-persistence, and malformed-state protection through native MCP. Keep installed labels,
-visibility flags, widget positions, key names, and artwork data-driven; publish
-newly recovered menu rules in preservation before using them here.
+forward skip points, then returns to the same selected entry.
+
+Book turns and camera moves suspend navigation. Readiness becomes true after the
+final settling update. Quit plays the authored close before exiting. Menu motion
+uses original MENU.ROB frames and preservation camera/depth rules; labels and
+widgets stay data-driven. Verify edits, restart persistence, and malformed-state
+protection through native MCP. Keep installed labels, visibility flags, widget
+positions, key names, and artwork data-driven; publish newly recovered menu rules
+in preservation before using them here.
 Keep each worktree's Cargo target directory separate so verification cannot use
 another checkout's binary.
 

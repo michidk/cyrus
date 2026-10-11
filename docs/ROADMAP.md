@@ -32,7 +32,7 @@ Update or release ownership when work changes.
 | Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
 | Step 2: original player parity | Codex: player-parity worktree | Input/flycam and marker placement verified. Published terrain, body-contact and timing facts; portable player-data export and narrow movement/contact contracts pass install-enabled native gates and WASM compilation. Full collision selection, animation eligibility, host timing and follow camera still block live locomotion parity. `magic/artifacts/2026-10-10-player/` |
 | Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
-| Startup and main menu | Codex: Faithful Startup Sequence | Native movie playback verified through MCP; owns authored book transitions next. Browser verification, audible playback, lighting, saves, and New Game remain pending |
+| Startup and main menu | Codex: Faithful Startup Sequence | Native movies and authored book transitions verified through MCP; integrated workspace gates and WASM compilation passed; source ownership released. Browser runtime, audible playback, lighting, saves, and New Game remain pending |
 | Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions landed; literal authored task/End playback passes native contracts; WASM compilation and final workspace gates passed; original eligibility, clock and complete script scheduling remain open |
 | Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
 
@@ -44,8 +44,9 @@ Later engine-cache edits are not marked complete here.
 - [x] Rust/Bevy workspace, install discovery, settings, and fidelity switch.
 - [x] Startup preload, progress display, and parse-failure logging.
 - [x] Installed 3dfx splash and title playback through the book menu; CLI and MCP skip stop at the menu.
-- [x] MENU.INI-defined book pages, keyboard selection, Options edits, Controls rebinding, Movies browsing, and Quit, using installed geometry and rgpre fonts. Settings persist; playback effects and remaining actions are pending.
+- [x] MENU.INI-defined book pages, keyboard selection, Options edits, Controls rebinding, Movies browsing, and Quit, using installed geometry and rgpre fonts. Settings persist and affect native audio; remaining actions are pending.
 - [x] Native installed Smacker playback with original skip points and subtitles; menu selection survives playback.
+- [x] Authored book page turns, submenu camera moves, startup camera entry, and closing Quit sequence; input waits for settling.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Export all 29 installed worlds, with structural checks.
@@ -69,7 +70,7 @@ committed support; unverified work stays in the TODO column.
 | --- | --- | --- |
 | `WORLD.INI` | World list, map, terrain, and palette selection | Verify every world against the original |
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
-| `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; settled book-menu geometry | Automatic actor playback, other frame encodings, model replacement, and book motion |
+| `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; authored book frames and runtime menu motion | Automatic actor playback, other frame encodings, and model replacement |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
 | `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
@@ -119,15 +120,20 @@ capture cancellation, conflict clearing, the edited primary activation key,
 restart persistence, malformed state/cache protection, failed saves, and direct
 world entry.
 Installed export tests cover changed labels, forced movie visibility, configured
-prompt limits, and the Glide Display omissions. Lighting, opening/closing motion,
-menu audio, mouse selection, gameplay snapshots, saves, and New Game remain
-unsupported. Native MCP checks cover all five browsable movies, forward skips,
+prompt limits, the Glide Display omissions, and all authored book frames. Native
+MCP checks cover every supported page route, input gating, reversible turns and
+animated Quit. The settled Movies image matches the previous renderer exactly;
+Main restores identical pixels after returning. Intermediate page-curl geometry
+was inspected. No matched original animation/timing claim is made. Lighting,
+camera-plane clipping, book sound cues, mouse selection, gameplay snapshots, saves,
+and New Game remain unsupported. Native MCP checks cover all five browsable movies, forward skips,
 held-key handling, natural EOF, missing FFmpeg and unsupported-path recovery,
 Quit during playback, and decoder cleanup on world entry. Video and subtitle
 screenshots were inspected; the first audio stream decodes to a seekable WAV.
 Audible output and A/V synchronization remain unchecked. Subtitle/interlace
-preferences apply to cinematics; audio volume and voice integration remain pending. Browser runtime verification of
-this menu slice remains pending.
+preferences apply to cinematics; saved Sound preferences apply to native effects,
+speech, and CD music.
+Browser runtime verification of this menu slice remains pending.
 
 **Verified:** all 118 `MAIN.SFX` effects decode through Bevy's WAV decoder
 with their stored sample rate, channel count and sample count, all 3933 RTX

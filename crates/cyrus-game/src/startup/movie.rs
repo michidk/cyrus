@@ -320,6 +320,7 @@ fn drive(
             frames: 0,
             loading: true,
         });
+        menu.ready = false;
         playback.load = Some(IoTaskPool::get().spawn(async move { prepare(&root, index) }));
     }
     if let Some(load) = playback.load.as_mut()

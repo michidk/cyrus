@@ -1,5 +1,8 @@
 //! MENU.INI-derived presentation data, shared by native and browser builds.
-use super::{StartupContent, fit_image, menu_data::MenuAsset, menu_preferences::MenuPreferences};
+use super::{
+    StartupContent, book_motion::BookMotion, fit_image, menu_data::MenuAsset,
+    menu_preferences::MenuPreferences,
+};
 use crate::AppState;
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
@@ -67,6 +70,12 @@ pub struct MenuState {
     pub(super) dirty: bool,
     #[serde(skip)]
     persistence_error: Option<String>,
+    #[serde(skip)]
+    pub(super) motion: Option<BookMotion>,
+    #[serde(skip)]
+    motion_seconds: f32,
+    #[serde(skip)]
+    closing: bool,
     #[serde(skip)]
     asset: Handle<MenuAsset>,
     #[serde(skip)]
@@ -178,6 +187,9 @@ pub(super) fn drive(
             .map(|(id, page)| (*id, page.selected))
             .collect();
         menu.repeat_seconds = book.repeat_seconds;
+        menu.motion = Some(BookMotion::opening(std::array::from_fn(|i| {
+            book.models[i].frames.len() - 1
+        })));
         menu.open(book, 0);
         menu.blink_on = true;
         apply_bindings(&menu, &mut bindings);
@@ -185,98 +197,116 @@ pub(super) fn drive(
     if menu.movie.is_some() {
         return;
     }
+    let mut moving = menu.motion.as_ref().is_some_and(BookMotion::busy);
+    if moving {
+        // Authored updates use the same 30 Hz presentation cadence as startup.
+        menu.motion_seconds += input.0.delta_secs();
+        if menu.motion_seconds >= 1.0 / 30.0 {
+            menu.motion_seconds %= 1.0 / 30.0;
+            menu.motion.as_mut().unwrap().tick();
+            menu.dirty = true;
+        }
+    } else if menu.closing {
+        output.0.write(AppExit::Success);
+        return;
+    }
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
-    if menu.capturing.is_some() {
-        menu.blink_seconds += input.0.delta_secs();
-        // Blink cadence is presentation policy; the original toggles on menu updates.
-        if menu.blink_seconds >= 0.25 {
-            menu.blink_on = !menu.blink_on;
-            menu.blink_seconds %= 0.25;
-        }
-        if keys.just_pressed(KeyCode::Escape) {
-            menu.capturing = None;
+    if !moving {
+        if menu.capturing.is_some() {
+            menu.blink_seconds += input.0.delta_secs();
+            // Blink cadence is presentation policy; the original toggles on menu updates.
+            if menu.blink_seconds >= 0.25 {
+                menu.blink_on = !menu.blink_on;
+                menu.blink_seconds %= 0.25;
+            }
+            if keys.just_pressed(KeyCode::Escape) {
+                menu.capturing = None;
+            } else {
+                let captured = keys
+                    .get_just_pressed()
+                    .filter_map(|key| crate::player::input::scan_code(*key))
+                    .min();
+                if let Some(code) = captured {
+                    if matches!(code, 12 | 13 | 15 | 28 | 59..=68 | 87 | 88) {
+                        menu.unavailable = Some("That key is reserved.".into());
+                    } else {
+                        let mut preferences = menu.preferences.clone().unwrap();
+                        preferences.rebind((menu.capturing.unwrap() - 710) as usize, code);
+                        if persist(&mut menu, preferences) {
+                            menu.capturing = None;
+                            apply_bindings(&menu, &mut bindings);
+                        }
+                    }
+                }
+            }
+        } else if keys.just_pressed(KeyCode::Escape) && menu.page != 0 {
+            let target = if matches!(menu.page, 5..=7) { 4 } else { 0 };
+            menu.open(book, target);
         } else {
-            let captured = keys
-                .get_just_pressed()
-                .filter_map(|key| crate::player::input::scan_code(*key))
-                .min();
-            if let Some(code) = captured {
-                if matches!(code, 12 | 13 | 15 | 28 | 59..=68 | 87 | 88) {
-                    menu.unavailable = Some("That key is reserved.".into());
-                } else {
-                    let mut preferences = menu.preferences.clone().unwrap();
-                    preferences.rebind((menu.capturing.unwrap() - 710) as usize, code);
-                    if persist(&mut menu, preferences) {
-                        menu.capturing = None;
-                        apply_bindings(&menu, &mut bindings);
+            let directions = [
+                (KeyCode::ArrowUp, -1, false),
+                (KeyCode::ArrowDown, 1, false),
+                (KeyCode::ArrowLeft, -1, true),
+                (KeyCode::ArrowRight, 1, true),
+            ];
+            let held: Vec<_> = directions
+                .into_iter()
+                .filter(|(key, _, _)| keys.pressed(*key))
+                .collect();
+            if held.len() != 1 {
+                menu.held_seconds = 0.0;
+            } else {
+                let (key, direction, adjust) = held[0];
+                menu.held_seconds += input.0.delta_secs();
+                if keys.just_pressed(key) || menu.held_seconds >= menu.repeat_seconds {
+                    menu.held_seconds = 0.0;
+                    if adjust {
+                        adjust_value(book, &mut menu, direction as i32, false);
+                    } else {
+                        menu.navigate(direction);
+                    }
+                }
+            }
+            let activation = menu
+                .preferences
+                .as_ref()
+                .and_then(|p| crate::player::input::scan_key(p.bindings[5]));
+            if (keys.just_pressed(KeyCode::Enter)
+                || activation.is_some_and(|key| keys.just_pressed(key)))
+                && let Some(index) = menu.selected
+            {
+                let entry = menu.entries[index].clone();
+                match entry.action {
+                    -2 => {
+                        menu.motion.as_mut().unwrap().close();
+                        menu.closing = true;
+                        menu.motion_seconds = 0.0;
+                    }
+                    3 | 4 => menu.open(book, entry.action as u8),
+                    300 | 400 => menu.open(book, 0),
+                    405..=407 => menu.open(book, (entry.action - 400) as u8),
+                    500 | 600 | 700 => menu.open(book, 4),
+                    504 | 505 | 603 => adjust_value(book, &mut menu, 0, true),
+                    601 | 602 => {}
+                    #[cfg(not(target_arch = "wasm32"))]
+                    301..=305 => {
+                        menu.unavailable = None;
+                        commands.write_message(MovieRequest((entry.action - 301) as usize));
+                    }
+                    710..=724 => {
+                        menu.capturing = Some(entry.action);
+                        menu.blink_on = true;
+                        menu.blink_seconds = 0.0;
+                    }
+                    _ => {
+                        menu.unavailable = Some(format!("{} is not implemented yet.", entry.text));
                     }
                 }
             }
         }
-    } else if keys.just_pressed(KeyCode::Escape) && menu.page != 0 {
-        let target = if matches!(menu.page, 5..=7) { 4 } else { 0 };
-        menu.open(book, target);
-    } else {
-        let directions = [
-            (KeyCode::ArrowUp, -1, false),
-            (KeyCode::ArrowDown, 1, false),
-            (KeyCode::ArrowLeft, -1, true),
-            (KeyCode::ArrowRight, 1, true),
-        ];
-        let held: Vec<_> = directions
-            .into_iter()
-            .filter(|(key, _, _)| keys.pressed(*key))
-            .collect();
-        if held.len() != 1 {
-            menu.held_seconds = 0.0;
-        } else {
-            let (key, direction, adjust) = held[0];
-            menu.held_seconds += input.0.delta_secs();
-            if keys.just_pressed(key) || menu.held_seconds >= menu.repeat_seconds {
-                menu.held_seconds = 0.0;
-                if adjust {
-                    adjust_value(book, &mut menu, direction as i32, false);
-                } else {
-                    menu.navigate(direction);
-                }
-            }
-        }
-        let activation = menu
-            .preferences
-            .as_ref()
-            .and_then(|p| crate::player::input::scan_key(p.bindings[5]));
-        if (keys.just_pressed(KeyCode::Enter)
-            || activation.is_some_and(|key| keys.just_pressed(key)))
-            && let Some(index) = menu.selected
-        {
-            let entry = menu.entries[index].clone();
-            match entry.action {
-                -2 => {
-                    output.0.write(AppExit::Success);
-                }
-                3 | 4 => menu.open(book, entry.action as u8),
-                300 | 400 => menu.open(book, 0),
-                405..=407 => menu.open(book, (entry.action - 400) as u8),
-                500 | 600 | 700 => menu.open(book, 4),
-                504 | 505 | 603 => adjust_value(book, &mut menu, 0, true),
-                601 | 602 => {}
-                #[cfg(not(target_arch = "wasm32"))]
-                301..=305 => {
-                    menu.unavailable = None;
-                    commands.write_message(MovieRequest((entry.action - 301) as usize));
-                }
-                710..=724 => {
-                    menu.capturing = Some(entry.action);
-                    menu.blink_on = true;
-                    menu.blink_seconds = 0.0;
-                }
-                _ => {
-                    menu.unavailable = Some(format!("{} is not implemented yet.", entry.text));
-                }
-            }
-        }
     }
+    moving |= menu.motion.as_ref().is_some_and(BookMotion::busy);
     let page = menu.page;
     let selected = menu.selected;
     menu.selections.insert(page, selected);
@@ -305,7 +335,7 @@ pub(super) fn drive(
                 if let Ok(mut sprite) = sprite.single_mut() {
                     sprite.image = menu.image.clone();
                 }
-                menu.ready = true;
+                menu.ready = !moving;
                 menu.dirty = false;
             }
             Err(error) => {
@@ -313,6 +343,9 @@ pub(super) fn drive(
                 menu.unavailable = Some(format!("Menu rendering unavailable: {error}"));
             }
         }
+    }
+    if !menu.dirty {
+        menu.ready = !moving;
     }
     let message = menu.unavailable.clone().unwrap_or_default();
     if let Ok(mut notice) = output.1.single_mut() {
@@ -325,6 +358,11 @@ pub(super) fn drive(
 impl MenuState {
     fn open(&mut self, book: &MenuAsset, page: u8) {
         if !self.entries.is_empty() {
+            if let Err(error) = self.motion.as_mut().unwrap().navigate(self.page, page) {
+                self.unavailable = Some(error);
+                return;
+            }
+            self.motion_seconds = 0.0;
             self.selections.insert(self.page, self.selected);
         }
         self.page = page;

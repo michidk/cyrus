@@ -145,9 +145,10 @@ paired comparison before claiming pixel-exact rendering.
 
 The book menu derives entries, layout, texture slots, widgets, and action IDs
 from `MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md).
-Its portable `cache/menu/book.menu` retains installed geometry, textures, indexed
-fonts, previews, and defaults. Native and browser builds redraw settled pages
-when selection or preferences change, including neighboring-page text.
+Its portable `cache/menu/book.menu` retains all authored model frames and topology,
+textures, indexed fonts, previews, and defaults. Native and browser builds project
+the current book pose and redraw neighboring-page text during camera entry, page
+turns, and Quit closing. Input waits through the final settling update.
 Navigation skips disabled/hidden entries and wraps. Options opens Display, Sound,
 and Controls; Movies browses unlocked definitions and previews. Quit exits.
 Native Movies playback reads installed Smacker files or the GOG CD image via
@@ -159,7 +160,6 @@ control state. Browser cinematics, New Game, and saves remain unavailable.
 native `cyrus-config/menu.json` or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
 input uses edited bindings, including direct scene launches. Subtitle and interlace
-settings apply to native cinematics; audio volume and voice preferences persist
-but their playback integration remains pending. Opening/closing
-motion, lighting, menu audio, mouse selection, and gameplay thumbnails remain
-unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
+settings apply to native cinematics; saved Sound preferences apply to native
+effects, speech, and CD music. Lighting, camera-plane clipping, book sound cues,
+mouse selection, and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.

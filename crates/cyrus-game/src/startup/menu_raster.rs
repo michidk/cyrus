@@ -1,8 +1,9 @@
-//! Render the installed book's settled geometry into presentation-cache images.
+//! Render the installed book's authored geometry into presentation images.
 //! Projection and placements follow preservation's engine/menu.md.
 use super::{
+    book_motion::BookPose,
     menu::MenuState,
-    menu_data::{MenuAsset, MenuFont, MenuPage, MenuPicture, PageTexture},
+    menu_data::{MenuAsset, MenuFace, MenuFont, MenuPicture, PageTexture},
 };
 use anyhow::{Context, ensure};
 use bevy::math::Vec2;
@@ -11,11 +12,11 @@ use image::{Rgba, RgbaImage};
 const WIDTH: usize = 640;
 const HEIGHT: usize = 480;
 
-// shortcut: settled geometry omits lighting and book motion; add them after their presentation rules are recovered.
-fn render(page: &MenuPage, textures: &[RgbaImage]) -> anyhow::Result<RgbaImage> {
+// shortcut: book lighting and camera-plane clipping remain unsupported; add them after their rendering rules are recovered.
+fn render(faces: &[MenuFace], textures: &[RgbaImage]) -> anyhow::Result<RgbaImage> {
     let mut image = RgbaImage::from_pixel(WIDTH as u32, HEIGHT as u32, Rgba([0, 0, 0, 255]));
     let mut depth = vec![0.0; WIDTH * HEIGHT];
-    for face in &page.faces {
+    for face in faces {
         let triangle = face
             .vertices
             .map(|v| (Vec2::new(v[0], v[1]), v[2], Vec2::new(v[3], v[4])));
@@ -87,6 +88,45 @@ fn sample(image: &RgbaImage, uv: Vec2) -> Rgba<u8> {
             + (c[i] * (1.0 - fraction.x) + d[i] * fraction.x) * fraction.y)
             .round() as u8
     }))
+}
+
+fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
+    #[allow(clippy::approx_constant)] // Decimal period from the original rotation table.
+    let sample = |angle: i32| (f64::from(angle & 2047) * 6.2831852 / 2048.0).sin() as f32;
+    let sin = sample(pose.pitch);
+    let cos = sample(pose.pitch + 512);
+    let mut faces = Vec::new();
+    for (index, model) in book.models.iter().enumerate() {
+        for face in &model.faces {
+            let vertices: Vec<_> = face
+                .corners
+                .iter()
+                .map(|corner| {
+                    let point = model.frames[pose.frames[index]][corner.vertex];
+                    let x = model.position[0] - point[0] - pose.camera[0];
+                    let y = model.position[1] + point[1] - pose.camera[1];
+                    let z = model.position[2] + pose.depth[index] - point[2] - pose.camera[2];
+                    let view_y = y * cos - z * sin;
+                    let view_z = y * sin + z * cos;
+                    [
+                        320.0 + x / view_z * (320.0 / 0.788),
+                        240.0 + view_y / view_z * (320.0 / 0.788),
+                        view_z.recip(),
+                        corner.uv[0],
+                        corner.uv[1],
+                    ]
+                })
+                .collect();
+            for corner in 1..vertices.len().saturating_sub(1) {
+                faces.push(MenuFace {
+                    vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
+                    texture: face.texture,
+                    color: face.color,
+                });
+            }
+        }
+    }
+    faces
 }
 
 pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaImage> {
@@ -179,7 +219,11 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
         .into_iter()
         .map(|s| RgbaImage::from_raw(s.width.into(), s.height.into(), s.rgba).unwrap())
         .collect();
-    render(&book.pages[&state.page], &textures)
+    let motion = state
+        .motion
+        .as_ref()
+        .context("menu: book motion unavailable")?;
+    render(&project(book, &motion.pose), &textures)
 }
 
 fn picture(surface: &mut PageTexture, picture: &MenuPicture, position: [i32; 2]) {
@@ -277,37 +321,31 @@ fn text(
 
 #[cfg(test)]
 mod tests {
-    use super::super::menu_data::MenuFace;
     use super::*;
 
     #[test]
     fn back_of_a_turned_page_does_not_cover_its_visible_surface() {
-        let page = MenuPage {
-            entries: Vec::new(),
-            selected: None,
-            surfaces: Vec::new(),
-            faces: vec![
-                MenuFace {
-                    vertices: [
-                        [0., 0., 1., 0., 0.],
-                        [0., 5., 1., 0., 0.],
-                        [5., 0., 1., 0., 0.],
-                    ],
-                    texture: None,
-                    color: [255, 0, 0, 255],
-                },
-                MenuFace {
-                    vertices: [
-                        [0., 0., 2., 0., 0.],
-                        [5., 0., 2., 0., 0.],
-                        [0., 5., 2., 0., 0.],
-                    ],
-                    texture: None,
-                    color: [0, 0, 255, 255],
-                },
-            ],
-        };
-        let image = render(&page, &[]).unwrap();
+        let faces = vec![
+            MenuFace {
+                vertices: [
+                    [0., 0., 1., 0., 0.],
+                    [0., 5., 1., 0., 0.],
+                    [5., 0., 1., 0., 0.],
+                ],
+                texture: None,
+                color: [255, 0, 0, 255],
+            },
+            MenuFace {
+                vertices: [
+                    [0., 0., 2., 0., 0.],
+                    [5., 0., 2., 0., 0.],
+                    [0., 5., 2., 0., 0.],
+                ],
+                texture: None,
+                color: [0, 0, 255, 255],
+            },
+        ];
+        let image = render(&faces, &[]).unwrap();
         assert_eq!(image.get_pixel(1, 1).0, [255, 0, 0, 255]);
         assert_eq!(image.get_pixel(6, 6).0, [0, 0, 0, 255]);
     }

@@ -40,6 +40,21 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     export_menu(&edited, &cache).unwrap();
     let menu: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+    assert_eq!(menu["models"].as_array().unwrap().len(), 5);
+    for (index, count) in [9, 9, 1, 9, 9].into_iter().enumerate() {
+        assert_eq!(
+            menu["models"][index]["frames"].as_array().unwrap().len(),
+            count
+        );
+    }
+    assert_ne!(
+        menu["models"][1]["frames"][0],
+        menu["models"][1]["frames"][4]
+    );
+    assert_ne!(
+        menu["models"][1]["frames"][4],
+        menu["models"][1]["frames"][8]
+    );
     let entries = menu["pages"]["0"]["entries"].as_array().unwrap();
     let quit = entries
         .iter()

@@ -2,7 +2,8 @@
 use super::{
     menu::MenuItem,
     menu_data::{
-        MenuAsset, MenuEntry, MenuFace, MenuFont, MenuGlyph, MenuPage, MenuPicture, PageTexture,
+        MenuAsset, MenuCorner, MenuEntry, MenuFont, MenuGlyph, MenuModel, MenuModelFace, MenuPage,
+        MenuPicture, PageTexture,
     },
     menu_preferences::MenuPreferences,
 };
@@ -128,7 +129,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let output = cache.join("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        8u32,
+        9u32,
         &ini_bytes,
         &keys_bytes,
         &system_bytes,
@@ -196,39 +197,6 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         let selected = (0..entries.len())
             .map(|step| (default + step) % entries.len())
             .find(|i| entries[*i].item.eligible());
-        let camera = match id {
-            3 => [336.0, 0.0, 0.0],
-            5 => [336.0, -128.0, 0.0],
-            6 => [336.0, 176.0, 0.0],
-            _ => [0.0; 3],
-        };
-        let frames = match id {
-            0 => [0; 5],
-            3 => [0, 8, 0, 0, 0],
-            7 => [0, 8, 0, 8, 8],
-            _ => [0, 8, 0, 8, 0],
-        };
-        let mut faces = Vec::new();
-        for (index, (model, placement)) in models.iter().enumerate() {
-            let mut placement = *placement;
-            if frames[index] == 8 {
-                placement[2] += if index == 1 {
-                    4.0
-                } else if index == 4 {
-                    -4.0
-                } else {
-                    0.0
-                };
-            }
-            faces.extend(project(
-                model,
-                frames[index],
-                placement,
-                camera,
-                &references,
-                &palette,
-            )?);
-        }
         let surfaces = (0..2)
             .filter(|i| page.textures[*i].is_some())
             .map(surface)
@@ -238,7 +206,6 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             MenuPage {
                 entries,
                 selected,
-                faces,
                 surfaces,
             },
         );
@@ -280,6 +247,10 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     }
     let book = MenuAsset {
         pages: exported_pages,
+        models: models
+            .into_iter()
+            .map(|(model, position)| export_model(model, position, &references, &palette))
+            .collect::<anyhow::Result<_>>()?,
         textures,
         palette: palette.colors.to_vec(),
         fonts: [font(&normal_bytes)?, font(&selected_bytes)?],
@@ -309,35 +280,14 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn project(
-    model: &Model3DFile,
-    frame: usize,
+fn export_model(
+    model: Model3DFile,
     position: [f32; 3],
-    camera: [f32; 3],
     references: &BTreeMap<(u16, u16), usize>,
     palette: &Palette,
-) -> anyhow::Result<Vec<MenuFace>> {
+) -> anyhow::Result<MenuModel> {
     let mut faces = Vec::new();
     for face in &model.face_data {
-        let vertices: Vec<_> = face
-            .face_vertices
-            .iter()
-            .map(|vertex| {
-                let point = model.frame_vertex_data[frame].coords[vertex.vertex_index as usize];
-                let [x, y, z] = [
-                    position[0] - point.x - camera[0],
-                    position[1] + point.y - camera[1],
-                    position[2] - point.z - camera[2],
-                ];
-                [
-                    320.0 + x / z * (320.0 / 0.788),
-                    240.0 + y / z * (320.0 / 0.788),
-                    z.recip(),
-                    vertex.u as f32 / 16.0,
-                    vertex.v as f32 / 16.0,
-                ]
-            })
-            .collect();
         let (texture, color) = match face.texture_data {
             TextureData::Texture {
                 texture_id,
@@ -357,13 +307,32 @@ fn project(
                 (None, [r, g, b, 255])
             }
         };
-        for corner in 1..vertices.len().saturating_sub(1) {
-            faces.push(MenuFace {
-                vertices: [vertices[0], vertices[corner], vertices[corner + 1]],
-                texture,
-                color,
-            });
-        }
+        faces.push(MenuModelFace {
+            corners: face
+                .face_vertices
+                .iter()
+                .map(|vertex| MenuCorner {
+                    vertex: vertex.vertex_index as usize,
+                    uv: [vertex.u as f32 / 16.0, vertex.v as f32 / 16.0],
+                })
+                .collect(),
+            texture,
+            color,
+        });
     }
-    Ok(faces)
+    Ok(MenuModel {
+        position,
+        frames: model
+            .frame_vertex_data
+            .iter()
+            .map(|frame| {
+                frame
+                    .coords
+                    .iter()
+                    .map(|point| [point.x, point.y, point.z])
+                    .collect()
+            })
+            .collect(),
+        faces,
+    })
 }

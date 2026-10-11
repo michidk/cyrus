@@ -1,4 +1,5 @@
 //! Startup images rendered from the install's authored splash and title assets.
+mod book_motion;
 #[cfg(not(target_arch = "wasm32"))]
 mod export;
 mod menu;
