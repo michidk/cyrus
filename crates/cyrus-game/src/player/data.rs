@@ -1,5 +1,5 @@
 //! Player-owned scene inputs shared by native and browser runtimes.
-use super::{definition::PlayerDefinition, ground::TerrainGround};
+use super::{collision_data::CollisionScene, definition::PlayerDefinition, ground::TerrainGround};
 use anyhow::Context;
 use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::{Asset, Handle, Resource, TypePath};
@@ -23,6 +23,7 @@ pub struct PlayerScene {
     pub settings: MovementSettings,
     pub definition: Option<PlayerDefinition>,
     pub terrain: Option<TerrainGround>,
+    pub collision: CollisionScene,
     /// Why the installed player definition cannot be used in this world.
     pub unavailable: Option<String>,
 }
@@ -46,16 +47,26 @@ pub(crate) struct SceneData {
     pub definition: serde_json::Value,
     pub heights: Option<Vec<i16>>,
     pub water: Option<Vec<bool>>,
+    pub collision: Option<CollisionScene>,
 }
 
 impl SceneData {
     pub(crate) fn decode(self) -> anyhow::Result<PlayerScene> {
         anyhow::ensure!(
-            self.version == 1,
+            self.version == 2,
             "world {}: unsupported player schema {}; re-export",
             self.world,
             self.version
         );
+        let collision = self.collision.with_context(|| {
+            format!(
+                "world {}: missing player collision data; re-export",
+                self.world
+            )
+        })?;
+        collision
+            .validate()
+            .with_context(|| format!("world {} collision", self.world))?;
         let terrain = match (self.heights, self.water) {
             (Some(heights), Some(water)) => Some(
                 TerrainGround::new(heights, water)
@@ -76,6 +87,7 @@ impl SceneData {
             settings: self.settings,
             definition,
             terrain,
+            collision,
             unavailable,
         })
     }

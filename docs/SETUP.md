@@ -39,7 +39,8 @@ Settings, caches and screenshots live in `cyrus-config/`.
 Direct scene inspection uses available marker zero for initial player placement.
 Native, headless, and browser loading consume the same marker metadata. Re-export
 worlds after updating to populate exact marker coordinates in `.animations`
-and installed movement/terrain inputs in `.player`.
+and installed movement/terrain inputs in `.player`. Re-export for player schema 2,
+which adds authored static collision geometry and placement lists.
 Unavailable markers report a player-entry error. Ground settling, locomotion,
 and the original follow camera remain unsupported; use the independent debug
 flycam to inspect the world.

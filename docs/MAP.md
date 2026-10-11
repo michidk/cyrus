@@ -29,10 +29,12 @@ module where it is defined and regenerate.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/player.rs` — Inspection camera and the player input foundation. Faithful locomotion is
+- `src/player/collision_data.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
 - `src/player/definition.rs` — Player attributes and upright collision bounds from preservation's RGM metadata.
 - `src/player/export.rs` — Native extraction of player inputs through preservation's parsers.
+- `src/player/export/collision.rs` — Installed static placements and authored collision geometry for the portable player cache.
 - `src/player/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
 - `src/player/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in

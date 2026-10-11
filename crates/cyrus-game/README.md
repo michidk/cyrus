@@ -148,7 +148,10 @@ remains unchecked.
 
 World exports also write a `.player` sidecar containing installed movement
 settings, named CYRUS attributes and bounds, decoded terrain heights, and the
-water mask. Native, headless, and browser entry load the same validated asset.
+water mask. Schema 2 also retains original static placement order, model polygons,
+ROB collision flags and ordered subobject face lists. Missing or conflicting
+models remain explicitly unsupported; absent v4 extent factors are retained.
+Native, headless, and browser entry load the same validated asset.
 Missing or unsupported actor definitions retain a contextual unavailable reason.
 This data does not activate ground settling or locomotion. Re-export cached
 worlds after updating.
