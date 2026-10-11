@@ -38,8 +38,6 @@ Use `just run --scene START` to open a world directly. The
 [setup guide](docs/SETUP.md) covers the browser build, the original game runner,
 and all available commands.
 
-Install FFmpeg on PATH to play installed cinematics from the native Movies menu.
-
 The game install remains read-only. cyrus stores settings, caches, and
 screenshots in the gitignored `cyrus-config/` directory.
 

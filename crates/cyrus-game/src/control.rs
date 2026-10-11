@@ -114,7 +114,10 @@ fn handle(
     inbox: Res<Inbox>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut taps: ResMut<TapRelease>,
-    mut fidelity: ResMut<Fidelity>,
+    (mut fidelity, mut sky_scroll): (
+        ResMut<Fidelity>,
+        Option<ResMut<crate::environment::SkyScrollSync>>,
+    ),
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
     (state, mut next): (
@@ -125,7 +128,7 @@ fn handle(
         Option<Res<crate::startup::StartupPresentation>>,
         Option<Res<crate::startup::MenuState>>,
     ),
-    preloaded: Option<Res<Preloaded>>,
+    (preloaded, hud): (Option<Res<Preloaded>>, Option<Res<crate::hud::HudState>>),
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, flycam): (
         Res<crate::player::input::PlayerInput>,
@@ -150,7 +153,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": Preloaded::report_path()})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "hud": hud.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.enabled, "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -201,6 +204,13 @@ fn handle(
                     ),
                 }
             }
+            Command::SetSkyScroll { direction, offset } => match sky_scroll.as_deref_mut() {
+                Some(reference) => reference
+                    .set(direction, offset)
+                    .map(|()| json!({"direction": direction, "offset": offset}))
+                    .map_err(|error| error.to_string()),
+                None => Err("sky renderer is unavailable".into()),
+            },
             Command::LoadScene { name } => {
                 scene_request.0 = name.clone();
                 if *state.get() != crate::AppState::InGame {

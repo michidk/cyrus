@@ -10,11 +10,31 @@ enum Command {
     Previous(usize),
     Future(usize),
     Breakpoint,
+    Delay(u8),
+    Sound {
+        effect: Option<i64>,
+        rate_shift: Option<i64>,
+    },
     Unsupported(u8),
 }
 
+/// Authored animation sound operations, dispatched synchronously by the actor's caller.
+/// The caller owns surface remapping, positional gains, channel allocation and its last handle.
+#[derive(Debug, PartialEq, Eq)]
+pub enum AnimationSound {
+    /// Start the signed effect index with a signed offset in hertz, before surface remapping.
+    Play { effect: i16, rate_offset_hz: i32 },
+    /// Stop the last remembered sound at EndAnimation, if its handle is valid.
+    Stop,
+    /// Clear the remembered handle on replacement without stopping its channel.
+    Forget,
+}
+
+pub(super) type SoundDispatcher<'a> =
+    Option<&'a mut dyn FnMut(AnimationSound) -> anyhow::Result<()>>;
+
 /// A forward current group. Callers supply activation, whole nominal ticks, and exit eligibility.
-/// Event commands, reverse playback, and other group types remain explicitly unsupported.
+/// Sound commands require actor-side dispatch; reverse playback and other group types are unsupported.
 pub struct FrameSequence {
     context: String,
     commands: Vec<Command>,
@@ -26,6 +46,9 @@ pub struct FrameSequence {
     ended: bool,
     failure: Option<String>,
     translation_suppressed: bool,
+    delay: u8,
+    type_one: bool,
+    sound_requested: bool,
 }
 
 /// A resolved RAAN model/frame pair; this is not an attachment vertex selection.
@@ -121,7 +144,7 @@ impl FrameSequence {
         )
         .with_context(|| format!("{context}: group type outside u16 range"))?;
         anyhow::ensure!(
-            group_type.to_le_bytes()[0] == 0,
+            group_type.to_le_bytes()[0] <= 1,
             "{context}: group type unsupported"
         );
         let speed = u16::try_from(
@@ -148,6 +171,20 @@ impl FrameSequence {
                 0 => Command::Frame(u32::try_from(command["frame_reference"].as_u64().with_context(|| format!("{context} command {index}: file frame reference absent; re-export the world"))?)?),
                 1 => Command::End,
                 5 => Command::Breakpoint,
+                4 => Command::Sound {
+                    effect: command["sound_param"].as_i64(),
+                    // Preservation's legacy field name stores rate steps, not volume.
+                    rate_shift: command["volume_shift"].as_i64(),
+                },
+                12 => {
+                    let value = command["value"].as_i64().with_context(|| {
+                        format!("{context} command {index}: delay operand absent")
+                    })?;
+                    let value = i32::try_from(value).with_context(|| {
+                        format!("{context} command {index}: delay operand outside i32 range")
+                    })?;
+                    Command::Delay(value as u8)
+                }
                 2 | 3 => {
                     let target = usize::try_from(command["value"].as_u64().with_context(|| format!("{context} command {index}: invalid target"))?)?;
                     if opcode == 2 { Command::Previous(target) } else { Command::Future(target) }
@@ -175,6 +212,9 @@ impl FrameSequence {
             ended: false,
             failure: None,
             translation_suppressed: false,
+            delay: 0,
+            type_one: group_type.to_le_bytes()[0] == 1,
+            sound_requested: false,
         })
     }
 
@@ -186,27 +226,93 @@ impl FrameSequence {
         self.exit_reached
     }
 
+    pub(super) fn replace_after_exit(&self) -> bool {
+        self.type_one && self.exit_reached
+    }
+
+    pub(super) fn forget_sound(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
+        if self.sound_requested {
+            self.dispatch_sound(sounds, AnimationSound::Forget)?;
+            self.sound_requested = false;
+        }
+        Ok(())
+    }
+
+    fn dispatch_sound(
+        &self,
+        sounds: &mut SoundDispatcher<'_>,
+        event: AnimationSound,
+    ) -> anyhow::Result<()> {
+        sounds
+            .as_mut()
+            .with_context(|| format!("{}: animation sound dispatch unsupported", self.context))?(
+            event,
+        )
+        .map_err(|error| {
+            anyhow::anyhow!(
+                "{} command {}: animation sound dispatch failed: {error:#}",
+                self.context,
+                self.command
+            )
+        })
+    }
+
     /// The current group's BreakPoint marker, checked by ordinary forward walking.
     /// End does not select a replacement group or establish other movement eligibility.
     pub fn translation_suppressed(&self) -> bool {
         self.translation_suppressed
     }
 
+    /// True only after EndAnimation; waiting for a delay does not finish the group.
+    pub fn is_finished(&self) -> bool {
+        self.ended
+    }
+
     /// Advances using the original whole nominal-tick input; returns a file frame reference.
-    /// `None` means EndAnimation. Unknown events fail at their command without being skipped.
+    /// `None` keeps the prior pose during a delay or after EndAnimation; `is_finished`
+    /// distinguishes those states. Unknown events fail without being skipped.
     pub fn advance(&mut self, ticks: u32, exit_requested: bool) -> anyhow::Result<Option<u32>> {
+        self.advance_with_sounds(ticks, exit_requested, &mut None)
+    }
+
+    pub(super) fn advance_with_sounds(
+        &mut self,
+        ticks: u32,
+        exit_requested: bool,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         if let Some(message) = &self.failure {
             anyhow::bail!("{message}");
         }
-        let result = self.advance_current(ticks, exit_requested);
+        let result = self.advance_current(ticks, exit_requested, sounds);
         if let Err(error) = &result {
             self.failure = Some(error.to_string());
         }
         result
     }
 
-    fn advance_current(&mut self, ticks: u32, exit_requested: bool) -> anyhow::Result<Option<u32>> {
-        if self.ended {
+    pub(super) fn waiting_for_delay(&mut self, ticks: u32) -> bool {
+        if self.delay != 0 {
+            if self.delay == u8::MAX {
+                return true;
+            }
+            let remaining = i32::from(self.delay).wrapping_sub(ticks as i32);
+            if remaining > 0 {
+                self.delay = remaining as u8;
+                return true;
+            }
+            self.delay = 0;
+        }
+        false
+    }
+
+    fn advance_current(
+        &mut self,
+        ticks: u32,
+        exit_requested: bool,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
+        if self.ended || self.waiting_for_delay(ticks) {
             return Ok(None);
         }
         let mut skip = 0;
@@ -241,6 +347,10 @@ impl FrameSequence {
                     visited.clear();
                 }
                 Command::End => {
+                    if self.sound_requested {
+                        self.dispatch_sound(sounds, AnimationSound::Stop)?;
+                        self.sound_requested = false;
+                    }
                     self.ended = true;
                     return Ok(None);
                 }
@@ -266,6 +376,46 @@ impl FrameSequence {
                 }
                 Command::Breakpoint => {
                     self.translation_suppressed = true;
+                    self.command += 1;
+                }
+                Command::Delay(delay) => {
+                    self.delay = delay;
+                    self.command += 1;
+                    if delay != 0 {
+                        return Ok(None);
+                    }
+                }
+                Command::Sound { effect, rate_shift } => {
+                    anyhow::ensure!(
+                        sounds.is_some(),
+                        "{} command {}: opcode 4 playback unsupported",
+                        self.context,
+                        self.command
+                    );
+                    let effect = effect
+                        .filter(|value| (-512..=511).contains(value))
+                        .with_context(|| {
+                            format!(
+                                "{} command {}: sound effect outside signed ten-bit range",
+                                self.context, self.command
+                            )
+                        })? as i16;
+                    let rate_shift = rate_shift
+                        .filter(|value| (-512..=511).contains(value))
+                        .with_context(|| {
+                            format!(
+                                "{} command {}: sound rate outside signed ten-bit range",
+                                self.context, self.command
+                            )
+                        })? as i32;
+                    self.dispatch_sound(
+                        sounds,
+                        AnimationSound::Play {
+                            effect,
+                            rate_offset_hz: rate_shift * 64,
+                        },
+                    )?;
+                    self.sound_requested = true;
                     self.command += 1;
                 }
                 Command::Unsupported(opcode) => anyhow::bail!(

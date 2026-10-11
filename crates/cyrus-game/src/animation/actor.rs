@@ -1,10 +1,11 @@
 //! Request arbitration and default fallback from preservation's engine/animation.md.
-use super::{Animations, FrameSequence};
+use super::sequence::SoundDispatcher;
+use super::{AnimationSound, Animations, FrameSequence};
 use anyhow::Context;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One actor's current, pending and explicitly supplied default group.
-/// Only forward type-zero groups are supported. The caller owns eligibility,
+/// Only forward type-zero and type-one groups are supported. The caller owns eligibility,
 /// default selection and each advancement's original nominal-tick input.
 pub struct ActorAnimation {
     context: String,
@@ -82,12 +83,34 @@ impl ActorAnimation {
     /// `ticks` is the existing shared increment, reused without adding a synthetic tick.
     /// A returned frame reference must be resolved through the source Animations asset.
     pub fn request(&mut self, group: u16, modifier: u8, ticks: u32) -> anyhow::Result<Option<u32>> {
+        self.request_dispatch(group, modifier, ticks, &mut None)
+    }
+
+    /// Makes an ordinary request with synchronous authored sound dispatch.
+    /// Use the same handler for subsequent advances and requests; it retains the last handle.
+    pub fn request_with_sounds(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.request_dispatch(group, modifier, ticks, &mut Some(sounds))
+    }
+
+    fn request_dispatch(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
         if self.current_group() == Some(self.default) {
             if group == self.default {
                 return Ok(None);
             }
-            self.current = None;
+            self.clear_current(sounds)?;
         }
         if self.current.is_none()
             || self.pending.is_none()
@@ -97,7 +120,7 @@ impl ActorAnimation {
         {
             self.select_pending(group, modifier);
             if self.current.is_none() && self.pending.is_some() {
-                return self.advance(ticks);
+                return self.advance_dispatch(ticks, sounds);
             }
         }
         Ok(None)
@@ -120,7 +143,7 @@ impl ActorAnimation {
             self.pending = None;
             return Ok(None);
         }
-        self.current = None;
+        self.clear_current(&mut None)?;
         self.select_pending(group, modifier);
         if self.pending.is_some() {
             self.advance(ticks)
@@ -146,21 +169,63 @@ impl ActorAnimation {
         Ok(())
     }
 
+    fn clear_current(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
+        if let Some((_, sequence)) = &mut self.current {
+            sequence.forget_sound(sounds)?;
+        }
+        self.current = None;
+        Ok(())
+    }
+
     /// Advances an eligible actor, selecting pending/default groups after End in the same
     /// call. A replacement receives the same tick input. Unsupported state stops with an
-    /// error; `None` leaves the previous mesh pose unchanged when no group is available.
+    /// error; `None` keeps the prior mesh pose while waiting or without an available group.
     pub fn advance(&mut self, ticks: u32) -> anyhow::Result<Option<u32>> {
+        self.advance_dispatch(ticks, &mut None)
+    }
+
+    /// Advances with synchronous PlaySound/End/replacement handling from preservation.
+    /// The handler owns its last channel handle and must apply source surface and positional rules.
+    pub fn advance_with_sounds(
+        &mut self,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.advance_dispatch(ticks, &mut Some(sounds))
+    }
+
+    fn advance_dispatch(
+        &mut self,
+        ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
-        let result = self.advance_current(ticks);
+        let result = self.advance_current(ticks, sounds);
         if let Err(error) = &result {
             self.failure = Some(error.to_string());
         }
         result
     }
 
-    fn advance_current(&mut self, ticks: u32) -> anyhow::Result<Option<u32>> {
+    fn advance_current(
+        &mut self,
+        ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         let mut visited = BTreeSet::new();
         loop {
+            if let Some((_, sequence)) = &mut self.current {
+                if sequence.waiting_for_delay(ticks) {
+                    return Ok(None);
+                }
+                if sequence.replace_after_exit()
+                    && self
+                        .pending
+                        .is_some_and(|(pending, _)| pending != self.default)
+                {
+                    self.clear_current(sounds)?;
+                }
+            }
             if self.current.is_none() {
                 if self.pending.is_none() {
                     self.select_pending(self.default, 0);
@@ -189,8 +254,11 @@ impl ActorAnimation {
             }
             if let Some((group, sequence)) = &mut self.current {
                 let exiting = self.pending.is_some_and(|(pending, _)| pending != *group);
-                if let Some(reference) = sequence.advance(ticks, exiting)? {
+                if let Some(reference) = sequence.advance_with_sounds(ticks, exiting, sounds)? {
                     return Ok(Some(reference));
+                }
+                if !sequence.is_finished() {
+                    return Ok(None);
                 }
             }
             self.current = None;

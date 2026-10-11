@@ -21,6 +21,8 @@ web-sys = { version = "0.3", features = ["Window", "Storage"] }
 # Native only: reads the install, spawns threads, listens on TCP.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 redguard-preservation.workspace = true
+# Smacker cutscenes; LGPL-2.1 (chosen by the maintainer).
+smk = "0.1"
 
 [dev-dependencies]
 toml.workspace = true

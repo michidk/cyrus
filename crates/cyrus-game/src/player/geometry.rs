@@ -50,3 +50,54 @@ impl CollisionFace {
         inside.then_some(projection)
     }
 }
+
+/// One admitted sphere and its authored face references, in traversal order.
+/// Subobject admission and model-space transforms are supplied by the caller.
+pub struct SphereCandidates<'a> {
+    pub center: Vec3,
+    pub radius: f32,
+    pub faces: &'a [usize],
+}
+
+/// A successful model-local contact, retaining the original face identity.
+#[derive(Debug, PartialEq)]
+pub struct FaceContact {
+    pub face: usize,
+    pub projection: Vec3,
+    pub normal: Vec3,
+}
+
+/// Test admitted spheres in order, suppressing only faces that already succeeded.
+/// References may repeat; failed tests remain eligible for later spheres.
+/// Inputs use model-local map units and original polygon indices.
+pub fn ordered_contacts(
+    faces: &[CollisionFace],
+    spheres: &[SphereCandidates<'_>],
+    sidedness: bool,
+) -> anyhow::Result<Vec<FaceContact>> {
+    let mut accepted = vec![false; faces.len()];
+    let mut contacts = Vec::new();
+    for (sphere_index, sphere) in spheres.iter().enumerate() {
+        anyhow::ensure!(
+            sphere.center.is_finite() && sphere.radius.is_finite() && sphere.radius >= 0.0,
+            "collision sphere {sphere_index}: invalid center or radius"
+        );
+        for &index in sphere.faces {
+            let face = faces.get(index).ok_or_else(|| {
+                anyhow::anyhow!("collision sphere {sphere_index}: face {index} outside model")
+            })?;
+            if accepted[index] {
+                continue;
+            }
+            if let Some(projection) = face.sphere_contact(sphere.center, sphere.radius, sidedness) {
+                accepted[index] = true;
+                contacts.push(FaceContact {
+                    face: index,
+                    projection,
+                    normal: face.normal,
+                });
+            }
+        }
+    }
+    Ok(contacts)
+}

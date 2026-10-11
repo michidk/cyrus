@@ -21,7 +21,7 @@ struct Args {
     /// Export every WORLD.INI world to the browser cache and exit.
     #[arg(long)]
     export_all_worlds: bool,
-    /// Export splash, title, and book-menu images to the browser cache and exit.
+    /// Export splash, title, book-menu and HUD images to the browser cache and exit.
     #[arg(long)]
     export_startup: bool,
     /// Control server bind address.
@@ -39,10 +39,14 @@ fn main() -> anyhow::Result<()> {
     let install = GameInstall::locate(args.install.as_deref())?;
     if args.export_startup {
         cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
+        cyrus_game::export_hud(&install, &Settings::cache_dir())?;
         return cyrus_game::startup::export_startup(&install, &Settings::cache_dir());
     }
     if args.export_all_worlds {
         return cyrus_game::scene::export_all_worlds(&install, &Settings::cache_dir());
+    }
+    if !args.headless {
+        cyrus_game::export_hud(&install, &Settings::cache_dir())?;
     }
     if startup {
         cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
@@ -76,7 +80,10 @@ fn main() -> anyhow::Result<()> {
     }
     app.add_plugins(cyrus_game::animation::AnimationPlugin);
     if !args.headless {
-        app.add_plugins(cyrus_game::environment::EnvironmentPlugin);
+        app.add_plugins((
+            cyrus_game::environment::EnvironmentPlugin,
+            cyrus_game::hud::HudPlugin,
+        ));
         if startup {
             app.add_plugins(cyrus_game::startup::StartupPlugin);
             if args.skip_startup {

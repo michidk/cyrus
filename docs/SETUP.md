@@ -80,13 +80,12 @@ Saved Sound preferences apply to native effects, speech, and CD music; the book
 menu plays its installed CD track. Native cinematics consume subtitle and interlace preferences.
 
 Movies browses the initially unlocked entries and installed previews. Native
-playback requires FFmpeg on PATH and reads the configured movie file or GOG
-`game.gog` beside the install. The native virtual-display image includes FFmpeg;
-its runner mounts the CD image read-only. It decodes video and the first embedded audio
+playback reads the configured movie file or GOG `game.gog` beside the install
+into memory and decodes it in-process; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and GUI font, and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
 skip point, or finishes after the last one. Playback returns to the same menu
-selection. Extracted Smacker files and decoded audio stay in `cache/movies/`.
+selection. Nothing is written to `cache/`.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Browser movie
 playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
@@ -130,8 +129,11 @@ Faithful/Modern buttons for Water, Fog, and Sky. All default to Faithful.
 
 **Verified:** Faithful sky uses the installed BSI/COL texture, camera-relative
 plane mapping, per-world scrolling speed, and BIOS timer documented by
-preservation. Tilt and the sun disc remain unsupported. The initial random
-scroll direction is not synchronized with an original session. Modern sky uses
+preservation. The renderer also applies the fixed 24/2048-turn tilt and the
+installed sun's camera-facing opacity texture. Full original-game comparison
+of those additions is pending. The initial random scroll direction is not
+synchronized automatically; MCP `set_sky_scroll` accepts a captured direction
+and U/V offsets for comparisons. Modern sky uses
 the same scrolling texture on a camera-centered background: translation cannot
 cross its surface. Both retain the world's colors and horizon haze.
 

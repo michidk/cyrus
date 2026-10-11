@@ -1,5 +1,5 @@
 //! Native extraction of per-world environment assets into the browser cache.
-use crate::environment::{Environment, SkyImage, Water, water_vertices};
+use crate::environment::{Environment, SkyImage, SunImage, Water, water_vertices};
 use crate::install::GameInstall;
 use anyhow::Context;
 use rgpre::import::{bsi, fog_ini, palette::Palette, wld, world_ini::WorldEntry};
@@ -131,6 +131,64 @@ fn background_color(ini: &str, id: u32) -> anyhow::Result<[u8; 3]> {
     channels.try_into().map_err(|_| anyhow::anyhow!(context()))
 }
 
+fn sun_image(root: &Path, ini: &str, id: u32) -> anyhow::Result<Option<SunImage>> {
+    let Some(filename) = value(ini, "world_sunimg", id).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let path = asset_path(root, &format!("fxart/{filename}"))?;
+    let bytes =
+        std::fs::read(&path).with_context(|| format!("world {id}: sun {}", path.display()))?;
+    let file = bsi::parse_bsi_file(&bytes)
+        .with_context(|| format!("world {id}: sun {}", path.display()))?;
+    let frame = file
+        .images
+        .first()
+        .with_context(|| format!("world {id}: empty sun BSI {}", path.display()))?;
+    anyhow::ensure!(
+        file.images.len() == 1 && frame.frame_count == 1,
+        "world {id}: unsupported multi-frame sun BSI"
+    );
+    let angle = |key| -> anyhow::Result<f64> {
+        let value = value(ini, key, id)
+            .unwrap_or("0")
+            .parse::<u16>()
+            .with_context(|| format!("world {id}: {key}"))?;
+        anyhow::ensure!(value < 2048, "world {id}: {key} must be below 2048");
+        // Preserve the original angle table's rounded turn constant.
+        #[allow(clippy::approx_constant)]
+        Ok(f64::from(value) * 6.2831852 / 2048.0)
+    };
+    let direction = angle("world_sunangle")?;
+    let skew = angle("world_sunskew")?;
+    let scale = sky_parameter(ini, "world_sunscale", id, 12800)?;
+    anyhow::ensure!(
+        (1..=i16::MAX as i32).contains(&scale),
+        "world {id}: invalid world_sunscale"
+    );
+    let texture_scale = if frame.tex_scale == 0 {
+        256
+    } else {
+        frame.tex_scale
+    };
+    let factor = scale as f32 / 100.0 * f32::from(texture_scale) / 256.0 * 0.5;
+    let color = value(ini, "world_sunimgrgb", id)
+        .unwrap_or("255,255,200")
+        .split(',')
+        .map(|v| v.trim().parse::<u8>())
+        .collect::<Result<Vec<_>, _>>()
+        .with_context(|| format!("world {id}: world_sunimgrgb requires three RGB bytes"))?;
+    Ok(Some(SunImage {
+        size: [frame.width.into(), frame.height.into()],
+        alpha: frame.pixel_data.clone(),
+        center: [direction.sin(), direction.cos(), skew.sin()]
+            .map(|v| -(v as f32 * 16000.0).trunc()),
+        half_size: [frame.width as f32 * factor, frame.height as f32 * factor],
+        color: color
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("world {id}: world_sunimgrgb requires three RGB bytes"))?,
+    }))
+}
+
 pub fn export(
     install: &GameInstall,
     entry: &WorldEntry,
@@ -164,6 +222,7 @@ pub fn export(
                     })
                     .collect();
                 Ok(SkyImage {
+                    sun: sun_image(&install.root, &ini, entry.index)?,
                     width: frame.width.into(),
                     height: frame.height.into(),
                     rgba,

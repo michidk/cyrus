@@ -392,7 +392,7 @@ fn forced_current_request_cancels_pending_without_restarting_and_other_force_rep
 #[test]
 fn unsupported_replacement_is_sticky_and_empty_default_cycles_fail() {
     let mut data = request_asset();
-    data.metadata["actors"][0]["animation_groups"][3]["anim_type"] = 1.into();
+    data.metadata["actors"][0]["animation_groups"][3]["anim_type"] = 2.into();
     let mut state = data.actor_animation("ACTOR", 1).unwrap();
     state.request(7, 0, 1).unwrap();
     state.request(20, 0, 0).unwrap();
@@ -756,8 +756,42 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     assert!(ended, "the installed finite tasks must reach End");
     assert_eq!(transitions, [1, 10, 1, 10]);
     assert_eq!(script.program_counter(), 0);
-    script.advance(&mut actor, 1).unwrap();
-    assert_eq!(script.waiting_for_group(), Some(1));
+    // Recorded original FLAG2 updates after its authored End, with supplied nominal ticks.
+    for (ticks, expected_frame) in [
+        (1, 2),
+        (1, 3),
+        (0, 3),
+        (1, 4),
+        (1, 5),
+        (1, 6),
+        (0, 6),
+        (1, 7),
+        (1, 8),
+        (0, 8),
+        (1, 9),
+        (1, 10),
+        (0, 10),
+        (1, 11),
+        (1, 2),
+        (1, 3),
+        (0, 3),
+        (1, 4),
+        (1, 5),
+        (0, 5),
+    ] {
+        let frame = actor.advance(ticks).unwrap();
+        let frame = actor.request(0, 0, ticks).unwrap().or(frame);
+        let frame = script
+            .advance(&mut actor, ticks)
+            .unwrap()
+            .or(frame)
+            .unwrap();
+        let frame = data.resolve_frame("FLAG2", frame).unwrap();
+        assert_eq!((&*frame.model, frame.frame), ("FLAGA01", expected_frame));
+        assert_eq!(actor.current_group(), Some(1));
+        assert_eq!(script.waiting_for_group(), Some(1));
+        assert_eq!(script.program_counter(), 14);
+    }
     let resolved = data.resolve_frame("FLAG2", 2).unwrap();
     assert_eq!((&*resolved.model, resolved.frame), ("FLAGA01", 2));
     let bytes = std::fs::read(&path).unwrap();
@@ -839,4 +873,173 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     }
     drop(app);
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn finite_delay_holds_the_pose_and_resumes_with_the_expiry_calls_full_ticks() {
+    let data = sequence_asset(
+        3,
+        serde_json::json!([
+            {"opcode":0,"frame_reference":0}, {"opcode":12,"value":3},
+            {"opcode":0,"frame_reference":1}, {"opcode":1}
+        ]),
+    );
+    let mut sequence = data.sequence("ACTOR", 7, 0).unwrap();
+    for ticks in [0, 1, 1, 1] {
+        assert_eq!(sequence.advance(ticks, false).unwrap(), Some(0));
+    }
+    assert_eq!(sequence.advance(1, false).unwrap(), None);
+    assert!(!sequence.is_finished());
+    assert_eq!(sequence.advance(0, false).unwrap(), None);
+    assert_eq!(sequence.advance(2, false).unwrap(), None);
+    assert_eq!(sequence.advance(1, false).unwrap(), Some(1));
+    assert_eq!(sequence.advance(1, false).unwrap(), Some(1));
+    assert_eq!(sequence.advance(1, false).unwrap(), None);
+    assert!(sequence.is_finished());
+
+    let data = sequence_asset(
+        1,
+        serde_json::json!([
+            {"opcode":12,"value":2}, {"opcode":0,"frame_reference":0},
+            {"opcode":0,"frame_reference":1}, {"opcode":1}
+        ]),
+    );
+    let mut sequence = data.sequence("ACTOR", 7, 0).unwrap();
+    assert_eq!(sequence.advance(1, false).unwrap(), None);
+    assert_eq!(sequence.advance(2, false).unwrap(), None);
+    assert!(
+        sequence.is_finished(),
+        "expiry retains the full frame skip input"
+    );
+}
+
+#[test]
+fn delay_operands_narrow_to_bytes_and_255_waits_until_group_replacement() {
+    for value in [-1, 255, 511] {
+        let data = sequence_asset(
+            1,
+            serde_json::json!([
+                {"opcode":12,"value":value}, {"opcode":0,"frame_reference":0}, {"opcode":1}
+            ]),
+        );
+        let mut sequence = data.sequence("ACTOR", 7, 0).unwrap();
+        for ticks in [0, 1, 254, 255, 256] {
+            assert_eq!(sequence.advance(ticks, false).unwrap(), None);
+            assert!(!sequence.is_finished());
+        }
+    }
+    for value in [0, 256, -256] {
+        let data = sequence_asset(
+            1,
+            serde_json::json!([
+                {"opcode":12,"value":value}, {"opcode":0,"frame_reference":0}
+            ]),
+        );
+        assert_eq!(
+            data.sequence("ACTOR", 7, 0)
+                .unwrap()
+                .advance(0, false)
+                .unwrap(),
+            Some(0)
+        );
+    }
+    let data = sequence_asset(
+        1,
+        serde_json::json!([
+            {"opcode":12,"value":2}, {"opcode":0,"frame_reference":0}, {"opcode":1}
+        ]),
+    );
+    let mut sequence = data.sequence("ACTOR", 7, 0).unwrap();
+    assert_eq!(sequence.advance(0, false).unwrap(), None);
+    assert_eq!(sequence.advance(u32::MAX, false).unwrap(), None);
+    assert!(!sequence.is_finished());
+    assert_eq!(sequence.advance(2, false).unwrap(), None);
+    assert!(
+        !sequence.is_finished(),
+        "the wrapping result kept a byte delay of 3"
+    );
+    assert_eq!(sequence.advance(1, false).unwrap(), Some(0));
+    let mut data = sequence_asset(
+        1,
+        serde_json::json!([
+            {"opcode":12,"value":255}, {"opcode":0,"frame_reference":0}
+        ]),
+    );
+    data.metadata["actors"][0]["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(
+            serde_json::json!({"group_index":8,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":1}]}),
+        );
+    let mut actor = data.actor_animation("ACTOR", 7).unwrap();
+    assert_eq!(actor.advance(0).unwrap(), None);
+    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.advance(255).unwrap(), None);
+    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.force_request(8, 0, 0).unwrap(), Some(1));
+    assert_eq!(actor.current_group(), Some(8));
+}
+
+#[test]
+fn invalid_delay_operands_report_the_world_actor_and_command() {
+    for value in [
+        serde_json::Value::Null,
+        serde_json::json!("2"),
+        serde_json::json!(2147483648i64),
+    ] {
+        let data = sequence_asset(1, serde_json::json!([{"opcode":12,"value":value}]));
+        let error = data.sequence("ACTOR", 7, 0).err().unwrap().to_string();
+        assert!(
+            error.starts_with("world 17 actor ACTOR group 7 command 0: delay operand"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn rendered_playback_survives_a_delay_before_its_first_pose() {
+    use bevy::prelude::*;
+    use cyrus_game::animation::{
+        AnimationPlayback, AnimationPlugin, AnimationPose, AnimationRequest, AnimationTick,
+    };
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), AnimationPlugin));
+    let data = sequence_asset(
+        1,
+        serde_json::json!([
+            {"opcode":12,"value":2}, {"opcode":0,"frame_reference":0}, {"opcode":1}
+        ]),
+    );
+    let handle = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(data);
+    let playback = AnimationPlayback::new(
+        handle.clone(),
+        app.world()
+            .resource::<Assets<Animations>>()
+            .get(&handle)
+            .unwrap(),
+        "ACTOR",
+        7,
+        0,
+    )
+    .unwrap();
+    app.world_mut().resource_mut::<AnimationRequest>().0 = handle;
+    let node = app.world_mut().spawn(playback).id();
+    for ticks in [0, 0, 1] {
+        app.world_mut().write_message(AnimationTick { ticks });
+        app.update();
+        assert!(app.world().get::<AnimationPlayback>(node).is_some());
+        assert!(app.world().get::<AnimationPose>(node).is_none());
+    }
+    app.world_mut().write_message(AnimationTick { ticks: 1 });
+    app.update();
+    assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 0);
+    assert!(app.world().get::<AnimationPlayback>(node).is_some());
+    app.world_mut().write_message(AnimationTick { ticks: 1 });
+    app.update();
+    assert!(app.world().get::<AnimationPlayback>(node).is_none());
+    assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 0);
 }

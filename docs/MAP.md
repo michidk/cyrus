@@ -8,7 +8,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-debug` — (undocumented)
 
-## `cyrus-game` — Portable startup, animation, environment, fidelity, player and settings plugins
+## `cyrus-game` — Portable startup, HUD, animation, environment, fidelity, player and settings plugins
 
 - `src/animation.rs` — Retained animation inputs; playback timing and actor activation are not inferred.
 - `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
@@ -23,6 +23,8 @@ module where it is defined and regenerate.
 - `src/environment_export.rs` — Native extraction of per-world environment assets into the browser cache.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
+- `src/hud.rs` — In-game overlay from installed HUD data: the health candle, its number, and the
+- `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Locating the player's own game files. The install is only ever read.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG

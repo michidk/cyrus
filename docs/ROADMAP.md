@@ -28,24 +28,43 @@ Partial work marks only its current subtask, not the whole capability.
 
 ## Who is working on what
 
-These are task claims, not completion claims: add a row when claiming, remove
-it when releasing. Live status, blockers and handoff live in the task's
-`magic/artifacts/<date>-<topic>/README.md` (see `docs/WORKFLOW.md`), not here.
+Domain sessions resumed on 2026-10-11. The captured implementation milestones
+are consolidated; player and animation research continues separately. A completed
+T3 turn does not establish completed feature work.
 
-| Roadmap items | Agent / session | Current work |
+| Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
-| Step 0: debug world dropdown and inspector toggle | Codex: Increase Flycam Movement Speed | Claims `cyrus-debug`, web world-list generation, and verification; no scene or animation files |
-| Step 0: preload report, retro audio, native/reference captures | Claude Code: development tooling | Classifier, audio configuration, and capture command landed; current session activity unconfirmed |
-| Step 0: crate split implementation | Crate-split agent, branch `crate-split` | Implementing from committed `origin/main` in `~/workspaces/cyrus-split`; one verified commit per migration step, then rebase, gates and handoff before push |
-| Roadmap, resource coverage, RGUnity review, and preview | Codex: Plan Project Completion and Preview | Review and preview complete; documentation ownership released after this commit |
-| Step 2: original player parity | Codex: player-parity worktree | Input/flycam and marker placement verified. Published terrain, body-contact and timing facts; portable player-data export and narrow movement/contact contracts pass install-enabled native gates and WASM compilation. Full collision selection, animation eligibility, host timing and follow camera still block live locomotion parity. `magic/artifacts/2026-10-10-player/` |
-| Step 1: sky, fog, and clipping | Codex: faithful-sky worktree | Faithful fog/range and scrolling verified; independent Modern Water/Fog/Sky presets verified natively and in WebGL; preview deployed; source ownership released |
-| Startup and main menu | Codex: Faithful Startup Sequence | Native movies and authored book transitions verified through MCP; integrated workspace gates and WASM compilation passed; source ownership released. Browser runtime, audible playback, lighting, saves, and New Game remain pending |
-| Step 1: actor and mesh animation playback | Codex: animation-playback worktree | Owns animation playback/export modules, rendered-frame binding and animation contracts; explicit poses/groups and request transitions landed; literal authored task/End playback passes native contracts; WASM compilation and final workspace gates passed; original eligibility, clock and complete script scheduling remain open |
-| Steps 3–6 and remaining step-1 items | Unassigned | No confirmed active owner |
+| Step 1: actor and mesh animation | Load All World Animations Correctly, `animation-playback` | Native cue wiring, actor eligibility, clock, and full script scheduling; type-1 core integrated |
+| Step 2: player | Investigate Player Controller Design, `player-parity` | Candidate eligibility/order, v4 runtime extents, support selection, grounded walking integration, timing and follow camera |
+| Step 1: sky | Fix Faithful Mode Skybox, bounded research complete | Runtime filtering state, sun alpha rounding and world lighting evidence |
+| Step 1: sound | Implement Game Sound Effects, bounded research complete | Script, animation and ambient triggers; per-call volume/rate evidence |
+| HUD | Implement the Game Overlay UI, research handoff complete | Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook, prompts and F8 toggle remain unsupported |
+| Startup and book menu | Match Startup Screen Appearance, research handoff complete | Publish and implement book cues; resolve lighting propagation and reachable mouse consumers |
+| Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
-Completed handoff: Codex's Cache Downloaded Game Files session landed GLB caching.
-Later engine-cache edits are not marked complete here.
+The old crate-split branch is an unfinished architectural experiment, not a
+replacement for the current implementation. Its history and pending files are
+preserved separately; adopting it requires a fresh migration plan.
+
+## Verification still required
+
+These checks are separate from implementation. Passing unit tests does not
+establish original-game timing, visual fidelity or audible parity.
+
+- [x] Integrated `just gates`: publication/map/format/strict-Clippy and workspace tests passed with the install present and absent on 2026-10-11; zero installed tests skipped. The updated WASM target passes `cargo check`.
+- [x] MCP smoke against the integrated native binary passed, including independent flycam input and an unchanged install. The smoke script used the already-built test-profile executables.
+- [x] Compared 499 consecutive captured FLAG2 states through End/restart against the tested integrated library; a wrong asset schema is rejected. This proves supplied-tick state parity only.
+- [ ] Verify type-1 mesh transitions, native cues, eligibility, host timing and matched rendering. The five new transition/sound contracts pass.
+- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration.
+- [ ] Verify sky tilt, sun, synchronized scrolling and fog in the integrated Bevy renderer and browser. Retain full original-game comparisons for filtering, alpha, lighting and hardware color precision. Capture filter/blend state after menu and world transitions, translucent sun edges and dither phases. World lighting still uses a fixed light; recover terrain/model lighting rules before replacing it.
+- [x] Native START screenshot shows the candle above health 100; retained frame handles fix unloading during flicker. The equal-count item icon regression passes.
+- [ ] Compare native/browser HUD layout with the original. The candle targets the documented 60 Hz Glide retrace rate independently of rendering; original in-world cadence, transparency and starting inventory still need comparison. Health, pickups and inventory integration remain separate work.
+- [x] All eleven installed movie definitions decode through their final video frame with the in-process decoder; their first audio stream decodes when present.
+- [ ] Compare picture, audio, skip points, subtitles, interlace and menu return against the original with the new decoder. Check cancellation and skip responsiveness.
+- [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
+- [ ] Exercise startup and animated book transitions in the browser, saved settings after restart, and native audible playback. Verify lighting, book cues and mouse selection after implementation.
+- [x] The integrated native F1 inspector opens Entities, Resources and Assets, checked through the live renderer.
+- [ ] Repeat inspector/HUD/sky runtime checks in the browser; confirm served browser assets are current and cache reuse/invalidation works.
 
 ## Done
 
@@ -58,7 +77,7 @@ Later engine-cache edits are not marked complete here.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Export all 29 installed worlds, with structural checks.
-- [x] Browser scene viewer with download progress and persistent GLB caching.
+- [x] Browser scene viewer with download progress, persistent GLB/engine caching, and cache-write failure fallback.
 - [x] Inspection flycam, TCP control, and MCP tools.
 - [x] DOSBox-X runner for observing the original game.
 - [x] Repository checks and CI.
@@ -80,18 +99,18 @@ committed support; unverified work stays in the TODO column.
 | `RGM`, `WLD` | Static scene placement and terrain | Actor behavior and full world playback |
 | `3D`, `3DC`, `ROB` | Static export, retained animation frames, and explicit source-mapped i32 mesh poses; authored book frames and runtime menu motion | Automatic actor playback, other frame encodings, and model replacement |
 | `BSI`, `COL` | Textures and palettes; documented terrain waves in both graphics modes | Other animated textures and visual comparison with the original |
-| `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, and preload parsing | Software sky projection |
+| `GXA` | Startup title artwork, book checkboxes/sliders, movie previews, HUD candle/item artwork, and preload parsing | Software sky projection |
 | Glide splash overlay | Installed authored meshes, matrices and textures rendered into a local startup cache | Exact hardware edge coverage, mip selection and shadow interpolation |
-| Glide sky BSI/COL | Faithful sky plane, fog, and BIOS-timed scrolling; camera-centered Modern sky | Full projection/motion comparison, tilt, and sun disc |
+| Glide sky BSI/COL | Faithful tilted sky plane, sun, fog and synchronized scroll inputs; camera-centered Modern sky | Full original-game projection/motion, filtering, alpha and lighting comparison |
 | `SFX` | Every effect decoded at its stored rate and channel layout; playback by index with the file's loop flag and base volume, master volume, documented distance falloff and stereo pan, via `play_sound` | Script, animation, ambient and surface triggers; per-call volume and rate; audible comparison with the original |
 | `RTX` | All voice clips load in the background; playback by label via `play_speech` with dialogue subtitles; voice and subtitle preferences honoured | Dialogue and combat triggers, Cyrus' subtitle colour, dialogue choices, and quest integration |
-| `FNT` | Startup labels, indexed book-menu glyphs, and rgpre-generated status font | In-game text and remaining menus |
+| `FNT` | Startup labels, book-menu glyphs, dialogue subtitles, HUD numbers, and status font | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | Original payloads and typed literal Task/End descriptors retained; explicit authored animation-task playback passes native contracts | Automatic activation, full control flow, events, other native bindings, interrupts, and synchronization |
 | `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, browser cinematic playback, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
-| `COMBAT.INI`, `ITEM.INI` | No gameplay integration accepted | Combat and items |
-| `SMK` | Native video and first embedded audio stream via FFmpeg, installed skip points and subtitle definitions; CD music pauses while a movie plays | Browser playback, audible output and A/V synchronization comparison |
+| `COMBAT.INI`, `ITEM.INI` | Starting-item HUD icons and counts from ITEM.INI | Combat, item use, pickups and shared inventory |
+| `SMK` | Native video and first embedded audio stream via the in-process Smacker decoder, installed skip points and subtitle definitions; CD music pauses while a movie plays | Browser playback, audible output and A/V synchronization comparison |
 | CD audio | World tracks and the book menu's track 2 play from GOG's CD image and repeat; the Music slider and `redbook_volume` set the drive level | Credits and ending music, audible comparison with the original |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
@@ -103,7 +122,7 @@ native Vulkan and browser WebGL runs show the static sky behind scene geometry.
 The former GXA cubemap and approximate water animation are removed.
 **Verified:** uncovered pixels use the Glide `world_fogrgb` clear color. Re-export
 old environment sidecars to replace legacy palette backgrounds. Sky
-tilt and the sun disc remain unsupported; sky playback does not
+tilt and the sun disc are implemented; sky playback does not
 establish complete original-game fidelity. Scrolling follows per-world speed
 and BIOS ticks; original-session random direction and above-plane camera
 behavior have not been compared.
@@ -135,7 +154,7 @@ Main restores identical pixels after returning. Intermediate page-curl geometry
 was inspected. No matched original animation/timing claim is made. Lighting,
 camera-plane clipping, book sound cues, mouse selection, gameplay snapshots, saves,
 and New Game remain unsupported. Native MCP checks cover all five browsable movies, forward skips,
-held-key handling, natural EOF, missing FFmpeg and unsupported-path recovery,
+held-key handling, natural EOF and unsupported-path recovery in the prior decoder,
 Quit during playback, and decoder cleanup on world entry. Video and subtitle
 screenshots were inspected; the first audio stream decodes to a seekable WAV.
 Audible output and A/V synchronization remain unchecked. Subtitle/interlace
@@ -374,7 +393,11 @@ formats and gameplay scope unchanged during this refactor.
   contracts pass in final workspace tests, including installed FLAG2 task
   transitions, End restart, GLB deformation and restoration without skipping.
   Final workspace formatting, strict all-target Clippy and tests pass.
-  Automatic rendered playback remains unchecked.
+  The integrated core also handles delay precedence, forward type-1 exits and
+  explicit sound handlers, documented in preservation [PR #30](https://github.com/michidk/redguard-preservation/pull/30).
+  Native sound dispatch is not wired. A narrow 13-update original walking exit
+  comparison covers identifiers, groups and markers only. Automatic rendered
+  playback, mesh and audio parity remain unchecked.
 - [x] Play documented terrain water waves in native and browser builds.
 - [ ] Compare water with the original; play other animated textures and effects.
 - [ ] Play positional and looping effects, ambient sound, speech, and music with original timing and volume behavior.
@@ -391,8 +414,8 @@ and exported source vertex/face mapping in
 [`8c3856e`](https://github.com/michidk/redguard-preservation/commit/8c3856e),
 and forward frame-countdown semantics in
 [`9b4206b`](https://github.com/michidk/redguard-preservation/commit/9b4206b).
-Cyrus pose and sequence code remains uncommitted and unverified. These facts
-do not establish autoplay, actor activation, or playback fidelity.
+Explicit pose, group and literal task playback are committed. Automatic actor
+activation, host timing and full playback fidelity remain unsupported.
 
 **Done when:** every world plays its required visuals, animations, sound, and
 scripts correctly against the original. Missing behavior remains a blocker.
@@ -467,7 +490,6 @@ heading are separate and remain unsupported.
 - [x] Apply explicit marker-based initial placement; scripted spawn selection and ground settling remain pending.
 - [ ] Implement quick actions and the walk-mode toggle, alongside the held bindings.
 - [ ] Establish a repeatable simulation-timing oracle and animation movement gates; compare the same walking/turning sequence in both games.
-- [ ] Add Modern camera-relative WASD, mouse camera, Space jump, and held Shift run.
 - [ ] Reproduce movement, turning, camera behavior, jumping, and gravity.
 - [ ] Add Modern controls: camera-relative WASD, mouse camera, Space jump, and held Shift to run. Keep the original controls in Faithful mode and the debug flycam independent of both modes.
 - [ ] Match collision on walls, slopes, steps, and animated geometry; reproduce slope sliding.

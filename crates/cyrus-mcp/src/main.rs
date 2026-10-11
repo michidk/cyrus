@@ -49,6 +49,16 @@ struct FidelityParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+struct SkyScrollParams {
+    #[schemars(description = "Captured original sky direction, 0 through 2047")]
+    direction: u16,
+    #[schemars(
+        description = "Captured U/V texture offsets in texels, each within -256 through 256"
+    )]
+    offset: [f32; 2],
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct SceneParams {
     #[schemars(
         description = "Scene stem from the install's maps/ directory, e.g. ISLAND, START, TAVERN"
@@ -170,6 +180,19 @@ impl Cyrus {
         text(call(Command::SetFidelity {
             area: p.area,
             mode: p.mode,
+        })?)
+    }
+
+    #[tool(
+        description = "Synchronize sky scrolling with a captured original session for comparison."
+    )]
+    fn set_sky_scroll(
+        &self,
+        Parameters(p): Parameters<SkyScrollParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::SetSkyScroll {
+            direction: p.direction,
+            offset: p.offset,
         })?)
     }
 

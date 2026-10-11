@@ -138,7 +138,7 @@ untracked working memory. Each crate has a `README.md` with its commands.
 Default windowed and browser launches play the installed 3dfx splash and title,
 then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
-installed Smacker files and requires FFmpeg on PATH. New Game, saves, and browser
+installed Smacker files through the in-process decoder. New Game, saves, and browser
 cinematic playback remain unavailable. Startup uses original-file assets, never
 captured playback.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
