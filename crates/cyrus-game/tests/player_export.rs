@@ -42,6 +42,22 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
             source.surface(key)
         );
     }
+    let material_position = [42008 * 256, 0, 40607 * 256];
+    let material_support = cyrus_game::player::ground::SelectedSupport::Primary {
+        source: cyrus_game::player::ground::SupportSource::Terrain,
+        support: scene
+            .terrain
+            .as_ref()
+            .unwrap()
+            .sample(material_position)
+            .unwrap(),
+    };
+    assert_eq!(
+        scene
+            .support_surface(&material_support, material_position)
+            .unwrap(),
+        6
+    );
     let player = scene.definition.unwrap();
     assert_eq!(player.forward_walk, 8);
     let terrain = scene.terrain.unwrap();

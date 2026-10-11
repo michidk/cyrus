@@ -36,6 +36,39 @@ pub struct PlayerScene {
 }
 
 impl PlayerScene {
+    /// Resolve selected support without changing actor surface state or the shared veto.
+    pub fn support_surface(
+        &self,
+        support: &super::ground::SelectedSupport,
+        position: [i64; 3],
+    ) -> anyhow::Result<u8> {
+        match support.source() {
+            super::ground::SupportSource::Model { model, face } => {
+                self.static_collision.face_surface(model, face)
+            }
+            super::ground::SupportSource::Terrain => {
+                let context = || format!("world {} terrain surface", self.world);
+                let terrain = self
+                    .terrain
+                    .as_ref()
+                    .context("missing terrain")
+                    .with_context(context)?;
+                let assignments = self
+                    .collision
+                    .texture_surfaces
+                    .as_ref()
+                    .context("missing SURFACE.INI assignments; re-export world")
+                    .with_context(context)?;
+                Ok(terrain
+                    .material(position, assignments)
+                    .with_context(context)?
+                    .context("support outside terrain material grid")
+                    .with_context(context)?
+                    .surface)
+            }
+        }
+    }
+
     /// Decode the exported player cache, validating terrain before runtime queries.
     pub fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         serde_json::from_slice::<SceneData>(bytes)?.decode()

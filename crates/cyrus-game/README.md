@@ -168,8 +168,10 @@ settings, named CYRUS attributes and bounds, decoded terrain heights, and the
 water mask.
 The optional terrain texture grid retains packed image/rotation bytes for material
 queries using the [published coordinate rules](https://github.com/michidk/redguard-preservation/blob/b2ddb1b/docs/engine/player.md#terrain-material-lookup).
-Old caches require re-export for these queries. Terrain blend-mask and water
-surface overrides remain unsupported. Schema 2 also retains original static
+Old caches require re-export for these queries. Explicit selected-support surface
+queries apply the [generated terrain blend mask and water overrides](https://github.com/michidk/redguard-preservation/blob/94ea3ae/docs/engine/player.md#terrain-material-blend-coverage).
+They do not assign actor surface state or the shared movement veto. Terrain water
+height and buoyancy remain unsupported. Schema 2 also retains original static
 placement order, model polygons, ROB collision flags and ordered subobject face
 lists. Per-face texture set/image
 identity is retained for surface lookup. The cache includes the installed

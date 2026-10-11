@@ -9,6 +9,13 @@ pub struct TerrainGround {
     textures: Option<Vec<u8>>,
 }
 
+/// Resolved terrain sound surface and original blend coverage, from zero through 256.
+#[derive(Debug, PartialEq, Eq)]
+pub struct TerrainMaterial {
+    pub surface: u8,
+    pub coverage: u16,
+}
+
 /// A terrain plane result before converting its height to the actor origin.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GroundSupport {
@@ -282,6 +289,69 @@ fn classify_normal(y: i32) -> u8 {
 }
 
 impl TerrainGround {
+    /// Resolve the installed assignment and generated shoreline mask.
+    /// Follows preservation's terrain material blend coverage rules.
+    pub fn material(
+        &self,
+        position: [i64; 3],
+        assignments: &std::collections::BTreeMap<u16, u8>,
+    ) -> anyhow::Result<Option<TerrainMaterial>> {
+        let Some(texture) = self.texture(position)? else {
+            return Ok(None);
+        };
+        let image = texture & 63;
+        let base = assignments
+            .get(&((302 << 7) | u16::from(image)))
+            .copied()
+            .unwrap_or(0);
+        let u = ((position[0] >> 9) & 127) as i32;
+        let v = 127 - ((position[2] >> 9) & 127) as i32;
+        let (a, b) = match texture >> 6 {
+            0 => (u, v),
+            1 => (127 - v, u),
+            2 => (127 - u, 127 - v),
+            _ => (v, 127 - u),
+        };
+        let mask = |offset: i32| (2 * (a + b + 2 * offset - 254)).clamp(0, 255) as u16;
+        let coverage = match image {
+            0 => 256,
+            5 => mask(109),
+            6 | 52 => match a {
+                0..=28 => 0,
+                29..=99 => (((a - 28) * 455) >> 7) as u16,
+                _ => 256,
+            },
+            7 => mask(32),
+            30 => mask(128),
+            31 => {
+                if a < 5 {
+                    0
+                } else {
+                    256
+                }
+            }
+            32 => {
+                if mask(64) == 0 {
+                    0
+                } else {
+                    256
+                }
+            }
+            _ => 0,
+        };
+        let surface = match coverage {
+            256 => 4,
+            1..=255 => 3,
+            _ => match image {
+                6 | 52 => 6,
+                31 | 32 => 10,
+                5 | 7 | 30 if matches!(base, 1 | 2) => 6,
+                _ => base,
+            },
+        };
+        Ok(Some(TerrainMaterial { surface, coverage }))
+    }
+
     /// Accepts original 256-by-256 height, water and optional packed texture grids.
     /// Old caches without textures support height queries only.
     pub fn new(
