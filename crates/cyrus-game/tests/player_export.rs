@@ -22,6 +22,9 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         PlayerScene::decode(&std::fs::read(path.with_extension("player")).unwrap()).unwrap();
     assert!(scene.unavailable.is_none(), "{:?}", scene.unavailable);
     assert_eq!(scene.settings.standing_height, -2);
+    assert_eq!(scene.collision.placements.len(), 1691);
+    assert_eq!(scene.collision.models["PLANT000"].flags, 2);
+    assert!(scene.collision.unsupported["BARREL"].contains("conflicting ROB"));
     let player = scene.definition.unwrap();
     assert_eq!(player.forward_walk, 8);
     let support = scene

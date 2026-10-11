@@ -1,6 +1,7 @@
 //! Inspection camera and the player input foundation. Faithful locomotion is
 //! unsupported until animation, collision and timing are established.
 
+pub mod collision_data;
 pub mod contact;
 pub mod data;
 pub mod definition;
