@@ -98,7 +98,7 @@ impl ActorAnimation {
         self.request_dispatch(group, modifier, ticks, &mut Some(sounds))
     }
 
-    fn request_dispatch(
+    pub(super) fn request_dispatch(
         &mut self,
         group: u16,
         modifier: u8,
@@ -134,6 +134,28 @@ impl ActorAnimation {
         modifier: u8,
         ticks: u32,
     ) -> anyhow::Result<Option<u32>> {
+        self.force_request_dispatch(group, modifier, ticks, &mut None)
+    }
+
+    /// Forces a replacement with the actor's sound handler. Replacement forgets the
+    /// prior handle without stopping its channel; immediate cues reuse `ticks`.
+    pub fn force_request_with_sounds(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.force_request_dispatch(group, modifier, ticks, &mut Some(sounds))
+    }
+
+    fn force_request_dispatch(
+        &mut self,
+        group: u16,
+        modifier: u8,
+        ticks: u32,
+        sounds: &mut SoundDispatcher<'_>,
+    ) -> anyhow::Result<Option<u32>> {
         self.check_failure()?;
         if self
             .current
@@ -143,10 +165,10 @@ impl ActorAnimation {
             self.pending = None;
             return Ok(None);
         }
-        self.clear_current(&mut None)?;
+        self.clear_current(sounds)?;
         self.select_pending(group, modifier);
         if self.pending.is_some() {
-            self.advance(ticks)
+            self.advance_dispatch(ticks, sounds)
         } else {
             Ok(None)
         }

@@ -70,7 +70,7 @@ Type-one groups keep their exit tail when the pending group is the default.
 After an exit marker, a pending non-default can replace them on a later advance,
 with delays checked first. These rules are
 [published in preservation](https://github.com/michidk/redguard-preservation/blob/75cba23/docs/engine/animation.md#forward-type-one-transitions).
-`request_with_sounds` and `advance_with_sounds` accept a synchronous handler for
+`request_with_sounds`, `force_request_with_sounds`, and `advance_with_sounds` accept a synchronous handler for
 signed effect requests, rate offsets in hertz, End stops and replacement handle
 resets. The handler owns the original surface remapping, positional gains and
 channel allocation. Without it, sound commands still fail explicitly. Native
@@ -85,6 +85,9 @@ phases; task completion can start the next instruction in the same stage. End
 stores its target and yields, so a later eligible stage can restart the authored
 sequence. Unsupported operands, tasks, interrupt entries and synchronization
 channels fail explicitly.
+`AnimationScript::advance_with_sounds` carries the same actor handler through
+immediate task requests. Callback failures retain their script context and stop
+later invocations from retrying the cue.
 
 `AnimationPlayback::new_scripted` connects these cores to private rendered meshes.
 Supplied ticks run ordinary advancement/default request, then the script stage;
