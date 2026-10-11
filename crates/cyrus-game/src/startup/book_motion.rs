@@ -131,8 +131,9 @@ impl BookMotion {
         self.turn(0, self.last[0], 2);
     }
 
-    /// Advances one presentation update; true includes the final settling update.
-    pub fn tick(&mut self) -> bool {
+    /// Advances one presentation update and dispatches installed effect indices.
+    /// True includes the final settling update. Cue rules are preservation PR #34.
+    pub fn tick(&mut self, mut sound: impl FnMut(usize)) -> bool {
         let busy = self.busy();
         if let Some(camera) = self.camera.front_mut() {
             self.pose.camera = std::array::from_fn(|i| {
@@ -159,6 +160,12 @@ impl BookMotion {
                 request.delay -= 1;
                 if request.delay == 0 {
                     self.pose.frames[model] = request.initial;
+                    match model {
+                        1 => sound(66),
+                        3 => sound(67),
+                        4 => sound(68),
+                        _ => {}
+                    }
                 }
             } else {
                 let forward = self.pose.frames[model] < request.target;
@@ -166,6 +173,13 @@ impl BookMotion {
                     self.pose.frames[model] += 1;
                 } else {
                     self.pose.frames[model] -= 1;
+                }
+                if model == 0 {
+                    if forward && self.pose.frames[model] == 7 {
+                        sound(65);
+                    } else if !forward && self.pose.frames[model] == 0 {
+                        sound(64);
+                    }
                 }
                 if self.pose.frames[model] == 4 && matches!(model, 1 | 4) {
                     let shift = if model == 1 { 4.0 } else { -4.0 };
@@ -186,8 +200,45 @@ mod tests {
 
     fn settled() -> BookMotion {
         let mut motion = BookMotion::opening([8, 8, 0, 8, 8]);
-        while motion.tick() {}
+        while motion.tick(|_| {}) {}
         motion
+    }
+
+    fn cues(motion: &mut BookMotion) -> Vec<(usize, usize)> {
+        let mut cues = Vec::new();
+        for update in 1..=64 {
+            if !motion.tick(|effect| cues.push((update, effect))) {
+                return cues;
+            }
+        }
+        panic!("book motion did not settle");
+    }
+
+    #[test]
+    fn book_cues_follow_delayed_starts_and_cover_frame_crossings_once() {
+        let mut motion = BookMotion::opening([8, 8, 0, 8, 8]);
+        assert!(cues(&mut motion).is_empty());
+        for (from, to, expected) in [
+            (0, 3, vec![(4, 66)]),
+            (3, 0, vec![(4, 66)]),
+            (0, 4, vec![(3, 66), (5, 67)]),
+            (4, 5, vec![]),
+            (5, 4, vec![]),
+            (4, 6, vec![]),
+            (6, 4, vec![]),
+            (4, 7, vec![(4, 68)]),
+            (7, 4, vec![(4, 68)]),
+            (4, 0, vec![(3, 67), (5, 66)]),
+        ] {
+            motion.navigate(from, to).unwrap();
+            assert_eq!(cues(&mut motion), expected, "page {from} to {to}");
+            assert!(cues(&mut motion).is_empty(), "settled page {to}");
+        }
+        motion.close();
+        assert_eq!(cues(&mut motion), [(9, 65)]);
+        assert_eq!(motion.pose.frames[0], 8);
+        motion.turn(0, 0, 2);
+        assert_eq!(cues(&mut motion), [(10, 64)]);
     }
 
     #[test]
@@ -205,36 +256,36 @@ mod tests {
     #[test]
     fn opening_samples_truncate_and_settle_on_the_sixth_update() {
         let mut motion = BookMotion::opening([8, 8, 0, 8, 8]);
-        assert!(motion.tick());
+        assert!(motion.tick(|_| {}));
         assert_eq!(motion.pose.camera, [-3.0, -84.0, 203.0]);
         for _ in 0..5 {
-            assert!(motion.tick());
+            assert!(motion.tick(|_| {}));
         }
         assert_eq!(motion.pose.camera, [0.0; 3]);
-        assert!(!motion.tick());
+        assert!(!motion.tick(|_| {}));
     }
 
     #[test]
     fn movies_turn_uses_authored_frames_delays_and_reversible_depth() {
         let mut motion = settled();
         motion.navigate(0, 3).unwrap();
-        assert!(motion.tick());
+        assert!(motion.tick(|_| {}));
         assert_eq!(motion.pose.camera, [28.0, 42.0, -24.0]);
         assert_eq!(motion.pose.pitch, 2026);
         for _ in 0..3 {
-            motion.tick();
+            motion.tick(|_| {});
         }
         assert_eq!(motion.pose.frames[1], 0);
         for frame in 1..=8 {
-            motion.tick();
+            motion.tick(|_| {});
             assert_eq!(motion.pose.frames[1], frame);
             assert_eq!(motion.pose.depth[1], if frame < 4 { 0.0 } else { 4.0 });
         }
-        while motion.tick() {}
+        while motion.tick(|_| {}) {}
         assert_eq!(motion.pose.camera, [336.0, 0.0, 0.0]);
         assert_eq!(motion.pose.pitch, 0);
         motion.navigate(3, 0).unwrap();
-        while motion.tick() {}
+        while motion.tick(|_| {}) {}
         assert_eq!(motion.pose.frames, [0; 5]);
         assert_eq!(motion.pose.depth, [0.0; 5]);
         assert_eq!(motion.pose.camera, [0.0; 3]);
@@ -245,18 +296,18 @@ mod tests {
         let mut motion = settled();
         for (from, to) in [(0, 4), (4, 5), (5, 4), (4, 6), (6, 4), (4, 7)] {
             motion.navigate(from, to).unwrap();
-            while motion.tick() {}
+            while motion.tick(|_| {}) {}
         }
         assert_eq!(motion.pose.frames, [0, 8, 0, 8, 8]);
         assert_eq!(motion.pose.depth, [0.0, 4.0, 0.0, 0.0, -4.0]);
         for (from, to) in [(7, 4), (4, 0)] {
             motion.navigate(from, to).unwrap();
-            while motion.tick() {}
+            while motion.tick(|_| {}) {}
         }
         assert_eq!(motion.pose.frames, [0; 5]);
         assert_eq!(motion.pose.depth, [0.0; 5]);
         motion.close();
-        while motion.tick() {}
+        while motion.tick(|_| {}) {}
         assert_eq!(motion.pose.frames, [8, 0, 0, 0, 0]);
         assert_eq!(motion.pose.camera, [408.0, 0.0, 0.0]);
         assert_eq!(motion.pose.pitch, 0);

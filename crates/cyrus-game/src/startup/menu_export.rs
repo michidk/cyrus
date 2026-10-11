@@ -26,6 +26,7 @@ use std::{
 
 /// Export data-defined menus without reading or writing save-game state.
 pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
+    crate::sound_export::export(install, cache).context("menu: exporting sound cues")?;
     let read = |name: &str| {
         std::fs::read(install.root.join(name)).with_context(|| format!("menu: reading {name}"))
     };

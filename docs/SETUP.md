@@ -92,13 +92,16 @@ installed `force_movies` setting exposes all cinematic entries. Browser movie
 playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
 and Continue remain unavailable, with Save and Continue grayed without a
 resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
-status font. Runtime redraws authored book frames and neighboring-page text during
+status font, plus the installed effects bank under `cache/sounds/` for browser menu
+playback without loading a world. Runtime redraws authored book frames and neighboring-page text during
 startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
 motion to settle; MCP drivers must wait for `state.menu.ready` after each page
 change. Timing uses the startup presentation cadence rather than original update
-performance. Re-export browser caches for the authored-model schema. Lighting,
-camera-plane clipping, book sound cues, mouse selection, and runtime gameplay thumbnails
-remain unsupported.
+performance. Re-export browser caches for the authored-model schema. Book/page
+motion and navigation feedback play installed effects through the shared sound
+path on native and browser builds. **Verified:** the original default book menu has no pointer
+hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,
+camera-plane clipping and runtime gameplay thumbnails remain unsupported.
 
 With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 `cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry

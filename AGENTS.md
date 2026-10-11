@@ -167,6 +167,11 @@ For agent work, choose the entry point explicitly:
 
 Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
+**Verified:** the original default book menu has no pointer hover/click selection; do not add
+label hit boxes. Mouse/joystick rebinding needs separate device handling and is
+currently unsupported. Book turns, cover crossings and successful direction/key
+capture feedback dispatch installed effects through the shared native/browser
+sound path, using preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 Skipping startup does not enable gameplay. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
 walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle

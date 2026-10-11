@@ -3,7 +3,7 @@ use super::{
     StartupContent, book_motion::BookMotion, fit_image, menu_data::MenuAsset,
     menu_preferences::MenuPreferences,
 };
-use crate::AppState;
+use crate::{AppState, sound_bank::SoundCue};
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
     prelude::*,
@@ -85,9 +85,9 @@ pub struct MenuState {
 }
 
 impl MenuState {
-    fn navigate(&mut self, direction: isize) {
+    fn navigate(&mut self, direction: isize) -> bool {
         let Some(selected) = self.selected else {
-            return;
+            return false;
         };
         let len = self.entries.len();
         for step in 1..=len {
@@ -96,9 +96,10 @@ impl MenuState {
             if self.entries[index].eligible() {
                 self.selected = Some(index);
                 self.unavailable = None;
-                return;
+                return true;
             }
         }
+        false
     }
 }
 
@@ -129,7 +130,10 @@ pub(super) fn register(app: &mut App) {
     app.init_asset::<MenuAsset>()
         .init_asset_loader::<MenuLoader>()
         .add_systems(OnEnter(AppState::Menu), setup)
-        .add_systems(Update, (fit_image, drive).run_if(in_state(AppState::Menu)))
+        .add_systems(
+            Update,
+            (fit_image, drive.before(crate::sound::apply_menu)).run_if(in_state(AppState::Menu)),
+        )
         .add_systems(OnExit(AppState::Menu), cleanup);
 }
 
@@ -151,7 +155,11 @@ pub(super) fn drive(
         ResMut<Assets<Image>>,
         Query<&mut Sprite, With<StartupContent>>,
     ),
-    mut output: (MessageWriter<AppExit>, Query<&mut Text, With<MenuNotice>>),
+    mut output: (
+        MessageWriter<AppExit>,
+        Query<&mut Text, With<MenuNotice>>,
+        MessageWriter<SoundCue>,
+    ),
     runtime: (ResMut<crate::player::input::PlayerBindings>, Commands),
 ) {
     let (mut images, mut sprite) = rendering;
@@ -203,7 +211,9 @@ pub(super) fn drive(
         menu.motion_seconds += input.0.delta_secs();
         if menu.motion_seconds >= 1.0 / 30.0 {
             menu.motion_seconds %= 1.0 / 30.0;
-            menu.motion.as_mut().unwrap().tick();
+            menu.motion.as_mut().unwrap().tick(|effect| {
+                output.2.write(flat_sound(effect));
+            });
             menu.dirty = true;
         }
     } else if menu.closing {
@@ -230,12 +240,14 @@ pub(super) fn drive(
                 if let Some(code) = captured {
                     if matches!(code, 12 | 13 | 15 | 28 | 59..=68 | 87 | 88) {
                         menu.unavailable = Some("That key is reserved.".into());
+                        output.2.write(flat_sound(18));
                     } else {
                         let mut preferences = menu.preferences.clone().unwrap();
                         preferences.rebind((menu.capturing.unwrap() - 710) as usize, code);
                         if persist(&mut menu, preferences) {
                             menu.capturing = None;
                             apply_bindings(&menu, &mut bindings);
+                            output.2.write(flat_sound(13));
                         }
                     }
                 }
@@ -261,10 +273,13 @@ pub(super) fn drive(
                 menu.held_seconds += input.0.delta_secs();
                 if keys.just_pressed(key) || menu.held_seconds >= menu.repeat_seconds {
                     menu.held_seconds = 0.0;
-                    if adjust {
-                        adjust_value(book, &mut menu, direction as i32, false);
+                    let changed = if adjust {
+                        adjust_value(book, &mut menu, direction as i32, false)
                     } else {
-                        menu.navigate(direction);
+                        menu.navigate(direction)
+                    };
+                    if changed {
+                        output.2.write(flat_sound(13));
                     }
                 }
             }
@@ -287,7 +302,9 @@ pub(super) fn drive(
                     300 | 400 => menu.open(book, 0),
                     405..=407 => menu.open(book, (entry.action - 400) as u8),
                     500 | 600 | 700 => menu.open(book, 4),
-                    504 | 505 | 603 => adjust_value(book, &mut menu, 0, true),
+                    504 | 505 | 603 => {
+                        adjust_value(book, &mut menu, 0, true);
+                    }
                     601 | 602 => {}
                     #[cfg(not(target_arch = "wasm32"))]
                     301..=305 => {
@@ -417,14 +434,22 @@ fn apply_bindings(menu: &MenuState, bindings: &mut crate::player::input::PlayerB
     }
 }
 
-fn adjust_value(book: &MenuAsset, menu: &mut MenuState, direction: i32, toggle: bool) {
+fn flat_sound(effect: usize) -> SoundCue {
+    SoundCue::Flat {
+        effect,
+        volume: 0,
+        rate_offset_hz: 0,
+    }
+}
+
+fn adjust_value(book: &MenuAsset, menu: &mut MenuState, direction: i32, toggle: bool) -> bool {
     let Some(index) = menu.selected else {
-        return;
+        return false;
     };
     let entry = &book.pages[&menu.page].entries[index];
     let mut preferences = menu.preferences.clone().unwrap();
     let Some(value) = preferences.values.get_mut(&entry.item.action) else {
-        return;
+        return false;
     };
     let next = if toggle {
         1 - *value
@@ -432,10 +457,10 @@ fn adjust_value(book: &MenuAsset, menu: &mut MenuState, direction: i32, toggle: 
         (*value + direction).clamp(entry.slider[0], entry.slider[1])
     };
     if *value == next {
-        return;
+        return false;
     }
     *value = next;
-    persist(menu, preferences);
+    persist(menu, preferences)
 }
 
 #[derive(Component)]

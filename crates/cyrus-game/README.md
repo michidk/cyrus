@@ -21,11 +21,11 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `hud` | In-game overlay from exported `.hud` data, following preservation's [HUD documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md): SNUFF candle with its show timer and health number, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode and auto-defend notices, in the original draw order. REDSEL.FNT text through `cyrus-text`. F8, Tab and F7 toggles persist in `cyrus-config/hud.json` (browser localStorage `cyrus-hud`). Gameplay inputs (`set_health`, `set_sword_drawn`, `activate`, `show_bitmap`, `logbook_entry`, lockout, player type, heading, world, compass flag) have no caller yet. |
 | `hud_export` | Native extraction of HUD positions, timers, toggles, starting inventory, WORLD.INI compass offsets, RTX notice texts, REDSEL.FNT and the candle, compass, logbook, power-up and item frames into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
-| `sound` | Sound preferences, effects and authored animation cues through the original mixer gains on native and browser. Animation surfaces other than a known zero remain unsupported. RTX speech remains native only. |
+| `sound` | `SYSTEM.INI` and saved Sound preferences; installed effects, book/menu cues and authored animation cues through the original mixer gains on native and browser. Animation surfaces other than a known zero remain unsupported. RTX speech remains native only. |
 | `subtitles` | Dialogue subtitles for voice clips through `cyrus-text`: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
 | `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it; the book menu plays track 2; the Music slider sets the drive level (preservation `docs/engine/music.md`). Native only. |
 | `sound_bank` | Portable `SoundCue` message, `SoundSurface`, and the browser's exported effects bank; `sound` plays cues on native and browser. |
-| `sound_export` | Exports MAIN.SFX to WAV files, bank metadata, and a browser audition page when loading a native scene. |
+| `sound_export` | Exports MAIN.SFX to WAV files, bank metadata, and a browser audition page when exporting the menu or loading a native scene. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
 `startup` presentation, `animation`, `environment`, `fidelity`, `hud`, `player` and `settings` compile on wasm and are reused by
@@ -226,8 +226,11 @@ native `cyrus-config/menu.json` or browser localStorage. It validates local stat
 saves before applying edits, and leaves malformed files intact. Existing player
 input uses edited bindings, including direct scene launches. Subtitle and interlace
 settings apply to native cinematics; saved Sound preferences apply to native
-effects, speech, and CD music. Lighting, camera-plane clipping, book sound cues,
-mouse selection, and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
+effects, speech, and CD music. Book motion and direction/capture feedback dispatch
+installed effects through the shared native/browser sound path, following
+preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
+**Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
+rebinding, lighting, camera-plane clipping and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
 
 **Verified:** preservation's [HUD evidence](https://github.com/michidk/redguard-preservation/pull/28)
 establishes one candle update per rendered frame with a 60 Hz Glide retrace limit.
