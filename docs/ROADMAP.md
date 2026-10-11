@@ -36,6 +36,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 
 | Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
+| Step 0: artifact CI | Codex, `t3/ci-platform-build-artifacts` | Build and package native/browser applications; measure hosted duration. Evidence: `magic/artifacts/2026-10-11-ci-artifacts/` |
 | Step 1: actor and mesh animation | Published animation increments; remaining work unassigned | Explicit pose, type-1 transitions and native/browser cue adapter implemented; production clock, actor eligibility and full script scheduling remain open |
 | Step 2: player | Investigate Player Controller Design, `player-parity` | Active-world archive selection and runtime collision queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
 | Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Capture sun blend/alpha output and filtering across world/menu transitions; integrated visual comparison |

@@ -54,6 +54,29 @@ Unavailable markers report a player-entry error. Ground settling, locomotion,
 and the original follow camera remain unsupported; use the independent debug
 flycam to inspect the world.
 
+## CI artifacts
+
+The `Build artifacts` workflow packages the native game for Linux x64,
+Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
+It also includes `cyrus-viewer` and its browser worker when the viewer crates
+are present in the checked-out revision. The viewer currently lives on its
+separate development branch; game revisions without it contain only the game.
+
+Builds initially run on pushes to measure hosted duration against a ten-minute
+budget. Actions artifacts expire after seven days. Manual dispatch also builds
+artifacts. Pushing a version tag matching `v*` builds its revision and creates
+a draft GitHub release with all archives and `SHA256SUMS` after every platform
+succeeds. Review the draft's assets and notes before publishing it; publishing
+does not rebuild them. A manual dispatch with `release_tag` set to an existing
+tag also attaches artifacts and creates a draft when no release exists.
+
+Archives contain application code and crate usage instructions. They contain
+no game files, exported previews, or local state. Native executables still need
+the player's GOG install. Browser bundles need locally exported game assets;
+the asset viewer needs privately served original files as described in its
+crate README. Downloading an artifact does not establish runtime or fidelity
+support on that platform.
+
 ## Browser build
 
 ```sh
