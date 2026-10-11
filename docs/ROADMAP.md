@@ -41,7 +41,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Step 1: rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Terrain lighting shipped; next: water-edge normal retention and matched native/browser terrain views; model/local-light inputs and runtime shading remain open |
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Every documented overlay element is implemented; gameplay must still feed health, sword, lockout, player type, heading/world, compass flag, `Activate`/`ShowBitmap`/logbook events and walk/auto-defend behaviour |
-| Startup and book menu | Match Startup Screen Appearance, `t3/faithful-startup-sequence` | Published book-cue integration through shared native/browser sound; lighting remains unresolved |
+| Startup and book menu | Published increments; book lighting/clipping follow-up unassigned | Installed book/menu effects wired through shared native/browser sound; lighting, camera-plane clipping, device rebinding and gameplay snapshots remain open; browser audio and original audible comparison still need verification |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
 Earlier bounded research milestones remain published, with their limitations
@@ -84,7 +84,8 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] All eleven installed movie definitions decode through their final video frame with the in-process decoder; their first audio stream decodes when present.
 - [ ] Compare picture, audio, skip points, subtitles, interlace and menu return against the original with the new decoder. Check cancellation and skip responsiveness.
 - [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
-- [ ] Exercise startup and animated book transitions in the browser, saved settings after restart, and native audible playback. Verify lighting and book cues after implementation. **Verified:** preservation PR #34 and an original-game observation establish that the ordinary book menu has no pointer label selection; retain keyboard/action navigation rather than adding hitboxes.
+- [x] Book/page/cover and direction/key-capture cues dispatch installed effects through the shared native/browser sound path, following [preservation PR #34](https://github.com/michidk/redguard-preservation/pull/34). Native MCP/PCM checks cover navigation, reserved/accepted capture, mute/unmute and authored Quit; the muted interval is silent. The cue contract catches a wrong-effect mutation. Menu-only export includes the effects bank and cue WAVs. Full gates pass with the install present and absent; the browser compile check passes.
+- [ ] Exercise startup and animated book transitions in the browser, saved settings after restart and actual browser audio. Recheck native playback on combined main; existing MCP/PCM evidence predates shared-text and menu-only sound export. Compare cues by ear with the original. Recover inherited startup lighting and camera-plane clipping before implementing them. **Verified:** preservation PR #34 and an original-game observation establish that the ordinary book menu has no pointer label selection; retain keyboard/action navigation rather than adding hitboxes. Mouse/joystick rebinding and gameplay snapshots remain unsupported.
 - [x] The integrated native F1 inspector opens Entities, Resources and Assets, checked through the live renderer.
 - [ ] Wire the HUD inputs. Only F8 (candle mode), Tab (walk mode notice) and F7 (auto-defend notice) work today, persisted in `cyrus-config/hud.json` / localStorage `cyrus-hud`. No system yet calls `HudState::set_health`, `set_sword_drawn`, `activate`/`deactivate`, `show_bitmap`/`unshow_bitmap` or `logbook_entry`, or sets `lockout`, `player_type`, `heading`, `world` or `compass_on`; so the mode-0 show timer, sword-lock item cycling, compass, power-up slots, logbook icon and activation prompts never appear in play. The player does not consume walk mode or auto-defend. The inventory screen (candle pinned at 50), save-game storage of the timers, slots and compass flag, and the unknown player states that suppress prompts remain unsupported.
 - [ ] Screenshot-compare every HUD element and notice with the original; compass frame 0 direction, whether receiving item 0 turns the compass on, and the original in-world frame rate are unverified.
@@ -99,6 +100,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] MENU.INI-defined book pages, keyboard selection, Options edits, Controls rebinding, Movies browsing, and Quit, using installed geometry and rgpre fonts. Settings persist and affect native audio; remaining actions are pending.
 - [x] Native installed Smacker playback with original skip points and subtitles; menu selection survives playback.
 - [x] Authored book page turns, submenu camera moves, startup camera entry, and closing Quit sequence; input waits for settling.
+- [x] Installed book/menu effects, Sound preference ordering and menu-only effects-bank export through the portable sound backend.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Per-world terrain lighting, quantized normals and encoded texture modulation in shared native/browser rendering; independent Lighting setting defaults to Faithful, with Modern reusing it.
@@ -179,7 +181,7 @@ MCP checks cover every supported page route, input gating, reversible turns and
 animated Quit. The settled Movies image matches the previous renderer exactly;
 Main restores identical pixels after returning. Intermediate page-curl geometry
 was inspected. No matched original animation/timing claim is made. Lighting,
-camera-plane clipping, book sound cues, mouse/joystick rebinding, gameplay snapshots, saves,
+camera-plane clipping, mouse/joystick rebinding, gameplay snapshots, saves,
 and New Game remain unsupported. Native MCP checks cover all five browsable movies, forward skips,
 held-key handling, natural EOF and unsupported-path recovery in the prior decoder,
 Quit during playback, and decoder cleanup on world entry. Video and subtitle
@@ -188,6 +190,17 @@ Audible output and A/V synchronization remain unchecked. Subtitle/interlace
 preferences apply to cinematics; saved Sound preferences apply to native effects,
 speech, and CD music.
 Browser runtime verification of this menu slice remains pending.
+
+**Verified:** book turns, cover crossings and direction/key-capture feedback emit
+installed effects through the portable `SoundCue::Flat` path. Sound preference
+edits apply before cues in the same update. Menu export writes the effects bank
+before a book-cache early return, supporting browser startup without a world.
+The installed export test checks all cue WAVs and their header gain. Native
+MCP/PCM evidence establishes audible navigation and capture feedback plus
+mute/unmute; it predates the later shared-text/export integration. Full workspace
+gates and the browser compile check pass. Actual browser audio and original
+audible parity remain unchecked. **Verified:** the original default menu has no
+pointer hover/click label selection; mouse/joystick rebinding remains unsupported.
 
 **Verified:** all 118 `MAIN.SFX` effects decode through Bevy's WAV decoder
 with their stored sample rate, channel count and sample count, all 3933 RTX
@@ -436,7 +449,7 @@ formats and gameplay scope unchanged during this refactor.
   - [x] Portable `SoundCue` (flat and animation cues) plays through 16 shared channels on native and browser, with original start-index, volume and rate clamps, per-actor last-sound Stop/Forget, `SYSTEM.INI sound=0`, and browser cues retained until the effects bank loads.
   - [x] Deferred sound spawns retain their channel reservation within a cue burst; the existing 16-channel limit contract and all nine sound tests pass after the integration fix in `f2f7a12`.
   - [x] Explicit animation playback emits authored sound markers through `SoundCue`; same-update starts/stops and the 16-channel limit pass runtime contracts.
-  - [ ] Startup book cues emit `SoundCue`.
+  - [x] Startup book and menu feedback cues emit `SoundCue`; native MCP/PCM, cue contracts and menu-only bank export are verified. Browser audio remains unchecked.
   - [ ] Parse SURFACE.INI's sound remap in rgpre and remap animation sounds by surface; animation sounds currently play only on surface 0.
   - [ ] Ground/collision sets each actor's `SoundSurface`.
   - [ ] Record each channel's owner and requested effect for `EndSound`, `EndMySound(s)` and `KillMe`.
