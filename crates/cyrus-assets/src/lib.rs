@@ -14,7 +14,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 2;
+pub const CATALOG_VERSION: u32 = 3;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,18 +25,20 @@ pub enum Category {
     Models,
     Worlds,
     Audio,
+    Speech,
     Movies,
     Data,
     Other,
 }
 impl Category {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Images,
         Self::Palettes,
         Self::Fonts,
         Self::Models,
         Self::Worlds,
         Self::Audio,
+        Self::Speech,
         Self::Movies,
         Self::Data,
         Self::Other,
@@ -49,6 +51,7 @@ impl Category {
             Self::Models => "Models",
             Self::Worlds => "Worlds",
             Self::Audio => "Audio",
+            Self::Speech => "Speech",
             Self::Movies => "Movies",
             Self::Data => "Definitions",
             Self::Other => "Other files",

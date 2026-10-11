@@ -278,20 +278,14 @@ fn discover(
             }
         }
         Some(FileType::Rtx) => {
-            let bank = rtx::parse_rtx_file(&source.read(&parent.path)?)?;
+            let mut file = AssetFile::open(source, &parent.path)?.without_read_ahead();
+            let bank = rtx::RtxIndex::read(&mut file)?;
             for (i, clip) in bank.entries.iter().enumerate() {
-                let (category, name) = match clip {
-                    rtx::RtxEntry::Audio { label, .. } => (Category::Audio, label.clone()),
-                    rtx::RtxEntry::Text { tag, text } => (
-                        Category::Data,
-                        format!(
-                            "{} · {}",
-                            String::from_utf8_lossy(tag),
-                            text.chars().take(48).collect::<String>()
-                        ),
-                    ),
-                };
-                member(category, Source::Speech(i), name);
+                member(
+                    Category::Speech,
+                    Source::Speech(i),
+                    String::from_utf8_lossy(&clip.tag).into_owned(),
+                );
             }
         }
         Some(FileType::Col) => {

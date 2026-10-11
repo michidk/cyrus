@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 struct HttpFiles {
     base: String,
     manifest: Manifest,
+    progress: js_sys::Function,
 }
 impl ReadAssets for HttpFiles {
     fn manifest(&self) -> &Manifest {
@@ -33,49 +34,70 @@ impl ReadAssets for HttpFiles {
             .map(|part| String::from(js_sys::encode_uri_component(part)))
             .collect::<Vec<_>>()
             .join("/");
-        let mut url = format!(
-            "{}/{encoded}?v={}",
-            self.base.trim_end_matches('/'),
-            file.digest
-        );
-        let partial = start != 0 || length as u64 != file.bytes;
-        let end = start + length as u64 - 1;
-        if partial {
-            url.push_str(&format!("&range={start}-{end}"));
-        }
-        let request = web_sys::XmlHttpRequest::new().map_err(js_error)?;
-        request
-            .open_with_async("GET", &url, false)
-            .map_err(js_error)?;
-        request.set_response_type(web_sys::XmlHttpRequestResponseType::Arraybuffer);
-        if partial {
-            request
-                .set_request_header("Range", &format!("bytes={start}-{end}"))
-                .map_err(js_error)?;
-        }
-        request
-            .send()
-            .map_err(js_error)
-            .with_context(|| format!("fetch original {path}"))?;
-        let status = request.status().map_err(js_error)?;
-        ensure!(matches!(status, 200 | 206), "{path}: HTTP {status}");
-        if partial {
-            let expected = format!("bytes {start}-{end}/{}", file.bytes);
-            ensure!(
-                request
-                    .get_response_header("Content-Range")
-                    .map_err(js_error)?
-                    .as_deref()
-                    == Some(&expected),
-                "{path}: server must support byte-range requests"
+        const CHUNK: usize = 1024 * 1024;
+        let mut bytes = vec![0; length];
+        for offset in (0..length).step_by(CHUNK) {
+            let start = start + offset as u64;
+            let length = (length - offset).min(CHUNK);
+            let mut url = format!(
+                "{}/{encoded}?v={}",
+                self.base.trim_end_matches('/'),
+                file.digest
             );
+            let partial = start != 0 || length as u64 != file.bytes;
+            let end = start + length as u64 - 1;
+            if partial {
+                url.push_str(&format!("&range={start}-{end}"));
+            }
+            let request = web_sys::XmlHttpRequest::new().map_err(js_error)?;
+            request
+                .open_with_async("GET", &url, false)
+                .map_err(js_error)?;
+            request.set_timeout(30_000);
+            request.set_response_type(web_sys::XmlHttpRequestResponseType::Arraybuffer);
+            if partial {
+                request
+                    .set_request_header("Range", &format!("bytes={start}-{end}"))
+                    .map_err(js_error)?;
+            }
+            request.send().map_err(js_error).with_context(|| {
+                format!("fetch original {path}, bytes {start}-{end} (30-second timeout)")
+            })?;
+            let status = request.status().map_err(js_error)?;
+            ensure!(matches!(status, 200 | 206), "{path}: HTTP {status}");
+            if partial {
+                let expected = format!("bytes {start}-{end}/{}", file.bytes);
+                ensure!(
+                    request
+                        .get_response_header("Content-Range")
+                        .map_err(js_error)?
+                        .as_deref()
+                        == Some(&expected),
+                    "{path}: server must support byte-range requests"
+                );
+            }
+            let chunk = js_sys::Uint8Array::new(&request.response().map_err(js_error)?);
+            ensure!(
+                chunk.length() as usize == length,
+                "{path}: expected {length} bytes, received {}",
+                chunk.length()
+            );
+            chunk.copy_to(&mut bytes[offset..offset + length]);
+            if bytes.len() > CHUNK {
+                let received = offset + length;
+                let name = format!(
+                    "{path} · {:.1} / {:.1} MiB",
+                    received as f64 / 1_048_576.,
+                    bytes.len() as f64 / 1_048_576.
+                );
+                let _ = self.progress.call3(
+                    &JsValue::NULL,
+                    &JsValue::from_f64(100. * received as f64 / bytes.len() as f64),
+                    &JsValue::from_f64(100.),
+                    &JsValue::from_str(&name),
+                );
+            }
         }
-        let bytes = js_sys::Uint8Array::new(&request.response().map_err(js_error)?).to_vec();
-        ensure!(
-            bytes.len() == length,
-            "{path}: expected {length} bytes, received {}",
-            bytes.len()
-        );
         Ok(bytes)
     }
 }
@@ -99,14 +121,21 @@ impl AssetLibrary {
         progress: js_sys::Function,
     ) -> std::result::Result<AssetLibrary, JsValue> {
         let manifest: Manifest = serde_json::from_str(manifest).map_err(bridge_error)?;
-        let library = Library::open(HttpFiles { base, manifest }, |done, total, name| {
-            let _ = progress.call3(
-                &JsValue::NULL,
-                &JsValue::from_f64(done as f64),
-                &JsValue::from_f64(total as f64),
-                &JsValue::from_str(name),
-            );
-        })
+        let library = Library::open(
+            HttpFiles {
+                base,
+                manifest,
+                progress: progress.clone(),
+            },
+            |done, total, name| {
+                let _ = progress.call3(
+                    &JsValue::NULL,
+                    &JsValue::from_f64(done as f64),
+                    &JsValue::from_f64(total as f64),
+                    &JsValue::from_str(name),
+                );
+            },
+        )
         .map_err(|error| bridge_error(format!("{error:#}")))?;
         Ok(Self { library })
     }

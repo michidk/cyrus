@@ -141,15 +141,6 @@ pub fn draw(
             if let Some(catalog) = &catalog {
                 ui.label(format!("{} catalog entries", catalog.entries.len()));
             }
-            if viewer.preparing
-                || viewer.needs_frame
-                || viewer.pending.is_some()
-                || viewer.movie_blob.is_some()
-                || viewer.decoding
-            {
-                ui.spinner();
-                ui.label("Preparing preview…");
-            }
             if let Some(error) = &viewer.error {
                 ui.colored_label(egui::Color32::LIGHT_RED, error);
             }
@@ -582,17 +573,23 @@ pub fn draw(
                 }
             } else {
                 ui.vertical_centered(|ui| {
-                    ui.add_space(100.);
-                    ui.heading("Explore Redguard");
-                    ui.label("Choose a category and an asset to inspect.");
+                    ui.add_space((ui.available_height() * 0.5 - 40.).max(0.));
+                    if viewer.preparing || viewer.pending.is_some() {
+                        ui.add(egui::Spinner::new().size(32.));
+                        ui.heading("Loading selected asset…");
+                    } else if let Some(error) = &viewer.error {
+                        ui.heading("Preview could not load");
+                        ui.label(error);
+                    } else {
+                        ui.heading("Explore Redguard");
+                        ui.label("Choose a category and an asset to inspect.");
+                    }
                 });
             }
         });
     viewer.preview = preview;
     viewer.catalog = catalog;
     if let Some(index) = select {
-        viewer.font_textures.clear();
-        viewer.texture_key = None;
         loading::select(
             index,
             &mut viewer,

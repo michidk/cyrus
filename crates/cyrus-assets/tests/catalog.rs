@@ -114,10 +114,12 @@ fn installed_asset_families_prepare_portable_previews() {
         ("standalone model", |e| {
             e.category == Category::Models && matches!(e.source, Source::File)
         }),
-        ("archive model", |e| matches!(e.source, Source::Model(_))),
+        ("archive model", |e| {
+            e.path.eq_ignore_ascii_case("fxart/BELLTOWR.ROB") && e.name == "TOBYMUG"
+        }),
         ("effect", |e| matches!(e.source, Source::Effect(_))),
         ("speech", |e| {
-            e.category == Category::Audio && matches!(e.source, Source::Speech(_))
+            e.category == Category::Speech && matches!(e.source, Source::Speech(_))
         }),
         ("definition", |e| e.path.eq_ignore_ascii_case("MENU.INI")),
         ("world", |e| {
@@ -148,6 +150,15 @@ fn installed_asset_families_prepare_portable_previews() {
         let path = library.prepare(&entry.id).unwrap();
         let preview: Preview = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         preview.validate().unwrap();
+        if family == "archive model" {
+            assert!(
+                preview.details.iter().any(|(key, value)| {
+                    key == "Palette" && value.eq_ignore_ascii_case("fxart/island.COL")
+                }),
+                "mug must use its configured world palette: {:?}",
+                preview.details
+            );
+        }
         assert!(
             !matches!(preview.content, Content::Unavailable { .. }),
             "{family}: {:?}",
@@ -180,4 +191,37 @@ fn installed_asset_families_prepare_portable_previews() {
             );
         }
     }
+}
+
+#[test]
+fn model_texture_loading_reads_only_referenced_banks() {
+    use cyrus_assets::source::{FileInfo, Manifest, ReadAssets};
+    use std::cell::RefCell;
+    struct Source {
+        manifest: Manifest,
+        reads: RefCell<Vec<String>>,
+    }
+    impl ReadAssets for Source {
+        fn manifest(&self) -> &Manifest {
+            &self.manifest
+        }
+        fn read_range(&self, path: &str, _: u64, _: usize) -> anyhow::Result<Vec<u8>> {
+            self.reads.borrow_mut().push(path.into());
+            Ok(Vec::new())
+        }
+    }
+    let source = Source {
+        manifest: Manifest {
+            files: [188, 200, 415]
+                .map(|id| FileInfo {
+                    path: format!("fxart/TEXBSI.{id}"),
+                    bytes: 0,
+                    digest: "a".repeat(64),
+                })
+                .into(),
+        },
+        reads: RefCell::new(Vec::new()),
+    };
+    cyrus_assets::runtime::geometry::textures(&source, None, Some(&[700].into())).unwrap();
+    assert_eq!(*source.reads.borrow(), ["fxart/TEXBSI.188"]);
 }

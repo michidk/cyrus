@@ -19,6 +19,9 @@ indexed sources. Fonts show a sample and glyph atlas. Models and worlds have a
 textured orbit view, edge overlay, frame controls where supported, and automatic
 framing. Drag to orbit, right-drag to pan, and scroll to zoom.
 
+Speech archives list original entry IDs using only their directory. Selecting a
+member loads its text or audio; labels are available after selection.
+
 Audio shows a waveform with playback, seeking, looping, and volume. Movies have
 video, audio, a timeline, and frame stepping. Definitions expose preservation's
 decoded fields and source lines. Unsupported files and malformed members remain
@@ -40,6 +43,8 @@ export is required.
 
 The game and viewer share the loader, loading overlay, and service-worker cache.
 Original downloads are cached by content digest. CD reads use byte ranges.
+The selected asset is encoded as `#asset=<id>` in the browser URL. Copy that
+URL to reopen the asset in the same installation; browser Back restores selection.
 Native cached previews remain on disk outside the install.
 
 For private static hosting, serve `target/web`, the original files beneath
@@ -57,8 +62,10 @@ archives to discover their members.
 ## Current limits
 
 The renderer is a generic inspection view. It does not claim Faithful game
-lighting, animation timing, or scene behavior. Standalone models use embedded
-texture palettes where available; world previews use their WORLD.INI palette.
+lighting, animation timing, or scene behavior. Archive models use their WORLD.INI
+palette when it is unambiguous. Other models
+use embedded texture palettes or display palette indices as grayscale; the Details
+panel states the palette choice. World previews use their WORLD.INI palette.
 Supported integer model frames can be scrubbed; other encodings show base
 geometry with an explicit explanation. Preservation does not expose separate
 BSI mip levels, so no mip selector is shown.

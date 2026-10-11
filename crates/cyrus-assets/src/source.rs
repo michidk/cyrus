@@ -70,6 +70,7 @@ pub struct AssetFile<'a> {
     position: u64,
     buffer_start: u64,
     buffer: Vec<u8>,
+    read_ahead: bool,
 }
 impl<'a> AssetFile<'a> {
     pub fn open(source: &'a dyn ReadAssets, path: &str) -> Result<Self> {
@@ -84,7 +85,13 @@ impl<'a> AssetFile<'a> {
             position: 0,
             buffer_start: 0,
             buffer: Vec::new(),
+            read_ahead: true,
         })
+    }
+    /// Use exact requested ranges when reading sparse archive directories and members.
+    pub fn without_read_ahead(mut self) -> Self {
+        self.read_ahead = false;
+        self
     }
 }
 impl Read for AssetFile<'_> {
@@ -96,8 +103,17 @@ impl Read for AssetFile<'_> {
             || self.position >= self.buffer_start + self.buffer.len() as u64
         {
             const BLOCK: u64 = 1024 * 1024;
-            self.buffer_start = self.position / BLOCK * BLOCK;
-            let length = (self.length - self.buffer_start).min(BLOCK) as usize;
+            self.buffer_start = if self.read_ahead {
+                self.position / BLOCK * BLOCK
+            } else {
+                self.position
+            };
+            let maximum = if self.read_ahead {
+                BLOCK
+            } else {
+                destination.len() as u64
+            };
+            let length = (self.length - self.buffer_start).min(maximum) as usize;
             self.buffer = self
                 .source
                 .read_range(&self.path, self.buffer_start, length)

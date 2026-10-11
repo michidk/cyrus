@@ -119,6 +119,8 @@ pub fn select(
     viewer.preview = None;
     viewer.pending = None;
     viewer.textures.clear();
+    viewer.font_textures.clear();
+    viewer.texture_key = None;
     viewer.movie = None;
     viewer.movie_blob = None;
     viewer.error = None;

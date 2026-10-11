@@ -32,7 +32,7 @@ fn map_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
         .map(|file| file.path.clone())
         .with_context(|| format!("missing map {path}"))
 }
-fn palette_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
+pub(super) fn palette_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
     let name = path
         .rsplit(['/', '\\'])
         .next()
@@ -43,7 +43,11 @@ fn palette_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
         .map(|file| file.path.clone())
         .with_context(|| format!("missing palette {path}"))
 }
-pub fn textures(source: &dyn ReadAssets, palette: Option<Palette>) -> Result<TextureCache> {
+pub fn textures(
+    source: &dyn ReadAssets,
+    palette: Option<Palette>,
+    requested: Option<&std::collections::HashSet<u16>>,
+) -> Result<TextureCache> {
     let mut data = HashMap::new();
     for file in &source.manifest().files {
         let name = file
@@ -57,9 +61,21 @@ pub fn textures(source: &dyn ReadAssets, palette: Option<Palette>) -> Result<Tex
             .and_then(|id| id.parse::<u16>().ok())
             && let std::collections::hash_map::Entry::Vacant(entry) = data.entry(id)
         {
-            entry.insert(source.read(&file.path)?);
+            entry.insert(&file.path);
         }
     }
+    let selected = requested.map(|ids| {
+        ids.iter()
+            .map(|id| {
+                TextureCache::resolve_texture_id(*id, |candidate| data.contains_key(&candidate))
+            })
+            .collect::<std::collections::HashSet<_>>()
+    });
+    let data = data
+        .into_iter()
+        .filter(|(id, _)| selected.as_ref().is_none_or(|ids| ids.contains(id)))
+        .map(|(id, path)| Ok((id, source.read(path)?)))
+        .collect::<Result<HashMap<_, _>>>()?;
     Ok(TextureCache::from_data(data, palette))
 }
 pub struct WorldGeometry {
@@ -80,6 +96,7 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
         Some(Palette {
             colors: palette.colors,
         }),
+        None,
     )?;
     let mut registry = registry::Registry::new(PathBuf::new());
     for file in &source.manifest().files {

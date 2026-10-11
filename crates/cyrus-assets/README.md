@@ -7,7 +7,8 @@ files, PCM conversion, and the portable movie decoder wrapper.
 
 Native callers open an explicit `GameInstall`, then `native::Library`. Discovery
 preserves files with duplicate names and gives archive members separate IDs.
-`prepare` decodes one selected entry at runtime.
+`prepare` decodes one selected entry at runtime. Speech discovery reads only the
+archive directory; selected text/audio payloads are fetched by byte range.
 Unknown files and decoder failures remain inspectable catalog entries.
 The library retains only the most recently used decoded source, so archive
 members reuse parsing without retaining the entire install in memory.
@@ -27,5 +28,6 @@ Run contracts with `cargo test -p cyrus-assets -- --nocapture`. Installed-data
 checks use `REDGUARD_DIR`, or the repository's test install link. They explicitly
 skip when neither is available. No game data is included in tests.
 
-The pinned preservation [browser world fixes](https://github.com/michidk/redguard-preservation/commit/054bbb06bbd0e1f142d6bad4d2be14bdadda611e)
-keep terrain arrays off the WASM stack and avoid decoding unused archive models.
+The pinned preservation [runtime loading fixes](https://github.com/michidk/redguard-preservation/commit/31e5754c72eda969f5bdaa1e2fd391b13db0d196)
+keep terrain arrays off the WASM stack, support speech directory reads, and expose
+texture bank resolution so models load only their referenced banks.

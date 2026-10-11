@@ -1,6 +1,6 @@
 //! Format adapters use preservation parsers and exporters, never binary layout knowledge.
 use super::{Library, geometry};
-use crate::source::ReadAssets;
+use crate::source::{AssetFile, ReadAssets};
 use crate::{Content, Entry, Picture, Preview, Source, media};
 use anyhow::{Context, Result, ensure};
 use rgpre::{
@@ -150,14 +150,14 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
                         candidates.len()
                     );
                     let bytes = library.source.read(&candidates[0].path)?;
-                    model(library, &bytes, &mut preview)?
+                    model(library, entry, &bytes, &mut preview)?
                 } else {
                     ensure!(
                         segment.has_embedded_3d_data() || segment.has_special_embedded_data(),
                         "unsupported ROB segment type {}",
                         segment.segment_type
                     );
-                    model(library, &segment.data, &mut preview)?
+                    model(library, entry, &segment.data, &mut preview)?
                 }
             } else {
                 Content::Data {
@@ -188,9 +188,10 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
         }
         Input::Rtx(bank) => {
             if let Source::Speech(index) = entry.source {
-                match bank.entries.get(index).context("RTX member missing")? {
+                let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
+                match bank.read_entry(&mut file, index)? {
                     import::rtx::RtxEntry::Text { text, tag } => Content::Data {
-                        value: json!({"tag":String::from_utf8_lossy(tag),"text":text}),
+                        value: json!({"tag":String::from_utf8_lossy(&tag),"text":text}),
                     },
                     import::rtx::RtxEntry::Audio {
                         header,
@@ -198,13 +199,16 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
                         label,
                         ..
                     } => {
-                        if let Some(text) = bank.build_label_map().get(label) {
-                            preview.details.push(("Text".into(), text.clone()));
+                        if let Some(related) = library.catalog.entries.iter().find(|other| {
+                            other.path == entry.path && other.name == label && other.id != entry.id
+                        }) {
+                            preview.related.push(related.id.clone());
                         }
+                        preview.details.push(("Label".into(), label));
                         audio(
                             library,
                             entry,
-                            pcm_data,
+                            &pcm_data,
                             header.sample_rate,
                             header.audio_type.channels(),
                             header.audio_type.bits_per_sample(),
@@ -213,7 +217,7 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
                 }
             } else {
                 Content::Data {
-                    value: json!({"entries":bank.entries.len(),"audio":bank.audio_count(),"text":bank.text_count()}),
+                    value: json!({"entries":bank.entries.len(),"loading":"Select a member to read its text or audio"}),
                 }
             }
         }
@@ -247,7 +251,9 @@ pub(super) fn prepare<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Res
                 content
             }
 
-            Some(FileType::Model3d | FileType::Model3dc) => model(library, bytes, &mut preview)?,
+            Some(FileType::Model3d | FileType::Model3dc) => {
+                model(library, entry, bytes, &mut preview)?
+            }
 
             Some(FileType::Rgm) => {
                 let map = import::rgm::parse_rgm_file(bytes)?;
@@ -385,11 +391,11 @@ fn world_entries<R: ReadAssets>(library: &Library<R>) -> Result<import::world_in
 
 fn model<R: ReadAssets>(
     library: &Library<R>,
+    entry: &Entry,
     source: &[u8],
     preview: &mut Preview,
 ) -> Result<Content> {
     let mut model = import::model3d::parse_3d_file(source)?;
-    let media_id = format!("model-{}", blake3::hash(source).to_hex());
     preview.details.extend([
         ("Vertices".into(), model.header.num_vertices.to_string()),
         ("Faces".into(), model.header.num_faces.to_string()),
@@ -409,7 +415,7 @@ fn model<R: ReadAssets>(
             _ => None,
         })
         .collect();
-    for (texture_id, image_id) in references {
+    for (texture_id, image_id) in &references {
         let bank = format!("TEXBSI.{texture_id:03}");
         let member = format!("{image_id} ·");
         for e in &library.catalog.entries {
@@ -423,8 +429,47 @@ fn model<R: ReadAssets>(
             }
         }
     }
-    let palette: Option<import::palette::Palette> = None;
-    let mut textures = geometry::textures(&library.source, None)?;
+    let worlds = if geometry::find_name(&library.source, "WORLD.INI").is_some() {
+        world_entries(library)?
+    } else {
+        import::world_ini::WorldIni::parse("")
+    };
+    let mut palette_names = worlds
+        .find_by_map_stem(stem(&entry.path))
+        .iter()
+        .map(|world| world.palette.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    palette_names.sort();
+    palette_names.dedup();
+    let palette = if palette_names.len() == 1 {
+        let path = geometry::palette_path(&library.source, &palette_names[0])?;
+        preview.details.push(("Palette".into(), path.clone()));
+        Some(import::palette::Palette::parse(
+            &library.source.read(&path)?,
+        )?)
+    } else {
+        preview.details.push((
+            "Palette".into(),
+            "No unique world palette; embedded colors or grayscale indices".into(),
+        ));
+        None
+    };
+    let mut hash = blake3::Hasher::new();
+    hash.update(source);
+    if let Some(palette) = &palette {
+        for color in &palette.colors {
+            hash.update(color);
+        }
+    }
+    let media_id = format!("model-{}", hash.finalize().to_hex());
+    let banks = references.iter().map(|(bank, _)| *bank).collect();
+    let mut textures = geometry::textures(
+        &library.source,
+        palette.as_ref().map(|palette| import::palette::Palette {
+            colors: palette.colors,
+        }),
+        Some(&banks),
+    )?;
     let count = if model
         .frame_data
         .first()
@@ -541,17 +586,20 @@ pub(super) enum Input {
     Bsi(import::bsi::BsiFile),
     Rob(import::rob::RobFile),
     Sfx(import::sfx::SfxFile),
-    Rtx(import::rtx::RtxFile),
+    Rtx(import::rtx::RtxIndex),
     File(Vec<u8>),
 }
 impl Input {
     pub(super) fn read(path: &str, source: &dyn ReadAssets) -> Result<Self> {
+        if FileType::from_path(std::path::Path::new(path)) == Some(FileType::Rtx) {
+            let mut file = AssetFile::open(source, path)?.without_read_ahead();
+            return Ok(Self::Rtx(import::rtx::RtxIndex::read(&mut file)?));
+        }
         let bytes = source.read(path)?;
         Ok(match FileType::from_path(std::path::Path::new(path)) {
             Some(FileType::Bsi) => Self::Bsi(import::bsi::parse_bsi_file(&bytes)?),
             Some(FileType::Rob) => Self::Rob(import::rob::parse_rob_file(&bytes)?),
             Some(FileType::Sfx) => Self::Sfx(import::sfx::parse_sfx_file(&bytes)?),
-            Some(FileType::Rtx) => Self::Rtx(import::rtx::parse_rtx_file(&bytes)?),
             _ => Self::File(bytes),
         })
     }

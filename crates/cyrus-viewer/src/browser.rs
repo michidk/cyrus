@@ -39,7 +39,14 @@ impl BrowserWorker {
         self.send("open", "source", &self.source)
     }
     pub fn select(&self, id: &str) -> Result<()> {
-        self.send("preview", "id", id)
+        self.send("preview", "id", id)?;
+        if let Some(window) = web_sys::window() {
+            let hash = format!("#asset={id}");
+            if window.location().hash().map_err(js_error)? != hash {
+                window.location().set_hash(&hash).map_err(js_error)?;
+            }
+        }
+        Ok(())
     }
     fn send(&self, kind: &str, key: &str, value: &str) -> Result<()> {
         let message = js_sys::Object::new();
@@ -152,7 +159,10 @@ pub fn install(app: &mut App) -> Result<()> {
         _message: message,
         _error: error,
     });
-    app.add_systems(Update, poll.before(crate::loading::poll));
+    app.add_systems(
+        Update,
+        (poll, follow_link).chain().before(crate::loading::poll),
+    );
     Ok(())
 }
 
@@ -181,7 +191,7 @@ fn poll(
                 progress.visible = false;
             }
             Message::Preview(id, preview, files) if selected == Some(&id) => {
-                for path in media.paths.drain(..).collect::<Vec<_>>() {
+                for path in std::mem::take(&mut media.paths) {
                     media.root.remove_asset(Path::new(&path));
                 }
                 for (path, bytes) in files {
@@ -200,6 +210,41 @@ fn poll(
                 progress.visible = false;
             }
             _ => {}
+        }
+    }
+}
+
+fn follow_link(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    worker: NonSend<BrowserWorker>,
+    mut last_hash: Local<String>,
+    mut viewer: ResMut<Viewer>,
+) {
+    let Some(catalog) = &viewer.catalog else {
+        return;
+    };
+    let hash = web_sys::window()
+        .and_then(|window| window.location().hash().ok())
+        .unwrap_or_default();
+    if hash != *last_hash {
+        *last_hash = hash.clone();
+        if let Some(id) = hash.strip_prefix("#asset=") {
+            if let Some(index) = catalog.entries.iter().position(|entry| entry.id == id) {
+                if viewer.selected != Some(index) {
+                    viewer.category = catalog.entries[index].category;
+                    viewer.search.clear();
+                    crate::loading::select(index, &mut viewer, &mut commands, &assets, &worker);
+                }
+            } else {
+                viewer.error = Some("The linked asset is not in this installation.".into());
+            }
+        } else if hash.is_empty() {
+            viewer.selected = None;
+            viewer.preview = None;
+            viewer.preparing = false;
+            viewer.scene_dirty = true;
+            viewer.audio_dirty = true;
         }
     }
 }
