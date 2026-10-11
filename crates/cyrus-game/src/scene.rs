@@ -93,6 +93,9 @@ fn load_requested(
     commands.insert_resource(crate::animation::AnimationRequest(
         assets.load(format!("cache://{name}.animations")),
     ));
+    commands.insert_resource(crate::player::data::PlayerSceneRequest(
+        assets.load(format!("cache://{name}.player")),
+    ));
     if headless.is_some() {
         current.name = name;
         return;
@@ -146,6 +149,7 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         Some(path) => {
             let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
             crate::environment_export::export(install, entry, Some(&terrain), out)?;
+            crate::player::export::export(&install.root, &rgm, Some(&terrain), entry.index, out)?;
             convert_wld_scene_to_gltf(
                 &terrain,
                 TERRAIN_TEXBSI_ID,
@@ -157,6 +161,7 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         }
         None => {
             crate::environment_export::export(install, entry, None, out)?;
+            crate::player::export::export(&install.root, &rgm, None, entry.index, out)?;
             convert_positioned_models_to_gltf(
                 &models,
                 &lights,
@@ -247,6 +252,10 @@ pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()
                     std::fs::copy(
                         path.with_extension("animations"),
                         out.join(format!("{stem}.animations")),
+                    )?;
+                    std::fs::copy(
+                        path.with_extension("player"),
+                        out.join(format!("{stem}.player")),
                     )?;
                     std::fs::copy(
                         path.with_extension("environment"),

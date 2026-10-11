@@ -105,6 +105,9 @@ fn spawn_scene(
     commands.insert_resource(cyrus_game::animation::AnimationRequest(
         assets.load(format!("cache://{name}.animations")),
     ));
+    commands.insert_resource(cyrus_game::player::data::PlayerSceneRequest(
+        assets.load(format!("cache://{name}.player")),
+    ));
     commands.insert_resource(cyrus_game::environment::EnvironmentRequest(
         assets.load(format!("cache://{name}.environment")),
     ));

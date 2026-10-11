@@ -164,6 +164,7 @@ fn world_exports_include_declared_terrain_and_textures() {
         );
         std::fs::remove_file(path.with_extension("animations")).unwrap();
         std::fs::remove_file(path.with_extension("environment")).unwrap();
+        std::fs::remove_file(path.with_extension("player")).unwrap();
         std::fs::remove_file(path).unwrap();
     }
     std::fs::remove_dir(output).unwrap();
@@ -218,6 +219,7 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
         if path.with_extension("animations").exists() {
             std::fs::remove_file(path.with_extension("animations")).unwrap();
         }
+        std::fs::remove_file(path.with_extension("player")).unwrap();
         std::fs::remove_file(path).unwrap();
     }
     assert_ne!(
@@ -259,7 +261,7 @@ fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
         assert!(!water.animated_vertices[0]);
         assert!(!water.animated_vertices[256]);
         assert!(water.animated_vertices[257]);
-        for extension in ["environment", "animations", "sounds", "glb"] {
+        for extension in ["environment", "animations", "sounds", "player", "glb"] {
             let file = path.with_extension(extension);
             if file.exists() {
                 std::fs::remove_file(file).unwrap();

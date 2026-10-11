@@ -108,6 +108,13 @@ translation, and resets after an update without accepted forward movement.
 Gameplay does not yet drive these cores: animation eligibility, collision, and
 simulation timing remain incomplete.
 
+World exports also write a `.player` sidecar containing installed movement
+settings, named CYRUS attributes and bounds, decoded terrain heights, and the
+water mask. Native, headless, and browser entry load the same validated asset.
+Missing or unsupported actor definitions retain a contextual unavailable reason.
+This data does not activate ground settling or locomotion. Re-export cached
+worlds after updating.
+
 Scene inspection places the player at available marker zero once the world's
 `.animations` data loads, using preservation's exact map coordinates. `MarkerEntry`
 selects a different marker and heading for explicit entries. `PlayerPose` retains

@@ -1,7 +1,15 @@
 //! Inspection camera and the player input foundation. Faithful locomotion is
 //! unsupported until animation, collision and timing are established.
 
+pub mod contact;
+pub mod data;
+pub mod definition;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod export;
+pub mod geometry;
+pub mod ground;
 pub mod input;
+pub mod motion;
 pub mod placement;
 pub mod turn;
 pub mod walk;
@@ -45,6 +53,10 @@ const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        if app.world().contains_resource::<AssetServer>() {
+            app.init_asset::<data::PlayerScene>()
+                .init_asset_loader::<data::PlayerSceneLoader>();
+        }
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Startup, input::load);
         app.init_resource::<input::PlayerBindings>()
