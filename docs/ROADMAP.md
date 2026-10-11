@@ -82,7 +82,8 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Native START screenshot shows the candle above health 100; retained frame handles fix unloading during flicker. The equal-count item icon regression passes.
 - [ ] Compare native/browser HUD layout with the original. The candle targets the documented 60 Hz Glide retrace rate independently of rendering; original in-world cadence, transparency and starting inventory still need comparison. Health, pickups and inventory integration remain separate work.
 - [x] All eleven installed movie definitions decode through their final video frame with the in-process decoder; their first audio stream decodes when present.
-- [ ] Compare picture, audio, skip points, subtitles, interlace and menu return against the original with the new decoder. Check cancellation and skip responsiveness.
+- [ ] Finish the combined optimized browser bundle and repeat live activation/skip/menu-return/replay checks. Preserve verification artifacts, then remove the Movies worktree, its target/export cache and owned test processes; retain shared caches and the existing preview.
+- [ ] Compare native/browser picture, audio, skip points, subtitles, interlace and menu return against the original. Check cancellation, browser download failure and skip responsiveness on player hardware. Browser seeks decode preceding delta frames cooperatively; keyframe seeking is not implemented. Progression-based movie unlocks remain unavailable.
 - [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
 - [x] Book/page/cover and direction/key-capture cues dispatch installed effects through the shared native/browser sound path, following [preservation PR #34](https://github.com/michidk/redguard-preservation/pull/34). Native MCP/PCM checks cover navigation, reserved/accepted capture, mute/unmute and authored Quit; the muted interval is silent. The cue contract catches a wrong-effect mutation. Menu-only export includes the effects bank and cue WAVs. Full gates pass with the install present and absent; the browser compile check passes.
 - [ ] Exercise startup and animated book transitions in the browser, saved settings after restart and actual browser audio. Recheck native playback on combined main; existing MCP/PCM evidence predates shared-text and menu-only sound export. Compare cues by ear with the original. Recover inherited startup lighting and camera-plane clipping before implementing them. **Verified:** preservation PR #34 and an original-game observation establish that the ordinary book menu has no pointer label selection; retain keyboard/action navigation rather than adding hitboxes. Mouse/joystick rebinding and gameplay snapshots remain unsupported.
@@ -98,7 +99,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Startup preload, progress display, and parse-failure logging.
 - [x] Installed 3dfx splash and title playback through the book menu; CLI and MCP skip stop at the menu.
 - [x] MENU.INI-defined book pages, keyboard selection, Options edits, Controls rebinding, Movies browsing, and Quit, using installed geometry and rgpre fonts. Settings persist and affect native audio; remaining actions are pending.
-- [x] Native installed Smacker playback with original skip points and subtitles; menu selection survives playback.
+- [x] Native and browser Smacker playback with installed skip points, subtitle/interlace preferences and retained menu selection. Browser cinematics load on demand from the local startup export.
 - [x] Authored book page turns, submenu camera moves, startup camera entry, and closing Quit sequence; input waits for settling.
 - [x] Installed book/menu effects, Sound preference ordering and menu-only effects-bank export through the portable sound backend.
 - [x] Native scene loading and headless scene export.
@@ -136,10 +137,10 @@ committed support; unverified work stays in the TODO column.
 | `FNT` | Startup labels, book-menu glyphs, movie and dialogue subtitles, HUD numbers, prompts and notices, and status font; one shared layout/raster crate (`cyrus-text`) | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | Original payloads and typed literal Task/End descriptors retained; explicit authored animation-task playback passes native contracts | Automatic activation, full control flow, events, other native bindings, interrupts, and synchronization |
-| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, browser cinematic playback, and progression unlocks |
+| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | Starting-item HUD icons and counts from ITEM.INI | Combat, item use, pickups and shared inventory |
-| `SMK` | Native video and first embedded audio stream via the in-process Smacker decoder, installed skip points and subtitle definitions; CD music pauses while a movie plays | Browser playback, audible output and A/V synchronization comparison |
+| `SMK` | Native and browser video via the in-process Smacker decoder, first embedded audio stream, installed skip points and subtitle definitions; native CD music pauses during playback | Audible output, A/V synchronization and original-game comparison |
 | CD audio | World tracks and the book menu's track 2 play from GOG's CD image and repeat; the Music slider and `redbook_volume` set the drive level | Credits and ending music, audible comparison with the original |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
@@ -186,10 +187,18 @@ and New Game remain unsupported. Native MCP checks cover all five browsable movi
 held-key handling, natural EOF and unsupported-path recovery in the prior decoder,
 Quit during playback, and decoder cleanup on world entry. Video and subtitle
 screenshots were inspected; the first audio stream decodes to a seekable WAV.
+The combined native build also passes Introduction activation, advancing frames,
+all three installed skips, retained selection and replay through the control port.
 Audible output and A/V synchronization remain unchecked. Subtitle/interlace
 preferences apply to cinematics; saved Sound preferences apply to native effects,
 speech, and CD music.
-Browser runtime verification of this menu slice remains pending.
+Headless browser checks at 640×480 cover startup/menu navigation, Movies
+activation, changing Introduction footage, subtitles, forward skips and return
+to the same selected entry and replay. Browser audio and matched original timing remain
+unchecked. Full workspace gates pass with the install present and absent, with
+zero installed-test skips. Verification artifacts stay in the primary checkout
+under `magic/artifacts/2026-10-11-movies/`; task build outputs and runtime
+containers are disposable, while shared caches and the existing preview remain.
 
 **Verified:** book turns, cover crossings and direction/key-capture feedback emit
 installed effects through the portable `SoundCue::Flat` path. Sound preference

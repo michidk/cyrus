@@ -3,7 +3,9 @@
 The browser build (wasm32). Default launch shows startup through the book menu.
 Export its assets with `cargo run -p cyrus -- --export-startup`. With `?scene=...`, it shows scenes the native game exported to
 `cyrus-config/cache/`, served next to the page; it does not read the install
-and has no preload or control port.
+and has no preload or control port. Movies plays the selected installed cinematic
+from `cyrus-config/cache/movies/`, exported by `--export-startup`. Video decodes
+in-process; playback shares native subtitle, interlace, skip, and menu-return rules.
 
 ```sh
 just web-build   # cargo build for wasm32 + wasm-bindgen into target/web

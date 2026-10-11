@@ -21,7 +21,7 @@ struct Args {
     /// Export every WORLD.INI world to the browser cache and exit.
     #[arg(long)]
     export_all_worlds: bool,
-    /// Export splash, title, book-menu and HUD images to the browser cache and exit.
+    /// Export splash, title, book-menu, cinematics and HUD assets to the browser cache and exit.
     #[arg(long)]
     export_startup: bool,
     /// Control server bind address.
@@ -38,6 +38,7 @@ fn main() -> anyhow::Result<()> {
     }
     let install = GameInstall::locate(args.install.as_deref())?;
     if args.export_startup {
+        cyrus_game::startup::export_movies(&install, &Settings::cache_dir())?;
         cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
         cyrus_game::export_hud(&install, &Settings::cache_dir())?;
         return cyrus_game::startup::export_startup(&install, &Settings::cache_dir());

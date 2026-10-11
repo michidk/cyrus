@@ -1,47 +1,34 @@
-//! Native installed Smacker playback. Rules live in preservation's engine/movies.md.
+//! Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+use super::movie_data::{MovieDefinition, Prepared};
 use super::{
     StartupContent,
     menu::{MenuState, MovieRequest, MovieStatus},
 };
-use crate::{AppState, install::GameInstall};
-use anyhow::{Context, ensure};
+use crate::AppState;
+#[cfg(any(target_arch = "wasm32", test))]
+use bevy::platform::time::Instant;
 use bevy::{
     audio::{AudioPlayer, AudioSource, PlaybackSettings},
-    prelude::{
-        App, Assets, ButtonInput, Commands, Component, Entity, Handle, Image, IntoScheduleConfigs,
-        KeyCode, MessageReader, OnExit, Query, Real, Res, ResMut, Resource, Sprite, Time, Update,
-        With, in_state,
-    },
-    tasks::{IoTaskPool, Task, futures::check_ready},
+    prelude::*,
 };
-use rgpre::import::{
-    cdrom::CdImage,
-    fnt::parse_fnt,
-    menu_movies::{MovieDefinition, parse_menu_movies},
-    sfx::AudioType,
-    smacker::SmackerHeader,
-};
-use std::{
-    fs::File,
-    path::Path,
-    sync::{Arc, Mutex, mpsc},
-    time::Duration,
+use std::{sync::Mutex, time::Duration};
+#[cfg(target_arch = "wasm32")]
+const BROWSER_DECODE_BUDGET: Duration = Duration::from_millis(8);
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    super::movie_native::prepare,
+    crate::install::GameInstall,
+    bevy::tasks::{IoTaskPool, Task, futures::check_ready},
+    std::sync::mpsc,
 };
 
 #[derive(Resource, Default)]
 struct MoviePlayback {
+    #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<anyhow::Result<Prepared>>>,
+    #[cfg(target_arch = "wasm32")]
+    load: Option<Handle<Prepared>>,
     playing: Option<Playing>,
-}
-struct Prepared {
-    /// The whole Smacker file, decoded in-process.
-    data: Arc<[u8]>,
-    definition: MovieDefinition,
-    header: SmackerHeader,
-    font: cyrus_text::Font,
-    line_height: u16,
-    font_color: [u8; 3],
-    audio: Option<AudioSource>,
 }
 struct Playing {
     movie: Prepared,
@@ -58,10 +45,66 @@ struct Playing {
 pub struct MovieAudio;
 /// Dropping it disconnects the channel, which stops the decoding thread.
 struct Decoder {
+    #[cfg(not(target_arch = "wasm32"))]
     frames: Mutex<mpsc::Receiver<anyhow::Result<Vec<u8>>>>,
+    #[cfg(target_arch = "wasm32")]
+    frames: Mutex<BrowserDecoder>,
+}
+#[cfg(any(target_arch = "wasm32", test))]
+struct BrowserDecoder {
+    smk: smk::Smk,
+    next: u32,
+    target: u32,
+}
+
+impl Decoder {
+    fn next(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match self.frames.lock().unwrap().try_recv() {
+                Ok(frame) => frame.map(Some),
+                Err(mpsc::TryRecvError::Empty) => Ok(None),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    anyhow::bail!("Movie decoder disconnected before completion")
+                }
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.frames
+                .get_mut()
+                .unwrap()
+                .next_frame(BROWSER_DECODE_BUDGET)
+        }
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl BrowserDecoder {
+    fn next_frame(&mut self, budget: Duration) -> anyhow::Result<Option<Vec<u8>>> {
+        // Yield long delta-frame seeks without imposing a frame-count limit.
+        let started = Instant::now();
+        loop {
+            if self.next == 1 {
+                self.smk.first_frame()?;
+            } else {
+                self.smk.next_frame()?;
+            }
+            let frame = self.next;
+            self.next += 1;
+            if frame >= self.target {
+                return Ok(Some(stretch(self.smk.video_data(), self.smk.palette())));
+            }
+            if started.elapsed() >= budget {
+                return Ok(None);
+            }
+        }
+    }
 }
 
 pub(super) fn register(app: &mut App) {
+    #[cfg(target_arch = "wasm32")]
+    super::movie_data::register(app);
     app.add_message::<MovieRequest>()
         .init_resource::<MoviePlayback>()
         .add_systems(
@@ -73,145 +116,15 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnExit(AppState::Menu), cleanup);
 }
 
-fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
-    let ini = std::fs::read_to_string(root.join("MENU.INI")).context("movie: reading MENU.INI")?;
-    let definition = parse_menu_movies(&ini)
-        .map_err(anyhow::Error::msg)?
-        .into_iter()
-        .nth(index)
-        .with_context(|| format!("movie: MENU.INI definition {index} missing"))?;
-    let system =
-        std::fs::read_to_string(root.join("SYSTEM.INI")).context("movie: reading SYSTEM.INI")?;
-    let name = &definition.name;
-    let drive = crate::sound::ini_value(&system, "system", "animation_drive").unwrap_or("");
-    let data = if drive.contains(':') {
-        let prefix = drive.as_bytes();
-        ensure!(
-            prefix.len() >= 3
-                && prefix[0].is_ascii_alphabetic()
-                && prefix[1] == b':'
-                && prefix[2..].iter().all(|b| matches!(*b, b'/' | b'\\')),
-            "movie {name}: animation_drive {drive:?}: only the CD root is supported"
-        );
-        let disc = root
-            .parent()
-            .context("movie: install has no parent")?
-            .join("game.gog");
-        let mut image = CdImage::open(std::io::BufReader::new(
-            File::open(&disc).with_context(|| format!("movie {name}: {}", disc.display()))?,
-        ))?;
-        let mut data = Vec::new();
-        image
-            .copy_file(name, &mut data)
-            .with_context(|| format!("movie {name}: CD extraction"))?;
-        data
-    } else {
-        let mut directory = root.to_path_buf();
-        for part in drive.split(['/', '\\']).filter(|p| !p.is_empty()) {
-            ensure!(
-                part != "." && part != "..",
-                "movie {name}: invalid animation_drive"
-            );
-            directory = crate::scene::find_file(&directory, part)
-                .with_context(|| format!("movie {name}: animation_drive {drive:?} missing"))?;
-        }
-        let path = crate::scene::find_file(&directory, name)
-            .with_context(|| format!("movie {name}: not found in {}", directory.display()))?;
-        std::fs::read(&path).with_context(|| format!("movie {name}: reading {}", path.display()))?
-    };
-    let header = SmackerHeader::parse(&data)
-        .map_err(anyhow::Error::msg)
-        .with_context(|| format!("movie {name}: Smacker header"))?;
-    ensure!(
-        header.frames < u32::MAX,
-        "movie {name}: frame count exceeds playback counter capacity"
-    );
-    ensure!(
-        header.width == 640 && header.height == 240 && header.double_height,
-        "movie {name}: unsupported viewport {}x{}",
-        header.width,
-        header.height
-    );
-    ensure!(
-        definition.keys.iter().all(|key| *key <= header.frames),
-        "movie {name}: skip point exceeds frame count"
-    );
-    let font_name = crate::sound::ini_value(&system, "system", "gui_low_font")
-        .context("movie: SYSTEM.INI gui_low_font missing")?;
-    let mut font_path = root.to_path_buf();
-    for part in font_name.split(['/', '\\']) {
-        ensure!(
-            !part.is_empty() && part != "." && part != "..",
-            "movie: invalid gui_low_font path"
-        );
-        font_path = crate::scene::find_file(&font_path, part)
-            .with_context(|| format!("movie: gui_low_font {font_name} missing"))?;
-    }
-    let font = cyrus_text::Font::from(
-        &parse_fnt(&std::fs::read(&font_path)?).context("movie: gui_low_font")?,
-    );
-    let line_height = font
-        .glyph(b'W')
-        .filter(|g| g.width > 0)
-        .context("movie: gui_low_font has no W glyph for line spacing")?
-        .width;
-    let palette =
-        rgpre::import::palette::Palette::parse(&std::fs::read(root.join("fxart/REDGUARD.COL"))?)
-            .context("movie: REDGUARD.COL")?;
-    let font_color = palette.colors[161];
-    let audio = if header.has_audio {
-        Some(decode_audio(&data).with_context(|| format!("movie {name}: audio decode"))?)
-    } else {
-        None
-    };
-    Ok(Prepared {
-        data: data.into(),
-        definition,
-        header,
-        font,
-        line_height,
-        font_color,
-        audio,
-    })
-}
-
-/// The first audio track as WAV.
-fn decode_audio(data: &[u8]) -> anyhow::Result<AudioSource> {
-    let mut smk = smk::Smk::open_memory(data)?;
-    let info = smk.info_audio();
-    ensure!(info.track_mask & 1 != 0, "no first audio track");
-    let audio_type = match (info.channels[0], info.bitdepth[0]) {
-        (1, 8) => AudioType::Mono8,
-        (1, 16) => AudioType::Mono16,
-        (2, 8) => AudioType::Stereo8,
-        (2, 16) => AudioType::Stereo16,
-        other => anyhow::bail!("unsupported audio layout {other:?}"),
-    };
-    smk.enable_all(1);
-    let mut pcm = Vec::new();
-    let mut status = smk.first_frame()?;
-    loop {
-        pcm.extend_from_slice(smk.audio_data(0).unwrap_or_default());
-        if status != smk::FrameStatus::More {
-            break;
-        }
-        status = smk.next_frame()?;
-    }
-    let bytes =
-        crate::sound::pcm_wav(audio_type, info.rate[0], &pcm).map_err(anyhow::Error::msg)?;
-    Ok(AudioSource {
-        bytes: bytes.into(),
-    })
-}
-
 /// Decodes on a thread from one-based `frame` on; Smacker frames are deltas, so
 /// earlier frames are decoded but not sent.
+#[cfg(not(target_arch = "wasm32"))]
 fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
     let mut smk = smk::Smk::open_memory(&movie.data)?;
     smk.enable_all(0x80);
     let (sender, receiver) = mpsc::sync_channel(2);
-    let frames = movie.header.frames;
-    let name = movie.definition.name.clone();
+    let frames = movie.metadata.frames;
+    let name = movie.metadata.definition.name.clone();
     std::thread::spawn(move || {
         let mut status = smk.first_frame();
         for index in 1..=frames {
@@ -233,6 +146,19 @@ fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
     });
     Ok(Decoder {
         frames: Mutex::new(receiver),
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
+    let mut smk = smk::Smk::open_memory(&movie.data)?;
+    smk.enable_all(0x80);
+    Ok(Decoder {
+        frames: Mutex::new(BrowserDecoder {
+            smk,
+            next: 1,
+            target: frame,
+        }),
     })
 }
 
@@ -266,7 +192,9 @@ fn skip_point(movie: &MovieDefinition, frame: u32) -> Option<u32> {
 
 fn drive(
     runtime: (Commands, Query<Entity, With<MovieAudio>>),
-    install: Res<GameInstall>,
+    #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
+    #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
+    #[cfg(target_arch = "wasm32")] mut prepared: ResMut<Assets<Prepared>>,
     mut requests: MessageReader<MovieRequest>,
     state: (ResMut<MoviePlayback>, ResMut<MenuState>),
     input: (Res<Time<Real>>, Res<ButtonInput<KeyCode>>),
@@ -283,6 +211,7 @@ fn drive(
         if playback.load.is_some() || playback.playing.is_some() {
             continue;
         }
+        #[cfg(not(target_arch = "wasm32"))]
         let root = install.root.clone();
         let index = request.0;
         menu.movie = Some(MovieStatus {
@@ -292,11 +221,26 @@ fn drive(
             loading: true,
         });
         menu.ready = false;
-        playback.load = Some(IoTaskPool::get().spawn(async move { prepare(&root, index) }));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            playback.load = Some(IoTaskPool::get().spawn(async move { prepare(&root, index) }));
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            playback.load = Some(assets.load(format!("cache://movies/{index}.movie")));
+        }
     }
-    if let Some(load) = playback.load.as_mut()
-        && let Some(result) = check_ready(load)
-    {
+    #[cfg(not(target_arch = "wasm32"))]
+    let loaded = playback.load.as_mut().and_then(check_ready);
+    #[cfg(target_arch = "wasm32")]
+    let loaded = playback.load.as_ref().and_then(|handle| {
+        if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(handle.id()) {
+            Some(Err(anyhow::anyhow!("{error}")))
+        } else {
+            prepared.remove(handle.id()).map(Ok)
+        }
+    });
+    if let Some(result) = loaded {
         playback.load = None;
         match result.and_then(|movie| {
             let decoder = decode(&movie, 1)?;
@@ -318,9 +262,9 @@ fn drive(
                     playing.audio = Some(sources.add(source));
                 }
                 menu.movie = Some(MovieStatus {
-                    name: playing.movie.definition.name.clone(),
+                    name: playing.movie.metadata.definition.name.clone(),
                     frame: 0,
-                    frames: playing.movie.header.frames,
+                    frames: playing.movie.metadata.frames,
                     loading: true,
                 });
                 playback.playing = Some(playing);
@@ -337,14 +281,14 @@ fn drive(
     };
     let mut finished = false;
     let mut failure = None;
-    let frame_seconds = f64::from(playing.movie.header.frame_micros) / 1_000_000.0;
+    let frame_seconds = f64::from(playing.movie.metadata.frame_micros) / 1_000_000.0;
     if playing.started {
         playing.elapsed += input.0.delta_secs_f64();
     }
     // The activation key from this update starts playback; it must not also skip it.
     if playing.started && input.1.get_just_pressed().next().is_some() {
         let current = menu.movie.as_ref().map_or(0, |m| m.frame);
-        if let Some(frame) = skip_point(&playing.movie.definition, current) {
+        if let Some(frame) = skip_point(&playing.movie.metadata.definition, current) {
             match decode(&playing.movie, frame) {
                 Ok(decoder) => {
                     playing.decoder = decoder;
@@ -371,10 +315,16 @@ fn drive(
         playing.next_frame
     };
     let mut pixels = None;
-    while !finished && playing.next_frame <= due.min(playing.movie.header.frames) {
-        let result = playing.decoder.frames.lock().unwrap().try_recv();
+    #[cfg(target_arch = "wasm32")]
+    let decode_started = Instant::now();
+    while !finished && playing.next_frame <= due.min(playing.movie.metadata.frames) {
+        #[cfg(target_arch = "wasm32")]
+        if decode_started.elapsed() >= BROWSER_DECODE_BUDGET {
+            break;
+        }
+        let result = playing.decoder.next();
         match result {
-            Ok(Ok(frame)) => {
+            Ok(Some(frame)) => {
                 let index = playing.next_frame;
                 playing.next_frame += 1;
                 if let Some(status) = menu.movie.as_mut() {
@@ -384,15 +334,11 @@ fn drive(
                 pixels = Some(frame);
                 playing.started = true;
             }
-            Ok(Err(error)) => {
+            Err(error) => {
                 failure = Some(error.to_string());
                 break;
             }
-            Err(mpsc::TryRecvError::Empty) => break,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                failure = Some("Movie decoder disconnected before completion".into());
-                break;
-            }
+            Ok(None) => break,
         }
     }
     if let Some(mut pixels) = pixels.filter(|_| failure.is_none() && !finished) {
@@ -417,10 +363,10 @@ fn drive(
             .is_some_and(|p| p.values[&504] != 0);
         paint_subtitles(
             &mut pixels,
-            &playing.movie.font,
-            playing.movie.line_height,
-            playing.movie.font_color,
-            &playing.movie.definition,
+            &playing.movie.metadata.font,
+            playing.movie.metadata.line_height,
+            playing.movie.metadata.font_color,
+            &playing.movie.metadata.definition,
             frame,
             subtitles,
         );
@@ -455,8 +401,8 @@ fn drive(
             playing.audio_started = true;
         }
     }
-    if playing.next_frame > playing.movie.header.frames
-        && playing.elapsed >= f64::from(playing.movie.header.frames) * frame_seconds
+    if playing.next_frame > playing.movie.metadata.frames
+        && playing.elapsed >= f64::from(playing.movie.metadata.frames) * frame_seconds
     {
         finished = true;
     }
@@ -531,10 +477,14 @@ fn cleanup(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_arch = "wasm32"))]
+    use super::super::movie_data::MovieSubtitle;
     use super::*;
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn installed_movies_decode_in_process() {
+        use {rgpre::import::menu_movies::parse_menu_movies, std::path::Path};
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
@@ -548,7 +498,7 @@ mod tests {
         for index in 0..definitions.len() {
             let movie = prepare(&install.root, index)
                 .unwrap_or_else(|error| panic!("movie {index}: {error:#}"));
-            let last = movie.header.frames;
+            let last = movie.metadata.frames;
             let started = std::time::Instant::now();
             let frame = decode(&movie, last)
                 .unwrap()
@@ -558,11 +508,60 @@ mod tests {
                 .recv();
             eprintln!(
                 "{}: {last} frames, last frame decoded in {:?}",
-                movie.definition.name,
+                movie.metadata.definition.name,
                 started.elapsed()
             );
             assert_eq!(frame.unwrap().unwrap().len(), 640 * 480 * 4);
-            assert_eq!(movie.audio.is_some(), movie.header.has_audio);
+            assert_eq!(movie.audio.is_some(), movie.metadata.has_audio);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn browser_delta_seek_matches_native_frames_and_yields() {
+        use std::path::Path;
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let movie = prepare(&install.root, 0).unwrap();
+        for target in [1, 17, movie.metadata.definition.keys[0]] {
+            let mut smk = smk::Smk::open_memory(&movie.data).unwrap();
+            smk.enable_all(0x80);
+            let mut browser = BrowserDecoder {
+                smk,
+                next: 1,
+                target,
+            };
+            let first = browser.next_frame(Duration::ZERO).unwrap();
+            if target > 1 {
+                assert!(first.is_none());
+            }
+            let actual = first
+                .or_else(|| (1..target).find_map(|_| browser.next_frame(Duration::ZERO).unwrap()))
+                .expect("seek did not reach the requested frame");
+            let native = decode(&movie, target)
+                .unwrap()
+                .frames
+                .into_inner()
+                .unwrap()
+                .recv()
+                .unwrap()
+                .unwrap();
+            assert_eq!(actual, native, "seek to frame {target}");
+            let next = browser.next_frame(Duration::ZERO).unwrap().unwrap();
+            let native = decode(&movie, target + 1)
+                .unwrap()
+                .frames
+                .into_inner()
+                .unwrap()
+                .recv()
+                .unwrap()
+                .unwrap();
+            assert_eq!(next, native, "frame after seek {target}");
         }
     }
 
@@ -589,6 +588,7 @@ mod tests {
         assert_eq!(skip_point(&movie, 20), None);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn subtitles_obey_frame_bounds_and_always_flag() {
         let font = rgpre::import::fnt::FntFile {
@@ -627,9 +627,8 @@ mod tests {
         let mut movie = MovieDefinition {
             name: "test".into(),
             keys: vec![],
-            subtitles: vec![rgpre::import::menu_movies::MovieSubtitle {
+            subtitles: vec![MovieSubtitle {
                 always: false,
-                color: [255, 0, 0],
                 start: 10,
                 stop: 20,
                 text: "A".into(),

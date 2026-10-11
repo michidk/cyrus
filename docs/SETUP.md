@@ -27,7 +27,7 @@ just run --skip-startup   # skip splash/title to the book menu
 just run --scene START
 just run --scene 27       # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
-cargo run -p cyrus -- --export-startup    # render startup and menu assets for the browser
+cargo run -p cyrus -- --export-startup    # export startup, menu, cinematics and HUD for the browser
 just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
@@ -78,7 +78,7 @@ under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
 Saved Sound preferences apply to native effects, speech, and CD music; the book
-menu plays its installed CD track. Native cinematics consume subtitle and interlace preferences.
+menu plays its installed CD track. Cinematics consume subtitle and interlace preferences.
 
 Movies browses the initially unlocked entries and installed previews. Native
 playback reads the configured movie file or GOG `game.gog` beside the install
@@ -86,10 +86,15 @@ into memory and decodes it in-process; the native virtual-display runner mounts 
 stream, uses the installed subtitle definitions and GUI font, and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
 skip point, or finishes after the last one. Playback returns to the same menu
-selection. Nothing is written to `cache/`.
+selection. Native playback does not write movie data to `cache/`.
+For browser playback, `--export-startup` also exports the browsable compressed
+Smacker files, first-track WAV audio, subtitle definitions, and configured font
+into `cyrus-config/cache/movies/`. The browser downloads the selected cinematic
+on demand and decodes video in-process, using the same skip, subtitle, interlace,
+and menu-return rules. Re-export startup and rebuild the browser after updating.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
-installed `force_movies` setting exposes all cinematic entries. Browser movie
-playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
+installed `force_movies` setting exposes all cinematic entries. Progression
+unlocks remain unavailable. Quit exits; New Game, Save, Load,
 and Continue remain unavailable, with Save and Continue grayed without a
 resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font, plus the installed effects bank under `cache/sounds/` for browser menu
@@ -110,7 +115,7 @@ and its map-stem alias. Use `?scene=27` for a specific world variant or
 Native scene loads regenerate the export; browser-only sessions need the
 export command after loading changes. The browser keeps the WebAssembly engine
 and downloaded GLB files in Cache Storage, then checks their timestamp and size
-before reusing them. Nothing from the install itself is served.
+before reusing them. Only locally exported assets are served; the install directory is not exposed.
 
 ### Animation data
 
