@@ -13,10 +13,11 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `environment` | Glide BSI sky scrolling and terrain waves in both graphics modes. Loads exported `.environment` sidecars. |
 | `fog` | Original scene clipping, Glide fog tables, and a Modern debug distance override. |
 | `sky` | Glide sky playback, material and shader, projected behind scene geometry. |
-| `water` | BIOS-rate wave displacement and shared terrain normals from preservation. |
+| `water` | Private terrain meshes, BIOS-rate waves and shared shading normals. |
+| `lighting` | Original terrain vertex RGB and quantized normal calculation. |
 | `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups and literal authored animation tasks to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
-| `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
+| `environment_export` | Native extraction of per-world sky pixels, terrain lighting inputs, wave parameters, and water masks. |
 | `hud` | In-game overlay from exported `.hud` data: SNUFF candle with health number (`candle_mode` 2), active item icon and count from `ITEM.INI`, prev/next item keys from `KEYS.INI`, REDSEL.FNT text ([HUD facts](https://github.com/michidk/redguard-preservation/pull/28)). Compass, power-ups, logbook, activation prompts and the candle toggle are unsupported. |
 | `hud_export` | Native extraction of HUD positions, starting inventory, candle frames, item icons and font glyphs into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
@@ -112,14 +113,23 @@ and half-amplitude bias. Playback uses real elapsed time at the BIOS timer rate,
 It deforms private copies of exported terrain meshes and recomputes shared
 normals across materials. Re-export worlds to replace old water masks.
 
-Absolute DOS clock phase is not synchronized. Terrain placement, base heights,
-and lighting retain the preservation export's existing limitations.
+Absolute DOS clock phase is not synchronized. Terrain placement and base heights
+retain the preservation export's existing limitations.
 
-**Verified:** the terrain vertex-lighting arithmetic and world RGB sources are documented in
-[preservation PR #33](https://github.com/michidk/redguard-preservation/pull/33).
-**Unknown:** the coordinate mapping and active runtime inputs needed to apply
-that contract to these exported meshes. Scene lighting still uses the fixed
-Bevy light; terrain lighting has not been replaced.
+**Verified:** terrain ambient/directional inputs, coordinate conversion and
+quantized shading normals follow preservation's
+[terrain-lighting contract](https://github.com/michidk/redguard-preservation/blob/feat/terrain-lighting-inputs/docs/engine/terrain-lighting.md).
+Native export retains the per-world inputs in `.environment`; native and browser
+playback shade private terrain meshes, including displaced water. Terrain uses
+screen-linear vertex RGB and texture modulation before the existing scene fog,
+without Bevy PBR or tone mapping. Models retain the existing fixed Bevy light.
+Re-export browser worlds to include the new lighting inputs.
+
+The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
+that reuses Faithful results. Existing Water and Fog switches remain independent.
+**Unknown:** full pixel parity, texture-filtering and combiner precision, and exact
+water-edge dirty-normal retention. A captured original water update retained two
+older normals that differ from a full recomputation. Cyrus recomputes the grid.
 
 Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates

@@ -21,15 +21,17 @@ pub enum Area {
     Water,
     Fog,
     Sky,
+    Lighting,
 }
 
 impl Area {
-    pub const ALL: [Area; 5] = [
+    pub const ALL: [Area; 6] = [
         Area::PlayerController,
         Area::Camera,
         Area::Water,
         Area::Fog,
         Area::Sky,
+        Area::Lighting,
     ];
 }
 
@@ -41,6 +43,8 @@ pub struct Fidelity {
     pub water: Mode,
     pub fog: Mode,
     pub sky: Mode,
+    /// Modern lighting currently reuses the faithful terrain implementation.
+    pub lighting: Mode,
 }
 
 impl Fidelity {
@@ -51,6 +55,7 @@ impl Fidelity {
             Area::Water => self.water,
             Area::Fog => self.fog,
             Area::Sky => self.sky,
+            Area::Lighting => self.lighting,
         }
     }
     pub fn set(&mut self, area: Area, mode: Mode) {
@@ -60,6 +65,7 @@ impl Fidelity {
             Area::Water => self.water = mode,
             Area::Fog => self.fog = mode,
             Area::Sky => self.sky = mode,
+            Area::Lighting => self.lighting = mode,
         }
     }
 }

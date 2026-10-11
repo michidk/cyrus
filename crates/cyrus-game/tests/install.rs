@@ -70,6 +70,21 @@ fn world_exports_include_declared_terrain_and_textures() {
                 .unwrap();
         assert_eq!(environment.sky.is_some(), terrain);
         assert_eq!(environment.water.is_some(), terrain);
+        assert_eq!(environment.terrain_lighting.is_some(), terrain);
+        if name == "ISLAND" {
+            let light = environment.terrain_lighting.as_ref().unwrap();
+            assert_eq!(light.side, 256);
+            assert_eq!(light.ambient, [64.0; 3]);
+            assert_eq!(light.directional, [255.0; 3]);
+            for (actual, expected) in
+                light
+                    .direction
+                    .into_iter()
+                    .zip([-0.49998432, -0.49998432, 0.7071289])
+            {
+                assert!((actual - expected).abs() < 0.000001);
+            }
+        }
         let animations: cyrus_game::animation::Animations =
             serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap())
                 .unwrap();

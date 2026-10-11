@@ -182,6 +182,12 @@ fn debug_menu(
         fidelity_control(ui, &mut fidelity, Area::Water, "Water");
         fidelity_control(ui, &mut fidelity, Area::Fog, "Fog");
         fidelity_control(ui, &mut fidelity, Area::Sky, "Sky");
+        fidelity_control(
+            ui,
+            &mut fidelity,
+            Area::Lighting,
+            "Lighting (Modern uses Faithful)",
+        );
 
         ui.separator();
         let inspector_label = if menu.inspector_open {

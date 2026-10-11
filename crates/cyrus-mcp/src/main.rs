@@ -42,7 +42,7 @@ struct InputParams {
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct FidelityParams {
-    #[schemars(description = "player_controller, camera, water, fog or sky")]
+    #[schemars(description = "player_controller, camera, water, fog, sky or lighting")]
     area: String,
     #[schemars(description = "faithful or modern")]
     mode: String,
