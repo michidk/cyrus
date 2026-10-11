@@ -409,3 +409,17 @@ fn upright_orientation_retains_original_half_turn_residual_and_heading_sign() {
     assert!(upright_rotation(2036).z_axis.x > 0.0);
     assert!(upright_rotation(12).z_axis.x < 0.0);
 }
+
+#[test]
+fn incremental_upright_refresh_matches_selected_player_without_rebuilding() {
+    use bevy::math::{Mat3, Vec3};
+    use cyrus_game::player::motion::refresh_upright_rotation;
+    let mut matrix = Mat3::from_diagonal(Vec3::new(-1.0, 1.0, -1.0));
+    refresh_upright_rotation(&mut matrix, 0, 12);
+    assert_eq!(matrix.x_axis, Vec3::new(-0.999_322_35, 0.0, -0.036_807_153));
+    assert_eq!(matrix.y_axis, Vec3::Y);
+    assert_eq!(matrix.z_axis, Vec3::new(0.036_807_153, 0.0, -0.999_322_35));
+    let refreshed = matrix;
+    refresh_upright_rotation(&mut matrix, 12, 12);
+    assert_eq!(matrix, refreshed);
+}

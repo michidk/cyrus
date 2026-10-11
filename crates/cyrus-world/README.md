@@ -131,5 +131,8 @@ those changes when position is restored. The caller supplies initial state and
 nominal ticks, following the [support-state rules](https://github.com/michidk/redguard-preservation/blob/ed296ed/docs/engine/player.md#support-query-misses).
 Ground support reads only face-model candidates. Actor-style obstacle response
 remains unsupported.
-This data does not activate ground settling or locomotion. Re-export cached
-worlds after updating.
+Startup support uses an actor-centered window and radius 1000, with a vertical
+half-length of 500. Its distinct terrain/model ranking retains earlier equal
+contacts, following [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
+The game uses this static query for inspection placement. Dynamic/transient support
+and automatic locomotion remain unsupported. Re-export cached worlds after updating.

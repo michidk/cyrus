@@ -16,8 +16,8 @@ set `InputSuppressed` before `InputSample`; player transforms remain independent
 of camera transforms.
 
 Ground-turn, walking startup, wall response and forward support admission are
-explicit deterministic APIs. Automatic locomotion, animation eligibility, ground
-settling and a production simulation clock remain unsupported. See
+explicit deterministic APIs. Automatic locomotion, animation eligibility and a
+production simulation clock remain unsupported. See
 [SETUP](../../docs/SETUP.md) and [ROADMAP](../../docs/ROADMAP.md).
 
 Run `cargo test -p cyrus-game`. Installed-definition tests require `redguard/` and
@@ -50,9 +50,21 @@ update; production timing, actor initialization and player mesh binding remain
 incomplete.
 
 Scene inspection places the player at available marker zero once the world's
-`.animations` data loads, using preservation's exact map coordinates. `MarkerEntry`
+`.animations` and `.player` data match, using preservation's exact map coordinates. `MarkerEntry`
 selects a different marker and heading for explicit entries. `PlayerPose` retains
 runtime coordinates and the wrapped heading; the transform uses the existing
-scene export coordinates. Heading-to-render rotation and ground settling remain
-unsupported. The marker height is the initial height, not the settled ground
-height. Re-export older assets that lack `map_position`.
+scene export coordinates. Entry then settles against dry terrain and static models,
+using the actor-centered startup query documented in
+[preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
+Startup selection preserves earlier equal-ranked contacts, independently of ordinary
+walking support. Dynamic/transient support and heading-to-render rotation remain
+unsupported; this inspection placement does not enable gameplay. Unavailable terrain
+or player definitions produce an entry error. Re-export older assets that lack
+`map_position`.
+
+`placement::initial_animation` applies the selected-player entry requests with
+caller-supplied nominal ticks and a synchronous sound handler. It starts with
+default group zero, makes both ordinary setup requests, then forces the default.
+It retains the selected file frame for presentation, following
+[preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
+This explicit entry API does not choose a production clock or enable locomotion.

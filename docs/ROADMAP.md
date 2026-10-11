@@ -470,11 +470,15 @@ Initial marker placement uses exact exported map coordinates and retains the
 requested heading modulo 2048. A headless ISLAND load matches a fresh original
 marker-zero start-position query; debug flycam input leaves the player unchanged.
 Missing and unavailable markers remain explicit errors. Native workspace tests,
-strict Clippy, WASM compilation and MCP smoke pass. Ground settling and rendered
-heading are separate and remain unsupported.
+strict Clippy, WASM compilation and MCP smoke passed for that foundation.
+Scene entry now also waits for matching player inputs and settles against dry
+terrain/static geometry. The installed ISLAND result matches the captured original
+startup height. Focused contracts cover strict endpoint admission, truncation,
+startup rank scales and earlier-equal retention. Dynamic/transient support,
+rendered heading and automatic locomotion remain incomplete.
 
 - [x] Land and verify the keyboard-input and independent debug-flycam foundation.
-- [x] Apply explicit marker-based initial placement; scripted spawn selection and ground settling remain pending.
+- [x] Apply marker placement and static/dry-terrain startup settling; scripted spawn selection and dynamic support remain pending.
 - [ ] Implement quick actions and the walk-mode toggle, alongside the held bindings. The HUD Tab/F7 toggles and notices exist; movement must consume `HudState::walk_mode` and `auto_defend`.
 - [ ] Feed the HUD from the player: `set_health`, `set_sword_drawn` (show timer, sword-lock item cycling), `attr_player_type`, heading and world ID (compass).
 - [ ] Establish a repeatable simulation-timing oracle and animation movement gates; compare the same walking/turning sequence in both games.

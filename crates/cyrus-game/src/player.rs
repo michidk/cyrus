@@ -36,6 +36,7 @@ impl Plugin for PlayerPlugin {
                 Update,
                 placement::enter_marker
                     .after(cyrus_world::lifecycle::WorldChange)
+                    .after(data::PlayerSceneLoading)
                     .run_if(in_state(AppState::InGame)),
             );
     }

@@ -184,8 +184,9 @@ fn walking_startup_uses_actor_speed_and_rejects_unsupported_step_types() {
 }
 
 #[test]
-fn marker_entry_waits_for_world_data_and_keeps_exact_position() {
+fn marker_entry_waits_for_matching_world_data_and_settles_once() {
     use cyrus_assets::animation::Animations;
+    use cyrus_game::player::data::{PlayerScene, PlayerSceneRequest};
     use cyrus_game::player::placement::MarkerEntry;
     use cyrus_game::player::placement::PlayerPose;
     use cyrus_world::animation::AnimationRequest;
@@ -196,6 +197,7 @@ fn marker_entry_waits_for_world_data_and_keeps_exact_position() {
         .init_resource::<Fidelity>()
         .init_resource::<ButtonInput<KeyCode>>()
         .init_resource::<Assets<Animations>>()
+        .init_resource::<Assets<PlayerScene>>()
         .init_resource::<AnimationRequest>()
         .insert_resource(MarkerEntry {
             marker: 0,
@@ -229,27 +231,64 @@ fn marker_entry_waits_for_world_data_and_keeps_exact_position() {
         .add(data);
     app.world_mut().resource_mut::<AnimationRequest>().0 = handle;
     app.update();
+    assert!(app.world().get::<PlayerPose>(player).is_none());
+    let scene = PlayerScene::decode(
+        &serde_json::to_vec(&serde_json::json!({
+            "version":2,"world":1,
+            "settings":{"standing_height":-2,"post_collide_height":50,"slide_range":-60000,
+                "turn_speed":12,"turn_max_speed":48,"poly_push_units":16},
+            "definition":{
+                "actors":[{"script_name":"CYRUS","attributes":{},"mpsz_bounds_primary":0,
+                    "raex":{"unknown_12":256}}],
+                "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,11],
+                    "neg_extent":[24,66,38],"center_offset":[0,0,0],"flags":0}]
+            },
+            "heights":vec![-680;256*256],"water":vec![false;256*256],
+            "collision":{"placements":[],"models":{},"unsupported":{}}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let scene_handle = app
+        .world_mut()
+        .resource_mut::<Assets<PlayerScene>>()
+        .add(scene);
+    app.world_mut()
+        .insert_resource(PlayerSceneRequest(scene_handle.clone()));
+    app.world_mut()
+        .resource_mut::<Assets<PlayerScene>>()
+        .get_mut(&scene_handle)
+        .unwrap()
+        .world = 2;
+    app.update();
+    assert!(app.world().get::<PlayerPose>(player).is_none());
+    app.world_mut()
+        .resource_mut::<Assets<PlayerScene>>()
+        .get_mut(&scene_handle)
+        .unwrap()
+        .world = 1;
+    app.update();
     assert_eq!(
         app.world().get::<PlayerPose>(player).unwrap(),
         &PlayerPose {
-            position: [10_448_896, -178_944, 10_502_144],
+            position: [10_448_896, -190_464, 10_502_144],
             heading: 2047,
         }
     );
     assert_eq!(
         app.world().get::<Transform>(player).unwrap().translation,
-        Vec3::new(-2040.8, 34.95, -1225.5998)
+        Vec3::new(-2040.8, 37.2, -1225.5998)
     );
     // Entry is one-shot; later updates must not undo movement or ground settling.
     app.world_mut()
         .get_mut::<Transform>(player)
         .unwrap()
         .translation
-        .y = 37.2;
+        .y = 40.0;
     app.update();
     assert_eq!(
         app.world().get::<Transform>(player).unwrap().translation.y,
-        37.2
+        40.0
     );
     app.world_mut().resource_mut::<MarkerEntry>().marker = 1;
     app.update();

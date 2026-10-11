@@ -157,6 +157,42 @@ impl FallbackProbe {
 }
 
 impl GroundProbe {
+    pub(crate) fn select_startup(
+        &self,
+        terrain: Option<GroundSupport>,
+        models: &[ModelSupport],
+    ) -> Option<SelectedSupport> {
+        debug_assert_eq!(self.distance, 500);
+        let mut rank = 65_536;
+        let mut selected = None;
+        if let Some(mut support) = terrain {
+            support.height = support.height.trunc();
+            if support.height > f64::from(self.start[1]) && support.height < f64::from(self.end[1])
+            {
+                let delta = support.height as i64 - i64::from(self.start[1]);
+                rank = (16_384 - ((delta.abs() * 8_388) >> 8)).unsigned_abs();
+                selected = Some(SelectedSupport::Primary {
+                    source: SupportSource::Terrain,
+                    support,
+                });
+            }
+        }
+        for model in models {
+            let distance = i64::from(model.rank).abs_diff(16_384);
+            if matches!(model.support.classification(), 2 | 4) && distance < rank {
+                rank = distance;
+                selected = Some(SelectedSupport::Primary {
+                    source: SupportSource::Model {
+                        model: model.model,
+                        face: model.face,
+                    },
+                    support: model.support,
+                });
+            }
+        }
+        selected
+    }
+
     /// Converts runtime coordinates before applying the body extent and search distance.
     pub fn new(position: [i64; 3], positive_y_extent: i32, distance: u32) -> anyhow::Result<Self> {
         anyhow::ensure!(

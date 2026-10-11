@@ -175,10 +175,6 @@ impl StaticCollision {
         actor: [i64; 3],
         actor_radius: Option<f32>,
     ) -> anyhow::Result<StaticCandidates> {
-        anyhow::ensure!(
-            view.iter().all(|v| (0..=65535).contains(v)),
-            "static view outside map"
-        );
         let radius = match actor_radius {
             Some(radius) => {
                 anyhow::ensure!(
@@ -189,6 +185,19 @@ impl StaticCollision {
             }
             None => 200.0,
         };
+        self.candidates_in_radius(view, actor, radius)
+    }
+
+    fn candidates_in_radius(
+        &self,
+        view: [i32; 2],
+        actor: [i64; 3],
+        radius: f32,
+    ) -> anyhow::Result<StaticCandidates> {
+        anyhow::ensure!(
+            view.iter().all(|v| (0..=65535).contains(v)),
+            "static view outside map"
+        );
         let origin = Vec3::from_array(actor.map(|v| (v >> 8) as f32));
         let first = view.map(|v| {
             (if v < 4608 {
@@ -247,6 +256,25 @@ impl StaticCollision {
             }
         }
         Ok(result)
+    }
+
+    /// Startup settling against terrain and static models, per preservation player.md.
+    /// Uses an actor-centered window, radius 1000 and a vertical half-length of 500.
+    /// Dynamic/transient actor contacts are outside this static registry.
+    pub fn startup_support(
+        &self,
+        position: [i64; 3],
+        positive_y_extent: i32,
+        terrain: Option<GroundSupport>,
+    ) -> anyhow::Result<Option<SelectedSupport>> {
+        let view = [
+            i32::try_from(position[0] >> 8)?,
+            i32::try_from(position[2] >> 8)?,
+        ];
+        let candidates = self.candidates_in_radius(view, position, 1000.0)?;
+        let probe = GroundProbe::new(position, positive_y_extent, 500)?;
+        let contacts = self.ground_contacts(&candidates, &probe, false)?;
+        Ok(probe.select_startup(terrain, &contacts))
     }
 
     /// Forward obstacle probe against face-model candidates, in their original order.

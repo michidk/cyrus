@@ -28,6 +28,13 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     .unwrap();
     assert_eq!(scene.keyboard_codes, Some(keys.keyboard_codes()));
     assert_eq!(scene.settings.standing_height, -2);
+    let mut pose = cyrus_game::player::placement::PlayerPose {
+        position: [10_448_896, -178_944, 10_502_144],
+        heading: 0,
+    };
+    cyrus_game::player::placement::settle_static(&scene, &mut pose).unwrap();
+    assert_eq!(pose.position, [10_448_896, -190_464, 10_502_144]);
+    assert_eq!(pose.heading, 0);
     assert_eq!(scene.collision.placements.len(), 1691);
     assert_eq!(scene.collision.models["PLANT000"].flags, 2);
     assert_eq!(scene.collision.models["BARREL"].flags, 1);

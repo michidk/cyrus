@@ -27,6 +27,63 @@ fn data(groups: serde_json::Value) -> (PlayerDefinition, Animations) {
 }
 
 #[test]
+fn player_entry_preserves_selected_frame_and_does_not_start_the_ordinary_idle_default() {
+    use cyrus_game::player::placement::initial_animation;
+    let (_, data) = data(serde_json::json!([
+        {"group_index":0,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},
+            {"opcode":0,"frame_reference":12},{"opcode":2,"value":0}
+        ]},
+        {"group_index":3,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":30},{"opcode":2,"value":0}
+        ]}
+    ]));
+    for (ticks, next_frame) in [(0, 10), (1, 11), (2, 11)] {
+        let (mut animation, frame) = initial_animation(&data, ticks, &mut |_| Ok(())).unwrap();
+        assert_eq!(frame, Some(10));
+        assert_eq!(animation.current_group(), Some(0));
+        assert_eq!(animation.pending_group(), None);
+        assert_eq!(animation.advance(1).unwrap(), Some(next_frame));
+    }
+}
+
+#[test]
+fn installed_player_entry_matches_original_initial_group_and_frame() {
+    use cyrus_game::player::placement::initial_animation;
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (player entry animation)");
+        return;
+    };
+    let path = std::fs::read_dir(install.maps())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("ISLAND.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let data = Animations {
+        version: 2,
+        world: 1,
+        metadata: rgpre::import::rgm::export_rgm_metadata_json(&map, None),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let (animation, frame) = initial_animation(&data, 1, &mut |_| Ok(())).unwrap();
+    assert_eq!(animation.current_group(), Some(0));
+    assert_eq!(animation.pending_group(), None);
+    // Installed RAAN reference 396 selects CYRSA004 frame 1, matching the entry capture.
+    assert_eq!(frame, Some(396));
+}
+
+#[test]
 fn walking_request_reads_the_marker_after_immediate_animation_advance() {
     let (definition, data) = data(serde_json::json!([{
         "group_index":20,"anim_type":1,"anim_id":2,"commands":[

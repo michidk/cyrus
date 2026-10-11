@@ -50,9 +50,10 @@ Native, headless, and browser loading consume the same marker metadata. Re-expor
 worlds after updating to populate exact marker coordinates in `.animations`
 and installed movement/terrain inputs in `.player`. Re-export for player schema 2,
 which adds authored static collision geometry and placement lists.
-Unavailable markers report a player-entry error. Ground settling, locomotion,
-and the original follow camera remain unsupported; use the independent debug
-flycam to inspect the world.
+Entry waits for both sidecars and settles against dry terrain and static models.
+Unavailable markers, unsupported terrain, and missing player definitions report a
+player-entry error. Dynamic ground support, locomotion and the original follow
+camera remain unsupported; use the independent debug flycam to inspect the world.
 
 ## CI artifacts
 

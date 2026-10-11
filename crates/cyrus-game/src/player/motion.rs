@@ -20,6 +20,25 @@ pub fn upright_rotation(heading: u16) -> bevy::math::Mat3 {
     )
 }
 
+/// Refresh an admitted upright mode-zero matrix without consuming the angle snapshot.
+/// Per preservation PR49, each output component is stored at single precision.
+/// The caller snapshots headings at update start and chooses the refresh stage.
+pub fn refresh_upright_rotation(
+    rotation: &mut bevy::math::Mat3,
+    previous_heading: u16,
+    heading: u16,
+) {
+    if heading == previous_heading {
+        return;
+    }
+    let index = usize::from(previous_heading.wrapping_sub(heading) & 2047);
+    let (sine, cosine) = (f64::from(ROTATION[index]), f64::from(ROTATION[index + 512]));
+    let x = rotation.x_axis.as_dvec3();
+    let z = rotation.z_axis.as_dvec3();
+    rotation.x_axis = (x * cosine - z * sine).as_vec3();
+    rotation.z_axis = (x * sine + z * cosine).as_vec3();
+}
+
 /// Translate in original axes using an integer runtime distance. Y is unchanged.
 /// Positions and distance have eight fractional bits; heading uses 1/2048 turns.
 /// Single-precision coordinate addition is part of the original movement rule.

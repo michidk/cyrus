@@ -33,6 +33,90 @@ fn placement(id: u32, position: [i32; 3], model: &str) -> StaticPlacement {
 }
 
 #[test]
+fn startup_settling_keeps_first_equal_contact_and_uses_full_search_radius() {
+    use cyrus_world::collision::ground::SupportSource;
+    let world = StaticCollision::new(&CollisionScene {
+        models: [("GROUND".into(), model(0))].into(),
+        placements: vec![
+            placement(1, [5000, 400, 5000], "GROUND"),
+            placement(2, [5000, 400, 5000], "GROUND"),
+        ],
+        ..Default::default()
+    })
+    .unwrap();
+    let position = [5000 * 256, -62 * 256, 5000 * 256];
+    assert!(
+        world
+            .candidates([5000, 5000], position, None)
+            .unwrap()
+            .faces
+            .is_empty()
+    );
+    let support = world.startup_support(position, 62, None).unwrap().unwrap();
+    assert_eq!(support.source(), SupportSource::Model { model: 1, face: 0 });
+    assert_eq!(support.actor_height(62, -2), 86_016);
+}
+
+#[test]
+fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
+    use cyrus_world::collision::ground::GroundSupport;
+    let world = StaticCollision::new(&CollisionScene::default()).unwrap();
+    let position = [5000 * 256, -62 * 256, 5000 * 256];
+    for height in [-500.9, -500.0, 500.0, 500.9] {
+        assert!(
+            world
+                .startup_support(
+                    position,
+                    62,
+                    Some(GroundSupport {
+                        height,
+                        normal: [0, -256, 0],
+                    })
+                )
+                .unwrap()
+                .is_none()
+        );
+    }
+    for (height, expected) in [(-499.9, -144_128), (499.9, 111_360)] {
+        let support = world
+            .startup_support(
+                position,
+                62,
+                Some(GroundSupport {
+                    height,
+                    normal: [0, -256, 0],
+                }),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(support.actor_height(62, -2), expected);
+    }
+}
+
+#[test]
+fn startup_settling_retains_distinct_terrain_and_model_rank_scales() {
+    use cyrus_world::collision::ground::{GroundSupport, SupportSource};
+    let world = StaticCollision::new(&CollisionScene {
+        models: [("GROUND".into(), model(0))].into(),
+        placements: vec![placement(1, [5000, 100, 5000], "GROUND")],
+        ..Default::default()
+    })
+    .unwrap();
+    let support = world
+        .startup_support(
+            [5000 * 256, -62 * 256, 5000 * 256],
+            62,
+            Some(GroundSupport {
+                height: -100.0,
+                normal: [0, -256, 0],
+            }),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(support.source(), SupportSource::Model { model: 0, face: 0 });
+}
+
+#[test]
 fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
     use cyrus_world::collision::ground::GroundSupport;
     use cyrus_world::collision::ground::ModelSupport;
