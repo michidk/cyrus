@@ -46,7 +46,7 @@ module where it is defined and regenerate.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
-- `src/sound_bank.rs` — Original effects bank, loaded without inventing script or ambient triggers.
+- `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/startup/export.rs` — (undocumented)

@@ -212,3 +212,119 @@ fn system_ini_switches_default_on() {
     assert!(!off.effects && !off.music && !off.speech);
     assert_eq!(off.rtx_filename, "FRENCH.RTX");
 }
+
+#[test]
+fn flat_cues_fill_sixteen_channels_with_clamped_rate_and_base_volume() {
+    use bevy::audio::{PlaybackSettings, Volume};
+    use bevy::prelude::*;
+    use cyrus_game::sound::{Effect, PlayingSound, SoundCue, SoundEffects, SoundPlugin};
+    let Some(install) = install("sound channel") else {
+        return;
+    };
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, SoundPlugin))
+        .insert_resource(install);
+    app.update();
+    let master = app.world().resource::<SoundSettings>().master_volume;
+    app.insert_resource(SoundEffects(vec![Some(Effect {
+        audio: Handle::default(),
+        looping: true,
+        base_volume: 64,
+        sample_rate: 22050,
+    })]));
+    for _ in 0..17 {
+        app.world_mut().write_message(SoundCue::Flat {
+            effect: 0,
+            volume: -4,
+            rate_offset_hz: -8 * 64,
+        });
+    }
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 1,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    let mut playing = app
+        .world_mut()
+        .query_filtered::<&PlaybackSettings, With<PlayingSound>>();
+    let settings: Vec<_> = playing.iter(app.world()).collect();
+    assert_eq!(
+        settings.len(),
+        16,
+        "16 channels; the 17th start and effect 1 are dropped"
+    );
+    assert_eq!(settings[0].speed, 21538.0 / 22050.0);
+    assert_eq!(settings[0].volume, Volume::Linear(output_gain(60, master)));
+}
+
+#[test]
+fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
+    use bevy::audio::AudioSource;
+    use bevy::prelude::*;
+    use cyrus_game::animation::AnimationSound;
+    use cyrus_game::player::ViewCamera;
+    use cyrus_game::sound::{
+        Effect, Panned, PlayingSound, SoundCue, SoundEffects, SoundPlugin, SoundSurface,
+    };
+    use rgpre::import::sfx::AudioType;
+    let Some(install) = install("animation sound cue") else {
+        return;
+    };
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
+        .init_asset::<AudioSource>()
+        .init_asset::<Panned>()
+        .insert_resource(install);
+    app.update();
+    let audio = app
+        .world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .add(AudioSource {
+            bytes: pcm_wav(AudioType::Mono8, 11025, &[128; 64]).unwrap().into(),
+        });
+    app.insert_resource(SoundEffects(vec![Some(Effect {
+        audio,
+        looping: true,
+        base_volume: 64,
+        sample_rate: 11025,
+    })]));
+    app.world_mut()
+        .spawn((ViewCamera, GlobalTransform::default()));
+    let known = app
+        .world_mut()
+        .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(0)))
+        .id();
+    let unknown = app
+        .world_mut()
+        .spawn(GlobalTransform::from_translation(Vec3::Z))
+        .id();
+    for actor in [known, unknown] {
+        app.world_mut().write_message(SoundCue::Animation {
+            actor,
+            sound: AnimationSound::Play {
+                effect: 0,
+                rate_offset_hz: 0,
+            },
+        });
+    }
+    app.update();
+    let mut playing = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>();
+    assert_eq!(
+        playing.iter(app.world()).count(),
+        1,
+        "only the known surface plays"
+    );
+    app.world_mut().write_message(SoundCue::Animation {
+        actor: known,
+        sound: AnimationSound::Stop,
+    });
+    app.update();
+    assert_eq!(
+        playing.iter(app.world()).count(),
+        0,
+        "Stop ends the actor's last sound"
+    );
+}

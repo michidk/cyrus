@@ -17,8 +17,7 @@ use rgpre::import::{
 };
 use std::path::{Path, PathBuf};
 
-/// Engine-to-export unit divisor used by the preservation crate's GLB export.
-pub const ENGINE_UNIT_SCALE: f32 = 20.0;
+pub use crate::ENGINE_UNIT_SCALE;
 /// Terrain texture bank the original engine hard-wires for WLD terrain (per the
 /// preservation crate's WLD exporter).
 const TERRAIN_TEXBSI_ID: u16 = 302;
