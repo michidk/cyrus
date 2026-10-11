@@ -99,8 +99,11 @@ Supplied ticks run ordinary advancement/default request, then the script stage;
 immediate script requests reuse the same ticks. This does not activate world
 objects. Render updates alone do not advance either core.
 
-Animated i16 frame
-interpretation, mesh replacement across models, automatic actor activation,
+Re-exported animated i16 frames use absolute coordinates reconstructed by rgpre
+from base-frame deltas. Their `animated_i16_absolute` encoding separates them
+from older raw-delta caches, which remain unavailable for nonzero-frame playback.
+Installed Cyrus frame checks cover export and projection; live visual parity
+remains unchecked. Mesh replacement across models, automatic actor activation,
 complete script scheduling, state-dependent default selection, other group types,
 cancellation requests and the host-clock driver remain
 unsupported. These APIs do not establish matched original-game playback.

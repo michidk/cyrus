@@ -1043,3 +1043,19 @@ fn rendered_playback_survives_a_delay_before_its_first_pose() {
     assert!(app.world().get::<AnimationPlayback>(node).is_none());
     assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 0);
 }
+
+#[test]
+fn reconstructed_i16_frames_project_absolute_positions_and_old_caches_stay_rejected() {
+    use cyrus_game::animation::MeshFrameBinding;
+    let mut input = asset();
+    let model = input.models.get_mut("TEST").unwrap();
+    let binding = MeshFrameBinding {
+        version: 1,
+        source_vertices: vec![[0, 0]],
+    };
+    assert!(model.frame_geometry(1, &binding).is_err());
+    model.encoding = "animated_i16_absolute".into();
+    model.positions[1][0] = [9.0, -18.0, 29.5];
+    let frame = model.frame_geometry(1, &binding).unwrap();
+    assert_eq!(frame.positions, [[-0.45, 0.9, 1.475]]);
+}

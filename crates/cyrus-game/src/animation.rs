@@ -74,7 +74,11 @@ impl Animations {
             anyhow::ensure!(
                 matches!(
                     model.encoding.as_str(),
-                    "static_3d" | "static_3dc" | "animated_i16" | "animated_i32"
+                    "static_3d"
+                        | "static_3dc"
+                        | "animated_i16"
+                        | "animated_i16_absolute"
+                        | "animated_i32"
                 ),
                 "{context}: unsupported frame encoding {}",
                 model.encoding

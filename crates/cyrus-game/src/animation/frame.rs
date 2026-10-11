@@ -49,7 +49,11 @@ impl AnimationModel {
             binding.version
         );
         anyhow::ensure!(
-            frame == 0 || self.encoding == "animated_i32",
+            frame == 0
+                || matches!(
+                    self.encoding.as_str(),
+                    "animated_i32" | "animated_i16_absolute"
+                ),
             "frame {frame}: playback for {} is unsupported",
             self.encoding
         );

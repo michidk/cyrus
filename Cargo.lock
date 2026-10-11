@@ -5577,7 +5577,7 @@ checksum = "a0d463f2884048e7153449a55166f91028d5b0ea53c79377099ce4e8cf0cf9bb"
 [[package]]
 name = "redguard-preservation"
 version = "0.6.2"
-source = "git+https://github.com/michidk/redguard-preservation?rev=d56094ee305450f4862de61265ea1ec3e47385a3#d56094ee305450f4862de61265ea1ec3e47385a3"
+source = "git+https://github.com/michidk/redguard-preservation?rev=2e9e3d7b396f65c2843d0298fb5174d6c5444366#2e9e3d7b396f65c2843d0298fb5174d6c5444366"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",

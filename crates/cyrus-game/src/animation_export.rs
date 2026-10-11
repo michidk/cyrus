@@ -19,7 +19,7 @@ fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
     let encoding = match model.frame_data.first().map(|frame| frame.frame_type) {
         Some(FrameType::Static3D) => "static_3d",
         Some(FrameType::Static3DC) => "static_3dc",
-        Some(FrameType::AnimatedI16) => "animated_i16",
+        Some(FrameType::AnimatedI16 | FrameType::AnimatedI16Unscaled) => "animated_i16_absolute",
         Some(FrameType::AnimatedI32) => "animated_i32",
         other => anyhow::bail!("unsupported frame encoding {other:?}"),
     };
@@ -209,4 +209,46 @@ pub(crate) fn export(
     std::fs::write(&temporary, serde_json::to_vec(&result)?)?;
     std::fs::rename(&temporary, out.with_extension("animations"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn installed_cyrus_compressed_frames_export_absolute_geometry() {
+        use crate::animation::MeshFrameBinding;
+        let root = std::env::var_os(crate::install::ENV_VAR)
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        if !root.join("RGFX.EXE").is_file() {
+            eprintln!("skipped: no install for compressed Cyrus frame export");
+            return;
+        }
+        let bytes = std::fs::read(root.join("fxart/CYRSA001.3DC")).unwrap();
+        let parsed = rgpre::import::model3d::parse_3d_file(&bytes).unwrap();
+        let model = super::model_data(&parsed).unwrap();
+        assert_eq!(model.encoding, "animated_i16_absolute");
+        let face = model
+            .faces
+            .iter()
+            .position(|face| face.contains(&0))
+            .unwrap();
+        let binding = MeshFrameBinding {
+            version: 1,
+            source_vertices: vec![[0, face as u32]],
+        };
+        for (frame, expected) in [
+            (1, [11.996_094, -0.488_281_25, 3.226_562_5]),
+            (2, [12.382_812_5, -0.265_625, 2.425_781_3]),
+            (10, [12.214_844, -0.628_906_25, 3.492_187_5]),
+        ] {
+            assert_eq!(model.positions[frame][0], expected);
+            let geometry = model.frame_geometry(frame, &binding).unwrap();
+            assert_eq!(
+                geometry.positions,
+                [[-expected[0] / 20.0, -expected[1] / 20.0, expected[2] / 20.0]]
+            );
+        }
+    }
 }
