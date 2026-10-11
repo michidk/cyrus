@@ -3,8 +3,13 @@
 # is installed (`just setup`), so concurrent agents share one build queue
 # instead of blocking on Cargo's lock. Without it, plain cargo.
 cargo() {
+    if [ "${1:-}" = test ]; then
+        # Unoptimized install parsers exceed libtest's 2 MiB worker stack.
+        local RUST_MIN_STACK="${RUST_MIN_STACK:-8388608}"
+        export RUST_MIN_STACK
+    fi
     if [ -z "${CARGO_HAULER_INSIDE:-}" ] && command -v hauler >/dev/null 2>&1; then
-        hauler exec --host script -- cargo "$@"
+        CARGO_HAULER_MAX_CONCURRENT=3 hauler exec --host script -- cargo "$@"
     else
         command cargo "$@"
     fi

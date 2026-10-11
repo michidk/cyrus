@@ -92,8 +92,9 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 - `just setup` once per clone (pre-commit hook, local agent config,
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
-  scripts share one queue; `hauler status` shows what is running. Long
-  builds may return a ticket: `hauler await cc-N`, never retry them.
+  scripts share one queue with at most three concurrent builds; `hauler status`
+  shows what is running. Long builds may return a ticket: `hauler await cc-N`,
+  never retry them.
 - Full workspace builds take a long time. During development, run the narrowest
   relevant test and build small, isolated test scenes that exercise one system
   without loading the full game.
@@ -108,8 +109,7 @@ untracked working memory. Each crate has a `README.md` with its commands.
   - Rust, Cargo, build-script and gate changes need the narrowest relevant test
     during development, then one `just gates` run after the final relevant edit.
     Tests that need the install skip when it is absent and say so; with an
-    install linked, a skip fails the gate, and the suite runs once more with the
-    install unreachable.
+    install linked, a skip fails the gate. CI verifies the no-install path.
   - Runtime and fidelity changes also need the relevant headless run, replay or
     original-game comparison. Generic workspace tests do not replace it.
 - Do not repeat `just gates` when the tested tree and gate inputs are unchanged.

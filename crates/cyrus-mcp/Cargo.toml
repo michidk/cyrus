@@ -4,6 +4,11 @@ description = "MCP (stdio) server exposing a running cyrus game to AI agents via
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "cyrus-mcp"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 cyrus-control.workspace = true
 anyhow.workspace = true

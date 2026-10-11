@@ -6,6 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 version=0.14.1
+export CARGO_HAULER_MAX_CONCURRENT=3
 command -v npm >/dev/null || { echo "setup-hauler: no npm, skipping (builds use plain cargo)"; exit 0; }
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a==22&&b>=19)?0:1)' \
     || { echo "setup-hauler: Node >= 22.19 needed, skipping"; exit 0; }
@@ -26,6 +27,7 @@ if command -v codex >/dev/null; then
     python3 -I - "$copy" <<'PY'
 import json, os, sys
 root = sys.argv[1]
+max_concurrent = os.environ["CARGO_HAULER_MAX_CONCURRENT"]
 path = os.path.expanduser("~/.codex/hooks.json")
 config = json.load(open(path)) if os.path.exists(path) else {}
 hooks = config.setdefault("hooks", {})
@@ -36,7 +38,7 @@ for event, route, timeout, matcher in [("SessionStart", "session-start", 5, None
                                        ("PostToolUse", "tool-after", 10, "Bash"),
                                        ("Stop", "stop", 900, None)]:
     group = {"hooks": [{"type": "command",
-                        "command": f"node '{root}/hooks/event-route-{route}.codex.mjs'",
+                        "command": f"env CARGO_HAULER_MAX_CONCURRENT={max_concurrent} node '{root}/hooks/event-route-{route}.codex.mjs'",
                         "timeout": timeout}]}
     if matcher:
         group["matcher"] = matcher

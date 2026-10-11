@@ -17,6 +17,4 @@ if [ -e redguard/RGFX.EXE ] && [ "$skipped" != 0 ]; then
     exit 1
 fi
 echo "gates: $skipped install tests skipped"
-# Every install test must skip, not fail, where there is no install.
-REDGUARD_DIR=/nonexistent cargo test --workspace --quiet
 echo "gates: green"

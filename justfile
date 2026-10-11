@@ -17,7 +17,7 @@ setup:
 toolchain:
     dev/scripts/toolchain.sh install
 
-# publish-check, generated map, fmt, clippy, tests (twice: with and without the install)
+# publish-check, generated map, fmt, clippy, tests
 gates:
     dev/scripts/gates.sh
 
