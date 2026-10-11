@@ -6,6 +6,7 @@ use bevy::math::DVec3;
 pub struct TerrainGround {
     heights: Vec<i16>,
     water: Vec<bool>,
+    textures: Option<Vec<u8>>,
 }
 
 /// A terrain plane result before converting its height to the actor origin.
@@ -281,13 +282,46 @@ fn classify_normal(y: i32) -> u8 {
 }
 
 impl TerrainGround {
-    /// Accepts exactly one original 256-by-256 grid and its water-vertex mask.
-    pub fn new(heights: Vec<i16>, water: Vec<bool>) -> anyhow::Result<Self> {
+    /// Accepts original 256-by-256 height, water and optional packed texture grids.
+    /// Old caches without textures support height queries only.
+    pub fn new(
+        heights: Vec<i16>,
+        water: Vec<bool>,
+        textures: Option<Vec<u8>>,
+    ) -> anyhow::Result<Self> {
         anyhow::ensure!(
             heights.len() == 256 * 256 && water.len() == heights.len(),
             "terrain support: expected 256-by-256 height and water grids"
         );
-        Ok(Self { heights, water })
+        anyhow::ensure!(
+            textures
+                .as_ref()
+                .is_none_or(|bytes| bytes.len() == heights.len()),
+            "terrain material: expected 256-by-256 texture grid"
+        );
+        Ok(Self {
+            heights,
+            water,
+            textures,
+        })
+    }
+
+    /// Original packed Map 3 texture and rotation at an actor's runtime position.
+    /// Coordinates retain eight fractional bits; lookup follows preservation's
+    /// engine/player.md terrain material rules.
+    /// A missing old-cache grid is distinct from an out-of-bounds query.
+    pub fn texture(&self, position: [i64; 3]) -> anyhow::Result<Option<u8>> {
+        let textures = self.textures.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("terrain material: missing texture grid; re-export world")
+        })?;
+        let x = (position[0] >> 8) as f32;
+        let z = (position[2] >> 8) as f32;
+        let column = (x / 256.0 - 0.5).round_ties_even() as i32;
+        let row = (z / 256.0 + 0.5).round_ties_even() as i32;
+        if !(0..255).contains(&column) || !(1..256).contains(&row) {
+            return Ok(None);
+        }
+        Ok(Some(textures[(256 - row) as usize * 256 + column as usize]))
     }
 
     /// Samples dry interior terrain. Returns `None` for unsupported water or grid edges.

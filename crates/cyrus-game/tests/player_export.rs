@@ -44,11 +44,13 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     }
     let player = scene.definition.unwrap();
     assert_eq!(player.forward_walk, 8);
-    let support = scene
-        .terrain
-        .unwrap()
-        .sample([10_448_896, -178_944, 10_502_144])
-        .unwrap();
+    let terrain = scene.terrain.unwrap();
+    assert_eq!(
+        terrain.texture([42008 * 256, 0, 40607 * 256]).unwrap(),
+        Some(89)
+    );
+    assert_eq!(surfaces.get(&((302 << 7) | 25)), Some(&6));
+    let support = terrain.sample([10_448_896, -178_944, 10_502_144]).unwrap();
     assert_eq!(support.height, -680.0);
     assert_eq!(support.normal, [0, -256, 0]);
     assert_eq!(

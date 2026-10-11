@@ -55,6 +55,7 @@ pub(crate) struct SceneData {
     pub definition: serde_json::Value,
     pub heights: Option<Vec<i16>>,
     pub water: Option<Vec<bool>>,
+    pub terrain_textures: Option<Vec<u8>>,
     pub collision: Option<CollisionScene>,
 }
 
@@ -77,12 +78,12 @@ impl SceneData {
             .with_context(|| format!("world {} collision", self.world))?;
         let static_collision = StaticCollision::new(&collision)
             .with_context(|| format!("world {} static collision", self.world))?;
-        let terrain = match (self.heights, self.water) {
-            (Some(heights), Some(water)) => Some(
-                TerrainGround::new(heights, water)
+        let terrain = match (self.heights, self.water, self.terrain_textures) {
+            (Some(heights), Some(water), textures) => Some(
+                TerrainGround::new(heights, water, textures)
                     .with_context(|| format!("world {} player terrain", self.world))?,
             ),
-            (None, None) => None,
+            (None, None, None) => None,
             _ => anyhow::bail!("world {}: incomplete player terrain", self.world),
         };
         let (definition, unavailable) = match PlayerDefinition::from_metadata(&self.definition) {

@@ -4,7 +4,7 @@ use cyrus_game::player::ground::TerrainGround;
 fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
     let mut heights = vec![-680; 256 * 256];
     heights[(256 - 161) * 256 + 160] = -720;
-    let terrain = TerrainGround::new(heights, vec![false; 256 * 256]).unwrap();
+    let terrain = TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap();
     let spawn = terrain.sample([10_448_896, -178_944, 10_502_144]).unwrap();
     assert_eq!(spawn.height, -680.0);
     assert_eq!(spawn.normal, [0, -256, 0]);
@@ -25,11 +25,11 @@ fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
 fn unsupported_water_and_outside_grid_do_not_fabricate_support() {
     let mut water = vec![false; 256 * 256];
     water[(256 - 161) * 256 + 159] = true;
-    let terrain = TerrainGround::new(vec![-680; 256 * 256], water).unwrap();
+    let terrain = TerrainGround::new(vec![-680; 256 * 256], water, None).unwrap();
     assert!(terrain.sample([10_448_896, 0, 10_502_144]).is_none());
     assert!(terrain.sample([-256, 0, 0]).is_none());
     assert!(terrain.sample([65_536 * 256, 0, 0]).is_none());
-    assert!(TerrainGround::new(vec![], vec![]).is_err());
+    assert!(TerrainGround::new(vec![], vec![], None).is_err());
 }
 
 #[test]
@@ -196,6 +196,11 @@ fn player_cache_rejects_partial_terrain_and_retains_unavailable_definition() {
     assert!(scene.terrain.is_none());
     assert!(scene.definition.is_none());
     assert!(scene.unavailable.unwrap().contains("world 1 player: CYRUS"));
+    let mut stray_textures: serde_json::Value =
+        serde_json::from_slice(&bytes(2, serde_json::Value::Null, serde_json::Value::Null))
+            .unwrap();
+    stray_textures["terrain_textures"] = serde_json::json!(vec![0; 256 * 256]);
+    assert!(PlayerScene::decode(&serde_json::to_vec(&stray_textures).unwrap()).is_err());
     assert!(
         PlayerScene::decode(&bytes(
             999,

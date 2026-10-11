@@ -40,7 +40,7 @@ pub(crate) fn export(
         "actors": actors,
         "mpsz_entries": metadata["mpsz_entries"].take(),
     });
-    let (heights, water) = if let Some(terrain) = terrain {
+    let (heights, water, terrain_textures) = if let Some(terrain) = terrain {
         let heights = terrain
             .combined_map(0)?
             .into_iter()
@@ -54,9 +54,10 @@ pub(crate) fn export(
         (
             Some(heights),
             Some(crate::environment::water_vertices(&textures, 256)),
+            Some(textures),
         )
     } else {
-        (None, None)
+        (None, None, None)
     };
     let keys_path =
         crate::scene::find_file(root, "KEYS.INI").context("player export: missing KEYS.INI")?;
@@ -92,6 +93,7 @@ pub(crate) fn export(
         definition,
         heights,
         water,
+        terrain_textures,
         collision: Some(collision),
     };
     let bytes = serde_json::to_vec(&data)
