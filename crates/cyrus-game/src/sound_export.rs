@@ -7,44 +7,16 @@ use rgpre::import::sfx::{self, SfxEffect};
 use std::path::Path;
 
 fn wav(effect: &SfxEffect) -> anyhow::Result<Vec<u8>> {
-    let channels = effect.audio_type.channels();
-    let bits = effect.audio_type.bits_per_sample();
-    let alignment = channels * (bits / 8);
-    anyhow::ensure!(
-        effect.sample_rate > 0 && effect.pcm_data.len().is_multiple_of(alignment as usize),
-        "invalid PCM layout"
-    );
     anyhow::ensure!(
         effect.loop_offset == 0 && effect.loop_end == u32::MAX,
         "unsupported partial sound loop"
     );
-    let length = u32::try_from(effect.pcm_data.len())?;
-    let padding = length % 2;
-    let riff_length = length
-        .checked_add(36 + padding)
-        .ok_or_else(|| anyhow::anyhow!("sound too large"))?;
-    let byte_rate = effect
-        .sample_rate
-        .checked_mul(alignment.into())
-        .ok_or_else(|| anyhow::anyhow!("sound rate overflow"))?;
-    let mut bytes = Vec::with_capacity(riff_length as usize + 8);
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&riff_length.to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16u32.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&channels.to_le_bytes());
-    bytes.extend_from_slice(&effect.sample_rate.to_le_bytes());
-    bytes.extend_from_slice(&byte_rate.to_le_bytes());
-    bytes.extend_from_slice(&alignment.to_le_bytes());
-    bytes.extend_from_slice(&bits.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&length.to_le_bytes());
-    bytes.extend_from_slice(&effect.pcm_data);
-    if padding != 0 {
-        bytes.push(0);
-    }
-    Ok(bytes)
+    cyrus_assets::media::pcm_wav(
+        &effect.pcm_data,
+        effect.sample_rate,
+        effect.audio_type.channels(),
+        effect.audio_type.bits_per_sample(),
+    )
 }
 
 pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {

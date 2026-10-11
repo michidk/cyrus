@@ -41,6 +41,13 @@ and all available commands.
 The game install remains read-only. cyrus stores settings, caches, and
 screenshots in the gitignored `cyrus-config/` directory.
 
+## Asset viewer
+
+Run `cargo run -p cyrus-viewer -- --install /path/to/Redguard` to browse assets
+in a separate application. It also builds for the browser. See the
+[viewer guide](crates/cyrus-viewer/README.md) for previews, controls, and browser
+setup. The viewer uses a modern inspection interface and generic rendering.
+
 ## Faithful by default
 
 Faithful mode aims to reproduce what the player experiences: visuals, audio,

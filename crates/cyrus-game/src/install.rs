@@ -22,18 +22,9 @@ impl GameInstall {
     }
 
     pub fn open(root: &Path) -> anyhow::Result<Self> {
-        let root = root
-            .canonicalize()
-            .map_err(|e| anyhow::anyhow!("{}: {e}", root.display()))?;
-        for required in ["fxart", "maps", "RGFX.EXE"] {
-            if !root.join(required).exists() {
-                anyhow::bail!(
-                    "{} is not a Redguard GOG install: missing {required}. Link your install: ln -s /path/to/GOG/Redguard {LINK_NAME} (or set {ENV_VAR}).",
-                    root.display()
-                );
-            }
-        }
-        Ok(Self { root })
+        let install = cyrus_assets::install::GameInstall::open(root)?;
+        install.cache_path(Path::new(cyrus_assets::CACHE_DIR))?;
+        Ok(Self { root: install.root })
     }
 
     pub fn maps(&self) -> PathBuf {

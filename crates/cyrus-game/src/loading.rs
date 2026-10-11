@@ -4,6 +4,7 @@
 
 use crate::{AppState, install::GameInstall};
 use bevy::prelude::*;
+use cyrus_app::LoadingProgress;
 use rgpre::import::{FileType, registry};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
@@ -12,7 +13,8 @@ pub struct LoadingPlugin;
 
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::Loading), start)
+        app.add_plugins(cyrus_app::LoadingOverlayPlugin)
+            .add_systems(OnEnter(AppState::Loading), start)
             .add_systems(Update, poll.run_if(in_state(AppState::Loading)))
             .add_systems(OnExit(AppState::Loading), teardown);
     }
@@ -62,88 +64,39 @@ impl Preloaded {
 #[derive(Resource)]
 struct Channel(Arc<Mutex<Receiver<Progress>>>);
 
-#[derive(Component)]
-struct LoadingUi;
-#[derive(Component)]
-struct Bar;
-#[derive(Component)]
-struct Label;
-
 fn start(
     mut commands: Commands,
     install: Res<GameInstall>,
+    mut progress: ResMut<LoadingProgress>,
     startup: Option<Res<crate::startup::StartupPresentation>>,
 ) {
     let (tx, rx) = channel();
     let root = install.root.clone();
     std::thread::spawn(move || preload(&root, &tx));
     commands.insert_resource(Channel(Arc::new(Mutex::new(rx))));
-    if startup.is_some() {
-        return;
-    }
-    commands.spawn((
-        LoadingUi,
-        Node {
-            width: percent(100),
-            height: percent(100),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            row_gap: px(12),
-            ..default()
-        },
-        BackgroundColor(Color::BLACK),
-        children![
-            (
-                Label,
-                Text::new("Reading install..."),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    ..default()
-                }
-            ),
-            (
-                Node {
-                    width: px(400),
-                    height: px(16),
-                    border: UiRect::all(px(1)),
-                    ..default()
-                },
-                BorderColor::all(Color::WHITE),
-                children![(
-                    Bar,
-                    Node {
-                        width: percent(0),
-                        height: percent(100),
-                        ..default()
-                    },
-                    BackgroundColor(Color::WHITE)
-                )],
-            ),
-        ],
-    ));
+    *progress = LoadingProgress {
+        visible: startup.is_none(),
+        label: "Reading install...".into(),
+        fraction: None,
+    };
 }
 
 fn poll(
     mut commands: Commands,
     channel: Res<Channel>,
     startup: Option<Res<crate::startup::StartupPresentation>>,
-    mut bar: Query<&mut Node, With<Bar>>,
-    mut label: Query<&mut Text, With<Label>>,
+    mut progress: ResMut<LoadingProgress>,
     mut next: ResMut<NextState<AppState>>,
 ) {
     let rx = channel.0.lock().unwrap();
     while let Ok(msg) = rx.try_recv() {
         match msg {
             Progress::File { done, total, name } => {
-                if let Ok(mut node) = bar.single_mut() {
-                    node.width = percent(100.0 * done as f32 / total.max(1) as f32);
-                }
-                if let Ok(mut text) = label.single_mut() {
-                    text.0 = format!("{name} ({done}/{total})");
-                }
+                progress.fraction = Some(done as f32 / total.max(1) as f32);
+                progress.label = format!("{name} ({done}/{total})");
             }
             Progress::Done(preloaded) => {
+                progress.visible = false;
                 info!(
                     "preload: {} parsed, {} failed",
                     preloaded.parsed,
@@ -167,10 +120,8 @@ fn poll(
     }
 }
 
-fn teardown(mut commands: Commands, ui: Query<Entity, With<LoadingUi>>) {
-    for e in &ui {
-        commands.entity(e).despawn();
-    }
+fn teardown(mut commands: Commands, mut progress: ResMut<LoadingProgress>) {
+    progress.visible = false;
     commands.remove_resource::<Channel>();
 }
 

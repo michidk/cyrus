@@ -1,0 +1,21 @@
+[package]
+name = "cyrus-viewer"
+description = "Native and browser asset explorer for an original Redguard install."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["wav", "webgl2"] }
+cyrus-assets = { path = "../cyrus-assets" }
+cyrus-app = { path = "../cyrus-app" }
+anyhow.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+clap.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Document", "Element", "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"

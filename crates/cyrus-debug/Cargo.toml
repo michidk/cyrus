@@ -8,6 +8,7 @@ edition.workspace = true
 doctest = false
 
 [dependencies]
+cyrus-app = { path = "../cyrus-app" }
 bevy.workspace = true
 bevy_egui = { version = "=0.43.0", default-features = false, features = ["default_fonts", "render"] }
 bevy-inspector-egui = { git = "https://github.com/taboky-dev/bevy-inspector-egui", rev = "6c4689637f289647ecad5897da35c29032fcc086", default-features = false, features = ["3d"] }

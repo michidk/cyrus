@@ -44,6 +44,18 @@ Unavailable markers report a player-entry error. Ground settling, locomotion,
 and the original follow camera remain unsupported; use the independent debug
 flycam to inspect the world.
 
+## Asset viewer
+
+`just viewer --install /path/to/Redguard` launches the separate native asset
+viewer. It requires an explicit install path or `REDGUARD_DIR`.
+Build with `just viewer-web-build`, without an install. Run
+`just run-viewer-web /path/to/Redguard` to serve original files at runtime.
+The browser parses them in a worker and generates selected previews in memory.
+
+The game and viewer share `target/web`, the loader, Cache Storage, and
+`cyrus-config/cache`. The viewer server also serves an explicit read-only install.
+See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
+
 ## Browser build
 
 ```sh

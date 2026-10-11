@@ -2,7 +2,6 @@
 //! `cyrus-config/cache/` (served next to the page); parsing the install's own
 //! files in the browser needs the preservation crate to run on wasm first.
 
-use bevy::asset::io::AssetSourceBuilder;
 use bevy::prelude::*;
 use cyrus_game::fidelity::{Area, Fidelity, Mode};
 use cyrus_game::player::PlayerPlugin;
@@ -37,20 +36,10 @@ fn modern_area(_area: &str) -> bool {
 fn main() {
     let direct_scene = scene_from_query().is_some();
     let mut app = App::new();
-    app.register_asset_source(
-        "cache",
-        AssetSourceBuilder::platform_default("cyrus-config/cache", None),
-    );
+    cyrus_app::register_cache(&mut app).expect("browser cache source");
     app.add_plugins(
         DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "cyrus".into(),
-                    fit_canvas_to_parent: true,
-                    ..default()
-                }),
-                ..default()
-            })
+            .set(cyrus_app::window("cyrus"))
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
                 ..default()

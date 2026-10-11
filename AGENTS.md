@@ -143,6 +143,12 @@ cinematic playback remain unavailable. Startup uses original-file assets, never
 captured playback.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
+`cyrus-viewer` is a separate native/browser inspection application. It requires
+an explicit native install path and uses generic textured rendering, without a
+Faithful appearance claim. It shares `cyrus-assets` and `cyrus-app` with the game;
+its controls do not change game preferences. See its crate README for asset
+coverage, browser runtime loading, and preview limitations.
+
 For agent work, choose the entry point explicitly:
 
 - `cargo run -p cyrus -- --skip-startup` skips splash/title to the book menu.

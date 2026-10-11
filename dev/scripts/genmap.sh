@@ -5,6 +5,7 @@
 #   genmap.sh          write docs/MAP.md
 #   genmap.sh --check  exit 1 when docs/MAP.md differs from the sources
 set -euo pipefail
+export LC_ALL=C
 cd "$(dirname "$0")/../.."
 
 first_doc() {

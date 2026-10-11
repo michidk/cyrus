@@ -198,3 +198,8 @@ capping the application. `normal_frame_rate` is a simulation-tick input, not
 the candle cadence. Original in-world timing still needs a paired comparison.
 Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook,
 activation prompts and the F8 toggle remain unsupported.
+
+Install validation, world geometry export, CD track reading, and PCM wrapping
+are shared through `cyrus-assets`. Window/cache setup, egui initialization, and
+loading-bar presentation are shared through `cyrus-app`. Game policy, sidecars,
+and fidelity remain in this crate.

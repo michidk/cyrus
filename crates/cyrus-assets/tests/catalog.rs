@@ -1,0 +1,183 @@
+//! Public catalog/cache contracts, without copyrighted fixtures.
+#![cfg(not(target_arch = "wasm32"))]
+use cyrus_assets::{Category, Content, Preview, Source, install::GameInstall, native::Library};
+use std::path::{Path, PathBuf};
+
+struct Scratch(PathBuf);
+impl Scratch {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "cyrus-assets-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn changed_sources_and_interrupted_cache_are_rebuilt() {
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    std::fs::write(root.join("notes.txt"), "first").unwrap();
+    let install = GameInstall::open(&root).unwrap();
+    let cache = scratch.0.join("cache");
+    assert_eq!(install.cache_path(&cache).unwrap(), cache);
+    assert!(install.cache_path(&root.join("new-cache")).is_err());
+    assert!(!root.join("new-cache").exists());
+    #[cfg(unix)]
+    {
+        let alias = scratch.0.join("install-alias");
+        std::os::unix::fs::symlink(&root, &alias).unwrap();
+        assert!(install.cache_path(&alias.join("new-cache")).is_err());
+    }
+    let first = Library::open(install.clone(), cache.clone(), |_, _, _| {}).unwrap();
+    let entry = first
+        .catalog
+        .entries
+        .iter()
+        .find(|e| e.path == "notes.txt")
+        .unwrap();
+    let preview = first.prepare(&entry.id).unwrap();
+    std::fs::write(&preview, b"interrupted").unwrap();
+    first.prepare(&entry.id).unwrap();
+    let decoded: Preview = serde_json::from_slice(&std::fs::read(preview).unwrap()).unwrap();
+    assert!(matches!(decoded.content, Content::Data { .. }));
+    std::fs::write(root.join("notes.txt"), "other").unwrap();
+    let second = Library::open(install, cache, |_, _, _| {}).unwrap();
+    assert_ne!(first.catalog.generation, second.catalog.generation);
+    assert_eq!(
+        entry.id,
+        second
+            .catalog
+            .entries
+            .iter()
+            .find(|e| e.path == "notes.txt")
+            .unwrap()
+            .id
+    );
+    assert!(GameInstall::open(&scratch.0).is_err());
+}
+
+#[test]
+fn installed_asset_families_prepare_portable_previews() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (asset viewer families)");
+        return;
+    }
+    let install = GameInstall::open(&root).unwrap();
+    let geometry = cyrus_assets::native::geometry::world(&install.root, "START").unwrap();
+    assert_eq!(geometry.registry.root_path, install.root);
+    assert!(
+        geometry
+            .registry
+            .files
+            .values()
+            .all(|file| file.path.starts_with(&install.root) && file.path.is_file())
+    );
+    drop(geometry);
+    let scratch = Scratch::new();
+    let cache = scratch.0.join("cache");
+    let library = Library::open(install, cache, |_, _, _| {}).unwrap();
+    for category in Category::ALL {
+        assert!(
+            library
+                .catalog
+                .entries
+                .iter()
+                .any(|e| e.category == category),
+            "missing category {category:?}"
+        );
+    }
+    type Family = (&'static str, fn(&cyrus_assets::Entry) -> bool);
+    let predicates: [Family; 14] = [
+        ("indexed image", |e| matches!(e.source, Source::Image(_))),
+        ("title", |e| e.path.to_uppercase().ends_with("STARTUP2.GXA")),
+        ("palette", |e| e.category == Category::Palettes),
+        ("font", |e| e.path.eq_ignore_ascii_case("fonts/FONTSEL.FNT")),
+        ("standalone model", |e| {
+            e.category == Category::Models && matches!(e.source, Source::File)
+        }),
+        ("archive model", |e| matches!(e.source, Source::Model(_))),
+        ("effect", |e| matches!(e.source, Source::Effect(_))),
+        ("speech", |e| {
+            e.category == Category::Audio && matches!(e.source, Source::Speech(_))
+        }),
+        ("definition", |e| e.path.eq_ignore_ascii_case("MENU.INI")),
+        ("world", |e| {
+            matches!(e.source, Source::World(_)) && e.name.to_uppercase().contains("START.RGM")
+        }),
+        ("spatial data", |e| e.path.to_uppercase().ends_with(".PVO")),
+        ("splash", |e| matches!(e.source, Source::Splash(0))),
+        ("CD track", |e| matches!(e.source, Source::CdTrack(2))),
+        (
+            "movie",
+            |e| matches!(&e.source,Source::CdMovie(name) if name.eq_ignore_ascii_case("INTRO.SMK")),
+        ),
+    ];
+    for (family, predicate) in predicates {
+        let entry = library
+            .catalog
+            .entries
+            .iter()
+            .find(|e| predicate(e))
+            .unwrap_or_else(|| panic!("no {family}"));
+        eprintln!("preparing {family}: {}", entry.name);
+        if matches!(entry.source, Source::World(_)) {
+            let manifest = library.cache.join(library.catalog.preview_path(entry));
+            if manifest.exists() {
+                std::fs::remove_file(manifest).unwrap();
+            }
+        }
+        let path = library.prepare(&entry.id).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        preview.validate().unwrap();
+        assert!(
+            !matches!(preview.content, Content::Unavailable { .. }),
+            "{family}: {:?}",
+            preview.content
+        );
+        for file in preview.files() {
+            assert!(
+                library.cache.join(file).is_file(),
+                "{family}: missing {file}"
+            );
+        }
+        if let Content::Movie { smk, .. } = &preview.content {
+            let mut movie =
+                cyrus_assets::media::Movie::open(&std::fs::read(library.cache.join(smk)).unwrap())
+                    .unwrap();
+            assert_eq!(
+                movie.rgba().len(),
+                movie.width as usize * movie.height as usize * 4
+            );
+            movie.advance().unwrap();
+            movie.seek(0).unwrap();
+            assert_eq!(movie.frame, 0);
+        }
+        if let Content::Audio { wav, .. } = &preview.content {
+            std::fs::remove_file(library.cache.join(wav)).unwrap();
+            library.prepare(&entry.id).unwrap();
+            assert!(
+                library.cache.join(wav).is_file(),
+                "missing derived audio was not repaired"
+            );
+        }
+    }
+}

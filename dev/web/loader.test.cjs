@@ -1,0 +1,43 @@
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+
+test("browser loader hands its existing overlay to the application", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "cyrus-loader-"));
+  const original = Object.getOwnPropertyDescriptors(globalThis);
+  try {
+    await fs.mkdir(path.join(directory, "pkg"));
+    await fs.copyFile(path.join(__dirname, "loader.js"), path.join(directory, "loader.mjs"));
+    await fs.writeFile(path.join(directory, "pkg/test.js"), "module.exports = async () => {};\n");
+    globalThis.location = { search: "" };
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+    globalThis.fetch = async () => new Response(new Uint8Array([0]), {
+      headers: { "content-length": "1", "last-modified": "test" },
+    });
+    for (const application of [true, false]) {
+      let removed = false;
+      const elements = {
+        loading: { remove: () => { removed = true; } },
+        label: { textContent: "" },
+        fill: { style: {} },
+      };
+      globalThis.document = {
+        body: { dataset: { engine: "test", loading: application ? "application" : undefined } },
+        getElementById: id => elements[id],
+      };
+      await import(pathToFileURL(path.join(directory, "loader.mjs")) + "?application=" + application);
+      assert.equal(removed, !application, "only the application may hide its loading overlay");
+      assert.equal(elements.label.textContent, "Starting application…");
+      assert.equal(elements.fill.style.width, "100%");
+    }
+  } finally {
+    for (const key of ["document", "location", "navigator", "fetch"]) {
+      if (original[key]) Object.defineProperty(globalThis, key, original[key]);
+      else delete globalThis[key];
+    }
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

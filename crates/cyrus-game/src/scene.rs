@@ -5,24 +5,12 @@
 
 use crate::player::FrameScene;
 use crate::{AppState, install::GameInstall, settings::Settings};
-use bevy::asset::io::AssetSourceBuilder;
 use bevy::prelude::*;
-use rgpre::gltf::{
-    TextureCache, convert_positioned_models_to_gltf, convert_wld_scene_to_gltf, to_glb,
-};
-use rgpre::import::{
-    palette::Palette,
-    registry, rgm, wld,
-    world_ini::{self, WorldEntry, WorldIni},
-};
+use rgpre::import::world_ini::{self, WorldIni};
 use std::path::{Path, PathBuf};
 
 /// Engine-to-export unit divisor used by the preservation crate's GLB export.
 pub const ENGINE_UNIT_SCALE: f32 = 20.0;
-/// Terrain texture bank the original engine hard-wires for WLD terrain (per the
-/// preservation crate's WLD exporter).
-const TERRAIN_TEXBSI_ID: u16 = 302;
-
 pub struct ScenePlugin;
 
 /// Present when there is no renderer: scenes are exported but not spawned.
@@ -31,15 +19,7 @@ pub struct Headless;
 
 /// Must run before `AssetPlugin` is added (Bevy builds sources at that point).
 pub fn register_cache_source(app: &mut App) -> anyhow::Result<()> {
-    let cache = std::path::absolute(Settings::cache_dir())
-        .map_err(|error| anyhow::anyhow!("resolve scene cache directory: {error}"))?;
-    std::fs::create_dir_all(&cache)
-        .map_err(|error| anyhow::anyhow!("create scene cache {}: {error}", cache.display()))?;
-    let path = cache
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("scene cache path is not UTF-8"))?;
-    app.register_asset_source("cache", AssetSourceBuilder::platform_default(path, None));
-    Ok(())
+    cyrus_app::register_cache(app)
 }
 
 /// WORLD.INI world ID or map stem to load, e.g. `27` or `ISLAND`.
@@ -126,78 +106,35 @@ fn load_requested(
 
 /// WLD scenes (outdoor) get terrain plus their RGM placements; indoor scenes are RGM only.
 pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Result<()> {
-    let worlds = read_worlds(install)?;
-    let entry = resolve_world(&worlds, name)?;
-    let registry = registry::scan_dir(&install.root)?;
-    let palette_path =
-        world_ini::find_palette_on_disk(&install.root, &entry.palette).ok_or_else(|| {
-            anyhow::anyhow!("world {}: missing palette {}", entry.index, entry.palette)
-        })?;
-    let palette = Palette::parse(&std::fs::read(palette_path)?)?;
-    let mut cache = TextureCache::new(
-        install.root.clone(),
-        Some(Palette {
-            colors: palette.colors,
-        }),
-    );
-    let rgm_path = map_path(install, &entry.map)?;
-    let rgm_bytes = std::fs::read(&rgm_path)?;
-    let stem = rgm_path.file_stem().and_then(|s| s.to_str());
-    let (rgm, models, lights) = rgm::parse_rgm_with_models_for_stem(&rgm_bytes, &registry, stem)?;
+    let world = cyrus_assets::native::geometry::world(&install.root, name)?;
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
-    crate::animation_export::export(&rgm, &models, &registry, entry.index, out)?;
-    let (root, buffer) = match &entry.world {
-        Some(path) => {
-            let terrain = wld::parse_wld_file(&std::fs::read(map_path(install, path)?)?)?;
-            crate::environment_export::export(install, entry, Some(&terrain), out)?;
-            crate::player::export::export(&install.root, &rgm, Some(&terrain), entry.index, out)?;
-            convert_wld_scene_to_gltf(
-                &terrain,
-                TERRAIN_TEXBSI_ID,
-                &models,
-                Some(&palette),
-                Some(&mut cache),
-                false,
-            )?
-        }
-        None => {
-            crate::environment_export::export(install, entry, None, out)?;
-            crate::player::export::export(&install.root, &rgm, None, entry.index, out)?;
-            convert_positioned_models_to_gltf(
-                &models,
-                &lights,
-                Some(&palette),
-                Some(&mut cache),
-                false,
-            )?
-        }
-    };
-    let glb = to_glb(&root, &buffer)?;
-    let temporary = out.with_extension("glb.tmp");
-    std::fs::write(&temporary, glb)?;
-    std::fs::rename(temporary, out)?;
+    crate::animation_export::export(
+        &world.rgm,
+        &world.models,
+        &world.registry,
+        world.entry.index,
+        out,
+    )?;
+    crate::environment_export::export(install, &world.entry, world.terrain.as_deref(), out)?;
+    crate::player::export::export(
+        &install.root,
+        &world.rgm,
+        world.terrain.as_deref(),
+        world.entry.index,
+        out,
+    )?;
+    cyrus_assets::native::publish(out, &world.glb)?;
     info!(
         "scene {name}: exported {} models to {}",
-        models.len(),
+        world.models.len(),
         out.display()
     );
     Ok(())
 }
 
-/// Case-insensitive lookup, because the GOG tree mixes upper and lower case.
-pub(crate) fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
-    std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .find(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.eq_ignore_ascii_case(name))
-        })
-}
+pub(crate) use cyrus_assets::native::geometry::find_file;
 
 /// `WORLD.INI` index of a scene name: a world ID or a map stem.
 pub fn world_index(install: &GameInstall, name: &str) -> anyhow::Result<u32> {
@@ -210,19 +147,7 @@ fn read_worlds(install: &GameInstall) -> anyhow::Result<WorldIni> {
     Ok(WorldIni::parse(&std::fs::read_to_string(path)?))
 }
 
-fn resolve_world<'a>(worlds: &'a WorldIni, name: &str) -> anyhow::Result<&'a WorldEntry> {
-    anyhow::ensure!(
-        !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
-        "scene must be a WORLD.INI ID or map stem"
-    );
-    let entry = if let Ok(id) = name.parse::<u32>() {
-        worlds.entries.iter().find(|entry| entry.index == id)
-    } else {
-        // Stem aliases select the first world, as in preservation's CLI.
-        worlds.find_by_map_stem(name).first().copied()
-    };
-    entry.ok_or_else(|| anyhow::anyhow!("no world {name} in WORLD.INI"))
-}
+use cyrus_assets::native::geometry::resolve_world;
 
 fn map_path(install: &GameInstall, path: &str) -> anyhow::Result<PathBuf> {
     let filename = path
@@ -278,6 +203,7 @@ pub fn export_all_worlds(install: &GameInstall, out: &Path) -> anyhow::Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rgpre::import::palette::Palette;
 
     #[test]
     fn world_selection_preserves_terrain_and_palette_variants() {
