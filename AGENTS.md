@@ -61,13 +61,15 @@ done and what is next), then the `README.md` of the crate you touch. The maintai
    it, a new format or engine fact, documentation that conflicts with what
    the game data or the original shows, or anything it is missing, open a pull
    request against [redguard-preservation](https://github.com/michidk/redguard-preservation)
-   with the fix or the documented fact and its evidence (counts, samples,
-   observations). Preservation docs contain only durable format and engine
-   facts. Put verification methods in the pull request or commit, and keep
-   open questions, investigation plans, and cyrus implementation status out
-   of preservation docs. Do not work around a preservation bug silently in
-   cyrus: link the pull request from the cyrus change, and keep any workaround
-   marked until the fix is released.
+   with the fix or documented fact. Preservation docs contain only durable
+   format and engine facts, stated directly without verification labels or
+   research narrative. Put supporting samples, observation logs, traces,
+   debugger details, and validation-only counts in the pull request or commit.
+   Stable counts that are part of the format may remain in the docs as direct
+   facts. Keep open questions, investigation plans, and cyrus implementation
+   status out of preservation docs. Do not work around a preservation bug
+   silently in cyrus: link the pull request from the cyrus change, and keep any
+   workaround marked until the fix is released.
 
 These rules govern what ships, not what may be said. That cyrus is informed by
 reverse engineering of the original, and which projects were read, is stated
