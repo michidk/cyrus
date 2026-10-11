@@ -1,7 +1,8 @@
 # Contributing
 
 cyrus is a personal project, public so people can read it, build it and fix
-it. Decisions are the maintainer's, and no fix date is promised. The original
+it. The code is written entirely by LLM coding agents under the maintainer's
+direction; decisions are the maintainer's, and no fix date is promised. The original
 game is the specification: a change that makes cyrus behave more like it beats
 a feature it never had.
 

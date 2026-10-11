@@ -299,3 +299,29 @@ fn scripted_playback_deforms_only_its_mesh_and_world_change_restores_it() {
     assert!(app.world().get::<AnimationPose>(node).is_none());
     assert_eq!(app.world().get::<Mesh3d>(primitive).unwrap().0, original);
 }
+
+#[test]
+fn an_animation_task_keeps_waiting_while_its_current_group_is_delayed() {
+    let mut data = asset();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"] = serde_json::json!([
+        {"opcode":12,"value":2}, {"opcode":0,"frame_reference":1}, {"opcode":1}
+    ]);
+    let mut actor = data.actor_animation("ACTOR", 1).unwrap();
+    let mut script = data.animation_script("ACTOR").unwrap();
+    actor.advance(0).unwrap();
+    assert_eq!(script.advance(&mut actor, 0).unwrap(), None);
+    for ticks in [0, 1] {
+        assert_eq!(actor.advance(ticks).unwrap(), None);
+        assert_eq!(script.advance(&mut actor, ticks).unwrap(), None);
+        assert_eq!(actor.current_group(), Some(7));
+        assert_eq!(script.waiting_for_group(), Some(7));
+        assert_eq!(script.program_counter(), 14);
+    }
+    assert_eq!(actor.advance(1).unwrap(), Some(1));
+    assert_eq!(script.advance(&mut actor, 1).unwrap(), None);
+    assert_eq!(script.waiting_for_group(), Some(7));
+    actor.advance(1).unwrap();
+    assert_eq!(script.advance(&mut actor, 1).unwrap(), Some(0));
+    assert_eq!(script.waiting_for_group(), Some(10));
+    assert_eq!(script.program_counter(), 28);
+}

@@ -1,6 +1,7 @@
 //! Cached environment inputs shared by native and browser builds.
 //! Glide BSI sky projection and scrolling follow preservation.
 
+pub use crate::sky::SkyScrollSync;
 use crate::sky::{Sky, SkyMaterial};
 use bevy::asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader};
 use bevy::camera::visibility::NoFrustumCulling;
@@ -40,6 +41,23 @@ pub struct SkyImage {
     pub scale: f32,
     /// Raw WORLD.INI scrolling speed; one unit is 1/16 texel per BIOS tick.
     pub speed: u8,
+    /// Optional camera-facing sun, using the BSI bytes as opacity.
+    pub sun: Option<SunImage>,
+}
+
+#[derive(Serialize, Deserialize)]
+/// Glide sun billboard inputs, per preservation's sky documentation.
+pub struct SunImage {
+    /// Texture dimensions in pixels.
+    pub size: [u32; 2],
+    /// One opacity byte per pixel; no palette conversion.
+    pub alpha: Vec<u8>,
+    /// Camera-relative center in engine coordinates, positive Y down.
+    pub center: [f32; 3],
+    /// Billboard half-width and half-height in engine units.
+    pub half_size: [f32; 2],
+    /// Encoded RGB tint.
+    pub color: [u8; 3],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,6 +91,18 @@ impl Environment {
             anyhow::ensure!(
                 sky.level.is_finite() && sky.scale.is_finite() && sky.scale != 0.0,
                 "invalid sky plane parameters"
+            );
+        }
+        if let Some(sun) = self.sky.as_ref().and_then(|sky| sky.sun.as_ref()) {
+            anyhow::ensure!(
+                sun.size.iter().all(|&v| (1..=256).contains(&v))
+                    && sun.alpha.len() == sun.size[0] as usize * sun.size[1] as usize,
+                "invalid sun pixels"
+            );
+            anyhow::ensure!(
+                sun.center.iter().all(|v| v.is_finite())
+                    && sun.half_size.iter().all(|v| v.is_finite() && *v > 0.0),
+                "invalid sun geometry"
             );
         }
         if let Some(water) = &self.water {
@@ -167,7 +197,17 @@ fn apply_sky(
     let Some(environment) = environments.get(&request.0) else {
         return;
     };
-    if let Some(sky) = &environment.sky {
+    {
+        let background = SkyImage {
+            width: 1,
+            height: 1,
+            rgba: vec![0; 4],
+            level: 0.0,
+            scale: 0.0,
+            speed: 0,
+            sun: None,
+        };
+        let sky = environment.sky.as_ref().unwrap_or(&background);
         let mut image = Image::new(
             Extent3d {
                 width: sky.width,
@@ -184,11 +224,38 @@ fn apply_sky(
             address_mode_v: ImageAddressMode::Repeat,
             ..ImageSamplerDescriptor::linear()
         });
+        let sun = sky.sun.as_ref();
+        let size = sun.map_or([1, 1], |sun| sun.size);
+        let mut sun_image = Image::new(
+            Extent3d {
+                width: size[0],
+                height: size[1],
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            sun.map_or_else(|| vec![0], |sun| sun.alpha.clone()),
+            TextureFormat::R8Unorm,
+            RenderAssetUsages::default(),
+        );
+        sun_image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::linear());
         let material = materials.add(SkyMaterial {
             image: images.add(image),
-            plane: Vec4::new(sky.level, sky.scale, sky.width as f32, sky.height as f32),
+            plane: if environment.sky.is_some() {
+                Vec4::new(sky.level, sky.scale, sky.width as f32, sky.height as f32)
+            } else {
+                Vec4::ZERO
+            },
             fog_rgb: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
             scroll: Vec4::ZERO,
+            sun_image: images.add(sun_image),
+            sun_position: sun.map_or(Vec4::ZERO, |sun| {
+                let [x, y, z] = sun.center;
+                Vec4::new(-x, -y, z, sun.half_size[0]) / 20.0
+            }),
+            sun_color: sun.map_or(Vec4::ZERO, |sun| {
+                Vec3::from_array(sun.color.map(|v| v as f32 / 255.0))
+                    .extend(sun.half_size[1] / 20.0)
+            }),
         });
         let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
@@ -249,6 +316,13 @@ mod tests {
                 level: -4500.0,
                 scale: 2000.0,
                 speed: 6,
+                sun: Some(SunImage {
+                    size: [2, 1],
+                    alpha: vec![0, 255],
+                    center: [-100.0, -200.0, -300.0],
+                    half_size: [40.0, 20.0],
+                    color: [255, 0, 128],
+                }),
             }),
             background: [0; 3],
             clipping: [7.0, 3800.0],
@@ -289,6 +363,15 @@ mod tests {
             .get(material_handle)
             .unwrap();
         assert_eq!(material.plane, Vec4::new(-4500.0, 2000.0, 2.0, 1.0));
+        assert_eq!(material.sun_position, Vec4::new(5.0, 10.0, -15.0, 2.0));
+        assert_eq!(material.sun_color, Vec4::new(1.0, 0.0, 128.0 / 255.0, 1.0));
+        let sun = app
+            .world()
+            .resource::<Assets<Image>>()
+            .get(&material.sun_image)
+            .unwrap();
+        assert_eq!(sun.texture_descriptor.format, TextureFormat::R8Unorm);
+        assert_eq!(sun.data.as_deref(), Some([0, 255].as_slice()));
         let image = app
             .world()
             .resource::<Assets<Image>>()
@@ -314,7 +397,19 @@ mod tests {
         assert!(app.world().resource::<ActiveEnvironment>().sky.is_some());
         app.world_mut().resource_mut::<EnvironmentRequest>().0 = indoor;
         app.update();
-        assert!(app.world().resource::<ActiveEnvironment>().sky.is_none());
+        let background = app.world().resource::<ActiveEnvironment>().sky.unwrap();
+        let handle = &app
+            .world()
+            .get::<MeshMaterial3d<SkyMaterial>>(background)
+            .unwrap()
+            .0;
+        let material = app
+            .world()
+            .resource::<Assets<SkyMaterial>>()
+            .get(handle)
+            .unwrap();
+        assert_eq!(material.plane, Vec4::ZERO);
+        assert_eq!(material.sun_position, Vec4::ZERO);
         assert_eq!(
             app.world().resource::<ClearColor>().0,
             Color::srgb_u8(10, 20, 30)

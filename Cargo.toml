@@ -21,6 +21,10 @@ redguard-preservation = { git = "https://github.com/michidk/redguard-preservatio
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-game = { path = "crates/cyrus-game" }
 
+# The inspector's Bevy 0.20 port uses an egui fork; share our released adapter instead.
+[patch."https://github.com/taboky-dev/bevy_egui.git"]
+bevy_egui = { version = "=0.43.0" }
+
 [profile.wasm-release]
 inherits = "release"
 opt-level = "s"

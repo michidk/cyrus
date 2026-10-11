@@ -3,7 +3,7 @@ use super::{
     StartupContent,
     menu::{MenuState, MovieRequest, MovieStatus},
 };
-use crate::{AppState, install::GameInstall, settings::Settings};
+use crate::{AppState, install::GameInstall};
 use anyhow::{Context, ensure};
 use bevy::{
     audio::{AudioPlayer, AudioSource, PlaybackSettings},
@@ -18,14 +18,13 @@ use rgpre::import::{
     cdrom::CdImage,
     fnt::{FntFile, parse_fnt},
     menu_movies::{MovieDefinition, parse_menu_movies},
+    sfx::AudioType,
     smacker::SmackerHeader,
 };
 use std::{
     fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    sync::{Mutex, mpsc},
+    path::Path,
+    sync::{Arc, Mutex, mpsc},
     time::Duration,
 };
 
@@ -35,7 +34,8 @@ struct MoviePlayback {
     playing: Option<Playing>,
 }
 struct Prepared {
-    path: PathBuf,
+    /// The whole Smacker file, decoded in-process.
+    data: Arc<[u8]>,
     definition: MovieDefinition,
     header: SmackerHeader,
     font: FntFile,
@@ -56,17 +56,9 @@ struct Playing {
 /// The audio of the playing movie; CD music pauses while it exists.
 #[derive(Component)]
 pub struct MovieAudio;
+/// Dropping it disconnects the channel, which stops the decoding thread.
 struct Decoder {
-    child: Mutex<Child>,
     frames: Mutex<mpsc::Receiver<anyhow::Result<Vec<u8>>>>,
-}
-impl Drop for Decoder {
-    fn drop(&mut self) {
-        if let Ok(child) = self.child.get_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
 }
 
 pub(super) fn register(app: &mut App) {
@@ -81,21 +73,6 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnExit(AppState::Menu), cleanup);
 }
 
-fn ffmpeg() -> Command {
-    let mut cmd = Command::new("ffmpeg");
-    cmd.args([
-        "-nostdin",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-threads",
-        "1",
-        "-filter_threads",
-        "1",
-    ]);
-    cmd
-}
-
 fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
     let ini = std::fs::read_to_string(root.join("MENU.INI")).context("movie: reading MENU.INI")?;
     let definition = parse_menu_movies(&ini)
@@ -107,7 +84,7 @@ fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
         std::fs::read_to_string(root.join("SYSTEM.INI")).context("movie: reading SYSTEM.INI")?;
     let name = &definition.name;
     let drive = crate::sound::ini_value(&system, "system", "animation_drive").unwrap_or("");
-    let path = if drive.contains(':') {
+    let data = if drive.contains(':') {
         let prefix = drive.as_bytes();
         ensure!(
             prefix.len() >= 3
@@ -120,31 +97,14 @@ fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
             .parent()
             .context("movie: install has no parent")?
             .join("game.gog");
-        let cache = Settings::cache_dir().join("movies");
-        std::fs::create_dir_all(&cache)?;
-        let path = cache.join(name);
-        let metadata = std::fs::metadata(&disc)
-            .with_context(|| format!("movie {name}: {}", disc.display()))?;
-        let stamp = format!("{}:{:?}", metadata.len(), metadata.modified()?);
-        let stamp_path = path.with_extension("source");
-        if !path.is_file() || std::fs::read_to_string(&stamp_path).ok().as_deref() != Some(&stamp) {
-            let temporary = path.with_extension("smk.tmp");
-            let result = (|| -> anyhow::Result<()> {
-                let mut image = CdImage::open(File::open(&disc)?)?;
-                let mut output = File::create(&temporary)?;
-                image
-                    .copy_file(name, &mut output)
-                    .with_context(|| format!("movie {name}: CD extraction"))?;
-                std::fs::rename(&temporary, &path)?;
-                std::fs::write(&stamp_path, stamp)?;
-                Ok(())
-            })();
-            if result.is_err() {
-                let _ = std::fs::remove_file(&temporary);
-            }
-            result?;
-        }
-        path
+        let mut image = CdImage::open(std::io::BufReader::new(
+            File::open(&disc).with_context(|| format!("movie {name}: {}", disc.display()))?,
+        ))?;
+        let mut data = Vec::new();
+        image
+            .copy_file(name, &mut data)
+            .with_context(|| format!("movie {name}: CD extraction"))?;
+        data
     } else {
         let mut directory = root.to_path_buf();
         for part in drive.split(['/', '\\']).filter(|p| !p.is_empty()) {
@@ -155,14 +115,11 @@ fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
             directory = crate::scene::find_file(&directory, part)
                 .with_context(|| format!("movie {name}: animation_drive {drive:?} missing"))?;
         }
-        crate::scene::find_file(&directory, name)
-            .with_context(|| format!("movie {name}: not found in {}", directory.display()))?
+        let path = crate::scene::find_file(&directory, name)
+            .with_context(|| format!("movie {name}: not found in {}", directory.display()))?;
+        std::fs::read(&path).with_context(|| format!("movie {name}: reading {}", path.display()))?
     };
-    let mut bytes = [0; 104];
-    File::open(&path)
-        .and_then(|mut file| file.read_exact(&mut bytes))
-        .with_context(|| format!("movie {name}: reading {}", path.display()))?;
-    let header = SmackerHeader::parse(&bytes)
+    let header = SmackerHeader::parse(&data)
         .map_err(anyhow::Error::msg)
         .with_context(|| format!("movie {name}: Smacker header"))?;
     ensure!(
@@ -202,32 +159,12 @@ fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
             .context("movie: REDGUARD.COL")?;
     let font_color = palette.colors[161];
     let audio = if header.has_audio {
-        // WAV files have seekable, correctly sized headers; stdout WAV headers do not.
-        let output = Settings::cache_dir()
-            .join("movies")
-            .join(format!("{name}.wav"));
-        std::fs::create_dir_all(output.parent().unwrap())?;
-        let result = ffmpeg()
-            .arg("-y")
-            .arg("-i")
-            .arg(&path)
-            .args(["-map", "0:a:0", "-vn", "-c:a", "pcm_s16le"])
-            .arg(&output)
-            .output()
-            .context("movie: FFmpeg is required on PATH")?;
-        ensure!(
-            result.status.success(),
-            "movie {name}: audio decode: {}",
-            String::from_utf8_lossy(&result.stderr)
-        );
-        Some(AudioSource {
-            bytes: std::fs::read(output)?.into(),
-        })
+        Some(decode_audio(&data).with_context(|| format!("movie {name}: audio decode"))?)
     } else {
         None
     };
     Ok(Prepared {
-        path,
+        data: data.into(),
         definition,
         header,
         font,
@@ -237,56 +174,89 @@ fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
     })
 }
 
+/// The first audio track as WAV.
+fn decode_audio(data: &[u8]) -> anyhow::Result<AudioSource> {
+    let mut smk = smk::Smk::open_memory(data)?;
+    let info = smk.info_audio();
+    ensure!(info.track_mask & 1 != 0, "no first audio track");
+    let audio_type = match (info.channels[0], info.bitdepth[0]) {
+        (1, 8) => AudioType::Mono8,
+        (1, 16) => AudioType::Mono16,
+        (2, 8) => AudioType::Stereo8,
+        (2, 16) => AudioType::Stereo16,
+        other => anyhow::bail!("unsupported audio layout {other:?}"),
+    };
+    smk.enable_all(1);
+    let mut pcm = Vec::new();
+    let mut status = smk.first_frame()?;
+    loop {
+        pcm.extend_from_slice(smk.audio_data(0).unwrap_or_default());
+        if status != smk::FrameStatus::More {
+            break;
+        }
+        status = smk.next_frame()?;
+    }
+    let bytes =
+        crate::sound::pcm_wav(audio_type, info.rate[0], &pcm).map_err(anyhow::Error::msg)?;
+    Ok(AudioSource {
+        bytes: bytes.into(),
+    })
+}
+
+/// Decodes on a thread from one-based `frame` on; Smacker frames are deltas, so
+/// earlier frames are decoded but not sent.
 fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
-    let seconds = f64::from(frame - 1) * f64::from(movie.header.frame_micros) / 1_000_000.0;
-    let errors = Settings::cache_dir().join("movies/decode.log");
-    std::fs::create_dir_all(errors.parent().unwrap())?;
-    let mut child = ffmpeg()
-        .args(["-ss", &format!("{seconds:.6}")])
-        .arg("-i")
-        .arg(&movie.path)
-        .args([
-            "-map",
-            "0:v:0",
-            "-an",
-            "-vf",
-            "scale=640:480:flags=bilinear",
-            "-pix_fmt",
-            "rgba",
-            "-f",
-            "rawvideo",
-            "pipe:1",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(File::create(&errors)?)
-        .spawn()
-        .context("movie: FFmpeg is required on PATH")?;
-    let mut stdout = child.stdout.take().context("movie: no decoder stdout")?;
+    let mut smk = smk::Smk::open_memory(&movie.data)?;
+    smk.enable_all(0x80);
     let (sender, receiver) = mpsc::sync_channel(2);
     let frames = movie.header.frames;
     let name = movie.definition.name.clone();
     std::thread::spawn(move || {
-        for index in frame..=frames {
-            let mut pixels = vec![0; 640 * 480 * 4];
-            let result = stdout
-                .read_exact(&mut pixels)
-                .with_context(|| {
-                    format!(
-                        "movie {name}: decoder stopped at frame {index}; see {}",
-                        errors.display()
-                    )
-                })
-                .map(|()| pixels);
-            let failed = result.is_err();
-            if sender.send(result).is_err() || failed {
+        let mut status = smk.first_frame();
+        for index in 1..=frames {
+            let failed = status.is_err();
+            if failed || index >= frame {
+                let result = status
+                    .as_ref()
+                    .map_err(|e| anyhow::anyhow!("movie {name}: frame {index}: {e}"))
+                    .map(|_| stretch(smk.video_data(), smk.palette()));
+                if sender.send(result).is_err() || failed {
+                    break;
+                }
+            }
+            if failed || index == frames {
                 break;
             }
+            status = smk.next_frame();
         }
     });
     Ok(Decoder {
-        child: Mutex::new(child),
         frames: Mutex::new(receiver),
     })
+}
+
+/// A 640×240 indexed frame as 640×480 RGBA, filtered vertically like a
+/// bilinear texture stretch (sample centres at `(y + 0.5) / 2 − 0.5`).
+fn stretch(indices: &[u8], palette: &[[u8; 3]; 256]) -> Vec<u8> {
+    let row = |y: usize| &indices[y * 640..(y + 1) * 640];
+    let mut pixels = Vec::with_capacity(640 * 480 * 4);
+    for y in 0..480 {
+        let source = ((y as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, 239.0);
+        let (top, weight) = (source.floor() as usize, source.fract());
+        let (upper, lower) = (row(top), row((top + 1).min(239)));
+        for x in 0..640 {
+            let (a, b) = (
+                palette[usize::from(upper[x])],
+                palette[usize::from(lower[x])],
+            );
+            for c in 0..3 {
+                let mixed = f32::from(a[c]) * (1.0 - weight) + f32::from(b[c]) * weight;
+                pixels.push(mixed.round() as u8);
+            }
+            pixels.push(255);
+        }
+    }
+    pixels
 }
 
 fn skip_point(movie: &MovieDefinition, frame: u32) -> Option<u32> {
@@ -593,6 +563,40 @@ fn cleanup(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_movies_decode_in_process() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let ini = std::fs::read_to_string(install.root.join("MENU.INI")).unwrap();
+        let definitions = parse_menu_movies(&ini).unwrap();
+        assert!(!definitions.is_empty(), "no installed movie definitions");
+        for index in 0..definitions.len() {
+            let movie = prepare(&install.root, index)
+                .unwrap_or_else(|error| panic!("movie {index}: {error:#}"));
+            let last = movie.header.frames;
+            let started = std::time::Instant::now();
+            let frame = decode(&movie, last)
+                .unwrap()
+                .frames
+                .into_inner()
+                .unwrap()
+                .recv();
+            eprintln!(
+                "{}: {last} frames, last frame decoded in {:?}",
+                movie.definition.name,
+                started.elapsed()
+            );
+            assert_eq!(frame.unwrap().unwrap().len(), 640 * 480 * 4);
+            assert_eq!(movie.audio.is_some(), movie.header.has_audio);
+        }
+    }
+
     #[test]
     fn subtitle_breaks_at_first_space_after_column_35() {
         assert_eq!(

@@ -11,20 +11,48 @@ use bevy::render::render_resource::{
 use bevy::shader::ShaderRef;
 use std::hash::{BuildHasher, RandomState};
 
+/// One-shot synchronization with a captured original sky, independent of scene identity.
+#[derive(Resource, Default)]
+pub struct SkyScrollSync {
+    pending: Option<(u16, Vec2)>,
+}
+
+impl SkyScrollSync {
+    /// Apply a captured 2048-step direction and offsets in texels on the next render update.
+    /// This does not reproduce the rest of the original session's shared random stream.
+    pub fn set(&mut self, direction: u16, offset: [f32; 2]) -> anyhow::Result<()> {
+        anyhow::ensure!(direction < 2048, "sky direction must be below 2048");
+        anyhow::ensure!(
+            offset
+                .iter()
+                .all(|v| v.is_finite() && (-256.0..=256.0).contains(v)),
+            "sky offsets must be finite and within -256..=256 texels"
+        );
+        self.pending = Some((direction, Vec2::from_array(offset)));
+        Ok(())
+    }
+}
+
+fn scroll_velocity(direction: u16, speed: u8) -> Vec2 {
+    // Preserve the original angle table's rounded turn constant.
+    #[allow(clippy::approx_constant)]
+    let angle = f64::from(direction) * 6.2831852 / 2048.0;
+    Vec2::new(angle.sin() as f32, angle.cos() as f32) * (speed as f32 / 16.0)
+}
+
 #[derive(Component)]
 pub(crate) struct Sky {
     velocity: Vec2,
+    speed: u8,
     tick: u64,
 }
 
 impl Sky {
     pub(crate) fn new(speed: u8) -> Self {
-        let direction = RandomState::new().hash_one(0_u8) & 2047;
-        #[allow(clippy::approx_constant)]
-        // Preservation's shared engine angle table uses this decimal period.
-        let angle = direction as f64 * 6.2831852 / 2048.0;
+        let direction = (RandomState::new().hash_one(0_u8) & 2047) as u16;
         Self {
-            velocity: Vec2::new(angle.sin() as f32, angle.cos() as f32) * (speed as f32 / 16.0),
+            velocity: scroll_velocity(direction, speed),
+            speed,
             tick: 0,
         }
     }
@@ -41,9 +69,18 @@ pub(crate) struct SkyMaterial {
     /// Encoded Glide fog color shared with the scene background.
     #[uniform(3)]
     pub fog_rgb: Vec4,
-    /// U/V scroll in texels, Modern sky flag, unused channel.
+    /// U/V scroll in texels, Modern sky flag, Modern fog flag.
     #[uniform(4)]
     pub scroll: Vec4,
+    #[texture(5)]
+    #[sampler(6)]
+    pub sun_image: Handle<Image>,
+    /// Camera-relative Bevy center and half-width.
+    #[uniform(7)]
+    pub sun_position: Vec4,
+    /// Encoded tint and half-height in Bevy units.
+    #[uniform(8)]
+    pub sun_color: Vec4,
 }
 
 impl Material for SkyMaterial {
@@ -87,7 +124,8 @@ pub(crate) struct SkyPlugin;
 impl Plugin for SkyPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "sky.wesl");
-        app.add_plugins(MaterialPlugin::<SkyMaterial>::default())
+        app.init_resource::<SkyScrollSync>()
+            .add_plugins(MaterialPlugin::<SkyMaterial>::default())
             .add_systems(PostUpdate, animate_sky);
     }
 }
@@ -95,16 +133,31 @@ impl Plugin for SkyPlugin {
 fn animate_sky(
     time: Res<Time<Real>>,
     fidelity: Res<Fidelity>,
+    mut reference: ResMut<SkyScrollSync>,
     mut skies: Query<(&mut Sky, &MeshMaterial3d<SkyMaterial>)>,
     mut materials: ResMut<Assets<SkyMaterial>>,
 ) {
     let tick = (time.elapsed_secs_f64() * (1_193_182.0 / 65_536.0)).floor() as u64;
     let modern = u8::from(fidelity.mode(Area::Sky) == Mode::Modern) as f32;
+    let modern_fog = u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32;
+    let reference = if skies.is_empty() {
+        None
+    } else {
+        reference.pending.take()
+    };
     for (mut sky, handle) in &mut skies {
+        if let Some((direction, offset)) = reference {
+            sky.velocity = scroll_velocity(direction, sky.speed);
+            sky.tick = tick;
+            if let Some(mut material) = materials.get_mut(&handle.0) {
+                material.scroll.x = offset.x;
+                material.scroll.y = offset.y;
+            }
+        }
         if tick == sky.tick
             && materials
                 .get(&handle.0)
-                .is_some_and(|m| m.scroll.z == modern)
+                .is_some_and(|m| m.scroll.z == modern && m.scroll.w == modern_fog)
         {
             continue;
         }
@@ -112,6 +165,7 @@ fn animate_sky(
             continue;
         };
         material.scroll.z = modern;
+        material.scroll.w = modern_fog;
         for _ in 0..tick.saturating_sub(sky.tick).min(36) {
             material.scroll += sky.velocity.extend(0.0).extend(0.0);
             for index in 0..2 {
@@ -137,6 +191,7 @@ mod tests {
         let mut app = App::new();
         app.init_resource::<Time<Real>>()
             .init_resource::<Fidelity>()
+            .init_resource::<SkyScrollSync>()
             .init_resource::<Assets<SkyMaterial>>()
             .add_systems(Update, animate_sky);
         let handle = app
@@ -144,6 +199,9 @@ mod tests {
             .resource_mut::<Assets<SkyMaterial>>()
             .add(SkyMaterial {
                 image: Handle::default(),
+                sun_image: Handle::default(),
+                sun_position: Vec4::ZERO,
+                sun_color: Vec4::ZERO,
                 plane: Vec4::ZERO,
                 fog_rgb: Vec4::ZERO,
                 scroll: Vec4::new(255.0, -255.0, 0.0, 0.0),
@@ -151,6 +209,7 @@ mod tests {
         app.world_mut().spawn((
             Sky {
                 velocity: Vec2::new(1.0, -1.0),
+                speed: 16,
                 tick: 0,
             },
             MeshMaterial3d(handle.clone()),
@@ -179,6 +238,25 @@ mod tests {
             .set(Area::Sky, Mode::Modern);
         app.update();
         assert_eq!(scroll(&app), Vec4::new(36.0, -36.0, 1.0, 0.0));
+        app.world_mut()
+            .resource_mut::<SkyScrollSync>()
+            .set(0, [12.0, 20.0])
+            .unwrap();
+        app.update();
+        assert_eq!(scroll(&app), Vec4::new(12.0, 20.0, 1.0, 0.0));
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(55));
+        app.update();
+        assert_eq!(scroll(&app), Vec4::new(12.0, 21.0, 1.0, 0.0));
+        for (direction, offset) in [(2048, [0.0; 2]), (0, [f32::NAN, 0.0]), (0, [257.0, 0.0])] {
+            assert!(
+                app.world_mut()
+                    .resource_mut::<SkyScrollSync>()
+                    .set(direction, offset)
+                    .is_err()
+            );
+        }
         assert_eq!(Sky::new(0).velocity, Vec2::ZERO);
         assert!((Sky::new(6).velocity.length() - 0.375).abs() < 0.00001);
     }

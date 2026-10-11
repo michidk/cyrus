@@ -13,7 +13,7 @@ pub use actor::ActorAnimation;
 pub use frame::{AnimationPose, FrameGeometry, MeshFrameBinding};
 pub use playback::{AnimationPlayback, AnimationTick};
 pub use script::AnimationScript;
-pub use sequence::{FrameSequence, ModelFrame};
+pub use sequence::{AnimationSound, FrameSequence, ModelFrame};
 
 /// Per-world animation metadata and decoded geometry from preservation's parsers.
 #[derive(Asset, TypePath, Serialize, Deserialize)]

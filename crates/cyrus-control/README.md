@@ -29,3 +29,8 @@ interlace preferences and reports progress in `state.menu.movie`. A new key pres
 advances to the next installed skip point, then returns to the menu. Saved Sound
 preferences apply to native effects, speech, and CD music. Browser cinematic
 playback remains unavailable.
+
+`set_sky_scroll {direction, offset}` applies a captured original sky direction
+from 0 through 2047 and two texture offsets in texels from -256 through 256.
+Use it after loading the reference world. It synchronizes sky motion for
+comparison; it does not synchronize other users of the original random stream.

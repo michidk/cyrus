@@ -68,3 +68,16 @@ impl Fidelity {
 pub fn in_mode(area: Area, mode: Mode) -> impl Fn(Res<Fidelity>) -> bool + Clone {
     move |fidelity: Res<Fidelity>| fidelity.mode(area) == mode
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_area_defaults_to_faithful() {
+        let fidelity = Fidelity::default();
+        for area in Area::ALL {
+            assert_eq!(fidelity.mode(area), Mode::Faithful, "{area:?}");
+        }
+    }
+}

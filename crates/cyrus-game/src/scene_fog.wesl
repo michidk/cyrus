@@ -12,7 +12,7 @@ import bevy_render::maths::powsafe;
 @if(PREMULTIPLY_ALPHA)
 import bevy_pbr::render::pbr_functions::premultiply_alpha;
 import constants::MATERIAL_BIND_GROUP;
-import package::glide_fog::{fog_coordinate, blend_fog};
+import package::glide_fog::{fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565};
 
 struct SceneFog {
     color: vec4<f32>,
@@ -69,16 +69,15 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
         let rippled = out.color.rgb * (1.0 + 0.035 * (ripple.x + ripple.y) * water_weight);
         out.color = vec4(mix(rippled, reflected_sky, sheen * 0.12 * water_weight), out.color.a);
     }
-    let coordinate = fog_coordinate(depth);
-    let index = u32(floor(coordinate));
-    let density = density_at(index);
-    let next = density_at(min(index + 1u, 63u));
-    let delta = f32((u32(next) + 256u - u32(density)) * 4u % 256u) / 4.0;
-    var fog_density = density + delta * fract(coordinate);
     if fog.clipping.z != 0.0 {
-        fog_density = 255.0 * smoothstep(fog.clipping.y * 0.45, fog.clipping.y, depth);
+        let density = 255.0 * smoothstep(fog.clipping.y * 0.45, fog.clipping.y, depth);
+        out.color = vec4(blend_fog(out.color.rgb, fog.color.rgb, density), out.color.a);
+    } else {
+        let position = fog_table_position(depth);
+        let density = table_density(density_at(position.x), density_at(min(position.x + 1u, 63u)), position.y);
+        let fogged = blend_fog_integer(out.color.rgb, fog.color.rgb, density);
+        out.color = vec4(framebuffer_rgb565(fogged, in.position.xy), out.color.a);
     }
-    out.color = vec4(blend_fog(out.color.rgb, fog.color.rgb, fog_density), out.color.a);
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }

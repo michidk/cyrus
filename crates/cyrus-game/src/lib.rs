@@ -1,4 +1,4 @@
-//! Portable startup, animation, environment, fidelity, player and settings plugins
+//! Portable startup, HUD, animation, environment, fidelity, player and settings plugins
 //! are shared with WASM. Install access, exports and control are native only.
 pub mod animation;
 #[cfg(not(target_arch = "wasm32"))]
@@ -10,6 +10,11 @@ pub mod environment;
 mod environment_export;
 pub mod fidelity;
 pub mod fog;
+pub mod hud;
+#[cfg(not(target_arch = "wasm32"))]
+mod hud_export;
+#[cfg(not(target_arch = "wasm32"))]
+pub use hud_export::export_hud;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod install;
 #[cfg(not(target_arch = "wasm32"))]
@@ -24,6 +29,9 @@ pub mod settings;
 mod sky;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod sound;
+pub mod sound_bank;
+#[cfg(not(target_arch = "wasm32"))]
+mod sound_export;
 pub mod startup;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod subtitles;

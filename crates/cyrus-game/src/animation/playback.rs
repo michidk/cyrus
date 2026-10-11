@@ -119,7 +119,8 @@ pub(super) fn advance(
                     });
                 }
                 Ok(None) => {
-                    if matches!(playback.playback, Playback::Group(_)) {
+                    if matches!(&playback.playback, Playback::Group(sequence) if sequence.is_finished())
+                    {
                         commands.entity(entity).remove::<AnimationPlayback>();
                     }
                 }

@@ -2,8 +2,10 @@ use bevy::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use bevy::shader::Source;
 use bevy_egui::{
-    EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPreUpdateSet, EguiPrimaryContextPass, egui,
+    EguiContext, EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPreUpdateSet,
+    EguiPrimaryContextPass, PrimaryEguiContext, egui,
 };
+use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_inspector};
 use cyrus_game::{
     fidelity::{Area, Fidelity, Mode},
     fog::RenderDistance,
@@ -16,7 +18,6 @@ pub struct DebugMenuPlugin;
 struct DebugMenu {
     open: bool,
     inspector_open: bool,
-    selected_entity: Option<Entity>,
 }
 
 #[derive(Resource, Default)]
@@ -29,7 +30,7 @@ struct WorldPicker {
 
 impl Plugin for DebugMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin::default())
+        app.add_plugins((EguiPlugin::default(), DefaultInspectorConfigPlugin))
             .init_resource::<DebugMenu>()
             .init_resource::<WorldPicker>()
             .add_systems(
@@ -40,7 +41,7 @@ impl Plugin for DebugMenuPlugin {
                 EguiPrimaryContextPass,
                 (
                     debug_menu.run_if(|menu: Res<DebugMenu>| menu.open),
-                    entity_inspector_window.run_if(|menu: Res<DebugMenu>| menu.inspector_open),
+                    world_inspector_window.run_if(|menu: Res<DebugMenu>| menu.inspector_open),
                 )
                     .chain(),
             );
@@ -196,94 +197,29 @@ fn debug_menu(
     Ok(())
 }
 
-// shortcut: inspect spatial entities only; use bevy-inspector-egui once it supports Bevy 0.20.
-#[allow(clippy::type_complexity)]
-fn entity_inspector_window(
-    mut contexts: EguiContexts,
-    mut menu: ResMut<DebugMenu>,
-    mut egui_settings: ResMut<EguiGlobalSettings>,
-    mut spatial: ParamSet<(
-        Query<(Entity, Option<&Name>), With<Transform>>,
-        Query<&mut Transform>,
-    )>,
-) -> Result {
-    let entities = spatial
-        .p0()
-        .iter()
-        .map(|(entity, name)| {
-            (
-                entity,
-                name.map_or_else(|| entity.to_string(), |name| name.as_str().to_owned()),
-            )
-        })
-        .collect::<Vec<_>>();
-    let mut open = menu.inspector_open;
-    egui::Window::new("Entity inspector")
+fn world_inspector_window(world: &mut World) {
+    let Ok(context) = world
+        .query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>()
+        .single(world)
+    else {
+        return;
+    };
+    let mut context = context.clone();
+    let mut open = world.resource::<DebugMenu>().inspector_open;
+    egui::Window::new("World Inspector")
         .open(&mut open)
-        .show(contexts.ctx_mut()?, |ui| {
-            entity_inspector(ui, &entities, &mut menu.selected_entity, &mut spatial.p1());
+        .default_size((420.0, 500.0))
+        .show(context.get_mut(), |ui| {
+            egui::ScrollArea::both().show(ui, |ui| {
+                bevy_inspector::ui_for_world(world, ui);
+            });
         });
+    let mut menu = world.resource_mut::<DebugMenu>();
     menu.inspector_open = open;
-    egui_settings.enable_absorb_bevy_input_system = menu.open || menu.inspector_open;
-    Ok(())
-}
-
-fn entity_inspector(
-    ui: &mut egui::Ui,
-    entities: &[(Entity, String)],
-    selected: &mut Option<Entity>,
-    transforms: &mut Query<&mut Transform>,
-) {
-    let selected_name = selected
-        .and_then(|selected| {
-            entities
-                .iter()
-                .find(|(entity, _)| *entity == selected)
-                .map(|(_, name)| name.as_str())
-        })
-        .unwrap_or("Select an entity");
-    egui::ComboBox::from_id_salt("inspected entity")
-        .selected_text(selected_name)
-        .show_ui(ui, |ui| {
-            for (entity, name) in entities {
-                ui.selectable_value(selected, Some(*entity), name);
-            }
-        });
-
-    let Some(entity) = *selected else {
-        return;
-    };
-    let Ok(mut transform) = transforms.get_mut(entity) else {
-        *selected = None;
-        return;
-    };
-    ui.label(entity.to_string());
-    ui.horizontal(|ui| {
-        ui.label("Translation");
-        ui.add(egui::DragValue::new(&mut transform.translation.x));
-        ui.add(egui::DragValue::new(&mut transform.translation.y));
-        ui.add(egui::DragValue::new(&mut transform.translation.z));
-    });
-    ui.horizontal(|ui| {
-        ui.label("Scale");
-        ui.add(egui::DragValue::new(&mut transform.scale.x).speed(0.01));
-        ui.add(egui::DragValue::new(&mut transform.scale.y).speed(0.01));
-        ui.add(egui::DragValue::new(&mut transform.scale.z).speed(0.01));
-    });
-    let (x, y, z) = transform.rotation.to_euler(EulerRot::XYZ);
-    let mut rotation = Vec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees());
-    ui.horizontal(|ui| {
-        ui.label("Rotation °");
-        ui.add(egui::DragValue::new(&mut rotation.x));
-        ui.add(egui::DragValue::new(&mut rotation.y));
-        ui.add(egui::DragValue::new(&mut rotation.z));
-    });
-    transform.rotation = Quat::from_euler(
-        EulerRot::XYZ,
-        rotation.x.to_radians(),
-        rotation.y.to_radians(),
-        rotation.z.to_radians(),
-    );
+    let absorb_input = menu.open || menu.inspector_open;
+    world
+        .resource_mut::<EguiGlobalSettings>()
+        .enable_absorb_bevy_input_system = absorb_input;
 }
 
 fn fidelity_control(ui: &mut egui::Ui, fidelity: &mut Fidelity, area: Area, label: &str) {
@@ -391,13 +327,89 @@ fn parse_worlds(worlds: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_worlds;
+    use super::*;
 
     #[test]
     fn world_options_are_sorted_and_unique() {
         assert_eq!(
             parse_worlds("START,2,ISLAND,START"),
             ["2", "ISLAND", "START"]
+        );
+    }
+
+    #[test]
+    fn world_inspector_renders_the_full_world_tree() {
+        let mut app = App::new();
+        app.add_plugins(DefaultInspectorConfigPlugin)
+            .register_type::<Name>()
+            .register_type::<Transform>()
+            .insert_resource(DebugMenu {
+                open: false,
+                inspector_open: true,
+            })
+            .init_resource::<EguiGlobalSettings>();
+        let mut context = EguiContext::default();
+        app.world_mut().spawn((context.clone(), PrimaryEguiContext));
+        let entity = app
+            .world_mut()
+            .spawn((Name::new("Inspector test entity"), Transform::IDENTITY))
+            .id();
+        let mut output = egui::FullOutput::default();
+        // The first pass measures a newly opened egui window before painting it.
+        for _ in 0..2 {
+            output = context.get_mut().run_ui(egui::RawInput::default(), |_| {
+                world_inspector_window(app.world_mut());
+            });
+            // This headless test has no renderer to upload font textures.
+            output.textures_delta.clear();
+        }
+        let labels = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for label in ["World Inspector", "Entities", "Resources", "Assets"] {
+            assert!(labels.contains(&label), "missing {label}: {labels:?}");
+        }
+        assert!(
+            labels
+                .iter()
+                .any(|label| label.contains("Inspector test entity"))
+        );
+        assert_eq!(
+            app.world().get::<Transform>(entity),
+            Some(&Transform::IDENTITY)
+        );
+        assert!(
+            app.world()
+                .resource::<EguiGlobalSettings>()
+                .enable_absorb_bevy_input_system
+        );
+    }
+
+    #[test]
+    fn f1_keeps_the_independent_inspector_open() {
+        let mut app = App::new();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::F1);
+        app.insert_resource(keys)
+            .insert_resource(DebugMenu {
+                open: true,
+                inspector_open: true,
+            })
+            .init_resource::<EguiGlobalSettings>()
+            .add_systems(Update, toggle_menu);
+        app.update();
+        let menu = app.world().resource::<DebugMenu>();
+        assert!(!menu.open);
+        assert!(menu.inspector_open);
+        assert!(
+            app.world()
+                .resource::<EguiGlobalSettings>()
+                .enable_absorb_bevy_input_system
         );
     }
 }

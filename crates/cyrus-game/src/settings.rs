@@ -42,3 +42,17 @@ impl Settings {
         Path::new(CONFIG_DIR).join("cache")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fidelity::{Area, Mode};
+
+    #[test]
+    fn default_settings_are_faithful_everywhere() {
+        let settings = Settings::default();
+        for area in Area::ALL {
+            assert_eq!(settings.fidelity.mode(area), Mode::Faithful, "{area:?}");
+        }
+    }
+}

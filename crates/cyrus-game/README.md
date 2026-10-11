@@ -17,13 +17,17 @@ The game as Bevy plugins, with no assumption about a window or renderer.
 | `animation` | Loads versioned `.animations` assets and applies explicitly activated forward groups and literal authored animation tasks to private meshes using supplied nominal ticks. No automatic actor activation or wall-clock driver. |
 | `animation_export` | Retains RGM animation/script inputs, typed task descriptors and referenced model frames through rgpre. |
 | `environment_export` | Native extraction of per-world sky pixels, wave parameters, and water masks. |
+| `hud` | In-game overlay from exported `.hud` data: SNUFF candle with health number (`candle_mode` 2), active item icon and count from `ITEM.INI`, prev/next item keys from `KEYS.INI`, REDSEL.FNT text ([HUD facts](https://github.com/michidk/redguard-preservation/pull/28)). Compass, power-ups, logbook, activation prompts and the candle toggle are unsupported. |
+| `hud_export` | Native extraction of HUD positions, starting inventory, candle frames, item icons and font glyphs into `cyrus-config/cache/hud/`. |
 | `settings` | `cyrus-config/settings.toml` and the cache directory. |
 | `sound` | `SYSTEM.INI` and Sound page audio settings; `MAIN.SFX` effects by index and RTX voice clips by label at their header base volume times the master volume, with optional distance falloff and stereo pan from the camera, through the original's Miles mixer gains. No in-game triggers yet. Native only. |
 | `subtitles` | Dialogue subtitles for voice clips: REDSEL glyphs, 500 px wrapping, bottom band, black shadow, lowest active slot. Native only. |
 | `music` | Plays the `world_redbook` CD track of each entered world from GOG's `game.ins`/`game.gog`, repeating it and keeping it across worlds that share it; the book menu plays track 2; the Music slider sets the drive level (preservation `docs/engine/music.md`). Native only. |
+| `sound_bank` | Portable exported effects bank and opt-in playback plugin; native control playback uses `sound`. |
+| `sound_export` | Exports MAIN.SFX to WAV files, bank metadata, and a browser audition page when loading a native scene. |
 | `control` | TCP control server speaking `cyrus-control`; used by tests and the MCP server. Native only. |
 
-`startup` presentation, `animation`, `environment`, `fidelity`, `player` and `settings` compile on wasm and are reused by
+`startup` presentation, `animation`, `environment`, `fidelity`, `hud`, `player` and `settings` compile on wasm and are reused by
 `cyrus-web`; everything that reads the install, spawns threads or opens
 sockets is gated with `cfg(not(target_arch = "wasm32"))`.
 
@@ -48,16 +52,33 @@ loop count. `AnimationTick` supplies the original whole nominal-tick increment;
 render updates alone do not advance playback. The interpreter follows
 preservation's [animation facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md).
 BreakPoint markers retain the documented walking-translation gate until the
-cursor advances or a taken loop/exit jump clears it. Unsupported cues stop
-playback with a contextual error.
+cursor advances or a taken loop/exit jump clears it. DelayCounter holds the prior
+pose while its byte delay consumes supplied nominal ticks. Zero continues
+immediately and byte 255 waits until replacement. A waiting group remains current
+and does not complete its PushAnimation task. These rules are
+[published in preservation](https://github.com/michidk/redguard-preservation/blob/515e62f/docs/engine/animation.md#forward-animation-delays).
+Unsupported cues stop playback with a contextual error.
 
-`ActorAnimation` is the separate request core for forward type-zero groups.
-The caller supplies the default group and nominal ticks. Ordinary requests
+`ActorAnimation` is the separate request core for forward types zero and one. The caller supplies the default group
+and nominal ticks. Ordinary requests
 replace one pending group by the original numeric priority; forced requests
 bypass that priority. End selects a pending or default group in the same call,
 reusing its tick input. `set_loop_count` supplies the finite count when a
 PushAnimation task becomes current. Returning to the same default keeps the
 group identity, so a finite count alone does not prove the waiting task completed.
+Type-one groups keep their exit tail when the pending group is the default.
+After an exit marker, a pending non-default can replace them on a later advance,
+with delays checked first. These rules are
+[published in preservation](https://github.com/michidk/redguard-preservation/blob/75cba23/docs/engine/animation.md#forward-type-one-transitions).
+`request_with_sounds` and `advance_with_sounds` accept a synchronous handler for
+signed effect requests, rate offsets in hertz, End stops and replacement handle
+resets. The handler owns the original surface remapping, positional gains and
+channel allocation. Without it, sound commands still fail explicitly. Native
+sound dispatch, audible walking cues and automatic runtime scheduling remain
+unsupported. The
+[sound facts](https://github.com/michidk/redguard-preservation/blob/a0e7b16/docs/engine/sound.md#animation-playsound)
+define this boundary.
+
 `AnimationScript` supports authored literal `PushAnimation` tasks and `End`
 continuations. Its explicit stages preserve the request, count-start and wait
 phases; task completion can start the next instruction in the same stage. End
@@ -93,9 +114,11 @@ normals across materials. Re-export worlds to replace old water masks.
 
 Absolute DOS clock phase is not synchronized. Terrain placement, base heights,
 and lighting retain the preservation export's existing limitations. Sky
-tilting and the sun disc remain unsupported. Scrolling advances texture coordinates
+tilting and the sun disc follow the documented plane transform and billboard
+inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
 on the documented BIOS timer, using the per-world speed and a random initial
-direction. The original session's random state is not synchronized.
+direction. `SkyScrollSync` and MCP `set_sky_scroll` accept a captured direction
+and texture offsets. The original session's shared random stream is not reproduced.
 
 The debug flycam toggle moves only the view camera. Turning it off returns the
 view to the player pose; it does not enable gameplay. Faithful
@@ -132,7 +155,11 @@ fine texture ripples, and view-dependent sheen while retaining the installed
 textures. Water, Fog, and Sky are independently switchable and default to
 Faithful. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
-Hardware fog dithering and RGB565 quantization are not reproduced.
+Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
+framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
+shader arithmetic checks cover the dither matrix and fog boundaries. Texture
+filtering, sun alpha rounding, lighting, and physical-hardware pixel parity
+remain unverified.
 
 Default windowed startup plays the original authored 3dfx animation and decoded
 640×480 title image, then stops at the book menu. Preload runs concurrently.
@@ -152,7 +179,7 @@ turns, and Quit closing. Input waits through the final settling update.
 Navigation skips disabled/hidden entries and wraps. Options opens Display, Sound,
 and Controls; Movies browses unlocked definitions and previews. Quit exits.
 Native Movies playback reads installed Smacker files or the GOG CD image via
-rgpre and decodes them with FFmpeg. It retains menu selection, consumes original
+rgpre and decodes them in-process with the `smk` crate. It retains menu selection, consumes original
 skip points and timed subtitle definitions, and exposes progress through menu
 control state. Browser cinematics, New Game, and saves remain unavailable.
 
@@ -163,3 +190,11 @@ input uses edited bindings, including direct scene launches. Subtitle and interl
 settings apply to native cinematics; saved Sound preferences apply to native
 effects, speech, and CD music. Lighting, camera-plane clipping, book sound cues,
 mouse selection, and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
+
+**Verified:** preservation's [HUD evidence](https://github.com/michidk/redguard-preservation/pull/28)
+establishes one candle update per rendered frame with a 60 Hz Glide retrace limit.
+Cyrus advances the candle at that rate independently of rendering, without
+capping the application. `normal_frame_rate` is a simulation-tick input, not
+the candle cadence. Original in-world timing still needs a paired comparison.
+Candle visibility timers, sword-lock eligibility, compass, power-ups, logbook,
+activation prompts and the F8 toggle remain unsupported.

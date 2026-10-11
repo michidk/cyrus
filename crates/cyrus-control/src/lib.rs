@@ -34,6 +34,11 @@ pub enum Command {
         area: String,
         mode: String,
     },
+    /// Match a captured original sky direction and texture offsets for comparison.
+    SetSkyScroll {
+        direction: u16,
+        offset: [f32; 2],
+    },
     LoadScene {
         name: String,
     },

@@ -207,6 +207,20 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
         assert_eq!(sky.scale, scale, "world {world}");
         assert_eq!(sky.speed, if world == "6" { 8 } else { 6 }, "world {world}");
         assert_eq!(&sky.rgba[..4], &first_pixel, "world {world}");
+        if world == "1" || world == "28" {
+            let sun = sky.sun.as_ref().expect("installed sun image");
+            assert_eq!(sun.size, [256, 256]);
+            assert_eq!(sun.half_size, [5120.0, 5120.0]);
+            assert_eq!(sun.color, [255, 225, 100]);
+            if world == "1" {
+                assert_eq!(sun.center, [-11313.0, -11313.0, -16000.0]);
+            }
+            assert_eq!(sun.alpha.len(), 65536);
+            assert_eq!(sun.alpha[0], 0);
+            assert!(sun.alpha.contains(&255));
+        } else {
+            assert!(sky.sun.is_none());
+        }
         assert!(
             sky.rgba
                 .as_chunks::<4>()
@@ -215,12 +229,12 @@ fn glide_sky_exports_use_their_own_palettes_and_plane_inputs() {
                 .all(|pixel| pixel[3] == 255)
         );
         skies.push(sky.rgba);
-        std::fs::remove_file(path.with_extension("environment")).unwrap();
-        if path.with_extension("animations").exists() {
-            std::fs::remove_file(path.with_extension("animations")).unwrap();
+        for extension in ["environment", "animations", "sounds", "player", "glb"] {
+            let file = path.with_extension(extension);
+            if file.exists() {
+                std::fs::remove_file(file).unwrap();
+            }
         }
-        std::fs::remove_file(path.with_extension("player")).unwrap();
-        std::fs::remove_file(path).unwrap();
     }
     assert_ne!(
         skies[0], skies[1],
@@ -333,4 +347,50 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
         modified
     );
     std::fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
+fn hud_export_uses_installed_positions_items_and_artwork() {
+    let Some(install) = install() else { return };
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("hud-export-test-{}", std::process::id()));
+    cyrus_game::export_hud(&install, &output).unwrap();
+    let hud = output.join("hud");
+    let data: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(hud.join("overlay.hud")).unwrap()).unwrap();
+    assert_eq!(data["candle_mode"], 2);
+    assert_eq!(data["candle"], serde_json::json!([12, 8]));
+    assert_eq!(data["pickup"], serde_json::json!([12, 386]));
+    assert_eq!(data["selected"], 1);
+    let items: Vec<_> = data["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            (
+                i["id"].as_u64().unwrap(),
+                i["bitmap"].as_u64().unwrap(),
+                i["count"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(items, [(1, 7, 1), (2, 26, 53), (4, 13, 6), (18, 24, 1)]);
+    let snuff = rgpre::import::gxa::parse_gxa_file(
+        // Install file names vary in case; this one ships lowercase in GOG.
+        &std::fs::read(
+            std::fs::read_dir(install.root.join("system"))
+                .unwrap()
+                .map(|e| e.unwrap().path())
+                .find(|p| p.file_name().unwrap().eq_ignore_ascii_case("SNUFF.GXA"))
+                .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let candle = image::open(hud.join("candle-00.png")).unwrap().to_rgba8();
+    assert_eq!(candle.as_raw(), &snuff.frames[0].rgba);
+    assert!((0..81).all(|f| hud.join(format!("candle-{f:02}.png")).is_file()));
+    assert!(hud.join("item-07.png").is_file() && hud.join("glyph-049.png").is_file());
+    std::fs::remove_dir_all(&output).unwrap();
 }

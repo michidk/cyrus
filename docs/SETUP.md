@@ -80,13 +80,12 @@ Saved Sound preferences apply to native effects, speech, and CD music; the book
 menu plays its installed CD track. Native cinematics consume subtitle and interlace preferences.
 
 Movies browses the initially unlocked entries and installed previews. Native
-playback requires FFmpeg on PATH and reads the configured movie file or GOG
-`game.gog` beside the install. The native virtual-display image includes FFmpeg;
-its runner mounts the CD image read-only. It decodes video and the first embedded audio
+playback reads the configured movie file or GOG `game.gog` beside the install
+into memory and decodes it in-process; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and GUI font, and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
 skip point, or finishes after the last one. Playback returns to the same menu
-selection. Extracted Smacker files and decoded audio stay in `cache/movies/`.
+selection. Nothing is written to `cache/`.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Browser movie
 playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
@@ -105,9 +104,9 @@ With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 and its map-stem alias. Use `?scene=27` for a specific world variant or
 `?scene=START` for a map. Map stems select the lowest world ID using that map.
 Native scene loads regenerate the export; browser-only sessions need the
-export command after loading changes. The browser keeps downloaded GLB files in
-Cache Storage and checks their timestamp and size before reusing them. Nothing
-from the install itself is served.
+export command after loading changes. The browser keeps the WebAssembly engine
+and downloaded GLB files in Cache Storage, then checks their timestamp and size
+before reusing them. Nothing from the install itself is served.
 
 ### Animation data
 
@@ -130,8 +129,11 @@ Faithful/Modern buttons for Water, Fog, and Sky. All default to Faithful.
 
 **Verified:** Faithful sky uses the installed BSI/COL texture, camera-relative
 plane mapping, per-world scrolling speed, and BIOS timer documented by
-preservation. Tilt and the sun disc remain unsupported. The initial random
-scroll direction is not synchronized with an original session. Modern sky uses
+preservation. The renderer also applies the fixed 24/2048-turn tilt and the
+installed sun's camera-facing opacity texture. Full original-game comparison
+of those additions is pending. The initial random scroll direction is not
+synchronized automatically; MCP `set_sky_scroll` accepts a captured direction
+and U/V offsets for comparisons. Modern sky uses
 the same scrolling texture on a camera-centered background: translation cannot
 cross its surface. Both retain the world's colors and horizon haze.
 
@@ -199,3 +201,17 @@ Previews: `cyrus-web` (new game in the browser), `cyrus-retro` (original).
 A restart clears `~/.local`, which holds the global npm packages. Add a
 command schedule set to `@startup` in the VibePod control panel that runs
 `dev/scripts/setup-hauler.sh` in this checkout, so it is restored on every start.
+
+### Player input and inspection camera
+
+Press F1 and use **Flycam (leave player in place)** to switch between inspection
+and the player pose. Flycam starts enabled. WASD moves it, right mouse looks,
+and Space/Shift moves up/down; its speed is adjustable in the same menu.
+Changing fidelity does not toggle flycam. Turning it off preserves the player
+position. Initial placement uses the installed player marker; locomotion and
+the original follow camera remain unsupported.
+
+Native player input reads `KEYS.INI` and its user overrides. The TCP/MCP `state`
+response reports held `player_input` actions and the separate `flycam` position.
+The browser currently supports inspection only; keyboard bindings are not yet
+exported for it.

@@ -24,19 +24,28 @@ that bind everyone are in `AGENTS.md`.
 ## Starting and landing work
 
 - `just setup` once per clone: the publish-check pre-commit hook and the
-  untracked agent config (`.claude/`, `.codex/`: skills link, MCP pre-approval,
-  Codex server).
+  untracked agent config for both agents (`.claude/` skills link and MCP
+  pre-approval, `.codex/config.toml` MCP server). Codex and Claude Code read
+  the same `AGENTS.md` (`CLAUDE.md` links to it), skills and MCP tools; nothing
+  here works for one and not the other.
+- No `cargo` and no sudo (the agent containers): `just toolchain` installs
+  rustup, the wasm target, wasm-bindgen and Bevy's Linux libraries under
+  `magic/build-tools/`; every `just` recipe and `gates.sh` pick it up. CI
+  uses the system toolchain and runs the same gates plus a wasm32 check.
 - `git pull` before starting and while working. Commit completed, verified
   work directly to `main` and push; no feature branches or pull requests
   unless asked. Other agents work in the same checkout: stage only the files
   your task touched.
-- Keep `docs/ROADMAP.md` current throughout the task: claim the relevant items
-  with your agent/session name when starting, update progress and blockers at
-  milestones, and release or hand off ownership when finished. Update resource
-  coverage when loading or runtime support changes. Mark items done only with
-  verification evidence; distinguish parsed data from working behavior.
-  Preserve other agents' entries and include roadmap updates with the
-  relevant change.
+- Claim in `docs/ROADMAP.md` when starting (one row: items, agent/session,
+  artifact folder) and remove the row when finished. Progress, blockers and
+  handoff go in the task artifact, not the roadmap; the roadmap changes only
+  when something is done, with verification evidence. Update resource coverage
+  when loading or runtime support changes; distinguish parsed data from
+  working behavior. Preserve other agents' rows.
+- One worktree per agent. Several agents in one checkout leave each other's
+  half-done files in the tree and fight over the cargo build lock;
+  `t3_thread_launch` with a `workspaceStrategy`, or `git worktree add`, gives
+  each task its own.
 - Stop what you started (`just stop`, containers, previews).
 
 ## Artifacts
@@ -78,10 +87,16 @@ next: <one line: what the next agent or the human does>
 
 The final report, in chat and in the last slice, states:
 
+- agent and model (the exact model id, or "not recorded"; never guessed);
 - what was verified and how (the evidence, rerunnable);
 - what was **not** done or not checked;
 - whether the change fixed the root cause or only the symptom;
 - which probes or scaffolding were removed, and which were kept and why.
+
+Every claim about the game carries one label: **Verified** (read from a game
+file, seen in the original, or in a preservation doc), **Inferred** (follows
+from such facts), **Unknown**. Unlabelled claims are Unknown. The same labels
+go on anything sent to redguard-preservation.
 
 Before committing, read the diff: remove probe code and debug leftovers, keep
 only tests that guard a contract. `just gates` runs `publish-check`; passing it
@@ -108,5 +123,29 @@ interaction and persistence); they do not create a separate feature-parity goal.
 The `cyrus-playtest` skill is the loop: start cyrus (`just run`,
 `just run-native`, `just run-headless`), drive it through the MCP tools or the
 control port on `127.0.0.1:7117`, compare with the original under `just retro`
-(preview `cyrus-retro`) or `just compare <label>`, and put the comparison in
-the commit message.
+(preview `cyrus-retro`), and put the comparison in the commit message.
+
+A comparison is evidence when it reruns: `just replay <fixture> <label>` plays
+a `dev/fixtures/*.jsonl` fixture (scene, inputs, waits) over the control port
+and captures both games. A capture copied to
+`cyrus-config/compare/baseline/<label>-cyrus.png` makes the next replay a
+regression check with a tolerance. `just smoke-mcp` fails when a run modified
+the install.
+
+## Traps already paid for
+
+- Several agents in one checkout: `cargo` blocks for the whole of another
+  session's build ("Blocking waiting for file lock"). `just mcp` uses its own
+  target dir; everything else needs its own worktree.
+- Rust tests capture `eprintln!`; "skipped: no install" only shows with
+  `--nocapture`, which is why the gates pass it.
+- DOSBox-X's own capture key never fires under Xvfb without a window manager;
+  the retro side is grabbed with `scrot`.
+- Bevy resolves relative asset paths against the executable directory when
+  `CARGO_MANIFEST_DIR` is unset; the dev container sets `BEVY_ASSET_ROOT`.
+- The hosted CI runner runs out of disk on the debug build and the linker dies
+  with a bus error; `ci.yml` frees the preinstalled SDKs first.
+- The managed `gh` refuses repositories the GitHub App is not installed on;
+  use plain `curl` against the API for public lookups.
+- `cargo install` outside the repo needs `RUSTUP_TOOLCHAIN=stable`; the
+  `rust-toolchain.toml` only applies inside it.
