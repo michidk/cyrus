@@ -1,0 +1,524 @@
+//! Shared actor host contracts use synthetic scripts and explicit stage timing.
+use cyrus_assets::{animation::Animations, script::*};
+use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
+use cyrus_script::Thread;
+use cyrus_world::animation::AnimationSound;
+use serde_json::json;
+use std::collections::BTreeMap;
+
+fn call(function_id: u16, kind: CallKind, target: Object) -> Operation {
+    let (function, arguments) = match function_id {
+        1 => (
+            "PushAnimation",
+            vec![Value::Integer { value: 7 }, Value::Integer { value: 1 }],
+        ),
+        2 => ("Wait", vec![Value::Integer { value: 2 }]),
+        _ => unreachable!(),
+    };
+    let local = target == Object::Me;
+    let call = Call {
+        function_id,
+        kind,
+        target,
+        function: function.into(),
+        arguments,
+    };
+    if local {
+        Operation::Call { call }
+    } else {
+        Operation::ObjectCall { call }
+    }
+}
+fn flag() -> Operation {
+    Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: Value::Integer { value: 9 },
+            rest: vec![],
+        },
+    }
+}
+fn scripts(operations: Vec<Operation>) -> Scripts {
+    let actor = |name: &str, operations: Vec<Operation>| Actor {
+        header_index: 0,
+        code_origin: 0,
+        instances: 1,
+        namespace: Some(name.into()),
+        instance_variables: vec![vec![]],
+        attributes: BTreeMap::new(),
+        hooks: vec![],
+        program: Program {
+            version: 2,
+            entry: 0,
+            variables: vec![],
+            strings: vec!["OTHER".into()],
+            steps: operations
+                .into_iter()
+                .enumerate()
+                .map(|(index, operation)| {
+                    (
+                        index as u32,
+                        Step {
+                            next: index as u32 + 1,
+                            operation,
+                        },
+                    )
+                })
+                .collect(),
+        },
+    };
+    let mut result = Scripts {
+        version: 3,
+        actor_pool_capacity: 10,
+        content_id: String::new(),
+        world: 17,
+        definition: Definition {
+            functions: [
+                ("NullFunction", 0, CallKind::Function),
+                ("PushAnimation", 2, CallKind::Task),
+                ("Wait", 1, CallKind::Task),
+            ]
+            .into_iter()
+            .map(|(name, param_count, kind)| Function {
+                name: name.into(),
+                param_count,
+                kind,
+            })
+            .collect(),
+            flags: vec![Flag {
+                name: "Ready".into(),
+                flag_type: "NUMBER".into(),
+                initial_value: 0,
+            }],
+            references: vec![],
+            attributes: vec![],
+        },
+        actors: BTreeMap::from([
+            ("ACTOR".into(), actor("ACTOR", operations)),
+            (
+                "OTHER".into(),
+                actor("OTHER", vec![Operation::End { target: 0 }]),
+            ),
+        ]),
+        instances: ["ACTOR", "OTHER"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| Instance {
+                object_id: index as u32,
+                actor: name.into(),
+                object_type: 0,
+                active: 0,
+                map_position: [0; 3],
+                angles: [0; 3],
+            })
+            .collect(),
+        unsupported: BTreeMap::new(),
+    };
+    result.actors.get_mut("OTHER").unwrap().code_origin = 100;
+    result.content_id = result.content_identity().unwrap();
+    result
+}
+fn animations(scripts: &Scripts, sound: bool) -> Animations {
+    let mut commands = vec![
+        json!({"opcode":0,"frame_reference":1}),
+        json!({"opcode":2,"value":0}),
+        json!({"opcode":1}),
+    ];
+    if sound {
+        commands.insert(0, json!({"opcode":4,"sound_param":-17,"volume_shift":-1}));
+    }
+    Animations {
+        version: 2,
+        world: scripts.world,
+        sections: BTreeMap::new(),
+        models: BTreeMap::new(),
+        unsupported: BTreeMap::new(),
+        metadata: json!({"script_content_id": scripts.content_id, "actors": (["ACTOR", "OTHER"].map(|name| json!({"script_name":name,"animation_groups":[
+            {"group_index":1,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+            {"group_index":7,"anim_type":0,"anim_id":1,"commands":commands}
+        ]})))}),
+    }
+}
+fn stage(world: &mut ScriptWorld, id: ScriptActorId, stage: ScriptStage) {
+    world.advance(id, stage, Some(1), None, 30).unwrap();
+}
+const BODY: ScriptStage = ScriptStage::Body(Thread::Main);
+const TASKS: ScriptStage = ScriptStage::Tasks { frame_scale: 256 };
+
+#[test]
+fn animation_wait_and_flags_share_one_runtime_and_separate_stages() {
+    let scripts = scripts(vec![
+        call(1, CallKind::Multitask, Object::Me),
+        call(2, CallKind::Task, Object::Me),
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.animation_frame(id).unwrap(), Some(1));
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
+    assert_eq!(world.flags(), [0]);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.animation_frame(id).unwrap(), Some(0));
+}
+
+#[test]
+fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously() {
+    let scripts = scripts(vec![
+        call(1, CallKind::Task, Object::Named { string: 0 }),
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 4).unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    world
+        .bind_animation(receiver, &animations(&scripts, true), 1)
+        .unwrap();
+    stage(&mut world, receiver, ScriptStage::Animation);
+    let mut events = Vec::new();
+    world
+        .advance(
+            caller,
+            BODY,
+            Some(0),
+            Some(&mut |id, sound| {
+                events.push((id, sound));
+                Ok(())
+            }),
+            30,
+        )
+        .unwrap();
+    assert_eq!(
+        events,
+        [(
+            receiver,
+            AnimationSound::Play {
+                effect: -17,
+                rate_offset_hz: -64
+            }
+        )]
+    );
+    assert_eq!(world.animation_frame(receiver).unwrap(), Some(1));
+    assert_eq!(world.animation_frame(caller).unwrap(), None);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn pause_resume_and_stop_keep_wait_and_animation_tokens_distinct() {
+    let scripts = scripts(vec![
+        call(1, CallKind::Multitask, Object::Me),
+        call(2, CallKind::Multitask, Object::Me),
+        Operation::TaskPause { label: 0 },
+        Operation::TaskPause { label: 1 },
+        Operation::Yield,
+        Operation::TaskResume { label: 1 },
+        Operation::TaskStop { label: 0 },
+        Operation::Yield,
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    stage(&mut world, id, BODY);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(world.animation_frame(id).unwrap(), Some(1));
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
+    let scripts = scripts(vec![
+        call(1, CallKind::Task, Object::Me),
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 2).unwrap();
+    let id = world.id(0).unwrap();
+    let mut asset = animations(&scripts, false);
+    asset.world += 1;
+    assert!(
+        world
+            .bind_animation(id, &asset, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("belongs to world")
+    );
+    asset.world = scripts.world;
+    asset.metadata["script_content_id"] = "wrong".into();
+    assert!(
+        world
+            .bind_animation(id, &asset, 1)
+            .unwrap_err()
+            .to_string()
+            .contains("generation mismatch")
+    );
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    for stage in [BODY, TASKS, ScriptStage::Animation] {
+        assert!(
+            world
+                .advance(id, stage, None, None, 30)
+                .unwrap_err()
+                .to_string()
+                .contains("nominal_ticks")
+        );
+        assert!(
+            world
+                .advance(
+                    ScriptActorId {
+                        generation: 1,
+                        ..id
+                    },
+                    stage,
+                    Some(1),
+                    None,
+                    30
+                )
+                .unwrap_err()
+                .to_string()
+                .contains("stale")
+        );
+    }
+    let unbound = world.id(1).unwrap();
+    assert!(
+        world
+            .advance(unbound, BODY, None, None, 30)
+            .unwrap_err()
+            .to_string()
+            .contains("nominal_ticks")
+    );
+    assert!(world.actors()[1].failure().is_none());
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.animation_frame(id).unwrap(), None);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(
+        world.actors()[0]
+            .runtime()
+            .unwrap()
+            .program_counter(Thread::Main),
+        Some(0)
+    );
+    stage(&mut world, id, BODY);
+    assert_eq!(world.animation_frame(id).unwrap(), Some(1));
+}
+
+#[test]
+fn animation_stage_sound_failure_stops_later_effects_and_is_visible() {
+    let scripts = scripts(vec![flag(), Operation::End { target: 0 }]);
+    let mut data = animations(&scripts, true);
+    data.metadata["actors"][0]["animation_groups"][0]["commands"] = json!([
+        {"opcode":4,"sound_param":-17,"volume_shift":-1},
+        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.bind_animation(id, &data, 1).unwrap();
+    let mut calls = 0;
+    let mut emit = |_, _| -> anyhow::Result<()> {
+        calls += 1;
+        anyhow::bail!("sound unavailable")
+    };
+    let error = world
+        .advance(id, ScriptStage::Animation, Some(1), Some(&mut emit), 30)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("world 17 instance 0 animation stage"));
+    assert!(error.contains("sound unavailable"));
+    assert_eq!(
+        world
+            .advance(id, BODY, Some(1), Some(&mut emit), 30)
+            .unwrap_err()
+            .to_string(),
+        error
+    );
+    assert_eq!(
+        world
+            .advance(id, ScriptStage::Animation, Some(1), Some(&mut emit), 30)
+            .unwrap_err()
+            .to_string(),
+        error
+    );
+    assert_eq!(calls, 1);
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.actors()[0].failure(), Some(error.as_str()));
+}
+
+#[test]
+fn changing_count_after_animation_task_started_does_not_reset_finite_playback() {
+    let mut start = call(1, CallKind::Multitask, Object::Me);
+    let Operation::Call { call } = &mut start else {
+        unreachable!()
+    };
+    call.arguments[1] = Value::Read {
+        place: Place::Local { index: 0 },
+    };
+    let mut scripts = scripts(vec![
+        start,
+        Operation::Yield,
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Integer { value: 100 },
+                rest: vec![],
+            },
+        },
+        Operation::Yield,
+        Operation::End { target: 0 },
+    ]);
+    let actor = scripts.actors.get_mut("ACTOR").unwrap();
+    actor.program.variables = vec![1];
+    actor.instance_variables = vec![vec![1]];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    stage(&mut world, id, BODY);
+    stage(&mut world, id, TASKS);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [100]);
+    stage(&mut world, id, TASKS);
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.animation_frame(id).unwrap(), Some(0));
+}
+
+#[test]
+fn unsupported_animation_group_is_not_narrowed_into_a_valid_request() {
+    let mut start = call(1, CallKind::Task, Object::Me);
+    let Operation::Call { call } = &mut start else {
+        unreachable!()
+    };
+    call.arguments[0] = Value::Integer { value: 65_543 };
+    let scripts = scripts(vec![start, Operation::End { target: 0 }]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    let error = world
+        .advance(id, BODY, Some(1), None, 30)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("PushAnimation group outside supported range"));
+    assert_eq!(world.animation_frame(id).unwrap(), None);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn simultaneous_animation_tasks_share_playback_but_complete_independently() {
+    let scripts = scripts(vec![
+        call(1, CallKind::Multitask, Object::Me),
+        call(1, CallKind::Multitask, Object::Me),
+        Operation::Yield,
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, ScriptStage::Animation);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
+    let scripts = scripts(vec![
+        call(1, CallKind::Task, Object::Named { string: 0 }),
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    world
+        .bind_animation(receiver, &animations(&scripts, true), 1)
+        .unwrap();
+    let mut calls = 0;
+    let mut fail = |_: ScriptActorId, _: AnimationSound| {
+        calls += 1;
+        anyhow::bail!("sound sink failed")
+    };
+    assert!(
+        world
+            .advance(caller, BODY, Some(0), Some(&mut fail), 30)
+            .is_err()
+    );
+    for id in [caller, receiver] {
+        assert!(
+            world.actors()[id.index]
+                .failure()
+                .unwrap()
+                .contains("sound sink failed")
+        );
+        assert!(
+            world
+                .advance(id, ScriptStage::Animation, Some(0), Some(&mut fail), 30)
+                .is_err()
+        );
+    }
+    assert_eq!(calls, 1);
+    assert_eq!(world.flags(), [0]);
+}
+
+#[test]
+fn missing_animation_group_keeps_requesting_fallback_without_completing_task() {
+    let mut request = call(1, CallKind::Task, Object::Me);
+    let Operation::Call { call } = &mut request else {
+        unreachable!()
+    };
+    call.arguments[0] = Value::Integer { value: 8 };
+    let scripts = scripts(vec![request, flag(), Operation::End { target: 0 }]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&scripts, false), 1)
+        .unwrap();
+    stage(&mut world, id, BODY);
+    for _ in 0..3 {
+        stage(&mut world, id, ScriptStage::Animation);
+        stage(&mut world, id, TASKS);
+        stage(&mut world, id, BODY);
+        assert_eq!(world.animation_frame(id).unwrap(), Some(0));
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        assert_eq!(world.flags(), [0]);
+    }
+}

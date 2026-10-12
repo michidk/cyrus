@@ -40,6 +40,7 @@ module where it is defined and regenerate.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
 - `src/scene.rs` — Native scene export and installed world selection.
 - `src/script.rs` — Portable SOUP programs and validated installed-definition records.
+- `src/script/inventory.rs` — Static SOUP census; occurrence counts do not establish runtime support or reachability.
 - `src/script/validation.rs` — Validate portable operands before a script can issue host side effects.
 - `src/script_export.rs` — Native SOUP cache export through preservation's typed decoder and installed definitions.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
@@ -78,9 +79,10 @@ module where it is defined and regenerate.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
+- `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
-- `src/script/waits.rs` — Actor-owned wait tokens apply preservation's elapsed and unpaused-slot predicates.
+- `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 

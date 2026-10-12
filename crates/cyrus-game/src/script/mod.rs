@@ -3,14 +3,18 @@ mod animation;
 mod attributes;
 mod flags;
 mod playback;
+mod presentation;
 mod registry;
 mod status;
-mod waits;
+mod tasks;
 pub use animation::AnimationScript;
 use bevy::prelude::*;
 pub use cyrus_script::Thread;
 pub use playback::ScriptedPlayback;
-pub use registry::{ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptWorld};
+pub use presentation::ScriptBinding;
+pub use registry::{
+    ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptStage, ScriptWorld,
+};
 pub use status::ScriptStatus;
 
 pub struct ScriptPlugin;
@@ -28,6 +32,14 @@ impl Plugin for ScriptPlugin {
             .add_systems(
                 Update,
                 registry::clear_unprepared.after(cyrus_world::lifecycle::WorldChange),
+            )
+            .add_systems(
+                Update,
+                presentation::apply
+                    .in_set(cyrus_world::animation::AnimationSystems)
+                    .after(registry::prepare)
+                    .after(registry::clear_unprepared)
+                    .run_if(resource_exists::<cyrus_world::animation::AnimationRequest>),
             )
             .add_systems(
                 Update,

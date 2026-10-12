@@ -69,11 +69,7 @@ pub(super) fn update(
             .count();
         let failed = runtime_actors
             .iter()
-            .filter(|actor| {
-                actor
-                    .runtime()
-                    .is_some_and(|runtime| runtime.failure().is_some())
-            })
+            .filter(|actor| actor.failure().is_some())
             .count();
         *status = ScriptStatus::Loaded {
             world: scripts.world,

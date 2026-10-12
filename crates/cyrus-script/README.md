@@ -47,3 +47,9 @@ must remain bound to their owning actor and world generation.
 
 Run `cargo test -p cyrus-script`. New handlers belong to `cyrus-game`; format and
 engine discoveries belong to preservation.
+
+`invoke_entry` applies the ordinary entry gate before running the interrupt
+continuation. An unpaused blocking task suppresses entry when its physical
+operand identity is at or before that cursor, including foreign task sources.
+`invoke_body(Thread::Interrupt)` remains the separately admitted direct interrupt
+path. Neither entry API runs existing tasks or chooses update eligibility.

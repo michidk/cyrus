@@ -5,10 +5,10 @@ native and browser builds. It updates the priorities in the
 [original integration plan](2026-10-11-gitnexus-plan-soup-runtime-game-integration.md).
 Do not repeat its already implemented crate creation, cache export, or VM migration.
 
-**Verified below means inspected source at cyrus `a5bbaa8`, not a fresh runtime
-comparison.** Recommendations are **Inferred**. Unresolved original behavior is
+**Verified below means inspected source, not complete game fidelity.** Recommendations are **Inferred**. Unresolved original behavior is
 **Unknown** until established from installed data or preservation evidence.
-No runtime tests or original-game comparisons were run for this planning update.
+The original planning baseline was cyrus `a5bbaa8`. Runtime verification for
+subsequent increments is recorded in the roadmap; unchecked items remain open.
 
 ## Current implementation
 
@@ -29,13 +29,15 @@ updates diagnostics, and advances explicitly attached animation playback.
   player, gremlin, and camera roles. It guards world generations and supports
   Me, Player, Camera, and named receivers. Inspection handlers support attribute
   reads/writes, flag helpers, Wait, WaitOnTasks, and WaitNonMulti.
-- `cyrus-game/src/script/animation.rs` separately hosts PushAnimation. It uses the
-  same VM but is not the registry's general game host. Interrupt entry and
-  synchronization are rejected by this adapter. Registry inspection cannot run
-  arbitrary animation and game commands together.
-- Native control and MCP expose bounded `scripts` inspection and `step_script`.
-  Native and browser load the shared cache and game plugin. That wiring does not
-  establish browser execution parity.
+- The registry host combines PushAnimation, waits, attributes, and flags on one
+  logical actor. Native task tokens are shared, including routed receiver tasks.
+  The standalone animation adapter reuses that task handler. Explicit animation,
+  ordinary entry, task, and body stages still require caller-established timing
+  and eligibility. Other native game commands remain unsupported.
+- Native control and MCP expose bounded `scripts` inspection, explicit animation
+  binding, and `step_script`. Shared scene bindings read the logical actor's pose
+  and expire with its world generation. Native and browser load the shared cache
+  and game plugin. That wiring does not establish browser execution parity.
 - Public-interface tests exist in `cyrus-script/tests/runtime.rs`,
   `cyrus-game/tests/script_registry.rs`, `script_instances.rs`, animation tests,
   and `cyrus-assets/tests/script.rs`. They cover many isolated contracts, including
@@ -61,7 +63,7 @@ all missing host commands and cannot measure gameplay completeness.
   stage 5 owns full-game verification. The remaining SOUP work is unassigned.
 - [Method](../METHOD.md): original-game evidence and reproducible comparisons.
 
-**Verified:** the roadmap records an unresolved production clock and parks the
+**Verified:** the roadmap records unresolved production invocation pacing and parks the
 player controller at the user's request. This plan does not resume that work.
 Script research, explicit host integration, and world inspection can proceed;
 player-dependent acceptance remains a separate dependency.
@@ -74,12 +76,14 @@ scenario requires it. Do not substitute guessed behavior or successful stubs.
 
 ### 1. Establish the remaining content and evidence inventory
 
-- [ ] Extend existing installed export tests/tooling to enumerate every WORLD.INI
+- [x] Extend existing installed export tests/tooling to enumerate every WORLD.INI
   entry, including palette variants and standalone roles. Record instructions,
   operand/reference forms, hooks, native calls, and unsupported actor paths.
-- [ ] Separate declared, statically present, exercised, and original-verified
+- [x] Separate declared, statically present, exercised, and original-verified
   operations. Map each used operation to its current host, missing dependency,
   evidence, and acceptance scenario. Keep generated installed content in `magic/`.
+  The census covers all 29 installed entries. The local support matrix marks
+  exercised/original-verified status unknown where only static evidence exists.
 - [ ] Select one installed interaction that combines a wait, flag mutation, and
   visible response. Inspect its full prerequisites before choosing its handlers.
 
@@ -91,7 +95,8 @@ Owners: asset export/tests and preservation parsers for missing records.
 
 - [ ] Reuse the existing registry and VM. Connect animation and immediate
   attributes/flags/waits through one game-owned host without introducing another
-  interpreter or duplicate mutable actor state.
+  interpreter or duplicate mutable actor state. The explicit host is implemented;
+  installed mixed-scenario acceptance remains required for this milestone.
 - [ ] Establish shared ownership of model, default animation group, attributes,
   player state, and task tokens. Resolve model-coupled attribute writes against
   preservation before supporting them.
@@ -204,6 +209,39 @@ boundaries and browser builds when their inputs change. Keep per-worktree build
 outputs separate and all game data/research under ignored local directories.
 Publish newly recovered engine facts in preservation before depending on them.
 
-For this documentation-only plan, run `dev/scripts/publish-check.sh` and
-`git diff --check`; do not run Cargo. No compiler, editor, JIT, mod API, or new
+Documentation-only updates need `dev/scripts/publish-check.sh` and
+`git diff --check`, without Cargo. No compiler, editor, JIT, mod API, or new
 generic scripting framework is needed for this completion plan.
+
+## Current research dependencies
+
+**Verified:** [preservation PR54](https://github.com/michidk/redguard-preservation/pull/54)
+publishes animation operand widths, walk-node reservation cleanup, and the
+distinction between model default and selected playback default. Both
+attribute-44 write paths remain unsupported here until those state owners exist.
+The installed TS_RP wait/animation sequence requires that missing integration.
+
+**Unknown:** faithful automatic host pacing, complete actor traversal/admission,
+state-dependent defaults, hook/synchronization release, and progression retention.
+These block the automatic gameplay and persistence milestones. Explicit stages
+and synthetic mixed-command tests do not close them.
+
+
+**Verified:** the installed PI_LVRA lever is a small mixed-command acceptance
+candidate. Its prerequisites include player distance/facing queries, activation,
+player animation, positional sound, and object rotation.
+Those services remain unsupported; its authored flag change cannot establish
+playable acceptance by itself. **Inferred next implementation order:**
+
+1. Connect the player-query and rotation-task contracts published in
+   [preservation PR55](https://github.com/michidk/redguard-preservation/pull/55).
+   Complete activation and sound ownership requirements before scenario acceptance.
+2. Establish attached transform ownership and refresh, then connect local
+   rotation, effective query coordinates, and player animation to authoritative
+   logical state, including cancellation and the established playback default.
+   **Verified:** this lever uses attached coordinates. Placement-only distance
+   and facing handlers cannot satisfy its authored sequence.
+3. Run the authored lever sequence under explicit supplied stages, then compare
+   its flag, transform, animation and sound outcomes with the original.
+4. Enable automatic acceptance only after production invocation pacing and
+   eligibility are verified; repeat in the browser and across world replacement.

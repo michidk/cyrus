@@ -83,3 +83,19 @@ texture bank resolution so models load only their referenced banks.
 
 The pinned [model frame snapshot fix](https://github.com/michidk/redguard-preservation/pull/51)
 exposes compressed and full-precision animation frames through the shared parser API.
+The static SOUP census visits every WORLD.INI entry separately, including shared
+maps with different palettes, and every decoded actor definition, including
+unplaced standalone actors. It counts instructions, nested native calls, operand
+and reference forms, hooks, and unsupported records. Function declarations remain
+separate from observed call sites. Counts describe authored occurrences, not
+reachability, runtime support, exercised operations, or original-game parity.
+World preparation failures remain in the report and cause a failing exit status.
+
+```sh
+mkdir -p magic/artifacts/soup-inventory
+cargo run -p cyrus-assets --features native --example soup_inventory > magic/artifacts/soup-inventory/census.json
+```
+
+Keep this generated installed-content report under `magic/`. Handler ownership,
+missing services, and scenario evidence belong to the completion investigation;
+the asset census does not infer them from function names.
