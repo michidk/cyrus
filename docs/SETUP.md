@@ -66,9 +66,11 @@ separate development branch; game revisions without it contain only the game.
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
-Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
-lint CI still runs on every push and pull request. Artifact builds run only for
-version tags and manual dispatch. Actions artifacts expire after seven days.
+Every push to `main` builds its exact commit and uploads Actions artifacts.
+Runs for separate pushes build independently so newer commits do not replace
+queued artifact builds. Test and lint CI also runs on pushes and pull requests.
+Version tags and manual dispatch can build artifacts too. Actions artifacts expire
+after seven days.
 Pushing a version tag matching `v*` builds its revision and creates
 a draft GitHub release with all archives and `SHA256SUMS` after every platform
 succeeds. Review the draft's assets and notes before publishing it; publishing
