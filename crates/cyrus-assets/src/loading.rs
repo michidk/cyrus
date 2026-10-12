@@ -131,6 +131,15 @@ pub fn parse_one(path: &std::path::Path, file_type: FileType) -> Result<(), Stri
             .map(drop)
             .map_err(|e| e.to_string()),
         FileType::Fnt => fnt::parse_fnt(&data).map(drop).map_err(|e| e.to_string()),
+        FileType::Pcx => pcx::parse_pcx_file(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Lbm => lbm::parse_lbm_file(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Anm => anm::parse_anm_file(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
         FileType::Gxa => gxa::parse_gxa_file(&data)
             .map(drop)
             .map_err(|e| e.to_string()),
@@ -138,6 +147,18 @@ pub fn parse_one(path: &std::path::Path, file_type: FileType) -> Result<(), Stri
             .map(drop)
             .map_err(|e| e.to_string()),
         FileType::Rtx => rtx::parse_rtx_file(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Dig | FileType::Mdi => miles_driver::parse_miles_driver(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Pif => pif::parse_pif_file(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Opl | FileType::Ad => opl::parse_opl_file(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Rst => rst::parse_rst_file(&data)
             .map(drop)
             .map_err(|e| e.to_string()),
     };

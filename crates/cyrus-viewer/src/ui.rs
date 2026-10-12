@@ -79,6 +79,7 @@ impl Viewer {
         {
             self.palette = ImagePalette::Embedded;
         }
+        self.frame_ms = preview.frame_interval_ms.unwrap_or(100.);
         self.data_text.clear();
         self.preview = Some(preview);
     }
@@ -1183,15 +1184,20 @@ mod tests {
                 }],
             },
             details: vec![],
+            frame_interval_ms: None,
             related: vec![],
         };
+        preview.frame_interval_ms = Some(125.);
         viewer.set_preview(preview.clone());
+        assert_eq!(viewer.frame_ms, 125.);
         assert_eq!(viewer.palette, ImagePalette::Embedded);
         if let Content::Images { frames } = &mut preview.content {
             frames[0].embedded_palette = false;
         }
         viewer.palette = ImagePalette::Catalog(0);
+        preview.frame_interval_ms = None;
         viewer.set_preview(preview);
+        assert_eq!(viewer.frame_ms, 100.);
         assert_eq!(viewer.palette, ImagePalette::Catalog(0));
     }
     #[test]
@@ -1216,6 +1222,7 @@ mod tests {
                 value: serde_json::Value::Null,
             },
             details: vec![],
+            frame_interval_ms: None,
             related: vec![],
         });
         assert_eq!(viewer.spatial_depth, 3);

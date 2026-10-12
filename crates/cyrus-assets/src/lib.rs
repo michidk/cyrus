@@ -18,7 +18,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 8;
+pub const CATALOG_VERSION: u32 = 9;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -234,6 +234,9 @@ pub enum Content {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preview {
     pub content: Content,
+    /// Authored image frame interval in milliseconds, when supplied by the format.
+    #[serde(default)]
+    pub frame_interval_ms: Option<f64>,
     pub details: Vec<(String, String)>,
     /// Related catalog IDs, never arbitrary URLs.
     pub related: Vec<String>,
@@ -252,6 +255,12 @@ impl Preview {
     }
 
     pub fn validate(&self) -> Result<()> {
+        if let Some(interval) = self.frame_interval_ms {
+            ensure!(
+                interval.is_finite() && interval > 0.,
+                "invalid frame interval"
+            );
+        }
         for id in &self.related {
             validate_identity(id)?;
         }

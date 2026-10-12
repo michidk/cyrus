@@ -73,6 +73,242 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
 }
 
 #[test]
+fn executable_files_are_hidden_and_malformed_data_reports_its_source() {
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart", "tools.exe"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    for path in [
+        "RGFX.EXE",
+        "fxart/helper.eXe",
+        "driver.DLL",
+        "maps/helper.dLl",
+        "broken.MDI",
+        "broken.dig",
+        "broken.PIF",
+        "broken.ad",
+        "broken.anm",
+        "broken.lbm",
+        "broken.pcx",
+        "broken.opl",
+        "broken.rst",
+        "tools.exe/notes.txt",
+    ] {
+        std::fs::write(root.join(path), []).unwrap();
+    }
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    let paths: Vec<_> = library
+        .catalog
+        .entries
+        .iter()
+        .map(|entry| entry.path.as_str())
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "broken.MDI",
+            "broken.PIF",
+            "broken.ad",
+            "broken.anm",
+            "broken.dig",
+            "broken.lbm",
+            "broken.opl",
+            "broken.pcx",
+            "broken.rst",
+            "tools.exe/notes.txt"
+        ]
+    );
+    for entry in library.catalog.entries.iter().filter(|entry| {
+        matches!(
+            entry.format.as_str(),
+            "MDI" | "DIG" | "PIF" | "OPL" | "AD" | "RST" | "PCX" | "LBM" | "ANM"
+        )
+    }) {
+        assert_eq!(
+            entry.category,
+            if matches!(entry.format.as_str(), "PCX" | "LBM" | "ANM") {
+                Category::Images
+            } else {
+                Category::Data
+            }
+        );
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        let Content::Unavailable { reason } = preview.content else {
+            panic!("malformed data must report a decoder error")
+        };
+        assert!(reason.contains(&entry.path), "{reason}");
+        let expected = match entry.format.as_str() {
+            "MDI" | "DIG" => "truncated VDI header",
+            "PIF" => "truncated base header",
+            "OPL" | "AD" => "missing index terminator",
+            "PCX" => "PCX:",
+            "LBM" => "LBM:",
+            "ANM" => "ANM:",
+            "RST" => "no sections",
+            _ => unreachable!(),
+        };
+        assert!(reason.contains(expected), "{reason}");
+    }
+}
+
+#[test]
+fn installed_preservation_data_files_prepare_json() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (preservation data previews)");
+        return;
+    }
+    let scratch = Scratch::new();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    for format in ["MDI", "DIG", "PIF", "OPL", "AD", "RST"] {
+        let entries: Vec<_> = library
+            .catalog
+            .entries
+            .iter()
+            .filter(|entry| entry.format == format)
+            .collect();
+        assert!(!entries.is_empty(), "missing {format} files");
+        for entry in entries {
+            assert_eq!(entry.category, Category::Data);
+            let output = library.prepare(&entry.id, None).unwrap();
+            let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+            let Content::Data { value } = preview.content else {
+                panic!("{}: {:?}", entry.path, preview.content)
+            };
+            match format {
+                "MDI" | "DIG" => {
+                    assert_eq!(
+                        value["kind"],
+                        if format == "MDI" { "Midi" } else { "Digital" },
+                        "{}",
+                        entry.path
+                    );
+                    assert!(value["driver_version"].is_u64(), "{}", entry.path);
+                    assert!(value["io"].is_object(), "{}", entry.path);
+                    assert!(value.get("device_name").is_some(), "{}", entry.path);
+                }
+                "PIF" => {
+                    assert!(
+                        value["program"]
+                            .as_str()
+                            .is_some_and(|program| !program.is_empty()),
+                        "{}",
+                        entry.path
+                    );
+                    assert!(
+                        !value["extensions"].as_array().unwrap().is_empty(),
+                        "{}",
+                        entry.path
+                    );
+                }
+                "OPL" | "AD" => assert!(
+                    !value["instruments"].as_array().unwrap().is_empty(),
+                    "{}",
+                    entry.path
+                ),
+                "RST" => assert!(
+                    !value["sections"].as_array().unwrap().is_empty(),
+                    "{}",
+                    entry.path
+                ),
+                _ => unreachable!(),
+            }
+            assert!(value.get("image").is_none(), "{}", entry.path);
+        }
+    }
+    assert!(
+        library
+            .catalog
+            .entries
+            .iter()
+            .all(|entry| { !matches!(entry.format.as_str(), "DLL" | "EXE") })
+    );
+}
+
+#[test]
+fn installed_preservation_images_prepare_pixels_and_animation_timing() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (preservation image previews)");
+        return;
+    }
+    let scratch = Scratch::new();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    for (path, count) in [
+        ("system/SKY_61.PCX", 1),
+        ("system/gui.lbm", 1),
+        ("system/gui.anm", 25),
+    ] {
+        let entry = library
+            .catalog
+            .entries
+            .iter()
+            .find(|entry| entry.path.eq_ignore_ascii_case(path))
+            .unwrap();
+        assert_eq!(entry.category, Category::Images);
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        preview.validate().unwrap();
+        let Content::Images { frames } = preview.content else {
+            panic!("{path}: {:?}", preview.content)
+        };
+        assert_eq!(frames.len(), count, "{path}");
+        for frame in &frames {
+            assert!(frame.embedded_palette);
+            assert_eq!(
+                frame.rgba.len(),
+                frame.width as usize * frame.height as usize * 4
+            );
+            assert!(
+                frame
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[..3] != [0, 0, 0]),
+                "{path}: blank image"
+            );
+            assert!(
+                frame
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .all(|pixel| pixel[3] == 255),
+                "{path}: opaque indexed image"
+            );
+        }
+        if count > 1 {
+            assert_eq!(preview.frame_interval_ms, Some(100.));
+            assert_ne!(frames[0].rgba, frames[1].rgba);
+        } else {
+            assert_eq!(preview.frame_interval_ms, None);
+        }
+    }
+}
+
+#[test]
 fn installed_asset_families_prepare_portable_previews() {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(PathBuf::from)

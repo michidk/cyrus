@@ -44,6 +44,11 @@ fields. RGM world previews and WLD terrain geometry can switch to JSON. PVO file
 show a top-down octree slice with depth and height controls plus a JSON view.
 Malformed members remain visible with a reason. Unrecognized files appear under
 Other. WAV lists standalone files; SFX, RTX, and CD audio contain additional sounds.
+MDI and DIG show preservation's parsed Miles driver headers as JSON. PIF shows
+program settings, OPL and AD show FM instruments, and RST shows editor-state sections.
+PCX and LBM show indexed images with their embedded palettes. ANM shows decoded
+frames and initializes playback with its authored frame interval.
+Driver code is never executed. DLL and EXE files are excluded from the catalog.
 
 ## Browser build
 

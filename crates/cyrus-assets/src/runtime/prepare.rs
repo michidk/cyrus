@@ -26,6 +26,7 @@ pub(super) fn prepare<R: ReadAssets>(
             ("Format".into(), entry.format.clone()),
             ("Bytes".into(), entry.bytes.to_string()),
         ],
+        frame_interval_ms: None,
         related: library
             .catalog
             .entries
@@ -233,6 +234,34 @@ pub(super) fn prepare<R: ReadAssets>(
             }
         }
         Input::File(bytes) => match FileType::from_path(std::path::Path::new(path)) {
+            Some(FileType::Pcx) => Content::Images {
+                frames: vec![indexed_picture(
+                    import::pcx::parse_pcx_file(bytes)?.image,
+                    0,
+                )],
+            },
+            Some(FileType::Lbm) => Content::Images {
+                frames: vec![indexed_picture(
+                    import::lbm::parse_lbm_file(bytes)?.image,
+                    0,
+                )],
+            },
+            Some(FileType::Anm) => {
+                let animation = import::anm::parse_anm_file(bytes)?;
+                preview.frame_interval_ms = Some(1000. / f64::from(animation.frames_per_second));
+                preview.details.push((
+                    "Frames per second".into(),
+                    animation.frames_per_second.to_string(),
+                ));
+                Content::Images {
+                    frames: animation
+                        .frames
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, image)| indexed_picture(image, i))
+                        .collect(),
+                }
+            }
             Some(FileType::Gxa) => {
                 let image = import::gxa::parse_gxa_file(bytes)?;
                 Content::Images {
@@ -333,6 +362,18 @@ pub(super) fn prepare<R: ReadAssets>(
                         .map(|e| json!({"index":e.index,"name":e.name,"value":e.value}))
                         .collect::<Vec<_>>()
                 ),
+            },
+            Some(FileType::Dig | FileType::Mdi) => Content::Data {
+                value: serde_json::to_value(import::miles_driver::parse_miles_driver(bytes)?)?,
+            },
+            Some(FileType::Pif) => Content::Data {
+                value: serde_json::to_value(import::pif::parse_pif_file(bytes)?)?,
+            },
+            Some(FileType::Opl | FileType::Ad) => Content::Data {
+                value: serde_json::to_value(import::opl::parse_opl_file(bytes)?)?,
+            },
+            Some(FileType::Rst) => Content::Data {
+                value: serde_json::to_value(import::rst::parse_rst_file(bytes)?)?,
             },
             None if entry.category == crate::Category::Images => {
                 let image = image::load_from_memory(bytes)
@@ -679,6 +720,16 @@ fn movie<R: ReadAssets>(library: &Library<R>, entry: &Entry, bytes: &[u8]) -> Re
         wav,
         seconds: info.frame_count as f64 * info.microseconds_per_frame / 1_000_000.,
     })
+}
+fn indexed_picture(image: import::indexed_image::IndexedImage, index: usize) -> Picture {
+    Picture {
+        label: format!("Frame {index}"),
+        width: image.width.into(),
+        height: image.height.into(),
+        rgba: image.rgba(),
+        indices: Some(image.pixels),
+        embedded_palette: true,
+    }
 }
 fn text_data(bytes: &[u8], path: &str) -> Result<Content> {
     let text = String::from_utf8_lossy(bytes);

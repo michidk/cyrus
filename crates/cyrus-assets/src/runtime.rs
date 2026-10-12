@@ -38,7 +38,12 @@ impl<R: ReadAssets> Library<R> {
         let files = &source.manifest().files;
         for (index, file) in files.iter().enumerate() {
             progress(index, files.len(), &format!("Listing {}", file.path));
-            if file.path.starts_with("disc/") || file.path.starts_with("splash/") {
+            if file.path.starts_with("disc/")
+                || file.path.starts_with("splash/")
+                || Path::new(&file.path).extension().is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("dll") || extension.eq_ignore_ascii_case("exe")
+                })
+            {
                 continue;
             }
             let mut parent = entry(
@@ -212,6 +217,7 @@ impl<R: ReadAssets> Library<R> {
                         reason: format!("{}: {error:#}", entry.path),
                     },
                     details: Vec::new(),
+                    frame_interval_ms: None,
                     related: Vec::new(),
                 }
             }
@@ -313,7 +319,9 @@ fn discover(
 ) -> Result<()> {
     let kind = FileType::from_path(path);
     parent.category = match kind {
-        Some(FileType::Bsi | FileType::Gxa) => Category::Images,
+        Some(FileType::Bsi | FileType::Gxa | FileType::Pcx | FileType::Lbm | FileType::Anm) => {
+            Category::Images
+        }
         Some(FileType::Col) => Category::Palettes,
         Some(FileType::Fnt) => Category::Fonts,
         Some(FileType::Model3d | FileType::Model3dc) => Category::Models,
