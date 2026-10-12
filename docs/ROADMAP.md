@@ -63,8 +63,11 @@ skip, temporary Load/New artwork/progress, world entry, F1 in the menu and
 after New Game, and F1 in a direct START launch. F8/Tab/F7 write browser HUD
 preferences and show notices.
 Native viewer GUI checks cover textured/unlit/solid rendering, edge overlays,
-JSON inspection, font preview, ANM playback and movie frame stepping. These checks establish runtime behavior, not
-visual or audible parity with the original.
+JSON inspection, font preview, ANM playback and movie frame stepping. These
+checks establish runtime behavior, not visual or audible parity with the original. Further shared-tab inspection and
+headless control captures time out, so remaining browser interaction/audio
+checks stay open. Runtime evidence predates subsequent HUD and actor-default
+integration changes; those changes need their own runtime checks.
 
 | Area | Remaining acceptance checks |
 | --- | --- |
