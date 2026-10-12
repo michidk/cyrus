@@ -89,6 +89,32 @@ pub struct Entry {
     pub bytes: u64,
     pub error: Option<String>,
 }
+impl Entry {
+    /// Archive members list under their archive, never under a file format.
+    pub fn is_member(&self) -> bool {
+        matches!(
+            self.source,
+            Source::Image(_) | Source::Model(_) | Source::Effect(_) | Source::Speech(_)
+        )
+    }
+    /// Numbered texture banks share a format; derived previews are not source files.
+    pub fn format_label(&self) -> &str {
+        match self.source {
+            Source::World(_) => "World previews",
+            Source::CdTrack(_) => "CD audio",
+            _ if self
+                .path
+                .rsplit('/')
+                .next()
+                .is_some_and(|name| name.to_ascii_uppercase().starts_with("TEXBSI.")) =>
+            {
+                "TEXBSI"
+            }
+            _ if self.category == Category::Other => "Other",
+            _ => &self.format,
+        }
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Palette {
     pub name: String,

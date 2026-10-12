@@ -11,6 +11,15 @@ pub enum ImagePalette {
     Indices,
 }
 
+/// Which presentation of the selected asset the central panel shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DataMode {
+    #[default]
+    Content,
+    Json,
+    Fields,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CameraMode {
     #[default]
@@ -39,14 +48,14 @@ pub struct Viewer {
     pub pending: Option<Handle<loading::Blob>>,
     pub loading_catalog: bool,
     pub preparing: bool,
-    pub textures: Vec<egui::TextureHandle>,
+    pub texture: Option<egui::TextureHandle>,
     pub texture_key: Option<(usize, ImagePalette)>,
     pub font_textures: std::collections::HashMap<usize, egui::TextureHandle>,
     pub frame: usize,
     pub frame_ms: f64,
     pub frame_elapsed: f64,
     pub load_status: String,
-    pub data_mode: usize,
+    pub data_mode: DataMode,
     pub data_text: String,
     pub spatial_depth: u32,
     pub slice_y: f32,
@@ -110,6 +119,47 @@ impl Viewer {
         self.data_text.clear();
         self.preview = Some(preview);
     }
+    /// Starts a new selection: per-asset state resets, browsing and camera preferences persist.
+    pub fn begin_selection(&mut self, index: usize, entry: &cyrus_assets::Entry, archive: bool) {
+        let keep = std::mem::take(self);
+        let palette = if keep.catalog.as_ref().is_some_and(|c| c.palettes.is_empty()) {
+            ImagePalette::Indices
+        } else {
+            ImagePalette::Catalog(0)
+        };
+        *self = Self {
+            catalog: keep.catalog,
+            format: keep.format,
+            search: if archive { String::new() } else { keep.search },
+            selected: Some(index),
+            archive: (archive || entry.is_member()).then(|| entry.path.clone()),
+            loading_catalog: keep.loading_catalog,
+            model_palette: keep.model_palette,
+            fit: keep.fit,
+            edges: keep.edges,
+            shading: keep.shading,
+            camera_mode: keep.camera_mode,
+            viewport: keep.viewport,
+            pixels_per_point: keep.pixels_per_point,
+            center: keep.center,
+            distance: keep.distance,
+            yaw: keep.yaw,
+            pitch: keep.pitch,
+            looping: keep.looping,
+            volume: keep.volume,
+            details: keep.details,
+            sample: keep.sample,
+            data_filter: keep.data_filter,
+            styled: keep.styled,
+            palette,
+            load_status: "Preparing selected asset…".into(),
+            scene_dirty: true,
+            audio_dirty: true,
+            preparing: !archive,
+            indexing: archive,
+            ..Self::default()
+        };
+    }
     pub fn set_catalog(&mut self, catalog: Catalog) {
         let selected = self
             .selected
@@ -120,10 +170,10 @@ impl Viewer {
         if !catalog
             .entries
             .iter()
-            .any(|entry| entry_format(entry) == self.format)
+            .any(|entry| entry.format_label() == self.format)
             && let Some(entry) = catalog.entries.first()
         {
-            self.format = entry_format(entry).into();
+            self.format = entry.format_label().into();
         }
         self.catalog = Some(catalog);
     }
@@ -143,14 +193,14 @@ impl Default for Viewer {
             pending: None,
             loading_catalog: false,
             preparing: false,
-            textures: Vec::new(),
+            texture: None,
             texture_key: None,
             font_textures: Default::default(),
             frame: 0,
             frame_ms: 100.,
             frame_elapsed: 0.,
             load_status: String::new(),
-            data_mode: 0,
+            data_mode: DataMode::Content,
             data_text: String::new(),
             spatial_depth: 3,
             slice_y: 0.,
@@ -232,7 +282,7 @@ pub fn draw(
                 .entries
                 .iter()
                 .enumerate()
-                .filter(|(_, member)| member.path == entry.path && is_member(member));
+                .filter(|(_, member)| member.path == entry.path && member.is_member());
             let (index, _) = members.next()?;
             members.next().is_none().then_some(index)
         })
@@ -272,8 +322,8 @@ pub fn draw(
             let mut formats = std::collections::BTreeMap::<&str, usize>::new();
             if let Some(catalog) = &catalog {
                 for entry in &catalog.entries {
-                    if !is_member(entry) {
-                        *formats.entry(entry_format(entry)).or_default() += 1;
+                    if !entry.is_member() {
+                        *formats.entry(entry.format_label()).or_default() += 1;
                     }
                 }
             }
@@ -440,7 +490,7 @@ pub fn draw(
                                 {
                                     if ui.link(&entry.name).on_hover_text(&entry.path).clicked() {
                                         select = Some(i);
-                                        viewer.format = entry_format(entry).into();
+                                        viewer.format = entry.format_label().into();
                                         viewer.search.clear();
                                     }
                                 }
@@ -454,7 +504,7 @@ pub fn draw(
         .as_ref()
         .is_some_and(|p| matches!(p.content, Content::Model { .. }));
     egui::CentralPanel::default()
-        .frame(if model && viewer.data_mode == 0 {
+        .frame(if model && viewer.data_mode == DataMode::Content {
             egui::Frame::NONE
         } else {
             egui::Frame::central_panel(&ctx.style_of(egui::Theme::Dark))
@@ -472,427 +522,41 @@ pub fn draw(
                 ) && let Some(metadata) = &preview.metadata
                 {
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut viewer.data_mode, 0, "Preview");
-                        ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
+                        ui.selectable_value(&mut viewer.data_mode, DataMode::Content, "Preview");
+                        ui.selectable_value(&mut viewer.data_mode, DataMode::Json, "JSON");
                     });
-                    if viewer.data_mode == 1 {
+                    if viewer.data_mode == DataMode::Json {
                         json_view(ui, &mut viewer, metadata);
                         return;
                     }
                 }
                 match &preview.content {
-                    Content::Model {
-                        frames,
-                        palettes,
-                        data,
-                    } => {
-                        let panel_rect = ui.available_rect_before_wrap();
-                        if let Some(data) = data {
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(&mut viewer.data_mode, 0, "Visualization");
-                                ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
-                            });
-                            if viewer.data_mode == 1 {
-                                json_view(ui, &mut viewer, data);
-                                return;
-                            }
-                        }
-                        egui::Frame::new()
-                            .fill(egui::Color32::from_black_alpha(200))
-                            .inner_margin(8.)
-                            .show(ui, |ui| {
-                                ui.horizontal_wrapped(|ui| {
-                                    egui::ComboBox::from_id_salt("camera-mode")
-                                        .selected_text(format!("{:?}", viewer.camera_mode))
-                                        .show_ui(ui, |ui| {
-                                            ui.selectable_value(&mut viewer.camera_mode, CameraMode::Orbit, "Orbit");
-                                            ui.selectable_value(&mut viewer.camera_mode, CameraMode::Flycam, "Flycam");
-                                        });
-                                    egui::ComboBox::from_id_salt("shading")
-                                        .selected_text(format!("{:?}", viewer.shading))
-                                        .show_ui(ui, |ui| {
-                                            for mode in [Shading::Textured, Shading::Unlit, Shading::Solid, Shading::Wireframe] {
-                                                ui.selectable_value(&mut viewer.shading, mode, format!("{mode:?}"));
-                                            }
-                                        });
-                                    ui.checkbox(&mut viewer.edges, "Edges");
-                                    if ui.button("Frame object").clicked() {
-                                        viewer.needs_frame = true;
-                                    }
-                                    if frames.len() > 1 {
-                                        let previous = viewer.frame;
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut viewer.frame,
-                                                0..=frames.len() - 1,
-                                            )
-                                            .text("Model frame"),
-                                        );
-                                        if previous != viewer.frame {
-                                            viewer.scene_dirty = true;
-                                        }
-                                    }
-                                });
-                                ui.weak(match viewer.camera_mode {
-                                    CameraMode::Orbit => "Drag to orbit · right-drag to pan · scroll to zoom",
-                                    CameraMode::Flycam => "Right-drag to look · WASD to fly · Q/E down/up · Shift faster",
-                                });
-                                frame_transport(ui, &mut viewer, frames.len());
-                                if catalog
-                                    .as_ref()
-                                    .and_then(|c| viewer.selected.and_then(|i| c.entries.get(i)))
-                                    .is_some_and(|entry| entry.category == Category::Models)
-                                {
-                                    let previous = viewer.model_palette.clone();
-                                    egui::ComboBox::from_id_salt("model-palette")
-                                        .selected_text(
-                                            viewer
-                                                .model_palette
-                                                .as_deref()
-                                                .filter(|p| !p.is_empty())
-                                                .or_else(|| {
-                                                    if viewer.model_palette.is_none() {
-                                                        palettes.first().map(String::as_str)
-                                                    } else {
-                                                        None
-                                                    }
-                                                })
-                                                .unwrap_or("Without palette"),
-                                        )
-                                        .show_ui(ui, |ui| {
-                                            for palette in palettes {
-                                                ui.selectable_value(
-                                                    &mut viewer.model_palette,
-                                                    Some(palette.clone()),
-                                                    palette,
-                                                );
-                                            }
-                                            ui.selectable_value(
-                                                &mut viewer.model_palette,
-                                                Some(String::new()),
-                                                "Without palette",
-                                            );
-                                        });
-                                    if previous != viewer.model_palette {
-                                        select = viewer.selected;
-                                    }
-                                }
-                                ui.horizontal(|ui| {
-                                    if let Some((_, palette)) =
-                                        preview.details.iter().find(|(key, _)| key == "Palette")
-                                    {
-                                        ui.weak(palette);
-                                    }
-                                });
-                            });
-                        let rect = ui.available_rect_before_wrap().intersect(panel_rect);
-                        viewer.viewport = rect;
-                        viewer.pixels_per_point = ctx.pixels_per_point();
-                        let response = ui.allocate_rect(rect, egui::Sense::drag());
-                        let fly = viewer.camera_mode == CameraMode::Flycam;
-                        if response.dragged_by(if fly { egui::PointerButton::Secondary } else { egui::PointerButton::Primary }) {
-                            let position = viewer.center + viewer.rotation() * Vec3::Z * viewer.distance;
-                            let delta = response.drag_delta();
-                            viewer.yaw -= delta.x * 0.008;
-                            viewer.pitch = (viewer.pitch - delta.y * 0.008).clamp(-1.5, 1.5);
-                            if fly {
-                                viewer.center = position - viewer.rotation() * Vec3::Z * viewer.distance;
-                            }
-                        }
-                        if !fly && response.dragged_by(egui::PointerButton::Secondary) {
-                            let delta = response.drag_delta();
-                            let scale = viewer.distance * 0.002;
-                            let rotation = Quat::from_rotation_y(viewer.yaw);
-                            viewer.center += rotation * Vec3::new(-delta.x * scale, delta.y * scale, 0.);
-                        }
-                        if response.hovered() && !ctx.text_edit_focused() {
-                            if fly {
-                                let (direction, boost) = ctx.input(|i| {
-                                    let axis = |positive, negative| u8::from(i.key_down(positive)) as f32 - u8::from(i.key_down(negative)) as f32;
-                                    (Vec3::new(axis(egui::Key::D, egui::Key::A), axis(egui::Key::E, egui::Key::Q), axis(egui::Key::S, egui::Key::W)), i.modifiers.shift)
-                                });
-                                viewer.fly(direction, time.delta_secs(), boost);
-                            } else {
-                                viewer.distance = (viewer.distance * (-ctx.input(|i| i.smooth_scroll_delta.y) * 0.002).exp()).clamp(0.02, 1_000_000.);
-                            }
-                        }
-                    }
+                    Content::Model { .. } => model_view(
+                        ui,
+                        &ctx,
+                        &mut viewer,
+                        catalog.as_ref(),
+                        preview,
+                        &mut select,
+                        &time,
+                    ),
                     Content::Images { frames } => {
-                        let indexed = frames[viewer.frame].indices.is_some();
-                        image_controls(
-                            ui,
-                            &mut viewer,
-                            frames.len(),
-                            catalog.as_ref(),
-                            indexed,
-                            frames[0].embedded_palette,
-                        );
-                        let picture = &frames[viewer.frame];
-                        let key = (viewer.frame, viewer.palette);
-                        if viewer.texture_key != Some(key) || viewer.textures.is_empty() {
-                            let palette = match viewer.palette {
-                                ImagePalette::Catalog(i) => {
-                                    catalog.as_ref().and_then(|c| c.palettes.get(i))
-                                }
-                                _ => None,
-                            };
-                            let mut rgba = picture.pixels(palette);
-                            if viewer.palette == ImagePalette::Indices
-                                && let Some(indices) = &picture.indices
-                            {
-                                for (pixel, index) in
-                                    rgba.as_chunks_mut::<4>().0.iter_mut().zip(indices)
-                                {
-                                    pixel[..3].fill(*index);
-                                }
-                            }
-                            preview::texture(
-                                &ctx,
-                                &mut viewer,
-                                rgba,
-                                picture.width,
-                                picture.height,
-                            );
-                            viewer.texture_key = Some(key);
-                        }
-                        if let Some(texture) = viewer.textures.first() {
-                            picture_view(
-                                ui,
-                                texture.id(),
-                                egui::vec2(picture.width as f32, picture.height as f32),
-                                viewer.zoom,
-                                viewer.fit,
-                            );
-                        }
+                        image_view(ui, &ctx, &mut viewer, catalog.as_ref(), frames)
                     }
-                    Content::Palette { colors } => {
-                        ui.heading("Palette");
-                        ui.weak("Hover a swatch for its index and RGB channels.");
-                        ui.separator();
-                        egui::Grid::new("palette")
-                            .spacing(egui::vec2(3., 3.))
-                            .show(ui, |ui| {
-                                for (i, &[r, g, b]) in colors.iter().enumerate() {
-                                    let (rect, response) = ui.allocate_exact_size(
-                                        egui::vec2(23., 23.),
-                                        egui::Sense::hover(),
-                                    );
-                                    ui.painter().rect_filled(
-                                        rect,
-                                        2.,
-                                        egui::Color32::from_rgb(r, g, b),
-                                    );
-                                    response.on_hover_text(format!("Index {i}\nRGB {r}, {g}, {b}"));
-                                    if i % 16 == 15 {
-                                        ui.end_row();
-                                    }
-                                }
-                            });
-                    }
+                    Content::Palette { colors } => palette_view(ui, colors),
                     Content::Font {
                         glyphs,
                         first,
                         line_height,
-                    } => {
-                        ui.heading("Font specimen");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut viewer.sample)
-                                .id(egui::Id::new("font-sample")),
-                        );
-                        ui.add(egui::Slider::new(&mut viewer.zoom, 0.5..=5.).text("Scale"));
-                        let text = viewer.sample.clone();
-                        let scale = viewer.zoom;
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-                            for c in text.chars() {
-                                let Some(index) = (c as usize)
-                                    .checked_sub(*first as usize)
-                                    .filter(|i| *i < glyphs.len())
-                                else {
-                                    continue;
-                                };
-                                let glyph = &glyphs[index];
-                                let texture =
-                                    viewer.font_textures.entry(index).or_insert_with(|| {
-                                        ctx.load_texture(
-                                            format!("glyph-{index}"),
-                                            egui::ColorImage::from_rgba_unmultiplied(
-                                                [glyph.width as usize, glyph.height as usize],
-                                                &glyph.rgba,
-                                            ),
-                                            egui::TextureOptions::NEAREST,
-                                        )
-                                    });
-                                let size = egui::vec2(
-                                    glyph.width as f32 * scale,
-                                    glyph.height as f32 * scale,
-                                );
-                                let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-                                ui.painter().image(
-                                    texture.id(),
-                                    rect,
-                                    egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)),
-                                    egui::Color32::WHITE,
-                                );
-                            }
-                        });
-                        ui.separator();
-                        ui.weak(format!(
-                            "{} glyphs · first character {} · line height {}",
-                            glyphs.len(),
-                            first,
-                            line_height
-                        ));
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            ui.horizontal_wrapped(|ui| {
-                                for (i, glyph) in glyphs.iter().enumerate() {
-                                    let texture =
-                                        viewer.font_textures.entry(i).or_insert_with(|| {
-                                            ctx.load_texture(
-                                                format!("glyph-{i}"),
-                                                egui::ColorImage::from_rgba_unmultiplied(
-                                                    [glyph.width as usize, glyph.height as usize],
-                                                    &glyph.rgba,
-                                                ),
-                                                egui::TextureOptions::NEAREST,
-                                            )
-                                        });
-                                    ui.add(egui::Image::new((
-                                        texture.id(),
-                                        egui::vec2(
-                                            glyph.width as f32 * 2.,
-                                            glyph.height as f32 * 2.,
-                                        ),
-                                    )))
-                                    .on_hover_text(format!(
-                                        "{} · {}",
-                                        *first as usize + i,
-                                        glyph.label
-                                    ));
-                                }
-                            });
-                        });
-                    }
+                    } => font_view(ui, &ctx, &mut viewer, glyphs, *first, *line_height),
                     Content::Audio { peaks, seconds, .. } => {
-                        ui.heading("Audio");
-                        ui.add_space(24.);
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(ui.available_width(), 180.),
-                            egui::Sense::hover(),
-                        );
-                        ui.painter()
-                            .rect_filled(rect, 6., egui::Color32::from_rgb(14, 20, 27));
-                        for (i, [low, high]) in peaks.iter().enumerate() {
-                            let x =
-                                rect.left() + rect.width() * i as f32 / peaks.len().max(1) as f32;
-                            ui.painter().line_segment(
-                                [
-                                    egui::pos2(x, rect.center().y - low * 80.),
-                                    egui::pos2(x, rect.center().y - high * 80.),
-                                ],
-                                egui::Stroke::new(1., egui::Color32::from_rgb(144, 198, 188)),
-                            );
-                        }
-                        transport(ui, &mut viewer, *seconds);
+                        audio_view(ui, &mut viewer, peaks, *seconds)
                     }
-                    Content::Movie { seconds, .. } => {
-                        transport(ui, &mut viewer, *seconds);
-                        if let Some(movie) = &viewer.movie {
-                            let frame = movie.frame as usize;
-                            let (width, height, display_height) =
-                                (movie.width, movie.height, movie.display_height);
-                            let pixels = if viewer.texture_key
-                                != Some((frame, ImagePalette::Embedded))
-                                || viewer.textures.is_empty()
-                            {
-                                Some(movie.rgba())
-                            } else {
-                                None
-                            };
-                            if let Some(pixels) = pixels {
-                                preview::texture(&ctx, &mut viewer, pixels, width, height);
-                                viewer.texture_key = Some((frame, ImagePalette::Embedded));
-                            }
-                            if let Some(texture) = viewer.textures.first() {
-                                picture_view(
-                                    ui,
-                                    texture.id(),
-                                    egui::vec2(width as f32, display_height as f32),
-                                    1.,
-                                    true,
-                                );
-                            }
-                        } else if let Some(error) = &viewer.error {
-                            ui.label(error);
-                        } else {
-                            ui.spinner();
-                            ui.label("Loading movie…");
-                        }
-                    }
+                    Content::Movie { seconds, .. } => movie_view(ui, &ctx, &mut viewer, *seconds),
                     Content::Spatial { cells, value } => {
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(&mut viewer.data_mode, 0, "Visualization");
-                            ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
-                        });
-                        if viewer.data_mode == 1 {
-                            json_view(ui, &mut viewer, value);
-                        } else {
-                            visibility_view(ui, &mut viewer, cells);
-                        }
+                        spatial_view(ui, &mut viewer, cells, value)
                     }
-                    Content::Data { value } => {
-                        ui.heading("Asset data");
-                        let source = value["source_lines"].as_array().map(|lines| {
-                            lines
-                                .iter()
-                                .filter_map(serde_json::Value::as_str)
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        });
-                        ui.horizontal(|ui| {
-                            ui.selectable_value(
-                                &mut viewer.data_mode,
-                                0,
-                                if source.is_some() { "Source" } else { "Tree" },
-                            );
-                            ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
-                            if source.is_some() {
-                                ui.selectable_value(&mut viewer.data_mode, 2, "Decoded fields");
-                            }
-                        });
-                        ui.add(
-                            egui::TextEdit::singleline(&mut viewer.data_filter)
-                                .id(egui::Id::new("data-filter"))
-                                .hint_text("Find fields or values…"),
-                        );
-                        let filter = viewer.data_filter.to_lowercase();
-                        egui::ScrollArea::both()
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
-                                ui.set_min_width(ui.available_width());
-                                if viewer.data_mode == 1
-                                    || (viewer.data_mode == 0 && source.is_some())
-                                {
-                                    let text = if viewer.data_mode == 1 {
-                                        if viewer.data_text.is_empty() {
-                                            viewer.data_text = serde_json::to_string_pretty(value)
-                                                .unwrap_or_default();
-                                        }
-                                        viewer.data_text.clone()
-                                    } else {
-                                        source.unwrap_or_default()
-                                    };
-                                    let mut text = text.as_str();
-                                    ui.add(
-                                        egui::TextEdit::multiline(&mut text)
-                                            .code_editor()
-                                            .desired_width(f32::INFINITY),
-                                    );
-                                } else {
-                                    data_tree(ui, "Asset", value, &filter, 0);
-                                }
-                            });
-                    }
+                    Content::Data { value } => data_view(ui, &mut viewer, value),
                     Content::Unavailable { reason } => {
                         ui.heading("Preview unavailable");
                         ui.label(reason);
@@ -942,6 +606,430 @@ pub fn draw(
         );
     }
     Ok(())
+}
+fn model_view(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    viewer: &mut Viewer,
+    catalog: Option<&Catalog>,
+    preview: &Preview,
+    select: &mut Option<usize>,
+    time: &Time,
+) {
+    let Content::Model {
+        frames,
+        palettes,
+        data,
+    } = &preview.content
+    else {
+        return;
+    };
+    let panel_rect = ui.available_rect_before_wrap();
+    if let Some(data) = data {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut viewer.data_mode, DataMode::Content, "Visualization");
+            ui.selectable_value(&mut viewer.data_mode, DataMode::Json, "JSON");
+        });
+        if viewer.data_mode == DataMode::Json {
+            json_view(ui, viewer, data);
+            return;
+        }
+    }
+    egui::Frame::new()
+        .fill(egui::Color32::from_black_alpha(200))
+        .inner_margin(8.)
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                egui::ComboBox::from_id_salt("camera-mode")
+                    .selected_text(format!("{:?}", viewer.camera_mode))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut viewer.camera_mode, CameraMode::Orbit, "Orbit");
+                        ui.selectable_value(&mut viewer.camera_mode, CameraMode::Flycam, "Flycam");
+                    });
+                egui::ComboBox::from_id_salt("shading")
+                    .selected_text(format!("{:?}", viewer.shading))
+                    .show_ui(ui, |ui| {
+                        for mode in [
+                            Shading::Textured,
+                            Shading::Unlit,
+                            Shading::Solid,
+                            Shading::Wireframe,
+                        ] {
+                            ui.selectable_value(&mut viewer.shading, mode, format!("{mode:?}"));
+                        }
+                    });
+                ui.checkbox(&mut viewer.edges, "Edges");
+                if ui.button("Frame object").clicked() {
+                    viewer.needs_frame = true;
+                }
+                if frames.len() > 1 {
+                    let previous = viewer.frame;
+                    ui.add(
+                        egui::Slider::new(&mut viewer.frame, 0..=frames.len() - 1)
+                            .text("Model frame"),
+                    );
+                    if previous != viewer.frame {
+                        viewer.scene_dirty = true;
+                    }
+                }
+            });
+            ui.weak(match viewer.camera_mode {
+                CameraMode::Orbit => "Drag to orbit · right-drag to pan · scroll to zoom",
+                CameraMode::Flycam => {
+                    "Right-drag to look · WASD to fly · Q/E down/up · Shift faster"
+                }
+            });
+            frame_transport(ui, viewer, frames.len());
+            if catalog
+                .as_ref()
+                .and_then(|c| viewer.selected.and_then(|i| c.entries.get(i)))
+                .is_some_and(|entry| entry.category == Category::Models)
+            {
+                let previous = viewer.model_palette.clone();
+                egui::ComboBox::from_id_salt("model-palette")
+                    .selected_text(
+                        viewer
+                            .model_palette
+                            .as_deref()
+                            .filter(|p| !p.is_empty())
+                            .or_else(|| {
+                                if viewer.model_palette.is_none() {
+                                    palettes.first().map(String::as_str)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or("Without palette"),
+                    )
+                    .show_ui(ui, |ui| {
+                        for palette in palettes {
+                            ui.selectable_value(
+                                &mut viewer.model_palette,
+                                Some(palette.clone()),
+                                palette,
+                            );
+                        }
+                        ui.selectable_value(
+                            &mut viewer.model_palette,
+                            Some(String::new()),
+                            "Without palette",
+                        );
+                    });
+                if previous != viewer.model_palette {
+                    *select = viewer.selected;
+                }
+            }
+            ui.horizontal(|ui| {
+                if let Some((_, palette)) = preview.details.iter().find(|(key, _)| key == "Palette")
+                {
+                    ui.weak(palette);
+                }
+            });
+        });
+    let rect = ui.available_rect_before_wrap().intersect(panel_rect);
+    viewer.viewport = rect;
+    viewer.pixels_per_point = ctx.pixels_per_point();
+    let response = ui.allocate_rect(rect, egui::Sense::drag());
+    let fly = viewer.camera_mode == CameraMode::Flycam;
+    if response.dragged_by(if fly {
+        egui::PointerButton::Secondary
+    } else {
+        egui::PointerButton::Primary
+    }) {
+        let position = viewer.center + viewer.rotation() * Vec3::Z * viewer.distance;
+        let delta = response.drag_delta();
+        viewer.yaw -= delta.x * 0.008;
+        viewer.pitch = (viewer.pitch - delta.y * 0.008).clamp(-1.5, 1.5);
+        if fly {
+            viewer.center = position - viewer.rotation() * Vec3::Z * viewer.distance;
+        }
+    }
+    if !fly && response.dragged_by(egui::PointerButton::Secondary) {
+        let delta = response.drag_delta();
+        let scale = viewer.distance * 0.002;
+        let rotation = Quat::from_rotation_y(viewer.yaw);
+        viewer.center += rotation * Vec3::new(-delta.x * scale, delta.y * scale, 0.);
+    }
+    if response.hovered() && !ctx.text_edit_focused() {
+        if fly {
+            let (direction, boost) = ctx.input(|i| {
+                let axis = |positive, negative| {
+                    u8::from(i.key_down(positive)) as f32 - u8::from(i.key_down(negative)) as f32
+                };
+                (
+                    Vec3::new(
+                        axis(egui::Key::D, egui::Key::A),
+                        axis(egui::Key::E, egui::Key::Q),
+                        axis(egui::Key::S, egui::Key::W),
+                    ),
+                    i.modifiers.shift,
+                )
+            });
+            viewer.fly(direction, time.delta_secs(), boost);
+        } else {
+            viewer.distance = (viewer.distance
+                * (-ctx.input(|i| i.smooth_scroll_delta.y) * 0.002).exp())
+            .clamp(0.02, 1_000_000.);
+        }
+    }
+}
+fn image_view(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    viewer: &mut Viewer,
+    catalog: Option<&Catalog>,
+    frames: &[cyrus_assets::Picture],
+) {
+    let indexed = frames[viewer.frame].indices.is_some();
+    image_controls(
+        ui,
+        viewer,
+        frames.len(),
+        catalog,
+        indexed,
+        frames[0].embedded_palette,
+    );
+    let picture = &frames[viewer.frame];
+    let key = (viewer.frame, viewer.palette);
+    if viewer.texture_key != Some(key) || viewer.texture.is_none() {
+        let palette = match viewer.palette {
+            ImagePalette::Catalog(i) => catalog.as_ref().and_then(|c| c.palettes.get(i)),
+            _ => None,
+        };
+        let mut rgba = picture.pixels(palette);
+        if viewer.palette == ImagePalette::Indices
+            && let Some(indices) = &picture.indices
+        {
+            for (pixel, index) in rgba.as_chunks_mut::<4>().0.iter_mut().zip(indices) {
+                pixel[..3].fill(*index);
+            }
+        }
+        preview::texture(ctx, viewer, rgba, picture.width, picture.height);
+        viewer.texture_key = Some(key);
+    }
+    if let Some(texture) = viewer.texture.as_ref() {
+        picture_view(
+            ui,
+            texture.id(),
+            egui::vec2(picture.width as f32, picture.height as f32),
+            viewer.zoom,
+            viewer.fit,
+        );
+    }
+}
+fn palette_view(ui: &mut egui::Ui, colors: &[[u8; 3]]) {
+    ui.heading("Palette");
+    ui.weak("Hover a swatch for its index and RGB channels.");
+    ui.separator();
+    egui::Grid::new("palette")
+        .spacing(egui::vec2(3., 3.))
+        .show(ui, |ui| {
+            for (i, &[r, g, b]) in colors.iter().enumerate() {
+                let (rect, response) =
+                    ui.allocate_exact_size(egui::vec2(23., 23.), egui::Sense::hover());
+                ui.painter()
+                    .rect_filled(rect, 2., egui::Color32::from_rgb(r, g, b));
+                response.on_hover_text(format!("Index {i}\nRGB {r}, {g}, {b}"));
+                if i % 16 == 15 {
+                    ui.end_row();
+                }
+            }
+        });
+}
+fn font_view(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    viewer: &mut Viewer,
+    glyphs: &[cyrus_assets::Picture],
+    first: u16,
+    line_height: u16,
+) {
+    ui.heading("Font specimen");
+    ui.add(egui::TextEdit::singleline(&mut viewer.sample).id(egui::Id::new("font-sample")));
+    ui.add(egui::Slider::new(&mut viewer.zoom, 0.5..=5.).text("Scale"));
+    let text = viewer.sample.clone();
+    let scale = viewer.zoom;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+        for c in text.chars() {
+            let Some(index) = (c as usize)
+                .checked_sub(first as usize)
+                .filter(|i| *i < glyphs.len())
+            else {
+                continue;
+            };
+            let glyph = &glyphs[index];
+            let texture = viewer.font_textures.entry(index).or_insert_with(|| {
+                ctx.load_texture(
+                    format!("glyph-{index}"),
+                    egui::ColorImage::from_rgba_unmultiplied(
+                        [glyph.width as usize, glyph.height as usize],
+                        &glyph.rgba,
+                    ),
+                    egui::TextureOptions::NEAREST,
+                )
+            });
+            let size = egui::vec2(glyph.width as f32 * scale, glyph.height as f32 * scale);
+            let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            ui.painter().image(
+                texture.id(),
+                rect,
+                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1., 1.)),
+                egui::Color32::WHITE,
+            );
+        }
+    });
+    ui.separator();
+    ui.weak(format!(
+        "{} glyphs · first character {} · line height {}",
+        glyphs.len(),
+        first,
+        line_height
+    ));
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for (i, glyph) in glyphs.iter().enumerate() {
+                let texture = viewer.font_textures.entry(i).or_insert_with(|| {
+                    ctx.load_texture(
+                        format!("glyph-{i}"),
+                        egui::ColorImage::from_rgba_unmultiplied(
+                            [glyph.width as usize, glyph.height as usize],
+                            &glyph.rgba,
+                        ),
+                        egui::TextureOptions::NEAREST,
+                    )
+                });
+                ui.add(egui::Image::new((
+                    texture.id(),
+                    egui::vec2(glyph.width as f32 * 2., glyph.height as f32 * 2.),
+                )))
+                .on_hover_text(format!(
+                    "{} · {}",
+                    first as usize + i,
+                    glyph.label
+                ));
+            }
+        });
+    });
+}
+fn audio_view(ui: &mut egui::Ui, viewer: &mut Viewer, peaks: &[[f32; 2]], seconds: f64) {
+    ui.heading("Audio");
+    ui.add_space(24.);
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 180.), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, 6., egui::Color32::from_rgb(14, 20, 27));
+    for (i, [low, high]) in peaks.iter().enumerate() {
+        let x = rect.left() + rect.width() * i as f32 / peaks.len().max(1) as f32;
+        ui.painter().line_segment(
+            [
+                egui::pos2(x, rect.center().y - low * 80.),
+                egui::pos2(x, rect.center().y - high * 80.),
+            ],
+            egui::Stroke::new(1., egui::Color32::from_rgb(144, 198, 188)),
+        );
+    }
+    transport(ui, viewer, seconds);
+}
+fn movie_view(ui: &mut egui::Ui, ctx: &egui::Context, viewer: &mut Viewer, seconds: f64) {
+    transport(ui, viewer, seconds);
+    if let Some(movie) = &viewer.movie {
+        let frame = movie.frame as usize;
+        let (width, height, display_height) = (movie.width, movie.height, movie.display_height);
+        let pixels = if viewer.texture_key != Some((frame, ImagePalette::Embedded))
+            || viewer.texture.is_none()
+        {
+            Some(movie.rgba())
+        } else {
+            None
+        };
+        if let Some(pixels) = pixels {
+            preview::texture(ctx, viewer, pixels, width, height);
+            viewer.texture_key = Some((frame, ImagePalette::Embedded));
+        }
+        if let Some(texture) = viewer.texture.as_ref() {
+            picture_view(
+                ui,
+                texture.id(),
+                egui::vec2(width as f32, display_height as f32),
+                1.,
+                true,
+            );
+        }
+    } else if let Some(error) = &viewer.error {
+        ui.label(error);
+    } else {
+        ui.spinner();
+        ui.label("Loading movie…");
+    }
+}
+fn spatial_view(
+    ui: &mut egui::Ui,
+    viewer: &mut Viewer,
+    cells: &[cyrus_assets::SpatialCell],
+    value: &serde_json::Value,
+) {
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut viewer.data_mode, DataMode::Content, "Visualization");
+        ui.selectable_value(&mut viewer.data_mode, DataMode::Json, "JSON");
+    });
+    if viewer.data_mode == DataMode::Json {
+        json_view(ui, viewer, value);
+    } else {
+        visibility_view(ui, viewer, cells);
+    }
+}
+fn data_view(ui: &mut egui::Ui, viewer: &mut Viewer, value: &serde_json::Value) {
+    ui.heading("Asset data");
+    let source = value["source_lines"].as_array().map(|lines| {
+        lines
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
+    });
+    ui.horizontal(|ui| {
+        ui.selectable_value(
+            &mut viewer.data_mode,
+            DataMode::Content,
+            if source.is_some() { "Source" } else { "Tree" },
+        );
+        ui.selectable_value(&mut viewer.data_mode, DataMode::Json, "JSON");
+        if source.is_some() {
+            ui.selectable_value(&mut viewer.data_mode, DataMode::Fields, "Decoded fields");
+        }
+    });
+    ui.add(
+        egui::TextEdit::singleline(&mut viewer.data_filter)
+            .id(egui::Id::new("data-filter"))
+            .hint_text("Find fields or values…"),
+    );
+    let filter = viewer.data_filter.to_lowercase();
+    egui::ScrollArea::both()
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            if viewer.data_mode == DataMode::Json
+                || (viewer.data_mode == DataMode::Content && source.is_some())
+            {
+                let text = if viewer.data_mode == DataMode::Json {
+                    if viewer.data_text.is_empty() {
+                        viewer.data_text = serde_json::to_string_pretty(value).unwrap_or_default();
+                    }
+                    viewer.data_text.clone()
+                } else {
+                    source.unwrap_or_default()
+                };
+                let mut text = text.as_str();
+                ui.add(
+                    egui::TextEdit::multiline(&mut text)
+                        .code_editor()
+                        .desired_width(f32::INFINITY),
+                );
+            } else {
+                data_tree(ui, "Asset", value, &filter, 0);
+            }
+        });
 }
 fn image_controls(
     ui: &mut egui::Ui,
@@ -1140,38 +1228,11 @@ fn data_tree(ui: &mut egui::Ui, key: &str, value: &serde_json::Value, filter: &s
     }
 }
 
-/// Numbered texture banks share a format; derived previews are not source files.
-pub fn entry_format(entry: &cyrus_assets::Entry) -> &str {
-    match entry.source {
-        cyrus_assets::Source::World(_) => "World previews",
-        cyrus_assets::Source::CdTrack(_) => "CD audio",
-        _ if entry
-            .path
-            .rsplit('/')
-            .next()
-            .is_some_and(|name| name.to_ascii_uppercase().starts_with("TEXBSI.")) =>
-        {
-            "TEXBSI"
-        }
-        _ if entry.category == Category::Other => "Other",
-        _ => &entry.format,
-    }
-}
 fn in_listing(entry: &cyrus_assets::Entry, format: &str, archive: Option<&str>) -> bool {
     match archive {
-        Some(path) => entry.path == path && is_member(entry),
-        None => !is_member(entry) && entry_format(entry) == format,
+        Some(path) => entry.path == path && entry.is_member(),
+        None => !entry.is_member() && entry.format_label() == format,
     }
-}
-
-fn is_member(entry: &cyrus_assets::Entry) -> bool {
-    matches!(
-        entry.source,
-        cyrus_assets::Source::Image(_)
-            | cyrus_assets::Source::Model(_)
-            | cyrus_assets::Source::Effect(_)
-            | cyrus_assets::Source::Speech(_)
-    )
 }
 
 fn json_view(ui: &mut egui::Ui, viewer: &mut Viewer, value: &serde_json::Value) {
@@ -1356,18 +1417,18 @@ mod tests {
             bytes: 0,
             error: None,
         };
-        assert_eq!(entry_format(&entry), "RGM");
+        assert_eq!(entry.format_label(), "RGM");
         entry.path = "maps/ISLAND.WLD".into();
         entry.format = "WLD".into();
-        assert_eq!(entry_format(&entry), "WLD");
+        assert_eq!(entry.format_label(), "WLD");
         entry.path = "fxart/TEXBSI.168".into();
         entry.format = "168".into();
-        assert_eq!(entry_format(&entry), "TEXBSI");
+        assert_eq!(entry.format_label(), "TEXBSI");
         entry.source = cyrus_assets::Source::Image(0);
-        assert_eq!(entry_format(&entry), "TEXBSI");
-        assert!(is_member(&entry));
+        assert_eq!(entry.format_label(), "TEXBSI");
+        assert!(entry.is_member());
         entry.source = cyrus_assets::Source::World(1);
-        assert_eq!(entry_format(&entry), "World previews");
-        assert!(!is_member(&entry));
+        assert_eq!(entry.format_label(), "World previews");
+        assert!(!entry.is_member());
     }
 }

@@ -159,52 +159,9 @@ impl AssetLibrary {
         id: &str,
         path: Option<String>,
     ) -> std::result::Result<String, JsValue> {
-        if !self
-            .library
-            .catalog
-            .entries
-            .iter()
-            .any(|entry| entry.id == id)
-        {
-            if let Some(path) = path {
-                self.library
-                    .expand(&path)
-                    .map_err(|error| bridge_error(format!("{path}: {error:#}")))?;
-            } else {
-                // Old links contain only a hash, so their archive must be located once.
-                let archives: Vec<_> = self
-                    .library
-                    .catalog
-                    .entries
-                    .iter()
-                    .filter(|entry| matches!(entry.source, cyrus_assets::Source::Archive))
-                    .map(|entry| entry.path.clone())
-                    .collect();
-                for path in archives {
-                    let _ = self.library.expand(&path);
-                    if self
-                        .library
-                        .catalog
-                        .entries
-                        .iter()
-                        .any(|entry| entry.id == id)
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-        if !self
-            .library
-            .catalog
-            .entries
-            .iter()
-            .any(|entry| entry.id == id)
-        {
-            return Err(bridge_error(
-                "The linked asset is not in this installation.",
-            ));
-        }
+        self.library
+            .resolve(id, path.as_deref())
+            .map_err(|error| bridge_error(format!("{error:#}")))?;
         self.catalog()
     }
     pub fn preview(

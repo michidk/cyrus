@@ -123,19 +123,23 @@ pub(super) fn prepare<R: ReadAssets>(
                     ),
                 ]);
                 let frames = (0..=image.extra_frames.len())
-                    .map(|i| Picture {
-                        label: format!("Frame {i}"),
-                        embedded_palette: image.palette.is_some(),
-                        width: image.width.into(),
-                        height: image.height.into(),
-                        rgba: image.decode_frame_rgba(i, None).unwrap_or_default(),
-                        indices: Some(if i == 0 {
-                            image.pixel_data.clone()
-                        } else {
-                            image.extra_frames[i - 1].clone()
-                        }),
+                    .map(|i| {
+                        Ok(Picture {
+                            label: format!("Frame {i}"),
+                            embedded_palette: image.palette.is_some(),
+                            width: image.width.into(),
+                            height: image.height.into(),
+                            rgba: image
+                                .decode_frame_rgba(i, None)
+                                .with_context(|| format!("{}: frame {i}", image.name))?,
+                            indices: Some(if i == 0 {
+                                image.pixel_data.clone()
+                            } else {
+                                image.extra_frames[i - 1].clone()
+                            }),
+                        })
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>>>()?;
                 Content::Images { frames }
             } else {
                 Content::Data {
@@ -627,10 +631,6 @@ fn model<R: ReadAssets>(
             library.source.progress(i, count, "Preparing model frames");
         }
         let url = library.output(&media_id, &format!("{i}.glb"));
-        if library.cached(&url) {
-            frames.push(url);
-            continue;
-        }
         let posed = model.at_frame(i)?;
         let (json, bytes) = gltf::convert_models_to_gltf(
             std::slice::from_ref(&posed),

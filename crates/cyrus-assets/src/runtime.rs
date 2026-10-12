@@ -191,6 +191,33 @@ impl<R: ReadAssets> Library<R> {
         Ok(())
     }
 
+    /// Locates `id`: reads the named archive index, or every archive index for older links
+    /// that carry no source path.
+    pub fn resolve(&mut self, id: &str, path: Option<&str>) -> Result<()> {
+        let found = |library: &Self| library.catalog.entries.iter().any(|entry| entry.id == id);
+        if found(self) {
+            return Ok(());
+        }
+        if let Some(path) = path {
+            self.expand(path).with_context(|| path.to_owned())?;
+        } else {
+            let archives: Vec<String> = self
+                .catalog
+                .entries
+                .iter()
+                .filter(|entry| matches!(entry.source, Source::Archive))
+                .map(|entry| entry.path.clone())
+                .collect();
+            for path in archives {
+                if self.expand(&path).is_ok() && found(self) {
+                    break;
+                }
+            }
+        }
+        anyhow::ensure!(found(self), "asset {id}: not found in this installation");
+        Ok(())
+    }
+
     /// Prepares one selection. No palette selects the first known world palette;
     /// an explicitly empty string requests embedded colors or raw indices instead.
     pub fn prepare(&mut self, id: &str, palette: Option<&str>) -> Result<Prepared> {
@@ -250,9 +277,6 @@ impl<R: ReadAssets> Library<R> {
             .borrow_mut()
             .insert(path.to_owned(), bytes.to_vec());
         Ok(())
-    }
-    fn cached(&self, path: &str) -> bool {
-        self.outputs.borrow().contains_key(path)
     }
 }
 

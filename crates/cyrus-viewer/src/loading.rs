@@ -110,70 +110,26 @@ pub fn select(
     #[cfg(not(target_arch = "wasm32"))] library: Option<&NativeLibrary>,
     #[cfg(target_arch = "wasm32")] worker: &crate::browser::BrowserWorker,
 ) {
-    let Some(catalog) = &viewer.catalog else {
-        return;
-    };
-    let Some(entry) = catalog.entries.get(index) else {
+    let Some(entry) = viewer.catalog.as_ref().and_then(|c| c.entries.get(index)) else {
         return;
     };
     let archive = matches!(entry.source, cyrus_assets::Source::Archive);
-    if archive
-        || matches!(
-            entry.source,
-            cyrus_assets::Source::Image(_)
-                | cyrus_assets::Source::Model(_)
-                | cyrus_assets::Source::Effect(_)
-                | cyrus_assets::Source::Speech(_)
-        )
-    {
-        viewer.archive = Some(entry.path.clone());
-    } else {
-        viewer.archive = None;
-    }
-    if archive {
-        viewer.search.clear();
-    }
-    viewer.selected = Some(index);
-    viewer.preview = None;
-    viewer.pending = None;
-    viewer.textures.clear();
-    viewer.font_textures.clear();
-    viewer.texture_key = None;
-    viewer.movie = None;
-    viewer.movie_blob = None;
-    viewer.error = None;
-    viewer.frame = 0;
-    viewer.palette = if catalog.palettes.is_empty() {
-        crate::ui::ImagePalette::Indices
-    } else {
-        crate::ui::ImagePalette::Catalog(0)
-    };
-    viewer.frame_elapsed = 0.;
-    viewer.data_mode = 0;
-    viewer.data_text.clear();
-    viewer.load_status = "Preparing selected asset…".into();
-    viewer.load_fraction = None;
-    viewer.render_loading = false;
-    viewer.playing = false;
-    viewer.position = 0.;
-    viewer.scene_dirty = true;
-    viewer.audio_dirty = true;
-    viewer.zoom = 1.;
-    viewer.needs_frame = false;
-    viewer.decoding = false;
-    viewer.seek_dirty = false;
-    viewer.preparing = !archive;
-    viewer.indexing = archive;
+    let entry = entry.clone();
+    viewer.begin_selection(index, &entry, archive);
     let palette = if entry.category == cyrus_assets::Category::Models {
         viewer.model_palette.clone()
     } else {
         None
     };
     #[cfg(not(target_arch = "wasm32"))]
-    let path = catalog.preview_path(entry, palette.as_deref());
+    let path = viewer
+        .catalog
+        .as_ref()
+        .expect("selection keeps its catalog")
+        .preview_path(&entry, palette.as_deref());
     #[cfg(target_arch = "wasm32")]
     {
-        if let Err(error) = worker.select(entry, palette.as_deref()) {
+        if let Err(error) = worker.select(&entry, palette.as_deref()) {
             viewer.error = Some(format!("{error:#}"));
             viewer.preparing = false;
             viewer.indexing = false;
@@ -315,7 +271,7 @@ pub fn initial_selection(
         return;
     };
     if let Some(index) = catalog.entries.iter().position(|entry| &entry.id == id) {
-        viewer.format = crate::ui::entry_format(&catalog.entries[index]).into();
+        viewer.format = catalog.entries[index].format_label().into();
         viewer.model_palette.clone_from(&options.palette);
         select(index, &mut viewer, &mut commands, &assets, Some(&library));
         commands.remove_resource::<cyrus_app::launch::ViewerOptions>();
@@ -331,27 +287,10 @@ pub fn initial_selection(
     let source = options.file.clone();
     commands.insert_resource(Preparation(bevy::tasks::IoTaskPool::get().spawn(
         async move {
-            let explicit_source = source.is_some();
-            let paths = source.map(|path| vec![path]).unwrap_or_else(|| {
-                library
-                    .catalog
-                    .entries
-                    .iter()
-                    .filter(|entry| matches!(entry.source, cyrus_assets::Source::Archive))
-                    .map(|entry| entry.path.clone())
-                    .collect()
-            });
-            for path in paths {
-                let catalog = match library.expand(&path) {
-                    Ok(catalog) => catalog,
-                    Err(error) if explicit_source => return Err(format!("{path}: {error:#}")),
-                    Err(_) => continue,
-                };
-                if catalog.entries.iter().any(|entry| entry.id == id) {
-                    return Ok(Prepared::Expanded(catalog));
-                }
-            }
-            Err(format!("asset {id}: not found in this installation"))
+            library
+                .resolve(&id, source.as_deref())
+                .map(Prepared::Expanded)
+                .map_err(|error| format!("{error:#}"))
         },
     )));
 }

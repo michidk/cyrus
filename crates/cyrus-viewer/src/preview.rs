@@ -1,7 +1,7 @@
 //! Selection-owned scene, camera and media playback.
 use crate::{
     loading::Blob,
-    ui::{Shading, Viewer},
+    ui::{DataMode, Shading, Viewer},
 };
 use bevy::{
     audio::{AudioSinkPlayback, Volume},
@@ -211,7 +211,7 @@ pub fn frame_camera(
         viewer.needs_frame = false;
     }
     if let Ok((mut transform, mut camera, _)) = cameras.single_mut() {
-        camera.is_active = viewer.data_mode == 0
+        camera.is_active = viewer.data_mode == DataMode::Content
             && viewer
                 .preview
                 .as_ref()
@@ -375,13 +375,13 @@ pub fn texture(
 ) -> egui::TextureId {
     let image =
         egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels);
-    if let Some(texture) = viewer.textures.first_mut() {
+    if let Some(texture) = viewer.texture.as_mut() {
         texture.set(image, egui::TextureOptions::NEAREST);
         texture.id()
     } else {
         let texture = ctx.load_texture("asset-preview", image, egui::TextureOptions::NEAREST);
         let id = texture.id();
-        viewer.textures.push(texture);
+        viewer.texture = Some(texture);
         id
     }
 }

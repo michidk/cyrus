@@ -57,7 +57,13 @@ impl Files {
         let mut files = Vec::new();
         for (relative, path) in &paths {
             let mut hash = blake3::Hasher::new();
-            if fingerprint {
+            if fingerprint && relative.starts_with("disc/") {
+                // CD images are hundreds of megabytes; size and modification time identify them.
+                let metadata = path.metadata()?;
+                hash.update(&metadata.len().to_le_bytes());
+                let modified = metadata.modified()?.duration_since(std::time::UNIX_EPOCH)?;
+                hash.update(&modified.as_nanos().to_le_bytes());
+            } else if fingerprint {
                 hash.update_reader(std::fs::File::open(path)?)?;
             }
             files.push(FileInfo {
@@ -137,6 +143,15 @@ impl Library {
         runtime.expand(path)?;
         Ok(runtime.catalog.clone())
     }
+    /// Locates an asset by ID, reading archive indexes as needed, and returns the updated catalog.
+    pub fn resolve(&self, id: &str, path: Option<&str>) -> Result<Catalog> {
+        let mut runtime = self
+            .runtime
+            .lock()
+            .map_err(|_| anyhow::anyhow!("asset decoder unavailable"))?;
+        runtime.resolve(id, path)?;
+        Ok(runtime.catalog.clone())
+    }
     pub fn prepare(&self, id: &str, palette: Option<&str>) -> Result<PathBuf> {
         let mut runtime = self
             .runtime
@@ -152,6 +167,7 @@ impl Library {
         if let Ok(bytes) = std::fs::read(&path)
             && let Ok(preview) = serde_json::from_slice::<Preview>(&bytes)
             && preview.validate().is_ok()
+            && !matches!(preview.content, crate::Content::Unavailable { .. })
             && preview.files().iter().all(|file| {
                 self.cache
                     .join(file)
