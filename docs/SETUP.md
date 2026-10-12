@@ -67,25 +67,30 @@ The game and viewer share `target/web`, the loader, Cache Storage, and the
 selected read-only install service. The game prepares its cache outside the install.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
 
-## CI artifacts
+## Releases
 
-The `Build artifacts` workflow packages the native game for Linux x64,
+The `Release` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. Both applications are built from this workspace.
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
-Every push to `main` builds its exact commit and uploads Actions artifacts.
-Runs for separate pushes build independently so newer commits do not replace
-queued artifact builds. Test and lint CI also runs on pushes and pull requests.
-Version tags and manual dispatch can build artifacts too. Actions artifacts expire
-after seven days.
-Pushing a version tag matching `v*` builds its revision and creates
-a draft GitHub release with all archives and `SHA256SUMS` after every platform
-succeeds. Review the draft's assets and notes before publishing it; publishing
-does not rebuild them. A manual dispatch with `release_tag` set to an existing
-tag also attaches artifacts and creates a draft when no release exists.
+Pushes and pull requests run tests, lint, and browser compatibility checks.
+They do not build release archives. Release builds run only for stable `vX.Y.Z`
+tags, either when pushed or selected in a manual `Release` dispatch.
+
+Run `Bump Version & Tag` on `main` with a version such as `0.2.0` to update the
+shared workspace version and lockfile, commit, and atomically push the commit
+and tag. This workflow requires a `RELEASE_TOKEN` repository secret with Contents
+and Workflows write access so its tag push triggers `Release`. Alternatively,
+update the version and lockfile locally and push the version commit and tag.
+
+`Release` checks that every workspace package matches the tag and runs the gates
+before building all platforms. After every build succeeds, it generates notes
+from conventional commits with `cliff.toml`, attaches archives and `SHA256SUMS`
+to a draft, and publishes it. Reruns leave an already published release unchanged.
+Actions artifacts expire after seven days; GitHub release assets remain available.
 
 Archives contain application code and crate usage instructions. They contain
 no game files, exported previews, or local state. Native executables still need

@@ -32,7 +32,7 @@ that bind everyone are in `AGENTS.md`.
   rustup, the wasm target, wasm-bindgen and Bevy's Linux libraries under
   `magic/build-tools/`; every `just` recipe and `gates.sh` pick it up. CI
   uses the system toolchain and runs the same gates plus a wasm32 check.
-  `Build artifacts` separately packages release-mode native and browser builds;
+  `Release` packages native and browser builds only for version tags;
   see `SETUP.md` for triggers, platforms, and package contents.
 - `git pull` before starting and while working. Commit completed, verified
   work directly to `main` and push; no feature branches or pull requests

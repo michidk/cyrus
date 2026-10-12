@@ -64,6 +64,7 @@ echo private > cyrus-config/cache/private.glb
 ln -sfn "$PWD/cyrus-config" target/web/cyrus-config
 echo page > target/web/index.html
 echo service > target/web/sw.js
+for file in loader.js install.js loading.css; do echo code > "target/web/$file"; done
 echo code > "target/web/pkg/$app.js"
 echo wasm > "target/web/pkg/${app}_bg.wasm"
 echo private > target/web/pkg/other.wasm
@@ -105,6 +106,8 @@ done
 
     def test_browser_excludes_install_cache_and_stale_outputs(self):
         expected = {"browser/index.html", "browser/sw.js", "browser/README.md",
+                    "browser/loader.js", "browser/install.js", "browser/loading.css",
+                    "browser/viewer-server.py",
                     "browser/pkg/cyrus-web.js", "browser/pkg/cyrus-web_bg.wasm",
                     "browser/pkg/snippets/module/helper.js"}
         self.build("web")
@@ -134,7 +137,7 @@ done
             (web / "sw.js").write_text("service worker")
         web = self.root / "dev/web"
         web.mkdir()
-        for name in ("loader.js", "sw.js", "loading.css", "asset-worker.js"):
+        for name in ("loader.js", "install.js", "sw.js", "loading.css", "asset-worker.js"):
             (web / name).write_text(name)
         bindgen = self.root / "bin/wasm-bindgen"
         bindgen.write_text('''#!/bin/bash

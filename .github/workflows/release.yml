@@ -1,24 +1,19 @@
-name: Build artifacts
+name: Release
 
 on:
   push:
-    branches: ["main"]
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Existing tag to build and attach to a draft release (blank for Actions artifacts)
-        type: string
-        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: artifacts-${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || (github.ref_type == 'tag' && github.ref) || github.run_id }}
+  group: release-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
+  TAG_NAME: ${{ github.ref_name }}
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
@@ -28,7 +23,41 @@ defaults:
     shell: bash
 
 jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Validate release tag
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::Select a stable vX.Y.Z release tag.'
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Install Bevy's Linux libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - name: Verify workspace versions match tag
+        run: |
+          metadata="$(cargo metadata --locked --no-deps --format-version 1)"
+          versions="$(jq -er '.workspace_members as $members | [.packages[] | select(.id as $id | $members | index($id)) | .version] | unique | join("\n")' <<< "$metadata")"
+          if [[ "$versions" != "${TAG_NAME#v}" ]]; then
+            printf '::error::Workspace versions %s do not match tag %s.\n' "$versions" "$TAG_NAME"
+            exit 1
+          fi
+      - name: Run gates
+        run: bash dev/scripts/gates.sh
+
   native:
+    needs: verify
     name: Native (${{ matrix.target }})
     timeout-minutes: 90
     strategy:
@@ -47,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+          persist-credentials: false
       - name: Free Linux disk space
         if: runner.os == 'Linux'
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -86,13 +115,14 @@ jobs:
           retention-days: 7
 
   web:
+    needs: verify
     name: Browser bundles
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+          persist-credentials: false
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
@@ -117,25 +147,54 @@ jobs:
           retention-days: 7
 
   release:
-    name: Attach release assets
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != ''
+    name: Create GitHub release
     needs: [native, web]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          path: dist
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate release changelog
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        with:
+          config: cliff.toml
+          args: --current --strip header --output CHANGELOG.md
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: artifacts
           merge-multiple: true
-      - name: Create checksums and upload
+
+      - name: Generate checksums
+        working-directory: artifacts
+        run: sha256sum -- * > SHA256SUMS
+
+      - name: Create or update draft, then publish
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
-          cd dist
-          sha256sum ./*.tar.gz > SHA256SUMS
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
-            gh release create "$RELEASE_TAG" --draft --verify-tag --title "$RELEASE_TAG" --notes ""
-          gh release upload "$RELEASE_TAG" ./*.tar.gz SHA256SUMS --clobber
+          release_state="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" |
+            jq -r --arg tag "$TAG_NAME" '.[] | select(.tag_name == $tag) | .draft')"
+          if [[ "$release_state" == "false" ]]; then
+            echo 'Release is already published; leaving it unchanged.'
+            exit 0
+          fi
+          if [[ "$release_state" == "true" ]]; then
+
+            gh release upload "$TAG_NAME" artifacts/* --clobber
+
+            gh release edit "$TAG_NAME" --notes-file CHANGELOG.md
+          else
+            gh release create "$TAG_NAME" artifacts/* --verify-tag --draft \
+              --title "${TAG_NAME#v}" --notes-file CHANGELOG.md
+          fi
+          gh release edit "$TAG_NAME" --draft=false
