@@ -280,7 +280,7 @@ Later. Requires full-game fidelity; packaging infrastructure already exists.
 - [ ] Choose and test supported platforms/hardware and clean setup with a purchased GOG install.
 - [ ] Measure loading, frame pacing and bounded memory across repeated transitions; fix observed bottlenecks.
 - [x] Audit tagged native packages. **Verified:** all eight archives from the [tagged release run](https://github.com/michidk/cyrus/actions/runs/38272630723) contain only the executable and README. Linux game/viewer help runs in a clean runtime container; the packaged game reaches the menu and enters New Game with a read-only install. Windows and both macOS build/package/help jobs passed on their runners.
-- [ ] Complete browser packaging and tagged publication. **Verified:** the same run lost its hosted browser runner; release creation was skipped. No browser package was uploaded.
+- [x] Complete browser packaging and tagged publication. **Verified:** [v0.1.1](https://github.com/michidk/cyrus/releases/tag/v0.1.1) is published with all eight native archives, the browser archive and `SHA256SUMS`. The [release pipeline](https://github.com/michidk/cyrus/actions/runs/38314713622) passed every job; all nine archive checksums match GitHub upload digests.
 - [ ] Publish setup, controls and known limitations; verify install, play, save and resume on a clean machine.
 
 Follow [METHOD.md](METHOD.md) for evidence and fidelity, [WORKFLOW.md](WORKFLOW.md)
