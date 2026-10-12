@@ -32,7 +32,7 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
         std::fs::create_dir_all(root.join(dir)).unwrap();
     }
     std::fs::write(root.join("RGFX.EXE"), []).unwrap();
-    std::fs::write(root.join("notes.txt"), "first").unwrap();
+    std::fs::write(root.join("notes.def"), "first").unwrap();
     let install = GameInstall::open(&root).unwrap();
     let cache = scratch.0.join("cache");
     assert_eq!(install.cache_path(&cache).unwrap(), cache);
@@ -49,14 +49,14 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
         .catalog
         .entries
         .iter()
-        .find(|e| e.path == "notes.txt")
+        .find(|e| e.path == "notes.def")
         .unwrap();
     let preview = first.prepare(&entry.id, None).unwrap();
     std::fs::write(&preview, b"interrupted").unwrap();
     first.prepare(&entry.id, None).unwrap();
     let decoded: Preview = serde_json::from_slice(&std::fs::read(preview).unwrap()).unwrap();
     assert!(matches!(decoded.content, Content::Data { .. }));
-    std::fs::write(root.join("notes.txt"), "other").unwrap();
+    std::fs::write(root.join("notes.def"), "other").unwrap();
     let second = Library::open(install, cache, |_, _, _| {}).unwrap();
     assert_ne!(first.catalog.generation, second.catalog.generation);
     assert_eq!(
@@ -65,7 +65,7 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
             .catalog
             .entries
             .iter()
-            .find(|e| e.path == "notes.txt")
+            .find(|e| e.path == "notes.def")
             .unwrap()
             .id
     );
@@ -109,13 +109,15 @@ fn windows_bitmap_still_prepares_an_image() {
 fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source() {
     let scratch = Scratch::new();
     let root = scratch.0.join("install");
-    for dir in ["maps", "fxart", "tools.exe"] {
+    for dir in ["maps", "fxart", "sound", "tools.exe"] {
         std::fs::create_dir_all(root.join(dir)).unwrap();
     }
     for path in [
         "RGFX.EXE",
         "fxart/helper.eXe",
         "driver.DLL",
+        "sound/MSSDRVR.LST",
+        "sound/content.lst",
         "maps/helper.dLl",
         "broken.MDI",
         "broken.dig",
@@ -127,8 +129,10 @@ fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source
         "broken.bmp",
         "broken.opl",
         "broken.rst",
-        "tools.exe/notes.txt",
+        "tools.exe/notes.def",
         "unknown.bin",
+        "notes.txt",
+        "README.TXT",
     ] {
         std::fs::write(root.join(path), []).unwrap();
     }
@@ -151,7 +155,8 @@ fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source
             "broken.bmp",
             "broken.lbm",
             "broken.pcx",
-            "tools.exe/notes.txt"
+            "sound/content.lst",
+            "tools.exe/notes.def"
         ]
     );
     for entry in library
@@ -560,11 +565,19 @@ fn installed_reported_archives_and_animation_have_content() {
     {
         let output = library.prepare(&entry.id, None).unwrap();
         let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
-        let Content::Spatial { cells, .. } = preview.content else {
+        let Content::Spatial { cells, scene, .. } = preview.content else {
             panic!("{}: {:?}", entry.path, preview.content)
         };
         assert!(!cells.is_empty());
         assert_eq!(cells[0].depth, 0);
+        assert!(scene.is_some(), "{}: missing related world", entry.path);
+        assert!(cells.iter().any(|cell| !cell.visibility_ids.is_empty()));
+        if entry.path.eq_ignore_ascii_case("maps/ISLAND.PVO") {
+            let expected = [-1779.2, 819.2, -1446.3998];
+            for (actual, expected) in cells[0].center.into_iter().zip(expected) {
+                assert!((actual - expected).abs() < 0.001);
+            }
+        }
         assert!(cells.iter().any(|cell| cell.visible_indices > 0));
     }
     let avik = library
@@ -587,4 +600,129 @@ fn installed_reported_archives_and_animation_have_content() {
         std::fs::read(library.cache.join(&frames[0])).unwrap(),
         std::fs::read(library.cache.join(&frames[1])).unwrap()
     );
+}
+
+#[test]
+fn installed_inspection_retains_terrain_and_authored_model_data() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (viewer inspection data)");
+        return;
+    }
+    let scratch = Scratch::new();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    let entry = library
+        .catalog
+        .entries
+        .iter()
+        .find(|e| e.path.eq_ignore_ascii_case("maps/ISLAND.WLD"))
+        .unwrap();
+    let output = library.prepare(&entry.id, None).unwrap();
+    let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+    preview.validate().unwrap();
+    let Content::Model {
+        data: Some(data), ..
+    } = preview.content
+    else {
+        panic!("missing terrain inspection")
+    };
+    assert_eq!(data["sections"].as_array().unwrap().len(), 4);
+    assert_eq!(data["sections"][0]["maps"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        data["sections"][0]["maps"][0].as_array().unwrap().len(),
+        16384
+    );
+    for key in [
+        "scene_y",
+        "wave_vertices",
+        "quarter_turns",
+        "texture_indices",
+        "height_engine_units",
+    ] {
+        assert_eq!(
+            data["combined"][key].as_array().unwrap().len(),
+            65536,
+            "{key}"
+        );
+    }
+    assert_eq!(data["combined"]["scene_x"][0], 0.);
+    assert_eq!(data["combined"]["scene_x"].as_array().unwrap().len(), 256);
+    assert_eq!(data["combined"]["scene_z"].as_array().unwrap().len(), 256);
+    let entry = library
+        .catalog
+        .entries
+        .iter()
+        .find(|e| e.path.eq_ignore_ascii_case("fxart/AVIKA001.3DC"))
+        .unwrap();
+    let output = library.prepare(&entry.id, None).unwrap();
+    let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+    let data = preview.metadata.unwrap();
+    assert!(!data["model"]["face_data"].as_array().unwrap().is_empty());
+    assert!(
+        !data["model"]["vertex_coords"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(!data["model"]["frame_data"].as_array().unwrap().is_empty());
+    assert!(data["scene_subobjects"].is_array());
+}
+
+#[test]
+fn bsi_palette_references_follow_terrain_and_sky_usage() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.join("RGFX.EXE").is_file() {
+        eprintln!("skipped: no install (BSI palette references)");
+        return;
+    }
+    let scratch = Scratch::new();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    for (path, expected) in [
+        ("fxart/TEXBSI.302", "fxart/ISLAND.COL"),
+        ("fxart/SKY888.BSI", "fxart/SKY888.COL"),
+    ] {
+        let catalog = library.expand(path).unwrap();
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.path == path && matches!(entry.source, Source::Image(0)))
+            .unwrap();
+        let output = library.prepare(&entry.id, None).unwrap();
+        let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+        assert!(
+            matches!(preview.content, Content::Images { .. }),
+            "{path}: {:?}",
+            preview.content
+        );
+        let palettes: Vec<_> = catalog
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry.category == Category::Palettes && preview.related.contains(&entry.id)
+            })
+            .map(|entry| entry.path.as_str())
+            .collect();
+        assert!(palettes.contains(&expected), "{path}: {palettes:?}");
+        assert!(
+            !palettes.contains(&"fxart/CATACOMB.COL"),
+            "{path}: {palettes:?}"
+        );
+        if path.ends_with(".BSI") {
+            assert_eq!(palettes, [expected]);
+        }
+    }
 }

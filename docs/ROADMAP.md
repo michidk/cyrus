@@ -65,6 +65,17 @@ the remaining interaction checks. Headless browser checks at 1280×800 exercise 
 skip, temporary Load/New artwork/progress, world entry, F1 in the menu and
 after New Game, and F1 in a direct START launch. F8/Tab/F7 write browser HUD
 preferences and show notices.
+Asset inspection now includes automatic WLD heightmaps, texture-rotation maps and
+direction arrows, model normals/bounds/face picking/UVs, world record diagrams,
+PVO scene/object inspection, authored movie-track selection and expanded decoded
+JSON. **Verified:** integrated workspace gates pass with the install and no skipped
+install tests; optimized browser/native builds and the isolated core consumer pass.
+Native checks cover WLD maps/arrows, model picking/UVs, sky palettes and movie
+controls. Browser checks cover restricted TEXBSI palettes, BSI JSON and the
+BELLTOWR world/actor inspector. Browser WLD capture and audible playback remain
+unverified because the software-rendered shared tab times out and the native
+container has no audio device.
+
 Native viewer GUI checks cover textured/unlit/solid rendering, edge overlays,
 JSON inspection, font preview, ANM playback and movie frame stepping. Tagged Linux
 viewer checks also verify visible wireframe geometry, Orbit drag, Flycam look and

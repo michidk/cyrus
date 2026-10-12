@@ -37,6 +37,9 @@ pub enum Shading {
 
 #[derive(Resource)]
 pub struct Viewer {
+    pub world_inspection: crate::world_inspection::State,
+    pub terrain_inspection: crate::terrain_inspection::State,
+    pub mesh_inspection: crate::mesh_inspection::State,
     pub catalog: Option<Catalog>,
     pub format: String,
     pub search: String,
@@ -50,14 +53,17 @@ pub struct Viewer {
     pub preparing: bool,
     pub texture: Option<egui::TextureHandle>,
     pub texture_key: Option<(usize, ImagePalette)>,
-    pub font_textures: std::collections::HashMap<usize, egui::TextureHandle>,
+    pub picture_textures: std::collections::HashMap<usize, egui::TextureHandle>,
     pub frame: usize,
     pub frame_ms: f64,
     pub frame_elapsed: f64,
     pub load_status: String,
     pub data_mode: DataMode,
     pub data_text: String,
+    data_lines: Vec<usize>,
     pub spatial_depth: u32,
+    pub selected_cell: Option<usize>,
+    pub spatial_3d: bool,
     pub slice_y: f32,
     pub palette: ImagePalette,
     pub model_palette: Option<String>,
@@ -70,6 +76,7 @@ pub struct Viewer {
     pub render_loading: bool,
     pub scene_dirty: bool,
     pub audio_dirty: bool,
+    pub movie_audio_track: Option<usize>,
     pub needs_frame: bool,
     pub viewport: egui::Rect,
     pub pixels_per_point: f32,
@@ -91,16 +98,29 @@ pub struct Viewer {
     styled: bool,
 }
 impl Viewer {
+    pub fn shows_3d(&self, content: &Content) -> bool {
+        self.data_mode == DataMode::Content
+            && (matches!(content, Content::Model { .. })
+                || (self.spatial_3d && matches!(content, Content::Spatial { .. })))
+    }
     pub fn rotation(&self) -> Quat {
         Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, 0.)
     }
     pub fn fly(&mut self, direction: Vec3, seconds: f32, boost: bool) {
-        let speed = (self.distance * 2.).max(100.) * if boost { 4. } else { 1. };
+        let speed = (self.distance * 0.5).max(25.) * if boost { 4. } else { 1. };
         self.center += self.rotation() * direction.normalize_or_zero() * speed * seconds;
     }
 
     pub fn set_preview(&mut self, preview: Preview) {
+        if let Content::Model {
+            data: Some(data), ..
+        } = &preview.content
+            && data.get("combined").is_some()
+        {
+            self.terrain_inspection.open = true;
+        }
         if let Content::Spatial { cells, .. } = &preview.content {
+            self.needs_frame = true;
             self.spatial_depth = 3.min(cells.iter().map(|cell| cell.depth).max().unwrap_or(0));
             self.slice_y = cells
                 .iter()
@@ -114,6 +134,23 @@ impl Viewer {
                 .is_some_and(|picture| picture.embedded_palette)
         {
             self.palette = ImagePalette::Embedded;
+        }
+        if let Content::Images { frames } = &preview.content
+            && !frames
+                .first()
+                .is_some_and(|picture| picture.embedded_palette)
+        {
+            self.palette = self
+                .catalog
+                .as_ref()
+                .and_then(|catalog| {
+                    catalog.palettes.iter().position(|palette| {
+                        catalog.entries.iter().any(|entry| {
+                            entry.path == palette.name && preview.related.contains(&entry.id)
+                        })
+                    })
+                })
+                .map_or(ImagePalette::Indices, ImagePalette::Catalog);
         }
         self.frame_ms = preview.frame_interval_ms.unwrap_or(100.);
         self.data_text.clear();
@@ -182,6 +219,10 @@ impl Viewer {
 impl Default for Viewer {
     fn default() -> Self {
         Self {
+            selected_cell: None,
+            world_inspection: Default::default(),
+            terrain_inspection: Default::default(),
+            mesh_inspection: Default::default(),
             catalog: None,
             format: "3DC".into(),
             search: String::new(),
@@ -195,14 +236,16 @@ impl Default for Viewer {
             preparing: false,
             texture: None,
             texture_key: None,
-            font_textures: Default::default(),
+            picture_textures: Default::default(),
             frame: 0,
             frame_ms: 100.,
             frame_elapsed: 0.,
             load_status: String::new(),
             data_mode: DataMode::Content,
             data_text: String::new(),
+            data_lines: Vec::new(),
             spatial_depth: 3,
+            spatial_3d: true,
             slice_y: 0.,
             palette: ImagePalette::Embedded,
             model_palette: None,
@@ -215,6 +258,7 @@ impl Default for Viewer {
             render_loading: false,
             scene_dirty: false,
             audio_dirty: false,
+            movie_audio_track: Some(0),
             needs_frame: false,
             pixels_per_point: 1.,
             viewport: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800., 600.)),
@@ -500,11 +544,11 @@ pub fn draw(
                 });
             });
     }
-    let model = preview
+    let scene = preview
         .as_ref()
-        .is_some_and(|p| matches!(p.content, Content::Model { .. }));
+        .is_some_and(|p| viewer.shows_3d(&p.content));
     egui::CentralPanel::default()
-        .frame(if model && viewer.data_mode == DataMode::Content {
+        .frame(if scene {
             egui::Frame::NONE
         } else {
             egui::Frame::central_panel(&ctx.style_of(egui::Theme::Dark))
@@ -540,9 +584,14 @@ pub fn draw(
                         &mut select,
                         &time,
                     ),
-                    Content::Images { frames } => {
-                        image_view(ui, &ctx, &mut viewer, catalog.as_ref(), frames)
-                    }
+                    Content::Images { frames } => image_view(
+                        ui,
+                        &ctx,
+                        &mut viewer,
+                        catalog.as_ref(),
+                        frames,
+                        &preview.related,
+                    ),
                     Content::Palette { colors } => palette_view(ui, colors),
                     Content::Font {
                         glyphs,
@@ -552,9 +601,13 @@ pub fn draw(
                     Content::Audio { peaks, seconds, .. } => {
                         audio_view(ui, &mut viewer, peaks, *seconds)
                     }
-                    Content::Movie { seconds, .. } => movie_view(ui, &ctx, &mut viewer, *seconds),
-                    Content::Spatial { cells, value } => {
-                        spatial_view(ui, &mut viewer, cells, value)
+                    Content::Movie {
+                        seconds,
+                        audio_tracks,
+                        ..
+                    } => movie_view(ui, &ctx, &mut viewer, *seconds, audio_tracks),
+                    Content::Spatial { cells, value, .. } => {
+                        spatial_view(ui, &ctx, &mut viewer, cells, value, &time)
                     }
                     Content::Data { value } => data_view(ui, &mut viewer, value),
                     Content::Unavailable { reason } => {
@@ -624,7 +677,6 @@ fn model_view(
     else {
         return;
     };
-    let panel_rect = ui.available_rect_before_wrap();
     if let Some(data) = data {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut viewer.data_mode, DataMode::Content, "Visualization");
@@ -726,10 +778,35 @@ fn model_view(
                 }
             });
         });
-    let rect = ui.available_rect_before_wrap().intersect(panel_rect);
+    if let Some(data) = data {
+        crate::terrain_inspection::controls(ui, &mut viewer.terrain_inspection, data);
+    }
+    if let Some(data) = data
+        && let Some((center, distance)) = crate::world_inspection::toolbar(
+            ui,
+            &mut viewer.world_inspection,
+            data,
+            viewer.distance,
+        )
+    {
+        viewer.center = center;
+        viewer.distance = distance;
+    }
+    crate::mesh_inspection::controls(ui, &mut viewer.mesh_inspection, preview.metadata.as_ref());
+    camera_input(ui, ctx, viewer, time);
+}
+
+fn camera_input(ui: &mut egui::Ui, ctx: &egui::Context, viewer: &mut Viewer, time: &Time) {
+    let rect = ui.available_rect_before_wrap().intersect(ui.clip_rect());
     viewer.viewport = rect;
     viewer.pixels_per_point = ctx.pixels_per_point();
-    let response = ui.allocate_rect(rect, egui::Sense::drag());
+    let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+    if viewer.mesh_inspection.picking
+        && response.clicked()
+        && let Some(p) = response.interact_pointer_pos()
+    {
+        viewer.mesh_inspection.pending_pick = Some(Vec2::new(p.x, p.y) * ctx.pixels_per_point());
+    }
     let fly = viewer.camera_mode == CameraMode::Flycam;
     if response.dragged_by(if fly {
         egui::PointerButton::Secondary
@@ -779,7 +856,16 @@ fn image_view(
     viewer: &mut Viewer,
     catalog: Option<&Catalog>,
     frames: &[cyrus_assets::Picture],
+    related: &[String],
 ) {
+    if viewer
+        .selected
+        .and_then(|index| catalog?.entries.get(index))
+        .is_some_and(|entry| entry.path.eq_ignore_ascii_case("system/pointers.bmp"))
+    {
+        sprite_sheet_view(ui, ctx, viewer, frames);
+        return;
+    }
     let indexed = frames[viewer.frame].indices.is_some();
     image_controls(
         ui,
@@ -788,6 +874,7 @@ fn image_view(
         catalog,
         indexed,
         frames[0].embedded_palette,
+        related,
     );
     let picture = &frames[viewer.frame];
     let key = (viewer.frame, viewer.palette);
@@ -816,6 +903,59 @@ fn image_view(
             viewer.fit,
         );
     }
+}
+fn sprite_sheet_view(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    viewer: &mut Viewer,
+    pictures: &[cyrus_assets::Picture],
+) {
+    ui.label(format!("{} images", pictures.len()));
+    ui.add(egui::Slider::new(&mut viewer.zoom, 1.0..=10.0).text("Zoom"));
+    ui.separator();
+    let cell_width = pictures
+        .iter()
+        .map(|picture| picture.width)
+        .max()
+        .unwrap_or(0) as f32
+        * viewer.zoom;
+    let cell_width = cell_width.max(72.);
+    let columns = (ui.available_width() / (cell_width + ui.spacing().item_spacing.x))
+        .floor()
+        .max(1.) as usize;
+    egui::ScrollArea::both().show(ui, |ui| {
+        egui::Grid::new("sprite-sheet")
+            .min_col_width(cell_width)
+            .show(ui, |ui| {
+                for (index, picture) in pictures.iter().enumerate() {
+                    let texture = viewer.picture_textures.entry(index).or_insert_with(|| {
+                        ctx.load_texture(
+                            format!("sprite-{index}"),
+                            egui::ColorImage::from_rgba_unmultiplied(
+                                [picture.width as usize, picture.height as usize],
+                                &picture.rgba,
+                            ),
+                            egui::TextureOptions::NEAREST,
+                        )
+                    });
+                    ui.vertical(|ui| {
+                        ui.label(format!("Image {}", index + 1));
+                        ui.add(
+                            egui::Image::new((
+                                texture.id(),
+                                egui::vec2(picture.width as f32, picture.height as f32)
+                                    * viewer.zoom,
+                            ))
+                            .bg_fill(egui::Color32::from_gray(36)),
+                        )
+                        .on_hover_text(format!("{} × {}", picture.width, picture.height));
+                    });
+                    if (index + 1) % columns == 0 {
+                        ui.end_row();
+                    }
+                }
+            });
+    });
 }
 fn palette_view(ui: &mut egui::Ui, colors: &[[u8; 3]]) {
     ui.heading("Palette");
@@ -859,7 +999,7 @@ fn font_view(
                 continue;
             };
             let glyph = &glyphs[index];
-            let texture = viewer.font_textures.entry(index).or_insert_with(|| {
+            let texture = viewer.picture_textures.entry(index).or_insert_with(|| {
                 ctx.load_texture(
                     format!("glyph-{index}"),
                     egui::ColorImage::from_rgba_unmultiplied(
@@ -889,7 +1029,7 @@ fn font_view(
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             for (i, glyph) in glyphs.iter().enumerate() {
-                let texture = viewer.font_textures.entry(i).or_insert_with(|| {
+                let texture = viewer.picture_textures.entry(i).or_insert_with(|| {
                     ctx.load_texture(
                         format!("glyph-{i}"),
                         egui::ColorImage::from_rgba_unmultiplied(
@@ -931,7 +1071,45 @@ fn audio_view(ui: &mut egui::Ui, viewer: &mut Viewer, peaks: &[[f32; 2]], second
     }
     transport(ui, viewer, seconds);
 }
-fn movie_view(ui: &mut egui::Ui, ctx: &egui::Context, viewer: &mut Viewer, seconds: f64) {
+fn movie_view(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    viewer: &mut Viewer,
+    seconds: f64,
+    audio_tracks: &[cyrus_assets::MovieAudioTrack],
+) {
+    let previous = viewer.movie_audio_track;
+    let label = |index: usize| {
+        audio_tracks
+            .get(index)
+            .map(|track| {
+                format!(
+                    "Track {} · {} Hz · {} ch · {} bit",
+                    track.index + 1,
+                    track.sample_rate,
+                    track.channels,
+                    track.bits_per_sample
+                )
+            })
+            .unwrap_or_else(|| "None".into())
+    };
+    egui::ComboBox::from_id_salt("movie-audio-track")
+        .selected_text(
+            viewer
+                .movie_audio_track
+                .map(label)
+                .unwrap_or_else(|| "None".into()),
+        )
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut viewer.movie_audio_track, None, "None (silent)");
+            for index in 0..audio_tracks.len() {
+                ui.selectable_value(&mut viewer.movie_audio_track, Some(index), label(index));
+            }
+        });
+    if previous != viewer.movie_audio_track {
+        viewer.audio_dirty = true;
+        viewer.seek_dirty = true;
+    }
     transport(ui, viewer, seconds);
     if let Some(movie) = &viewer.movie {
         let frame = movie.frame as usize;
@@ -965,16 +1143,118 @@ fn movie_view(ui: &mut egui::Ui, ctx: &egui::Context, viewer: &mut Viewer, secon
 }
 fn spatial_view(
     ui: &mut egui::Ui,
+    ctx: &egui::Context,
     viewer: &mut Viewer,
     cells: &[cyrus_assets::SpatialCell],
     value: &serde_json::Value,
+    time: &Time,
 ) {
-    ui.horizontal(|ui| {
-        ui.selectable_value(&mut viewer.data_mode, DataMode::Content, "Visualization");
-        ui.selectable_value(&mut viewer.data_mode, DataMode::Json, "JSON");
-    });
+    egui::Frame::new()
+        .fill(egui::Color32::from_black_alpha(200))
+        .inner_margin(8.)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(
+                        viewer.data_mode == DataMode::Content && viewer.spatial_3d,
+                        "3D",
+                    )
+                    .clicked()
+                {
+                    viewer.data_mode = DataMode::Content;
+                    viewer.spatial_3d = true;
+                }
+                if ui
+                    .selectable_label(
+                        viewer.data_mode == DataMode::Content && !viewer.spatial_3d,
+                        "2D slice",
+                    )
+                    .clicked()
+                {
+                    viewer.data_mode = DataMode::Content;
+                    viewer.spatial_3d = false;
+                }
+                ui.selectable_value(&mut viewer.data_mode, DataMode::Json, "JSON");
+            });
+            if viewer.data_mode == DataMode::Content {
+                for key in ["scene_error", "mapping_error"] {
+                    if let Some(error) = value[key].as_str() {
+                        ui.label(error);
+                    }
+                }
+                let available: Vec<_> = cells
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, cell)| cell.depth == viewer.spatial_depth)
+                    .collect();
+                egui::ComboBox::from_id_salt("pvo-cell")
+                    .selected_text(
+                        viewer.selected_cell.map_or_else(
+                            || "Select visibility cell".into(),
+                            |i| format!("Cell {i}"),
+                        ),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (index, cell) in available {
+                            ui.selectable_value(
+                                &mut viewer.selected_cell,
+                                Some(index),
+                                format!("Cell {index} · {} IDs", cell.visibility_ids.len()),
+                            );
+                        }
+                    });
+                if let Some(cell) = viewer.selected_cell.and_then(|i| cells.get(i)) {
+                    let count = value["static_objects"].as_array().map_or(0, Vec::len);
+                    let unresolved: Vec<_> = cell
+                        .visibility_ids
+                        .iter()
+                        .filter(|id| usize::from(**id) >= count)
+                        .collect();
+                    ui.label(format!(
+                        "{} mapped static objects · {} unmapped IDs",
+                        cell.visibility_ids.len() - unresolved.len(),
+                        unresolved.len()
+                    ));
+                    ui.collapsing("Visible object IDs", |ui| {
+                        ui.label(format!("{:?}", cell.visibility_ids));
+                        ui.label(format!(
+                            "Unmapped (runtime table or unavailable static mapping): {unresolved:?}"
+                        ));
+                    });
+                    if ui.button("Focus selected cell").clicked() {
+                        viewer.center = Vec3::from(cell.center);
+                        viewer.distance = cell.half_extent * 3.;
+                    }
+                }
+            }
+            if viewer.data_mode == DataMode::Content && viewer.spatial_3d {
+                let depth = cells.iter().map(|cell| cell.depth).max().unwrap_or(0);
+                ui.add(egui::Slider::new(&mut viewer.spatial_depth, 0..=depth).text("Depth"));
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut viewer.camera_mode, CameraMode::Orbit, "Orbit");
+                    ui.selectable_value(&mut viewer.camera_mode, CameraMode::Flycam, "Flycam");
+                    if ui.button("Frame cells").clicked() {
+                        viewer.needs_frame = true;
+                    }
+                });
+                ui.weak("Visibility cells · brighter boxes contain more visibility IDs");
+                ui.weak("X red · Y green · Z blue");
+                ui.weak(match viewer.camera_mode {
+                    CameraMode::Orbit => "Drag to orbit · right-drag to pan · scroll to zoom",
+                    CameraMode::Flycam => {
+                        "Right-drag to look · WASD to fly · Q/E down/up · Shift faster"
+                    }
+                });
+            }
+        });
     if viewer.data_mode == DataMode::Json {
         json_view(ui, viewer, value);
+    } else if viewer.spatial_3d {
+        if cells.is_empty() {
+            ui.label("No visibility cells");
+        } else {
+            camera_input(ui, ctx, viewer, time);
+        }
     } else {
         visibility_view(ui, viewer, cells);
     }
@@ -1015,6 +1295,10 @@ fn data_view(ui: &mut egui::Ui, viewer: &mut Viewer, value: &serde_json::Value) 
                 let text = if viewer.data_mode == DataMode::Json {
                     if viewer.data_text.is_empty() {
                         viewer.data_text = serde_json::to_string_pretty(value).unwrap_or_default();
+                        viewer.data_lines = std::iter::once(0)
+                            .chain(viewer.data_text.match_indices('\n').map(|(i, _)| i + 1))
+                            .collect();
+                        viewer.data_lines.push(viewer.data_text.len());
                     }
                     viewer.data_text.clone()
                 } else {
@@ -1038,6 +1322,7 @@ fn image_controls(
     catalog: Option<&Catalog>,
     indexed: bool,
     embedded: bool,
+    related: &[String],
 ) {
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut viewer.fit, "Fit");
@@ -1072,6 +1357,13 @@ fn image_controls(
                 }
                 if let Some(catalog) = catalog {
                     for (i, p) in catalog.palettes.iter().enumerate() {
+                        if !catalog
+                            .entries
+                            .iter()
+                            .any(|entry| entry.path == p.name && related.contains(&entry.id))
+                        {
+                            continue;
+                        }
                         ui.selectable_value(&mut viewer.palette, ImagePalette::Catalog(i), &p.name);
                     }
                 }
@@ -1238,17 +1530,31 @@ fn in_listing(entry: &cyrus_assets::Entry, format: &str, archive: Option<&str>) 
 fn json_view(ui: &mut egui::Ui, viewer: &mut Viewer, value: &serde_json::Value) {
     if viewer.data_text.is_empty() {
         viewer.data_text = serde_json::to_string_pretty(value).unwrap_or_default();
+        viewer.data_lines = std::iter::once(0)
+            .chain(viewer.data_text.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+        viewer.data_lines.push(viewer.data_text.len());
     }
+    ui.horizontal(|ui| {
+        if ui.button("Copy JSON").clicked() {
+            ui.ctx().copy_text(viewer.data_text.clone());
+        }
+        ui.weak("Complete decoded data; only visible lines are drawn.");
+    });
+    let row_height = ui.text_style_height(&egui::TextStyle::Monospace);
+    let lines = viewer.data_lines.len().saturating_sub(1);
     egui::ScrollArea::both()
         .auto_shrink([false, false])
-        .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            let mut text = viewer.data_text.as_str();
-            ui.add(
-                egui::TextEdit::multiline(&mut text)
-                    .code_editor()
-                    .desired_width(f32::INFINITY),
-            );
+        .show_rows(ui, row_height, lines, |ui, range| {
+            for index in range {
+                let line = viewer.data_text[viewer.data_lines[index]..viewer.data_lines[index + 1]]
+                    .trim_end_matches('\n');
+                ui.add(
+                    egui::Label::new(egui::RichText::new(line).monospace())
+                        .wrap_mode(egui::TextWrapMode::Extend)
+                        .selectable(true),
+                );
+            }
         });
 }
 
@@ -1257,19 +1563,19 @@ fn visibility_view(ui: &mut egui::Ui, viewer: &mut Viewer, cells: &[cyrus_assets
         ui.label("No visibility cells");
         return;
     };
-    ui.label("Visibility octree · top view (X / Z), sliced at Y. Brighter cells contain more visibility indices.");
+    ui.label("Visibility octree · top view (X / Z), sliced at Y. Brighter cells contain more visibility IDs.");
     let depth = cells.iter().map(|c| c.depth).max().unwrap_or(0);
     ui.add(egui::Slider::new(&mut viewer.spatial_depth, 0..=depth).text("Depth"));
     let min_y = root.center[1] - root.half_extent;
     let max_y = root.center[1] + root.half_extent;
     viewer.slice_y = viewer.slice_y.clamp(min_y, max_y);
     ui.add(egui::Slider::new(&mut viewer.slice_y, min_y..=max_y).text("Y slice"));
-    let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click());
     let scale = rect.width().min(rect.height()) / (root.half_extent * 2.).max(1.);
     let project = |x: f32, z: f32| {
         rect.center() + egui::vec2((x - root.center[0]) * scale, (z - root.center[2]) * scale)
     };
-    for cell in cells.iter().filter(|c| {
+    for (index, cell) in cells.iter().enumerate().filter(|(_, c)| {
         c.depth == viewer.spatial_depth
             && viewer.slice_y <= c.center[1] + c.half_extent
             && (viewer.slice_y > c.center[1] - c.half_extent
@@ -1291,8 +1597,11 @@ fn visibility_view(ui: &mut egui::Ui, viewer: &mut Viewer, cells: &[cyrus_assets
             egui::StrokeKind::Inside,
         );
         if response.hover_pos().is_some_and(|p| bounds.contains(p)) {
+            if response.clicked() {
+                viewer.selected_cell = Some(index);
+            }
             response.clone().on_hover_text(format!(
-                "Center {:?}\nHalf extent {}\n{} visibility indices",
+                "Center {:?}\nHalf extent {}\n{} visibility IDs",
                 cell.center, cell.half_extent, cell.visible_indices
             ));
         }
@@ -1300,17 +1609,163 @@ fn visibility_view(ui: &mut egui::Ui, viewer: &mut Viewer, cells: &[cyrus_assets
 }
 
 fn loading_bar(ui: &mut egui::Ui, fraction: Option<f32>, label: &str) {
-    ui.add(
-        egui::ProgressBar::new(fraction.unwrap_or(0.))
-            .animate(fraction.is_none())
-            .desired_width(300.)
-            .text(label),
-    );
+    if let Some(fraction) = fraction {
+        ui.add(
+            egui::ProgressBar::new(fraction)
+                .desired_width(ui.available_width().min(300.))
+                .show_percentage(),
+        );
+    } else {
+        ui.spinner();
+    }
+    ui.label(label);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn changing_assets_clears_inspection_and_track_selection() {
+        let entry = serde_json::from_value(serde_json::json!({
+            "id": "next", "name": "next.wld", "path": "maps/next.wld",
+            "category": "Models", "format": "WLD", "source": "File", "bytes": 0, "error": null
+        }))
+        .unwrap();
+        let mut viewer = Viewer {
+            selected_cell: Some(3),
+            movie_audio_track: None,
+            ..default()
+        };
+        viewer.terrain_inspection.open = true;
+        viewer.mesh_inspection.picking = true;
+        viewer.begin_selection(0, &entry, false);
+        assert_eq!(viewer.selected_cell, None);
+        assert_eq!(viewer.movie_audio_track, Some(0));
+        assert!(!viewer.terrain_inspection.open);
+        assert!(!viewer.mesh_inspection.picking);
+    }
+    #[test]
+    fn large_json_keeps_complete_data_without_laying_out_every_line() {
+        let value = serde_json::json!({"values": (0..10000).collect::<Vec<_>>()});
+        let mut viewer = Viewer::default();
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.set_max_size(egui::vec2(500., 200.));
+            json_view(ui, &mut viewer, &value);
+        });
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&viewer.data_text).unwrap(),
+            value
+        );
+        output.textures_delta.clear();
+        let text_shapes = output
+            .shapes
+            .iter()
+            .filter(|s| matches!(s.shape, egui::Shape::Text(_)))
+            .count();
+        assert!(
+            text_shapes < 100,
+            "laid out {text_shapes} lines for a small viewport"
+        );
+    }
+    #[test]
+    fn loading_status_does_not_overlap_the_indicator() {
+        for fraction in [None, Some(0.), Some(0.5), Some(1.)] {
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ui.set_max_width(180.);
+                ui.vertical_centered(|ui| {
+                    loading_bar(ui, fraction, "Preparing selected asset…");
+                });
+            });
+            output.textures_delta.clear();
+            let label = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.text() == "Preparing selected asset…" =>
+                    {
+                        Some(text.pos)
+                    }
+                    _ => None,
+                })
+                .expect("loading stage is visible");
+            let indicator = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) => Some(rect.rect),
+                    egui::Shape::Path(path) => Some(egui::Rect::from_points(&path.points)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert!(!indicator.is_empty(), "loading indicator is visible");
+            for rect in indicator {
+                assert!(rect.bottom() < label.y, "status overlaps the indicator");
+                assert!(rect.width() <= 180., "indicator exceeds the viewport");
+            }
+        }
+    }
+
+    #[test]
+    fn pointer_sheet_shows_every_image_without_animation_controls() {
+        let catalog: Catalog = serde_json::from_value(serde_json::json!({
+            "version": cyrus_assets::CATALOG_VERSION, "generation": "test", "palettes": [],
+            "entries": [{"id": "pointers", "name": "pointers.bmp", "path": "SYSTEM/POINTERS.BMP",
+                "category": "Images", "format": "BMP", "source": "File", "bytes": 0, "error": null}]
+        }))
+        .unwrap();
+        let pictures = (0..30)
+            .map(|index| cyrus_assets::Picture {
+                label: format!("Frame {index}"),
+                width: 16,
+                height: 16,
+                rgba: vec![255; 16 * 16 * 4],
+                indices: None,
+                embedded_palette: false,
+            })
+            .collect::<Vec<_>>();
+        let mut viewer = Viewer {
+            selected: Some(0),
+            ..default()
+        };
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.set_max_width(320.);
+            image_view(ui, &ctx, &mut viewer, Some(&catalog), &pictures, &[]);
+        });
+        output.textures_delta.clear();
+        let labels = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.text()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for label in ["Image 1", "Image 15", "Image 30"] {
+            assert!(labels.contains(&label), "missing {label}");
+        }
+        for label in ["Play", "Loop", "Frame", "Frame time"] {
+            assert!(
+                !labels.contains(&label),
+                "unexpected animation control {label}"
+            );
+        }
+        assert_eq!(viewer.picture_textures.len(), 30);
+        for shape in &output.shapes {
+            if let egui::Shape::Text(text) = &shape.shape
+                && text.galley.text().starts_with("Image ")
+            {
+                assert!(
+                    text.pos.x + text.galley.size().x <= 320.,
+                    "image label leaves the grid"
+                );
+            }
+        }
+    }
+
     #[test]
     fn image_palette_defaults_preserve_embedded_artwork() {
         let mut viewer = Viewer {
@@ -1344,25 +1799,154 @@ mod tests {
         preview.frame_interval_ms = None;
         viewer.set_preview(preview);
         assert_eq!(viewer.frame_ms, 100.);
-        assert_eq!(viewer.palette, ImagePalette::Catalog(0));
+        assert_eq!(viewer.palette, ImagePalette::Indices);
     }
+    #[test]
+    fn standalone_terrain_opens_its_heightmap() {
+        let mut viewer = Viewer::default();
+        viewer.set_preview(Preview {
+            content: Content::Model {
+                frames: vec!["terrain.glb".into()],
+                palettes: vec![],
+                data: Some(serde_json::json!({"combined":{"width":256,"height":256}})),
+            },
+            metadata: None,
+            frame_interval_ms: None,
+            details: vec![],
+            related: vec![],
+        });
+        assert!(viewer.terrain_inspection.open);
+    }
+
+    #[test]
+    fn indexed_image_selects_only_a_referenced_palette() {
+        let catalog: Catalog = serde_json::from_value(serde_json::json!({
+            "version": cyrus_assets::CATALOG_VERSION, "generation": "test",
+            "palettes": [{"name":"unused.col", "colors":[]}, {"name":"used.col", "colors":[]}],
+            "entries": [
+                {"id":"unused", "name":"unused.col", "path":"unused.col", "category":"Palettes", "format":"COL", "source":"File", "bytes":0, "error":null},
+                {"id":"used", "name":"used.col", "path":"used.col", "category":"Palettes", "format":"COL", "source":"File", "bytes":0, "error":null}
+            ]
+        })).unwrap();
+        let mut viewer = Viewer {
+            catalog: Some(catalog),
+            ..default()
+        };
+        viewer.set_preview(Preview {
+            content: Content::Images {
+                frames: vec![cyrus_assets::Picture {
+                    label: "image".into(),
+                    width: 1,
+                    height: 1,
+                    rgba: vec![0, 0, 0, 255],
+                    indices: Some(vec![0]),
+                    embedded_palette: false,
+                }],
+            },
+            metadata: None,
+            frame_interval_ms: None,
+            details: vec![],
+            related: vec!["used".into()],
+        });
+        assert_eq!(viewer.palette, ImagePalette::Catalog(1));
+        let preview = viewer.preview.take().unwrap();
+        let catalog = viewer.catalog.take().unwrap();
+        viewer.palette = ImagePalette::Indices;
+        let Content::Images { frames } = &preview.content else {
+            unreachable!()
+        };
+        let ctx = egui::Context::default();
+        let mut labels = Vec::new();
+        let mut pointer = egui::Pos2::ZERO;
+        for frame in 0..4 {
+            let mut input = egui::RawInput::default();
+            if frame == 1 || frame == 2 {
+                input.events = vec![
+                    egui::Event::PointerMoved(pointer),
+                    egui::Event::PointerButton {
+                        pos: pointer,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 1,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ];
+            }
+            let mut output = ctx.run_ui(input, |ui| {
+                image_view(
+                    ui,
+                    &ctx,
+                    &mut viewer,
+                    Some(&catalog),
+                    frames,
+                    &preview.related,
+                );
+            });
+            output.textures_delta.clear();
+            if frame == 0 {
+                pointer = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.text() == "Without palette" => {
+                            Some(text.pos + text.galley.size() * 0.5)
+                        }
+                        _ => None,
+                    })
+                    .expect("palette dropdown");
+            }
+            labels = output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) => Some(text.galley.text().to_string()),
+                    _ => None,
+                })
+                .collect();
+        }
+        assert!(labels.iter().any(|label| label == "used.col"), "{labels:?}");
+        assert!(!labels.iter().any(|label| label == "unused.col"));
+    }
+
+    #[test]
+    fn movie_tracks_render_while_preview_is_taken_for_drawing() {
+        let ctx = egui::Context::default();
+        let mut viewer = Viewer::default();
+        let tracks = [cyrus_assets::MovieAudioTrack {
+            index: 1,
+            wav: "audio.wav".into(),
+            sample_rate: 22050,
+            channels: 1,
+            bits_per_sample: 8,
+            sample_frames: 22050,
+        }];
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            movie_view(ui, &ctx, &mut viewer, 1., &tracks);
+        });
+        output.textures_delta.clear();
+        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.text().starts_with("Track 2"))));
+    }
+
     #[test]
     fn spatial_preview_opens_on_a_populated_layer() {
         let mut viewer = Viewer::default();
         viewer.set_preview(Preview {
             content: Content::Spatial {
+                scene: None,
                 cells: vec![
                     cyrus_assets::SpatialCell {
                         center: [0.; 3],
                         half_extent: 8.,
                         depth: 0,
                         visible_indices: 0,
+                        visibility_ids: Vec::new(),
                     },
                     cyrus_assets::SpatialCell {
                         center: [1., 5., 1.],
                         half_extent: 1.,
                         depth: 3,
                         visible_indices: 4,
+                        visibility_ids: Vec::new(),
                     },
                 ],
                 value: serde_json::Value::Null,

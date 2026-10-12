@@ -62,7 +62,7 @@ Re-export worlds before using explicit player model poses.
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`), pinned to release `v0.9.0`, owns parsing and recovered
+Preservation (`rgpre`), pinned to the [inspection-data revision](https://github.com/michidk/redguard-preservation/compare/main...feat/viewer-inspection-data), owns parsing and recovered
 engine rules. This crate owns install validation, catalog identities, portable
 preview descriptions, generated
 files, PCM conversion, and the portable movie decoder wrapper.

@@ -69,14 +69,14 @@ pub(super) fn prepare<R: ReadAssets>(
             library.publish(&url, &world.glb)?;
             preview
                 .details
-                .push(("Palette".into(), world.entry.palette));
+                .push(("Palette".into(), world.entry.palette.clone()));
             preview
                 .details
                 .push(("Models".into(), world.models.len().to_string()));
             preview.content = Content::Model {
                 frames: vec![url],
                 palettes: Vec::new(),
-                data: Some(import::rgm::export_rgm_metadata_json(&world.rgm, None)),
+                data: Some(world_metadata(&world)?),
             };
             let names: std::collections::BTreeSet<_> =
                 world.models.iter().map(|model| &model.model_name).collect();
@@ -106,9 +106,13 @@ pub(super) fn prepare<R: ReadAssets>(
             if let Source::Image(index) = entry.source {
                 let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
                 let image = archive.read_image(&mut file, index)?;
-                preview.metadata = Some(
-                    json!({"name":image.name,"image_index":image.image_index,"width":image.width,"height":image.height,"x_offset":image.x_offset,"y_offset":image.y_offset,"frame_count":image.frame_count,"frame_interval_ms":image.anim_delay,"texture_scale":image.tex_scale,"data_encoding":image.data_encoding,"is_animated":image.is_animated,"palette":image.palette}),
-                );
+                super::palettes::image(
+                    library,
+                    entry,
+                    archive.images[index].image_index,
+                    &mut preview,
+                )?;
+                preview.metadata = Some(import::bsi::export_bsi_image_metadata(&image));
                 preview.details.extend([
                     ("Width".into(), image.width.to_string()),
                     ("Height".into(), image.height.to_string()),
@@ -193,6 +197,9 @@ pub(super) fn prepare<R: ReadAssets>(
                     ("Sample rate".into(), effect.sample_rate.to_string()),
                     ("Channels".into(), effect.audio_type.channels().to_string()),
                 ]);
+                preview.metadata = Some(
+                    json!({"description":bank.description,"audio_type":format!("{:?}",effect.audio_type),"base_volume":effect.base_volume,"loop_flag":effect.loop_flag,"loop_offset":effect.loop_offset,"loop_end":effect.loop_end}),
+                );
                 audio(
                     library,
                     entry,
@@ -204,7 +211,7 @@ pub(super) fn prepare<R: ReadAssets>(
                 )?
             } else {
                 Content::Data {
-                    value: json!({"effects":bank.effects.len()}),
+                    value: json!({"description":bank.description,"effects":bank.effects.iter().map(|effect|json!({"audio_type":format!("{:?}",effect.audio_type),"sample_rate":effect.sample_rate,"channels":effect.audio_type.channels(),"bits_per_sample":effect.audio_type.bits_per_sample(),"base_volume":effect.base_volume,"loop_flag":effect.loop_flag,"loop_offset":effect.loop_offset,"loop_end":effect.loop_end})).collect::<Vec<_>>()}),
                 }
             }
         }
@@ -219,13 +226,16 @@ pub(super) fn prepare<R: ReadAssets>(
                         header,
                         pcm_data,
                         label,
-                        ..
+                        tag,
                     } => {
                         if let Some(related) = library.catalog.entries.iter().find(|other| {
                             other.path == entry.path && other.name == label && other.id != entry.id
                         }) {
                             preview.related.push(related.id.clone());
                         }
+                        preview.metadata = Some(
+                            json!({"tag":String::from_utf8_lossy(&tag),"label":label,"audio_type":format!("{:?}",header.audio_type),"base_volume":header.base_volume,"loop_flag":header.loop_flag,"loop_offset":header.loop_offset,"loop_end":header.loop_end,"audio_length":header.audio_length}),
+                        );
                         preview.details.push(("Label".into(), label));
                         audio(
                             library,
@@ -240,7 +250,7 @@ pub(super) fn prepare<R: ReadAssets>(
                 }
             } else {
                 Content::Data {
-                    value: json!({"entries":bank.entries.len(),"loading":"Select a member to read its text or audio"}),
+                    value: json!({"entries":bank.entries.iter().map(|entry|json!({"tag":String::from_utf8_lossy(&entry.tag),"payload_offset":entry.payload_offset,"payload_size":entry.payload_size})).collect::<Vec<_>>(),"loading":"Select a member to read its text or audio"}),
                 }
             }
         }
@@ -290,7 +300,7 @@ pub(super) fn prepare<R: ReadAssets>(
                 let font = import::fnt::parse_fnt(bytes)?;
                 let content = crate::decode::font(&cyrus_text::Font::from(&font))?;
                 preview.metadata = Some(
-                    json!({"description":font.header.description_text,"max_width":font.header.max_width,"line_height":font.header.line_height,"character_start":font.header.character_start,"character_count":font.header.character_count,"chunk_order":font.chunk_order,"palette":font.palette.colors,"glyphs":font.glyphs.iter().map(|glyph|json!({"enabled":glyph.enabled,"offset_left":glyph.offset_left,"offset_top":glyph.offset_top,"width":glyph.width,"height":glyph.height})).collect::<Vec<_>>()}),
+                    json!({"description":font.header.description_text,"description_raw":font.header.description_raw,"has_rdat":font.header.has_rdat,"has_palette":font.header.has_palette,"unknown_header_fields":{"unknown_24":font.header.unknown_24,"unknown_28":font.header.unknown_28,"unknown_2a":font.header.unknown_2a,"unknown_2c":font.header.unknown_2c,"unknown_36":font.header.unknown_36,"unknown_38":font.header.unknown_38},"rdat":font.rdat,"trailing_padding_bytes":font.trailing_padding.len(),"palette_tag":String::from_utf8_lossy(&font.palette.tag),"max_width":font.header.max_width,"line_height":font.header.line_height,"character_start":font.header.character_start,"character_count":font.header.character_count,"chunk_order":font.chunk_order,"palette":font.palette.colors,"glyphs":font.glyphs.iter().enumerate().map(|(index,glyph)|json!({"character_code":usize::from(font.header.character_start)+index,"enabled":glyph.enabled,"offset_left":glyph.offset_left,"offset_top":glyph.offset_top,"width":glyph.width,"height":glyph.height})).collect::<Vec<_>>()}),
                 );
                 preview
                     .details
@@ -313,9 +323,10 @@ pub(super) fn prepare<R: ReadAssets>(
                 for world in &matching {
                     related_world(library, &mut preview, world.index);
                 }
-                let value = import::rgm::export_rgm_metadata_json(&map, None);
+                let mut value = import::rgm::export_rgm_metadata_json(&map, None);
                 if let Some(world) = matching.first() {
                     let world = geometry::world(&library.source, &world.index.to_string())?;
+                    value = world_metadata(&world)?;
                     let url = library.output(&entry.id, "glb");
                     library.publish(&url, &world.glb)?;
                     Content::Model {
@@ -344,20 +355,60 @@ pub(super) fn prepare<R: ReadAssets>(
                 Content::Model {
                     frames: vec![url],
                     palettes: Vec::new(),
-                    data: Some(
-                        json!({"header_fields":terrain.header.fields.as_slice(),"sections":terrain.sections.len(),"world_previews":"Choose a related world for the authored palette and placements."}),
-                    ),
+                    data: Some(terrain_metadata(&terrain)?),
                 }
             }
             Some(FileType::Pvo) => {
                 let tree = import::pvo::parse_pvo_file(bytes)?;
+                let cells = geometry::visibility_cells(&tree)?;
+                let mut scene = None;
+                let mut scene_error = None;
+                let mut mapping_error = None;
+                let mut placements = Vec::new();
+                if let Ok(worlds) = world_entries(library)
+                    && let Some(world) = worlds.find_by_map_stem(stem(path)).first()
+                {
+                    match geometry::world(&library.source, &world.index.to_string()) {
+                        Ok(world) => {
+                            let url = library.output(&entry.id, "glb");
+                            library.publish(&url, &world.glb)?;
+                            scene = Some(url);
+                            let metadata = import::rgm::export_rgm_metadata_json(&world.rgm, None);
+                            if world
+                                .rgm
+                                .sections
+                                .iter()
+                                .filter(|section| {
+                                    matches!(section, import::rgm::RgmSection::Mps(..))
+                                })
+                                .count()
+                                == 1
+                            {
+                                placements = metadata["mps_placements"]
+                                    .as_array()
+                                    .cloned()
+                                    .unwrap_or_default();
+                            } else {
+                                mapping_error = Some(
+                                    "Static highlighting requires one MPSO section; exported object names are ambiguous across sections.",
+                                );
+                            }
+                        }
+                        Err(error) => {
+                            scene_error = Some(format!(
+                                "{}: associated world {}: {error:#}",
+                                entry.path, world.index
+                            ))
+                        }
+                    }
+                }
                 Content::Spatial {
-                    cells: geometry::visibility_cells(&tree)?,
-                    value: json!({
-                "depth":tree.header.depth,"center":[tree.header.center_x,tree.header.center_y,tree.header.center_z],"cell_size":tree.header.cell_size,
-                "nodes":tree.octr_nodes.iter().map(|n|json!({"id":n.byte_offset,"leaf":n.leaf_ref,"children":n.child_refs})).collect::<Vec<_>>(),
-                "leaves":tree.plst_leaves.iter().map(|l|json!({"id":l.byte_offset,"entries":l.entries.iter().map(|e|json!({"count":e.count,"start":e.mlst_start})).collect::<Vec<_>>()})).collect::<Vec<_>>(),
-                "polygon_indices":tree.mlst_indices }),
+                    scene,
+                    cells,
+                    value: json!({"header": {"depth":tree.header.depth,"total_nodes":tree.header.total_nodes,"leaf_nodes":tree.header.leaf_nodes,"mlst_count":tree.header.mlst_polygon_count,"reserved":tree.header.reserved_18,"reserved_2c":tree.header.reserved_2c,"center":[tree.header.center_x,tree.header.center_y,tree.header.center_z],"cell_size":tree.header.cell_size},
+                    "nodes":tree.octr_nodes.iter().map(|n|json!({"id":n.byte_offset,"leaf":n.leaf_ref,"child_mask":n.child_mask,"children":n.child_refs})).collect::<Vec<_>>(),
+                    "leaves":tree.plst_leaves.iter().map(|l|json!({"id":l.byte_offset,"entries":l.entries.iter().map(|e|json!({"count":e.count,"start":e.mlst_start})).collect::<Vec<_>>()})).collect::<Vec<_>>(),
+                    "visibility_ids":tree.mlst_indices,"static_objects":placements,"scene_error":scene_error,"mapping_error":mapping_error,"secondary_ids":"IDs beyond the static object count require a runtime-created table; no static mapping is inferred."}),
                 }
             }
             Some(FileType::Cht) => Content::Data {
@@ -454,7 +505,9 @@ fn related_world<R: ReadAssets>(library: &Library<R>, preview: &mut Preview, id:
             .map(|e| e.id.clone()),
     );
 }
-fn world_entries<R: ReadAssets>(library: &Library<R>) -> Result<import::world_ini::WorldIni> {
+pub(super) fn world_entries<R: ReadAssets>(
+    library: &Library<R>,
+) -> Result<import::world_ini::WorldIni> {
     let path = geometry::find_name(&library.source, "WORLD.INI").context("missing WORLD.INI")?;
     Ok(import::world_ini::WorldIni::parse(
         &library.source.text(&path)?,
@@ -462,7 +515,10 @@ fn world_entries<R: ReadAssets>(library: &Library<R>) -> Result<import::world_in
 }
 
 // World membership comes from preservation's parsed placements and actor animation references.
-fn model_palettes<R: ReadAssets>(library: &Library<R>, entry: &Entry) -> Result<Vec<String>> {
+pub(super) fn model_palettes<R: ReadAssets>(
+    library: &Library<R>,
+    entry: &Entry,
+) -> Result<Vec<String>> {
     if geometry::find_name(&library.source, "WORLD.INI").is_none() {
         return Ok(Vec::new());
     }
@@ -552,9 +608,10 @@ fn model<R: ReadAssets>(
     selected_palette: Option<&str>,
 ) -> Result<Content> {
     let model = import::model3d::parse_3d_file(source)?;
-    preview.metadata = Some(
-        json!({"version":String::from_utf8_lossy(&model.header.version),"vertex_count":model.header.num_vertices,"face_count":model.header.num_faces,"frame_count":model.header.num_frames,"radius":model.header.radius,"total_face_vertices":model.header.total_face_vertices}),
-    );
+    preview.metadata = Some(import::model3d::export_model_metadata(
+        &model,
+        &import::model3d::subobjects::parse_subobjects(source)?,
+    ));
     preview.details.extend([
         ("Vertices".into(), model.header.num_vertices.to_string()),
         ("Faces".into(), model.header.num_faces.to_string()),
@@ -589,6 +646,7 @@ fn model<R: ReadAssets>(
         }
     }
     let palettes = model_palettes(library, entry)?;
+    super::palettes::link(library, preview, &palettes);
     let selected_palette = selected_palette
         .or_else(|| palettes.first().map(String::as_str))
         .filter(|name| !name.is_empty());
@@ -662,9 +720,12 @@ fn audio<R: ReadAssets>(
     bits: u16,
 ) -> Result<Content> {
     let wav = media::pcm_wav(pcm, rate, channels, bits)?;
-    preview.metadata = Some(
-        json!({"sample_rate":rate,"channels":channels,"bits_per_sample":bits,"sample_frames":pcm.len() / (usize::from(channels) * usize::from(bits / 8))}),
-    );
+    let metadata = preview.metadata.get_or_insert_with(|| json!({}));
+    let pcm_metadata = json!({"sample_rate":rate,"channels":channels,"bits_per_sample":bits,"sample_frames":pcm.len() / (usize::from(channels) * usize::from(bits / 8)),"bytes":pcm.len()});
+    metadata
+        .as_object_mut()
+        .unwrap()
+        .extend(pcm_metadata.as_object().unwrap().clone());
     let url = library.output(&entry.id, "wav");
     library.publish(&url, &wav)?;
     Ok(Content::Audio {
@@ -689,44 +750,67 @@ fn movie<R: ReadAssets>(
     let audio = decoder.info_audio();
     let url = library.output(&entry.id, "smk");
     library.publish(&url, bytes)?;
-    let wav = if audio.track_mask & 1 != 0 {
-        decoder.enable_audio(0, true);
-        decoder.enable_video(false);
-        let mut pcm = Vec::new();
+    let indices: Vec<usize> = (0..7)
+        .filter(|index| audio.track_mask & (1 << index) != 0)
+        .collect();
+    let mut pcm: [Vec<u8>; 7] = std::array::from_fn(|_| Vec::new());
+    for &index in &indices {
+        decoder.enable_audio(index as u8, true);
+    }
+    decoder.enable_video(false);
+    if !indices.is_empty() {
         decoder.first_frame()?;
-        for i in 0..info.frame_count {
-            if i % 120 == 0 {
+        for frame in 0..info.frame_count {
+            if frame % 120 == 0 {
                 library.source.progress(
-                    i as usize,
+                    frame as usize,
                     info.frame_count as usize,
                     "Decoding movie audio",
                 );
             }
-            if i > 0 {
+            if frame > 0 {
                 decoder.next_frame()?;
             }
-            if let Some(chunk) = decoder.audio_data(0) {
-                pcm.extend_from_slice(chunk);
+            for &index in &indices {
+                if let Some(chunk) = decoder.audio_data(index as u8) {
+                    pcm[index].extend_from_slice(chunk);
+                }
             }
         }
-        let url = library.output(&entry.id, "wav");
-        library.publish(
-            &url,
-            &media::pcm_wav(
-                &pcm,
-                audio.rate[0],
-                audio.channels[0].into(),
-                audio.bitdepth[0].into(),
-            )?,
-        )?;
-        Some(url)
-    } else {
-        None
-    };
+    }
+    let mut audio_tracks = Vec::new();
+    let mut audio_errors = Vec::new();
+    for index in indices {
+        let wav = library.output(&entry.id, &format!("track-{index}.wav"));
+        let wav_bytes = match media::pcm_wav(
+            &pcm[index],
+            audio.rate[index],
+            audio.channels[index].into(),
+            audio.bitdepth[index].into(),
+        ) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                audio_errors.push(json!({"index":index,"sample_rate":audio.rate[index],"channels":audio.channels[index],"bits_per_sample":audio.bitdepth[index],"error":format!("{}: audio track {index}: {error:#}", entry.path)}));
+                continue;
+            }
+        };
+        library.publish(&wav, &wav_bytes)?;
+        audio_tracks.push(crate::MovieAudioTrack {
+            index: index as u8,
+            wav,
+            sample_rate: audio.rate[index],
+            channels: audio.channels[index].into(),
+            bits_per_sample: audio.bitdepth[index].into(),
+            sample_frames: pcm[index].len()
+                / (usize::from(audio.channels[index]) * usize::from(audio.bitdepth[index] / 8)),
+        });
+    }
+    preview.metadata.as_mut().unwrap()["audio_tracks"] = serde_json::to_value(&audio_tracks)?;
+    preview.metadata.as_mut().unwrap()["audio_errors"] = json!(audio_errors);
     ensure!(header.frames > 0, "empty movie");
     Ok(Content::Movie {
         smk: url,
-        wav,
+        audio_tracks,
         seconds: info.frame_count as f64 * info.microseconds_per_frame / 1_000_000.,
     })
 }
@@ -795,5 +879,114 @@ impl Input {
             Some(FileType::Rtx) => Self::Rtx(import::rtx::RtxIndex::read(&mut file)?),
             _ => Self::File(source.read(path)?),
         })
+    }
+}
+
+fn terrain_metadata(terrain: &import::wld::WldFile) -> Result<serde_json::Value> {
+    let mut value = import::wld::export_wld_metadata(terrain)?;
+    let textures = terrain.combined_map(2)?;
+    let side = textures.len().isqrt();
+    value["combined"]["wave_vertices"] = json!(crate::environment::water_vertices(&textures, side));
+    value["combined"]["scene_x"] = json!(
+        (0..side)
+            .map(|x| gltf::wld_grid_position(terrain, x, 0).map(|position| position[0]))
+            .collect::<rgpre::Result<Vec<_>>>()?
+    );
+    value["combined"]["scene_z"] = json!(
+        (0..side)
+            .map(|z| gltf::wld_grid_position(terrain, 0, z).map(|position| position[2]))
+            .collect::<rgpre::Result<Vec<_>>>()?
+    );
+    value["combined"]["scene_y"] = json!(
+        (0..side * side)
+            .map(|i| gltf::wld_grid_position(terrain, i % side, i / side)
+                .map(|position| position[1]))
+            .collect::<rgpre::Result<Vec<_>>>()?
+    );
+    Ok(value)
+}
+fn world_metadata(world: &geometry::WorldGeometry) -> Result<serde_json::Value> {
+    let mut value = import::rgm::export_rgm_metadata_json(&world.rgm, None);
+    if let Some(terrain) = &world.terrain {
+        value["terrain"] = terrain_metadata(terrain)?;
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source::Manifest;
+
+    struct EmptySource(Manifest);
+    impl ReadAssets for EmptySource {
+        fn manifest(&self) -> &Manifest {
+            &self.0
+        }
+        fn read_range(&self, _: &str, _: u64, _: usize) -> Result<Vec<u8>> {
+            anyhow::bail!("unexpected original-file read")
+        }
+    }
+
+    #[test]
+    fn invalid_movie_track_keeps_video_and_other_audio() {
+        let library =
+            Library::open(EmptySource(Manifest { files: Vec::new() }), |_, _, _| {}).unwrap();
+        let mut bytes = vec![0; 104];
+        bytes[..4].copy_from_slice(b"SMK4");
+        for (offset, value) in [
+            (4, 4u32),
+            (8, 4),
+            (12, 1),
+            (16, 100),
+            (24, 4),
+            (28, 4),
+            (52, 1),
+            (56, 16),
+            (60, 16),
+            (64, 16),
+            (68, 16),
+            (72, 1 << 30),
+            (76, (1 << 30) | 8000),
+        ] {
+            bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend(16u32.to_le_bytes());
+        bytes.extend([6, 0]);
+        bytes.extend(8u32.to_le_bytes());
+        bytes.extend([128, 129, 130, 131]);
+        bytes.extend(8u32.to_le_bytes());
+        bytes.extend([132, 133, 134, 135]);
+        let entry = super::super::entry(
+            "tracks.smk",
+            bytes.len() as u64,
+            crate::Category::Movies,
+            Source::File,
+            "tracks",
+        );
+        let mut preview = Preview {
+            content: Content::Data { value: json!({}) },
+            metadata: None,
+            frame_interval_ms: None,
+            details: Vec::new(),
+            related: Vec::new(),
+        };
+        preview.content = movie(&library, &entry, &mut preview, &bytes).unwrap();
+        preview.validate().unwrap();
+        let Content::Movie { audio_tracks, .. } = &preview.content else {
+            panic!("expected movie")
+        };
+        assert_eq!(audio_tracks.len(), 1);
+        assert_eq!(audio_tracks[0].index, 1);
+        assert_eq!(audio_tracks[0].sample_frames, 4);
+        let metadata = preview.metadata.unwrap();
+        assert_eq!(metadata["audio_errors"][0]["index"], 0);
+        assert_eq!(metadata["audio_errors"][0]["sample_rate"], 0);
+        assert!(
+            metadata["audio_errors"][0]["error"]
+                .as_str()
+                .unwrap()
+                .contains("unsupported PCM format")
+        );
     }
 }

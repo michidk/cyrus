@@ -40,6 +40,7 @@ module where it is defined and regenerate.
 - `src/runtime.rs` — Shared runtime catalog and preview decoding from read-only original files.
 - `src/runtime/definitions.rs` — Presentation of configuration fields decoded by preservation.
 - `src/runtime/geometry.rs` — Geometry built from original file bytes, without filesystem access.
+- `src/runtime/palettes.rs` — Palette and texture relationships derived from installed world and model references.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
 - `src/scene.rs` — Native scene export and installed world selection.
 - `src/script.rs` — Portable SOUP programs and validated installed-definition records.
@@ -131,8 +132,12 @@ module where it is defined and regenerate.
 
 - `src/browser.rs` — Background original-file decoding and selection-owned in-memory media.
 - `src/loading.rs` — Asynchronous catalog and preview loading with selection-owned results.
+- `src/mesh_inspection.rs` — Mesh diagnostics use the same transformed geometry that the viewer displays.
 - `src/preview.rs` — Selection-owned scene, camera and media playback.
+- `src/terrain_inspection.rs` — Terrain layers expose decoded WLD cells independently of scene materials.
 - `src/ui.rs` — Egui asset browser: content navigation and modern inspection controls.
+- `src/visibility_inspection.rs` — Selected PVO cells highlight the statically mapped placed objects.
+- `src/world_inspection.rs` — RGM inspection of authored placements, navigation and actor command records.
 
 ## `cyrus-web` — Browser game host using the selected install service for prepared assets.
 

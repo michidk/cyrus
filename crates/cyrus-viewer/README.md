@@ -29,20 +29,21 @@ world variants. Panels resize by dragging their boundaries.
 
 Images support fit, zoom, frame selection, and palette selection for indexed
 sources. Animated images and models have Play/Pause, Loop, and an editable frame
-interval in milliseconds. Fonts show a sample and glyph atlas. Models and worlds have a
+interval in milliseconds. Fonts show a sample and glyph atlas. Models and worlds have
 Orbit (default) and Flycam camera modes, Textured, Unlit, Solid and Wireframe
 shading, an optional edge overlay, frame controls where supported, and automatic
 framing. Orbit uses drag to rotate, right-drag to pan, and scroll to zoom.
 Flycam uses right-drag to look and WASD to move while the pointer is over the
 viewport; Q/E moves down/up and Shift boosts speed fourfold. Flight speed scales
-with the framed asset size, crossing twice the framing distance per second.
+with the framed asset size, crossing half the framing distance per second.
 Loading shows a progress bar, including archive indexing, preview preparation,
-model dependencies and media. Stages without a measurable total use an animated
-bar.
+model dependencies and media. Stages without a measurable total use a spinner.
+The stage label appears below the indicator.
 Models start with the first available scene palette. The palette selector lists
 palettes from their referencing worlds, including time-of-day variants, with
 Without palette last. Indexed images use their embedded palette first when present; otherwise they
-default to the first catalog palette. Without palette shows grayscale indices. Standalone model
+default to the first associated palette. Their selector and related-asset links use
+terrain/model references or the matching sky palette. Without palette shows grayscale indices. Standalone model
 references are indexed from scene placement and actor metadata on first use,
 then reused; this does not run during startup.
 
@@ -55,21 +56,56 @@ selection.
 Audio shows a waveform with playback, seeking, looping, and volume. Movies have
 video, audio, a timeline, and frame stepping. Definitions offer readable source and JSON views alongside preservation's decoded
 fields. RGM world previews and WLD terrain geometry can switch to JSON. PVO files
-show a top-down octree slice with depth and height controls plus a JSON view.
+show a 3D wireframe octree with depth selection and Orbit/Flycam controls, a
+top-down slice with depth and height controls, and a JSON view.
 Malformed members remain visible with a reason. Unrecognized files are hidden.
 WAV lists standalone files; SFX, RTX, and CD audio contain additional sounds.
 PCX and LBM show indexed images with their embedded palettes. ANM shows decoded
 frames and initializes playback with its authored frame interval. The installed
-`pointers.bmp` cursor sheet uses preservation's GXA decoder; standard Windows BMP
+`pointers.bmp` cursor sheet uses preservation's GXA decoder and shows every image
+in a scrollable grid without animation controls; standard Windows BMP
 images also remain supported.
+
+WLD selections open the heightmap automatically. The Texture rotations layer includes
+a color legend for 0°, 90°, 180° and 270°; Tile directions adds arrows on the 3D terrain.
+Terrain maps show heights, materials, quarter-turn rotations and wave-selected
+vertices. Click a map cell or set its row and column to inspect its values and
+highlight it in 3D. **Inferred:** direction arrows follow the tile's positive texture-U
+axis, using preservation's terrain UV rotations.
+**Verified:** WLD stores heights and texture rotations; terrain normals are derived.
+
+Models offer rendered vertex and triangle normals, mesh bounds, authored subobject
+spheres, a UV layout for the picked mesh and face picking. Normal spacing limits overlay density.
+Picking reports the rendered triangle and normalized UVs. Authored polygon records,
+normal tables, frame data and subobject face membership remain in JSON.
+
+RGM inspection labels markers, lights and object placements in 3D. Navigation
+graphs show directed routes in authored local X/Z coordinates. Actor inspection
+connects placements, scripts, hooks, model references and animation commands.
+Bounds use local XY/XZ projections. Collision sphere diagrams retain authored
+radii, vertices and offsets without inventing their world poses. Light vectors
+retain their documented direction/attenuation fields.
+
+Select a PVO cell in the slice or cell list to highlight its static objects in
+the associated world. **Verified:** PVO visibility IDs identify placed objects.
+IDs beyond the static object table require runtime state and remain explicitly
+unmapped. Configuration files retain source and JSON views.
 
 Supported previews also offer JSON inspection. Images retain parsed headers,
 frame descriptions, palettes and animation records; fonts retain glyph metrics;
-models retain geometry counts or their existing world metadata; audio retains
+models retain decoded geometry, normals, materials, frame records and authored bounds;
+terrain retains every stored map plane plus decoded cell values; worlds retain
+placement, navigation, actor and script records; audio retains
 sample format and frame counts; movies retain dimensions and timing. Existing
 archive indexes, spatial data, definitions and source views keep their decoded
 JSON. Pixel, compressed-frame and PCM payloads are omitted from inspection JSON.
-MDI, DIG, PIF, OPL, AD, RST, DLL and EXE files are excluded from the catalog.
+BSI texture palette choices follow referencing models and terrain through their
+world assignments. Standalone sky images use their companion COL palette.
+The References panel links the associated palette files and model/terrain sources.
+Images without a known palette relationship offer embedded colors or raw indices.
+
+TXT, MDI, DIG, PIF, OPL, AD, RST, DLL and EXE files, and the Miles driver-support file
+`mssdrvr.lst`, are excluded from the catalog.
 MDI, DIG, PIF, OPL, AD and RST are also excluded from preload parsing.
 
 ## Browser build
@@ -126,10 +162,11 @@ Models with no known world reference have no scene palette choices. World
 previews use their configured palette.
 Model playback uses preservation's frame conversion and the chosen inspection
 interval. It does not execute the original animation scripts. Unknown encodings
-or incomplete frames report an explicit error. Preservation does not expose separate
-BSI mip levels, so no mip selector is shown.
+or incomplete frames report an explicit error. **Unknown:** the available BSI documentation does not establish separate mip-level
+layouts. The viewer exposes decoded image frames and metadata without a mip selector.
 
-Movie playback uses the first audio track. The selected movie is downloaded and
+Movie playback offers every authored audio track, with sample rate, channel count and
+bit depth, or silent playback. Switching tracks preserves the timeline position. The selected movie is downloaded and
 its audio prepared before playback; progress identifies reading and decoding.
 Large movies still require the full original movie bytes. Seeking decodes forward
 in bounded batches and may pause while catching up. Browser audio requires a user gesture.

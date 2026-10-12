@@ -17,7 +17,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 11;
+pub const CATALOG_VERSION: u32 = 13;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -207,13 +207,15 @@ impl Picture {
     }
 }
 
-/// A decoded visibility cell in original engine coordinates, before rendering transforms.
+/// A decoded visibility cell in the same scene coordinates as exported geometry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpatialCell {
     pub center: [f32; 3],
     pub half_extent: f32,
     pub depth: u32,
     pub visible_indices: usize,
+    /// Preserved placed-object visibility IDs for this cell.
+    pub visibility_ids: Vec<u16>,
 }
 
 /// Preview payloads are produced once and read by both native and browser UI.
@@ -236,6 +238,7 @@ pub enum Content {
         data: Option<serde_json::Value>,
     },
     Spatial {
+        scene: Option<String>,
         cells: Vec<SpatialCell>,
         value: serde_json::Value,
     },
@@ -246,7 +249,7 @@ pub enum Content {
     },
     Movie {
         smk: String,
-        wav: Option<String>,
+        audio_tracks: Vec<MovieAudioTrack>,
         seconds: f64,
     },
     Data {
@@ -255,6 +258,17 @@ pub enum Content {
     Unavailable {
         reason: String,
     },
+}
+/// One authored Smacker audio track, decoded to independently playable PCM.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MovieAudioTrack {
+    /// Zero-based track slot in the source movie.
+    pub index: u8,
+    pub wav: String,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub bits_per_sample: u16,
+    pub sample_frames: usize,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preview {
@@ -275,8 +289,11 @@ impl Preview {
         match &self.content {
             Content::Model { frames, .. } => frames.iter().map(String::as_str).collect(),
             Content::Audio { wav, .. } => vec![wav],
-            Content::Movie { smk, wav, .. } => std::iter::once(smk.as_str())
-                .chain(wav.as_deref())
+            Content::Spatial { scene, .. } => scene.iter().map(String::as_str).collect(),
+            Content::Movie {
+                smk, audio_tracks, ..
+            } => std::iter::once(smk.as_str())
+                .chain(audio_tracks.iter().map(|track| track.wav.as_str()))
                 .collect(),
             _ => Vec::new(),
         }
@@ -320,17 +337,37 @@ impl Preview {
                     "invalid waveform"
                 );
             }
-            Content::Movie { smk, wav, seconds } => {
+            Content::Movie {
+                smk,
+                audio_tracks,
+                seconds,
+            } => {
                 validate_path(smk)?;
-                if let Some(wav) = wav {
-                    validate_path(wav)?;
+                let mut slots = [false; 7];
+                for track in audio_tracks {
+                    validate_path(&track.wav)?;
+                    ensure!(track.index < 7, "invalid movie audio track index");
+                    ensure!(
+                        !slots[usize::from(track.index)],
+                        "duplicate movie audio track"
+                    );
+                    slots[usize::from(track.index)] = true;
+                    ensure!(
+                        track.sample_rate > 0
+                            && matches!(track.channels, 1 | 2)
+                            && matches!(track.bits_per_sample, 8 | 16),
+                        "invalid movie audio format"
+                    );
                 }
                 ensure!(
                     seconds.is_finite() && *seconds > 0.,
                     "invalid movie duration"
                 );
             }
-            Content::Spatial { cells, .. } => {
+            Content::Spatial { cells, scene, .. } => {
+                if let Some(scene) = scene {
+                    validate_path(scene)?;
+                }
                 ensure!(
                     cells
                         .iter()

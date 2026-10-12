@@ -1,7 +1,7 @@
 //! Selection-owned scene, camera and media playback.
 use crate::{
     loading::Blob,
-    ui::{DataMode, Shading, Viewer},
+    ui::{Shading, Viewer},
 };
 use bevy::{
     audio::{AudioSinkPlayback, Volume},
@@ -63,10 +63,18 @@ pub fn sync(
     let selection_changed = viewer.scene_dirty;
     if viewer.scene_dirty {
         let frames = viewer.preview.as_ref().and_then(|p| match &p.content {
-            Content::Model { frames, .. } => Some(frames),
+            Content::Model { frames, .. } => {
+                Some(frames.iter().map(String::as_str).collect::<Vec<_>>())
+            }
+            Content::Spatial {
+                scene: Some(scene), ..
+            } => Some(vec![scene.as_str()]),
             _ => None,
         });
-        let key = frames.and_then(|frames| frames.first()).cloned();
+        let key = frames
+            .as_ref()
+            .and_then(|frames| frames.first())
+            .map(|path| path.to_string());
         if key != *loaded_model {
             for (root, _, _, _) in &mut roots {
                 commands.entity(root).despawn();
@@ -145,7 +153,10 @@ pub fn sync(
         }
         let source = viewer.preview.as_ref().and_then(|p| match &p.content {
             Content::Audio { wav, .. } => Some(wav.clone()),
-            Content::Movie { wav, .. } => wav.clone(),
+            Content::Movie { audio_tracks, .. } => viewer
+                .movie_audio_track
+                .and_then(|index| audio_tracks.get(index))
+                .map(|track| track.wav.clone()),
             _ => None,
         });
         if let Some(path) = source {
@@ -153,7 +164,7 @@ pub fn sync(
                 PreviewAudio,
                 AudioPlayer::<AudioSource>(assets.load(format!("cache://{path}"))),
                 PlaybackSettings {
-                    paused: !viewer.playing,
+                    paused: true,
                     volume: Volume::Linear(viewer.volume),
                     ..PlaybackSettings::ONCE
                 },
@@ -183,23 +194,35 @@ pub fn frame_camera(
         ),
     >,
 ) {
-    if viewer.needs_frame && !viewer.render_loading && !ready.is_empty() && !meshes.is_empty() {
-        let (mut min, mut max) = (Vec3::MAX, Vec3::MIN);
-        for (bounds, t) in &meshes {
-            // Transform all corners so rotated placements contribute correct bounds.
-            for x in [-1., 1.] {
-                for y in [-1., 1.] {
-                    for z in [-1., 1.] {
-                        let p = t.transform_point(
-                            Vec3::from(bounds.center)
-                                + Vec3::from(bounds.half_extents) * Vec3::new(x, y, z),
-                        );
-                        min = min.min(p);
-                        max = max.max(p);
+    let mut frame_bounds = None;
+    if viewer.needs_frame && !viewer.render_loading {
+        if let Some(Content::Spatial { cells, .. }) = viewer.preview.as_ref().map(|p| &p.content) {
+            frame_bounds = cells.first().map(|root| {
+                let center = Vec3::from(root.center);
+                let half = Vec3::splat(root.half_extent);
+                (center - half, center + half)
+            });
+        } else if !ready.is_empty() && !meshes.is_empty() {
+            let (mut min, mut max) = (Vec3::MAX, Vec3::MIN);
+            for (bounds, t) in &meshes {
+                // Transform all corners so rotated placements contribute correct bounds.
+                for x in [-1., 1.] {
+                    for y in [-1., 1.] {
+                        for z in [-1., 1.] {
+                            let p = t.transform_point(
+                                Vec3::from(bounds.center)
+                                    + Vec3::from(bounds.half_extents) * Vec3::new(x, y, z),
+                            );
+                            min = min.min(p);
+                            max = max.max(p);
+                        }
                     }
                 }
             }
+            frame_bounds = Some((min, max));
         }
+    }
+    if let Some((min, max)) = frame_bounds {
         viewer.center = (min + max) * 0.5;
         let aspect = (viewer.viewport.width() / viewer.viewport.height().max(1.)).max(0.01);
         if let Ok((_, _, Projection::Perspective(projection))) = cameras.single() {
@@ -211,19 +234,14 @@ pub fn frame_camera(
         viewer.needs_frame = false;
     }
     if let Ok((mut transform, mut camera, _)) = cameras.single_mut() {
-        camera.is_active = viewer.data_mode == DataMode::Content
-            && viewer
-                .preview
-                .as_ref()
-                .is_some_and(|p| matches!(p.content, Content::Model { .. }));
+        camera.is_active = viewer
+            .preview
+            .as_ref()
+            .is_some_and(|p| viewer.shows_3d(&p.content));
         let rotation = viewer.rotation();
         transform.translation = viewer.center + rotation * Vec3::new(0., 0., viewer.distance);
         transform.look_at(viewer.center, Vec3::Y);
-        if !viewer
-            .preview
-            .as_ref()
-            .is_some_and(|p| matches!(p.content, Content::Model { .. }))
-        {
+        if !camera.is_active {
             camera.viewport = None;
         } else if let Ok(window) = windows.single() {
             let rect = viewer.viewport;
@@ -246,6 +264,35 @@ pub fn frame_camera(
                 ..default()
             });
         }
+    }
+}
+
+pub fn spatial(viewer: Res<Viewer>, mut gizmos: Gizmos) {
+    let Some(preview) = &viewer.preview else {
+        return;
+    };
+    if !viewer.shows_3d(&preview.content) {
+        return;
+    }
+    let Content::Spatial { cells, .. } = &preview.content else {
+        return;
+    };
+    for cell in cells
+        .iter()
+        .filter(|cell| cell.depth == viewer.spatial_depth)
+    {
+        let shade = (cell.visible_indices as f32 + 1.).ln().min(10.) / 10.;
+        gizmos.cube(
+            Transform::from_translation(Vec3::from(cell.center))
+                .with_scale(Vec3::splat(cell.half_extent * 2.)),
+            Color::srgb(0.1, 0.3 + shade * 0.7, 0.4 + shade * 0.6),
+        );
+    }
+    if let Some(root) = cells.first() {
+        gizmos.axes(
+            Transform::from_translation(Vec3::from(root.center)),
+            root.half_extent,
+        );
     }
 }
 
@@ -275,15 +322,25 @@ pub fn movie(
     let Some(duration) = duration else {
         return;
     };
-    let has_audio = viewer.preview.as_ref().is_some_and(|p| match &p.content {
-        Content::Audio { .. } => true,
-        Content::Movie { wav, .. } => wav.is_some(),
-        _ => false,
+    let audio_duration = viewer.preview.as_ref().and_then(|p| match &p.content {
+        Content::Audio { seconds, .. } => Some(*seconds),
+        Content::Movie { audio_tracks, .. } => viewer
+            .movie_audio_track
+            .and_then(|index| audio_tracks.get(index))
+            .map(|track| track.sample_frames as f64 / f64::from(track.sample_rate)),
+        _ => None,
     });
+    let has_audio = audio_duration.is_some();
+    if viewer.audio_dirty {
+        return;
+    }
     if viewer.seek_dirty {
         let mut seek_pending = has_audio && sinks.is_empty();
         for sink in &sinks {
             if sink.empty() {
+                if audio_duration.is_some_and(|end| viewer.position >= end) {
+                    continue;
+                }
                 viewer.audio_dirty = true;
                 seek_pending = true;
                 continue;
@@ -358,7 +415,7 @@ pub fn movie(
     }
     for mut sink in &mut sinks {
         sink.set_volume(Volume::Linear(viewer.volume));
-        if viewer.playing && !waiting {
+        if viewer.playing && !waiting && !viewer.seek_dirty {
             sink.play();
         } else {
             sink.pause();
@@ -636,6 +693,54 @@ mod tests {
     }
 
     #[test]
+    fn spatial_preview_frames_without_a_model_and_disables_camera_for_other_views() {
+        let mut app = App::new();
+        let mut viewer = Viewer::default();
+        viewer.viewport = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(640., 480.));
+        viewer.set_preview(cyrus_assets::Preview {
+            content: Content::Spatial {
+                scene: None,
+                cells: vec![cyrus_assets::SpatialCell {
+                    center: [10., 20., 30.],
+                    half_extent: 8.,
+                    depth: 0,
+                    visible_indices: 3,
+                    visibility_ids: Vec::new(),
+                }],
+                value: serde_json::Value::Null,
+            },
+            details: vec![],
+            frame_interval_ms: None,
+            metadata: None,
+            related: vec![],
+        });
+        app.insert_resource(viewer)
+            .add_systems(Update, frame_camera);
+        let camera = app
+            .world_mut()
+            .spawn((
+                ViewCamera,
+                Camera3d::default(),
+                Projection::Perspective(PerspectiveProjection::default()),
+                Transform::default(),
+            ))
+            .id();
+        app.update();
+        let viewer = app.world().resource::<Viewer>();
+        assert_eq!(viewer.center, Vec3::new(10., 20., 30.));
+        assert!(viewer.distance > 16.);
+        assert!(!viewer.needs_frame);
+        assert!(app.world().get::<Camera>(camera).unwrap().is_active);
+        app.world_mut().resource_mut::<Viewer>().spatial_3d = false;
+        app.update();
+        assert!(!app.world().get::<Camera>(camera).unwrap().is_active);
+        app.world_mut().resource_mut::<Viewer>().spatial_3d = true;
+        app.world_mut().resource_mut::<Viewer>().data_mode = crate::ui::DataMode::Json;
+        app.update();
+        assert!(!app.world().get::<Camera>(camera).unwrap().is_active);
+    }
+
+    #[test]
     fn flight_is_frame_rate_independent_and_shift_boosts_speed() {
         let mut once = Viewer::default();
         once.yaw = 0.;
@@ -648,11 +753,15 @@ mod tests {
         once.fly(Vec3::NEG_Z, 1., false);
         twice.fly(Vec3::NEG_Z, 0.5, false);
         twice.fly(Vec3::NEG_Z, 0.5, false);
-        assert_eq!(once.center, Vec3::new(0., 0., -200.));
+        assert_eq!(once.center, Vec3::new(0., 0., -50.));
         assert_eq!(once.center, twice.center);
         twice.center = Vec3::ZERO;
         twice.fly(Vec3::NEG_Z, 1., true);
-        assert_eq!(twice.center, Vec3::new(0., 0., -800.));
+        assert_eq!(twice.center, Vec3::new(0., 0., -200.));
+        twice.center = Vec3::ZERO;
+        twice.distance = 1.;
+        twice.fly(Vec3::NEG_Z, 1., false);
+        assert_eq!(twice.center, Vec3::new(0., 0., -25.));
     }
 
     #[test]

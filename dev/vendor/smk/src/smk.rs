@@ -505,6 +505,9 @@ impl Smk {
         let idx = self.cur_frame as usize;
         let chunk_sz = self.chunk_size[idx] as usize;
 
+        for track in &mut self.audio {
+            track.buffer_size = 0;
+        }
         if chunk_sz == 0 {
             return Ok(());
         }
@@ -572,8 +575,6 @@ impl Smk {
 
                 pos += audio_size;
                 remaining -= audio_size;
-            } else {
-                self.audio[track as usize].buffer_size = 0;
             }
         }
 

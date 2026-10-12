@@ -2,8 +2,12 @@
 #[cfg(target_arch = "wasm32")]
 mod browser;
 mod loading;
+mod mesh_inspection;
 mod preview;
+mod terrain_inspection;
 mod ui;
+mod visibility_inspection;
+mod world_inspection;
 
 use bevy::prelude::*;
 
@@ -71,11 +75,24 @@ fn application() -> anyhow::Result<App> {
             preview::animate,
             preview::sync,
             preview::frame_camera,
+            preview::spatial,
             preview::movie,
             preview::edges,
+            mesh_inspection::draw,
+            terrain_inspection::draw,
+            visibility_inspection::draw,
         )
             .chain(),
     )
-    .add_systems(cyrus_app::bevy_egui::EguiPrimaryContextPass, ui::draw);
+    .add_systems(
+        cyrus_app::bevy_egui::EguiPrimaryContextPass,
+        (
+            ui::draw,
+            mesh_inspection::uv_window,
+            terrain_inspection::window,
+            world_inspection::draw,
+        )
+            .chain(),
+    );
     Ok(app)
 }

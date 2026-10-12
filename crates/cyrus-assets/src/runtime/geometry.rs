@@ -228,10 +228,11 @@ pub fn visibility_cells(tree: &rgpre::import::pvo::PvoFile) -> Result<Vec<crate:
                 .sum()
         };
         cells.push(crate::SpatialCell {
-            center,
-            half_extent,
+            center: rgm::world_position(center),
+            half_extent: gltf::model_position([half_extent, 0., 0.])[0].abs(),
             depth,
             visible_indices,
+            visibility_ids: tree.visibility_ids(node.leaf_ref)?,
         });
         for &(octant, child) in &node.child_refs {
             if child == CHILD_REF_EMPTY {

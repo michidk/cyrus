@@ -7,6 +7,7 @@ use std::{cell::RefCell, collections::BTreeMap, path::Path, sync::Arc};
 
 mod definitions;
 pub mod geometry;
+mod palettes;
 mod prepare;
 
 /// A preview and generated media. These bytes are runtime results, never build inputs.
@@ -20,6 +21,7 @@ pub struct Library<R> {
     pub catalog: Catalog,
     input: RefCell<Option<(String, Arc<prepare::Input>)>>,
     indexed: std::collections::HashSet<String>,
+    texture_references: RefCell<Option<palettes::TextureReferences>>,
     model_palettes: RefCell<Option<BTreeMap<String, Vec<String>>>>,
     outputs: RefCell<BTreeMap<String, Vec<u8>>>,
 }
@@ -40,6 +42,9 @@ impl<R: ReadAssets> Library<R> {
             progress(index, files.len(), &format!("Listing {}", file.path));
             if file.path.starts_with("disc/")
                 || file.path.starts_with("splash/")
+                || Path::new(&file.path)
+                    .file_name()
+                    .is_some_and(|name| name.eq_ignore_ascii_case("mssdrvr.lst"))
                 || Path::new(&file.path).extension().is_some_and(|extension| {
                     extension.eq_ignore_ascii_case("dll") || extension.eq_ignore_ascii_case("exe")
                 })
@@ -125,6 +130,7 @@ impl<R: ReadAssets> Library<R> {
             input: RefCell::new(None),
             indexed: Default::default(),
             model_palettes: RefCell::new(None),
+            texture_references: RefCell::new(None),
             outputs: RefCell::new(BTreeMap::new()),
         })
     }
@@ -361,7 +367,7 @@ fn discover(
             .to_ascii_lowercase()
             .as_str()
         {
-            "ini" | "def" | "txt" | "lst" => Category::Data,
+            "ini" | "def" | "lst" => Category::Data,
             "smk" => Category::Movies,
             "bmp" | "png" => Category::Images,
             "wav" => Category::Audio,
