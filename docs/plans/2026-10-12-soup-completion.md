@@ -94,8 +94,9 @@ scenario requires it. Do not substitute guessed behavior or successful stubs.
   evidence, and acceptance scenario. Keep generated installed content in `magic/`.
   The census covers all 29 installed entries. The local support matrix marks
   exercised/original-verified status unknown where only static evidence exists.
-- [ ] Select one installed interaction that combines a wait, flag mutation, and
-  visible response. Inspect its full prerequisites before choosing its handlers.
+- [x] Select one installed interaction that combines a wait, flag mutation, and
+  visible response. PI_LVRA has an installed supplied-stage test covering its
+  prerequisites and logical outcomes; playable acceptance remains below.
 
 Exit: every encountered form has a status and owner; the first scenario has a
 reproducible setup. A static inventory makes no reachability or parity claim.
@@ -103,10 +104,11 @@ Owners: asset export/tests and preservation parsers for missing records.
 
 ### 2. Connect one authoritative actor state to the game host
 
-- [ ] Reuse the existing registry and VM. Connect animation and immediate
+- [x] Reuse the existing registry and VM. Connect animation and immediate
   attributes/flags/waits through one game-owned host without introducing another
-  interpreter or duplicate mutable actor state. The explicit host is implemented;
-  installed mixed-scenario acceptance remains required for this milestone.
+  interpreter or duplicate mutable actor state. The installed PI_LVRA test runs
+  player animation, waits, activation, sound intents, rotation and a flag change
+  through supplied stages. Automatic gameplay acceptance remains separate.
 - [ ] Establish shared ownership of model, default animation group, attributes,
   player state, and task tokens. Resolve model-coupled attribute writes against
   preservation before supporting them.
@@ -241,13 +243,16 @@ and synthetic mixed-command tests do not close them.
 candidate. Its prerequisites include player distance/facing queries, activation,
 player animation, positional sound, and object rotation.
 Spatial queries, attached transforms and rotation are connected through explicit
-supplied stages and verified by a native headless PALACE replay. Activation, player animation ownership, and positional sound still
-require integration; the authored flag change cannot establish playable
-acceptance by itself. **Inferred next implementation order:**
+supplied stages and verified by a native headless PALACE replay. The installed
+mixed-command test also covers activation with packed RTX keys, shared player
+animation, FlatSound intents and the authored flag change. Automatic actor inputs,
+sound playback comparison and production scheduling remain open; supplied stages
+do not establish playable acceptance. **Inferred next implementation order:**
 
 1. Connect the player-query and rotation-task contracts published in
    [preservation PR55](https://github.com/michidk/redguard-preservation/pull/55).
-   Complete activation and sound ownership requirements before scenario acceptance.
+   Complete automatic activation inputs and sound playback comparison before
+   playable scenario acceptance.
 2. Establish attached transform ownership and refresh, then connect local
    rotation, effective query coordinates, and player animation to authoritative
    logical state, including cancellation and the established playback default.

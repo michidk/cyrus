@@ -209,6 +209,9 @@ complete lever interaction.
 `Activate`, `TorchActivate` and `Deactivate` share one `ScriptWorld` owner,
 pending prompt and timer state, following
 [preservation's activation rules](https://github.com/michidk/redguard-preservation/blob/2e03012/docs/engine/hud.md#activation-prompt).
+Activation decodes the installed numeric operand as a packed RTX key, with the
+first character in the least significant byte, following the
+[parameter contract](https://github.com/michidk/redguard-preservation/blob/c51e013/docs/engine/SOUP.md#parameter-type-overrides).
 `ScriptInputs::activation` supplies an explicit selected-player identity, actor
 conditions, RTX labels, dialogue/lineup state and held use. Missing actor state
 fails explicitly. Attributes come from the receiving and selected logical actors;

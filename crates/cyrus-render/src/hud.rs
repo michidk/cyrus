@@ -891,7 +891,7 @@ mod tests {
                 version: 2,
                 entry: 0,
                 variables: vec![],
-                strings: vec!["#OPN".into()],
+                strings: vec![],
                 steps: BTreeMap::from([(
                     0,
                     Step {
@@ -915,7 +915,9 @@ mod tests {
                             kind: CallKind::Function,
                             target: Object::Me,
                             function: "Activate".into(),
-                            arguments: vec![Value::String { index: 0 }],
+                            arguments: vec![Value::Integer {
+                                value: i32::from_le_bytes(*b"#OPN"),
+                            }],
                         },
                     },
                 },

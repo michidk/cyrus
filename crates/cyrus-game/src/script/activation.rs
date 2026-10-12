@@ -118,13 +118,12 @@ impl ActivationState {
             return Ok(None);
         }
         anyhow::ensure!(arguments.len() == 1, "{name}: wrong argument count");
-        let Argument::String(label) = &arguments[0] else {
-            anyhow::bail!("{name}: RTX label required");
-        };
+        let bytes = arguments[0].integer()?.to_le_bytes();
         anyhow::ensure!(
-            label.len() == 4 && label.is_ascii(),
+            bytes.is_ascii(),
             "{name}: four-byte ASCII RTX label required"
         );
+        let label = std::str::from_utf8(&bytes)?;
         let inputs = inputs.context("activation inputs unavailable")?;
         let selected_player = selected_player.context("activation selected player absent")?;
         let player_attributes = selected_player.attributes();

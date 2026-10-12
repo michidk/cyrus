@@ -982,7 +982,6 @@ fn activation_world_with_attributes(
         if name == "OTHER" {
             actor.program.strings[0] = "ACTOR".into();
         }
-        actor.program.strings.push("#OPN".into());
         actor.program.steps = [
             Operation::Assign {
                 destination: Place::Flag { index: 0 },
@@ -993,7 +992,9 @@ fn activation_world_with_attributes(
                             kind: CallKind::Function,
                             target: Object::Named { string: 0 },
                             function: function.into(),
-                            arguments: vec![Value::String { index: 1 }],
+                            arguments: vec![Value::Integer {
+                                value: i32::from_le_bytes(*b"#OPN"),
+                            }],
                         }),
                     },
                     rest: vec![],
