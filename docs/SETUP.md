@@ -62,6 +62,8 @@ Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. The viewer currently lives on its
 separate development branch; game revisions without it contain only the game.
+Browser artifact builds compile all available applications and the viewer worker
+in one Cargo invocation so they share dependency features and compiled libraries.
 
 Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
 lint CI still runs on every push and pull request. Artifact builds run only for
