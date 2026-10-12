@@ -38,6 +38,7 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 
 | Work | Session |
 | --- | --- |
+| Media and audio crate extraction, in that order | Codex, `t3/check-movie-speed-chat`; `magic/artifacts/2026-10-12-crate-extraction/` |
 | SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
 | Rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` |
@@ -45,6 +46,15 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 | HUD | Implement the Game Overlay UI |
 
 Remaining animation scheduling, startup fidelity follow-up and stages 3–6 are unassigned.
+
+### Crate boundaries
+
+- [x] Keep shared font metrics, wrapping and rasterization in `cyrus-text`; screen-specific text placement remains with presentation and FNT parsing with preservation.
+- [ ] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. Verify and push before starting audio extraction.
+- [ ] Extract `cyrus-audio`: effects, speech playback, music and browser sound-bank playback. Presentation supplies listener, startup readiness and cinematic pause state; preserve preference/animation/cue ordering and headless support. Start from the latest pushed media change.
+- [ ] Extract `cyrus-startup` after audio boundaries are established: splash, title, book menu, settings, cinematic presentation and world-entry loading, with one presentation facade.
+- [ ] Evaluate a separate `cyrus-collision` crate when independent reuse or testing benefits justify it; keep player admission and response in gameplay.
+- [ ] Revisit `cyrus-animation` after production scheduling and actor ownership settle; retain explicit requests/ticks in the core and mesh presentation outside it.
 
 ## Verification still required
 
