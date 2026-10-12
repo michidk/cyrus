@@ -101,9 +101,11 @@ settling reports unsupported water/terrain-edge support and retains the marker.
 | HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser restart persistence |
 | Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
-| Browser tools | F1 during unskipped startup; fidelity controls, render-distance editing/reset and cache reuse/invalidation |
 | Asset viewer | Other-platform runtime and browser media checks; native inspection controls pass, without a Faithful rendering claim. Game and viewer share asset code; browser game runtime parsing remains open |
 | Releases | Browser package job and publication after hosted-runner communication failure; clean-machine play/save/resume and other-platform runtime checks |
+
+Browser tooling verification is deferred at user request: F1 during unskipped
+startup, fidelity controls, render-distance editing/reset and cache reuse/invalidation.
 
 ## Resource coverage
 
@@ -141,7 +143,7 @@ screen or root access.
 - [x] Asset viewer review: failed previews are never cached, CD images fingerprint by size and time, asset lookup and catalog classification are shared, and the viewer UI is split per content kind. Game and viewer share one world geometry pipeline, cue-sheet parser, WAV writer, file lookup, world resolver, font conversion, atomic cache publish and loading overlay; native world preparation reports its stages on the entry bar. **Verified:** [viewer fixes](https://github.com/michidk/cyrus/commit/949ff34), [shared assets](https://github.com/michidk/cyrus/commit/e389da4) and [stage progress](https://github.com/michidk/cyrus/commit/9139981) pass installed tests and a headless START export; the painted stage bar is unobserved.
 - [ ] Browser game runtime parsing: port the remaining exporters to the byte-source trait so the browser worker prepares game assets without a server-side exporter.
 - [ ] Audit skipped placements, missing assets, animation/script initialization failures and unsupported operations.
-- [ ] Produce matched original/cyrus scene and viewpoint captures; verify current browser debug controls and cache behavior.
+- [ ] Produce matched original/cyrus scene and viewpoint captures.
 
 Done when a fresh clone with a purchased install builds and runs both games,
 accepts agent control and produces a repeatable comparison through SETUP commands.
