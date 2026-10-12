@@ -1,4 +1,21 @@
 const FILE_CACHE = "cyrus-assets-v2";
+async function downloadAsset(request) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await fetch(request, { cache: "no-store" });
+      if (!response.ok) return response;
+      // Bevy reads whole assets; finish the transfer here so body failures can retry.
+      const body = await response.arrayBuffer();
+      const headers = new Headers(response.headers);
+      headers.delete("content-encoding");
+      headers.set("content-length", String(body.byteLength));
+      return new Response(body, { status: response.status, statusText: response.statusText, headers });
+    } catch (error) {
+      if (attempt === 2) throw error;
+      console.warn("Retrying interrupted asset download", request.url, error);
+    }
+  }
+}
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", event => {
@@ -26,7 +43,9 @@ self.addEventListener("fetch", event => {
             size === cached.headers.get("content-length")) return cached;
       } catch { return cached; }
     }
-    const response = await fetch(event.request, { cache: "no-store" });
+    const response = url.pathname.includes("/cyrus-config/cache/")
+      ? await downloadAsset(event.request)
+      : await fetch(event.request, { cache: "no-store" });
     const range = original && url.searchParams.get("range");
     const validRange = !range || response.headers.get("content-range")?.startsWith("bytes " + range + "/");
     if (response.ok && validRange) {

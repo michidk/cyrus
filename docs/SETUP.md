@@ -112,6 +112,8 @@ to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
 The game also needs the manifest's `cache` URL for prepared game assets.
+The browser asset cache retries interrupted prepared-asset downloads up to
+three attempts before reporting a loading error; only complete downloads are cached.
 See the crate READMEs for the complete mappings.
 
 Both native applications discover `./redguard`, `./Redguard`,
