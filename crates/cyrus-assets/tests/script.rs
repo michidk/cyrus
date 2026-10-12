@@ -3,7 +3,7 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 3,
+        version: 4,
         actor_pool_capacity: 32,
         world: 7,
         content_id: String::new(),
@@ -140,6 +140,22 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         scripts.validate().unwrap();
         assert!(!scripts.actors.is_empty());
+        for (name, actor) in &scripts.actors {
+            let attribute = |index: usize| {
+                let key = scripts
+                    .definition
+                    .attributes
+                    .get(index)
+                    .filter(|name| !name.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| format!("attr_{index}"));
+                actor.attributes[&key]
+            };
+            assert_eq!(attribute(115), attribute(6), "{name}: reserved weight");
+            assert_eq!(attribute(119), attribute(1), "{name}: reserved collision");
+            assert_ne!(attribute(34), 0, "{name}: sheath frame default");
+            assert_ne!(attribute(35), 0, "{name}: draw frame default");
+        }
         assert!(
             scripts
                 .unsupported
@@ -173,7 +189,7 @@ fn pool_capacity_participates_in_cache_identity_and_old_schemas_require_reexport
             .to_string()
             .contains("invalid script actor pool capacity")
     );
-    scripts.version = 2;
+    scripts.version = 3;
     assert!(
         scripts
             .validate()

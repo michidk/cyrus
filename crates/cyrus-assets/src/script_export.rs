@@ -35,11 +35,28 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
                     .find(|actor| actor["script_name"].as_str() == Some(&name))
             })
             .with_context(|| format!("{context}: actor metadata absent"))?;
-        let attributes = record
+        let mut attributes: BTreeMap<String, u8> = record
             .get("attributes")
             .map(|data| serde_json::from_value(data.clone()))
             .transpose()?
             .unwrap_or_default();
+        let attribute_keys: Vec<_> = (0..256)
+            .map(|index| {
+                definition
+                    .attributes
+                    .get(index)
+                    .filter(|name| !name.is_empty())
+                    .cloned()
+                    .unwrap_or_else(|| format!("attr_{index}"))
+            })
+            .collect();
+        let mut initialized = std::array::from_fn(|index| {
+            attributes.get(&attribute_keys[index]).copied().unwrap_or(0)
+        });
+        config.initialize_attributes(&mut initialized);
+        for (key, value) in attribute_keys.into_iter().zip(initialized) {
+            attributes.insert(key, value);
+        }
         let hooks: Vec<u32> = record
             .get("rahk_hooks")
             .map(|data| serde_json::from_value(data.clone()))
@@ -128,7 +145,7 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 3,
+        version: 4,
         actor_pool_capacity: config.actor_pool_capacity,
         world,
         content_id: String::new(),

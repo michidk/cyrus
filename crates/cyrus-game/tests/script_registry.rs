@@ -73,7 +73,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 3,
+        version: 4,
         actor_pool_capacity: 32,
         content_id: String::new(),
         world: 7,

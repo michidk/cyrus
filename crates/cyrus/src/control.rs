@@ -505,7 +505,7 @@ mod tests {
         use cyrus_game::script::{ScriptActors, ScriptWorld};
         let mut app = app();
         let mut scripts: Scripts = serde_json::from_value(json!({
-            "version":3,"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":4,"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}

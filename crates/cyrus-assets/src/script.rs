@@ -221,6 +221,7 @@ pub struct Actor {
     pub namespace: Option<String>,
     pub instance_variables: Vec<Vec<i32>>,
     pub program: Program,
+    /// Independent actor-load attribute defaults; model-path message groups are assigned later.
     pub attributes: BTreeMap<String, u8>,
     pub hooks: Vec<u32>,
 }
@@ -266,7 +267,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 3,
+            self.version == 4,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

@@ -8,8 +8,7 @@ belong to the consuming crates.
 The opt-in `native` feature enables read-only install discovery, preload scans,
 scene/startup/menu/HUD/movie export, and sound/CD/voice/font preparation through
 `rgpre`. It also enables native font conversion in `cyrus-text`. Export paths are
-caller-supplied; the install is never written. Existing sidecar versions and
-filenames are unchanged. Native prepared audio is WAV bytes, never a Bevy audio handle. Browser movie
+caller-supplied; the install is never written. Sidecar filenames are stable; schema checks reject incompatible cache records. Native prepared audio is WAV bytes, never a Bevy audio handle. Browser movie
 preparation loads metadata only; `movie::stream::MovieStream` consumes compressed
 chunks and discards decoded packets. The vendored `smk` codec adds sequential
 packet input without replacing the upstream decoder.
@@ -33,9 +32,11 @@ unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
 retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
 program descriptors with names from the installed SOUP386.DEF. The independent
-version-3 `.scripts` sidecar retains the installed actor-pool capacity, actor RASC
+version-4 `.scripts` sidecar retains the installed actor-pool capacity, actor RASC
 origins, definitions, fresh-game flag values, locals, strings,
-attributes, hooks and explicit unsupported records. Its content identity rejects
+initialized attributes, hooks and explicit unsupported records. Actor-load defaults
+come from preservation [PR #59](https://github.com/michidk/redguard-preservation/pull/59)
+and installed SYSTEM.INI; model-path message-group assignment remains separate. Its content identity rejects
 changed metadata. Animation metadata retains the same script identity; preparation
 rejects animation/script sidecars from different exports. The animation inspection adapter also retains those same
 program descriptors in animation metadata.
