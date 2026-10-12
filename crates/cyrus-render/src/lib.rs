@@ -60,6 +60,7 @@ fn scene_presentation(
     frame.0 = true;
     commands.spawn((
         SceneEntity,
+        cyrus_game::script::ScriptScene::new(prepared.animations.clone()),
         WorldAssetRoot(
             assets.load(GltfAssetLabel::Scene(0).from_asset(prepared.scene_path.clone())),
         ),

@@ -1,7 +1,9 @@
 //! Presentation observes explicit logical stages without advancing scripts itself.
 use bevy::{asset::AssetApp, prelude::*};
 use cyrus_assets::{animation::Animations, script::Scripts};
-use cyrus_game::script::{ScriptActors, ScriptBinding, ScriptPlugin, ScriptStage, Thread};
+use cyrus_game::script::{
+    ScriptActors, ScriptBinding, ScriptPlugin, ScriptScene, ScriptStage, Thread,
+};
 use cyrus_world::{
     animation::{AnimationPose, AnimationRequest, AnimationTick},
     lifecycle::PreparedWorld,
@@ -9,7 +11,7 @@ use cyrus_world::{
 use serde_json::json;
 
 #[test]
-fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
+fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     let mut scripts: Scripts = serde_json::from_value(json!({
         "version":5,"actor_pool_capacity":10,"content_id":"","world":17,
         "definition":{"functions":[
@@ -90,13 +92,20 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
                 .bind_animation(id, data, 1)
                 .unwrap();
         });
+    let root = app
+        .world_mut()
+        .spawn(ScriptScene::new(animation_handle.clone()))
+        .id();
+    let unrelated = app.world_mut().spawn(Name::new("B_000_ACTOR")).id();
+    let wrong_actor = app
+        .world_mut()
+        .spawn((Name::new("B_000_OTHER"), ChildOf(root)))
+        .id();
     let node = app
         .world_mut()
         .spawn((
-            ScriptBinding {
-                actor: id,
-                source: animation_handle.clone(),
-            },
+            Name::new("B_000_ACTOR"),
+            ChildOf(root),
             AnimationPose {
                 model: "PREVIOUS".into(),
                 frame: 42,
@@ -104,6 +113,9 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
         ))
         .id();
     app.update();
+    assert_eq!(app.world().get::<ScriptBinding>(node).unwrap().actor, id);
+    assert!(app.world().get::<ScriptBinding>(unrelated).is_none());
+    assert!(app.world().get::<ScriptBinding>(wrong_actor).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());
     app.world_mut()
         .resource_mut::<ScriptActors>()
@@ -135,6 +147,26 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
     assert_eq!(runtime.active_tasks(), 1);
     assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 1);
 
+    let model = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .get_mut(&animation_handle)
+        .unwrap()
+        .models
+        .remove("TEST")
+        .unwrap();
+    app.update();
+    assert!(app.world().get::<ScriptBinding>(node).is_none());
+    app.world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .get_mut(&animation_handle)
+        .unwrap()
+        .models
+        .insert("TEST".into(), model);
+    app.update();
+    assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<AnimationPose>(node).is_none());
+
     app.insert_resource(prepared());
     app.update();
     assert!(app.world().get::<ScriptBinding>(node).is_none());
@@ -148,6 +180,13 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
         .id(0)
         .unwrap();
     assert_ne!(fresh.generation, id.generation);
+    let late_old_node = app
+        .world_mut()
+        .spawn((Name::new("B_000_ACTOR"), ChildOf(root)))
+        .id();
+    app.update();
+    assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<ScriptBinding>(late_old_node).is_none());
     let runtime = app
         .world()
         .resource::<ScriptActors>()

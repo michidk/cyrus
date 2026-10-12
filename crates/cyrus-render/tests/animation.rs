@@ -212,7 +212,9 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     data.validate().unwrap();
     assert!(data.sections.contains_key("RASC"));
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "FLAG2").unwrap();
-    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "FLAG2", 0).unwrap();
+    let (mut actor, _) =
+        cyrus_world::animation::ActorAnimation::initialize(&data, "FLAG2", 1, &mut |_| Ok(()))
+            .unwrap();
     let scripts: cyrus_assets::script::Scripts =
         serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
     let mut world = cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap();
@@ -222,7 +224,9 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         .position(|actor| actor.name() == "FLAG2")
         .unwrap();
     let id = world.id(index).unwrap();
-    world.bind_animation(id, &data, 0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 1, &mut |_, _| Ok(()))
+        .unwrap();
     let advance = |world: &mut cyrus_game::script::ScriptWorld, ticks| {
         use cyrus_game::script::{ScriptStage, Thread};
         for stage in [

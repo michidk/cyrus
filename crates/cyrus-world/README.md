@@ -17,6 +17,10 @@ only for supplied `AnimationTick` messages. `FrameSequence::from_asset`,
 state from records. No production clock, actor activation or unsupported script
 operation is inferred. Pose application belongs to `cyrus-render`.
 
+`ActorAnimation::initialize` performs the animation-table loading sequence with
+two group-zero requests and retains the selected frame. The caller supplies
+nominal ticks and synchronous sound dispatch; this does not grant update eligibility.
+
 World defines `SoundCue` and `SoundSurface`; the audio consumer registers the cue
 queue. Without that consumer, sound-bearing animation remains explicitly
 unsupported. `AnimationSystems` lets composition preserve same-update ordering.

@@ -20,6 +20,13 @@ explicit deterministic APIs. Automatic locomotion, animation eligibility and a
 production simulation clock remain unsupported. See
 [SETUP](../../docs/SETUP.md) and [ROADMAP](../../docs/ROADMAP.md).
 
+World scene roots carry `ScriptScene`. Exported map nodes automatically bind to
+their logical actor by placement index and script name. Bindings expire on world
+replacement, including reloads of the same world. `initialize_map_animation`
+initializes animation-table actors with supplied nominal ticks and retains their
+selected frames in the shared SOUP state. Automatic initialization and scheduling
+remain pending; scene binding itself does not advance animation or scripts.
+
 Run `cargo test -p cyrus-game`. Installed-definition tests require `redguard/` and
 report when they skip. `dev/scripts/check-core-boundaries.sh` checks the production
 dependency graph without workspace or development feature unification.

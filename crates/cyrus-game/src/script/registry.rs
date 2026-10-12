@@ -337,6 +337,67 @@ impl ScriptWorld {
         data: &Animations,
         default: u16,
     ) -> Result<()> {
+        let index = self.validate_animation_binding(id, data)?;
+        let playback = cyrus_world::animation::ActorAnimation::from_asset(
+            data,
+            self.actors[index].name(),
+            default,
+        )?;
+        self.actors[index].animation = Some(ScriptAnimation {
+            playback,
+            frame: None,
+        });
+        Ok(())
+    }
+
+    /// Initialize an ordinary placed animation-table model using shared nominal ticks.
+    /// This does not grant update eligibility or initialize standalone player roles.
+    /// Sound failures are sticky because already-dispatched effects cannot be rolled back.
+    pub fn initialize_map_animation(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.validate_animation_binding(id, data)?;
+        let actor = &mut self.actors[index];
+        let placement = actor
+            .placement()
+            .context("animation initialization requires a map actor")?;
+        anyhow::ensure!(
+            !matches!(placement.object_type, 2 | 6),
+            "world {} instance {index}: separate map object animation unsupported",
+            self.world
+        );
+        anyhow::ensure!(
+            data.actor(actor.name())?["model_load_path"].as_str() == Some("animation_table"),
+            "world {} instance {index}: actor does not use an animation model table",
+            self.world
+        );
+        let result = cyrus_world::animation::ActorAnimation::initialize(
+            data,
+            actor.name(),
+            ticks,
+            &mut |sound| sounds(id, super::ScriptSound::Animation(sound)),
+        );
+        match result {
+            Ok((playback, frame)) => {
+                actor.animation = Some(ScriptAnimation { playback, frame });
+                Ok(())
+            }
+            Err(error) => {
+                let message = format!(
+                    "world {} instance {index} animation initialization: {error:#}",
+                    self.world
+                );
+                actor.animation_failure = Some(message.clone());
+                anyhow::bail!(message)
+            }
+        }
+    }
+
+    fn validate_animation_binding(&self, id: ScriptActorId, data: &Animations) -> Result<usize> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
             data.world == self.world,
@@ -349,19 +410,16 @@ impl ScriptWorld {
             "world {} animation/script cache generation mismatch; re-export the world",
             self.world
         );
-        let actor = &mut self.actors[index];
+        let actor = &self.actors[index];
+        if let Some(error) = actor.failure() {
+            anyhow::bail!("{error}");
+        }
         anyhow::ensure!(
             actor.animation.is_none(),
             "world {} instance {index}: animation already prepared",
             self.world
         );
-        let playback =
-            cyrus_world::animation::ActorAnimation::from_asset(data, actor.name(), default)?;
-        actor.animation = Some(ScriptAnimation {
-            playback,
-            frame: None,
-        });
-        Ok(())
+        Ok(index)
     }
     /// The admitted player stage and SOUP share this playback and selected file frame.
     pub(crate) fn player_animation(

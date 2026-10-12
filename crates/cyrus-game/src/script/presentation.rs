@@ -12,6 +12,74 @@ pub struct ScriptBinding {
     pub source: Handle<Animations>,
 }
 
+/// World scene root whose exported map nodes may observe logical actors.
+/// Once associated, a root cannot be reused for a later world generation.
+#[derive(Component)]
+pub struct ScriptScene {
+    source: Handle<Animations>,
+    generation: Option<u64>,
+}
+impl ScriptScene {
+    pub fn new(source: Handle<Animations>) -> Self {
+        Self {
+            source,
+            generation: None,
+        }
+    }
+}
+
+#[derive(Component)]
+pub(super) struct SceneActorBound;
+
+pub(super) fn bind_scene(
+    mut commands: Commands,
+    actors: Res<ScriptActors>,
+    request: Res<AnimationRequest>,
+    mut roots: Query<(Entity, &mut ScriptScene)>,
+    children: Query<&Children>,
+    nodes: Query<&Name, (Without<ScriptBinding>, Without<SceneActorBound>)>,
+) {
+    let Some(world) = &actors.current else {
+        return;
+    };
+    for (root, mut scene) in &mut roots {
+        if scene.source != request.0 {
+            continue;
+        }
+        let generation = *scene.generation.get_or_insert(world.generation());
+        if generation != world.generation() {
+            continue;
+        }
+        for entity in children.iter_descendants(root) {
+            let Ok(name) = nodes.get(entity) else {
+                continue;
+            };
+            let Some((index, actor_name)) = name
+                .as_str()
+                .strip_prefix("B_")
+                .and_then(|name| name.split_once('_'))
+            else {
+                continue;
+            };
+            let Ok(index) = index.parse::<usize>() else {
+                continue;
+            };
+            let Some(actor) = world.actors().get(index) else {
+                continue;
+            };
+            if actor.placement().is_some() && actor.name() == actor_name {
+                commands.entity(entity).insert((
+                    SceneActorBound,
+                    ScriptBinding {
+                        actor: super::ScriptActorId { generation, index },
+                        source: scene.source.clone(),
+                    },
+                ));
+            }
+        }
+    }
+}
+
 pub(super) fn apply(
     mut commands: Commands,
     actors: Res<ScriptActors>,

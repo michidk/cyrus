@@ -17,6 +17,23 @@ pub struct ActorAnimation {
 }
 
 impl ActorAnimation {
+    /// Initializes an animation-table model with the two ordinary group-zero requests
+    /// specified by preservation's engine/animation.md. The caller establishes the
+    /// model loading path and supplies the shared nominal ticks and sound dispatcher.
+    pub fn initialize(
+        data: &Animations,
+        actor: &str,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<(Self, Option<u32>)> {
+        let mut animation = Self::from_asset(data, actor, 0)?;
+        let mut frame = animation.request_with_sounds(0, 0, ticks, sounds)?;
+        frame = animation
+            .request_with_sounds(0, 0, ticks, sounds)?
+            .or(frame);
+        Ok((animation, frame))
+    }
+
     /// Creates inactive request state with a caller-selected default group.
     /// This does not activate a placement or infer the default from its attributes.
     pub fn from_asset(

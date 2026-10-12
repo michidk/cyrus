@@ -122,6 +122,102 @@ fn cache() -> Scripts {
     scripts
 }
 #[test]
+fn map_animation_initialization_retains_independent_frames_and_rejects_reinitialization() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let scripts = cache();
+    let mut data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({
+            "script_content_id": scripts.content_id,
+            "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":10},
+                        {"opcode":0,"frame_reference":11},{"opcode":2,"value":0}]}]}]
+        }),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let first = world.id(0).unwrap();
+    let second = world.id(1).unwrap();
+    for path in ["none", "static", ""] {
+        data.metadata["actors"][0]["model_load_path"] = path.into();
+        assert!(
+            world
+                .initialize_map_animation(first, &data, 1, &mut |_, _| Ok(()))
+                .is_err()
+        );
+        assert_eq!(world.animation_frame(first).unwrap(), None);
+    }
+    data.metadata["actors"][0]["model_load_path"] = "animation_table".into();
+    for id in [first, second] {
+        world
+            .initialize_map_animation(id, &data, 1, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(world.animation_frame(id).unwrap(), Some(10));
+    }
+    world
+        .advance(
+            first,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            0,
+        )
+        .unwrap();
+    assert_eq!(world.animation_frame(first).unwrap(), Some(11));
+    assert_eq!(world.animation_frame(second).unwrap(), Some(10));
+    assert!(
+        world
+            .initialize_map_animation(first, &data, 1, &mut |_, _| Ok(()))
+            .is_err()
+    );
+    assert_eq!(world.animation_frame(first).unwrap(), Some(11));
+}
+
+#[test]
+fn animation_initialization_does_not_repeat_a_failed_sound_effect() {
+    use cyrus_assets::animation::Animations;
+    let scripts = cache();
+    let data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({
+            "script_content_id": scripts.content_id,
+            "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":4,"sound_param":-17,"volume_shift":-1},
+                        {"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}]}]
+        }),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let mut calls = 0;
+    for _ in 0..2 {
+        let error = world
+            .initialize_map_animation(id, &data, 1, &mut |receiver, _| {
+                assert_eq!(receiver, id);
+                calls += 1;
+                anyhow::bail!("sound unavailable")
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("sound unavailable"));
+    }
+    assert_eq!(calls, 1);
+    assert!(world.actors()[0].failure().is_some());
+    assert_eq!(world.animation_frame(id).unwrap(), None);
+}
+
+#[test]
 fn invisible_instances_have_separate_authored_locals_and_shared_globals() {
     let scripts = cache();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();

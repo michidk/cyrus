@@ -18,7 +18,7 @@ pub use animation::AnimationScript;
 use bevy::prelude::*;
 pub use cyrus_script::Thread;
 pub use playback::ScriptedPlayback;
-pub use presentation::ScriptBinding;
+pub use presentation::{ScriptBinding, ScriptScene};
 pub use registry::{
     ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs, ScriptStage,
     ScriptWorld,
@@ -47,7 +47,8 @@ impl Plugin for ScriptPlugin {
             )
             .add_systems(
                 Update,
-                presentation::apply
+                (presentation::bind_scene, presentation::apply)
+                    .chain()
                     .in_set(cyrus_world::animation::AnimationSystems)
                     .after(registry::prepare)
                     .after(registry::clear_unprepared)

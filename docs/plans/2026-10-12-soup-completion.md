@@ -46,7 +46,10 @@ updates diagnostics, and advances explicitly attached animation playback.
   These paths still require the installed mixed-scenario acceptance below.
 - Native control and MCP expose bounded `scripts` inspection, explicit animation
   binding, and `step_script`. Shared scene bindings read the logical actor's pose
-  and expire with its world generation. Native and browser load the shared cache
+  and expire with its world generation. World scene roots bind exported map nodes
+  automatically by placement index and script name. Animation-table initialization
+  retains the selected frame but still requires caller-supplied timing.
+  Native and browser load the shared cache
   and game plugin. That wiring does not establish browser execution parity.
 - Public-interface tests exist in `cyrus-script/tests/runtime.rs`,
   `cyrus-game/tests/script_registry.rs`, `script_instances.rs`, animation tests,

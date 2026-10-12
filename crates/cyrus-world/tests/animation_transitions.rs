@@ -14,6 +14,27 @@ fn asset(groups: Value) -> Animations {
 }
 
 #[test]
+fn model_initialization_preserves_the_selected_frame_and_shared_ticks() {
+    let data = asset(json!([
+        {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},
+            {"opcode":0,"frame_reference":12},{"opcode":2,"value":0}]}
+    ]));
+    for (ticks, next_frame) in [(0, 10), (1, 11), (2, 11)] {
+        let (mut animation, frame) =
+            cyrus_world::animation::ActorAnimation::initialize(&data, "ACTOR", ticks, &mut |_| {
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(frame, Some(10));
+        assert_eq!(animation.default_group(), 0);
+        assert_eq!(animation.current_group(), Some(0));
+        assert_eq!(animation.pending_group(), None);
+        assert_eq!(animation.advance(1).unwrap(), Some(next_frame));
+    }
+}
+
+#[test]
 fn type_one_finishes_its_exit_tail_before_selecting_the_pending_default() {
     let data = asset(json!([
         {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
