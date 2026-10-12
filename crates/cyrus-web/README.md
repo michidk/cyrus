@@ -51,7 +51,7 @@ artwork. New Game and the temporary Load fallback wait for world dependencies.
 Movies use the prepared Smacker files and first-track audio; subtitle, interlace,
 skip and menu-return rules share the native implementation. Quit attempts tab
 closure and keeps running when refused. F1 opens the world,
-flycam and fidelity controls. Direct scenes apply exported keyboard defaults and
+flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and
 saved Controls settings. Gameplay and original-game comparison limits are unchanged.
 
 Not a default workspace member so day-to-day builds and tests stay lean.

@@ -133,8 +133,8 @@ fn main() -> anyhow::Result<()> {
         app.add_plugins((
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
+            cyrus_debug::DebugMenuPlugin,
         ));
-        app.add_plugins(cyrus_debug::DebugMenuPlugin);
         debug::register(&mut app);
         if startup {
             app.add_plugins(cyrus_render::startup::StartupPlugin);

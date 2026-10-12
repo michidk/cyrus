@@ -6,6 +6,8 @@ module where it is defined and regenerate.
 
 ## `cyrus-app` — Shared window, cache source, egui and progress presentation for Cyrus applications.
 
+- `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
+
 ## `cyrus-assets-worker` — Worker-only WASM bridge. HTTP supplies original bytes; shared Rust parsers decode them.
 
 ## `cyrus-assets` — Renderer-independent asset catalog and portable preview contracts.

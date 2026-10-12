@@ -1,4 +1,9 @@
 use bevy::prelude::*;
+use bevy::{
+    camera::{CameraOutputMode, visibility::RenderLayers},
+    input::InputSystems,
+    render::render_resource::BlendState,
+};
 use bevy_egui::{
     EguiContext, EguiContexts, EguiGlobalSettings, EguiPreUpdateSet, EguiPrimaryContextPass,
     PrimaryEguiContext, egui,
@@ -32,9 +37,12 @@ impl Plugin for DebugMenuPlugin {
         app.add_plugins((cyrus_app::EguiPlugin, DefaultInspectorConfigPlugin))
             .init_resource::<DebugMenu>()
             .init_resource::<WorldPicker>()
+            .add_systems(PreStartup, setup_debug_camera)
             .add_systems(
                 PreUpdate,
-                toggle_menu.before(EguiPreUpdateSet::ProcessInput),
+                toggle_menu
+                    .after(InputSystems)
+                    .before(EguiPreUpdateSet::ProcessInput),
             )
             .add_systems(
                 EguiPrimaryContextPass,
@@ -44,7 +52,28 @@ impl Plugin for DebugMenuPlugin {
                 )
                     .chain(),
             );
+        app.world_mut()
+            .resource_mut::<EguiGlobalSettings>()
+            .auto_create_primary_context = false;
     }
+}
+
+fn setup_debug_camera(mut commands: Commands) {
+    // Startup and world cameras are replaced; the debug context must outlive both.
+    commands.spawn((
+        PrimaryEguiContext,
+        Camera2d,
+        RenderLayers::none(),
+        Camera {
+            order: 1,
+            output_mode: CameraOutputMode::Write {
+                blend_state: Some(BlendState::ALPHA_BLENDING),
+                clear_color: ClearColorConfig::None,
+            },
+            clear_color: ClearColorConfig::Custom(Color::NONE),
+            ..default()
+        },
+    ));
 }
 
 fn toggle_menu(
@@ -223,6 +252,70 @@ fn fidelity_control(ui: &mut egui::Ui, fidelity: &mut Fidelity, area: Area, labe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn f1_survives_replacing_the_startup_camera() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::input::InputPlugin,
+            bevy::window::WindowPlugin::default(),
+            bevy::asset::AssetPlugin::default(),
+            bevy::image::ImagePlugin::default(),
+        ))
+        .init_asset::<bevy::shader::Shader>()
+        .add_plugins(DebugMenuPlugin)
+        .init_resource::<FlycamSettings>()
+        .init_resource::<Fidelity>()
+        .init_resource::<RenderDistance>();
+        let startup_camera = app.world_mut().spawn(Camera2d).id();
+        app.finish();
+        app.cleanup();
+        app.update();
+        let context_entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<PrimaryEguiContext>>()
+            .single(app.world())
+            .expect("debug overlay has a primary context");
+        assert_ne!(context_entity, startup_camera);
+        app.world_mut().despawn(startup_camera);
+        app.world_mut().spawn(Camera3d::default());
+        for expected_open in [true, false, true] {
+            app.world_mut()
+                .write_message(bevy::input::keyboard::KeyboardInput {
+                    key_code: KeyCode::F1,
+                    logical_key: bevy::input::keyboard::Key::F1,
+                    state: bevy::input::ButtonState::Pressed,
+                    text: None,
+                    repeat: false,
+                    window: Entity::PLACEHOLDER,
+                });
+            app.update();
+            assert_eq!(app.world().resource::<DebugMenu>().open, expected_open);
+            let mut context = app
+                .world()
+                .get::<EguiContext>(context_entity)
+                .unwrap()
+                .clone();
+            let mut output = egui::FullOutput::default();
+            for _ in 0..2 {
+                output = context.get_mut().run_ui(egui::RawInput::default(), |_| {
+                    app.world_mut().run_schedule(EguiPrimaryContextPass);
+                });
+                output.textures_delta.clear();
+            }
+            assert_eq!(
+                output.shapes.iter().any(|shape| matches!(
+                    &shape.shape,
+                    egui::epaint::Shape::Text(text) if text.galley.job.text == "cyrus debug"
+                )),
+                expected_open,
+            );
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .release(KeyCode::F1);
+        }
+    }
 
     #[test]
     fn world_inspector_renders_the_full_world_tree() {

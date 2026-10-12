@@ -1,11 +1,14 @@
 # cyrus-debug
 
-The F1 debug menu shared by the native game and browser viewer. It changes
+The F1 debug menu shared by the native and browser game. It changes
 runtime fidelity individually or all at once, an independent flycam toggle and
 speed, loads an exported world from a dropdown, and launches a separate
 `bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
 Resources to edit reflected resources, and Assets to inspect loaded assets.
 The inspector stays open independently of the F1 menu and has its own close button.
+F1 is available during startup, at the book menu, and in a world. Its overlay
+camera persists when startup and world cameras are replaced. Headless launches
+do not register the debug UI.
 
 Press F1, then click **Open inspector**. Click **Close inspector** or the
 inspector window's close button to hide it.

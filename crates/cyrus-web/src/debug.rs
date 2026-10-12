@@ -4,17 +4,18 @@ use bevy::prelude::*;
 use cyrus_debug::WorldPicker;
 #[cfg(target_arch = "wasm32")]
 fn initialize_web_world(mut picker: ResMut<WorldPicker>) {
-    let current = web_scene();
-    picker.current.clone_from(&current);
-    picker.selected.clone_from(&current);
     picker.options = web_worlds();
-    if !picker.options.contains(&current) {
-        picker.options.push(current);
-    }
 }
 
 #[cfg(target_arch = "wasm32")]
-fn update_web_world(mut picker: ResMut<WorldPicker>) {
+fn update_web_world(
+    mut picker: ResMut<WorldPicker>,
+    current: Res<cyrus_world::lifecycle::CurrentScene>,
+) {
+    if picker.current != current.name {
+        picker.current.clone_from(&current.name);
+        picker.selected.clone_from(&current.name);
+    }
     let Some(requested) = picker.pending.take() else {
         return;
     };
@@ -32,14 +33,6 @@ fn set_scene(window: &web_sys::Window, scene: &str) -> Result<(), wasm_bindgen::
     window
         .location()
         .set_search(&params.to_string().as_string().unwrap_or_default())
-}
-
-#[cfg(target_arch = "wasm32")]
-fn web_scene() -> String {
-    cyrus_app::launch::from_query::<cyrus_app::launch::GameOptions>()
-        .ok()
-        .and_then(|options| options.scene)
-        .unwrap_or_else(|| "ISLAND".into())
 }
 
 #[cfg(target_arch = "wasm32")]

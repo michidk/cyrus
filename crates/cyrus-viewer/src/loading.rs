@@ -361,7 +361,12 @@ mod tests {
 
     #[test]
     fn cli_selection_opens_an_installed_archive_member() -> anyhow::Result<()> {
-        let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = cyrus_assets::install::GameInstall::open(&root) else {
             eprintln!("skipped: no install (viewer CLI selection)");
             return Ok(());
         };

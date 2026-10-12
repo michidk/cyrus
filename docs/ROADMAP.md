@@ -276,7 +276,9 @@ Agents and developers must run, drive and compare both games on a machine withou
 - [x] Preload coverage report per file type and unsupported extension (`cyrus-config/preload-report.json`).
 - [ ] World-resource audit: skipped placements, missing assets, failed animation/script initialization, and unsupported script operations.
 - [x] Shared debug menu for native and WASM ([`ba0ab4a`](https://github.com/michidk/cyrus/commit/ba0ab4a)).
-- [ ] **In progress** Add the debug world dropdown and inspector toggle.
+- [x] Add the debug world dropdown and independent inspector toggle.
+- [ ] Verify persistent F1 across browser startup, the book menu, New Game, and direct world launches.
+  **Verified:** the shared debug UI regression sends keyboard input, replaces the startup camera, and checks that F1 still draws and hides the menu. Live browser verification remains pending.
 - [x] `just smoke-mcp` drives the headless game through MCP; movement and the full loop verified in [c713082](https://github.com/michidk/cyrus/commit/c713082).
 - [x] Native game loads a scene under the virtual display; runtime image and asset-root fixes landed in [9535ce6](https://github.com/michidk/cyrus/commit/9535ce6).
 - [x] `just compare <label>` captures both games into `cyrus-config/compare/` ([9535ce6](https://github.com/michidk/cyrus/commit/9535ce6)).
