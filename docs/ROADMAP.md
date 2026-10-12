@@ -39,6 +39,7 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 | Work | Session |
 | --- | --- |
 | Media and audio crate extraction, in that order | Codex, `t3/check-movie-speed-chat`; `magic/artifacts/2026-10-12-crate-extraction/` |
+| Startup/menu comparison and startup crate extraction after audio | Codex, `t3/compare-menu-presentation`; `magic/artifacts/2026-10-12-menu-comparison/` |
 | SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
 | Rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` |
@@ -165,7 +166,7 @@ accepts agent control and produces a repeatable comparison through SETUP command
 - [x] Options, Display, Sound, Controls and Movies; keyboard navigation, persistent validated preferences and installed feedback effects. **Verified:** native MCP/export contracts and browser menu/movie/world-entry checks.
 - [x] Native/browser Smacker playback, skip points, subtitles/interlace and retained menu selection. Native video/audio streams from the installed file or CD image without whole-movie preparation; browser video/audio streams before full download. CD tracks and world assignments export for shared music playback.
 - [x] New Game and temporary Load enter the installed starting world/marker behind destination artwork and a dependency barrier.
-- [ ] Compare splash pixels/timing, inherited menu lighting, camera-plane clipping, authored transitions and audible output with the original.
+- [ ] Compare splash pixels and authored animation, inherited menu lighting, camera-plane clipping, book transitions and audible output with the original. Loading duration need not match.
 - [x] Bottom-right red loading status reports cyrus preparation stages and pending assets. **Verified:** installed export contracts and native menu-to-world captures; original internal progress weights remain unsupported.
 - [ ] Add save slots/thumbnails, overwrite/delete handling, Continue/pause, full New Game initialization and progression movie unlocks when the corresponding gameplay state exists.
 - [ ] Support mouse/joystick rebinding and gameplay snapshots. **Verified:** the original ordinary book menu has no pointer label selection.
