@@ -12,7 +12,6 @@ mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;
 pub use menu::MenuState;
-pub use movie::MovieAudio;
 
 /// Plays installed startup images through the installed book menu, before gameplay.
 pub struct StartupPlugin;
@@ -71,6 +70,7 @@ struct StartupContent;
 impl Plugin for StartupPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StartupPresentation>()
+            .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
             .add_message::<QuitRequest>()
             .insert_resource(ClearColor(Color::BLACK))
             .add_systems(OnEnter(AppState::Loading), setup)
@@ -80,9 +80,45 @@ impl Plugin for StartupPlugin {
             )
             .add_systems(OnExit(AppState::Loading), remove_content)
             .add_systems(OnExit(AppState::Menu), remove_content);
+        app.add_systems(
+            Update,
+            sync_audio
+                .after(advance)
+                .after(menu::drive)
+                .before(cyrus_audio::ApplyPreferences),
+        );
         menu::register(app);
         movie::register(app);
         loading::register(app);
+    }
+}
+
+fn sync_audio(
+    startup: Res<StartupPresentation>,
+    menu: Option<Res<MenuState>>,
+    mut readiness: ResMut<cyrus_audio::AudioReadiness>,
+    settings: Option<ResMut<cyrus_audio::sound::SoundSettings>>,
+) {
+    readiness.prepare = startup.title_visible;
+    if let (Some(preferences), Some(mut settings)) = (
+        menu.as_ref().and_then(|menu| menu.preferences.as_ref()),
+        settings,
+    ) {
+        let mut next = settings.clone();
+        next.apply_menu(preferences);
+        if (
+            next.master_volume,
+            next.redbook_volume,
+            next.speech,
+            next.subtitles,
+        ) != (
+            settings.master_volume,
+            settings.redbook_volume,
+            settings.speech,
+            settings.subtitles,
+        ) {
+            *settings = next;
+        }
     }
 }
 
@@ -205,6 +241,59 @@ fn remove_content(mut commands: Commands, content: Query<Entity, With<StartupCon
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn audio_host_copies_committed_preferences_before_cues() {
+        use cyrus_assets::{preferences::MenuPreferences, sound::SoundSettings};
+        use cyrus_audio::{ApplyPreferences, AudioReadiness, PlayCues};
+        let mut app = App::new();
+        app.init_resource::<StartupPresentation>()
+            .init_resource::<AudioReadiness>()
+            .insert_resource(SoundSettings::parse(""))
+            .configure_sets(Update, (ApplyPreferences, PlayCues).chain())
+            .add_systems(Update, sync_audio.before(ApplyPreferences));
+        app.update();
+        assert!(!app.world().resource::<AudioReadiness>().prepare);
+        app.init_resource::<MenuState>();
+        let preferences = MenuPreferences {
+            values: [(601, 0), (602, 0), (603, 0), (504, 0), (505, 0)].into(),
+            bindings: [0; 15],
+        };
+        app.world_mut().resource_mut::<MenuState>().preferences = Some(preferences);
+        app.world_mut()
+            .resource_mut::<StartupPresentation>()
+            .title_visible = true;
+        app.add_systems(
+            Update,
+            (|settings: Res<SoundSettings>,
+              readiness: Res<AudioReadiness>,
+              menu: Res<MenuState>| {
+                assert!(readiness.prepare);
+                assert_eq!(
+                    (
+                        settings.master_volume,
+                        settings.redbook_volume,
+                        settings.speech
+                    ),
+                    (0, 0, false)
+                );
+                assert_eq!(
+                    settings.subtitles,
+                    menu.preferences.as_ref().unwrap().values[&504] != 0
+                );
+            })
+            .in_set(PlayCues),
+        );
+        app.update();
+        app.world_mut()
+            .resource_mut::<MenuState>()
+            .preferences
+            .as_mut()
+            .unwrap()
+            .values
+            .insert(504, 1);
+        app.update();
+    }
+
     #[test]
     fn original_viewport_fits_without_stretching() {
         assert_eq!(viewport_scale(Vec2::new(640.0, 480.0)), 1.0);

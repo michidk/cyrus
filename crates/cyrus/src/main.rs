@@ -166,8 +166,8 @@ fn main() -> anyhow::Result<()> {
             cyrus_app::LoadingOverlayPlugin,
             scene::ScenePlugin,
             control::ControlPlugin,
-            cyrus_render::sound::SoundPlugin,
-            cyrus_render::music::MusicPlugin,
+            cyrus_audio::sound::SoundPlugin,
+            cyrus_audio::music::MusicPlugin,
             cyrus_render::subtitles::SubtitlePlugin,
         ));
     app.run();

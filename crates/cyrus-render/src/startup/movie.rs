@@ -42,9 +42,7 @@ struct Playing {
     started: bool,
     audio_started: bool,
 }
-/// The audio of the playing movie; CD music pauses while it exists.
-#[derive(Component)]
-pub struct MovieAudio;
+use cyrus_audio::CinematicAudio;
 #[cfg(not(target_arch = "wasm32"))]
 type NativeFrame = (Vec<u8>, Option<StreamingAudio>);
 
@@ -185,7 +183,7 @@ fn skip_point(movie: &MovieDefinition, frame: u32) -> Option<u32> {
 }
 
 fn drive(
-    runtime: (Commands, Query<Entity, With<MovieAudio>>),
+    runtime: (Commands, Query<Entity, With<CinematicAudio>>),
     #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     #[cfg(target_arch = "wasm32")] mut prepared: ResMut<Assets<Prepared>>,
@@ -198,7 +196,7 @@ fn drive(
     ),
     #[cfg(not(target_arch = "wasm32"))] audio: (
         ResMut<Assets<StreamingAudio>>,
-        Query<&AudioSink, With<MovieAudio>>,
+        Query<&AudioSink, With<CinematicAudio>>,
     ),
 ) {
     let (mut commands, audio_players) = runtime;
@@ -433,7 +431,7 @@ fn drive(
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(audio) = &playing.audio {
                 commands.spawn((
-                    MovieAudio,
+                    CinematicAudio,
                     AudioPlayer(audio.clone()),
                     PlaybackSettings::DESPAWN,
                 ));
@@ -441,7 +439,7 @@ fn drive(
             #[cfg(target_arch = "wasm32")]
             {
                 playing.decoder.frames.get_mut().unwrap().start();
-                commands.spawn(MovieAudio);
+                commands.spawn(CinematicAudio);
             }
             playing.audio_started = true;
         }
@@ -512,7 +510,7 @@ fn paint_subtitles(
 fn cleanup(
     mut commands: Commands,
     mut playback: ResMut<MoviePlayback>,
-    audio: Query<Entity, With<MovieAudio>>,
+    audio: Query<Entity, With<CinematicAudio>>,
 ) {
     *playback = MoviePlayback::default();
     for entity in &audio {

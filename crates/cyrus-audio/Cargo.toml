@@ -1,0 +1,19 @@
+[package]
+name = "cyrus-audio"
+description = "Native and browser effects, speech and CD music playback."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["bevy_asset", "bevy_audio", "bevy_log", "bevy_state", "wav"] }
+cyrus-assets.workspace = true
+cyrus-game.workspace = true
+cyrus-world.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cyrus-assets = { workspace = true, features = ["native"] }
+
+[dev-dependencies]
+redguard-preservation.workspace = true

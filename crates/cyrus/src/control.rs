@@ -47,7 +47,7 @@ impl Plugin for ControlPlugin {
             }
         };
         app.insert_resource(Inbox(Mutex::new(rx)))
-            .add_message::<cyrus_render::sound::SoundRequest>()
+            .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
             .add_systems(
                 PreUpdate,
@@ -67,10 +67,10 @@ fn release_taps(mut taps: ResMut<TapRelease>, mut keys: ResMut<ButtonInput<KeyCo
 /// Audio state for `handle`, grouped because Bevy systems take at most 16 parameters.
 #[derive(bevy::ecs::system::SystemParam)]
 struct Audio<'w> {
-    requests: MessageWriter<'w, cyrus_render::sound::SoundRequest>,
-    effects: Option<Res<'w, cyrus_render::sound::SoundEffects>>,
-    speech: Option<Res<'w, cyrus_render::sound::Speech>>,
-    music: Option<Res<'w, cyrus_render::music::Music>>,
+    requests: MessageWriter<'w, cyrus_audio::sound::SoundRequest>,
+    effects: Option<Res<'w, cyrus_audio::sound::SoundEffects>>,
+    speech: Option<Res<'w, cyrus_audio::sound::Speech>>,
+    music: Option<Res<'w, cyrus_audio::music::Music>>,
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
@@ -233,7 +233,7 @@ fn handle(
                     Some(loaded) => {
                         audio
                             .requests
-                            .write(cyrus_render::sound::SoundRequest::Play {
+                            .write(cyrus_audio::sound::SoundRequest::Play {
                                 effect,
                                 position: position.map(Vec3::from_array),
                             });
@@ -250,7 +250,7 @@ fn handle(
                 {
                     audio
                         .requests
-                        .write(cyrus_render::sound::SoundRequest::Speech(label.clone()));
+                        .write(cyrus_audio::sound::SoundRequest::Speech(label.clone()));
                     Ok(json!({"label": label}))
                 } else {
                     Err(format!("voice clip {label} is not loaded"))
@@ -259,7 +259,7 @@ fn handle(
             Command::StopSounds => {
                 audio
                     .requests
-                    .write(cyrus_render::sound::SoundRequest::StopAll);
+                    .write(cyrus_audio::sound::SoundRequest::StopAll);
                 Ok(json!("stopped"))
             }
             Command::Scripts { offset, limit } => {

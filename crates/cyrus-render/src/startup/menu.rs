@@ -119,7 +119,7 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnEnter(AppState::Menu), setup)
         .add_systems(
             Update,
-            (fit_image, drive.before(crate::sound::ApplyPreferences))
+            (fit_image, drive.before(cyrus_audio::ApplyPreferences))
                 .run_if(in_state(AppState::Menu)),
         )
         .add_systems(OnExit(AppState::Menu), cleanup);

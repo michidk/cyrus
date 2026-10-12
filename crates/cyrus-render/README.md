@@ -1,15 +1,16 @@
 # cyrus-render
 
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
-camera, startup/book menu, HUD, effects, music, speech, subtitles and cinematics.
+camera, startup/book menu, HUD, subtitles and cinematics.
+Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 
 `WorldRenderPlugin` composes the shared scene-spawn path, environment,
 `CameraPlugin` and `AnimationRenderPlugin`. Native and browser hosts submit the
 same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
 Script-driven actor poses retain the same scene origin as exported world placements and markers.
-Sound, HUD and startup remain separate plugins. Native headless assembly keeps
-sound control state without installing Bevy's audio backend.
+HUD and startup remain separate plugins. Hosts install `cyrus-audio` separately;
+headless assembly keeps sound control state without Bevy's audio backend.
 
 Menu edits persist before applying. Audio preference application precedes
 `AnimationSystems`, which precedes cue consumption in the same Update. Mesh poses

@@ -60,8 +60,8 @@ fn main() {
         cyrus_world::lifecycle::WorldPlugin,
         cyrus_world::animation::AnimationPlugin,
         cyrus_render::hud::HudPlugin,
-        cyrus_render::sound::SoundPlugin,
-        cyrus_render::music::MusicPlugin,
+        cyrus_audio::sound::SoundPlugin,
+        cyrus_audio::music::MusicPlugin,
     ));
     app.add_plugins(cyrus_render::startup::StartupPlugin)
         .add_systems(

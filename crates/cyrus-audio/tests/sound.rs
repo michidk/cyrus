@@ -9,14 +9,12 @@ use cyrus_assets::music::read_track;
 use cyrus_assets::music::world_track;
 use cyrus_assets::sound::SoundSettings;
 use cyrus_assets::sound::slider_volume;
-use cyrus_render::music::redbook_gain;
-use cyrus_render::sound::distance_volume;
-use cyrus_render::sound::heading;
-use cyrus_render::sound::output_gain;
-use cyrus_render::sound::pan;
-use cyrus_render::sound::pan_gains;
-use cyrus_render::subtitles::draw;
-use cyrus_render::subtitles::font_alpha;
+use cyrus_audio::music::redbook_gain;
+use cyrus_audio::sound::distance_volume;
+use cyrus_audio::sound::heading;
+use cyrus_audio::sound::output_gain;
+use cyrus_audio::sound::pan;
+use cyrus_audio::sound::pan_gains;
 use rgpre::import::sfx::parse_sfx_file;
 use std::path::Path;
 
@@ -152,48 +150,6 @@ fn distance_volume_matches_the_original_curve() {
 }
 
 #[test]
-fn subtitles_wrap_and_place_like_the_original() {
-    assert_eq!(font_alpha("255,255"), Ok([255, 199]), "NPC copy");
-    assert_eq!(font_alpha("125,255"), Ok([255, 97]), "Cyrus copy");
-    assert!(font_alpha("255").is_err());
-    let Some(install) = install("subtitle") else {
-        return;
-    };
-    let font = cyrus_text::Font::from(
-        &rgpre::import::fnt::parse_fnt(
-            &std::fs::read(install.root.join("fonts").join("REDSEL.FNT")).unwrap(),
-        )
-        .unwrap(),
-    );
-    let line = "YOU TWO DANCE VERY WELL, BUT, ALAS --";
-    assert_eq!(font.wrap(line, 500), line, "fits one line at width 500");
-    let wrapped = font.wrap(&format!("{line} {line}"), 500);
-    assert!(wrapped.contains('\n'), "two copies exceed width 500");
-    assert!(
-        wrapped
-            .split('\n')
-            .all(|l| !l.is_empty() && !l.starts_with(' ')),
-        "breaks drop the leading space: {wrapped:?}"
-    );
-    // The original drew this NPC line with glyph pixels spanning x 73..=565,
-    // y 423..=439 of the 640×480 screen (DOSBox-X capture, ship save).
-    let rgba = draw(&font, line, [255, 199]);
-    let main: Vec<(usize, usize)> = (0..480)
-        .flat_map(|y| (0..640).map(move |x| (x, y)))
-        .filter(|&(x, y)| {
-            let p = &rgba[(y * 640 + x) * 4..][..4];
-            p[3] == 255 && p[..3] != [0, 0, 0]
-        })
-        .collect();
-    let xs = main.iter().map(|p| p.0);
-    let ys = main.iter().map(|p| p.1);
-    assert_eq!(
-        (xs.clone().min(), xs.max(), ys.clone().min(), ys.max()),
-        (Some(73), Some(565), Some(423), Some(439))
-    );
-}
-
-#[test]
 fn pan_follows_the_original_heading_and_miles_pan_law() {
     // Emitter offsets (dx, dz) with the listener facing +Z (preservation docs/engine/sound.md).
     for ((dx, dz), expected) in [
@@ -234,10 +190,10 @@ fn system_ini_switches_default_on() {
 fn flat_cues_fill_sixteen_channels_with_clamped_rate_and_base_volume() {
     use bevy::audio::{PlaybackSettings, Volume};
     use bevy::prelude::*;
-    use cyrus_render::sound::Effect;
-    use cyrus_render::sound::PlayingSound;
-    use cyrus_render::sound::SoundEffects;
-    use cyrus_render::sound::SoundPlugin;
+    use cyrus_audio::sound::Effect;
+    use cyrus_audio::sound::PlayingSound;
+    use cyrus_audio::sound::SoundEffects;
+    use cyrus_audio::sound::SoundPlugin;
     use cyrus_world::sound::SoundCue;
     let Some(install) = install("sound channel") else {
         return;
@@ -283,12 +239,12 @@ fn flat_cues_fill_sixteen_channels_with_clamped_rate_and_base_volume() {
 fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     use bevy::audio::AudioSource;
     use bevy::prelude::*;
-    use cyrus_render::camera::ViewCamera;
-    use cyrus_render::sound::Effect;
-    use cyrus_render::sound::Panned;
-    use cyrus_render::sound::PlayingSound;
-    use cyrus_render::sound::SoundEffects;
-    use cyrus_render::sound::SoundPlugin;
+    use cyrus_audio::AudioListener;
+    use cyrus_audio::sound::Effect;
+    use cyrus_audio::sound::Panned;
+    use cyrus_audio::sound::PlayingSound;
+    use cyrus_audio::sound::SoundEffects;
+    use cyrus_audio::sound::SoundPlugin;
     use cyrus_world::animation::AnimationSound;
     use cyrus_world::sound::SoundCue;
     use cyrus_world::sound::SoundSurface;
@@ -315,7 +271,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
         sample_rate: 11025,
     })]));
     app.world_mut()
-        .spawn((ViewCamera, GlobalTransform::default()));
+        .insert_resource(AudioListener(GlobalTransform::default()));
     let known = app
         .world_mut()
         .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(0)))
@@ -391,7 +347,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
 #[test]
 fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
     use bevy::prelude::*;
-    use cyrus_render::sound::{Effect, PlayingSound, SoundEffects, SoundPlugin};
+    use cyrus_audio::sound::{Effect, PlayingSound, SoundEffects, SoundPlugin};
     use cyrus_world::sound::{ScriptSound, SoundCue};
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, SoundPlugin));
@@ -506,5 +462,28 @@ fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
         count(&mut app),
         0,
         "world removal stops owned channels and rejects stale starts"
+    );
+}
+
+#[test]
+fn headless_sound_preparation_waits_for_host_readiness() {
+    use bevy::prelude::*;
+    use cyrus_audio::{AudioReadiness, SoundPlugin};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, SoundPlugin))
+        .insert_resource(GameInstall {
+            root: std::env::temp_dir().join("cyrus-absent-install"),
+        })
+        .insert_resource(AudioReadiness { prepare: false });
+    app.update();
+    assert!(!app.world().contains_resource::<SoundSettings>());
+    app.world_mut().resource_mut::<AudioReadiness>().prepare = true;
+    app.update();
+    assert!(app.world().contains_resource::<SoundSettings>());
+    assert!(
+        app.world()
+            .resource::<cyrus_audio::sound::SoundEffects>()
+            .0
+            .is_empty()
     );
 }

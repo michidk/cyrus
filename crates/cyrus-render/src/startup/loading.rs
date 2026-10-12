@@ -35,8 +35,8 @@ fn poll(
     input: (Res<ButtonInput<KeyCode>>, ResMut<NextState<AppState>>),
     entry: WorldEntry,
     #[cfg(not(target_arch = "wasm32"))] menu_prepared: Option<Res<crate::loading::MenuPrepared>>,
-    #[cfg(target_arch = "wasm32")] sound_bank: Option<Res<crate::sound_bank::SoundBankHandle>>,
-    #[cfg(target_arch = "wasm32")] sound_settings: Option<Res<crate::sound::SoundSettings>>,
+    #[cfg(target_arch = "wasm32")] sound_bank: Option<Res<cyrus_audio::SoundBankHandle>>,
+    #[cfg(target_arch = "wasm32")] sound_settings: Option<Res<cyrus_audio::sound::SoundSettings>>,
     rendering: (
         ResMut<Assets<Image>>,
         Query<Entity, With<super::menu::MenuNotice>>,

@@ -32,12 +32,12 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
     use cyrus_assets::audio::pcm_wav;
     use cyrus_assets::install::GameInstall;
     use cyrus_assets::sound::SoundSettings;
-    use cyrus_render::camera::ViewCamera;
-    use cyrus_render::sound::Effect;
-    use cyrus_render::sound::Panned;
-    use cyrus_render::sound::PlayingSound;
-    use cyrus_render::sound::SoundEffects;
-    use cyrus_render::sound::SoundPlugin;
+    use cyrus_audio::AudioListener;
+    use cyrus_audio::sound::Effect;
+    use cyrus_audio::sound::Panned;
+    use cyrus_audio::sound::PlayingSound;
+    use cyrus_audio::sound::SoundEffects;
+    use cyrus_audio::sound::SoundPlugin;
     use cyrus_world::animation::AnimationPlayback;
     use cyrus_world::animation::AnimationPlugin;
     use cyrus_world::animation::AnimationPose;
@@ -79,7 +79,7 @@ fn group_and_scripted_playback_start_and_stop_sound_in_the_pose_update() {
             sample_rate: 11025,
         })]));
         app.world_mut()
-            .spawn((ViewCamera, GlobalTransform::default()));
+            .insert_resource(AudioListener(GlobalTransform::default()));
         let mut data = asset();
         data.metadata["actors"][0]["animation_groups"][0]["commands"][0]["frame_reference"] =
             json!(0);

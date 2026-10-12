@@ -50,7 +50,8 @@ impl Plugin for MusicPlugin {
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
                     pause_track,
                 )
-                    .chain(),
+                    .chain()
+                    .after(crate::ApplyPreferences),
             );
     }
 }
@@ -241,7 +242,7 @@ fn apply_volume(
 /// Pauses the CD while `redbook_volume` is 0 or a movie plays, and resumes it otherwise.
 fn pause_track(
     settings: Option<Res<SoundSettings>>,
-    movie: Query<(), With<crate::startup::MovieAudio>>,
+    movie: Query<(), With<crate::CinematicAudio>>,
     sinks: Query<&bevy::audio::AudioSink, With<MusicPlayer>>,
 ) {
     use bevy::audio::AudioSinkPlayback;

@@ -54,23 +54,17 @@ impl Plugin for SoundPlugin {
                 )
                     .chain(),
             )
+            .init_resource::<crate::AudioReadiness>()
             .init_resource::<SoundEffects>()
             .init_resource::<Speech>()
             .init_resource::<Channels>()
-            .add_systems(
-                Update,
-                (
-                    apply_menu
-                        .in_set(ApplyPreferences)
-                        .run_if(resource_exists_and_changed::<crate::startup::MenuState>),
-                    play_requests,
-                    play_cues.in_set(PlayCues),
-                )
-                    .chain(),
-            );
+            .add_systems(Update, (play_requests, play_cues).chain().in_set(PlayCues));
         #[cfg(not(target_arch = "wasm32"))]
-        app.add_systems(Update, load_effects.run_if(start_audio))
-            .add_systems(Update, finish_speech.before(play_requests));
+        app.add_systems(
+            Update,
+            load_effects.run_if(start_audio).in_set(ApplyPreferences),
+        )
+        .add_systems(Update, finish_speech.in_set(ApplyPreferences));
         #[cfg(target_arch = "wasm32")]
         app.init_asset::<crate::sound_bank::SoundBank>()
             .init_asset_loader::<crate::sound_bank::SoundBankLoader>()
@@ -81,14 +75,15 @@ impl Plugin for SoundPlugin {
                         assets.load("cache://sounds/bank.sounds"),
                     ));
                 })
-                .run_if(start_audio),
+                .run_if(start_audio)
+                .in_set(ApplyPreferences),
             )
-            .add_systems(Update, finish_bank.before(play_requests));
+            .add_systems(Update, finish_bank.in_set(ApplyPreferences));
     }
 }
 
 fn start_audio(
-    startup: Option<Res<crate::startup::StartupPresentation>>,
+    readiness: Res<crate::AudioReadiness>,
     settings: Option<Res<SoundSettings>>,
     #[cfg(target_arch = "wasm32")] bank: Option<Res<crate::sound_bank::SoundBankHandle>>,
 ) -> bool {
@@ -96,7 +91,7 @@ fn start_audio(
     if bank.is_some() {
         return false;
     }
-    settings.is_none() && startup.is_none_or(|startup| startup.title_visible)
+    settings.is_none() && readiness.prepare
 }
 
 pub use cyrus_assets::sound::SoundSettings;
@@ -430,7 +425,7 @@ fn play_requests(
     effects: Res<SoundEffects>,
     speech: Res<Speech>,
     settings: Option<Res<SoundSettings>>,
-    camera: Query<&GlobalTransform, With<crate::camera::ViewCamera>>,
+    listener: Option<Res<crate::AudioListener>>,
     alive: Query<(), With<PlayingSound>>,
     sources: Option<Res<Assets<AudioSource>>>,
     mut panned: Option<ResMut<Assets<Panned>>>,
@@ -455,14 +450,16 @@ fn play_requests(
                 let (volume, pan) = match position {
                     None => (effect.base_volume.min(127), None),
                     Some(position) => {
-                        let (Some(distance), Ok(camera)) = (
+                        let (Some(distance), Some(listener)) = (
                             settings.as_ref().and_then(|s| s.sound_distance),
-                            camera.single(),
+                            listener.as_deref(),
                         ) else {
-                            warn!("sound: effect {index}: no camera or SYSTEM.INI sound_distance");
+                            warn!(
+                                "sound: effect {index}: no listener or SYSTEM.INI sound_distance"
+                            );
                             continue;
                         };
-                        match positional(*position, camera, distance, 0) {
+                        match positional(*position, &listener.0, distance, 0) {
                             Ok((volume, pan)) => (volume, Some(pan)),
                             Err(e) => {
                                 warn!("sound: effect {index}: {e}");
@@ -524,7 +521,7 @@ fn play_cues(
     script_actors: Option<Res<cyrus_game::script::ScriptActors>>,
     effects: Res<SoundEffects>,
     settings: Option<Res<SoundSettings>>,
-    camera: Query<&GlobalTransform, With<crate::camera::ViewCamera>>,
+    listener: Option<Res<crate::AudioListener>>,
     actors: Query<(
         &GlobalTransform,
         Option<&SoundSurface>,
@@ -683,14 +680,14 @@ fn play_cues(
                             continue;
                         }
                     }
-                    let (Some(distance), Ok(camera)) = (
+                    let (Some(distance), Some(listener)) = (
                         settings.as_ref().and_then(|s| s.sound_distance),
-                        camera.single(),
+                        listener.as_deref(),
                     ) else {
                         continue;
                     };
                     let (volume, pan) =
-                        match positional(transform.translation(), camera, distance, 0) {
+                        match positional(transform.translation(), &listener.0, distance, 0) {
                             Ok(mix) => mix,
                             Err(e) => {
                                 warn!("sound: effect {index}: {e}");
@@ -747,7 +744,7 @@ fn finish_bank(
     handle: Option<Res<crate::sound_bank::SoundBankHandle>>,
     banks: Res<Assets<crate::sound_bank::SoundBank>>,
     assets: Res<AssetServer>,
-    menu: Option<Res<crate::startup::MenuState>>,
+    preferences: Res<cyrus_game::preferences::Preferences>,
     mut failure_reported: Local<bool>,
 ) {
     let Some(handle) = handle else {
@@ -779,7 +776,7 @@ fn finish_bank(
     } else {
         warn!("sound: CD metadata absent; re-export startup assets for browser music");
     }
-    if let Some(preferences) = menu.as_ref().and_then(|m| m.preferences.as_ref()) {
+    if let Some(preferences) = preferences.menu.as_ref().ok().and_then(Option::as_ref) {
         settings.apply_menu(preferences);
     }
     commands.insert_resource(settings);
@@ -821,26 +818,6 @@ pub fn distance_volume(sound_distance: i32, world_units: f32, offset: i32) -> Re
     }
     let attenuation = ((distance * divisor) >> 16).clamp(0, 127);
     Ok((127 - attenuation + i64::from(offset)).clamp(0, 127) as u8)
-}
-
-/// Keeps the sound settings in step with the book's Sound page.
-pub(crate) fn apply_menu(
-    menu: Res<crate::startup::MenuState>,
-    settings: Option<ResMut<SoundSettings>>,
-) {
-    if let (Some(preferences), Some(mut settings)) = (&menu.preferences, settings) {
-        let mut next = settings.clone();
-        next.apply_menu(preferences);
-        if (next.master_volume, next.redbook_volume, next.speech)
-            != (
-                settings.master_volume,
-                settings.redbook_volume,
-                settings.speech,
-            )
-        {
-            *settings = next;
-        }
-    }
 }
 
 /// Engine volume for a Sound page slider value: `trunc(slider × 12.8)`, exact as `slider × 64 / 5`.

@@ -46,5 +46,6 @@ impl AssetLoader for SoundBankLoader {
 }
 
 #[cfg(target_arch = "wasm32")]
+/// Browser effects preparation handle; hosts inspect load failures before entering the menu.
 #[derive(Resource)]
-pub(crate) struct SoundBankHandle(pub Handle<SoundBank>);
+pub struct SoundBankHandle(pub Handle<SoundBank>);

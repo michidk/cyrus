@@ -57,6 +57,12 @@ module where it is defined and regenerate.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 
+## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
+
+- `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
+- `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
+- `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
+
 ## `cyrus-collision` — Terrain and authored static geometry queries.
 
 - `src/collision_mesh.rs` — Authored model queries from preservation's segment and sphere admission rules.
@@ -106,7 +112,7 @@ module where it is defined and regenerate.
 - `src/packets.rs` — Sequential packets retain only the current compressed block.
 - `src/stream.rs` — Incremental movie packets retain the existing Smacker codec and validate exported metadata.
 
-## `cyrus-render` — Shared native/browser graphics, camera, menu, HUD and audio presentation.
+## `cyrus-render` — Shared native/browser graphics, camera, menu, HUD and cinematic presentation.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
@@ -115,12 +121,9 @@ module where it is defined and regenerate.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
-- `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
-- `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
-- `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
 - `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/startup/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/startup/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.

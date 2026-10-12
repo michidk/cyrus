@@ -1,10 +1,11 @@
 [package]
 name = "cyrus-render"
-description = "Shared scene, camera, menu, HUD and audio presentation."
+description = "Shared scene, camera, menu, HUD and cinematic presentation."
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
+cyrus-audio.workspace = true
 cyrus-app = { path = "../cyrus-app" }
 cyrus-assets.workspace = true
 cyrus-world.workspace = true

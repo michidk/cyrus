@@ -2748,6 +2748,7 @@ dependencies = [
  "clap",
  "cyrus-app",
  "cyrus-assets",
+ "cyrus-audio",
  "cyrus-control",
  "cyrus-debug",
  "cyrus-game",
@@ -2803,6 +2804,19 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "cyrus-audio"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "cyrus-assets",
+ "cyrus-game",
+ "cyrus-world",
+ "redguard-preservation",
+ "serde_json",
 ]
 
 [[package]]
@@ -2881,6 +2895,7 @@ dependencies = [
  "bevy",
  "cyrus-app",
  "cyrus-assets",
+ "cyrus-audio",
  "cyrus-collision",
  "cyrus-game",
  "cyrus-media",
@@ -2937,6 +2952,7 @@ dependencies = [
  "bevy",
  "cyrus-app",
  "cyrus-assets",
+ "cyrus-audio",
  "cyrus-collision",
  "cyrus-debug",
  "cyrus-game",

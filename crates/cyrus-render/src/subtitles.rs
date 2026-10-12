@@ -11,14 +11,14 @@
 //! Unsupported until evidence is published: Cyrus' own lines (no speaker
 //! exists yet; they would use `font_norm`), movie overlays and combat taunts.
 
-use crate::sound::SoundRequest;
-use crate::sound::Speech;
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::sound::SoundSettings;
 use cyrus_assets::sound::ini_value;
+use cyrus_audio::sound::SoundRequest;
+use cyrus_audio::sound::Speech;
 use cyrus_text::Font;
 pub use cyrus_text::font_alpha;
 
