@@ -6,6 +6,8 @@ self.addEventListener("fetch", event => {
   const scope = new URL("./", self.location.href).pathname;
   const relative = url.pathname.slice(scope.length);
   const original = relative.startsWith("original/") && /^[a-f0-9]{64}$/i.test(url.searchParams.get("v") || "");
+  if (/^cyrus-config\/cache\/movies\/.*\.(smk|wav)$/.test(relative) ||
+      event.request.headers.has("Range")) return;
   if (event.request.method !== "GET" || url.origin !== self.location.origin ||
       !(relative.startsWith("cyrus-config/cache/") || relative.endsWith(".wasm") || original)) return;
   event.respondWith((async () => {

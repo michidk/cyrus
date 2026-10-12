@@ -25,6 +25,7 @@ module where it is defined and regenerate.
 - `src/media.rs` — Portable Smacker decoding and PCM conversion; game presentation policy is separate.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
+- `src/movie/stream.rs` — Incremental movie packets retain the existing Smacker codec and validate exported metadata.
 - `src/music.rs` — Read-only CD and world track preparation.
 - `src/native.rs` — Read-only filesystem adapter and optional disk cache for the shared runtime parsers.
 - `src/native/disc.rs` — CD track extraction shared with native game playback.
@@ -106,6 +107,7 @@ module where it is defined and regenerate.
 - `src/startup/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
 - `src/startup/mod.rs` — Startup images rendered from the install's authored splash and title assets.
 - `src/startup/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+- `src/startup/movie_stream.rs` — Browser fetch backpressure and streamed WAV audio retain bounded movie preparation.
 - `src/startup/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.

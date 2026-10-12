@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["dev/vendor/smk"]
 # cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
 default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text"]
 
@@ -18,8 +19,8 @@ blake3 = "1"
 toml = "0.9"
 clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
+smk = { version = "0.1", path = "dev/vendor/smk" }
 redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "bf63d26272ce022cf88b5df385a35dc4c6c55a1b" }
-
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }
 cyrus-render = { path = "crates/cyrus-render" }

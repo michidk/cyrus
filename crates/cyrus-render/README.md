@@ -106,7 +106,10 @@ Native Movies playback reads installed Smacker files or the GOG CD image via
 rgpre and decodes them in-process with the `smk` crate. It retains menu selection, consumes original
 skip points and timed subtitle definitions, and exposes progress through menu
 control state. Browser Movies uses locally exported compressed video, first-track
-WAV audio, subtitle definitions, and the configured font, downloaded on demand.
+WAV audio, subtitle definitions, and the configured font. Video decodes as
+compressed packets arrive; native browser audio streams the WAV and supplies the
+playback clock. Buffering pauses that clock, forward skips retain decoder state,
+and menu return cancels downloads. The preview server supports audio byte ranges.
 Native and browser playback share skip points, subtitles, interlace and menu return.
 New Game enters the installed starting world and marker. Load temporarily starts
 the same fresh world. Shared world entry waits for preparation, required asset dependencies and

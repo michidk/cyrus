@@ -4,6 +4,8 @@ mod loading;
 mod menu;
 mod menu_raster;
 mod movie;
+#[cfg(target_arch = "wasm32")]
+mod movie_stream;
 mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;

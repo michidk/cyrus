@@ -3,17 +3,14 @@ use super::StartupContent;
 use super::menu::MenuState;
 use super::menu::MovieRequest;
 use super::menu::MovieStatus;
-#[cfg(any(target_arch = "wasm32", test))]
-use bevy::platform::time::Instant;
-use bevy::{
-    audio::{AudioPlayer, AudioSource, PlaybackSettings},
-    prelude::*,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
+use bevy::prelude::*;
 use cyrus_assets::movie::{MovieDefinition, Prepared};
 use cyrus_game::AppState;
 use std::{sync::Mutex, time::Duration};
 #[cfg(target_arch = "wasm32")]
-const BROWSER_DECODE_BUDGET: Duration = Duration::from_millis(8);
+pub(super) const BROWSER_DECODE_BUDGET: Duration = Duration::from_millis(8);
 #[cfg(not(target_arch = "wasm32"))]
 use {
     bevy::tasks::{IoTaskPool, Task, futures::check_ready},
@@ -34,6 +31,7 @@ struct Playing {
     movie: Prepared,
     decoder: Decoder,
     image: Handle<Image>,
+    #[cfg(not(target_arch = "wasm32"))]
     audio: Option<Handle<AudioSource>>,
     elapsed: f64,
     next_frame: u32,
@@ -48,15 +46,8 @@ struct Decoder {
     #[cfg(not(target_arch = "wasm32"))]
     frames: Mutex<mpsc::Receiver<anyhow::Result<Vec<u8>>>>,
     #[cfg(target_arch = "wasm32")]
-    frames: Mutex<BrowserDecoder>,
+    frames: Mutex<super::movie_stream::BrowserMovie>,
 }
-#[cfg(any(target_arch = "wasm32", test))]
-struct BrowserDecoder {
-    smk: smk::Smk,
-    next: u32,
-    target: u32,
-}
-
 impl Decoder {
     fn next(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
         #[cfg(not(target_arch = "wasm32"))]
@@ -71,33 +62,7 @@ impl Decoder {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            self.frames
-                .get_mut()
-                .unwrap()
-                .next_frame(BROWSER_DECODE_BUDGET)
-        }
-    }
-}
-
-#[cfg(any(target_arch = "wasm32", test))]
-impl BrowserDecoder {
-    fn next_frame(&mut self, budget: Duration) -> anyhow::Result<Option<Vec<u8>>> {
-        // Yield long delta-frame seeks without imposing a frame-count limit.
-        let started = Instant::now();
-        loop {
-            if self.next == 1 {
-                self.smk.first_frame()?;
-            } else {
-                self.smk.next_frame()?;
-            }
-            let frame = self.next;
-            self.next += 1;
-            if frame >= self.target {
-                return Ok(Some(stretch(self.smk.video_data(), self.smk.palette())));
-            }
-            if started.elapsed() >= budget {
-                return Ok(None);
-            }
+            Ok(self.frames.get_mut().unwrap().next())
         }
     }
 }
@@ -150,21 +115,15 @@ fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
-    let mut smk = smk::Smk::open_memory(&movie.data)?;
-    smk.enable_all(0x80);
+fn decode(movie: &Prepared, _: u32) -> anyhow::Result<Decoder> {
     Ok(Decoder {
-        frames: Mutex::new(BrowserDecoder {
-            smk,
-            next: 1,
-            target: frame,
-        }),
+        frames: Mutex::new(super::movie_stream::BrowserMovie::new(movie)?),
     })
 }
 
 /// A 640×240 indexed frame as 640×480 RGBA, filtered vertically like a
 /// bilinear texture stretch (sample centres at `(y + 0.5) / 2 − 0.5`).
-fn stretch(indices: &[u8], palette: &[[u8; 3]; 256]) -> Vec<u8> {
+pub(super) fn stretch(indices: &[u8], palette: &[[u8; 3]; 256]) -> Vec<u8> {
     let row = |y: usize| &indices[y * 640..(y + 1) * 640];
     let mut pixels = Vec::with_capacity(640 * 480 * 4);
     for y in 0..480 {
@@ -202,7 +161,7 @@ fn drive(
         ResMut<Assets<Image>>,
         Query<&mut Sprite, With<StartupContent>>,
     ),
-    mut sources: Option<ResMut<Assets<AudioSource>>>,
+    #[cfg(not(target_arch = "wasm32"))] mut sources: Option<ResMut<Assets<AudioSource>>>,
 ) {
     let (mut commands, audio_players) = runtime;
     let (mut playback, mut menu) = state;
@@ -248,6 +207,7 @@ fn drive(
                 movie,
                 decoder,
                 image: Handle::default(),
+                #[cfg(not(target_arch = "wasm32"))]
                 audio: None,
                 elapsed: 0.0,
                 next_frame: 1,
@@ -255,7 +215,10 @@ fn drive(
                 audio_started: false,
             })
         }) {
-            Ok(mut playing) => {
+            Ok(playing) => {
+                #[cfg(not(target_arch = "wasm32"))]
+                let mut playing = playing;
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(source) = playing.movie.audio.take()
                     && let Some(sources) = sources.as_mut()
                 {
@@ -283,15 +246,27 @@ fn drive(
     let mut failure = None;
     let frame_seconds = f64::from(playing.movie.metadata.frame_micros) / 1_000_000.0;
     if playing.started {
-        playing.elapsed += input.0.delta_secs_f64();
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            playing.elapsed += input.0.delta_secs_f64();
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            playing.elapsed = playing.decoder.frames.get_mut().unwrap().elapsed();
+        }
     }
     // The activation key from this update starts playback; it must not also skip it.
     if playing.started && input.1.get_just_pressed().next().is_some() {
         let current = menu.movie.as_ref().map_or(0, |m| m.frame);
         if let Some(frame) = skip_point(&playing.movie.metadata.definition, current) {
-            match decode(&playing.movie, frame) {
-                Ok(decoder) => {
-                    playing.decoder = decoder;
+            #[cfg(not(target_arch = "wasm32"))]
+            let sought = decode(&playing.movie, frame).map(|decoder| {
+                playing.decoder = decoder;
+            });
+            #[cfg(target_arch = "wasm32")]
+            let sought = playing.decoder.frames.get_mut().unwrap().seek(frame);
+            match sought {
+                Ok(()) => {
                     playing.next_frame = frame;
                     playing.elapsed = f64::from(frame - 1) * frame_seconds;
                     playing.started = false;
@@ -309,6 +284,16 @@ fn drive(
             finished = true;
         }
     }
+    #[cfg(target_arch = "wasm32")]
+    if let Err(error) = playing
+        .decoder
+        .frames
+        .get_mut()
+        .unwrap()
+        .pump(playing.elapsed)
+    {
+        failure = Some(format!("{error:#}"));
+    }
     let due = if playing.started {
         ((playing.elapsed / frame_seconds).floor() as u32).saturating_add(1)
     } else {
@@ -316,8 +301,11 @@ fn drive(
     };
     let mut pixels = None;
     #[cfg(target_arch = "wasm32")]
-    let decode_started = Instant::now();
-    while !finished && playing.next_frame <= due.min(playing.movie.metadata.frames) {
+    let decode_started = bevy::platform::time::Instant::now();
+    while !finished
+        && failure.is_none()
+        && playing.next_frame <= due.min(playing.movie.metadata.frames)
+    {
         #[cfg(target_arch = "wasm32")]
         if decode_started.elapsed() >= BROWSER_DECODE_BUDGET {
             break;
@@ -390,6 +378,7 @@ fn drive(
             sprite.image = playing.image.clone();
         }
         if !playing.audio_started {
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(audio) = &playing.audio {
                 commands.spawn((
                     MovieAudio,
@@ -397,6 +386,11 @@ fn drive(
                     PlaybackSettings::DESPAWN
                         .with_start_position(Duration::from_secs_f64(playing.elapsed)),
                 ));
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                playing.decoder.frames.get_mut().unwrap().start();
+                commands.spawn(MovieAudio);
             }
             playing.audio_started = true;
         }
@@ -513,55 +507,6 @@ mod tests {
             );
             assert_eq!(frame.unwrap().unwrap().len(), 640 * 480 * 4);
             assert_eq!(movie.audio.is_some(), movie.metadata.has_audio);
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn browser_delta_seek_matches_native_frames_and_yields() {
-        use std::path::Path;
-        let root = std::env::var_os("REDGUARD_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
-        let install = match GameInstall::open(&root) {
-            Ok(install) => install,
-            Err(error) => return eprintln!("skipped: no install ({error})"),
-        };
-        let movie = prepare(&install.root, 0).unwrap();
-        for target in [1, 17, movie.metadata.definition.keys[0]] {
-            let mut smk = smk::Smk::open_memory(&movie.data).unwrap();
-            smk.enable_all(0x80);
-            let mut browser = BrowserDecoder {
-                smk,
-                next: 1,
-                target,
-            };
-            let first = browser.next_frame(Duration::ZERO).unwrap();
-            if target > 1 {
-                assert!(first.is_none());
-            }
-            let actual = first
-                .or_else(|| (1..target).find_map(|_| browser.next_frame(Duration::ZERO).unwrap()))
-                .expect("seek did not reach the requested frame");
-            let native = decode(&movie, target)
-                .unwrap()
-                .frames
-                .into_inner()
-                .unwrap()
-                .recv()
-                .unwrap()
-                .unwrap();
-            assert_eq!(actual, native, "seek to frame {target}");
-            let next = browser.next_frame(Duration::ZERO).unwrap().unwrap();
-            let native = decode(&movie, target + 1)
-                .unwrap()
-                .frames
-                .into_inner()
-                .unwrap()
-                .recv()
-                .unwrap()
-                .unwrap();
-            assert_eq!(next, native, "frame after seek {target}");
         }
     }
 

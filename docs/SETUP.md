@@ -142,11 +142,16 @@ selection. Native playback does not write movie data to `cache/`.
 For browser playback, `--export-startup` also exports the browsable compressed
 Smacker files, first-track WAV audio, subtitle definitions, and configured font
 into `cyrus-config/cache/movies/`. The browser downloads the selected cinematic
-on demand and decodes video in-process, using the same skip, subtitle, interlace,
-and menu-return rules. Re-export startup and rebuild the browser after updating. The
-export includes CD tracks under `cache/music/` and their installed world assignments in
-the sound bank. A key press or pointer release activates browser audio. Runtime
-exceptions and graphics context loss produce a visible error above the game.
+on demand, decodes compressed frames as they arrive, and streams the WAV through
+the browser audio player. Playback starts with the first frame and audio data;
+it does not wait for complete media downloads. The same skip, subtitle, interlace,
+and menu-return rules apply. Forward skips decode preceding delta frames.
+The local preview server supports byte ranges for audio seeking; other hosts must
+support them too. Existing movie exports remain compatible; rebuild the browser.
+The export includes CD tracks under `cache/music/` and their installed world
+assignments in the sound bank. A key press or pointer release activates browser
+audio. Runtime exceptions and graphics context loss produce a visible error
+above the game.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Progression
 unlocks remain unavailable. Native Quit closes the book and exits. Browser Quit

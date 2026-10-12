@@ -1,0 +1,11 @@
+[package]
+name = "smk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A pure Rust library for decoding Smacker Video (.smk) files"
+license = "LGPL-2.1-or-later"
+authors = ["Alessandro Rosetti <alessandro.rosetti@gmail.com>"]
+repository = "https://github.com/roarc0/smk"
+[dependencies]
+log = "0.4"

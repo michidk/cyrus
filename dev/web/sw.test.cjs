@@ -25,13 +25,16 @@ const context = {
   },
 };
 vm.runInNewContext(fs.readFileSync(__dirname + "/sw.js", "utf8"), context);
-function request(path, origin = base, drain = true) {
+function request(path, origin = base, drain = true, headers = {}) {
   let response;
   const background = [];
-  events.fetch({ request: { method: "GET", url: origin + path }, respondWith: promise => response = promise, waitUntil: promise => background.push(promise) });
+  events.fetch({ request: new Request(origin + path, { headers }), respondWith: promise => response = promise, waitUntil: promise => background.push(promise) });
   return response?.then(async value => { if (drain) await Promise.all(background); return value; });
 }
 (async () => {
+  assert.equal(request("cyrus-config/cache/movies/0.smk"), undefined, "video must stream without a cache clone downloading it all");
+  assert.equal(request("cyrus-config/cache/movies/0.wav"), undefined, "audio must stream through the browser media cache");
+  assert.equal(request("cyrus-config/cache/sound.wav", base, true, { Range: "bytes=0-3" }), undefined, "partial requests must bypass full-response caching");
   const immutable = "cyrus-config/cache/viewer/" + "a".repeat(64) + "/model.glb";
   await request(immutable);
   assert.equal(calls.length, 1);

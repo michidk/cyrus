@@ -9,7 +9,10 @@ The opt-in `native` feature enables read-only install discovery, preload scans,
 scene/startup/menu/HUD/movie export, and sound/CD/voice/font preparation through
 `rgpre`. It also enables native font conversion in `cyrus-text`. Export paths are
 caller-supplied; the install is never written. Existing sidecar versions and
-filenames are unchanged. Prepared audio is WAV bytes, never a Bevy audio handle.
+filenames are unchanged. Native prepared audio is WAV bytes, never a Bevy audio handle. Browser movie
+preparation loads metadata only; `movie::stream::MovieStream` consumes compressed
+chunks and discards decoded packets. The vendored `smk` codec adds sequential
+packet input without replacing the upstream decoder.
 
 Run `cargo test -p cyrus-assets` for portable records, or
 `cargo test -p cyrus-assets --features native -- --nocapture` for export contracts.

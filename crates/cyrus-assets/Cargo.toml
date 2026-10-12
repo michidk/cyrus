@@ -15,7 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 blake3.workspace = true
 cyrus-text.workspace = true
-smk = "0.1"
+smk.workspace = true
 log.workspace = true
 walkdir = { version = "2", optional = true }
 image = { version = "0.25", default-features = false, features = ["png", "bmp"], optional = true }

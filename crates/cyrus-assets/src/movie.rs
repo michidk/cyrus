@@ -3,7 +3,9 @@
 use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
+pub mod stream;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MovieDefinition {
@@ -31,8 +33,12 @@ pub struct MovieMetadata {
 
 #[derive(Asset, TypePath)]
 pub struct Prepared {
+    #[cfg(not(target_arch = "wasm32"))]
     pub data: Arc<[u8]>,
+    #[cfg(target_arch = "wasm32")]
+    pub video_url: String,
     pub metadata: MovieMetadata,
+    #[cfg(not(target_arch = "wasm32"))]
     pub audio: Option<Arc<[u8]>>,
 }
 #[cfg(target_arch = "wasm32")]
@@ -53,39 +59,12 @@ impl AssetLoader for MovieLoader {
         reader.read_to_end(&mut bytes).await?;
         let metadata: MovieMetadata = serde_json::from_slice(&bytes)?;
         metadata.validate()?;
-        let video_path = bevy::asset::AssetPath::from(context.path().path().with_extension("smk"))
-            .with_source(context.path().source().clone_owned());
-        let data = context.read_asset_bytes(video_path).await?;
-        let smk = smk::Smk::open_memory(&data)?;
-        let info = smk.info();
-        let video = smk.info_video();
-        anyhow::ensure!(
-            video.width == 640
-                && video.height == 240
-                && matches!(
-                    video.y_scale,
-                    smk::YScaleMode::Double | smk::YScaleMode::Interlace
-                ),
-            "movie {}: unsupported viewport",
-            metadata.definition.name
-        );
-        anyhow::ensure!(
-            info.frame_count == metadata.frames
-                && (info.microseconds_per_frame - f64::from(metadata.frame_micros)).abs() < 0.5,
-            "movie {}: cache/header mismatch; re-export startup",
-            metadata.definition.name
-        );
-        let audio = if metadata.has_audio {
-            let path = bevy::asset::AssetPath::from(context.path().path().with_extension("wav"))
-                .with_source(context.path().source().clone_owned());
-            Some(context.read_asset_bytes(path).await?.into())
-        } else {
-            None
-        };
         Ok(Prepared {
-            data: data.into(),
+            video_url: format!(
+                "cyrus-config/cache/{}",
+                context.path().path().with_extension("smk").display()
+            ),
             metadata,
-            audio,
         })
     }
     fn extensions(&self) -> &[&str] {

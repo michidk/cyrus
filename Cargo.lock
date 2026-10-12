@@ -2865,11 +2865,13 @@ dependencies = [
  "cyrus-text",
  "cyrus-world",
  "image",
+ "js-sys",
  "redguard-preservation",
  "serde",
  "serde_json",
  "smk",
  "toml 0.9.12+spec-1.1.0",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6201,8 +6203,6 @@ dependencies = [
 [[package]]
 name = "smk"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "206125ea6519083d366404d5b1b7150d476e7c54db9171aa3aaf3f25ecec1349"
 dependencies = [
  "log",
 ]
