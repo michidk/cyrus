@@ -422,7 +422,7 @@ for the ownership decisions and migration constraints.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
 - [ ] Synchronize scripts, animation events, speech/subtitles, and sound; resume waiting scripts at the correct time.
-- [ ] HUD script inputs: `Activate`/`TorchActivate`/`Deactivate` prompts, `ShowBitmap`/`UnShowBitmap` power-up slots, `LockoutPlayer` lockout and logbook entries feed `HudState`. **To do:** no caller yet; catalogue which shipped scripts call them.
+- [ ] HUD script inputs: `Activate`/`TorchActivate`/`Deactivate` prompts, `ShowBitmap`/`UnShowBitmap` power-up slots, `LockoutPlayer` lockout and logbook entries feed `HudState`. **To do:** no caller yet; catalogue which shipped scripts call them. The presentation helper retains prompts through lockout/hold-off and consumes them on drawing; it does not implement receiver ownership or player eligibility.
 - [ ] Execute script-requested world loads and reinitialize playback state; player-facing transition UI follows in step 3.
 - [ ] Carry the required playback data into both native and browser world views.
 - [ ] Verify every world and palette variant with repeatable timed comparisons.

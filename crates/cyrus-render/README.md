@@ -165,3 +165,10 @@ matches the receiver. Bound animation channels share that receiver identity.
 World replacement drops old logical channels and queued browser starts; pending
 browser flat starts also honor selective cleanup. These handlers follow
 [preservation's sound rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).
+
+The HUD prompt helper retains pending text during lockout and activation hold-off,
+consumes it only on the prompt draw path, and delays item cycling until an item-path
+update. Timer zero crossings retain the path selected on entry, following
+[preservation's prompt lifecycle](https://github.com/michidk/redguard-preservation/blob/dd9f620/docs/engine/hud.md#activation-prompt).
+This helper is not a SOUP activation handler. Game-owned receiver arbitration,
+RTX lookup, and player eligibility and presentation suppression remain unwired.

@@ -138,7 +138,7 @@ pub struct HudState {
     pub auto_defend: bool,
     /// Remaining ticks of the walk-mode and auto-defend notices.
     notices: [u32; 2],
-    /// Activation prompt offered this frame; see [`HudState::activate`].
+    /// Pending activation prompt, retained until drawn; see [`HudState::activate`].
     pub prompt: Option<String>,
     /// Activation hold-off and prompt override timers, in ticks.
     hold_off: u32,
@@ -167,6 +167,13 @@ struct Frames {
     compass: Vec<Handle<Image>>,
     logbook: Vec<Handle<Image>>,
     powerup: Vec<Handle<Image>>,
+}
+
+#[derive(Debug, PartialEq)]
+enum ItemOverlay {
+    Hidden,
+    Prompt(String),
+    Item,
 }
 
 impl HudState {
@@ -226,24 +233,50 @@ impl HudState {
         self.sword_drawn = drawn;
     }
 
-    /// Script `Activate`: offers `text` as this frame's prompt. With the use key held the
-    /// activation fires instead, blanking the item area for 22 ticks, and returns true.
-    /// Unknown further player-state conditions are not modelled.
+    /// Offers an already-admitted prompt. Held use retains it behind a 22-tick hold-off.
+    /// This presentation helper is not a SOUP handler: receiver ownership and the other
+    /// player eligibility conditions must be established by the game host before use.
     pub fn activate(&mut self, text: &str, use_held: bool) -> bool {
         if self.lockout == 1 || self.sword_drawn || self.hold_off > 0 || self.prompt.is_some() {
             return false;
         }
+        self.prompt = Some(text.to_owned());
         if use_held {
             self.hold_off = ACTIVATION_HOLD_OFF;
             return true;
         }
-        self.prompt = Some(text.to_owned());
         false
     }
 
     /// Script `Deactivate`: clears the activation hold-off.
     pub fn deactivate(&mut self) {
         self.hold_off = 0;
+    }
+
+    fn item_overlay(&mut self, ticks: u32, cycle_held: bool, override_ticks: u32) -> ItemOverlay {
+        if self.prompt.is_none() {
+            self.prompt_override = 0;
+        }
+        if self.lockout == 1 {
+            return ItemOverlay::Hidden;
+        }
+        if self.hold_off != 0 {
+            self.hold_off = self.hold_off.saturating_sub(ticks);
+            return ItemOverlay::Hidden;
+        }
+        if self.prompt_override != 0 {
+            self.prompt_override = self.prompt_override.saturating_sub(ticks);
+        } else if let Some(prompt) = self.prompt.take() {
+            if cycle_held {
+                self.prompt_override = override_ticks;
+            }
+            return ItemOverlay::Prompt(prompt);
+        }
+        if self.player_type == 1 {
+            ItemOverlay::Hidden
+        } else {
+            ItemOverlay::Item
+        }
     }
 
     /// Script `ShowBitmap(id, frame)`: `id` 0 or 1, `frame` a `game_bitmap` frame.
@@ -566,14 +599,13 @@ fn update(
         state.show_timer = state.show_timer.saturating_sub(ticks);
     }
 
-    // Item selection. A pending prompt blocks cycling unless the override runs; holding
-    // a cycle key starts the override (its first press does not cycle, inferred order).
+    // Select the overlay path before cycling; timer zero crossings keep their entry path.
     let bindings = state.bindings;
     let scan = |action: usize| cyrus_game::player::input::scan_key(bindings[action]);
     let pressed = |action: usize| scan(action).is_some_and(|k| keys.just_pressed(k));
     let held = |action: usize| scan(action).is_some_and(|k| keys.pressed(k));
-    let blocked = state.prompt.is_some() && state.prompt_override == 0;
-    if !state.sword_drawn && !blocked {
+    let overlay = state.item_overlay(ticks, held(13) || held(14), hud.override_ticks);
+    if !state.sword_drawn && overlay == ItemOverlay::Item {
         // Menu actions 723 and 724: next and previous item.
         let position = hud.items.iter().position(|i| Some(i.id) == state.selected);
         let step = match (pressed(14), pressed(13)) {
@@ -586,28 +618,14 @@ fn update(
         }
     }
 
-    // Item area: lockout 1 freezes it; the hold-off blanks it; a prompt replaces the icon.
-    let item = hud.items.iter().find(|i| Some(i.id) == state.selected);
-    let mut shown_item = None;
-    let mut prompt = None;
-    if state.lockout != 1 {
-        if state.prompt.is_none() {
-            state.prompt_override = 0;
-        } else if held(13) || held(14) {
-            state.prompt_override = hud.override_ticks;
-        } else {
-            state.prompt_override = state.prompt_override.saturating_sub(ticks);
-        }
-        if state.hold_off > 0 {
-            state.hold_off = state.hold_off.saturating_sub(ticks);
-        } else if state.prompt.is_some() && state.prompt_override == 0 {
-            prompt = state.prompt.clone();
-        } else if state.player_type != 1 {
-            shown_item = item;
-        }
-    }
-    // Scripts offer the prompt anew every frame.
-    state.prompt = None;
+    let (shown_item, prompt) = match overlay {
+        ItemOverlay::Hidden => (None, None),
+        ItemOverlay::Prompt(text) => (None, Some(text)),
+        ItemOverlay::Item => (
+            hud.items.iter().find(|i| Some(i.id) == state.selected),
+            None,
+        ),
+    };
     state.count = shown_item.map(|i| i.count);
 
     // Compass: owning item 0 and its display flag.
@@ -805,13 +823,73 @@ mod tests {
         state.prompt = None;
         assert!(state.activate("Open", true));
         assert_eq!(state.hold_off, ACTIVATION_HOLD_OFF);
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
         assert!(!state.activate("Open", false), "hold-off blocks prompts");
         state.deactivate();
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
+        assert_eq!(
+            state.item_overlay(0, false, 24),
+            ItemOverlay::Prompt("Open".into())
+        );
         state.set_sword_drawn(true);
         assert!(
             !state.activate("Open", false),
             "a drawn sword blocks prompts"
         );
+    }
+
+    #[test]
+    fn pending_prompt_survives_lockout_and_holdoff_zero_crossing() {
+        let mut state = HudState::new(&asset(2), None, Frames::default());
+        assert!(state.activate("Open", true));
+        state.lockout = 1;
+        assert_eq!(state.item_overlay(100, false, 24), ItemOverlay::Hidden);
+        assert_eq!(state.hold_off, 22);
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
+        state.lockout = 0;
+        assert_eq!(state.item_overlay(0, false, 24), ItemOverlay::Hidden);
+        assert_eq!(state.item_overlay(22, false, 24), ItemOverlay::Hidden);
+        assert_eq!(state.hold_off, 0);
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
+        assert_eq!(
+            state.item_overlay(0, false, 24),
+            ItemOverlay::Prompt("Open".into())
+        );
+        assert_eq!(state.prompt, None);
+        assert_eq!(state.item_overlay(0, false, 24), ItemOverlay::Item);
+    }
+
+    #[test]
+    fn cycle_override_begins_after_prompt_and_retains_the_next_offer() {
+        let mut state = HudState::new(&asset(2), None, Frames::default());
+        assert!(!state.activate("Open", false));
+        assert_eq!(
+            state.item_overlay(1, true, 24),
+            ItemOverlay::Prompt("Open".into())
+        );
+        assert_eq!(state.prompt_override, 24);
+        assert!(!state.activate("Open", false));
+        assert_eq!(state.item_overlay(24, true, 24), ItemOverlay::Item);
+        assert_eq!(state.prompt_override, 0);
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
+        assert_eq!(
+            state.item_overlay(0, false, 24),
+            ItemOverlay::Prompt("Open".into())
+        );
+        assert_eq!(state.prompt, None);
+    }
+
+    #[test]
+    fn no_pending_prompt_clears_override_even_during_lockout() {
+        let mut state = HudState::new(&asset(2), None, Frames::default());
+        assert!(!state.activate("Open", false));
+        assert_eq!(
+            state.item_overlay(0, true, 24),
+            ItemOverlay::Prompt("Open".into())
+        );
+        state.lockout = 1;
+        assert_eq!(state.item_overlay(0, false, 24), ItemOverlay::Hidden);
+        assert_eq!(state.prompt_override, 0);
     }
 
     #[test]
@@ -869,7 +947,7 @@ mod tests {
     }
 
     #[test]
-    fn changing_between_equal_count_items_updates_the_icon() {
+    fn item_cycle_waits_for_prompt_draw_then_updates_equal_count_icon() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
@@ -899,9 +977,26 @@ mod tests {
         app.update();
         app.world_mut().resource_mut::<HudState>().bindings = bindings;
         app.update();
+        assert!(
+            !app.world_mut()
+                .resource_mut::<HudState>()
+                .activate("Open", false)
+        );
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Period);
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!(state.selected, Some(1));
+        assert_eq!(state.prompt, None);
+        assert_eq!(state.text, vec![("Open".into(), [12, 436])]);
+        assert!(
+            app.world_mut()
+                .query::<(&HudSprite, &Visibility)>()
+                .iter(app.world())
+                .any(|(sprite, visibility)| *sprite == HudSprite::Item
+                    && *visibility == Visibility::Hidden)
+        );
         app.update();
         assert_eq!(app.world().resource::<HudState>().selected, Some(2));
         let expected: Handle<Image> = app
