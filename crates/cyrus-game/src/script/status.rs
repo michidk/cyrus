@@ -79,7 +79,7 @@ pub(super) fn update(
             world: scripts.world,
             content_id: scripts.content_id.clone(),
             programs: scripts.actors.len(),
-            instances: scripts.instances.len(),
+            instances: runtime_actors.len(),
             prepared,
             waiting,
             failed,

@@ -19,8 +19,37 @@ pub struct ScriptActorId {
     pub index: usize,
 }
 
+/// Player and camera instances are independent of authored map placements.
+#[derive(Debug, Clone)]
+pub enum ScriptActorSource {
+    Map(Instance),
+    Player,
+    AlternatePlayer,
+    Camera,
+}
+impl ScriptActorSource {
+    fn name(&self) -> &str {
+        match self {
+            Self::Map(placement) => &placement.actor,
+            Self::Player => "CYRUS",
+            Self::AlternatePlayer => "GREMLIN",
+            Self::Camera => "CAMERA",
+        }
+    }
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Map(_) => "map",
+            Self::Player => "player",
+            Self::AlternatePlayer => "alternate_player",
+            Self::Camera => "camera",
+        }
+    }
+}
+
 pub struct ScriptActor {
-    pub placement: Instance,
+    pub source: ScriptActorSource,
+    /// Signed low word used by namespace lookup; absent for separate map object paths.
+    pub runtime_identifier: Option<i16>,
     pub namespace: Option<String>,
     runtime: Option<Runtime>,
     unavailable: Option<String>,
@@ -28,8 +57,21 @@ pub struct ScriptActor {
     waits: super::waits::Waits,
 }
 impl ScriptActor {
+    pub fn name(&self) -> &str {
+        self.source.name()
+    }
+    pub fn placement(&self) -> Option<&Instance> {
+        match &self.source {
+            ScriptActorSource::Map(placement) => Some(placement),
+            _ => None,
+        }
+    }
     pub fn runtime(&self) -> Option<&Runtime> {
         self.runtime.as_ref()
+    }
+    /// Prepared attribute bytes, including immediate script writes and backup copies.
+    pub fn attributes(&self) -> &[u8] {
+        &self.attributes
     }
     pub fn unavailable(&self) -> Option<&str> {
         self.unavailable.as_deref()
@@ -45,6 +87,7 @@ pub struct ScriptWorld {
     flag_state: super::flags::Flags,
     actors: Vec<ScriptActor>,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
+    names: BTreeMap<i16, usize>,
 }
 impl ScriptWorld {
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
@@ -52,7 +95,7 @@ impl ScriptWorld {
         let programs: BTreeMap<_, _> = scripts
             .actors
             .iter()
-            .map(|(name, actor)| (name, Arc::new(actor.program.clone())))
+            .map(|(name, actor)| (name.as_str(), Arc::new(actor.program.clone())))
             .collect();
         let mut task_calls = BTreeMap::new();
         for actor in scripts.actors.values() {
@@ -70,20 +113,22 @@ impl ScriptWorld {
                 }
             }
         }
-        let mut allocations = BTreeMap::<&str, usize>::new();
-        let actors = scripts
-            .instances
-            .iter()
-            .enumerate()
-            .map(|(index, placement)| {
+        let mut allocations = BTreeMap::<String, usize>::new();
+        let mut allocate =
+            |source: ScriptActorSource, runtime_identifier: Option<i16>, index: usize| {
+                let name = source.name();
                 let context = format!(
-                    "world {} instance {index} actor {} script",
-                    scripts.world, placement.actor
+                    "world {} instance {index} actor {name} script",
+                    scripts.world
                 );
-                let metadata = scripts.actors.get(&placement.actor);
+                let metadata = scripts.actors.get(name);
                 let result = (|| {
+                    anyhow::ensure!(
+                        runtime_identifier.is_some(),
+                        "separate map object path unsupported"
+                    );
                     let actor = metadata.context("program absent")?;
-                    let allocated = allocations.entry(&placement.actor).or_default();
+                    let allocated = allocations.entry(name.to_owned()).or_default();
                     let locals = actor
                         .instance_variables
                         .get(*allocated)
@@ -91,8 +136,8 @@ impl ScriptWorld {
                         .clone();
                     *allocated += 1;
                     Runtime::from_shared(
-                        Arc::clone(&programs[&placement.actor]),
-                        cyrus_script::CodeOrigin(actor.code_origin),
+                        Arc::clone(&programs[name]),
+                        CodeOrigin(actor.code_origin),
                         locals,
                         context.clone(),
                     )
@@ -102,7 +147,8 @@ impl ScriptWorld {
                     Err(error) => (None, Some(format!("{context}: {error:#}"))),
                 };
                 ScriptActor {
-                    placement: placement.clone(),
+                    source,
+                    runtime_identifier,
                     namespace: metadata.and_then(|actor| actor.namespace.clone()),
                     runtime,
                     unavailable,
@@ -124,8 +170,44 @@ impl ScriptWorld {
                         })
                         .collect(),
                 }
-            })
-            .collect();
+            };
+        let mut counter = scripts.actor_pool_capacity.wrapping_add(3);
+        let mut actors = Vec::new();
+        for (index, placement) in scripts.instances.iter().enumerate() {
+            let identifier = if matches!(placement.object_type, 2 | 6) {
+                None
+            } else {
+                if placement.active != 0 {
+                    counter = counter.wrapping_add(1);
+                }
+                counter = counter.wrapping_add(1);
+                Some(counter as i16)
+            };
+            actors.push(allocate(
+                ScriptActorSource::Map(placement.clone()),
+                identifier,
+                index,
+            ));
+        }
+        for (name, source, identifier) in [
+            ("CYRUS", ScriptActorSource::Player, 1),
+            ("GREMLIN", ScriptActorSource::AlternatePlayer, 1),
+            ("CAMERA", ScriptActorSource::Camera, 2),
+        ] {
+            if scripts.actors.contains_key(name) {
+                let index = actors.len();
+                actors.push(allocate(source, Some(identifier), index));
+            }
+        }
+        let mut names = BTreeMap::new();
+        for (index, actor) in actors.iter().enumerate() {
+            if let Some(identifier) = actor
+                .runtime_identifier
+                .filter(|_| actor.namespace.is_some())
+            {
+                names.entry(identifier).or_insert(index);
+            }
+        }
         Ok(Self {
             world: scripts.world,
             content_id: scripts.content_id.clone(),
@@ -140,6 +222,7 @@ impl ScriptWorld {
                 .collect(),
             actors,
             task_calls,
+            names,
         })
     }
     pub fn generation(&self) -> u64 {
@@ -181,6 +264,7 @@ impl ScriptWorld {
             index,
             actors: &mut self.actors,
             task_calls: &self.task_calls,
+            names: &self.names,
             flag_state: &mut self.flag_state,
         };
         let result = run(&mut runtime, &mut host, &mut self.flags);
@@ -208,11 +292,13 @@ impl ScriptWorld {
         serde_json::json!({
             "world": self.world, "generation": self.generation, "content_id": self.content_id, "total": self.actors.len(),
             "actors": self.actors.iter().enumerate().skip(offset).take(limit.min(64)).map(|(index, actor)| serde_json::json!({
-                "id": ScriptActorId { generation: self.generation, index }, "name": actor.placement.actor,
-                "object_id": actor.placement.object_id, "unavailable": actor.unavailable,
+                "id": ScriptActorId { generation: self.generation, index }, "name": actor.name(),
+                "source": actor.source.label(), "runtime_identifier": actor.runtime_identifier,
+                "object_id": actor.placement().map(|placement| placement.object_id), "unavailable": actor.unavailable,
                 "main": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Main)),
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
                 "locals": actor.runtime.as_ref().map(|runtime| runtime.variables()),
+                "attributes": actor.attributes,
                 "tasks": actor.runtime.as_ref().map(|runtime| runtime.active_tasks()),
                 "failure": actor.runtime.as_ref().and_then(|runtime| runtime.failure()),
             })).collect::<Vec<_>>()
@@ -321,40 +407,30 @@ struct InspectionHost<'a> {
     index: usize,
     actors: &'a mut [ScriptActor],
     task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
+    names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
 impl InspectionHost<'_> {
     fn target_index(&self, target: &Target) -> Result<usize> {
-        let indices = match target {
+        let index = match target {
             Target::Me => return Ok(self.index),
-            Target::Named(name) => self
-                .actors
-                .iter()
-                .enumerate()
-                .filter(|(_, actor)| {
-                    actor
-                        .namespace
-                        .as_ref()
-                        .is_some_and(|namespace| namespace.eq_ignore_ascii_case(name))
-                })
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>(),
+            Target::Named(name) => self.names.values().copied().find(|&index| {
+                self.actors[index]
+                    .namespace
+                    .as_ref()
+                    .is_some_and(|namespace| namespace.eq_ignore_ascii_case(name))
+            }),
             Target::Player => self
                 .actors
                 .iter()
-                .enumerate()
-                .filter(|(_, actor)| actor.placement.actor == "CYRUS")
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>(),
+                .position(|actor| matches!(actor.source, ScriptActorSource::Player)),
+            Target::Camera => self
+                .actors
+                .iter()
+                .position(|actor| matches!(actor.source, ScriptActorSource::Camera)),
             _ => anyhow::bail!("object target {target:?} unsupported"),
         };
-        let [index] = indices.as_slice() else {
-            anyhow::bail!(
-                "object target {target:?}: {} matching receivers; runtime identifier ordering unavailable",
-                indices.len()
-            );
-        };
-        Ok(*index)
+        index.with_context(|| format!("object target {target:?}: receiver absent"))
     }
 }
 impl Host for InspectionHost<'_> {
@@ -385,16 +461,10 @@ impl Host for InspectionHost<'_> {
         if let Some(value) = self.flag_state.call(function, arguments, flags)? {
             return Ok(CallResult::Complete(value));
         }
-        if function.eq_ignore_ascii_case("GetMyAttr") {
-            let [index] = arguments else {
-                anyhow::bail!("GetMyAttr requires one argument")
-            };
-            let value = usize::try_from(index.integer()?)
-                .ok()
-                .and_then(|index| self.actors[self.index].attributes.get(index))
-                .copied()
-                .unwrap_or(0);
-            return Ok(CallResult::Complete(i32::from(value)));
+        if let Some(value) =
+            super::attributes::call(function, arguments, &mut self.actors[self.index].attributes)?
+        {
+            return Ok(CallResult::Complete(value));
         }
         anyhow::bail!(
             "native {:?} {function} unsupported by inspection host",
@@ -431,7 +501,7 @@ impl Host for InspectionHost<'_> {
         let mut runtime = actor.runtime.take().with_context(|| {
             format!(
                 "receiver instance {index} {}: {}",
-                actor.placement.actor,
+                actor.name(),
                 actor
                     .unavailable
                     .as_deref()

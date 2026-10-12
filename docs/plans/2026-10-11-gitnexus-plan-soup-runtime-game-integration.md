@@ -1,5 +1,9 @@
 # SOUP runtime and game integration plan
 
+For the current implementation inventory and remaining ordered checklist, use
+the [SOUP completion plan](2026-10-12-soup-completion.md). The early baseline
+below predates the portable VM and inspection hosts now implemented.
+
 ## 1. Objective
 
 Implement the installed game's SOUP scripts across native, headless, and browser builds, including the engine services those scripts require. Deliver this in tested increments, ending with playable scripted progression and resumable saves.

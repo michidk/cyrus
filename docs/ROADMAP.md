@@ -12,7 +12,7 @@ functionality the original did not have.
 | Foundations | Done | Install loading, world exports, browser viewer, and development tools |
 | 0. Development tooling | In progress | Build, run, drive, and compare both games |
 | 1. Complete world playback | In progress | The whole world renders, animates, sounds, and runs scripts |
-| 2. Player controller | In progress | Original movement, camera, collision, and interaction |
+| 2. Player controller | Parked at user request | Original movement, camera, collision, and interaction |
 | 3. Interaction and persistence | Later | Dialogue UI, inventory, scripted camera control, and save/load |
 | 4. Complete gameplay | Later | Dialogue, quests, combat, inventory, menus, and saves |
 | 5. Full-game fidelity | Later | A verified playthrough from new game to ending |
@@ -37,8 +37,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Roadmap items | Session | Remaining domain work |
 | --- | --- | --- |
 | Step 1: actor and mesh animation | Published animation increments; remaining work unassigned | Explicit pose, type-1 transitions and native/browser cue adapter implemented; production clock, actor eligibility and full script scheduling remain open |
-| Step 1: SOUP execution and stages 3–4 script integration | Implement SOUP plan, `t3/plan-soupscript-support` | Installed script census, preservation decoding, portable VM and game handlers; `magic/artifacts/2026-10-11-soup-implementation/` |
-| Step 2: player | Investigate Player Controller Design, `player-parity` | Active-world archive selection and runtime collision queries; admission, dynamic eligibility, v4 extents, grounded movement, timing and follow camera |
+| Step 1: SOUP execution and stages 3–4 script integration | Published inspection increments; remaining work unassigned | Portable VM, receiver identities, explicit waits and independent attribute services implemented; automatic scheduling, complete receivers and native services, hooks, synchronization, progression, revisits and saves remain open |
 | Step 1: sky | Fix Faithful Mode Skybox, `sky-domain-research` | Capture sun blend/alpha output and filtering across world/menu transitions; integrated visual comparison |
 | Step 1: rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Terrain lighting shipped; next: water-edge normal retention and matched native/browser terrain views; model/local-light inputs and runtime shading remain open |
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
@@ -78,7 +77,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Schema-2 collision export retains installed static placement order, ROB flags, original polygons and ordered subobject lists in the common native/browser asset. Installed ISLAND export covers 1,691 placements; ambiguous archive names remain explicit errors for future runtime queries.
 - [x] Compose the explicitly admitted ordinary walking stages: animation/default requests, forward support and surface state, startup translation, ground-height assignment, ordered wall response and residual separation. Native gates pass with zero installed skips; focused contracts include stationary overlap and invocation ordering. The ordinary idle default reads `attr_panic_group`; special-state default selection remains unsupported. Forward probes use installed bounds/walk distance and nearest-even integer rotation. Eligibility, timing and actor orientation remain caller-supplied. This does not enable live gameplay.
 - [x] Export authored player-model radii and resolve static candidates by active model name; missing named radii require re-export. Upright orientation initialization retains original rotation-table residuals. Installed export, ground/walking contracts, strict workspace gates with zero installed skips and WASM checks pass. Incremental orientation refresh and automatic runtime movement remain pending.
-- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration. Preservation PR #27 now retains authored model subsets and documents subgroup admission and static spatial ordering. Its 1,691-placement reconstruction matches 223 original active static nodes, including per-cell order. Segment subgroup admission now has published rules and 16 live decisions in preservation PR #41; interior and threshold cases, dynamic/transient eligibility and v4 extents remain open. Published support ranking retains different terrain/model scales and later-equal replacement; full support integration remains open. The authored-subobject parser now feeds the schema-2 portable collision cache. Runtime collision remains unwired. Six ambiguous ROB names remain explicitly unsupported pending active-world archive selection from preservation PR #38.
+- [ ] Compare complete player updates for walking startup, steady movement, release, walls and ground; verify native/browser controls and flycam independence after runtime integration. Preservation PR #27 now retains authored model subsets and documents subgroup admission and static spatial ordering. Its 1,691-placement reconstruction matches 223 original active static nodes, including per-cell order. Segment subgroup admission now has published rules and 16 live decisions in preservation PR #41; interior and threshold cases, dynamic/transient eligibility and v4 extents remain open. Published support ranking retains different terrain/model scales and later-equal replacement; full support integration remains open. The authored-subobject parser now feeds the schema-2 portable collision cache. Static collision now has an explicit supplied-tick player adapter. Automatic runtime admission remains unsupported; ambiguous archive names remain explicit errors when active-world selection cannot resolve them.
 - [ ] Verify sky tilt, sun, synchronized scrolling and fog in the integrated Bevy renderer and browser. Retain full original-game comparisons for filtering, alpha, lighting and hardware color precision. Capture filter/blend state after menu and world transitions, translucent sun edges and dither phases. Models still use a fixed Bevy light; terrain now uses recovered per-world lighting. Recover model and local-light inputs before replacing model shading.
 - [x] **Verified: terrain lighting implementation.** [Terrain increment `ad6dc04`](https://github.com/michidk/cyrus/commit/ad6dc04), integrated in [main `8391580`](https://github.com/michidk/cyrus/commit/8391580), exports original world ambient/directional inputs and shades private dry/water terrain meshes in the shared native/browser path. [Preservation PR #43](https://github.com/michidk/redguard-preservation/pull/43) publishes the parser, coordinate mapping, quantized normals and texture-combine facts, extending PR #33. Original checks cover 192 arithmetic inputs (reversed light sign fails 88), 65,280 matched heights, 1,024 matching recomputed normals and 1,024 live colors within 0.000022 channel units.
 - [x] Terrain contracts cover flat/sloped normals, displaced-water colors, dry terrain, shared-mesh isolation and same-world rebinding. Native ISLAND rendered without shader errors; MCP Lighting mode changes, same-world reload and screenshot passed. WASM compilation passed; integration passed strict workspace Clippy and install/no-install tests. These checks establish arithmetic and runtime wiring, not pixel parity.
@@ -120,7 +119,7 @@ Remaining intro implementation and verification are listed under
 - [x] In-game HUD from installed data: candle, health number and show timer, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode/auto-defend notices; F8/Tab/F7 toggles persist locally. Gameplay inputs are not wired (see stages 1–3).
 - [x] DOSBox-X runner for observing the original game.
 - [x] Repository checks and CI.
-- [x] Release-tag and manual artifact builds for Linux x64, Windows x64, macOS Intel/Apple Silicon, and browsers. The asset-viewer branch uses the same workflow; version tags create draft releases with archives and checksums. Hosted game and viewer matrices passed, with archive contents and native executable architectures checked.
+- [x] Main-push, release-tag and manual artifact builds for Linux x64, Windows x64, macOS Intel/Apple Silicon, and browsers. The asset-viewer branch uses the same workflow; version tags create draft releases with archives and checksums. Hosted game and viewer matrices passed, with archive contents and native executable architectures checked.
 
 Evidence: [foundation](https://github.com/michidk/cyrus/commit/8d179e4),
 [world exports](https://github.com/michidk/cyrus/commit/1df0990),
@@ -148,7 +147,7 @@ committed support; unverified work stays in the TODO column.
 | `RTX` | All voice clips load in the background; playback by label via `play_speech` with dialogue subtitles; voice and subtitle preferences honoured | Dialogue and combat triggers, Cyrus' subtitle colour, dialogue choices, and quest integration |
 | `FNT` | Startup labels, book-menu glyphs, movie and dialogue subtitles, HUD numbers, prompts and notices, and status font; one shared layout/raster crate (`cyrus-text`) | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
-| SOUP scripts | Versioned installed definitions and logical actors retained; one portable core executes control flow, values and shared task slots through explicit hosts; supplied-tick animation playback and MCP inspection use that core; explicit frame-scale task passes support researched wait commands; explicit routed calls use receiver locals and task slots | Automatic actor scheduling and timing, complete object routing, other native bindings, hooks, synchronization, progression and saves |
+| SOUP scripts | Versioned installed definitions and logical actors retained; one portable core executes control flow, values and shared task slots through explicit hosts; supplied-tick animation playback and MCP inspection use that core; explicit frame-scale task passes support researched wait commands; explicit routed calls use receiver locals and task slots; standalone player/camera instances and signed namespace ordering are retained | Automatic actor scheduling and timing, complete object routing, other native bindings, hooks, synchronization, progression and saves |
 | `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, action IDs, New Game and temporary fresh-game Load | Save slots, Continue/pause, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | Starting-item HUD icons and counts from ITEM.INI | Combat, item use, pickups and shared inventory |
@@ -407,8 +406,8 @@ for the ownership decisions and migration constraints.
   - [ ] Script sound calls (`Sound`, `FlatSound`, `AmbientSound`, `AmbientRTX`, `EndSound`, `EndMySound(s)`, `StopAllSounds`, `KillMe`/`Resurrect`) once the script engine exposes them.
   - [ ] Rope sounds from MPRP thresholds and the torch loop (effect 25), once rope and torch objects exist at runtime.
   - [ ] Refresh positional volume and pan while a sound plays.
-- [x] **Verified:** portable SOUP cache and execution core, independent actor locals, shared flags, six task slots, pause/resume/stop, animation migration and bounded MCP stepping. Explicit hosts support researched flag helpers, attribute queries and wait commands through explicit frame-scale task passes. Explicit routing supports Me and unique namespace receivers, with receiver locals, slots and foreign operands. Standalone player/camera instances, duplicate names, variable references and scriptless receivers remain unsupported; this does not enable ordinary gameplay.
-- [ ] Run SOUP automatically with actor eligibility/timing, object references and receiver-owned tasks, main/interrupt execution, waits, hooks and synchronization.
+- [x] **Verified:** portable SOUP cache and execution core, independent actor locals, shared flags, six task slots, pause/resume/stop, animation migration and bounded MCP stepping. Explicit hosts support researched flag helpers, attribute reads/writes and wait commands through explicit frame-scale task passes. Attribute-44 model coupling remains unsupported. Explicit routing supports Me, standalone player/camera receivers and names ordered by signed runtime identifiers, with receiver locals, slots and foreign operands. Variable references, scriptless receivers and later allocation/recycling remain unsupported; this does not enable ordinary gameplay.
+- [ ] Run SOUP automatically with actor eligibility/timing, object references and receiver-owned tasks, main/interrupt execution, waits, hooks and synchronization. Follow the [remaining SOUP implementation checklist](plans/2026-10-12-soup-completion.md), which also covers the stage 3–5 service, persistence, and full-game dependencies.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
 - [ ] Synchronize scripts, animation events, speech/subtitles, and sound; resume waiting scripts at the correct time.
@@ -440,7 +439,7 @@ Use the inspection camera and controlled events until the player controller exis
 
 ## 2. Player controller
 
-**In progress. Gameplay integration requires animation and collision support.**
+**Parked at user request. The controller is incomplete; the remaining acceptance scope is listed below.**
 
 Published prerequisites:
 
@@ -473,8 +472,8 @@ preserving X/Z and the previous position
 ([d7de505](https://github.com/michidk/redguard-preservation/commit/d7de505)).
 Obstacle rollback, airborne responses and complete movement eligibility remain
 unverified.
-Complete animation transitions and collision integration remain unresolved;
-locomotion is not enabled.
+Automatic animation admission and complete collision integration remain unresolved;
+keyboard-driven locomotion is not enabled.
 
 Input foundation: eight held directional/action bindings from
 `KEYS.INI`, Modern WASD/Space/held-Shift input, an independent debug flycam
@@ -485,8 +484,10 @@ remain unresolved. Workspace tests, strict Clippy, formatting, publication check
 and an MCP smoke test pass using isolated worktree artifacts. Player tests cover
 installed bindings, Modern input, camera isolation, ground-turn arithmetic, and
 animation-gated walking startup and release reset. The walking core supports step
-type 1 and rejects other step types. It is not connected to gameplay. Translation
-and the original follow camera remain unsupported.
+type 1 and rejects other step types. The explicit supplied-tick adapter connects
+supported translation to player pose,
+render transform and animation pose. Automatic gameplay translation and the original
+follow camera remain unsupported.
 
 Initial marker placement uses exact exported map coordinates and retains the
 requested heading modulo 2048. A headless ISLAND load matches a fresh original
@@ -498,6 +499,20 @@ terrain/static geometry. The installed ISLAND result matches the captured origin
 startup height. Focused contracts cover strict endpoint admission, truncation,
 startup rank scales and earlier-equal retention. Dynamic/transient support,
 rendered heading and automatic locomotion remain incomplete.
+
+**Verified:** `PlayerPlugin` accepts explicit `GroundedTick` messages in the shared
+native/browser path. It preserves separate animation invocations, selects collision
+candidates after ordinary animation, retains walking state, and emits authored sound
+cues. Headless ECS contracts cover multiple updates, zero ticks, stale entries,
+errors and world re-entry. The installed ISLAND comparison covers twelve supplied-tick
+walking-release updates, including movement suppression and return to idle. This
+is a bounded static-ground comparison, not full controller or host-cadence parity.
+Strict workspace Clippy, installed workspace tests with zero skips, formatting,
+publication checks and WASM compilation pass for this increment.
+No production system supplies these messages yet. Native/browser visual movement,
+automatic timing/admission, full collision eligibility and both complete control
+modes remain unchecked or unimplemented. Research and comparison artifacts remain
+ignored and recoverable after the dedicated player worktree is removed.
 
 - [x] Land and verify the keyboard-input and independent debug-flycam foundation.
 - [x] Apply marker placement and static/dry-terrain startup settling; scripted spawn selection and dynamic support remain pending.

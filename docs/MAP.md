@@ -68,11 +68,13 @@ module where it is defined and regenerate.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
 - `src/player/motion.rs` — Original heading projection, per preservation's player and water engine specs.
 - `src/player/placement.rs` — Marker-based entry from preservation's player and RGM documentation.
+- `src/player/runtime.rs` — Explicit admitted static-ground updates shared by native and browser player paths.
 - `src/player/support.rs` — Player-specific forward admission after world support queries.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
+- `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.

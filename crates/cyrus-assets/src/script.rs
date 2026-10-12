@@ -239,6 +239,8 @@ pub struct Instance {
 #[derive(bevy::prelude::Asset, bevy::prelude::TypePath, Debug, Clone, Serialize, Deserialize)]
 pub struct Scripts {
     pub version: u32,
+    /// Installed reusable actor-pool capacity, including the engine's minimum of ten.
+    pub actor_pool_capacity: u32,
     pub content_id: String,
     pub world: u32,
     pub definition: Definition,
@@ -252,6 +254,7 @@ impl Scripts {
     pub fn content_identity(&self) -> anyhow::Result<String> {
         let bytes = serde_json::to_vec(&(
             self.version,
+            self.actor_pool_capacity,
             self.world,
             &self.definition,
             &self.actors,
@@ -262,10 +265,16 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 2,
+            self.version == 3,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
+        );
+        anyhow::ensure!(
+            (10..=i32::MAX as u32).contains(&self.actor_pool_capacity),
+            "world {}: invalid script actor pool capacity {}",
+            self.world,
+            self.actor_pool_capacity
         );
         anyhow::ensure!(
             self.content_id == self.content_identity()?,

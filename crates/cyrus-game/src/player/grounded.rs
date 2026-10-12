@@ -28,12 +28,34 @@ pub struct GroundedWalk {
     pub startup: super::walk::WalkingStartup,
 }
 
+/// Advance the admitted ordinary animation stage before selecting collision candidates.
+/// Each invocation reuses nominal ticks; the returned frame retains the old pose on `None`.
+pub fn advance_animation(
+    scene: &PlayerScene,
+    ticks: u32,
+    history: &mut SupportHistory,
+    animation: &mut cyrus_world::animation::ActorAnimation,
+    sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
+) -> anyhow::Result<Option<u32>> {
+    history.begin_player_update(ticks);
+    let default_group = u16::from(
+        scene
+            .definition
+            .as_ref()
+            .context("grounded update: player definition unavailable")?
+            .ordinary_default_group,
+    );
+    animation.set_default_group(default_group);
+    let frame = animation.advance_with_sounds(ticks, sounds)?;
+    Ok(animation
+        .request_with_sounds(default_group, 0, ticks, sounds)?
+        .or(frame))
+}
+
 impl GroundedWalk {
-    /// Run the admitted selected player's animation and ordinary walking stages.
-    /// The caller admits the ordinary idle-default branch and runs later script stages separately.
-    /// Each animation invocation reuses nominal ticks; they must not be combined.
-    /// Returns the last produced file frame, preserving the previous pose on `None`.
-    pub fn update(
+    /// Run admitted ordinary walking and collision after animation/candidate preparation.
+    /// Returns a frame only when the movement request selects one; retain the prior pose otherwise.
+    pub fn move_grounded(
         &mut self,
         query: &StaticGroundQuery<'_>,
         input: &mut GroundedUpdate,
@@ -42,18 +64,12 @@ impl GroundedWalk {
         sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
-        shared.0.begin_player_update(input.motion.nominal_ticks);
         let definition = query
             .scene
             .definition
             .as_ref()
             .context("grounded update: player definition unavailable")?;
-        let default_group = u16::from(definition.ordinary_default_group);
-        animation.set_default_group(default_group);
-        let mut frame = animation.advance_with_sounds(input.motion.nominal_ticks, sounds)?;
-        frame = animation
-            .request_with_sounds(default_group, 0, input.motion.nominal_ticks, sounds)?
-            .or(frame);
+        let mut frame = None;
         let step = if input.walk {
             self.forward(
                 query,

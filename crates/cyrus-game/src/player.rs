@@ -6,6 +6,7 @@ pub mod grounded;
 pub mod input;
 pub mod motion;
 pub mod placement;
+pub mod runtime;
 pub mod support;
 pub mod turn;
 pub mod walk;
@@ -30,8 +31,17 @@ impl Plugin for PlayerPlugin {
             .init_resource::<input::PlayerInput>()
             .init_resource::<input::InputSuppressed>()
             .init_resource::<placement::MarkerEntry>()
+            .init_resource::<runtime::PlayerRuntime>()
+            .add_message::<runtime::GroundedTick>()
+            .add_systems(
+                Update,
+                runtime::step
+                    .after(placement::enter_marker)
+                    .before(cyrus_world::animation::AnimationSystems),
+            )
             .add_systems(Update, input::sample.in_set(input::InputSample))
             .add_systems(OnEnter(AppState::InGame), spawn)
+            .add_systems(OnExit(AppState::InGame), despawn)
             .add_systems(
                 Update,
                 placement::enter_marker
@@ -43,4 +53,10 @@ impl Plugin for PlayerPlugin {
 }
 fn spawn(mut commands: Commands) {
     commands.spawn((Player, Transform::default()));
+}
+
+fn despawn(mut commands: Commands, players: Query<Entity, With<Player>>) {
+    for player in &players {
+        commands.entity(player).despawn();
+    }
 }
