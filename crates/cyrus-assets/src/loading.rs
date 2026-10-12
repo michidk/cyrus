@@ -10,6 +10,10 @@ pub enum Progress {
         name: String,
     },
     Done(Box<Preloaded>),
+    /// Required menu and HUD preparation completed, without a parser-coverage scan.
+    MenuReady,
+    /// Required startup export failed; parser-coverage failures remain in `Preloaded`.
+    Failed(String),
 }
 
 /// Result of the preload, kept for the rest of the session and written to

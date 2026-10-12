@@ -9,7 +9,7 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font:13px monospa
 canvas{width:100%;height:100%;display:block;outline:none}
 #hint{position:fixed;left:8px;bottom:8px;color:#aaa}
 #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000}
-#bar{width:400px;height:16px;border:1px solid #fff}
+#bar{width:min(400px,80vw);height:16px;border:1px solid #fff}
 #fill{height:100%;width:0;background:#fff}
 </style>
 </head>
@@ -20,7 +20,6 @@ canvas{width:100%;height:100%;display:block;outline:none}
 const label = document.getElementById("label"), fill = document.getElementById("fill");
 const scene = new URLSearchParams(location.search).get("scene")?.toUpperCase();
 if (!scene) {
-  document.getElementById("loading").style.display = "none";
   document.getElementById("hint").style.display = "none";
 }
 
@@ -50,7 +49,6 @@ async function download(url, name, onBytes) {
   return Object.assign(new Blob(chunks), { version: encodeURIComponent(res.headers.get("last-modified") || Date.now()) });
 }
 const steps = [["./pkg/cyrus-web_bg.wasm", "engine"]];
-if (scene) steps.push([`./cyrus-config/cache/${scene}.glb`, `scene ${scene}`]);
 const progress = (i) => (got, total, name) => {
   const frac = total ? got / total : 0;
   fill.style.width = `${100 * (i + frac) / steps.length}%`;
@@ -58,8 +56,6 @@ const progress = (i) => (got, total, name) => {
 };
 try {
   const wasm = await download(...steps[0], progress(0));
-  // The scene goes through the browser cache; the engine fetches it again from there.
-  if (scene) await download(...steps[1], progress(1));
   label.textContent = "Starting engine…";
   // The engine is revalidated by sw.js; a plain import could reuse an older loader from the HTTP cache.
   const { default: init } = await import(`./pkg/cyrus-web.js?v=${wasm.version}`);

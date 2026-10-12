@@ -290,6 +290,28 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
         app.world().get::<Transform>(player).unwrap().translation.y,
         40.0
     );
+    app.world_mut()
+        .resource_mut::<Assets<PlayerScene>>()
+        .get_mut(&scene_handle)
+        .unwrap()
+        .terrain = Some(
+        cyrus_world::collision::ground::TerrainGround::new(
+            vec![0; 256 * 256],
+            vec![true; 256 * 256],
+            None,
+        )
+        .unwrap(),
+    );
+    app.world_mut().resource_mut::<MarkerEntry>().heading = 0;
+    app.update();
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap().position,
+        [10_448_896, -178_944, 10_502_144]
+    );
+    assert_eq!(
+        app.world().get::<Transform>(player).unwrap().translation,
+        Vec3::new(-2040.8, 34.95, -1225.5998)
+    );
     app.world_mut().resource_mut::<MarkerEntry>().marker = 1;
     app.update();
     assert!(app.world().get::<PlayerPose>(player).is_none());

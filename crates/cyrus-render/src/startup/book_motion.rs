@@ -123,6 +123,7 @@ impl BookMotion {
         Ok(())
     }
 
+    #[cfg(any(not(target_arch = "wasm32"), test))]
     pub fn close(&mut self) {
         debug_assert!(!self.busy());
         self.request([232.0, 284.0, -96.0], -152, 0.15);

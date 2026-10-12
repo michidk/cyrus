@@ -68,21 +68,34 @@ impl Plugin for SoundPlugin {
                     .chain(),
             );
         #[cfg(not(target_arch = "wasm32"))]
-        app.add_systems(Startup, load_effects)
+        app.add_systems(Update, load_effects.run_if(start_audio))
             .add_systems(Update, finish_speech.before(play_requests));
         #[cfg(target_arch = "wasm32")]
         app.init_asset::<crate::sound_bank::SoundBank>()
             .init_asset_loader::<crate::sound_bank::SoundBankLoader>()
             .add_systems(
-                Startup,
-                |mut commands: Commands, assets: Res<AssetServer>| {
+                Update,
+                (|mut commands: Commands, assets: Res<AssetServer>| {
                     commands.insert_resource(crate::sound_bank::SoundBankHandle(
                         assets.load("cache://sounds/bank.sounds"),
                     ));
-                },
+                })
+                .run_if(start_audio),
             )
             .add_systems(Update, finish_bank.before(play_requests));
     }
+}
+
+fn start_audio(
+    startup: Option<Res<crate::startup::StartupPresentation>>,
+    settings: Option<Res<SoundSettings>>,
+    #[cfg(target_arch = "wasm32")] bank: Option<Res<crate::sound_bank::SoundBankHandle>>,
+) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    if bank.is_some() {
+        return false;
+    }
+    settings.is_none() && startup.is_none_or(|startup| startup.title_visible)
 }
 
 pub use cyrus_assets::sound::SoundSettings;
@@ -608,6 +621,7 @@ fn finish_bank(
     banks: Res<Assets<crate::sound_bank::SoundBank>>,
     assets: Res<AssetServer>,
     menu: Option<Res<crate::startup::MenuState>>,
+    mut failure_reported: Local<bool>,
 ) {
     let Some(handle) = handle else {
         return;
@@ -615,8 +629,10 @@ fn finish_bank(
     match assets.recursive_dependency_load_state(&handle.0) {
         bevy::asset::RecursiveDependencyLoadState::Loaded => {}
         bevy::asset::RecursiveDependencyLoadState::Failed(e) => {
-            warn!("sound: exported bank: {e}");
-            commands.remove_resource::<crate::sound_bank::SoundBankHandle>();
+            if !*failure_reported {
+                warn!("sound: exported bank: {e}");
+                *failure_reported = true;
+            }
             return;
         }
         _ => return,

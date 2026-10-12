@@ -41,7 +41,7 @@ impl Plugin for MusicPlugin {
                 (
                     start_world_track.run_if(resource_changed::<CurrentScene>),
                     finish_track,
-                    apply_volume.run_if(resource_changed::<SoundSettings>),
+                    apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
                     pause_track,
                 )
                     .chain(),
@@ -210,6 +210,25 @@ fn pause_track(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_waits_for_sound_settings_then_applies_volume() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+            .init_state::<cyrus_game::AppState>()
+            .init_resource::<CurrentScene>()
+            .insert_resource(GameInstall {
+                root: std::env::temp_dir().join("cyrus-absent-install"),
+            })
+            .add_plugins(MusicPlugin);
+        app.update();
+        assert_eq!(app.world().resource::<Music>().gain, 1.0);
+        let mut settings = SoundSettings::parse("");
+        settings.redbook_volume = 64;
+        app.insert_resource(settings);
+        app.update();
+        assert_eq!(app.world().resource::<Music>().gain, 128.0 / 255.0);
+    }
 
     #[test]
     fn redbook_volume_accepts_only_0_to_127() {

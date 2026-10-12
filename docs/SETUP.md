@@ -23,11 +23,11 @@ The link is gitignored. cyrus only reads from it.
 
 ```sh
 just run                 # splash, title, then the book menu
-just run --skip-startup   # skip splash/title to the book menu
+just run --skip-startup   # skip splash, prepare menu assets behind the title
 just run --scene START
 just run --scene 27       # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
-cargo run -p cyrus -- --export-startup    # export startup, menu, cinematics and HUD for the browser
+cargo run -p cyrus -- --export-startup    # export startup, menu, starting world, cinematics and HUD for the browser
 just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
@@ -96,7 +96,7 @@ directory as a fallback. **Verified:** its metallic logo and orange swoosh are
 the Windows Glide splash; the full DOS overlay contains the older shield logo.
 The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
 documents both paths. Re-export browser startup caches after updating. Enter, Space, or Escape advances startup.
-`--skip-startup` bypasses splash/title presentation and export; menu export still runs. `--scene` loads
+`--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--scene` loads
 a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.
 
@@ -131,9 +131,14 @@ on demand and decodes video in-process, using the same skip, subtitle, interlace
 and menu-return rules. Re-export startup and rebuild the browser after updating.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Progression
-unlocks remain unavailable. Quit exits; New Game, Save, Load,
-and Continue remain unavailable, with Save and Continue grayed without a
-resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
+unlocks remain unavailable. Native Quit closes the book and exits. Browser Quit
+attempts to close the tab; when the browser refuses, the menu remains usable.
+New Game enters the `WORLD.INI` starting world and marker. Load currently starts
+the same fresh world; it does not read or overwrite saves. Save and Continue
+remain grayed without a resumable world. World entry shows the installed
+destination artwork and red percentage bar until required assets and dependencies
+are ready. Escape returns to the menu after a loading error. Full gameplay and
+story initialization remain pending. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font, plus the installed effects bank under `cache/sounds/` for browser menu
 playback without loading a world. Runtime redraws authored book frames and neighboring-page text during
 startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
@@ -150,7 +155,11 @@ With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 and its map-stem alias. Use `?scene=27` for a specific world variant or
 `?scene=START` for a map. Map stems select the lowest world ID using that map.
 Native scene loads regenerate the export; browser-only sessions need the
-export command after loading changes. The browser keeps the WebAssembly engine
+export command after loading changes. The browser bootstrap downloads only the
+WebAssembly engine. Startup/menu and world downloads occur inside the running
+engine behind installed artwork. The title remains visible until the book is
+ready; world-entry progress counts completed preparation and required asset groups,
+without a minimum loading delay. The browser keeps the WebAssembly engine
 and downloaded GLB files in Cache Storage, then checks their timestamp and size
 before reusing them. Only locally exported assets are served; the install directory is not exposed.
 

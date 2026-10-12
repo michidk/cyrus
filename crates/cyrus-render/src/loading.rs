@@ -10,11 +10,17 @@ use std::sync::{Arc, Mutex};
 
 pub struct LoadingPlugin;
 
+/// Required menu/HUD export has completed for this native session.
+#[derive(Resource)]
+pub struct MenuPrepared;
+
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::Loading), start)
-            .add_systems(Update, poll.run_if(in_state(AppState::Loading)))
-            .add_systems(OnExit(AppState::Loading), teardown);
+        app.add_systems(
+            Update,
+            (start, poll).chain().run_if(in_state(AppState::Loading)),
+        )
+        .add_systems(OnExit(AppState::Loading), teardown);
     }
 }
 
@@ -31,11 +37,49 @@ struct Label;
 fn start(
     mut commands: Commands,
     install: Res<GameInstall>,
-    startup: Option<Res<crate::startup::StartupPresentation>>,
+    mut startup: Option<ResMut<crate::startup::StartupPresentation>>,
+    existing: Option<Res<Channel>>,
+    preloaded: Option<Res<Preloaded>>,
+    menu_prepared: Option<Res<MenuPrepared>>,
 ) {
+    if existing.is_some()
+        || preloaded.is_some()
+        || menu_prepared.is_some()
+        || startup
+            .as_ref()
+            .is_some_and(|s| !s.title_visible || s.error.is_some())
+    {
+        return;
+    }
     let (tx, rx) = channel();
-    let root = install.root.clone();
-    std::thread::spawn(move || preload(&root, &tx));
+    let install = install.clone();
+    let presentation = startup.is_some();
+    // Installed parsers exceed the default worker stack in unoptimized builds.
+    let worker = std::thread::Builder::new()
+        .name("startup preparation".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            if presentation {
+                let cache = std::path::Path::new("cyrus-config/cache");
+                let result = cyrus_assets::startup::export_menu(&install, cache)
+                    .and_then(|()| cyrus_assets::hud_export::export_hud(&install, cache));
+                if let Err(error) = result {
+                    let _ = tx.send(Progress::Failed(format!("Startup preparation: {error:#}")));
+                    return;
+                }
+                let _ = tx.send(Progress::MenuReady);
+                return;
+            }
+            preload(&install.root, &tx);
+        });
+    if let Err(error) = worker {
+        let error = format!("Startup preparation worker: {error}");
+        error!("{error}");
+        if let Some(startup) = startup.as_mut() {
+            startup.error = Some(error);
+        }
+        return;
+    }
     commands.insert_resource(Channel(Arc::new(Mutex::new(rx))));
     if startup.is_some() {
         return;
@@ -85,15 +129,27 @@ fn start(
 
 fn poll(
     mut commands: Commands,
-    channel: Res<Channel>,
-    startup: Option<Res<crate::startup::StartupPresentation>>,
+    channel: Option<Res<Channel>>,
+    mut startup: Option<ResMut<crate::startup::StartupPresentation>>,
     mut bar: Query<&mut Node, With<Bar>>,
     mut label: Query<&mut Text, With<Label>>,
     mut next: ResMut<NextState<AppState>>,
 ) {
+    let Some(channel) = channel else {
+        return;
+    };
     let rx = channel.0.lock().unwrap();
     while let Ok(msg) = rx.try_recv() {
         match msg {
+            Progress::MenuReady => {
+                commands.insert_resource(MenuPrepared);
+            }
+            Progress::Failed(error) => {
+                error!("{error}");
+                if let Some(startup) = startup.as_mut() {
+                    startup.error = Some(error);
+                }
+            }
             Progress::File { done, total, name } => {
                 if let Ok(mut node) = bar.single_mut() {
                     node.width = percent(100.0 * done as f32 / total.max(1) as f32);

@@ -330,11 +330,31 @@ impl AssetLoader for HudLoader {
         &self,
         reader: &mut dyn Reader,
         _: &(),
-        _: &mut LoadContext<'_>,
+        context: &mut LoadContext<'_>,
     ) -> Result<HudAsset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        Ok(serde_json::from_slice(&bytes)?)
+        let mut hud: HudAsset = serde_json::from_slice(&bytes)?;
+        for (name, count) in [
+            ("candle", 81),
+            ("compass", 32),
+            ("logbook", 32),
+            ("powerup", hud.powerup_sizes.len()),
+        ] {
+            hud.images.extend((0..count).map(|frame| {
+                context
+                    .load::<Image>(format!("cache://hud/{name}-{frame:02}.png"))
+                    .untyped()
+            }));
+        }
+        for item in &hud.items {
+            hud.images.push(
+                context
+                    .load::<Image>(format!("cache://hud/item-{:02}.png", item.bitmap))
+                    .untyped(),
+            );
+        }
+        Ok(hud)
     }
     fn extensions(&self) -> &[&str] {
         &["hud"]
@@ -823,6 +843,7 @@ mod tests {
 
     fn asset(candle_mode: u8) -> HudAsset {
         HudAsset {
+            images: Vec::new(),
             candle_mode,
             candle: [12, 8],
             candle_size: [50, 98],

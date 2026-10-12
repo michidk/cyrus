@@ -19,6 +19,8 @@ Bring your own GOG install. cyrus ships no game data.
 ## What works today
 
 - Play the installed splash and title, then browse the data-driven book menu.
+- Play unlocked movies, edit persistent settings, and enter the starting world
+  with New Game. Load currently starts the same fresh world; saves are pending.
 - Load Redguard worlds from a local GOG install in the native or browser viewer.
 - Inspect loaded worlds with a free camera.
 

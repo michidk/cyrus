@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {
+    /// Installed WORLD.INI destination and marker, read through preservation.
+    pub new_game: NewGameEntry,
     pub pages: BTreeMap<u8, MenuPage>,
     /// Cover, page one, table, page two, page three, in that order.
     pub models: Vec<MenuModel>,
@@ -20,6 +22,19 @@ pub struct MenuAsset {
     pub waiting_message: String,
     pub defaults: MenuPreferences,
     pub repeat_seconds: f32,
+}
+
+/// Validated starting-world identity, marker, and 640×480 transition presentation.
+#[derive(Serialize, Deserialize)]
+pub struct NewGameEntry {
+    /// WORLD.INI numeric world identity, not a map-stem alias.
+    pub world: u32,
+    /// Zero-based authored marker index within that world.
+    pub marker: u32,
+    /// Installed destination's transition artwork.
+    pub loading: Vec<MenuPicture>,
+    /// Installed REDSEL font for the loading percentage.
+    pub font: cyrus_text::Font,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -112,7 +127,13 @@ impl MenuAsset {
                 "menu: invalid texture dimensions/pixel count"
             );
         }
-        for picture in self.checks.iter().chain(&self.sliders).chain(&self.movies) {
+        for picture in self
+            .checks
+            .iter()
+            .chain(&self.sliders)
+            .chain(&self.movies)
+            .chain(&self.new_game.loading)
+        {
             ensure!(
                 picture.width > 0
                     && picture.height > 0
@@ -125,7 +146,20 @@ impl MenuAsset {
             self.checks.len() >= 2 && !self.sliders.is_empty(),
             "menu: missing widget frames"
         );
-        for font in &self.fonts {
+        ensure!(
+            !self.new_game.loading.is_empty()
+                && self
+                    .new_game
+                    .loading
+                    .iter()
+                    .all(|frame| (frame.width, frame.height) == (640, 480)),
+            "menu: invalid new-game loading artwork"
+        );
+        for font in self
+            .fonts
+            .iter()
+            .chain(std::iter::once(&self.new_game.font))
+        {
             for glyph in &font.glyphs {
                 ensure!(
                     glyph.pixels.len() == usize::from(glyph.width) * usize::from(glyph.height),

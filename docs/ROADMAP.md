@@ -43,7 +43,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Step 1: rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` | Terrain lighting shipped; next: water-edge normal retention and matched native/browser terrain views; model/local-light inputs and runtime shading remain open |
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Every documented overlay element is implemented; gameplay must still feed health, sword, lockout, player type, heading/world, compass flag, `Activate`/`ShowBitmap`/logbook events and walk/auto-defend behaviour |
-| Startup and book menu | Published increments; book lighting/clipping follow-up unassigned | Installed book/menu effects wired through shared native/browser sound; lighting, camera-plane clipping, device rebinding and gameplay snapshots remain open; browser audio and original audible comparison still need verification |
+| Startup and book menu | Published increments; fidelity follow-up unassigned | Installed loading, New/temporary Load, settings, Movies and Quit implemented; saves, full gameplay, lighting/clipping, device capture and audible comparisons remain open |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
 Earlier bounded research milestones remain published, with their limitations
@@ -86,7 +86,7 @@ establish original-game timing, visual fidelity or audible parity.
 - [x] Native START screenshot shows the candle above health 100; retained frame handles fix unloading during flicker. The equal-count item icon regression passes.
 - [ ] Compare native/browser HUD layout with the original. The candle targets the documented 60 Hz Glide retrace rate independently of rendering; original in-world cadence, transparency and starting inventory still need comparison. Health, pickups and inventory integration remain separate work.
 - [x] All eleven installed movie definitions decode through their final video frame with the in-process decoder; their first audio stream decodes when present.
-- [ ] Rebuild the optimized browser bundle from combined main and repeat live activation/skip/menu-return/replay checks. The combined source passes a fresh WASM check; its optimized rebuild terminated before producing a final bundle. Headless runtime evidence uses the first Movies release.
+- [x] Rebuild the optimized browser bundle from combined main. Shared-browser checks confirm the ready menu, New world entry, and Introduction playback/subtitles/return; earlier headless checks cover temporary Load, failed-world recovery and refused-tab Quit. Original-game comparisons and player-hardware seek/audio checks remain below.
 - [ ] Compare native/browser picture, audio, skip points, subtitles, interlace and menu return against the original. Check cancellation, browser download failure and skip responsiveness on player hardware. Browser seeks decode preceding delta frames cooperatively; keyframe seeking is not implemented. Progression-based movie unlocks remain unavailable.
 - [ ] Compare effects, positional gain/pan, speech/subtitle preferences and CD music by ear with the original; verify triggers once implemented. Resolve pan handedness, listener position per camera mode, subtitle font and text-only timing, multitask cadence, rope speed source and attached emitter eligibility. Sound ownership and ambient/rope/torch/surface triggers are documented in preservation PR #31 but still require script and world integration.
 - [x] **Verified: startup splash source corrected.** The DOS Glide overlay contains the older shield; the installed Windows `3DfxSpl2.dll` contains the metallic lowercase logo and orange swoosh. The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource) documents the driver variants, PE resource and rendering rules and supplies the parser. Both installed DLL payloads match; final preservation library/installed-DLL tests and strict Clippy pass. Cyrus renders the authored 90 timed frames plus fade, invalidates shield caches and loads the shared 150-frame sequence. The installed export contract checks the orange logo, initial black frame, dark final fade, cache reuse and missing-frame recovery; its color check rejects the shield reference. Native virtual-display captures show the corrected logo, fade, title and ready book menu after replacing a copied shield cache. CLI and MCP skip checks reach the ready menu without entering gameplay; the install is mounted read-only. Full gates pass on combined main with 171 tests and zero install skips. All 22 compiled test executables also pass with the install explicitly unavailable.
@@ -100,7 +100,7 @@ Remaining intro implementation and verification are listed under
 - [ ] Wire the HUD inputs. Only F8 (candle mode), Tab (walk mode notice) and F7 (auto-defend notice) work today, persisted in `cyrus-config/hud.json` / localStorage `cyrus-hud`. No system yet calls `HudState::set_health`, `set_sword_drawn`, `activate`/`deactivate`, `show_bitmap`/`unshow_bitmap` or `logbook_entry`, or sets `lockout`, `player_type`, `heading`, `world` or `compass_on`; so the mode-0 show timer, sword-lock item cycling, compass, power-up slots, logbook icon and activation prompts never appear in play. The player does not consume walk mode or auto-defend. The inventory screen (candle pinned at 50), save-game storage of the timers, slots and compass flag, and the unknown player states that suppress prompts remain unsupported.
 - [ ] Screenshot-compare every HUD element and notice with the original; compass frame 0 direction, whether receiving item 0 turns the compass on, and the original in-world frame rate are unverified.
 - [ ] Repeat inspector/HUD/sky runtime checks in the browser; confirm served browser assets are current and cache reuse/invalidation works.
-  **Verified:** the restored preview passes local/public HTTP health checks and serves the engine, menu and scene assets. Its release build uses `bdff0f5` plus the cloud-filtering correction, before the later shared-text/HUD changes. Startup and START browser automation timed out, so rendered output and interaction remain unverified. Rebuild from the integrated revision before checking those newer changes.
+  **Verified:** the rebuilt preview passes local/public HTML health checks. Shared environment-port checks show the current book menu, installed world entry and HUD without fatal WebGL errors. Headless checks cover settings and world-load recovery. Full authenticated public-URL interaction, inspector/HUD controls and matched sky views still need verification.
 
 ## Done
 
@@ -149,7 +149,7 @@ committed support; unverified work stays in the TODO column.
 | `FNT` | Startup labels, book-menu glyphs, movie and dialogue subtitles, HUD numbers, prompts and notices, and status font; one shared layout/raster crate (`cyrus-text`) | Remaining prompts and menus |
 | `CHT`, `PVO` | Preload parsing | Runtime use and behavior verification |
 | SOUP scripts | Versioned installed definitions and logical actors retained; one portable core executes control flow, values and shared task slots through explicit hosts; supplied-tick animation playback and MCP inspection use that core; explicit frame-scale task passes support researched wait commands; explicit routed calls use receiver locals and task slots | Automatic actor scheduling and timing, complete object routing, other native bindings, hooks, synchronization, progression and saves |
-| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, and action IDs | Save/load, New Game, and progression unlocks |
+| `MENU.INI` | Main, Options, Display, Sound, Controls, and Movies definitions, navigation, widgets, action IDs, New Game and temporary fresh-game Load | Save slots, Continue/pause, and progression unlocks |
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | Starting-item HUD icons and counts from ITEM.INI | Combat, item use, pickups and shared inventory |
 | `SMK` | Native and browser video via the in-process Smacker decoder, first embedded audio stream, installed skip points and subtitle definitions; native CD music pauses during playback | Audible output, A/V synchronization and original-game comparison |
@@ -194,8 +194,9 @@ MCP checks cover every supported page route, input gating, reversible turns and
 animated Quit. The settled Movies image matches the previous renderer exactly;
 Main restores identical pixels after returning. Intermediate page-curl geometry
 was inspected. No matched original animation/timing claim is made. Lighting,
-camera-plane clipping, mouse/joystick rebinding, gameplay snapshots, saves,
-and New Game remain unsupported. Native MCP checks cover all five browsable movies, forward skips,
+camera-plane clipping, mouse/joystick rebinding, gameplay snapshots and saves
+remain unsupported. New Game and temporary Load now enter the installed starting
+world; complete story/gameplay initialization remains pending. Native MCP checks cover all five browsable movies, forward skips,
 held-key handling, natural EOF and unsupported-path recovery in the prior decoder,
 Quit during playback, and decoder cleanup on world entry. Video and subtitle
 screenshots were inspected; the first audio stream decodes to a seekable WAV.
@@ -213,6 +214,18 @@ under `magic/artifacts/2026-10-11-movies/`; task build outputs and runtime
 containers are cleaned up after publication, while shared caches and the existing
 preview remain. The native/headless test processes are stopped and their small
 evidence archive is retained; worktree removal includes its target and export cache.
+
+**Verified:** native startup prepares the menu and HUD behind the installed title;
+New and the temporary fresh-game Load enter the configured starting world and
+marker behind installed transition artwork. The barrier waits for sidecars,
+recursive asset dependencies and spawned scene instances. Native checks cover
+persistent edits, malformed preferences, failed-world Escape/retry, movie playback
+and authored Quit. Browser bootstrap downloads the engine first; world requests
+begin after menu activation. Headless browser checks cover world entry, loading
+failure/Escape/retry and refused-tab Quit. Shared-browser captures confirm Introduction playback, subtitles and return
+to the selected Movies entry. WebGL terrain preserves affine vertex color without
+requiring unsupported interpolation qualifiers. Exact original loading labels,
+stage weights, pixels, timing and audible parity remain unverified.
 
 **Verified:** book turns, cover crossings and direction/key-capture feedback emit
 installed effects through the portable `SoundCue::Flat` path. Sound preference
@@ -293,7 +306,12 @@ The remaining work is unassigned.
 - [ ] **To do:** merge the preservation contribution upstream and update the rgpre pin to the accepted revision.
 - [ ] **To do:** rebuild and re-export browser startup; verify the corrected logo, title, ready menu and both skip routes in the browser.
 - [ ] **To do:** compare Windows-driver splash timing and pixels with the original, including hardware edge coverage, reciprocal-square-root approximations and pixel quantization.
-- [ ] **To do:** set the larger loader-thread stack in native development launchers. **Verified:** unoptimized installed-data preload aborts with the default worker stack; startup and both skip routes pass with `RUST_MIN_STACK=8388608`.
+- [x] Set an explicit larger stack on native startup and scene preparation workers; installed parsers no longer depend on the launcher's `RUST_MIN_STACK`.
+- [ ] Replace the generic startup `Loading...` label with the original map-registration text when that registration stage exists. World-entry progress counts completed cyrus preparation/asset groups; original internal stage weights are not reproduced.
+- [ ] Implement original save slots, thumbnails, overwrite/delete handling and safe persistence. Replace the temporary fresh-game Load handler only after saves exist; do not expand startup/menu work into the save system.
+- [ ] Implement Continue and pause/resume once a resumable world exists, and full New Game initialization through authored story/scripts and gameplay runtime.
+- [ ] Complete progression movie unlocks, menu lighting/camera clipping, mouse/joystick capture and gameplay snapshots, with original-game evidence.
+- [ ] Add browser CD music and compare audible effects/cinematics and A/V synchronization on player hardware.
 - [ ] **To do:** verify optimized native release startup and skip playback.
 - [ ] **To do:** check startup audio on a machine with an audio device and the installed CD image; the native virtual-display check did not verify audio.
 

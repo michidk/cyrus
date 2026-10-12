@@ -2,6 +2,7 @@
 use super::StartupContent;
 use super::book_motion::BookMotion;
 use super::fit_image;
+use super::settings::{adjust_value, apply_bindings, persist};
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
     prelude::*,
@@ -12,7 +13,7 @@ use cyrus_assets::preferences::MenuPreferences;
 use cyrus_game::AppState;
 use cyrus_world::sound::SoundCue;
 use serde::Serialize;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, hash::BuildHasher};
 
 /// Cinematic progress exposed through the existing menu control state.
 #[derive(Clone, Serialize)]
@@ -54,7 +55,7 @@ pub struct MenuState {
     #[serde(skip)]
     pub(super) dirty: bool,
     #[serde(skip)]
-    persistence_error: Option<String>,
+    pub(super) persistence_error: Option<String>,
     #[serde(skip)]
     pub(super) motion: Option<BookMotion>,
     #[serde(skip)]
@@ -124,11 +125,19 @@ pub(super) fn register(app: &mut App) {
         .add_systems(OnExit(AppState::Menu), cleanup);
 }
 
-fn setup(mut commands: Commands, assets: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    startup: Res<super::StartupPresentation>,
+) {
     commands.spawn((Camera2d, StartupContent));
     commands.spawn((Sprite::default(), StartupContent));
     commands.insert_resource(MenuState {
-        asset: assets.load("cache://menu/book.menu"),
+        asset: if startup.menu == Handle::default() {
+            assets.load("cache://menu/book.menu")
+        } else {
+            startup.menu.clone()
+        },
         ..default()
     });
 }
@@ -151,10 +160,11 @@ pub(super) fn drive(
         ResMut<cyrus_game::preferences::Preferences>,
         ResMut<cyrus_game::player::input::PlayerBindings>,
         Commands,
+        ResMut<NextState<AppState>>,
     ),
 ) {
     let (mut images, mut sprite) = rendering;
-    let (mut preferences_state, mut bindings, mut commands) = runtime;
+    let (mut preferences_state, mut bindings, mut commands, mut next) = runtime;
     if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(menu.asset.id()) {
         if menu.unavailable.is_none() {
             let text = format!("Menu assets unavailable: {error}");
@@ -291,9 +301,51 @@ pub(super) fn drive(
                 let entry = menu.entries[index].clone();
                 match entry.action {
                     -2 => {
-                        menu.motion.as_mut().unwrap().close();
-                        menu.closing = true;
-                        menu.motion_seconds = 0.0;
+                        #[cfg(target_arch = "wasm32")]
+                        commands.write_message(super::QuitRequest);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            menu.motion.as_mut().unwrap().close();
+                            menu.closing = true;
+                            menu.motion_seconds = 0.0;
+                        }
+                    }
+                    // shortcut: Load starts fresh until the save-slot system is implemented.
+                    2 | 10 => {
+                        commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
+                        commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
+                        commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
+                            book.new_game.world.to_string(),
+                        ));
+                        commands.insert_resource(cyrus_game::player::placement::MarkerEntry {
+                            marker: book.new_game.marker as usize,
+                            heading: 0,
+                        });
+                        let variation = std::collections::hash_map::RandomState::new()
+                            .hash_one(input.0.elapsed_secs_f64().to_bits())
+                            as usize
+                            % book.new_game.loading.len();
+                        let picture = &book.new_game.loading[variation];
+                        let image = images.add(Image::new(
+                            bevy::render::render_resource::Extent3d {
+                                width: picture.width.into(),
+                                height: picture.height.into(),
+                                depth_or_array_layers: 1,
+                            },
+                            bevy::render::render_resource::TextureDimension::D2,
+                            picture.rgba.clone(),
+                            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+                            bevy::asset::RenderAssetUsages::default(),
+                        ));
+                        commands.insert_resource(super::StartGame {
+                            image,
+                            background: picture.rgba.clone(),
+                            font: book.new_game.font.clone(),
+                            percent: 0,
+                        });
+                        next.set(AppState::Loading);
+                        menu.ready = false;
+                        return;
                     }
                     3 | 4 => menu.open(book, entry.action as u8),
                     300 | 400 => menu.open(book, 0),
@@ -392,73 +444,12 @@ impl MenuState {
     }
 }
 
-fn persist(
-    menu: &mut MenuState,
-    preferences: MenuPreferences,
-    store: &mut cyrus_game::preferences::Preferences,
-) -> bool {
-    if let Some(error) = &menu.persistence_error {
-        menu.unavailable = Some(error.clone());
-        return false;
-    }
-    match store.save_menu(preferences.clone()) {
-        Ok(()) => {
-            menu.preferences = Some(preferences);
-            menu.unavailable = None;
-            menu.dirty = true;
-            true
-        }
-        Err(error) => {
-            menu.unavailable = Some(format!("Settings were not saved: {error}"));
-            false
-        }
-    }
-}
-
-fn apply_bindings(menu: &MenuState, bindings: &mut cyrus_game::player::input::PlayerBindings) {
-    if let Some(preferences) = &menu.preferences {
-        match cyrus_game::player::input::PlayerBindings::from_codes(std::array::from_fn(|i| {
-            preferences.bindings[i]
-        })) {
-            Ok(updated) => *bindings = updated,
-            Err(error) => warn!("{error}; unsupported device bindings remain unavailable"),
-        }
-    }
-}
-
 fn flat_sound(effect: usize) -> SoundCue {
     SoundCue::Flat {
         effect,
         volume: 0,
         rate_offset_hz: 0,
     }
-}
-
-fn adjust_value(
-    book: &MenuAsset,
-    menu: &mut MenuState,
-    direction: i32,
-    toggle: bool,
-    store: &mut cyrus_game::preferences::Preferences,
-) -> bool {
-    let Some(index) = menu.selected else {
-        return false;
-    };
-    let entry = &book.pages[&menu.page].entries[index];
-    let mut preferences = menu.preferences.clone().unwrap();
-    let Some(value) = preferences.values.get_mut(&entry.item.action) else {
-        return false;
-    };
-    let next = if toggle {
-        1 - *value
-    } else {
-        (*value + direction).clamp(entry.slider[0], entry.slider[1])
-    };
-    if *value == next {
-        return false;
-    }
-    *value = next;
-    persist(menu, preferences, store)
 }
 
 #[derive(Component)]

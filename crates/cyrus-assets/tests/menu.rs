@@ -44,6 +44,14 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let ini = std::fs::read_to_string(install.root.join("MENU.INI")).unwrap();
     let ini = ini.replace("QUIT", "EXIT NOW");
     std::fs::write(temp.join("MENU.INI"), &ini).unwrap();
+    let worlds = std::fs::read_to_string(install.root.join("WORLD.INI")).unwrap();
+    std::fs::write(
+        temp.join("WORLD.INI"),
+        worlds
+            .replace("start_world=0", "start_world=1")
+            .replace("start_marker=0", "start_marker=3"),
+    )
+    .unwrap();
     let cache = temp.join("cache");
     let edited = GameInstall { root: temp.clone() };
     export_menu(&edited, &cache).unwrap();
@@ -56,6 +64,11 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     }
     let menu: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+    assert_eq!(menu["new_game"]["world"], 1);
+    assert_eq!(menu["new_game"]["marker"], 3);
+    assert_eq!(menu["new_game"]["loading"].as_array().unwrap().len(), 6);
+    assert_eq!(menu["new_game"]["loading"][0]["width"], 640);
+    assert_eq!(menu["new_game"]["loading"][0]["height"], 480);
     assert_eq!(menu["models"].as_array().unwrap().len(), 5);
     for (index, count) in [9, 9, 1, 9, 9].into_iter().enumerate() {
         assert_eq!(
@@ -81,8 +94,14 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     assert!(
         entries
             .iter()
-            .filter(|entry| ![-2, 3, 4].contains(&entry["item"]["action"].as_i64().unwrap()))
+            .filter(|entry| ![-2, 2, 3, 4, 10].contains(&entry["item"]["action"].as_i64().unwrap()))
             .all(|entry| entry["item"]["implemented"] == false)
+    );
+    assert!(
+        entries
+            .iter()
+            .filter(|entry| [2, 10].contains(&entry["item"]["action"].as_i64().unwrap()))
+            .all(|entry| entry["item"]["implemented"] == true)
     );
     let display = menu["pages"]["5"]["entries"].as_array().unwrap();
     assert_eq!(
@@ -133,6 +152,18 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     std::fs::remove_file(cache.join("menu/book.menu")).unwrap();
     export_menu(&edited, &cache).unwrap();
     assert!(cache.join("menu/book.menu").is_file());
+    std::fs::write(
+        temp.join("WORLD.INI"),
+        worlds.replace("start_world=0", "start_world=999999"),
+    )
+    .unwrap();
+    assert!(
+        export_menu(&edited, &cache)
+            .unwrap_err()
+            .to_string()
+            .contains("start_world")
+    );
+    std::fs::write(temp.join("WORLD.INI"), &worlds).unwrap();
     std::fs::write(
         temp.join("MENU.INI"),
         ini.replace("texture[0] = 1", "texture[0] = 7"),

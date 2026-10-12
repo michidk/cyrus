@@ -82,10 +82,12 @@ module where it is defined and regenerate.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 - `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
 - `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
+- `src/startup/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/startup/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
 - `src/startup/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
 - `src/startup/mod.rs` — Startup images rendered from the install's authored splash and title assets.
 - `src/startup/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+- `src/startup/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
@@ -123,5 +125,5 @@ module where it is defined and regenerate.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
-- `src/scene.rs` — Scene loading. shortcut: the scene goes through the preservation crate's GLB
+- `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.

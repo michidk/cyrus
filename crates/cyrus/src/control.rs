@@ -97,8 +97,8 @@ fn handle(
         Res<State<cyrus_game::AppState>>,
         ResMut<NextState<cyrus_game::AppState>>,
     ),
-    (startup, menu): (
-        Option<Res<cyrus_render::startup::StartupPresentation>>,
+    (mut startup, menu): (
+        Option<ResMut<cyrus_render::startup::StartupPresentation>>,
         Option<Res<cyrus_render::startup::MenuState>>,
     ),
     Inspection {
@@ -131,7 +131,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": "cyrus-config/preload-report.json"})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "hud": hud.as_deref(), "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -198,10 +198,10 @@ fn handle(
             }
             Command::SkipStartup => {
                 if startup.is_some() && *state.get() != cyrus_game::AppState::InGame {
-                    if *state.get() != cyrus_game::AppState::Menu {
-                        next.set(cyrus_game::AppState::Menu);
+                    if let Some(startup) = startup.as_mut() {
+                        startup.skip = true;
                     }
-                    Ok(json!({"state": "Menu"}))
+                    Ok(json!({"state": format!("{:?}", state.get()), "destination": "Menu"}))
                 } else {
                     Err("startup presentation is not active".into())
                 }

@@ -154,14 +154,17 @@ then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
 installed Smacker files through the in-process decoder. Browser Movies uses
 locally exported Smacker files and first-track WAV audio with shared playback rules.
-New Game, saves, and progression unlocks remain unavailable. Startup uses original-file assets, never
+New Game enters the installed starting world and marker; Load temporarily starts
+the same fresh world. Saves, full gameplay/story initialization and progression
+unlocks remain unavailable. Native Quit closes the book and exits; browser Quit
+attempts tab closure and leaves the menu running when refused. Startup uses original-file assets, never
 captured playback. **Verified:** the metallic logo and orange swoosh come from
 `3DfxSpl2.dll`; the full DOS Glide overlay contains the older shield variant.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
 For agent work, choose the entry point explicitly:
 
-- `cargo run -p cyrus -- --skip-startup` skips splash/title to the book menu.
+- `cargo run -p cyrus -- --skip-startup` skips the splash and prepares the menu behind the title.
 - `cargo run -p cyrus -- --scene START` skips startup and loads that world directly.
 - `--headless --scene START` runs preload, export, and control without a window.
 - MCP `skip_startup` skips presentation to the menu; MCP `load_scene {name}`
@@ -175,7 +178,10 @@ label hit boxes. Mouse/joystick rebinding needs separate device handling and is
 currently unsupported. Book turns, cover crossings and successful direction/key
 capture feedback dispatch installed effects through the shared native/browser
 sound path, using preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
-Skipping startup does not enable gameplay. In a world, `state.hud` reports health,
+Skipping startup retains required preparation behind the title and does not enable gameplay.
+Menu New/Load wait behind installed destination artwork and a red percentage bar
+for world preparation and asset dependencies. Failed world entry reports a
+contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
 walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle
 candle mode, walk mode and auto-defend. `state.menu` exposes the installed

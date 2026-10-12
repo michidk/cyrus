@@ -38,15 +38,7 @@ pub fn settle_static(
     let terrain = scene
         .terrain
         .as_ref()
-        .map(|terrain| {
-            terrain.sample(pose.position).with_context(|| {
-                format!(
-                    "world {} startup settling at {:?}: water or terrain edge unsupported",
-                    scene.world, pose.position
-                )
-            })
-        })
-        .transpose()?;
+        .and_then(|terrain| terrain.sample(pose.position));
     if let Some(support) = scene.static_collision.startup_support(
         pose.position,
         definition.positive_extent[1],
@@ -55,6 +47,13 @@ pub fn settle_static(
         pose.position[1] = support.actor_height(
             definition.positive_extent[1],
             scene.settings.standing_height,
+        );
+    } else {
+        anyhow::ensure!(
+            scene.terrain.is_none() || terrain.is_some(),
+            "world {} startup settling at {:?}: water or terrain edge unsupported without model support",
+            scene.world,
+            pose.position
         );
     }
     Ok(())
@@ -165,14 +164,14 @@ pub(super) fn enter_marker(
     if scene.world != data.world {
         return;
     }
-    let result = placement(data, *entry).and_then(|(mut pose, mut position)| {
-        let initial_y = pose.position[1];
-        settle_static(scene, &mut pose)?;
-        position.y -= (pose.position[1] - initial_y) as f32 / 5120.0;
-        Ok((pose, position))
-    });
-    match result {
-        Ok((pose, position)) => {
+    match placement(data, *entry) {
+        Ok((mut pose, mut position)) => {
+            let initial_y = pose.position[1];
+            if let Err(error) = settle_static(scene, &mut pose) {
+                // shortcut: retain inspection marker until dynamic/water support is implemented.
+                error!("player settling unavailable; retaining marker: {error:#}");
+            }
+            position.y -= (pose.position[1] - initial_y) as f32 / 5120.0;
             transform.translation = position;
             commands.entity(entity).insert(pose);
         }

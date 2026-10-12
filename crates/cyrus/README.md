@@ -11,9 +11,12 @@ cargo run -p cyrus -- --export-all-worlds   # write every WORLD.INI world to cyr
 
 Without `--scene`, a windowed launch runs startup through the book menu.
 `--scene` and headless launches retain direct scene loading.
-`--skip-startup` opens the book menu without exporting splash/title assets; it still exports the installed menu.
+`--skip-startup` bypasses the splash and waits behind the title for required
+menu/HUD preparation. New Game and the temporary Load fallback export the
+installed starting world in a worker and enter after its dependencies are ready.
 
-Flags: `--export-startup` renders startup images and exports the book-menu cache and exits; `--install PATH` (else `$REDGUARD_DIR`, else `./redguard`), `--scene STEM|ID`,
+Flags: `--export-startup` exports startup, menu, starting world, movies and HUD
+for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, else `./redguard`), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
 Settings come from `cyrus-config/settings.toml`.
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`

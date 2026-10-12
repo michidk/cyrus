@@ -51,18 +51,24 @@ fn main() -> anyhow::Result<()> {
         cyrus_assets::startup::export_movies(&install, &Settings::cache_dir())?;
         cyrus_assets::startup::export_menu(&install, &Settings::cache_dir())?;
         cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
+        let menu: cyrus_assets::menu::MenuAsset = serde_json::from_slice(&std::fs::read(
+            Settings::cache_dir().join("menu/book.menu"),
+        )?)?;
+        let name = menu.new_game.world.to_string();
+        cyrus_assets::scene::export_scene(
+            &install,
+            &name,
+            &Settings::cache_dir().join(format!("{name}.glb")),
+        )?;
         return cyrus_assets::startup::export_startup(&install, &Settings::cache_dir());
     }
     if args.export_all_worlds {
         return cyrus_assets::scene::export_all_worlds(&install, &Settings::cache_dir());
     }
-    if !args.headless {
+    if !args.headless && !startup {
         cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
     }
     if startup {
-        cyrus_assets::startup::export_menu(&install, &Settings::cache_dir())?;
-    }
-    if startup && !args.skip_startup {
         cyrus_assets::startup::export_startup(&install, &Settings::cache_dir())?;
     }
     let control = ControlAddr(
@@ -104,7 +110,7 @@ fn main() -> anyhow::Result<()> {
         if startup {
             app.add_plugins(cyrus_render::startup::StartupPlugin);
             if args.skip_startup {
-                app.insert_state(cyrus_game::AppState::Menu);
+                app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash());
             }
         } else {
             app.add_plugins(cyrus_debug::DebugMenuPlugin);

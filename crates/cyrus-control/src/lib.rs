@@ -42,7 +42,7 @@ pub enum Command {
     LoadScene {
         name: String,
     },
-    /// Skip splash and title and stop at the book menu; does not start a world.
+    /// Skip the splash, retain required menu preparation behind the title, and stop at the menu.
     SkipStartup,
     /// Play effect `effect` (0-based index in `MAIN.SFX`); looping effects play until stopped.
     /// With `position` (world space, as in `state`) it attenuates with the camera's distance.

@@ -16,7 +16,7 @@ struct TerrainVertex {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) water: f32,
-    @location(4) @interpolate(linear) color: vec3<f32>,
+    @location(4) color: vec3<f32>,
     @location(5) @interpolate(flat) instance_index: u32,
 };
 
@@ -32,7 +32,8 @@ fn vertex(raw: Vertex) -> TerrainVertex {
 @if(VERTEX_UVS_B)
     out.water = vertex.uv_b.x;
 @if(VERTEX_COLORS)
-    out.color = vertex.color.rgb;
+    // WebGL lacks affine varyings; cancel perspective weighting with clip W.
+    out.color = vertex.color.rgb * out.position.w;
     out.instance_index = raw.instance_index;
     return out;
 }
@@ -58,7 +59,7 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     var input = pbr_input_from_standard_material(surface, is_front);
     let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
     // Terrain lighting modulates encoded texture RGB before scene fog.
-    var color = srgb_to_linear(linear_to_srgb(base.rgb) * in.color);
+    var color = srgb_to_linear(linear_to_srgb(base.rgb) * (in.color * in.position.w));
     if water_weight > 0.0 {
         let normal = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
         let to_camera = normalize(view.world_position - in.world_position.xyz);

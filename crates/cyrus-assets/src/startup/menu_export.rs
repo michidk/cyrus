@@ -31,6 +31,48 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         std::fs::read(install.root.join(name)).with_context(|| format!("menu: reading {name}"))
     };
     let ini_bytes = read("MENU.INI")?;
+    let world_path = rgpre::import::world_ini::find_world_ini(&install.root)
+        .context("menu: missing WORLD.INI")?;
+    let world_bytes = std::fs::read(&world_path)
+        .with_context(|| format!("menu: reading {}", world_path.display()))?;
+    let world_text = std::str::from_utf8(&world_bytes).context("menu: WORLD.INI is not UTF-8")?;
+    let new_game =
+        rgpre::import::world_ini::NewGameEntry::parse(world_text).map_err(anyhow::Error::msg)?;
+    ensure!(
+        rgpre::import::world_ini::WorldIni::parse(world_text)
+            .entries
+            .iter()
+            .any(|entry| entry.index == new_game.world),
+        "menu: WORLD.INI start_world {} has no map/palette entry",
+        new_game.world
+    );
+    let flash_name = new_game
+        .flash_filename
+        .as_deref()
+        .context("menu: WORLD.INI new-game transition artwork is missing")?;
+    let mut flash_path = install.root.clone();
+    for part in flash_name.split(['\\', '/']) {
+        ensure!(
+            !part.is_empty() && !matches!(part, "." | "..") && !part.contains(':'),
+            "menu: WORLD.INI invalid transition path {flash_name}"
+        );
+        flash_path = crate::scene::find_file(&flash_path, part).with_context(|| {
+            format!("menu: WORLD.INI transition artwork {flash_name} is missing")
+        })?;
+    }
+    let flash_bytes = std::fs::read(&flash_path)
+        .with_context(|| format!("menu: reading {}", flash_path.display()))?;
+    let decoded = parse_gxa_file(&flash_bytes)
+        .with_context(|| format!("menu: transition artwork {flash_name}"))?;
+    ensure!(
+        !decoded.frames.is_empty()
+            && decoded
+                .frames
+                .iter()
+                .all(|frame| (frame.width, frame.height) == (640, 480)),
+        "menu: transition artwork {flash_name}: expected 640x480 frames"
+    );
+    let loading_font_bytes = read("fonts/REDSEL.FNT")?;
     let ini = std::str::from_utf8(&ini_bytes).context("menu: MENU.INI is not UTF-8")?;
     let general = menu_ini::MenuGeneral::parse(ini).map_err(anyhow::Error::msg)?;
     let mut pages = BTreeMap::new();
@@ -130,8 +172,9 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let output = cache.join("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        10u32,
+        12u32,
         &ini_bytes,
+        (&world_bytes, &flash_bytes, &loading_font_bytes),
         &keys_bytes,
         &system_bytes,
         &archive_bytes,
@@ -185,7 +228,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         let mut entries = Vec::new();
         for entry in &page.entries {
             entries.push(MenuEntry {
-                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | 3 | 4 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
+                item: MenuItem {visible: id != 3 || !(302..=305).contains(&entry.action) || general.force_movies, text: entry.text.clone(), action: entry.action, selectable: entry.selectable, grayed: entry.grayed, implemented: matches!(entry.action, -2 | 2 | 3 | 4 | 10 | 300..=305 | 400 | 405..=407 | 500 | 504 | 505 | 600..=603 | 700 | 710..=724)},
                 position: entry.position, output_position: entry.output_position, justify: entry.justify, output_justify: entry.output_justify, slider: entry.slider, texture: surface(entry.texture)?,
             });
         }
@@ -235,6 +278,20 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         }
     }
     let book = MenuAsset {
+        new_game: crate::menu::NewGameEntry {
+            world: new_game.world,
+            marker: new_game.marker,
+            loading: decoded
+                .frames
+                .iter()
+                .map(|frame| MenuPicture {
+                    width: frame.width,
+                    height: frame.height,
+                    rgba: frame.rgba.clone(),
+                })
+                .collect(),
+            font: font(&loading_font_bytes)?,
+        },
         pages: exported_pages,
         models: models
             .into_iter()

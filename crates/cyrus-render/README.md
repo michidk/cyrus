@@ -79,8 +79,10 @@ Sun alpha rounding, other texture filtering, lighting, and physical-hardware
 pixel parity remain unverified.
 
 Default windowed startup plays the installed Windows Glide swoosh animation and decoded
-640×480 title image, then stops at the book menu. Preload runs concurrently.
-Timing is presentation policy; the original map-loading backend is not reproduced.
+640×480 title image, then opens the book menu once required assets are ready.
+Native menu/HUD export begins after the title becomes visible. The full
+parser-coverage scan remains in direct/headless inspection launches.
+Loading stays asynchronous; skipping the splash retains required preparation.
 The title uses the configured FNT font and documented bottom-label positions.
 The loading label says “Loading...” rather than reporting original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
@@ -97,14 +99,22 @@ textures, indexed fonts, previews, and defaults. Native and browser builds proje
 the current book pose and redraw neighboring-page text during camera entry, page
 turns, and Quit closing. Input waits through the final settling update.
 Navigation skips disabled/hidden entries and wraps. Options opens Display, Sound,
-and Controls; Movies browses unlocked definitions and previews. Quit exits.
+and Controls; Movies browses unlocked definitions and previews. Native Quit exits
+after the authored close. Browser Quit requests tab closure and leaves the menu
+running if the host refuses.
 Native Movies playback reads installed Smacker files or the GOG CD image via
 rgpre and decodes them in-process with the `smk` crate. It retains menu selection, consumes original
 skip points and timed subtitle definitions, and exposes progress through menu
 control state. Browser Movies uses locally exported compressed video, first-track
 WAV audio, subtitle definitions, and the configured font, downloaded on demand.
 Native and browser playback share skip points, subtitles, interlace and menu return.
-New Game, saves, and progression unlocks remain unavailable.
+New Game enters the installed starting world and marker. Load temporarily starts
+the same fresh world. Shared world entry waits for preparation, required asset dependencies and
+spawned scene instances behind the destination's installed GXA artwork, with preservation's
+red bar and REDSEL percentage label. Progress counts completed loading stages.
+The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...feat/menu-game-entry)
+supplies the entry parser and loading layout. Saves, full story/gameplay
+initialization and progression unlocks remain unavailable.
 
 `MenuPreferences` stores original action units and fifteen binding codes in
 native `cyrus-config/menu.json` or browser localStorage. It validates local state,

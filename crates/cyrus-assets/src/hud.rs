@@ -6,6 +6,10 @@ use std::collections::BTreeMap;
 /// the RTX file, GXA and FNT files. Positions are top-left corners in 640×480 pixels.
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct HudAsset {
+    /// Runtime image dependencies; cache serialization retains installed metadata only.
+    #[dependency]
+    #[serde(skip)]
+    pub images: Vec<UntypedHandle>,
     /// SYSTEM.INI `[screen] candle_mode`: 0 shows the candle only while the show timer
     /// runs, 1 always, 2 always with the health number.
     pub candle_mode: u8,

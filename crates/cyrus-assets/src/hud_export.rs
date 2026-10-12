@@ -188,6 +188,7 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let keys = KeysIni::parse(std::str::from_utf8(&keys).context("hud: KEYS.INI is not UTF-8")?)
         .map_err(|e| anyhow::anyhow!("hud: KEYS.INI: {e}"))?;
     let hud = HudAsset {
+        images: Vec::new(),
         candle_mode,
         candle: position("candle", "")?,
         candle_size: [candle.frames[0].width, candle.frames[0].height],

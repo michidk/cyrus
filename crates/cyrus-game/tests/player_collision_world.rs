@@ -58,6 +58,44 @@ fn startup_settling_keeps_first_equal_contact_and_uses_full_search_radius() {
 }
 
 #[test]
+fn startup_settling_accepts_static_support_above_unsupported_water() {
+    use cyrus_game::player::data::PlayerScene;
+    use cyrus_game::player::placement::{PlayerPose, settle_static};
+
+    let collision = CollisionScene {
+        models: [("DECK".into(), model(0))].into(),
+        placements: vec![placement(1, [5000, 400, 5000], "DECK")],
+        ..Default::default()
+    };
+    let mut scene = PlayerScene::decode(
+        &serde_json::to_vec(&serde_json::json!({
+            "version":2,"world":0,
+            "settings":{"standing_height":-2,"post_collide_height":50,"slide_range":-60000,
+                "turn_speed":12,"turn_max_speed":48,"poly_push_units":16},
+            "definition":{
+                "actors":[{"script_name":"CYRUS","attributes":{},"mpsz_bounds_primary":0,
+                    "raex":{"unknown_12":256}}],
+                "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,11],
+                    "neg_extent":[24,66,38],"center_offset":[0,0,0],"flags":0}]
+            },
+            "heights":vec![0;256*256],"water":vec![true;256*256],
+            "collision":collision
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut pose = PlayerPose {
+        position: [5000 * 256, -62 * 256, 5000 * 256],
+        heading: 0,
+    };
+    settle_static(&scene, &mut pose).unwrap();
+    assert_eq!(pose.position, [1_280_000, 86_016, 1_280_000]);
+
+    scene.static_collision = StaticCollision::new(&CollisionScene::default()).unwrap();
+    assert!(settle_static(&scene, &mut pose).is_err());
+}
+
+#[test]
 fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
     use cyrus_world::collision::ground::GroundSupport;
     let world = StaticCollision::new(&CollisionScene::default()).unwrap();

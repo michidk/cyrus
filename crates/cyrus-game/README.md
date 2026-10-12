@@ -58,8 +58,9 @@ using the actor-centered startup query documented in
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 Startup selection preserves earlier equal-ranked contacts, independently of ordinary
 walking support. Dynamic/transient support and heading-to-render rotation remain
-unsupported; this inspection placement does not enable gameplay. Unavailable terrain
-or player definitions produce an entry error. Re-export older assets that lack
+unsupported; this inspection placement does not enable gameplay. Inspection retains the authored marker and reports unsupported settling when
+terrain/model support or the player definition is unavailable. Invalid markers
+still produce an entry error. Re-export older assets that lack
 `map_position`.
 
 `placement::initial_animation` applies the selected-player entry requests with

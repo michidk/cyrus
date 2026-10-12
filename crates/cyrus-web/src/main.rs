@@ -40,7 +40,7 @@ fn modern_area(_area: &str) -> bool {
 }
 
 fn main() {
-    let direct_scene = scene_from_query().is_some();
+    let scene = scene_from_query();
     let mut app = App::new();
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
@@ -82,28 +82,30 @@ fn main() {
         },
         ..default()
     })
-    .insert_state(if direct_scene {
-        cyrus_game::AppState::InGame
-    } else {
-        cyrus_game::AppState::Loading
-    })
     .add_plugins((
         GamePlugin,
+        cyrus_render::WorldRenderPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
+        cyrus_world::animation::AnimationPlugin,
         cyrus_render::hud::HudPlugin,
         cyrus_render::sound::SoundPlugin,
     ));
-    if direct_scene {
-        app.add_plugins((
-            cyrus_render::WorldRenderPlugin,
-            cyrus_world::lifecycle::WorldPlugin,
-            cyrus_world::animation::AnimationPlugin,
-            cyrus_debug::DebugMenuPlugin,
-        ))
-        .add_systems(Startup, spawn_scene);
+    app.add_plugins(cyrus_render::startup::StartupPlugin)
+        .add_systems(
+            Update,
+            load_new_game
+                .run_if(in_state(cyrus_game::AppState::Loading))
+                .run_if(resource_exists::<cyrus_render::startup::StartGame>),
+        );
+    if let Some(scene) = scene {
+        app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash())
+            .insert_resource(cyrus_render::startup::StartGame::default())
+            .insert_resource(cyrus_world::lifecycle::SceneRequest(scene))
+            .add_plugins(cyrus_debug::DebugMenuPlugin);
         debug::register(&mut app);
-    } else {
-        app.add_plugins(cyrus_render::startup::StartupPlugin);
     }
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Update, quit_tab);
     #[cfg(target_arch = "wasm32")]
     app.add_systems(
         Update,
@@ -115,10 +117,28 @@ fn main() {
     let _ = Area::ALL;
 }
 
-fn spawn_scene(mut commands: Commands, assets: Res<AssetServer>) {
-    if let Some(name) = scene_from_query() {
-        commands.insert_resource(cyrus_world::lifecycle::PreparedWorld::from_cache(
-            name, &assets,
-        ));
+fn load_new_game(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    request: Res<cyrus_world::lifecycle::SceneRequest>,
+    startup: Res<cyrus_render::startup::StartupPresentation>,
+    prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
+) {
+    if !startup.loading_visible() || prepared.is_some() {
+        return;
+    }
+    commands.insert_resource(cyrus_world::lifecycle::PreparedWorld::from_cache(
+        request.0.clone(),
+        &assets,
+    ));
+}
+
+#[cfg(target_arch = "wasm32")]
+fn quit_tab(mut requests: MessageReader<cyrus_render::startup::QuitRequest>) {
+    for _ in requests.read() {
+        if let Some(window) = web_sys::window() {
+            // Browsers refuse to close ordinary user-opened tabs; keep the menu running.
+            let _ = window.close();
+        }
     }
 }
