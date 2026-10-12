@@ -15,7 +15,7 @@
 //! Native builds read the install; the browser plays the exported bank.
 //!
 //! Unsupported until their callers exist: script (`Sound`, `AmbientSound`,
-//! `AmbientRTX`, `EndSound`), rope, torch and combat starts, volume refresh while
+//! `AmbientRTX`), rope, torch and combat starts, volume refresh while
 //! playing, and SURFACE.INI remapping: animation sounds play only for actors
 //! whose [`SoundSurface`] is known to be 0 (no SURFACE.INI parser yet).
 
@@ -30,6 +30,7 @@ use cyrus_assets::audio::load_speech;
 #[cfg(not(target_arch = "wasm32"))]
 use cyrus_assets::install::GameInstall;
 use cyrus_world::animation::AnimationSound;
+use cyrus_world::sound::ScriptSound;
 pub use cyrus_world::sound::SoundCue;
 pub use cyrus_world::sound::SoundSurface;
 use std::collections::HashMap;
@@ -242,13 +243,22 @@ pub(crate) struct Channels {
     animation: HashMap<Entity, Entity>,
 }
 
-// shortcut: channels record only their sound; add the owner and requested effect with EndSound, EndMySound(s) and KillMe.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Owner {
+    Entity(Entity),
+    Script { generation: u64, index: usize },
+}
+
 struct Channel {
     sound: Entity,
+    owner: Option<Owner>,
+    effect: Option<i32>,
 }
 
 /// One start: volume 0..=127 before the master volume, Miles pan (`None` = centre).
 struct Start {
+    owner: Option<Owner>,
+    effect: Option<i32>,
     audio: Handle<AudioSource>,
     looping: bool,
     volume: u8,
@@ -317,7 +327,11 @@ impl Channels {
                     .id()
             }
         };
-        self.slots[slot] = Some(Channel { sound });
+        self.slots[slot] = Some(Channel {
+            sound,
+            owner: start.owner,
+            effect: start.effect,
+        });
         Some(sound)
     }
 
@@ -329,6 +343,7 @@ impl Channels {
         mixer: &mut Mixer,
         effects: &SoundEffects,
         (index, volume, rate_offset_hz): (usize, i32, i32),
+        owner: Option<Owner>,
     ) {
         let Some(effect) = effects.0.get(index).and_then(Option::as_ref) else {
             return;
@@ -338,14 +353,36 @@ impl Channels {
             commands,
             mixer,
             Start {
+                owner,
+                effect: i32::try_from(index).ok(),
                 audio: effect.audio.clone(),
                 looping: effect.looping,
-                volume: (i32::from(effect.base_volume) + volume).clamp(0, 127) as u8,
+                volume: i32::from(effect.base_volume)
+                    .wrapping_add(volume)
+                    .clamp(0, 127) as u8,
                 pan: None,
                 speed: playback_speed(effect.sample_rate, rate_offset_hz),
                 start_index,
             },
         );
+    }
+
+    fn stop_matching(
+        &mut self,
+        commands: &mut Commands,
+        owner: Option<Owner>,
+        effect: Option<i32>,
+    ) {
+        for slot in &mut self.slots {
+            if slot.as_ref().is_some_and(|channel| {
+                owner.is_none_or(|owner| channel.owner == Some(owner))
+                    && effect.is_none_or(|effect| channel.effect == Some(effect))
+            }) {
+                let channel = slot.take().unwrap();
+                self.animation.retain(|_, sound| *sound != channel.sound);
+                commands.entity(channel.sound).try_despawn();
+            }
+        }
     }
 
     fn stop_all(&mut self, commands: &mut Commands) {
@@ -356,10 +393,10 @@ impl Channels {
     }
 }
 
-/// Playback speed for a rate offset: `clamp(rate + offset, 512, 44000) / rate`.
+/// Playback speed uses a wrapping 32-bit sum before the signed 512..=44000 Hz clamp.
 pub fn playback_speed(sample_rate: u32, rate_offset_hz: i32) -> f32 {
-    let rate = i64::from(sample_rate);
-    (rate + i64::from(rate_offset_hz)).clamp(512, 44000) as f32 / rate.max(1) as f32
+    let rate = sample_rate.wrapping_add_signed(rate_offset_hz) as i32;
+    rate.clamp(512, 44000) as f32 / sample_rate.max(1) as f32
 }
 
 /// Volume and pan of an emitter at Bevy `position` heard from `camera`, with a
@@ -439,6 +476,8 @@ fn play_requests(
                     &mut commands,
                     &mut mixer,
                     Start {
+                        owner: None,
+                        effect: i32::try_from(*index).ok(),
                         audio: effect.audio.clone(),
                         looping: effect.looping,
                         volume,
@@ -460,6 +499,8 @@ fn play_requests(
                     &mut commands,
                     &mut mixer,
                     Start {
+                        owner: None,
+                        effect: None,
                         audio: clip.audio.clone(),
                         looping: false,
                         volume: clip.base_volume.min(127),
@@ -477,9 +518,10 @@ fn play_requests(
 
 /// Plays [`SoundCue`]s from game code through the same channels as control requests.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn play_cues(
+fn play_cues(
     mut commands: Commands,
     mut cues: MessageReader<SoundCue>,
+    script_actors: Option<Res<cyrus_game::script::ScriptActors>>,
     effects: Res<SoundEffects>,
     settings: Option<Res<SoundSettings>>,
     camera: Query<&GlobalTransform, With<crate::camera::ViewCamera>>,
@@ -488,11 +530,12 @@ pub(crate) fn play_cues(
         Option<&SoundSurface>,
         Has<cyrus_game::player::Player>,
     )>,
+    bindings: Query<&cyrus_game::script::ScriptBinding>,
     alive: Query<(), With<PlayingSound>>,
     sources: Option<Res<Assets<AudioSource>>>,
     mut panned: Option<ResMut<Assets<Panned>>>,
     mut channels: ResMut<Channels>,
-    #[cfg(target_arch = "wasm32")] mut pending: Local<Vec<(usize, i32, i32)>>,
+    #[cfg(target_arch = "wasm32")] mut pending: Local<Vec<(Option<Owner>, (usize, i32, i32))>>,
     #[cfg(target_arch = "wasm32")] bank_loading: Option<Res<crate::sound_bank::SoundBankHandle>>,
 ) {
     channels.reclaim(&alive);
@@ -501,11 +544,31 @@ pub(crate) fn play_cues(
         sources: sources.as_deref(),
         panned: panned.as_deref_mut(),
     };
+    let current_owner = |owner: Owner| match owner {
+        Owner::Entity(_) => true,
+        Owner::Script { generation, .. } => script_actors.as_ref().is_none_or(|actors| {
+            actors
+                .current
+                .as_ref()
+                .is_some_and(|world| world.generation() == generation)
+        }),
+    };
+    for slot in &mut channels.slots {
+        if slot
+            .as_ref()
+            .and_then(|channel| channel.owner)
+            .is_some_and(|owner| !current_owner(owner))
+        {
+            commands.entity(slot.take().unwrap().sound).try_despawn();
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pending.retain(|(owner, _)| owner.is_none_or(current_owner));
     // Cues held while the bank loaded play once it has; a failed or disabled bank drops them.
     #[cfg(target_arch = "wasm32")]
     if bank_loading.is_none() {
-        for flat in pending.drain(..) {
-            channels.start_flat(&mut commands, &mut mixer, &effects, flat);
+        for (owner, flat) in pending.drain(..) {
+            channels.start_flat(&mut commands, &mut mixer, &effects, flat, owner);
         }
     }
     // A despawned actor's remembered sound is forgotten, not stopped.
@@ -514,6 +577,61 @@ pub(crate) fn play_cues(
         .retain(|actor, _| actors.contains(*actor));
     for cue in cues.read() {
         match cue {
+            SoundCue::Script {
+                generation,
+                index,
+                sound,
+            } => {
+                let owner = Owner::Script {
+                    generation: *generation,
+                    index: *index,
+                };
+                if !current_owner(owner) {
+                    continue;
+                }
+                match sound {
+                    ScriptSound::Flat {
+                        effect,
+                        volume,
+                        rate_offset_hz,
+                    } => {
+                        if let Ok(effect) = usize::try_from(*effect) {
+                            #[cfg(target_arch = "wasm32")]
+                            if bank_loading.is_some() {
+                                pending.push((Some(owner), (effect, *volume, *rate_offset_hz)));
+                                continue;
+                            }
+                            channels.start_flat(
+                                &mut commands,
+                                &mut mixer,
+                                &effects,
+                                (effect, *volume, *rate_offset_hz),
+                                Some(owner),
+                            );
+                        }
+                    }
+                    ScriptSound::StopEffect { effect, owned } => {
+                        #[cfg(target_arch = "wasm32")]
+                        pending.retain(|(pending_owner, (index, _, _))| {
+                            i32::try_from(*index).ok() != Some(*effect)
+                                || (*owned && *pending_owner != Some(owner))
+                        });
+                        channels.stop_matching(
+                            &mut commands,
+                            owned.then_some(owner),
+                            Some(*effect),
+                        );
+                    }
+                    ScriptSound::StopOwned => {
+                        #[cfg(target_arch = "wasm32")]
+                        pending.retain(|(pending_owner, _)| *pending_owner != Some(owner));
+                        channels.stop_matching(&mut commands, Some(owner), None);
+                    }
+                    ScriptSound::Animation(_) => {
+                        warn!("script animation sound requires a scene binding")
+                    }
+                }
+            }
             SoundCue::Flat {
                 effect,
                 volume,
@@ -522,7 +640,7 @@ pub(crate) fn play_cues(
                 // Browser cues wait for the exported bank instead of being lost.
                 #[cfg(target_arch = "wasm32")]
                 if bank_loading.is_some() {
-                    pending.push((*effect, *volume, *rate_offset_hz));
+                    pending.push((None, (*effect, *volume, *rate_offset_hz)));
                     continue;
                 }
                 channels.start_flat(
@@ -530,6 +648,7 @@ pub(crate) fn play_cues(
                     &mut mixer,
                     &effects,
                     (*effect, *volume, *rate_offset_hz),
+                    None,
                 );
             }
             SoundCue::Animation { actor, sound } => match sound {
@@ -582,6 +701,14 @@ pub(crate) fn play_cues(
                         &mut commands,
                         &mut mixer,
                         Start {
+                            owner: Some(bindings.get(*actor).ok().map_or(
+                                Owner::Entity(*actor),
+                                |binding| Owner::Script {
+                                    generation: binding.actor.generation,
+                                    index: binding.actor.index,
+                                },
+                            )),
+                            effect: Some(i32::from(*requested)),
                             audio: effect.audio.clone(),
                             looping: effect.looping,
                             volume,

@@ -158,3 +158,10 @@ existing `ScriptBinding` nodes. It preserves the stored affine matrix, converts
 original axes to the shared scene coordinates, and updates descendant global
 transforms after ordinary propagation. Removing or expiring a binding restores
 the authored local transforms. Presentation never advances script stages.
+
+Script flat sounds retain logical world/actor ownership. `EndSound` matches the
+requested effect, `EndMySound` matches effect and receiver, and `EndMySounds`
+matches the receiver. Bound animation channels share that receiver identity.
+World replacement drops old logical channels and queued browser starts; pending
+browser flat starts also honor selective cleanup. These handlers follow
+[preservation's sound rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).

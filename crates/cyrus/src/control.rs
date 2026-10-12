@@ -363,6 +363,25 @@ fn handle(
                 };
                 let mut captured_sounds = Vec::new();
                 let mut emit = |actor: ScriptActorId, sound| -> anyhow::Result<()> {
+                    use cyrus_game::script::ScriptSound;
+                    let sound = match sound {
+                        ScriptSound::Animation(sound) => sound,
+                        sound => {
+                            let event = match &sound {
+                                ScriptSound::Flat { effect, volume, rate_offset_hz } => json!({"type":"flat", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz}),
+                                ScriptSound::StopEffect { effect, owned } => json!({"type":"stop_effect", "effect":effect, "owned":owned}),
+                                ScriptSound::StopOwned => json!({"type":"stop_owned"}),
+                                ScriptSound::Animation(_) => unreachable!(),
+                            };
+                            captured_sounds.push(json!({"actor":actor, "sound":event}));
+                            if let Some(sounds) = script_sounds.as_mut() {
+                                sounds.write(cyrus_world::sound::SoundCue::Script {
+                                    generation: actor.generation, index: actor.index, sound,
+                                });
+                            }
+                            return Ok(());
+                        }
+                    };
                     let mut nodes = script_bindings.iter().filter(|(_, bound)| **bound == actor);
                     let Some((entity, _)) = nodes.next() else {
                         use cyrus_world::animation::AnimationSound;

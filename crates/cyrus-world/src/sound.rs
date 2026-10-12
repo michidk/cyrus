@@ -4,6 +4,12 @@ use bevy::prelude::*;
 /// native and browser builds; senders never play audio themselves.
 #[derive(Message, Debug)]
 pub enum SoundCue {
+    /// A logical script receiver owns this command independently of scene bindings.
+    Script {
+        generation: u64,
+        index: usize,
+        sound: ScriptSound,
+    },
     /// The original's `FlatSound`: pan 64, volume `clamp(base_volume + volume, 0, 127)`,
     /// rate `clamp(sample_rate + rate_offset_hz, 512, 44000)` Hz, no owner.
     Flat {
@@ -23,3 +29,20 @@ pub enum SoundCue {
 /// `docs/engine/sound.md`), set by the code that knows the ground; 0 means no remap.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SoundSurface(pub u8);
+
+/// Synchronous sound effects from a logical script actor. Effect indices retain
+/// their signed authored value; invalid starts allocate no channel.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ScriptSound {
+    Animation(crate::animation::AnimationSound),
+    Flat {
+        effect: i32,
+        volume: i32,
+        rate_offset_hz: i32,
+    },
+    StopEffect {
+        effect: i32,
+        owned: bool,
+    },
+    StopOwned,
+}

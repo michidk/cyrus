@@ -412,7 +412,7 @@ for the ownership decisions and migration constraints.
   - [ ] Parse SURFACE.INI's sound remap in rgpre and remap animation sounds by surface; animation sounds currently play only on surface 0.
   - [ ] Ground/collision sets each actor's `SoundSurface`.
   - [ ] Record each channel's owner and requested effect for `EndSound`, `EndMySound(s)` and `KillMe`.
-  - [ ] Script sound calls (`Sound`, `FlatSound`, `AmbientSound`, `AmbientRTX`, `EndSound`, `EndMySound(s)`, `StopAllSounds`, `KillMe`/`Resurrect`) once the script engine exposes them.
+  - [ ] Script sound calls: explicit `FlatSound`, `EndSound`, `EndMySound` and `EndMySounds` retain receiver ownership. Positional/ambient starts, `StopAllSounds` script results, shell/code-object ownership and `KillMe`/`Resurrect` remain open.
   - [ ] Rope sounds from MPRP thresholds and the torch loop (effect 25), once rope and torch objects exist at runtime.
   - [ ] Refresh positional volume and pan while a sound plays.
 - [x] **Verified:** portable SOUP cache and execution core, independent actor locals, shared flags, six task slots, pause/resume/stop, animation migration and bounded MCP stepping. Explicit hosts support researched flag helpers, attribute reads/writes and wait commands through explicit frame-scale task passes. Attribute-44 model coupling remains unsupported. Explicit routing supports Me, standalone player/camera receivers and names ordered by signed runtime identifiers, with receiver locals, slots and foreign operands. Variable references, scriptless receivers and later allocation/recycling remain unsupported; this does not enable ordinary gameplay.

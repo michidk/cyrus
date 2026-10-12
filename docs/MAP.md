@@ -84,6 +84,7 @@ module where it is defined and regenerate.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
+- `src/script/sound.rs` — Immediate script sound commands follow preservation's channel ownership rules.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.

@@ -162,9 +162,14 @@ It expires on world-generation or source changes. Presentation does not advance
 the script. Native MCP `bind_script_animation` can select a node by exact name;
 omitting the node prepares logical inspection only. `step_script` accepts
 `animation`, `entry`, `tasks`, `main`, and `interrupt`, with `nominal_ticks` for
-worlds with animation-bound actors and `frame_scale` for tasks. Bound sound dispatch
-uses the unique scene binding and existing sound consumer. Logical-only actors
-return sound intents in `captured_sounds` without audio playback.
+worlds with animation-bound actors and `frame_scale` for tasks. Animation sound
+uses the unique scene binding; without a binding, inspection captures the intent.
+`FlatSound`, `EndSound`, `EndMySound` and `EndMySounds` dispatch synchronously
+with the logical receiver identity, including actors without scene bindings.
+Control captures these commands and submits them to the sound consumer when present.
+Their zero results follow the [preservation sound contract](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-sound-results).
+Positional/ambient sound, shell/code-object owners, `KillMe` and the script
+`StopAllSounds` result remain unsupported.
 
 **Verified:** ordinary entry suppresses execution when an unpaused blocking task's
 physical operand identity is at or before the saved entry cursor. Direct

@@ -398,9 +398,7 @@ impl ScriptWorld {
         id: ScriptActorId,
         stage: ScriptStage,
         inputs: ScriptInputs,
-        sounds: Option<
-            &mut dyn FnMut(ScriptActorId, cyrus_world::animation::AnimationSound) -> Result<()>,
-        >,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
         budget: usize,
     ) -> Result<()> {
         let index = self.resolve(id)?;
@@ -624,9 +622,7 @@ struct GameHost<'a, 'sound> {
     inputs: ScriptInputs,
     index: usize,
     generation: u64,
-    sounds: Option<
-        &'sound mut dyn FnMut(ScriptActorId, cyrus_world::animation::AnimationSound) -> Result<()>,
-    >,
+    sounds: Option<&'sound mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
     actors: &'a mut [ScriptActor],
     task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
     names: &'a BTreeMap<i16, usize>,
@@ -643,7 +639,7 @@ impl GameHost<'_, '_> {
             .nominal_ticks
             .context("animation requires nominal_ticks")?;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, sound),
+            Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let animation = self.actors[self.index]
@@ -701,7 +697,7 @@ impl Host for GameHost<'_, '_> {
             index: self.index,
         };
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, sound),
+            Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let actor = &mut self.actors[self.index];
@@ -743,6 +739,12 @@ impl Host for GameHost<'_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        if let Some(sound) = super::sound::command(function, arguments)? {
+            self.sounds
+                .as_mut()
+                .context("script sound handler absent")?(id, sound)?;
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
         {
@@ -796,7 +798,7 @@ impl Host for GameHost<'_, '_> {
             index: self.index,
         };
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, sound),
+            Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let actor = &mut self.actors[self.index];

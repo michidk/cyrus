@@ -46,7 +46,7 @@ steps do not poll existing tasks. These inspection tools do not enable gameplay.
 `bind_script_animation {generation, index, default_group, node?}` prepares an
 actor once for this world generation. The caller supplies the established default
 group. An optional exact scene node name transfers its animation presentation to
-the logical actor. Without a node, stepping captures sound intents in the response's `captured_sounds` array instead of playing them. Once any actor is animation-bound,
+the logical actor. Without a node, stepping captures animation sound intents in `captured_sounds` instead of playing them. Immediate script sound commands retain their logical receiver, appear in `captured_sounds`, and reach the sound consumer when present. Once any actor is animation-bound,
 all steps require explicit `nominal_ticks`, including zero, before execution.
 These tools do not determine production eligibility or pacing.
 

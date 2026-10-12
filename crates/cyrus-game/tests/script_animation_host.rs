@@ -1,5 +1,6 @@
 //! Shared actor host contracts use synthetic scripts and explicit stage timing.
 use cyrus_assets::{animation::Animations, script::*};
+use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
 use cyrus_world::animation::AnimationSound;
@@ -221,10 +222,10 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
         events,
         [(
             receiver,
-            AnimationSound::Play {
+            ScriptSound::Animation(AnimationSound::Play {
                 effect: -17,
                 rate_offset_hz: -64
-            }
+            })
         )]
     );
     assert_eq!(world.animation_frame(receiver).unwrap(), Some(1));
@@ -553,7 +554,7 @@ fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
         .bind_animation(receiver, &animations(&scripts, true), 1)
         .unwrap();
     let mut calls = 0;
-    let mut fail = |_: ScriptActorId, _: AnimationSound| {
+    let mut fail = |_: ScriptActorId, _: ScriptSound| {
         calls += 1;
         anyhow::bail!("sound sink failed")
     };
@@ -841,4 +842,111 @@ fn rotation_reevaluates_delta_without_replacing_saved_target() {
     stage(&mut world, id, TASKS);
     assert_eq!(world.spatial(id).unwrap().local.angles[1], 128);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn routed_sound_commands_keep_receiver_and_authored_operands() {
+    let definitions = [
+        ("FlatSound", vec![12, -4, -10000]),
+        ("EndMySound", vec![12]),
+        ("EndSound", vec![12]),
+        ("EndMySounds", vec![]),
+    ];
+    let mut data = scripts(vec![Operation::End { target: 0 }]);
+    let mut operations = Vec::new();
+    data.definition.flags = (0..definitions.len())
+        .map(|index| Flag {
+            name: format!("Result{index}"),
+            flag_type: "NUMBER".into(),
+            initial_value: 99,
+        })
+        .collect();
+    for (index, (name, values)) in definitions.iter().enumerate() {
+        let function_id = data.definition.functions.len() as u16;
+        data.definition.functions.push(Function {
+            name: (*name).into(),
+            param_count: values.len() as u8,
+            kind: CallKind::Function,
+        });
+        operations.push(Operation::Assign {
+            destination: Place::Flag {
+                index: index as u16,
+            },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id,
+                        kind: CallKind::Function,
+                        target: Object::Named { string: 0 },
+                        function: (*name).into(),
+                        arguments: values
+                            .iter()
+                            .map(|value| Value::Integer { value: *value })
+                            .collect(),
+                    }),
+                },
+                rest: vec![],
+            },
+        });
+    }
+    operations.push(Operation::End { target: 0 });
+    data.actors.get_mut("ACTOR").unwrap().program.steps = operations
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 18).unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    let mut events = Vec::new();
+    world
+        .advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            Default::default(),
+            Some(&mut |id, sound| {
+                events.push((id, sound));
+                Ok(())
+            }),
+            100,
+        )
+        .unwrap();
+    assert_eq!(world.flags(), [0, 0, 0, 0]);
+    assert_eq!(
+        events,
+        vec![
+            (
+                receiver,
+                ScriptSound::Flat {
+                    effect: 12,
+                    volume: -4,
+                    rate_offset_hz: -10000
+                }
+            ),
+            (
+                receiver,
+                ScriptSound::StopEffect {
+                    effect: 12,
+                    owned: true
+                }
+            ),
+            (
+                receiver,
+                ScriptSound::StopEffect {
+                    effect: 12,
+                    owned: false
+                }
+            ),
+            (receiver, ScriptSound::StopOwned),
+        ]
+    );
 }

@@ -352,4 +352,159 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
         0,
         "Stop ends the actor's last sound"
     );
+    app.world_mut()
+        .entity_mut(known)
+        .insert(cyrus_game::script::ScriptBinding {
+            actor: cyrus_game::script::ScriptActorId {
+                generation: 17,
+                index: 4,
+            },
+            source: Handle::default(),
+        });
+    app.world_mut().write_message(SoundCue::Animation {
+        actor: known,
+        sound: AnimationSound::Play {
+            effect: 0,
+            rate_offset_hz: 0,
+        },
+    });
+    app.update();
+    assert_eq!(playing.iter(app.world()).count(), 1);
+    for (index, expected) in [(3, 1), (4, 0)] {
+        app.world_mut().write_message(SoundCue::Script {
+            generation: 17,
+            index,
+            sound: cyrus_world::sound::ScriptSound::StopEffect {
+                effect: 0,
+                owned: true,
+            },
+        });
+        app.update();
+        assert_eq!(
+            playing.iter(app.world()).count(),
+            expected,
+            "script cleanup matches the bound animation's logical receiver"
+        );
+    }
+}
+
+#[test]
+fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
+    use bevy::prelude::*;
+    use cyrus_render::sound::{Effect, PlayingSound, SoundEffects, SoundPlugin};
+    use cyrus_world::sound::{ScriptSound, SoundCue};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, SoundPlugin));
+    app.insert_resource(SoundSettings::parse(""));
+    app.insert_resource(SoundEffects(
+        (0..2)
+            .map(|_| {
+                Some(Effect {
+                    audio: Handle::default(),
+                    looping: true,
+                    base_volume: 64,
+                    sample_rate: 22050,
+                })
+            })
+            .collect(),
+    ));
+    let send = |app: &mut App, index, sound| {
+        app.world_mut().write_message(SoundCue::Script {
+            generation: 17,
+            index,
+            sound,
+        });
+    };
+    let count = |app: &mut App| {
+        app.world_mut()
+            .query_filtered::<Entity, With<PlayingSound>>()
+            .iter(app.world())
+            .count()
+    };
+    for (actor, effect) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+        send(
+            &mut app,
+            actor,
+            ScriptSound::Flat {
+                effect,
+                volume: 0,
+                rate_offset_hz: 0,
+            },
+        );
+    }
+    app.update();
+    assert_eq!(count(&mut app), 4);
+    send(
+        &mut app,
+        0,
+        ScriptSound::StopEffect {
+            effect: 0,
+            owned: true,
+        },
+    );
+    app.update();
+    assert_eq!(count(&mut app), 3);
+    send(&mut app, 0, ScriptSound::StopOwned);
+    app.update();
+    assert_eq!(count(&mut app), 2);
+    send(
+        &mut app,
+        0,
+        ScriptSound::StopEffect {
+            effect: 1,
+            owned: false,
+        },
+    );
+    app.update();
+    assert_eq!(count(&mut app), 1);
+    send(&mut app, 1, ScriptSound::StopOwned);
+    app.update();
+    assert_eq!(count(&mut app), 0);
+    // A start and its cleanup in one update cannot leave a deferred sound alive.
+    send(
+        &mut app,
+        0,
+        ScriptSound::Flat {
+            effect: 0,
+            volume: 0,
+            rate_offset_hz: 0,
+        },
+    );
+    send(&mut app, 0, ScriptSound::StopOwned);
+    app.update();
+    assert_eq!(count(&mut app), 0);
+    send(
+        &mut app,
+        0,
+        ScriptSound::Flat {
+            effect: 0,
+            volume: i32::MAX,
+            rate_offset_hz: i32::MAX,
+        },
+    );
+    app.update();
+    assert_eq!(count(&mut app), 1);
+    let settings = app
+        .world_mut()
+        .query_filtered::<&bevy::audio::PlaybackSettings, With<PlayingSound>>()
+        .single(app.world())
+        .unwrap();
+    assert_eq!(settings.volume, bevy::audio::Volume::Linear(0.0));
+    assert_eq!(settings.speed, 512.0 / 22050.0);
+    app.init_resource::<cyrus_game::script::ScriptActors>();
+    send(
+        &mut app,
+        0,
+        ScriptSound::Flat {
+            effect: 0,
+            volume: 0,
+            rate_offset_hz: 0,
+        },
+    );
+    app.update();
+    assert_eq!(
+        count(&mut app),
+        0,
+        "world removal stops owned channels and rejects stale starts"
+    );
 }
