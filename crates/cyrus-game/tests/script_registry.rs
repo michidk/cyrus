@@ -73,7 +73,8 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 2,
+        version: 3,
+        actor_pool_capacity: 32,
         content_id: String::new(),
         world: 7,
         definition: Definition {
@@ -867,7 +868,7 @@ fn named_functions_resolve_namespace_and_receiver_arguments_case_insensitively()
     assert_eq!(world.actors()[1].runtime().unwrap().variables(), [9]);
 }
 #[test]
-fn unresolved_and_failed_receiver_calls_restore_registry_and_keep_failures_sticky() {
+fn failed_receiver_calls_restore_registry_and_keep_failures_sticky() {
     let mut scripts = routed_cache(
         vec![
             object_wait(
@@ -879,21 +880,6 @@ fn unresolved_and_failed_receiver_calls_restore_registry_and_keep_failures_stick
         ],
         vec![Operation::End { target: 0 }],
     );
-    scripts.actors.get_mut("RECEIVER").unwrap().namespace = Some("caller".into());
-    scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "caller".into();
-    scripts.content_id = scripts.content_identity().unwrap();
-    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-    let caller = world.id(0).unwrap();
-    assert!(
-        world
-            .step(caller, Thread::Main, 20)
-            .unwrap_err()
-            .to_string()
-            .contains("2 matching receivers")
-    );
-    assert!(world.actors().iter().all(|actor| actor.runtime().is_some()));
-    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 0);
-
     scripts.actors.get_mut("RECEIVER").unwrap().namespace = Some("receiver".into());
     scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "receiver".into();
     let Operation::ObjectCall { call } = &mut scripts
@@ -942,4 +928,226 @@ fn unresolved_and_failed_receiver_calls_restore_registry_and_keep_failures_stick
         error
     );
     assert!(world.step(receiver, Thread::Main, 20).is_err());
+}
+
+fn add_standalone_receivers(scripts: &mut Scripts) {
+    for (index, (name, namespace, local)) in [
+        ("CYRUS", None, 9),
+        ("GREMLIN", Some("gremlin"), 11),
+        ("CAMERA", None, 5),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut actor = scripts.actors["LOGIC"].clone();
+        actor.instances = 1;
+        actor.code_origin = 200 + index as u32 * 100;
+        actor.namespace = namespace.map(str::to_owned);
+        actor.instance_variables = vec![vec![local]];
+        actor.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::Yield,
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+        scripts.actors.insert(name.into(), actor);
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+}
+#[test]
+fn standalone_player_and_camera_receive_tasks_without_map_placements() {
+    use cyrus_game::script::ScriptActorSource;
+    let mut scripts = wait_cache(vec![
+        object_wait(
+            Object::Player,
+            CallKind::Task,
+            Value::Read {
+                place: Place::Local { index: 0 },
+            },
+        ),
+        object_wait(
+            Object::Camera,
+            CallKind::Task,
+            Value::Read {
+                place: Place::Local { index: 0 },
+            },
+        ),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    add_standalone_receivers(&mut scripts);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    assert_eq!(world.actors().len(), 5);
+    assert_eq!(
+        world
+            .actors()
+            .iter()
+            .map(|actor| actor.runtime_identifier)
+            .collect::<Vec<_>>(),
+        [Some(36), Some(37), Some(1), Some(1), Some(2)]
+    );
+    assert!(matches!(
+        world.actors()[2].source,
+        ScriptActorSource::Player
+    ));
+    assert!(matches!(
+        world.actors()[3].source,
+        ScriptActorSource::AlternatePlayer
+    ));
+    assert!(matches!(
+        world.actors()[4].source,
+        ScriptActorSource::Camera
+    ));
+    assert!(
+        world.actors()[2..]
+            .iter()
+            .all(|actor| actor.placement().is_none())
+    );
+    assert_eq!(
+        world.inspect(2, 1)["actors"][0]["object_id"],
+        serde_json::Value::Null
+    );
+    let caller = world.id(0).unwrap();
+    let player = world.id(2).unwrap();
+    let camera = world.id(4).unwrap();
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.actors()[2].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(world.actors()[4].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(
+        world.actors()[2]
+            .runtime()
+            .unwrap()
+            .program_counter(Thread::Main),
+        Some(0)
+    );
+    world.step_tasks(player, Some(7 * 256)).unwrap();
+    assert_eq!(world.actors()[2].runtime().unwrap().active_tasks(), 1);
+    world.step_tasks(camera, Some(5 * 256)).unwrap();
+    assert_eq!(world.actors()[4].runtime().unwrap().active_tasks(), 0);
+    world.step_tasks(player, Some(5 * 256)).unwrap();
+    assert_eq!(world.actors()[2].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.actors()[2].runtime().unwrap().variables(), [9]);
+    assert_eq!(world.actors()[4].runtime().unwrap().variables(), [5]);
+}
+#[test]
+fn signed_identifier_order_resolves_duplicate_names_across_the_low_word_wrap() {
+    let mut scripts = routed_cache(
+        vec![
+            object_wait(
+                Object::Named { string: 0 },
+                CallKind::Task,
+                Value::Integer { value: 100 },
+            ),
+            Operation::End { target: 0 },
+        ],
+        vec![Operation::End { target: 0 }],
+    );
+    scripts.actor_pool_capacity = 32763;
+    scripts.actors.get_mut("RECEIVER").unwrap().namespace = Some("caller".into());
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "CaLlEr".into();
+    scripts.instances[0].object_id = 0;
+    scripts.instances[1].object_id = u32::MAX;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    assert_eq!(world.actors()[0].runtime_identifier, Some(32767));
+    assert_eq!(world.actors()[1].runtime_identifier, Some(-32768));
+    world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+}
+#[test]
+fn normal_duplicate_names_choose_the_first_registered_runtime_identifier() {
+    let mut scripts = routed_cache(
+        vec![
+            object_wait(
+                Object::Named { string: 0 },
+                CallKind::Multitask,
+                Value::Integer { value: 100 },
+            ),
+            Operation::End { target: 0 },
+        ],
+        vec![Operation::End { target: 0 }],
+    );
+    scripts.actors.get_mut("RECEIVER").unwrap().namespace = Some("caller".into());
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "caller".into();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 0);
+}
+#[test]
+fn activation_and_separate_map_paths_preserve_identifier_and_local_allocation_order() {
+    let mut scripts = cache();
+    scripts.actor_pool_capacity = 10;
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.instances = 3;
+    actor.instance_variables.push(vec![13]);
+    let first = scripts.instances[0].clone();
+    scripts.instances = [2, 6, 0, 1, 0]
+        .into_iter()
+        .enumerate()
+        .map(|(index, object_type)| Instance {
+            object_type,
+            active: u8::from(index != 2),
+            ..first.clone()
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    assert_eq!(
+        world
+            .actors()
+            .iter()
+            .map(|actor| actor.runtime_identifier)
+            .collect::<Vec<_>>(),
+        [None, None, Some(14), Some(16), Some(18)]
+    );
+    for actor in &world.actors()[..2] {
+        assert!(actor.runtime().is_none());
+        assert!(
+            actor
+                .unavailable()
+                .unwrap()
+                .contains("separate map object path unsupported")
+        );
+    }
+    assert_eq!(world.actors()[2].runtime().unwrap().variables(), [4]);
+    assert_eq!(world.actors()[3].runtime().unwrap().variables(), [9]);
+    assert_eq!(world.actors()[4].runtime().unwrap().variables(), [13]);
+}
+#[test]
+fn registering_an_existing_identifier_keeps_the_first_namespace_only() {
+    let mut scripts = wait_cache(vec![
+        object_wait(
+            Object::Named { string: 0 },
+            CallKind::Task,
+            Value::Integer { value: 10 },
+        ),
+        Operation::End { target: 0 },
+    ]);
+    add_standalone_receivers(&mut scripts);
+    scripts.actors.get_mut("CYRUS").unwrap().namespace = Some("first_player".into());
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings = vec!["gremlin".into()];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let error = world
+        .step(world.id(0).unwrap(), Thread::Main, 20)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("receiver absent"), "{error}");
+    assert!(world.actors()[3].runtime().is_some());
+    assert_eq!(world.actors()[3].runtime().unwrap().active_tasks(), 0);
 }

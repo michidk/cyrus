@@ -9,7 +9,7 @@ pub use animation::AnimationScript;
 use bevy::prelude::*;
 pub use cyrus_script::Thread;
 pub use playback::ScriptedPlayback;
-pub use registry::{ScriptActor, ScriptActorId, ScriptActors, ScriptWorld};
+pub use registry::{ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptWorld};
 pub use status::ScriptStatus;
 
 pub struct ScriptPlugin;
