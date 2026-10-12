@@ -147,6 +147,7 @@ fn invalid_sound_fields_and_handler_failures_stop_with_context() {
             error.starts_with("world 17 actor ACTOR group 7 command 0: sound"),
             "{error}"
         );
+        assert_eq!(actor.failure(), Some(error.as_str()));
         assert_eq!(actor.advance(0).unwrap_err().to_string(), error);
     }
     let data = asset(

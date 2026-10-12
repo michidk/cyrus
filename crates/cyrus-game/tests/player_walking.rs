@@ -749,6 +749,9 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         {"group_index":20,"anim_type":1,"anim_id":1,"commands":[
             {"opcode":4,"sound_param":7,"volume_shift":0},
             {"opcode":0,"frame_reference":32},{"opcode":0,"frame_reference":33},{"opcode":2,"value":0}
+        ]},
+        {"group_index":30,"anim_type":1,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":64},{"opcode":0,"frame_reference":65},{"opcode":1}
         ]}
     ]));
     animations.metadata["markers"] = serde_json::json!([
@@ -756,9 +759,10 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
     ]);
     animations.metadata["actors"][0]["raan_entries"] = serde_json::json!([
         {"file_path":"IDLE.3DC","frame_count":32},
-        {"file_path":"WALK.3DC","frame_count":32}
+        {"file_path":"WALK.3DC","frame_count":32},
+        {"file_path":"SCRIPT.3DC","frame_count":32}
     ]);
-    for model in ["IDLE", "WALK"] {
+    for model in ["IDLE", "WALK", "SCRIPT"] {
         animations.models.insert(
             model.into(),
             AnimationModel {
@@ -775,6 +779,13 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
     scene.definition.as_mut().unwrap().ordinary_default_group = 0;
     // IDLE has no radius: selecting candidates before animation advances must fail.
     scene.model_radii.insert("WALK".into(), 100.0);
+    scene.model_radii.insert("SCRIPT".into(), 100.0);
+    let scripts = player_runtime_scripts(animations.world);
+    animations.metadata["script_content_id"] = scripts.content_id.clone().into();
+    let logical = cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap();
+    let actor = logical.id(0).unwrap();
+    let mut actors = cyrus_game::script::ScriptActors::default();
+    actors.current = Some(logical);
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
         .init_state::<AppState>()
@@ -783,6 +794,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         .init_resource::<Assets<Animations>>()
         .init_resource::<Assets<PlayerScene>>()
         .add_message::<SoundCue>()
+        .insert_resource(actors)
         .add_plugins(PlayerPlugin);
     let animation = app
         .world_mut()
@@ -806,6 +818,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
     assert!(app.world().get::<AnimationPose>(player).is_none());
     let tick = |nominal_ticks, rotation| GroundedTick {
         player,
+        actor,
         entry: MarkerEntry::default(),
         source: source.clone(),
         animation: animation.clone(),
@@ -906,4 +919,98 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         [512 * 256, -64 * 256, 512 * 256]
     );
     assert!(app.world().get::<AnimationPose>(replacement).is_none());
+
+    // Replacing only the logical world must also reject queued old-generation ticks.
+    let logical = cyrus_game::script::ScriptWorld::prepare(&scripts, 2).unwrap();
+    let current = logical.id(0).unwrap();
+    app.world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current = Some(logical);
+    let mut stale = tick(1, Mat3::IDENTITY);
+    stale.player = replacement;
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(stale);
+    app.update();
+    assert!(app.world().get::<AnimationPose>(replacement).is_none());
+    let admitted = || GroundedTick {
+        player: replacement,
+        actor: current,
+        walk: false,
+        ..tick(1, Mat3::IDENTITY)
+    };
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(admitted());
+    app.update();
+    assert_eq!(app.world().resource::<PlayerRuntime>().error, None);
+    {
+        let mut actors = app
+            .world_mut()
+            .resource_mut::<cyrus_game::script::ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        world
+            .advance(
+                current,
+                cyrus_game::script::ScriptStage::Body(cyrus_script::Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(())),
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.animation_frame(current).unwrap(), Some(64));
+    }
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(GroundedTick {
+            walk: true,
+            ..admitted()
+        });
+    app.update();
+    assert_eq!(app.world().resource::<PlayerRuntime>().error, None);
+    let pose = app.world().get::<AnimationPose>(replacement).unwrap();
+    assert_eq!((pose.model.as_str(), pose.frame), ("SCRIPT", 1));
+    let actors = app.world().resource::<cyrus_game::script::ScriptActors>();
+    assert_eq!(
+        actors
+            .current
+            .as_ref()
+            .unwrap()
+            .animation_frame(current)
+            .unwrap(),
+        Some(65)
+    );
+    assert_eq!(
+        app.world()
+            .get::<cyrus_game::script::ScriptBinding>(replacement)
+            .unwrap()
+            .actor,
+        current
+    );
+}
+
+fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
+    let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(serde_json::json!({
+        "version":3,"world":world,"actor_pool_capacity":10,"content_id":"",
+        "definition":{"functions":[
+            {"name":"NullFunction","param_count":0,"kind":"function"},
+            {"name":"PushAnimation","param_count":2,"kind":"task"}
+        ],"flags":[],"references":[],"attributes":[]},
+        "actors":{"CYRUS":{"header_index":0,"code_origin":0,"instances":1,
+            "namespace":"CYRUS","instance_variables":[[]],"attributes":{},"hooks":[],
+            "program":{"version":2,"entry":0,"steps":{
+                "0":{"next":1,"operation":{"type":"call","call":{
+                    "function_id":1,"kind":"task","target":{"type":"me"},"function":"PushAnimation",
+                    "arguments":[{"type":"integer","value":30},{"type":"integer","value":1}]
+                }}},
+                "1":{"next":2,"operation":{"type":"end","target":0}}
+            }}
+        }},"instances":[],"unsupported":{}
+    }))
+    .unwrap();
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
 }

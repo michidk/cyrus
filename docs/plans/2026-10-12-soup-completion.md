@@ -36,6 +36,9 @@ updates diagnostics, and advances explicitly attached animation playback.
   and eligibility. Explicit spatial preparation adds local/composed poses,
   RotateByAxis tasks, and player queries with supplied global inputs. Linked
   position ownership and dynamic attachment changes remain unsupported.
+  Admitted walking updates share the logical player's animation and selected
+  frame with SOUP, using generation-bound messages and a scene binding. Model
+  defaults and complete actor initialization remain separate unfinished work.
   These paths still require the installed mixed-scenario acceptance below.
 - Native control and MCP expose bounded `scripts` inspection, explicit animation
   binding, and `step_script`. Shared scene bindings read the logical actor's pose

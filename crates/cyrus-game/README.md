@@ -41,11 +41,17 @@ An active ordinary walking group can continue after input release without
 requesting the group again or replacing its pending idle request, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 `PlayerPlugin` consumes explicit `GroundedTick` messages on native and browser.
-It retains walking/animation state, advances animation before selecting static
-candidates by the selected model radius, and updates `PlayerPose`, `Transform`,
-`AnimationPose` and `SoundSurface`. It sends authored cues through `SoundCue`.
+Each message identifies the logical player in the current script-world generation.
+Walking retains movement/support state and uses that actor's shared animation and
+selected file frame. It advances animation before selecting static candidates by
+the selected model radius, then updates `PlayerPose`, `Transform`, `AnimationPose`
+and `SoundSurface`. The player receives a `ScriptBinding`, so later SOUP requests
+also update its presentation. Authored cues use `SoundCue`; native inspection
+recognizes these bindings even on unnamed player entities.
 Multiple messages remain separate updates; zero nominal ticks can still move.
-Errors stop stepping until entry changes, and stale asset requests are discarded.
+Stale asset requests and world identities are discarded. Walking errors stop
+stepping until entry changes; logical animation failures persist until world
+replacement. Marker changes do not create a second playback or reset script tasks.
 The caller still supplies admission, timing, orientation, view and collision policy;
 no production clock or automatic keyboard-driven locomotion is enabled yet.
 
@@ -114,7 +120,8 @@ the latter requires model/default-group ownership and cleanup integration.
 These contracts follow preservation's
 [attribute rules](https://github.com/michidk/redguard-preservation/blob/c5cbfb8/docs/engine/SOUP.md#attribute-reads-and-writes).
 `ScriptActor::attributes` exposes the prepared inspection bytes. Complete actor
-initialization and shared animation/player attribute state remain pending.
+initialization and live player attribute state remain pending. Walking and SOUP
+share logical-player playback, while model-default writes remain unsupported.
 Flag numeric values and latches
 remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage

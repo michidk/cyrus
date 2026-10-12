@@ -14,7 +14,6 @@ pub struct ScriptedPlayback {
     actor: String,
     animation: ActorAnimation,
     script: AnimationScript,
-    default: u16,
 }
 impl ScriptedPlayback {
     pub fn new(
@@ -28,7 +27,6 @@ impl ScriptedPlayback {
             actor: actor.into(),
             animation: ActorAnimation::from_asset(data, actor, default)?,
             script: AnimationScript::from_asset(data, actor)?,
-            default,
         })
     }
 }
@@ -56,10 +54,7 @@ pub(super) fn advance(
                 continue;
             };
             let ScriptedPlayback {
-                animation,
-                script,
-                default,
-                ..
+                animation, script, ..
             } = &mut *playback;
             let result = (|| {
                 if let Some(sounds) = &mut sounds {
@@ -72,14 +67,16 @@ pub(super) fn advance(
                     };
                     let frame = animation.advance_with_sounds(tick.ticks, &mut emit)?;
                     let frame = animation
-                        .request_with_sounds(*default, 0, tick.ticks, &mut emit)?
+                        .request_with_sounds(animation.default_group(), 0, tick.ticks, &mut emit)?
                         .or(frame);
                     Ok(script
                         .advance_with_sounds(animation, tick.ticks, &mut emit)?
                         .or(frame))
                 } else {
                     let frame = animation.advance(tick.ticks)?;
-                    let frame = animation.request(*default, 0, tick.ticks)?.or(frame);
+                    let frame = animation
+                        .request(animation.default_group(), 0, tick.ticks)?
+                        .or(frame);
                     Ok(script.advance(animation, tick.ticks)?.or(frame))
                 }
             })();

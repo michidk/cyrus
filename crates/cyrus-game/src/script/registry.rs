@@ -64,10 +64,9 @@ pub struct ScriptInputs<'a> {
     pub player_query: Option<super::QueryInputs>,
 }
 
-struct ScriptAnimation {
-    playback: cyrus_world::animation::ActorAnimation,
-    default: u16,
-    frame: Option<u32>,
+pub(crate) struct ScriptAnimation {
+    pub(crate) playback: cyrus_world::animation::ActorAnimation,
+    pub(crate) frame: Option<u32>,
 }
 
 pub struct ScriptActor {
@@ -108,6 +107,11 @@ impl ScriptActor {
     pub fn failure(&self) -> Option<&str> {
         self.animation_failure
             .as_deref()
+            .or_else(|| {
+                self.animation
+                    .as_ref()
+                    .and_then(|animation| animation.playback.failure())
+            })
             .or_else(|| self.runtime.as_ref().and_then(Runtime::failure))
     }
     pub fn unavailable(&self) -> Option<&str> {
@@ -355,11 +359,51 @@ impl ScriptWorld {
             cyrus_world::animation::ActorAnimation::from_asset(data, actor.name(), default)?;
         actor.animation = Some(ScriptAnimation {
             playback,
-            default,
             frame: None,
         });
         Ok(())
     }
+    /// The admitted player stage and SOUP share this playback and selected file frame.
+    pub(crate) fn player_animation(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        ticks: u32,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> Result<()>,
+    ) -> Result<&mut ScriptAnimation> {
+        let index = self.resolve(id)?;
+        anyhow::ensure!(
+            matches!(self.actors[index].source, ScriptActorSource::Player),
+            "world {} instance {index}: grounded update requires the logical player",
+            self.world
+        );
+        anyhow::ensure!(
+            data.world == self.world
+                && data.metadata["script_content_id"].as_str() == Some(&self.content_id),
+            "world {} player animation/script cache generation mismatch; re-export the world",
+            self.world
+        );
+        let actor = &mut self.actors[index];
+        if let Some(error) = actor.failure() {
+            anyhow::bail!("world {} player: {error}", self.world);
+        }
+        if actor.animation.is_none() {
+            match crate::player::placement::initial_animation(data, ticks, sounds) {
+                Ok((playback, frame)) => {
+                    actor.animation = Some(ScriptAnimation { playback, frame })
+                }
+                Err(error) => {
+                    actor.animation_failure = Some(format!("{error:#}"));
+                    return Err(error);
+                }
+            }
+        }
+        Ok(actor
+            .animation
+            .as_mut()
+            .expect("player animation initialized"))
+    }
+
     /// Last selected file frame; resolve through this world's animation asset for presentation.
     pub fn animation_frame(&self, id: ScriptActorId) -> Result<Option<u32>> {
         let index = self.resolve(id)?;
@@ -698,10 +742,12 @@ impl GameHost<'_, '_, '_> {
             .context("actor animation not prepared")?;
         let frame = animation.playback.advance_with_sounds(ticks, &mut emit)?;
         animation.frame = frame.or(animation.frame);
-        let frame =
-            animation
-                .playback
-                .request_with_sounds(animation.default, 0, ticks, &mut emit)?;
+        let frame = animation.playback.request_with_sounds(
+            animation.playback.default_group(),
+            0,
+            ticks,
+            &mut emit,
+        )?;
         animation.frame = frame.or(animation.frame);
         Ok(())
     }

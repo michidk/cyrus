@@ -82,15 +82,8 @@ struct Inspection<'w, 's> {
     activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
-    script_nodes: Query<
-        'w,
-        's,
-        (
-            Entity,
-            &'static Name,
-            Option<&'static cyrus_game::script::ScriptBinding>,
-        ),
-    >,
+    script_nodes: Query<'w, 's, (Entity, &'static Name)>,
+    binding_nodes: Query<'w, 's, (Entity, &'static cyrus_game::script::ScriptBinding)>,
     script_sounds: Option<ResMut<'w, Messages<cyrus_world::sound::SoundCue>>>,
     player_poses: Query<'w, 's, &'static cyrus_game::player::placement::PlayerPose, With<Player>>,
 }
@@ -124,6 +117,7 @@ fn handle(
         prepared,
         animations,
         script_nodes,
+        binding_nodes,
         mut script_sounds,
         player_poses,
     }: Inspection,
@@ -138,9 +132,9 @@ fn handle(
     mut audio: Audio,
 ) {
     let rx = inbox.0.lock().unwrap();
-    let mut script_bindings: std::collections::BTreeMap<_, _> = script_nodes
+    let mut script_bindings: std::collections::BTreeMap<_, _> = binding_nodes
         .iter()
-        .filter_map(|(entity, _, binding)| binding.map(|binding| (entity, binding.actor)))
+        .map(|(entity, binding)| (entity, binding.actor))
         .collect();
     while let Ok(Pending { request, reply }) = rx.try_recv() {
         let id = request.id;
@@ -297,7 +291,7 @@ fn handle(
                 let entity = if let Some(name) = node {
                     let matches: Vec<_> = script_nodes
                         .iter()
-                        .filter(|(_, candidate, _)| candidate.as_str() == name)
+                        .filter(|(_, candidate)| candidate.as_str() == name)
                         .collect();
                     anyhow::ensure!(
                         matches.len() == 1,
@@ -686,5 +680,28 @@ mod tests {
                 .index,
             0
         );
+    }
+
+    #[test]
+    fn animation_sound_uses_unnamed_player_bindings() {
+        use cyrus_world::{animation::AnimationSound, sound::SoundCue};
+        let mut app = script_app();
+        app.add_message::<SoundCue>();
+        let entity = app.world_mut().spawn(Name::new("player")).id();
+        let mut commands = bind_and_step(Some("player"));
+        let step = commands.pop().unwrap();
+        run_commands(&mut app, commands);
+        app.world_mut().entity_mut(entity).remove::<Name>();
+        let responses = run_commands(&mut app, vec![step]);
+        assert_eq!(responses[0]["captured_sounds"], json!([]));
+        let cues: Vec<_> = app
+            .world_mut()
+            .resource_mut::<Messages<SoundCue>>()
+            .drain()
+            .collect();
+        assert_eq!(cues.len(), 1);
+        assert!(matches!(cues[0], SoundCue::Animation {
+            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }
+        } if actor == entity));
     }
 }

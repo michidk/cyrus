@@ -60,6 +60,16 @@ impl ActorAnimation {
         self.default = group;
     }
 
+    /// The caller-selected playback default, distinct from the model's attribute default.
+    pub fn default_group(&self) -> u16 {
+        self.default
+    }
+
+    /// Sticky advancement or sound-dispatch failure.
+    pub fn failure(&self) -> Option<&str> {
+        self.failure.as_deref()
+    }
+
     /// Whether an authored group exists, before request fallback rules are applied.
     pub fn has_group(&self, group: u16) -> bool {
         self.groups.contains_key(&group)

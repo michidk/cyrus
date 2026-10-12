@@ -6,6 +6,7 @@ use super::{
     placement::{MarkerEntry, PlayerPose},
     walk::WalkingStartup,
 };
+use crate::script::{ScriptActorId, ScriptActors, ScriptBinding};
 use anyhow::Context;
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::{
@@ -13,7 +14,7 @@ use bevy::prelude::{
     ResMut, Resource, State, Transform, Vec3, With,
 };
 use cyrus_world::{
-    animation::{ActorAnimation, AnimationPose, AnimationRequest, Animations, ModelFrame},
+    animation::{AnimationPose, AnimationRequest, Animations},
     collision::ground::SupportHistory,
     sound::{SoundCue, SoundSurface},
 };
@@ -24,6 +25,8 @@ use cyrus_world::{
 #[derive(Message)]
 pub struct GroundedTick {
     pub player: Entity,
+    /// Logical player identity from the currently prepared script world.
+    pub actor: ScriptActorId,
     pub entry: MarkerEntry,
     pub source: Handle<PlayerScene>,
     pub animation: Handle<Animations>,
@@ -48,12 +51,11 @@ struct Source {
     scene: AssetId<PlayerScene>,
     animation: AssetId<Animations>,
     marker: MarkerEntry,
+    generation: u64,
 }
 
 struct Running {
     walk: GroundedWalk,
-    animation: ActorAnimation,
-    frame: Option<ModelFrame>,
     history: SupportHistory,
     veto: i32,
 }
@@ -67,17 +69,18 @@ pub struct PlayerRuntime {
 }
 
 #[derive(SystemParam)]
-pub(super) struct RuntimeAssets<'w> {
+pub(crate) struct RuntimeAssets<'w> {
     scene_request: Option<Res<'w, PlayerSceneRequest>>,
     animation_request: Option<Res<'w, AnimationRequest>>,
     scenes: Option<Res<'w, Assets<PlayerScene>>>,
     animations: Option<Res<'w, Assets<Animations>>>,
 }
 
-pub(super) fn step(
+pub(crate) fn step(
     mut commands: Commands,
     mut ticks: MessageReader<GroundedTick>,
     simulation: (ResMut<PlayerRuntime>, Option<ResMut<Messages<SoundCue>>>),
+    mut actors: Option<ResMut<ScriptActors>>,
     entry: (Res<State<crate::AppState>>, Res<MarkerEntry>),
     assets: RuntimeAssets,
     mut players: Query<(Entity, Option<&mut PlayerPose>, &mut Transform), With<Player>>,
@@ -95,18 +98,20 @@ pub(super) fn step(
         Some(scenes),
         Some(animations),
         Some(mut pose),
+        Some(world),
     ) = (
         assets.scene_request,
         assets.animation_request,
         assets.scenes,
         assets.animations,
         pose,
+        actors.as_mut().and_then(|actors| actors.current.as_mut()),
     )
     else {
         *runtime = PlayerRuntime::default();
         commands
             .entity(entity)
-            .remove::<(AnimationPose, SoundSurface)>();
+            .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
         ticks.clear();
         return;
     };
@@ -115,12 +120,13 @@ pub(super) fn step(
         scene: scene_request.0.id(),
         animation: animation_request.0.id(),
         marker: *marker,
+        generation: world.generation(),
     };
     if state.get() != &crate::AppState::InGame || runtime.source.as_ref() != Some(&source) {
         *runtime = PlayerRuntime::default();
         commands
             .entity(entity)
-            .remove::<(AnimationPose, SoundSurface)>();
+            .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
     }
     if state.get() != &crate::AppState::InGame {
         ticks.clear();
@@ -129,6 +135,7 @@ pub(super) fn step(
     runtime.source = Some(source);
     for tick in ticks.read() {
         if tick.player != entity
+            || tick.actor.generation != world.generation()
             || tick.entry != *marker
             || tick.source != scene_request.0
             || tick.animation != animation_request.0
@@ -171,8 +178,6 @@ pub(super) fn step(
                     .definition
                     .as_ref()
                     .context("player step: definition unavailable")?;
-                let (animation, frame) =
-                    super::placement::initial_animation(data, tick.nominal_ticks, &mut emit)?;
                 runtime.running = Some(Running {
                     walk: GroundedWalk {
                         position: pose.position,
@@ -180,26 +185,30 @@ pub(super) fn step(
                         startup: WalkingStartup::new(definition.step_type)
                             .context("player step: unsupported step type")?,
                     },
-                    animation,
-                    frame: frame.map(|f| data.resolve_frame("CYRUS", f)).transpose()?,
                     history: SupportHistory::new(0, 0),
                     veto: 0,
                 });
             }
+            let animation =
+                world.player_animation(tick.actor, data, tick.nominal_ticks, &mut emit)?;
             let running = runtime.running.as_mut().unwrap();
             if let Some(frame) = grounded::advance_animation(
                 scene,
                 tick.nominal_ticks,
                 &mut running.history,
-                &mut running.animation,
+                &mut animation.playback,
                 &mut emit,
             )? {
-                running.frame = Some(data.resolve_frame("CYRUS", frame)?);
+                animation.frame = Some(frame);
             }
+            let mut frame = animation
+                .frame
+                .map(|frame| data.resolve_frame("CYRUS", frame))
+                .transpose()?;
             let candidates = scene.candidates(
                 tick.view,
                 running.walk.position,
-                running.frame.as_ref().map(|f| f.model.as_str()),
+                frame.as_ref().map(|frame| frame.model.as_str()),
             )?;
             let query = StaticGroundQuery {
                 scene,
@@ -218,14 +227,15 @@ pub(super) fn step(
                 },
                 walk: tick.walk,
             };
-            if let Some(frame) = running.walk.move_grounded(
+            if let Some(reference) = running.walk.move_grounded(
                 &query,
                 &mut input,
                 (&mut running.history, &mut running.veto),
-                &mut running.animation,
+                &mut animation.playback,
                 &mut emit,
             )? {
-                running.frame = Some(data.resolve_frame("CYRUS", frame)?);
+                animation.frame = Some(reference);
+                frame = Some(data.resolve_frame("CYRUS", reference)?);
             }
             let delta = std::array::from_fn::<_, 3, _>(|i| {
                 (running.walk.position[i] - pose.position[i]) as f32
@@ -234,15 +244,19 @@ pub(super) fn step(
             transform.translation += Vec3::new(-delta[0], -delta[1], delta[2]);
             pose.position = running.walk.position;
             pose.heading = input.motion.heading;
-            if let Some(frame) = &running.frame {
+            if let Some(frame) = frame {
                 commands.entity(entity).insert(AnimationPose {
-                    model: frame.model.clone(),
+                    model: frame.model,
                     frame: frame.frame,
                 });
             }
-            commands
-                .entity(entity)
-                .insert(SoundSurface(running.walk.surface));
+            commands.entity(entity).insert((
+                SoundSurface(running.walk.surface),
+                ScriptBinding {
+                    actor: tick.actor,
+                    source: tick.animation.clone(),
+                },
+            ));
             Ok(())
         })();
         if let Err(error) = result {

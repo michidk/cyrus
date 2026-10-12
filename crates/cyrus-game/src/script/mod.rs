@@ -33,12 +33,15 @@ impl Plugin for ScriptPlugin {
                 Update,
                 (registry::prepare, status::update)
                     .chain()
+                    .before(crate::player::runtime::step)
                     .after(cyrus_world::lifecycle::WorldChange)
                     .run_if(resource_exists::<cyrus_world::lifecycle::PreparedWorld>),
             )
             .add_systems(
                 Update,
-                registry::clear_unprepared.after(cyrus_world::lifecycle::WorldChange),
+                registry::clear_unprepared
+                    .after(cyrus_world::lifecycle::WorldChange)
+                    .before(crate::player::runtime::step),
             )
             .add_systems(
                 Update,

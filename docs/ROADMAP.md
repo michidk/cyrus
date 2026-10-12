@@ -526,6 +526,12 @@ walking-release updates, including movement suppression and return to idle. This
 is a bounded static-ground comparison, not full controller or host-cadence parity.
 Strict workspace Clippy, installed workspace tests with zero skips, formatting,
 publication checks and WASM compilation pass for this increment.
+**Verified:** admitted walking and SOUP now use one logical-player animation and
+selected file frame. Generation-bound messages reject replaced worlds, and the
+player's script binding carries later pose and sound changes. Headless contracts
+interleave a script request with walking and retain the same playback frames.
+Playback defaults have one owner; model-default attribute writes remain unsupported.
+
 No production system supplies these messages yet. Native/browser visual movement,
 automatic timing/admission, full collision eligibility and both complete control
 modes remain unchecked or unimplemented. Research and comparison artifacts remain
