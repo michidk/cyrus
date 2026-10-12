@@ -560,8 +560,16 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
     };
     let mut history = SupportHistory::new(0, 0);
     let mut veto = 0;
+    cyrus_game::player::grounded::advance_animation(
+        &scene,
+        input.motion.nominal_ticks,
+        &mut history,
+        &mut animation,
+        &mut |_| Ok(()),
+    )
+    .unwrap();
     let frame = walk
-        .update(
+        .move_grounded(
             &query,
             &mut input,
             (&mut history, &mut veto),
@@ -572,7 +580,15 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
     assert_eq!(frame, Some(20));
     assert_eq!(walk.position, [start[0], start[1], start[2] + 512]);
     input.walk = false;
-    walk.update(
+    cyrus_game::player::grounded::advance_animation(
+        &scene,
+        input.motion.nominal_ticks,
+        &mut history,
+        &mut animation,
+        &mut |_| Ok(()),
+    )
+    .unwrap();
+    walk.move_grounded(
         &query,
         &mut input,
         (&mut history, &mut veto),
@@ -584,7 +600,15 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
     assert_eq!(animation.current_group(), Some(20));
     assert_eq!(walk.position, [start[0], start[1], start[2] + 512 + 682]);
     animation.force_request(3, 0, 0).unwrap();
-    walk.update(
+    cyrus_game::player::grounded::advance_animation(
+        &scene,
+        input.motion.nominal_ticks,
+        &mut history,
+        &mut animation,
+        &mut |_| Ok(()),
+    )
+    .unwrap();
+    walk.move_grounded(
         &query,
         &mut input,
         (&mut history, &mut veto),
@@ -644,16 +668,25 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
             },
             walk: false,
         };
+        let mut history = SupportHistory::new(0, 0);
+        let ordinary_frame = cyrus_game::player::grounded::advance_animation(
+            &scene,
+            input.motion.nominal_ticks,
+            &mut history,
+            &mut animation,
+            &mut |_| Ok(()),
+        )
+        .unwrap();
         let frame = walk
-            .update(
+            .move_grounded(
                 &query,
                 &mut input,
-                (&mut SupportHistory::new(0, 0), &mut 0),
+                (&mut history, &mut 0),
                 &mut animation,
                 &mut |_| Ok(()),
             )
             .unwrap();
-        assert_eq!(frame, Some(20));
+        assert_eq!(frame.or(ordinary_frame), Some(20));
         assert_eq!(walk.position, start);
         assert_eq!(animation.pending_group(), Some(3));
         assert!(animation.translation_suppressed());
@@ -689,4 +722,188 @@ fn forward_probe_rotates_installed_extent_and_walk_distance_without_changing_hei
         narrow.forward_probe(position, negative_ties).unwrap(),
         [100, -777, 198]
     );
+}
+
+#[test]
+fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses() {
+    use bevy::prelude::*;
+    use cyrus_game::{
+        AppState,
+        fidelity::Fidelity,
+        player::{
+            Player, PlayerPlugin,
+            data::{PlayerScene, PlayerSceneRequest},
+            grounded::SurfaceUpdate,
+            placement::{MarkerEntry, PlayerPose},
+            runtime::{GroundedTick, PlayerRuntime},
+        },
+    };
+    use cyrus_world::{
+        animation::{AnimationModel, AnimationPose, AnimationRequest},
+        sound::{SoundCue, SoundSurface},
+    };
+    let (_, mut animations) = data(serde_json::json!([
+        {"group_index":0,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":0},{"opcode":0,"frame_reference":32},{"opcode":2,"value":1}
+        ]},
+        {"group_index":20,"anim_type":1,"anim_id":1,"commands":[
+            {"opcode":4,"sound_param":7,"volume_shift":0},
+            {"opcode":0,"frame_reference":32},{"opcode":0,"frame_reference":33},{"opcode":2,"value":0}
+        ]}
+    ]));
+    animations.metadata["markers"] = serde_json::json!([
+        {"map_position":[512,-64,512],"position":[0,0,0],"reserved":1}
+    ]);
+    animations.metadata["actors"][0]["raan_entries"] = serde_json::json!([
+        {"file_path":"IDLE.3DC","frame_count":32},
+        {"file_path":"WALK.3DC","frame_count":32}
+    ]);
+    for model in ["IDLE", "WALK"] {
+        animations.models.insert(
+            model.into(),
+            AnimationModel {
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                encoding: "animated_i32".into(),
+                positions: vec![vec![]; 32],
+                normals: vec![vec![]; 32],
+            },
+        );
+    }
+    let mut scene = ground_scene(6);
+    scene.definition.as_mut().unwrap().ordinary_default_group = 0;
+    // IDLE has no radius: selecting candidates before animation advances must fail.
+    scene.model_radii.insert("WALK".into(), 100.0);
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<Assets<Animations>>()
+        .init_resource::<Assets<PlayerScene>>()
+        .add_message::<SoundCue>()
+        .add_plugins(PlayerPlugin);
+    let animation = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(animations);
+    let source = app
+        .world_mut()
+        .resource_mut::<Assets<PlayerScene>>()
+        .add(scene);
+    app.insert_resource(AnimationRequest(animation.clone()))
+        .insert_resource(PlayerSceneRequest(source.clone()));
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    assert!(app.world().get::<AnimationPose>(player).is_none());
+    let tick = |nominal_ticks, rotation| GroundedTick {
+        player,
+        entry: MarkerEntry::default(),
+        source: source.clone(),
+        animation: animation.clone(),
+        nominal_ticks,
+        frame_scale: 256,
+        view: [512, 512],
+        rotation,
+        collision_attribute: 6,
+        alternate_collision: false,
+        sidedness: true,
+        surface_update: SurfaceUpdate::Assign,
+        walk: true,
+    };
+    for _ in 0..2 {
+        app.world_mut()
+            .resource_mut::<Messages<GroundedTick>>()
+            .write(tick(1, Mat3::IDENTITY));
+    }
+    app.update();
+    assert_eq!(app.world().resource::<PlayerRuntime>().error, None);
+    let cues: Vec<_> = app
+        .world_mut()
+        .resource_mut::<Messages<SoundCue>>()
+        .drain()
+        .collect();
+    assert_eq!(cues.iter().filter(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 7, rate_offset_hz: 0 } } if *actor == player)).count(), 1);
+
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap().position,
+        [512 * 256, -64 * 256, 512 * 256 + 1194]
+    );
+    let pose = app.world().get::<AnimationPose>(player).unwrap();
+    assert_eq!((pose.model.as_str(), pose.frame), ("WALK", 1));
+    assert_eq!(
+        app.world().get::<SoundSurface>(player),
+        Some(&SoundSurface(6))
+    );
+    assert!(
+        (app.world().get::<Transform>(player).unwrap().translation.z - 1194.0 / 5120.0).abs()
+            < 1e-6
+    );
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(tick(0, Mat3::IDENTITY));
+    app.update();
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap().position[2],
+        512 * 256 + 2218
+    );
+    assert_eq!(app.world().get::<AnimationPose>(player).unwrap().frame, 1);
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(tick(1, Mat3::from_cols_array(&[f32::NAN; 9])));
+    app.update();
+    assert!(
+        app.world()
+            .resource::<PlayerRuntime>()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("nonfinite rotation")
+    );
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(tick(1, Mat3::IDENTITY));
+    app.update();
+    assert_eq!(
+        app.world().get::<PlayerPose>(player).unwrap().position[2],
+        512 * 256 + 2218
+    );
+    app.world_mut().resource_mut::<MarkerEntry>().marker = 9;
+    app.update();
+    assert!(app.world().get::<PlayerPose>(player).is_none());
+    assert!(app.world().get::<AnimationPose>(player).is_none());
+    assert!(app.world().get::<SoundSurface>(player).is_none());
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    app.update();
+    assert!(app.world().get_entity(player).is_err());
+    app.world_mut().resource_mut::<MarkerEntry>().marker = 0;
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    let replacement = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    assert_ne!(replacement, player);
+    app.world_mut()
+        .resource_mut::<Messages<GroundedTick>>()
+        .write(tick(1, Mat3::IDENTITY));
+    app.update();
+    assert_eq!(
+        app.world().get::<PlayerPose>(replacement).unwrap().position,
+        [512 * 256, -64 * 256, 512 * 256]
+    );
+    assert!(app.world().get::<AnimationPose>(replacement).is_none());
 }

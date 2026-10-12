@@ -1,4 +1,4 @@
-//! Checks the portable player cache against the installed ISLAND terrain.
+//! Installed player data, frame sources and the original walking release sequence.
 use cyrus_assets::install::GameInstall;
 use cyrus_game::player::data::PlayerScene;
 
@@ -95,9 +95,9 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
             .to_string()
             .contains("radius absent")
     );
-    let player = scene.definition.unwrap();
+    let player = scene.definition.as_ref().unwrap();
     assert_eq!(player.forward_walk, 8);
-    let terrain = scene.terrain.unwrap();
+    let terrain = scene.terrain.as_ref().unwrap();
     assert_eq!(
         terrain.texture([42008 * 256, 0, 40607 * 256]).unwrap(),
         Some(89)
@@ -112,6 +112,7 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     );
     let animations: cyrus_assets::animation::Animations =
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+    verify_walking_release(&scene, &animations);
     for name in ["CYRSA001", "CYRSA012"] {
         let bytes = std::fs::read(
             path.with_extension("player-models")
@@ -158,4 +159,112 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         }
     }
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::Animations) {
+    use cyrus_game::player::{
+        grounded::{ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
+        motion::upright_rotation,
+        walk::WalkingStartup,
+    };
+    use cyrus_world::{animation::ActorAnimation, collision::ground::SupportHistory};
+    let mut animation = ActorAnimation::from_asset(data, "CYRUS", 0).unwrap();
+    let mut reference = animation
+        .request_with_sounds(20, 0, 1, &mut |_| Ok(()))
+        .unwrap()
+        .unwrap();
+    for _ in 0..64 {
+        let frame = data.resolve_frame("CYRUS", reference).unwrap();
+        if frame.model == "CYRSA001" && frame.frame == 7 {
+            break;
+        }
+        reference = animation
+            .advance_with_sounds(1, &mut |_| Ok(()))
+            .unwrap()
+            .unwrap_or(reference);
+    }
+    let frame = data.resolve_frame("CYRUS", reference).unwrap();
+    assert_eq!((frame.model.as_str(), frame.frame), ("CYRSA001", 7));
+    let definition = scene.definition.as_ref().unwrap();
+    let mut walk = GroundedWalk {
+        position: [10_448_896, -190_464, 10_509_994],
+        surface: 0,
+        startup: WalkingStartup::new(definition.step_type).unwrap(),
+    };
+    for expected in [512, 682, 1024] {
+        assert_eq!(
+            walk.startup
+                .advance(definition.forward_walk, definition.forward_speed, 256, true),
+            expected
+        );
+    }
+    let mut input = GroundedUpdate {
+        motion: ForwardWalk {
+            heading: 0,
+            frame_scale: 256,
+            nominal_ticks: 1,
+        },
+        walk: false,
+    };
+    let mut history = SupportHistory::new(0, 0);
+    let mut veto = 0;
+    let mut z = walk.position[2];
+    for (group, model, pose, displacement, marker) in [
+        (20, "CYRSA001", 8, 2048, false),
+        (20, "CYRSA001", 9, 2048, false),
+        (20, "CYRSA001", 10, 2048, false),
+        (20, "CYRSA001", 11, 2048, false),
+        (20, "CYRSA001", 12, 2048, false),
+        (20, "CYRSA001", 26, 0, true),
+        (20, "CYRSA001", 27, 0, true),
+        (20, "CYRSA001", 28, 0, true),
+        (20, "CYRSA001", 29, 0, true),
+        (20, "CYRSA001", 30, 0, true),
+        (20, "CYRSA001", 31, 0, true),
+        (0, "CYRSA004", 1, 0, false),
+    ] {
+        reference = cyrus_game::player::grounded::advance_animation(
+            scene,
+            input.motion.nominal_ticks,
+            &mut history,
+            &mut animation,
+            &mut |_| Ok(()),
+        )
+        .unwrap()
+        .unwrap_or(reference);
+        let active = data.resolve_frame("CYRUS", reference).unwrap();
+        let candidates = scene
+            .candidates([40798, 40975], walk.position, Some(&active.model))
+            .unwrap();
+        let query = StaticGroundQuery {
+            scene,
+            candidates: &candidates,
+            rotation: upright_rotation(0),
+            collision_attribute: 15,
+            alternate_collision: false,
+            sidedness: false,
+            surface_update: SurfaceUpdate::Assign,
+        };
+        reference = walk
+            .move_grounded(
+                &query,
+                &mut input,
+                (&mut history, &mut veto),
+                &mut animation,
+                &mut |_| Ok(()),
+            )
+            .unwrap()
+            .unwrap_or(reference);
+        let frame = data.resolve_frame("CYRUS", reference).unwrap();
+        z += displacement;
+        assert_eq!((frame.model.as_str(), frame.frame), (model, pose));
+        assert_eq!(animation.current_group(), Some(group));
+        assert_eq!(animation.translation_suppressed(), marker);
+        assert_eq!(walk.position, [10_448_896, -190_464, z], "pose {pose}");
+        assert_eq!(
+            animation.pending_group(),
+            if group == 20 { Some(0) } else { None }
+        );
+    }
+    assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
 }

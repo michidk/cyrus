@@ -40,6 +40,15 @@ With animation enabled, a pending walking request does not advance startup.
 An active ordinary walking group can continue after input release without
 requesting the group again or replacing its pending idle request, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
+`PlayerPlugin` consumes explicit `GroundedTick` messages on native and browser.
+It retains walking/animation state, advances animation before selecting static
+candidates by the selected model radius, and updates `PlayerPose`, `Transform`,
+`AnimationPose` and `SoundSurface`. It sends authored cues through `SoundCue`.
+Multiple messages remain separate updates; zero nominal ticks can still move.
+Errors stop stepping until entry changes, and stale asset requests are discarded.
+The caller still supplies admission, timing, orientation, view and collision policy;
+no production clock or automatic keyboard-driven locomotion is enabled yet.
+
 The ordinary idle default comes from installed `attr_panic_group`, following
 [preservation](https://github.com/michidk/redguard-preservation/blob/976422b/docs/engine/player.md#ordinary-idle-animation-default).
 The forward probe uses installed bounds and walk distance with nearest-even
