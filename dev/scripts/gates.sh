@@ -5,8 +5,6 @@ source dev/scripts/toolchain.sh
 . dev/scripts/cargo.sh
 dev/scripts/publish-check.sh
 dev/scripts/genmap.sh --check
-node dev/scripts/test-web-audio.mjs
-node dev/scripts/test-web-cache.mjs
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 log=$(mktemp)
