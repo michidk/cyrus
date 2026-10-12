@@ -58,8 +58,11 @@ reach the authored points and return to the selected Movies entry; authored Quit
 exits. Native Load enters the starting world, F8/Tab/F7 update HUD state, and
 held flycam input leaves the player position unchanged. Browser audio/cache,
 movie streaming and server/package contracts pass. Current served WASM matches
-the optimized build. These checks establish runtime behavior, not visual or
-audible parity with the original.
+the optimized build. Headless browser checks at 1280×800 exercise URL startup
+skip, temporary Load artwork/progress, world entry and F1 in the loaded world.
+Native viewer GUI checks cover textured/unlit/solid rendering, edge overlays,
+JSON inspection and font preview. These checks establish runtime behavior, not
+visual or audible parity with the original.
 
 | Area | Remaining acceptance checks |
 | --- | --- |
@@ -68,10 +71,10 @@ audible parity with the original.
 | Animation and scripts | Production clock and eligible callers; rendered/audible sequences; actor removal and world replacement with active scripts, meshes and sounds |
 | Player | Complete startup/steady/release updates, ground and wall responses, native/browser input, original follow camera and flycam independence after integration |
 | HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser runtime inputs |
-| Startup and menu | Browser skip routes and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
+| Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
 | Browser tools | Persistent F1 through startup, menu, New Game and direct scenes; fidelity controls, current served assets and cache invalidation |
-| Asset viewer | Native GUI controls and media; the latest controls have headless browser checks and make no Faithful rendering claim |
+| Asset viewer | Native Orbit/Flycam movement, wireframe visibility and remaining media; inspection makes no Faithful rendering claim |
 | Releases | Exercise the new tagged release workflow and clean-machine packages; publishing has not validated the current flow |
 
 ## Resource coverage
