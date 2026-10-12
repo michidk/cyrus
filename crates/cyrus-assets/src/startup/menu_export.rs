@@ -1,5 +1,4 @@
 //! Installed book geometry, text, widgets, and defaults for portable presentation.
-use crate::install::GameInstall;
 use crate::{
     menu::MenuItem,
     menu::{
@@ -25,16 +24,22 @@ use std::{
 };
 
 /// Export data-defined menus without reading or writing save-game state.
-pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    crate::sound_export::export(install, cache).context("menu: exporting sound cues")?;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub fn export_menu(install: &crate::install::GameInstall, cache: &Path) -> anyhow::Result<()> {
+    let source = crate::native::Files::scan(install, false)?;
+    prepare_menu(&source, &mut crate::preparation::DiskOutput(cache))
+}
+
+pub(crate) fn prepare_menu(
+    source: &dyn crate::source::ReadAssets,
+    output: &mut dyn crate::preparation::Output,
+) -> anyhow::Result<()> {
+    crate::sound_export::prepare(source, output).context("menu: preparing sound cues")?;
     let read = |name: &str| {
-        std::fs::read(install.root.join(name)).with_context(|| format!("menu: reading {name}"))
+        crate::preparation::read(source, name).with_context(|| format!("menu: {name}"))
     };
     let ini_bytes = read("MENU.INI")?;
-    let world_path = rgpre::import::world_ini::find_world_ini(&install.root)
-        .context("menu: missing WORLD.INI")?;
-    let world_bytes = std::fs::read(&world_path)
-        .with_context(|| format!("menu: reading {}", world_path.display()))?;
+    let world_bytes = read("WORLD.INI")?;
     let world_text = std::str::from_utf8(&world_bytes).context("menu: WORLD.INI is not UTF-8")?;
     let new_game =
         rgpre::import::world_ini::NewGameEntry::parse(world_text).map_err(anyhow::Error::msg)?;
@@ -50,18 +55,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         .flash_filename
         .as_deref()
         .context("menu: WORLD.INI new-game transition artwork is missing")?;
-    let mut flash_path = install.root.clone();
-    for part in flash_name.split(['\\', '/']) {
-        ensure!(
-            !part.is_empty() && !matches!(part, "." | "..") && !part.contains(':'),
-            "menu: WORLD.INI invalid transition path {flash_name}"
-        );
-        flash_path = crate::scene::find_file(&flash_path, part).with_context(|| {
-            format!("menu: WORLD.INI transition artwork {flash_name} is missing")
-        })?;
-    }
-    let flash_bytes = std::fs::read(&flash_path)
-        .with_context(|| format!("menu: reading {}", flash_path.display()))?;
+    let flash_bytes = read(flash_name)?;
     let decoded = parse_gxa_file(&flash_bytes)
         .with_context(|| format!("menu: transition artwork {flash_name}"))?;
     ensure!(
@@ -169,7 +163,7 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             }
         }
     }
-    let output = cache.join("menu");
+    let directory = Path::new("menu");
     let mut fingerprint = DefaultHasher::new();
     (
         12u32,
@@ -186,16 +180,16 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     )
         .hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
-    if std::fs::read_to_string(output.join("source.txt"))
-        .ok()
+    if output
+        .read(&directory.join("source.txt"))
+        .and_then(|bytes| String::from_utf8(bytes).ok())
         .as_deref()
         == Some(&fingerprint)
-        && output.join("book.menu").is_file()
-        && output.join("font.ttf").is_file()
+        && output.exists(&directory.join("book.menu"))
+        && output.exists(&directory.join("font.ttf"))
     {
         return Ok(());
     }
-    std::fs::create_dir_all(&output)?;
     let palette = Palette::parse(&palette_bytes).context("menu: REDGUARD.COL")?;
     let mut textures = Vec::new();
     let mut references = BTreeMap::new();
@@ -317,12 +311,12 @@ pub fn export_menu(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         repeat_seconds: preferences.repeat_ticks as f32 / 18.2,
     };
     book.validate()?;
-    std::fs::write(
-        output.join("font.ttf"),
-        rgpre::import::fnt_ttf::build_ttf_from_fnt(&parse_fnt(&normal_bytes)?, "Redguard menu")?,
+    output.publish(
+        &directory.join("font.ttf"),
+        &rgpre::import::fnt_ttf::build_ttf_from_fnt(&parse_fnt(&normal_bytes)?, "Redguard menu")?,
     )?;
-    std::fs::write(output.join("book.menu"), serde_json::to_vec(&book)?)?;
-    std::fs::write(output.join("source.txt"), fingerprint)?;
+    output.publish(&directory.join("book.menu"), &serde_json::to_vec(&book)?)?;
+    output.publish(&directory.join("source.txt"), fingerprint.as_bytes())?;
     Ok(())
 }
 

@@ -89,7 +89,7 @@ pub struct Viewer {
     pub position: f64,
     pub volume: f32,
     pub seek_dirty: bool,
-    pub movie: Option<cyrus_assets::media::Movie>,
+    pub movie: Option<cyrus_media::Movie>,
     pub movie_blob: Option<Handle<loading::Blob>>,
     pub decoding: bool,
     details: bool,

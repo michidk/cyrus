@@ -26,43 +26,36 @@ pub fn export_scene_reporting(
     out: &Path,
     progress: &dyn Fn(usize, usize, &str),
 ) -> anyhow::Result<()> {
-    let total = SCENE_STAGES.len();
-    let stage = |index: usize| progress(index, total, SCENE_STAGES[index]);
-    stage(0);
-    let mut world = crate::native::geometry::world(&install.root, name)?;
-    let entry = world.entry.clone();
-    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)?;
+    struct Reporting<'a> {
+        files: crate::native::Files,
+        progress: &'a dyn Fn(usize, usize, &str),
     }
-    stage(1);
-    crate::animation_export::export(&world.rgm, &world.models, &world.registry, entry.index, out)?;
-    stage(2);
-    let player_model_radii = crate::player_export::models::export(
-        &world.rgm,
-        &world.registry,
-        &world.palette,
-        &mut world.textures,
-        out,
-    )?;
-    stage(3);
-    crate::environment_export::export(install, &entry, world.terrain.as_deref(), out)?;
-    stage(4);
-    crate::player_export::export(
-        &install.root,
-        &world.rgm,
-        world.terrain.as_deref(),
-        entry.index,
-        &player_model_radii,
-        out,
-    )?;
-    stage(5);
-    crate::native::publish(out, &world.glb)?;
-    progress(total, total, "World ready");
-    info!(
-        "scene {name}: exported {} models to {}",
-        world.models.len(),
-        out.display()
+    impl crate::source::ReadAssets for Reporting<'_> {
+        fn manifest(&self) -> &crate::source::Manifest {
+            self.files.manifest()
+        }
+        fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+            self.files.read_range(path, start, length)
+        }
+        fn progress(&self, done: usize, total: usize, stage: &str) {
+            (self.progress)(done, total, stage);
+        }
+    }
+    let source = Reporting {
+        files: crate::native::Files::scan(install, false)?,
+        progress,
+    };
+    let filename = Path::new(
+        out.file_name()
+            .ok_or_else(|| anyhow::anyhow!("scene output has no filename"))?,
     );
+    crate::game::scene(
+        &source,
+        name,
+        filename,
+        &mut crate::preparation::DiskOutput(out.parent().unwrap_or(Path::new("."))),
+    )?;
+    info!("scene {name}: exported to {}", out.display());
     Ok(())
 }
 

@@ -1,6 +1,7 @@
-//! Browser fetch backpressure and streamed WAV audio retain bounded movie preparation.
+//! Browser fetch backpressure and packet PCM retain bounded movie preparation.
 use bevy::platform::time::Instant;
-use cyrus_assets::movie::{Prepared, stream::MovieStream};
+use cyrus_assets::movie::Prepared;
+use cyrus_media::MovieStream;
 use std::collections::VecDeque;
 use wasm_bindgen::prelude::*;
 
@@ -13,6 +14,16 @@ extern "C" {
         duration: f64,
         frame_seconds: f64,
     ) -> Result<u32, JsValue>;
+    #[wasm_bindgen(catch, js_name = movieAudio)]
+    fn movie_audio(
+        id: u32,
+        pcm: &[u8],
+        rate: u32,
+        channels: u16,
+        bits: u16,
+        start_sample: f64,
+        last: bool,
+    ) -> Result<(), JsValue>;
     #[wasm_bindgen(js_name = movieChunk)]
     fn movie_chunk(id: u32) -> JsValue;
     #[wasm_bindgen(js_name = movieError)]
@@ -54,7 +65,10 @@ impl BrowserMovie {
         .map_err(|error| anyhow::anyhow!("movie {}: {error:?}", movie.metadata.definition.name))?;
         Ok(Self {
             id,
-            stream: MovieStream::new(movie.metadata.clone()),
+            stream: MovieStream::new(
+                movie.metadata.codec_format(),
+                if movie.metadata.has_audio { 0x81 } else { 0x80 },
+            ),
             frames: VecDeque::new(),
             target: 1,
             total: movie.metadata.frames,
@@ -75,6 +89,18 @@ impl BrowserMovie {
             && start.elapsed() < super::movie::BROWSER_DECODE_BUDGET
         {
             if let Some(frame) = self.stream.next_frame()? {
+                if let Some(audio) = frame.audio {
+                    movie_audio(
+                        self.id,
+                        audio.pcm,
+                        audio.rate,
+                        audio.channels,
+                        audio.bits,
+                        audio.start_sample as f64,
+                        frame.number == self.total,
+                    )
+                    .map_err(|error| anyhow::anyhow!("movie {}: audio: {error:?}", self.name))?;
+                }
                 if frame.number >= self.target {
                     self.frames.push_back((
                         frame.number,

@@ -1,7 +1,7 @@
 //! Format adapters use preservation parsers and exporters, never binary layout knowledge.
 use super::{Library, geometry};
 use crate::source::{AssetFile, ReadAssets};
-use crate::{Content, Entry, Picture, Preview, Source, media};
+use crate::{Content, Entry, Picture, Preview, Source};
 use anyhow::{Context, Result, ensure};
 use rgpre::{
     gltf,
@@ -719,7 +719,7 @@ fn audio<R: ReadAssets>(
     channels: u16,
     bits: u16,
 ) -> Result<Content> {
-    let wav = media::pcm_wav(pcm, rate, channels, bits)?;
+    let wav = cyrus_media::pcm_wav(pcm, rate, channels, bits)?;
     let metadata = preview.metadata.get_or_insert_with(|| json!({}));
     let pcm_metadata = json!({"sample_rate":rate,"channels":channels,"bits_per_sample":bits,"sample_frames":pcm.len() / (usize::from(channels) * usize::from(bits / 8)),"bytes":pcm.len()});
     metadata
@@ -730,7 +730,7 @@ fn audio<R: ReadAssets>(
     library.publish(&url, &wav)?;
     Ok(Content::Audio {
         wav: url,
-        peaks: media::peaks(pcm, bits, 1024),
+        peaks: cyrus_media::peaks(pcm, bits, 1024),
         seconds: pcm.len() as f64 / (f64::from(rate) * f64::from(channels) * f64::from(bits / 8)),
     })
 }
@@ -745,44 +745,22 @@ fn movie<R: ReadAssets>(
         json!({"width":header.width,"height":header.height,"frame_count":header.frames,"frame_interval_microseconds":header.frame_micros,"double_height":header.double_height,"has_audio":header.has_audio}),
     );
     library.source.progress(0, 1, "Opening movie decoder");
-    let mut decoder = smk::Smk::open_memory(bytes)?;
-    let info = decoder.info();
-    let audio = decoder.info_audio();
     let url = library.output(&entry.id, "smk");
     library.publish(&url, bytes)?;
-    let indices: Vec<usize> = (0..7)
-        .filter(|index| audio.track_mask & (1 << index) != 0)
-        .collect();
-    let mut pcm: [Vec<u8>; 7] = std::array::from_fn(|_| Vec::new());
-    for &index in &indices {
-        decoder.enable_audio(index as u8, true);
-    }
-    decoder.enable_video(false);
-    if !indices.is_empty() {
-        decoder.first_frame()?;
-        for frame in 0..info.frame_count {
+    let (audio, pcm) =
+        cyrus_media::audio_tracks(std::io::Cursor::new(bytes), 0x7f, |frame, frames| {
             if frame % 120 == 0 {
-                library.source.progress(
-                    frame as usize,
-                    info.frame_count as usize,
-                    "Decoding movie audio",
-                );
+                library
+                    .source
+                    .progress(frame as usize, frames as usize, "Decoding movie audio");
             }
-            if frame > 0 {
-                decoder.next_frame()?;
-            }
-            for &index in &indices {
-                if let Some(chunk) = decoder.audio_data(index as u8) {
-                    pcm[index].extend_from_slice(chunk);
-                }
-            }
-        }
-    }
+        })?;
+    let indices = (0..7).filter(|index| audio.track_mask & (1 << index) != 0);
     let mut audio_tracks = Vec::new();
     let mut audio_errors = Vec::new();
     for index in indices {
         let wav = library.output(&entry.id, &format!("track-{index}.wav"));
-        let wav_bytes = match media::pcm_wav(
+        let wav_bytes = match cyrus_media::pcm_wav(
             &pcm[index],
             audio.rate[index],
             audio.channels[index].into(),
@@ -811,7 +789,7 @@ fn movie<R: ReadAssets>(
     Ok(Content::Movie {
         smk: url,
         audio_tracks,
-        seconds: info.frame_count as f64 * info.microseconds_per_frame / 1_000_000.,
+        seconds: f64::from(header.frames) * f64::from(header.frame_micros) / 1_000_000.,
     })
 }
 fn gxa_images(bytes: &[u8], preview: &mut Preview) -> Result<Content> {

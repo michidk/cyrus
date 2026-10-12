@@ -9,12 +9,13 @@ use std::{
     path::Path,
 };
 
-pub(crate) fn export(
+pub(crate) fn prepare(
     map: &rgm::RgmFile,
     registry: &Registry,
     palette: &Palette,
     textures: &mut TextureCache,
     out: &Path,
+    output: &mut dyn crate::preparation::Output,
 ) -> anyhow::Result<BTreeMap<String, f32>> {
     let metadata = rgm::export_rgm_metadata_json(map, None);
     let actors = metadata["actors"]
@@ -40,7 +41,6 @@ pub(crate) fn export(
         names.insert(name.to_ascii_uppercase());
     }
     let directory = out.with_extension("player-models");
-    std::fs::create_dir_all(&directory)?;
     let mut radii = BTreeMap::new();
     for name in names {
         let entry = registry
@@ -52,8 +52,13 @@ pub(crate) fn export(
             })
             .min_by_key(|entry| registry.source_rank_key(&entry.path))
             .with_context(|| format!("CYRUS model {name}: standalone frame source unavailable"))?;
-        let model = model3d::parse_3d_file(&std::fs::read(&entry.path)?)
-            .with_context(|| format!("CYRUS model {name}: {}", entry.path.display()))?;
+        let model = model3d::parse_3d_file(
+            entry
+                .data
+                .as_deref()
+                .with_context(|| format!("CYRUS model {name}: bytes absent"))?,
+        )
+        .with_context(|| format!("CYRUS model {name}: {}", entry.path.display()))?;
         radii.insert(name.clone(), model.header.radius as f32 / 256.0);
         let model = rgm::PositionedModel {
             model,
@@ -66,7 +71,7 @@ pub(crate) fn export(
         let (root, buffer) =
             convert_positioned_models_to_gltf(&[model], &[], Some(palette), Some(textures), false)
                 .with_context(|| format!("CYRUS model {name}: GLB export"))?;
-        crate::native::publish(
+        output.publish(
             &directory.join(format!("{name}.glb")),
             &to_glb(&root, &buffer)?,
         )?;

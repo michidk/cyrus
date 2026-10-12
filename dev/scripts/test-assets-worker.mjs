@@ -70,7 +70,7 @@ const clip = catalog.entries.find(entry => entry.source.Speech === 0);
 assert.equal(clip.name, "TEST");
 assert.equal(clip.category, "Speech");
 const preview = library.preview(clip.id);
-assert.ok(progress.some(([done, total, name]) => done > 0 && done < total && name.includes("MiB")), "selected resource reports intermediate progress");
+assert.ok(progress.some(([done, total, name]) => done > 0 && done < total && name.includes("ENGLISH.RTX")), "selected resource reports intermediate progress");
 assert.ok(JSON.parse(preview.preview).content.Audio);
 assert.deepEqual(Buffer.from(preview.files[0][1]).subarray(44), pcm, "chunk boundaries preserve the audio bytes");
 library.free();

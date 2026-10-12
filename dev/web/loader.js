@@ -1,6 +1,6 @@
 import { chooseInstall } from "./install.js";
 
-// Bevy owns the output context; resume it inside the browser's trusted input event.
+// Resume playback contexts inside the browser's trusted input event.
 if (globalThis.AudioContext) {
   const contexts = new Set();
   const AudioContext = globalThis.AudioContext;
@@ -60,7 +60,17 @@ try {
     } else if (!params.has("asset") && (params.has("file") || params.has("palette"))) {
       throw new Error("file and palette require asset");
     }
-    await chooseInstall();
+    const source = await chooseInstall();
+    if (engine === "cyrus-web") {
+      const { openGameAssets } = await import('./game-assets.js');
+      globalThis.cyrusGameAssets = await openGameAssets(source.url, { progress(done, total, name) {
+        if (!label.isConnected) return;
+        label.textContent = name;
+        fill.classList.toggle('indeterminate', !total);
+        fill.style.width = total ? (100 * done / total) + '%' : '0%';
+      } });
+      document.querySelector('meta[name=cyrus-worlds]').content = globalThis.cyrusGameAssets.worlds.join(',');
+    }
   }
   if ("serviceWorker" in navigator) {
     try {

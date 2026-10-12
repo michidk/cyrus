@@ -1,5 +1,7 @@
 //! Browser game host using the selected install service for prepared assets.
 
+#[cfg(target_arch = "wasm32")]
+mod assets;
 mod bindings;
 mod debug;
 mod preferences;
@@ -21,7 +23,10 @@ fn main() {
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
     ));
-    cyrus_app::register_cache(&mut app).expect("browser cache source");
+    #[cfg(target_arch = "wasm32")]
+    assets::register(&mut app);
+    #[cfg(not(target_arch = "wasm32"))]
+    cyrus_app::register_cache(&mut app).expect("cache source");
 
     app.add_plugins(
         DefaultPlugins

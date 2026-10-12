@@ -7,18 +7,17 @@ selection and localStorage preferences; it has no native control port.
 ```sh
 just web-build
 just run-web --install /path/to/Redguard
-# Use --exporter /path/to/cyrus to select the native preparation executable.
 ```
 
 The server validates the read-only install and provides its URL to both the game
-and viewer automatically. It prepares startup and requested worlds through the
-native game exporter, outside the install under `cyrus-config/web/`. Browser builds
+and viewer automatically. The WASM worker prepares startup and requested worlds
+from those original bytes in memory. Browser builds
 contain code only and do not link the local install or its exports into the web root.
 For an extracted browser archive, run:
 
 ```sh
 python3 viewer-server.py --directory . --page index.html --port 8080 \
-  --install /path/to/Redguard --exporter /path/to/cyrus
+  --install /path/to/Redguard
 ```
 
 Without a supplied or remembered URL, startup asks "Where are the game files?".
@@ -27,8 +26,8 @@ with the viewer, and checks the original files at each launch. Missing files reo
 the picker. URL `install` overrides
 the server default, which overrides the saved URL. Server `--install-url URL`
 provides a remote default. Cross-origin services require CORS and byte-range support.
-The manifest's `cache` field locates prepared game assets; a static original-file
-host without game preparation supports only the viewer.
+A static original-file host with a manifest supports both game and viewer; no
+native exporter is required.
 
 | Browser URL | Native CLI |
 | --- | --- |
@@ -48,7 +47,7 @@ so the user never has to answer the prompt during testing.
 
 WASM downloads before Bevy starts; selected-host game assets load behind installed
 artwork. New Game and the temporary Load fallback wait for world dependencies.
-Movies use the prepared Smacker files and first-track audio; subtitle, interlace,
+Movies read compressed Smacker ranges and play incrementally decoded first-track PCM; subtitle, interlace,
 skip and menu-return rules share the native implementation. Quit attempts tab
 closure and keeps running when refused. F1 opens the world,
 flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and

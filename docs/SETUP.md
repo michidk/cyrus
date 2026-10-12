@@ -64,7 +64,7 @@ Build with `just viewer-web-build`, without an install. Run
 The browser parses them in a worker and generates selected previews in memory.
 
 The game and viewer share `target/web`, the loader, Cache Storage, and the
-selected read-only install service. The game prepares its cache outside the install.
+selected read-only install service. Both prepare assets in browser memory.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
 
 ## Releases
@@ -100,8 +100,8 @@ Actions artifacts expire after seven days; GitHub release assets remain availabl
 Archives contain application code and crate usage instructions. They contain
 no game files, exported previews, or local state. Native executables still need
 the player's GOG install. Browser bundles ask for an install-service URL, remember it, and validate it on
-each launch. The service supplies original files for the viewer and uses the native
-game exporter to prepare game assets outside the install. Downloading an artifact does not establish runtime or fidelity
+each launch. The service supplies read-only original files; a WASM worker prepares game and
+viewer assets in memory. Downloading an artifact does not establish runtime or fidelity
 support on that platform.
 
 ## Browser build
@@ -116,9 +116,8 @@ Native `--scene`, `--skip-startup`, `--water`, `--fog`, and `--sky` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
-The game also needs the manifest's `cache` URL for prepared game assets.
-The browser asset cache retries interrupted prepared-asset downloads up to
-three attempts before reporting a loading error; only complete downloads are cached.
+The WASM worker prepares game assets from that manifest and original bytes.
+Original reads use bounded requests, a transport retry and contextual errors.
 See the crate READMEs for the complete mappings.
 
 Both native applications discover `./redguard`, `./Redguard`,
@@ -154,13 +153,12 @@ web server or `?install=<encoded-service-URL>` to an existing preview. Do not
 make the user fill in the picker for an agent's test.
 
 `viewer-server.py` serves both applications. Its `--install` flag provides the
-original files and shared browser default, and `--exporter /path/to/cyrus` selects
-the native game used for preparation. It otherwise finds `cyrus` on PATH or under
-`target/debug` and `target/release`. The game generates startup and requested worlds
-on demand under `cyrus-config/web/`, separated by install identity. The server
-binds to loopback; remote install hosts need CORS and HTTP byte-range support.
-A static original-file host works for the viewer; the game requires prepared
-assets or the install service's native exporter.
+read-only original files and shared browser default. The WASM worker prepares
+startup and requested worlds in memory through the same byte-source exporters
+used natively. Cinematics read bounded compressed ranges and decode first-track
+PCM during playback. The server binds to loopback; remote or static original-file
+hosts need a manifest, CORS and HTTP byte-range support. No native executable or
+prepared cache is required by the browser.
 
 For manual export, prepare startup with `cargo run -p cyrus -- --export-startup`. The exporter
 reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
@@ -170,7 +168,7 @@ needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
 the Windows Glide splash; the full DOS overlay contains the older shield logo.
 The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
-documents both paths. Re-export browser startup caches after updating. Enter, Space, or Escape advances startup.
+documents both paths. Enter, Space, or Escape advances startup.
 `--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--scene` loads
 a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.
@@ -194,24 +192,22 @@ builds, and to native speech. The book menu plays its installed CD track. Cinema
 
 Movies browses the initially unlocked entries and installed previews. Native
 playback reads the configured movie file or GOG `game.gog` beside the install
-into memory and decodes it in-process; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
+through a bounded sequential reader; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and GUI font, and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
 skip point, or finishes after the last one. Playback returns to the same menu
 selection. Native playback does not write movie data to `cache/`.
-For browser playback, `--export-startup` also exports the browsable compressed
-Smacker files, first-track WAV audio, subtitle definitions, and configured font
-into `cyrus-config/cache/movies/`. The browser downloads the selected cinematic
-on demand, decodes compressed frames as they arrive, and streams the WAV through
-the browser audio player. Playback starts with the first frame and audio data;
-it does not wait for complete media downloads. The same skip, subtitle, interlace,
-and menu-return rules apply. Forward skips decode preceding delta frames.
-The local preview server supports byte ranges for audio seeking; other hosts must
-support them too. Existing movie exports remain compatible; rebuild the browser.
-The export includes CD tracks under `cache/music/` and their installed world
-assignments in the sound bank. A key press or pointer release activates browser
-audio. Runtime exceptions and graphics context loss produce a visible error
-above the game.
+Browser playback reads the selected cinematic's compressed original ranges on
+demand. The shared codec decodes indexed frames and first-track PCM together;
+Web Audio plays bounded PCM blocks using its sample clock. Playback starts with
+the first frame and audio data, without complete media downloads. The same skip,
+subtitle, interlace and menu-return rules apply. Forward skips decode preceding
+delta frames. Closing playback cancels further reads and releases queued audio.
+Original-file hosts must support byte ranges. The worker also prepares CD WAV
+tracks and installed world assignments for music. A key press or pointer release
+activates browser audio. Runtime exceptions and graphics context loss produce a
+visible error above the game.
+
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Progression
 unlocks remain unavailable. Native Quit closes the book and exits. Browser Quit
@@ -223,15 +219,14 @@ destination artwork and red percentage bar until required assets and dependencie
 are ready. Bottom-right red text reports native preparation stages, the pending asset filename,
 and scene entry using the installed font. The startup title also updates its bottom-right
 red label during menu/HUD preparation, menu loading and browser sound loading.
-These labels describe cyrus loading stages. Re-export browser startup caches for
-these labels. Escape returns to the menu after a loading error. Full gameplay and
+These labels describe cyrus loading stages. Escape returns to the menu after a loading error. Full gameplay and
 story initialization remain pending. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font, plus the installed effects bank under `cache/sounds/` for browser menu
 playback without loading a world. Runtime redraws authored book frames and neighboring-page text during
 startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
 motion to settle; MCP drivers must wait for `state.menu.ready` after each page
 change. Timing uses the startup presentation cadence rather than original update
-performance. Re-export browser caches for the authored-model schema. Book/page
+performance. Book/page
 motion and navigation feedback play installed effects through the shared sound
 path on native and browser builds. **Verified:** the original default book menu has no pointer
 hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,

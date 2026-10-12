@@ -1,19 +1,16 @@
 #![cfg(all(feature = "native", not(target_arch = "wasm32")))]
 //! Installed-data contract: editing the local menu definition changes exported content.
-#[cfg(unix)]
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::startup::export_menu;
-#[cfg(unix)]
 use std::{path::PathBuf, time::SystemTime};
 
-#[cfg(unix)]
 #[test]
 fn installed_menu_labels_change_without_changing_action_handlers() {
     let root = std::env::var_os("REDGUARD_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
     let Ok(install) = GameInstall::open(&root) else {
-        eprintln!("SKIP menu export: no Redguard install linked");
+        eprintln!("skipped: no install (menu export)");
         return;
     };
     let temp: PathBuf = std::env::temp_dir().join(format!(
@@ -25,8 +22,7 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
             .as_nanos()
     ));
     std::fs::create_dir_all(&temp).unwrap();
-    // Only this temporary definition is writable; assets remain in the read-only install.
-    #[cfg(unix)]
+    // Copy inputs into a temporary manifest; only its local definitions are edited.
     for name in [
         "fxart",
         "fonts",
@@ -35,11 +31,15 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
         "system",
         "sound",
     ] {
-        std::os::unix::fs::symlink(
-            install.root.join(name).canonicalize().unwrap(),
-            temp.join(name),
-        )
-        .unwrap();
+        for entry in walkdir::WalkDir::new(install.root.join(name)) {
+            let entry = entry.unwrap();
+            let target = temp.join(entry.path().strip_prefix(&install.root).unwrap());
+            if entry.file_type().is_dir() {
+                std::fs::create_dir_all(target).unwrap();
+            } else if entry.file_type().is_file() {
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
     }
     let ini = std::fs::read_to_string(install.root.join("MENU.INI")).unwrap();
     let ini = ini.replace("QUIT", "EXIT NOW");
@@ -172,10 +172,4 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let error = export_menu(&edited, &cache).unwrap_err().to_string();
     assert!(error.contains("MENU.INI [page0] texture[0]"), "{error}");
     std::fs::remove_dir_all(temp).unwrap();
-}
-
-#[cfg(not(unix))]
-#[test]
-fn installed_menu_labels_change_without_changing_action_handlers() {
-    eprintln!("SKIP menu export: temporary install symlinks require Unix");
 }

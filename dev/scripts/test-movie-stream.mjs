@@ -97,3 +97,65 @@ assert.equal(sound.removed, true);
 assert.equal(sound.loaded, true);
 assert.equal(aborted, 2);
 console.log('movie stream: backpressure, underruns, seeking, audio failures and cancellation passed');
+
+const contexts = [];
+globalThis.AudioContext = class {
+    constructor() { this.currentTime = 0; this.destination = {}; this.buffers = []; this.sources = []; contexts.push(this); }
+    createBuffer(channels, samples, rate) {
+        const data = Array.from({ length: channels }, () => new Float32Array(samples));
+        const buffer = { data, rate, getChannelData: channel => data[channel] };
+        this.buffers.push(buffer);
+        return buffer;
+    }
+    createBufferSource() {
+        const source = { connect() {}, disconnect() {}, stop() { this.stopped = true; }, start(when, offset) { this.when = when; this.offset = offset; } };
+        this.sources.push(source);
+        return source;
+    }
+    resume() { return Promise.resolve(); }
+    close() { this.closed = true; return Promise.resolve(); }
+};
+globalThis.cyrusGameAssets = { response: (url, options) => fetch(url, options) };
+const packetId = movie.openMovie('/movies/0.smk', true, 2, 0.1);
+const context = contexts.at(-1);
+assert.equal(movie.movieReady(packetId), false);
+movie.movieAudio(packetId, new Uint8Array([0, 255, 128, 128]), 2, 2, 8, 0, false);
+assert.deepEqual([...context.buffers[0].data[0]], [-1, 0]);
+assert.deepEqual([...context.buffers[0].data[1]], [127 / 128, 0]);
+assert.equal(movie.movieReady(packetId), true);
+movie.movieVideoEnd(packetId, 2);
+movie.playMovie(packetId);
+await settle();
+context.currentTime = 0.5;
+assert.equal(movie.movieTime(packetId), 0.5);
+context.currentTime = 5;
+assert.equal(movie.movieTime(packetId), 1, 'PCM underrun freezes the sample clock');
+movie.movieAudio(packetId, new Uint8Array([0, 128, 255, 127]), 1, 1, 16, 1, false);
+assert.deepEqual([...context.buffers[1].data[0]], [-1, 32767 / 32768]);
+movie.movieTime(packetId);
+await settle();
+context.currentTime = 5.25;
+assert.equal(movie.movieTime(packetId), 1.25, 'new PCM resumes without skipping buffered samples');
+movie.seekMovie(packetId, 10);
+assert.equal(movie.movieTime(packetId), 10, 'forward seek retains its target sample time');
+movie.movieAudio(packetId, new Uint8Array([128, 128]), 2, 1, 8, 18, false);
+assert.equal(movie.movieReady(packetId), false, 'discard PCM before the forward skip target');
+movie.closeMovie(packetId);
+assert.equal(context.closed, true, 'closing playback releases its audio context');
+assert.ok(context.sources.every(source => source.stopped));
+console.log('packet PCM: sample conversion, bounded clock, underrun resume, forward skip and cancellation passed');
+
+const sampleRate = 44100;
+const roundingId = movie.openMovie('/movies/0.smk', true, 10, 0.1);
+const roundingContext = contexts.at(-1);
+movie.movieAudio(roundingId, new Uint8Array(4096), sampleRate, 1, 8, 49152, false);
+movie.seekMovie(roundingId, 49152 / sampleRate);
+movie.movieVideoEnd(roundingId, 2);
+movie.playMovie(roundingId);
+await settle();
+roundingContext.currentTime = 1;
+movie.movieTime(roundingId);
+movie.movieAudio(roundingId, new Uint8Array(4096), sampleRate, 1, 8, 53248, false);
+assert.equal(movie.movieReady(roundingId), true, 'adjacent sample blocks resume after an underrun despite fractional seconds');
+movie.closeMovie(roundingId);
+console.log('packet PCM: exact sample boundaries resume across fractional-second underruns');

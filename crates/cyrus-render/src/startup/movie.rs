@@ -4,12 +4,14 @@ use super::menu::MenuState;
 use super::menu::MovieRequest;
 use super::menu::MovieStatus;
 #[cfg(not(target_arch = "wasm32"))]
-use super::movie_native::{Packets, StreamingAudio};
+use super::movie_native::StreamingAudio;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::audio::{AddAudioSource, AudioPlayer, AudioSink, PlaybackSettings};
 use bevy::prelude::*;
 use cyrus_assets::movie::{MovieDefinition, Prepared};
 use cyrus_game::AppState;
+#[cfg(not(target_arch = "wasm32"))]
+use cyrus_media::Packets;
 use std::{sync::Mutex, time::Duration};
 #[cfg(target_arch = "wasm32")]
 pub(super) const BROWSER_DECODE_BUDGET: Duration = Duration::from_millis(8);
@@ -105,9 +107,11 @@ fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
         Duration::from_micros(u64::from(frame - 1) * u64::from(movie.metadata.frame_micros));
     let has_audio = movie.metadata.has_audio;
     let frame_micros = movie.metadata.frame_micros;
+    let format = movie.metadata.codec_format();
     std::thread::spawn(move || {
         let result = (|| -> anyhow::Result<()> {
-            let mut packets = Packets::new(&source, 0x80)?;
+            let mut packets = Packets::new(source.open()?, 0x80)?;
+            format.validate(&packets.codec)?;
             let info = packets.codec.info();
             anyhow::ensure!(
                 info.frame_count == frames
@@ -591,10 +595,12 @@ mod tests {
         let mut reader = movie.source.open().unwrap();
         let mut bytes = vec![0; 104];
         reader.read_exact(&mut bytes).unwrap();
-        let size = smk::Smk::header_size(&bytes).unwrap().unwrap();
+        let size = cyrus_media::codec::Smk::header_size(&bytes)
+            .unwrap()
+            .unwrap();
         bytes.resize(size, 0);
         reader.read_exact(&mut bytes[104..]).unwrap();
-        let codec = smk::Smk::open_stream(&bytes).unwrap();
+        let codec = cyrus_media::codec::Smk::open_stream(&bytes).unwrap();
         bytes.resize(size + codec.packet_size().unwrap(), 0);
         reader.read_exact(&mut bytes[size..]).unwrap();
         drop(reader);

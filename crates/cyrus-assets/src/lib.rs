@@ -7,7 +7,6 @@ pub mod decode;
 pub mod disc;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod install;
-pub mod media;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
 #[cfg(feature = "parsers")]
@@ -447,38 +446,43 @@ mod tests {
     }
 }
 
+#[cfg(feature = "parsers")]
+pub mod game;
+#[cfg(feature = "parsers")]
+mod preparation;
+
 pub mod animation;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod animation_export;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod audio;
 pub mod collision;
 pub mod environment;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod environment_export;
 pub mod hud;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod hud_export;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod loading;
 pub mod menu;
 pub mod movie;
 pub mod player;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod player_export;
 pub mod preferences;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod scene;
 pub mod script;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod script_export;
 pub mod sound;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod sound_export;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod startup;
 
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+#[cfg(feature = "parsers")]
 pub mod music;
 
 /// Number of cached Windows Glide splash frames, including the authored fade.

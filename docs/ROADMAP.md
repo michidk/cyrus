@@ -38,7 +38,7 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 
 | Work | Session |
 | --- | --- |
-| Media and audio crate extraction, in that order | Codex, `t3/check-movie-speed-chat`; `magic/artifacts/2026-10-12-crate-extraction/` |
+| Audio crate extraction | Codex, `t3/check-roadmap-next`; `magic/artifacts/2026-10-12-byte-source/` |
 | Startup/menu comparison and startup crate extraction after audio | Codex, `t3/compare-menu-presentation`; `magic/artifacts/2026-10-12-menu-comparison/` |
 | SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
@@ -50,7 +50,7 @@ Remaining animation scheduling, startup fidelity follow-up and stages 3–6 are 
 ### Crate boundaries
 
 - [x] Keep shared font metrics, wrapping and rasterization in `cyrus-text`; screen-specific text placement remains with presentation and FNT parsing with preservation.
-- [ ] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. Verify and push before starting audio extraction.
+- [x] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. **Verified:** installed streamed frame/PCM contracts, native headless START, installed WASM worker exports, metadata parity and isolated core/browser builds.
 - [ ] Extract `cyrus-audio`: effects, speech playback, music and browser sound-bank playback. Presentation supplies listener, startup readiness and cinematic pause state; preserve preference/animation/cue ordering and headless support. Start from the latest pushed media change.
 - [ ] Extract `cyrus-startup` after audio boundaries are established: splash, title, book menu, settings, cinematic presentation and world-entry loading, with one presentation facade.
 - [x] Extract `cyrus-collision` with terrain, model and static-world query contracts; keep player admission and response in gameplay and serialized inputs in assets.
@@ -111,8 +111,8 @@ settling reports unsupported water/terrain-edge support and retains the marker.
 | HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser restart persistence |
 | Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
-| Asset viewer | Other-platform runtime and browser media checks; native inspection controls pass, without a Faithful rendering claim. Game and viewer share asset code; browser game runtime parsing remains open |
-| Releases | Browser package job and publication after hosted-runner communication failure; clean-machine play/save/resume and other-platform runtime checks |
+| Asset viewer | Other-platform runtime and browser media checks; native inspection controls pass, without a Faithful rendering claim. Game and viewer share asset code; the installed WASM worker prepares game assets |
+| Releases | Clean-machine play/save/resume and other-platform runtime checks |
 
 Browser tooling verification is deferred at user request: F1 during unskipped
 startup, fidelity controls, render-distance editing/reset and cache reuse/invalidation.
@@ -149,10 +149,10 @@ screen or root access.
 - [x] Native/browser debug menu, independent flycam, world picker and F1 registration across camera replacement.
 - [x] Separate asset viewer with Orbit/Flycam, four shading modes, edge overlay and staged loading progress. **Verified:** [viewer increment](https://github.com/michidk/cyrus/commit/4ee41d8) includes viewer tests, installed gates and headless browser checks.
 - [x] Shared CLI/URL options, explicit browser install source, digest-based caching, byte-range serving and read-only install preparation.
-- [x] CI checks and native/browser packaging. Stable version tags build and publish packages; push/PR CI runs checks without packaging. **Verified:** [release workflow checks](https://github.com/michidk/cyrus/commit/938ae35); the new publishing flow remains unexercised.
+- [x] CI checks and native/browser packaging. Stable version tags build and publish packages; push/PR CI runs checks without packaging. **Verified:** [release workflow checks](https://github.com/michidk/cyrus/commit/938ae35); [v0.1.1 publication](https://github.com/michidk/cyrus/releases/tag/v0.1.1) passed with native/browser packages.
 - [x] Preservation release v0.8.0 integration, including the Windows splash parser. **Verified:** [migration checks](https://github.com/michidk/cyrus/commit/10a953b) cover installed workspace gates and optimized browser builds.
 - [x] Asset viewer review: failed previews are never cached, CD images fingerprint by size and time, asset lookup and catalog classification are shared, and the viewer UI is split per content kind. Game and viewer share one world geometry pipeline, cue-sheet parser, WAV writer, file lookup, world resolver, font conversion, atomic cache publish and loading overlay; native world preparation reports its stages on the entry bar. **Verified:** [viewer fixes](https://github.com/michidk/cyrus/commit/949ff34), [shared assets](https://github.com/michidk/cyrus/commit/e389da4) and [stage progress](https://github.com/michidk/cyrus/commit/9139981) pass installed tests and a headless START export; the painted stage bar is unobserved.
-- [ ] Browser game runtime parsing: port the remaining exporters to the byte-source trait so the browser worker prepares game assets without a server-side exporter.
+- [x] Browser game runtime parsing: remaining exporters use the byte-source trait and the browser worker prepares game assets without a server-side exporter. **Verified:** installed startup/menu/HUD/sound/START worker exports, bounded CD movie reads and native/WASM script metadata parity. Browser splash/menu interaction passed; complete movie interaction and audible parity remain open.
 - [ ] Audit skipped placements, missing assets, animation/script initialization failures and unsupported operations.
 - [ ] Produce matched original/cyrus scene and viewpoint captures.
 

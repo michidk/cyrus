@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+cyrus-media.workspace = true
 bevy = { workspace = true, features = ["default", "wav", "webgl2"] }
 cyrus-assets = { path = "../cyrus-assets", features = ["parsers"] }
 cyrus-app = { path = "../cyrus-app" }

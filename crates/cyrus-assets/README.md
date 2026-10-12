@@ -6,12 +6,14 @@ records. Runtime animation, collision queries, mesh bindings and audio handles
 belong to the consuming crates.
 
 The opt-in `native` feature enables read-only install discovery, preload scans,
-scene/startup/menu/HUD/movie export, and sound/CD/voice/font preparation through
-`rgpre`. It also enables native font conversion in `cyrus-text`. Export paths are
+native filesystem and disk-cache adapters. The `parsers` feature enables shared
+scene/startup/menu/HUD/movie and sound/CD/voice/font preparation through `rgpre`
+on native and browser targets. `game::prepare` returns cache-relative bytes from
+a `ReadAssets` source; the browser worker requires no server-side exporter. Export paths are
 caller-supplied; the install is never written. Sidecar filenames are stable; schema checks reject incompatible cache records. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
 Native movie preparation retains a read-only file or CD-image location and reads
-only metadata. Its bounded reader cancels CD extraction when dropped. Browser movie
-preparation loads metadata only; `movie::stream::MovieStream` consumes compressed
+only metadata. Its bounded reader closes the CD image when dropped. Browser movie
+preparation loads metadata only; `cyrus_media::MovieStream` consumes compressed
 chunks and discards decoded packets. The vendored `smk` codec adds sequential
 packet input without replacing the upstream decoder.
 
@@ -62,10 +64,10 @@ Re-export worlds before using explicit player model poses.
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`), pinned to the [inspection-data revision](https://github.com/michidk/redguard-preservation/compare/main...feat/viewer-inspection-data), owns parsing and recovered
+Preservation (`rgpre`), pinned to the [byte-range revision](https://github.com/michidk/redguard-preservation/compare/main...feat/cd-member-ranges), owns parsing and recovered
 engine rules. This crate owns install validation, catalog identities, portable
 preview descriptions, generated
-files, PCM conversion, and the portable movie decoder wrapper.
+files. `cyrus-media` owns PCM conversion and the portable movie decoder wrappers.
 
 Native game and viewer share `GameInstall::locate`, which resolves selected
 library/package folders and install descendants through `GameInstall::resolve`.

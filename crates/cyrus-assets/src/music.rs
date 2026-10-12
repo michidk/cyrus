@@ -1,11 +1,74 @@
 //! Read-only CD and world track preparation.
-use crate::{audio::pcm_wav, disc::cue_track, install::GameInstall, sound::ini_value};
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+use crate::{audio::pcm_wav, install::GameInstall};
+use crate::{disc::cue_track, sound::ini_value};
+use anyhow::Context;
 use rgpre::import::sfx::AudioType;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 use std::io::{Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+use std::path::PathBuf;
 const RED_BOOK_RATE: u32 = 44_100;
 
+pub(crate) fn settings_source(
+    source: &dyn crate::source::ReadAssets,
+) -> anyhow::Result<crate::sound::MusicSettings> {
+    let settings =
+        crate::sound::SoundSettings::parse(&crate::preparation::text(source, "SYSTEM.INI")?);
+    let ini = crate::preparation::text(source, "WORLD.INI")?;
+    let worlds = rgpre::import::world_ini::WorldIni::parse(&ini);
+    let world_tracks = worlds
+        .entries
+        .iter()
+        .map(|entry| {
+            let key = format!("world_redbook[{}]", entry.index);
+            let track = ini_value(&ini, "world", &key)
+                .unwrap_or("-1")
+                .parse::<i32>()
+                .with_context(|| format!("WORLD.INI {key}"))?;
+            Ok((entry.index, track))
+        })
+        .collect::<anyhow::Result<_>>()?;
+    Ok(crate::sound::MusicSettings {
+        enabled: settings.music,
+        volume: settings.redbook_volume,
+        world_tracks,
+    })
+}
+
+pub(crate) fn prepare_track(
+    source: &dyn crate::source::ReadAssets,
+    path: &str,
+    output: &mut dyn crate::preparation::Output,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let track = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .context("invalid music track")?
+        .parse::<u32>()?;
+    let cue = crate::preparation::text(source, "disc/game.ins")?;
+    let (name, start, end) = cue_track(&cue, track, true).map_err(anyhow::Error::msg)?;
+    let image = crate::preparation::path(source, &format!("disc/{name}"))?;
+    let info = source.manifest().find(&image).context("missing CD image")?;
+    let end = end.unwrap_or(info.bytes);
+    anyhow::ensure!(
+        start <= end && end <= info.bytes,
+        "CD track {track}: invalid byte range"
+    );
+    let pcm = source.read_range(&image, start, usize::try_from(end - start)?)?;
+    let bytes = cyrus_media::pcm_wav(
+        &pcm,
+        RED_BOOK_RATE,
+        AudioType::Stereo16.channels(),
+        AudioType::Stereo16.bits_per_sample(),
+    )?;
+    output.publish(Path::new(path), &bytes)
+}
+
 /// `world_redbook` of the world a scene name resolves to; `-1` when absent.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn world_track(install: &GameInstall, scene: &str) -> anyhow::Result<i32> {
     let index = crate::scene::world_index(install, scene)?;
     let path = rgpre::import::world_ini::find_world_ini(&install.root)
@@ -20,49 +83,34 @@ pub fn world_track(install: &GameInstall, scene: &str) -> anyhow::Result<i32> {
 }
 
 /// Installed music settings and WORLD.INI track assignments for a portable sound bank.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn settings(install: &GameInstall) -> anyhow::Result<crate::sound::MusicSettings> {
-    let settings = crate::audio::read_settings(install);
-    let path = rgpre::import::world_ini::find_world_ini(&install.root)
-        .ok_or_else(|| anyhow::anyhow!("music: missing WORLD.INI"))?;
-    let worlds = rgpre::import::world_ini::WorldIni::parse(&std::fs::read_to_string(path)?);
-    let world_tracks = worlds
-        .entries
-        .iter()
-        .map(|entry| Ok((entry.index, world_track(install, &entry.index.to_string())?)))
-        .collect::<anyhow::Result<_>>()?;
-    Ok(crate::sound::MusicSettings {
-        enabled: settings.music,
-        volume: settings.redbook_volume,
-        world_tracks,
-    })
+    settings_source(&crate::native::Files::scan(install, false)?)
 }
 
 /// Export menu and world CD tracks as WAV files without modifying the install.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    let settings = settings(install)?;
+    let source = crate::native::Files::scan(install, false)?;
+    let settings = settings_source(&source)?;
     if !settings.enabled {
         return Ok(());
     }
-    let cue = cue_path(install)
-        .ok_or_else(|| anyhow::anyhow!("music: no game.ins beside {}", install.root.display()))?;
     let tracks: std::collections::BTreeSet<_> = settings
         .world_tracks
         .values()
         .filter_map(|&value| u32::try_from(value).ok().filter(|&track| track > 0))
         .chain([2])
         .collect();
-    let out = cache.join("music");
-    std::fs::create_dir_all(&out)?;
+    let mut output = crate::preparation::DiskOutput(cache);
     for track in tracks {
-        crate::native::publish(
-            &out.join(format!("{track:02}.wav")),
-            &read_track(&cue, track).map_err(anyhow::Error::msg)?,
-        )?;
+        prepare_track(&source, &format!("music/{track:02}.wav"), &mut output)?;
     }
     Ok(())
 }
 
 /// Reads one audio track from the image a cue sheet names, as a playable WAV source.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn read_track(cue_path: &Path, track: u32) -> Result<Vec<u8>, String> {
     let context = |e: &dyn std::fmt::Display| format!("{} track {track}: {e}", cue_path.display());
     let cue = std::fs::read_to_string(cue_path).map_err(|e| context(&e))?;
@@ -85,12 +133,13 @@ pub fn read_track(cue_path: &Path, track: u32) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn cue_path(install: &GameInstall) -> Option<PathBuf> {
     let path = install.root.parent()?.join("game.ins");
     path.is_file().then_some(path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use crate::disc::SECTOR_BYTES;

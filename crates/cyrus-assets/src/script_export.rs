@@ -1,25 +1,36 @@
-//! Native SOUP cache export through preservation's typed decoder and installed definitions.
+//! Shared SOUP preparation through preservation's typed decoder and installed definitions.
 use crate::script::{
     Actor, CallKind, Definition, Flag, Function, Instance, Operation, Program, Scripts, Step,
 };
 use anyhow::{Context, Result};
 use rgpre::import::{
     rgm::{self, RgmFile, script_program::decode_script_program},
-    soup_def::{self, SoupFunctionKind},
+    soup_def::SoupFunctionKind,
 };
-use std::{collections::BTreeMap, path::Path};
+use std::collections::BTreeMap;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+use std::path::Path;
 
 /// Exports actor programs independently of mesh availability; unsupported actors remain visible.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
-    let config_path = crate::scene::find_file(root, "SYSTEM.INI")
-        .with_context(|| format!("world {world}: SYSTEM.INI absent"))?;
-    let config = rgpre::import::soup_ini::SoupConfig::parse(
-        &std::fs::read_to_string(&config_path)
-            .with_context(|| format!("world {world}: {}", config_path.display()))?,
-    )
+    let install = crate::install::GameInstall::open(root)?;
+    prepare_source(rgm, &crate::native::Files::scan(&install, false)?, world)
+}
+
+/// Decode the same actor programs and installed defaults on either target.
+pub fn prepare_source(
+    rgm: &RgmFile,
+    source: &dyn crate::source::ReadAssets,
+    world: u32,
+) -> Result<Scripts> {
+    let config = rgpre::import::soup_ini::SoupConfig::parse(&crate::preparation::text(
+        source,
+        "SYSTEM.INI",
+    )?)
     .map_err(anyhow::Error::msg)
     .with_context(|| format!("world {world} script settings"))?;
-    let definition = soup_def::load_soup_def(root).map_err(anyhow::Error::msg)?;
+    let definition = crate::preparation::soup(source)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
     let mut actors = BTreeMap::new();
     let mut unsupported = BTreeMap::new();
@@ -181,6 +192,7 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
     Ok(scripts)
 }
 
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn export(scripts: &Scripts, out: &Path) -> Result<()> {
     let path = out.with_extension("scripts");
     crate::native::publish(&path, &serde_json::to_vec(scripts)?)

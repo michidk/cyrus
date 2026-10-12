@@ -1,4 +1,3 @@
-use crate::install::GameInstall;
 use anyhow::Context;
 use rgpre::import::{
     fnt::parse_fnt, glide_splash_dll::parse_windows_glide_splash, gxa::parse_gxa_file,
@@ -10,27 +9,23 @@ use std::{
 
 /// Generates local presentation images from the player's own splash DLL and GXA.
 /// The install is read-only; every output stays under the supplied cache path.
-pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    let dll = crate::scene::find_file(&install.root, "3DfxSpl2.dll")
-        .or_else(|| {
-            install
-                .root
-                .parent()
-                .and_then(|parent| crate::scene::find_file(&parent.join("DOSBOX"), "3DfxSpl2.dll"))
-        })
-        .with_context(|| {
-            format!(
-                "startup: {}: installed 3DfxSpl2.dll is missing",
-                install.root.display()
-            )
-        })?;
-    let title = install.root.join("system/STARTUP2.GXA");
-    let read = |path: &Path| {
-        std::fs::read(path).with_context(|| format!("startup: reading {}", path.display()))
-    };
-    let dll_bytes = read(&dll)?;
-    let title_bytes = read(&title)?;
-    let system = read(&install.root.join("SYSTEM.INI"))?;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub fn export_startup(install: &crate::install::GameInstall, cache: &Path) -> anyhow::Result<()> {
+    let source = crate::native::Files::scan(install, false)
+        .context("startup: locating installed 3DfxSpl2.dll")?;
+    prepare_startup(&source, &mut crate::preparation::DiskOutput(cache))
+}
+
+pub(crate) fn prepare_startup(
+    source: &dyn crate::source::ReadAssets,
+    output: &mut dyn crate::preparation::Output,
+) -> anyhow::Result<()> {
+    let dll = crate::runtime::geometry::find_name(source, "3DfxSpl2.dll")
+        .context("startup: installed 3DfxSpl2.dll is missing")?;
+    let title = "system/STARTUP2.GXA";
+    let dll_bytes = source.read(&dll)?;
+    let title_bytes = crate::preparation::read(source, title)?;
+    let system = crate::preparation::read(source, "SYSTEM.INI")?;
     let system_text = std::str::from_utf8(&system).context("startup: SYSTEM.INI is not UTF-8")?;
     let mut section = "";
     let mut font_name = None;
@@ -49,27 +44,23 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
         }
     }
     let font_name = font_name.context("startup: SYSTEM.INI [system] gui_low_font is missing")?;
-    let mut font_path = install.root.clone();
-    for part in font_name.split(['\\', '/']) {
-        anyhow::ensure!(
-            !part.is_empty() && part != ".." && part != ".",
-            "startup: invalid gui_low_font path {font_name}"
-        );
-        font_path = crate::scene::find_file(&font_path, part)
-            .with_context(|| format!("startup: gui_low_font file {font_name} is missing"))?;
-    }
-    let font_bytes = read(&font_path)?;
+    let font_path = crate::preparation::path(source, font_name)?;
+    let font_bytes = source.read(&font_path)?;
     let font = cyrus_text::Font::from(
-        &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path.display()))?,
+        &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path))?,
     );
     let mut fingerprint = DefaultHasher::new();
     (5u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
-    let output = cache.join("startup");
-    let stamp = output.join("source.txt");
-    if std::fs::read_to_string(&stamp).ok().as_deref() == Some(&fingerprint)
+    let directory = Path::new("startup");
+    let stamp = directory.join("source.txt");
+    if output
+        .read(&stamp)
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .as_deref()
+        == Some(&fingerprint)
         && (0..crate::SPLASH_FRAMES)
-            .all(|frame| output.join(format!("splash-{frame:02}.png")).is_file())
+            .all(|frame| output.exists(&directory.join(format!("splash-{frame:02}.png"))))
         && [
             "title.png",
             "title-preparing.png",
@@ -77,26 +68,20 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
             "title-sound.png",
         ]
         .iter()
-        .all(|name| output.join(name).is_file())
+        .all(|name| output.exists(&directory.join(name)))
     {
         return Ok(());
     }
-    let splash = parse_windows_glide_splash(&dll_bytes)
-        .with_context(|| format!("startup: {}", dll.display()))?;
-    let decoded =
-        parse_gxa_file(&title_bytes).with_context(|| format!("startup: {}", title.display()))?;
+    let splash =
+        parse_windows_glide_splash(&dll_bytes).with_context(|| format!("startup: {}", dll))?;
+    let decoded = parse_gxa_file(&title_bytes).with_context(|| format!("startup: {}", title))?;
     let [title_frame] = decoded.frames.as_slice() else {
-        anyhow::bail!("startup: {}: expected one title frame", title.display());
+        anyhow::bail!("startup: {}: expected one title frame", title);
     };
     if (title_frame.width, title_frame.height) != (640, 480) {
-        anyhow::bail!("startup: {}: unsupported title dimensions", title.display());
+        anyhow::bail!("startup: {}: unsupported title dimensions", title);
     }
-    std::fs::create_dir_all(&output)
-        .with_context(|| format!("startup: creating {}", output.display()))?;
-    // An interrupted export must regenerate rather than accept a partial cache.
-    if stamp.exists() {
-        std::fs::remove_file(&stamp)?;
-    }
+    output.remove(&stamp)?;
     let final_image = super::raster::render(&splash, &splash.final_draws, 1.0);
     let mut fade_images = [final_image.clone(), final_image];
     for frame in 0..crate::SPLASH_FRAMES {
@@ -120,9 +105,9 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
             }
             image.clone()
         };
-        let path = output.join(format!("splash-{frame:02}.png"));
-        image
-            .save(&path)
+        let path = directory.join(format!("splash-{frame:02}.png"));
+        output
+            .image(&path, &image)
             .with_context(|| format!("startup: writing {}", path.display()))?;
     }
     let mut background = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
@@ -136,12 +121,12 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
     ] {
         let mut image = background.clone();
         draw_text(&mut image, &font, text, 630 - font.width(text), [50, 0, 0]);
-        let path = output.join(name);
-        image
-            .save(&path)
+        let path = directory.join(name);
+        output
+            .image(&path, &image)
             .with_context(|| format!("startup: writing {}", path.display()))?;
     }
-    std::fs::write(&stamp, fingerprint)?;
+    output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
 }
 

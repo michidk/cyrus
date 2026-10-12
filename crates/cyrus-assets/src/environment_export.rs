@@ -1,9 +1,11 @@
-//! Native extraction of per-world environment assets into the browser cache.
+//! Per-world environment preparation from original bytes on either target.
 use crate::environment::{Environment, SkyImage, SunImage, Water, water_vertices};
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 use crate::install::GameInstall;
+use crate::source::ReadAssets;
 use anyhow::Context;
 use rgpre::import::{bsi, fog_ini, palette::Palette, wld, world_ini::WorldEntry};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn value<'a>(ini: &'a str, key: &str, id: u32) -> Option<&'a str> {
     let key = format!("{key}[{id}]");
@@ -12,27 +14,6 @@ fn value<'a>(ini: &'a str, key: &str, id: u32) -> Option<&'a str> {
         .filter(|(k, _)| k.trim().eq_ignore_ascii_case(&key))
         .map(|(_, v)| v.trim())
         .next_back()
-}
-
-fn asset_path(root: &Path, relative: &str) -> anyhow::Result<PathBuf> {
-    let mut path = root.to_path_buf();
-    for component in relative.split(['\\', '/']) {
-        anyhow::ensure!(
-            !component.is_empty() && component != "." && component != "..",
-            "invalid asset path"
-        );
-        path = std::fs::read_dir(&path)?
-            .filter_map(Result::ok)
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .eq_ignore_ascii_case(component)
-            })
-            .map(|entry| entry.path())
-            .ok_or_else(|| anyhow::anyhow!("missing {relative}"))?;
-    }
-    Ok(path)
 }
 
 fn sky_parameter(ini: &str, key: &str, id: u32, default: i32) -> anyhow::Result<i32> {
@@ -97,21 +78,11 @@ fn clipping(system: &str, world: &str, id: u32) -> anyhow::Result<[f32; 2]> {
     Ok([near, far])
 }
 
-fn fog_table(root: &Path, id: u32) -> anyhow::Result<[[u8; 4]; 16]> {
-    let directory = asset_path(root, "fxart")?;
-    for filename in [format!("FOG{id}.INI"), "FOG.INI".into()] {
-        let path = std::fs::read_dir(&directory)?
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .find(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .eq_ignore_ascii_case(&filename)
-            });
-        if let Some(path) = path {
-            let table = fog_ini::parse_fog_ini(&std::fs::read_to_string(path.path())?)
-                .with_context(|| format!("world {id}: {}", path.path().display()))?;
+fn fog_table(source: &dyn ReadAssets, id: u32) -> anyhow::Result<[[u8; 4]; 16]> {
+    for filename in [format!("fxart/FOG{id}.INI"), "fxart/FOG.INI".into()] {
+        if let Some(file) = source.manifest().find(&filename) {
+            let table = fog_ini::parse_fog_ini(&source.text(&file.path)?)
+                .with_context(|| format!("world {id}: {}", file.path))?;
             return Ok(std::array::from_fn(|i| {
                 std::array::from_fn(|j| table[i * 4 + j])
             }));
@@ -131,19 +102,19 @@ fn background_color(ini: &str, id: u32) -> anyhow::Result<[u8; 3]> {
     channels.try_into().map_err(|_| anyhow::anyhow!(context()))
 }
 
-fn sun_image(root: &Path, ini: &str, id: u32) -> anyhow::Result<Option<SunImage>> {
+fn sun_image(source: &dyn ReadAssets, ini: &str, id: u32) -> anyhow::Result<Option<SunImage>> {
     let Some(filename) = value(ini, "world_sunimg", id).filter(|s| !s.is_empty()) else {
         return Ok(None);
     };
-    let path = asset_path(root, &format!("fxart/{filename}"))?;
-    let bytes =
-        std::fs::read(&path).with_context(|| format!("world {id}: sun {}", path.display()))?;
-    let file = bsi::parse_bsi_file(&bytes)
-        .with_context(|| format!("world {id}: sun {}", path.display()))?;
+    let path = crate::preparation::path(source, &format!("fxart/{filename}"))?;
+    let bytes = source
+        .read(&path)
+        .with_context(|| format!("world {id}: sun {}", path))?;
+    let file = bsi::parse_bsi_file(&bytes).with_context(|| format!("world {id}: sun {}", path))?;
     let frame = file
         .images
         .first()
-        .with_context(|| format!("world {id}: empty sun BSI {}", path.display()))?;
+        .with_context(|| format!("world {id}: empty sun BSI {}", path))?;
     anyhow::ensure!(
         file.images.len() == 1 && frame.frame_count == 1,
         "world {id}: unsupported multi-frame sun BSI"
@@ -189,29 +160,47 @@ fn sun_image(root: &Path, ini: &str, id: u32) -> anyhow::Result<Option<SunImage>
     }))
 }
 
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn export(
     install: &GameInstall,
     entry: &WorldEntry,
     terrain: Option<&wld::WldFile>,
     out: &Path,
 ) -> anyhow::Result<()> {
-    let ini = std::fs::read_to_string(asset_path(&install.root, "WORLD.INI")?)?;
-    let system = std::fs::read_to_string(asset_path(&install.root, "SYSTEM.INI")?)?;
+    let source = crate::native::Files::scan(install, false)?;
+    prepare(
+        &source,
+        entry,
+        terrain,
+        Path::new(out.file_name().context("environment output filename")?),
+        &mut crate::preparation::DiskOutput(out.parent().unwrap_or(Path::new("."))),
+    )
+}
+
+pub(crate) fn prepare(
+    source: &dyn ReadAssets,
+    entry: &WorldEntry,
+    terrain: Option<&wld::WldFile>,
+    out: &Path,
+    output: &mut dyn crate::preparation::Output,
+) -> anyhow::Result<()> {
+    let ini = crate::preparation::text(source, "WORLD.INI")?;
+    let system = crate::preparation::text(source, "SYSTEM.INI")?;
     let sky = if entry.world.is_some() && !sky_disabled(&system)? {
         value(&ini, "world_skyfx", entry.index)
             .map(|filename| -> anyhow::Result<SkyImage> {
                 let relative = format!("fxart/{filename}");
-                let path = asset_path(&install.root, &relative)?;
-                let file = bsi::parse_bsi_file(&std::fs::read(&path)?)
-                    .with_context(|| format!("sky {}", path.display()))?;
+                let path = crate::preparation::path(source, &relative)?;
+                let file = bsi::parse_bsi_file(&source.read(&path)?)
+                    .with_context(|| format!("sky {}", path))?;
                 let frame = file.images.first().context("empty sky BSI")?;
                 anyhow::ensure!(
                     file.images.len() == 1 && frame.frame_count == 1,
                     "unsupported multi-frame sky BSI"
                 );
                 let col = Path::new(&relative).with_extension("COL");
-                let col = asset_path(&install.root, &col.to_string_lossy())?;
-                let sky_palette = Palette::parse(&std::fs::read(col)?)?;
+                let col = crate::preparation::path(source, &col.to_string_lossy())?;
+                let sky_palette = Palette::parse(&source.read(&col)?)?;
                 // Glide sky sampling is opaque, including palette index 0.
                 let rgba = frame
                     .pixel_data
@@ -222,7 +211,7 @@ pub fn export(
                     })
                     .collect();
                 Ok(SkyImage {
-                    sun: sun_image(&install.root, &ini, entry.index)?,
+                    sun: sun_image(source, &ini, entry.index)?,
                     width: frame.width.into(),
                     height: frame.height.into(),
                     rgba,
@@ -242,7 +231,7 @@ pub fn export(
     // Verified Glide background fill in preservation's docs/engine/sky.md.
     let background = background_color(&ini, entry.index)?;
     let clipping = clipping(&system, &ini, entry.index)?;
-    let fog_table = fog_table(&install.root, entry.index)?;
+    let fog_table = fog_table(source, entry.index)?;
     let water = if let (Some(terrain), Some(parameters)) =
         (terrain, value(&ini, "world_wave", entry.index))
     {
@@ -298,7 +287,7 @@ pub fn export(
         water,
     };
     environment.validate()?;
-    crate::native::publish(
+    output.publish(
         &out.with_extension("environment"),
         &serde_json::to_vec(&environment)?,
     )?;

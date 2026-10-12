@@ -106,10 +106,138 @@ impl ReadAssets for HttpFiles {
     }
 }
 fn js_error(value: JsValue) -> anyhow::Error {
-    anyhow::anyhow!("{value:?}")
+    let message = value.as_string().or_else(|| {
+        js_sys::Reflect::get(&value, &JsValue::from_str("message"))
+            .ok()?
+            .as_string()
+    });
+    anyhow::anyhow!(message.unwrap_or_else(|| "browser request failed".into()))
 }
 fn bridge_error(error: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&error.to_string())
+}
+
+/// Game preparation bypasses the viewer catalog and keeps only the current movie's metadata.
+#[wasm_bindgen]
+pub struct GameLibrary {
+    source: HttpFiles,
+    movie: Option<(usize, cyrus_assets::movie::original::OriginalMovie)>,
+}
+#[wasm_bindgen]
+impl GameLibrary {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        base: String,
+        manifest: &str,
+        progress: js_sys::Function,
+    ) -> std::result::Result<GameLibrary, JsValue> {
+        let manifest: Manifest = serde_json::from_str(manifest).map_err(bridge_error)?;
+        manifest.validate().map_err(bridge_error)?;
+        Ok(Self {
+            source: HttpFiles {
+                base,
+                manifest,
+                progress,
+                reporting: true,
+            },
+            movie: None,
+        })
+    }
+    pub fn worlds(&self) -> std::result::Result<String, JsValue> {
+        serde_json::to_string(
+            &cyrus_assets::game::worlds(&self.source)
+                .map_err(|error| bridge_error(format!("{error:#}")))?,
+        )
+        .map_err(bridge_error)
+    }
+    pub fn prepare(&mut self, path: &str) -> std::result::Result<JsValue, JsValue> {
+        let files = (|| -> Result<_> {
+            cyrus_assets::validate_path(path)?;
+            if let Some(movie_path) = path.strip_prefix("movies/") {
+                let (index, extension) = movie_path
+                    .split_once('.')
+                    .context("invalid movie cache path")?;
+                self.ensure_movie(index.parse()?)?;
+                let movie = &self.movie.as_ref().context("movie preparation absent")?.1;
+                let bytes = match extension {
+                    "movie" => serde_json::to_vec(&movie.metadata)?,
+                    _ => anyhow::bail!("unsupported movie cache path {path}"),
+                };
+                Ok(std::collections::BTreeMap::from([(path.to_owned(), bytes)]))
+            } else {
+                cyrus_assets::game::prepare(&self.source, path)
+            }
+        })()
+        .map_err(|error| bridge_error(format!("{path}: {error:#}")))?;
+        let result = js_sys::Object::new();
+        js_sys::Reflect::set(&result, &"files".into(), &generated_files(files))?;
+        Ok(result.into())
+    }
+    pub fn movie_range(
+        &mut self,
+        index: usize,
+        start: f64,
+        length: u32,
+    ) -> std::result::Result<JsValue, JsValue> {
+        let result = (|| -> Result<_> {
+            ensure!(
+                start.is_finite()
+                    && start >= 0.
+                    && start.fract() == 0.
+                    && start <= 9_007_199_254_740_991.,
+                "invalid movie range start"
+            );
+            ensure!(
+                length > 0 && length <= 1024 * 1024,
+                "invalid movie range length"
+            );
+            self.ensure_movie(index)?;
+            let movie = &self.movie.as_ref().context("movie preparation absent")?.1;
+            let start = start as u64;
+            ensure!(start <= movie.size(), "movie range starts beyond payload");
+            let length = u64::from(length).min(movie.size() - start) as usize;
+            Ok((movie.read_range(&self.source, start, length)?, movie.size()))
+        })()
+        .map_err(|error| bridge_error(format!("movie {index}: {error:#}")))?;
+        let message = js_sys::Object::new();
+        js_sys::Reflect::set(
+            &message,
+            &"bytes".into(),
+            &js_sys::Uint8Array::from(result.0.as_slice()),
+        )?;
+        js_sys::Reflect::set(
+            &message,
+            &"total".into(),
+            &JsValue::from_f64(result.1 as f64),
+        )?;
+        Ok(message.into())
+    }
+}
+impl GameLibrary {
+    fn ensure_movie(&mut self, index: usize) -> Result<()> {
+        if self
+            .movie
+            .as_ref()
+            .is_none_or(|(current, _)| *current != index)
+        {
+            self.movie = Some((
+                index,
+                cyrus_assets::movie::original::prepare(&self.source, index)?,
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn generated_files(files: std::collections::BTreeMap<String, Vec<u8>>) -> js_sys::Array {
+    let result = js_sys::Array::new();
+    for (path, bytes) in files {
+        let file = js_sys::Array::new();
+        file.push(&path.into());
+        file.push(&js_sys::Uint8Array::from(bytes.as_slice()));
+        result.push(&file);
+    }
+    result
 }
 
 #[wasm_bindgen]

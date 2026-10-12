@@ -141,3 +141,36 @@ mod tests {
         assert!(pcm_wav(&[1], 44100, 2, 16).is_err());
     }
 }
+
+pub mod packets;
+pub mod stream;
+pub use packets::Packets;
+/// Existing Smacker codec for metadata and decoded packet access.
+pub use smk as codec;
+pub use stream::{MovieAudio, MovieFormat, MovieFrame, MovieStream};
+
+/// Decode selected audio tracks in packet order. Progress uses zero-based frames.
+/// Compressed input stays bounded; returned PCM contains the selected complete tracks.
+pub fn audio_tracks<R: std::io::Read>(
+    reader: R,
+    mask: u8,
+    mut progress: impl FnMut(u32, u32),
+) -> Result<(codec::AudioInfo, [Vec<u8>; 7])> {
+    let mut packets = Packets::new(reader, mask & 0x7f)?;
+    let info = packets.codec.info_audio();
+    let frames = packets.codec.info().frame_count;
+    let mut pcm: [Vec<u8>; 7] = std::array::from_fn(|_| Vec::new());
+    if mask & info.track_mask == 0 {
+        return Ok((info, pcm));
+    }
+    for frame in 0..frames {
+        progress(frame, frames);
+        ensure!(packets.advance()?, "missing movie packet {}", frame + 1);
+        for (track, output) in pcm.iter_mut().enumerate() {
+            if mask & info.track_mask & (1 << track) != 0 {
+                output.extend_from_slice(packets.codec.audio_data(track as u8).unwrap_or_default());
+            }
+        }
+    }
+    Ok((info, pcm))
+}

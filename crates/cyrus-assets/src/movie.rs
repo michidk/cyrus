@@ -5,7 +5,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
-pub mod stream;
+#[cfg(feature = "parsers")]
+pub mod original;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MovieDefinition {
@@ -79,6 +80,17 @@ impl AssetLoader for MovieLoader {
 }
 
 impl MovieMetadata {
+    /// Verified installed cinematic viewport, independent of subtitle and skip policy.
+    pub fn codec_format(&self) -> cyrus_media::MovieFormat {
+        cyrus_media::MovieFormat {
+            frames: self.frames,
+            frame_micros: self.frame_micros,
+            width: 640,
+            height: 240,
+            doubled_height: true,
+        }
+    }
+
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.frames > 0 && self.frames < u32::MAX && self.frame_micros > 0,

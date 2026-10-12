@@ -16,9 +16,9 @@ pub fn read_settings(install: &GameInstall) -> SoundSettings {
     }))
 }
 
-/// Original SFX, RTX and Red Book PCM in a WAV container; see `media::pcm_wav`.
+/// Original SFX, RTX and Red Book PCM in a WAV container; see `cyrus_media::pcm_wav`.
 pub fn pcm_wav(audio_type: AudioType, sample_rate: u32, pcm: &[u8]) -> Result<Vec<u8>, String> {
-    crate::media::pcm_wav(
+    cyrus_media::pcm_wav(
         pcm,
         sample_rate,
         audio_type.channels(),

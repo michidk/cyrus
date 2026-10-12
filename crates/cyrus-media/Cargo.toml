@@ -1,0 +1,9 @@
+[package]
+name = "cyrus-media"
+description = "Portable Smacker packets, indexed frames and PCM conversion."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+smk.workspace = true

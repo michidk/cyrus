@@ -31,7 +31,7 @@ case "${1:-}" in
         bash dev/scripts/build-web.sh "${apps[@]}"
         mkdir -p "$stage/browser/pkg"
         cp target/web/index.html target/web/sw.js target/web/loader.js target/web/install.js \
-            target/web/loading.css dev/scripts/viewer-server.py "$stage/browser/"
+            target/web/loading.css target/web/asset-worker.js target/web/game-assets.js dev/scripts/viewer-server.py "$stage/browser/"
         cp crates/cyrus-web/README.md "$stage/browser/README.md"
         for app in "${apps[@]}"; do
             cp "target/web/pkg/$app.js" "target/web/pkg/${app}_bg.wasm" "$stage/browser/pkg/"
@@ -39,10 +39,9 @@ case "${1:-}" in
         if [[ -d target/web/pkg/snippets ]]; then
             cp -R target/web/pkg/snippets "$stage/browser/pkg/"
         fi
+        cp target/web/pkg/cyrus-assets-worker.js target/web/pkg/cyrus-assets-worker_bg.wasm "$stage/browser/pkg/"
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then
-            cp target/web/viewer.html target/web/asset-worker.js "$stage/browser/"
-            cp target/web/pkg/cyrus-assets-worker.js target/web/pkg/cyrus-assets-worker_bg.wasm \
-                "$stage/browser/pkg/"
+            cp target/web/viewer.html "$stage/browser/"
             cp crates/cyrus-viewer/README.md "$stage/browser/VIEWER.md"
         fi
         tar -czf target/artifacts/cyrus-browser.tar.gz -C "$stage" browser

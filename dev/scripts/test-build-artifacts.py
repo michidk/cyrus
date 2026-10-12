@@ -64,7 +64,7 @@ echo private > cyrus-config/cache/private.glb
 ln -sfn "$PWD/cyrus-config" target/web/cyrus-config
 echo page > target/web/index.html
 echo service > target/web/sw.js
-for file in loader.js install.js loading.css; do echo code > "target/web/$file"; done
+for file in loader.js install.js loading.css game-assets.js asset-worker.js pkg/cyrus-assets-worker.js pkg/cyrus-assets-worker_bg.wasm; do echo code > "target/web/$file"; done
 echo code > "target/web/pkg/$app.js"
 echo wasm > "target/web/pkg/${app}_bg.wasm"
 echo private > target/web/pkg/other.wasm
@@ -107,7 +107,8 @@ done
     def test_browser_excludes_install_cache_and_stale_outputs(self):
         expected = {"browser/index.html", "browser/sw.js", "browser/README.md",
                     "browser/loader.js", "browser/install.js", "browser/loading.css",
-                    "browser/viewer-server.py",
+                    "browser/viewer-server.py", "browser/asset-worker.js", "browser/game-assets.js",
+                    "browser/pkg/cyrus-assets-worker.js", "browser/pkg/cyrus-assets-worker_bg.wasm",
                     "browser/pkg/cyrus-web.js", "browser/pkg/cyrus-web_bg.wasm",
                     "browser/pkg/snippets/module/helper.js"}
         self.build("web")
@@ -137,7 +138,7 @@ done
             (web / "sw.js").write_text("service worker")
         web = self.root / "dev/web"
         web.mkdir()
-        for name in ("loader.js", "install.js", "sw.js", "loading.css", "asset-worker.js"):
+        for name in ("loader.js", "install.js", "sw.js", "loading.css", "asset-worker.js", "game-assets.js"):
             (web / name).write_text(name)
         bindgen = self.root / "bin/wasm-bindgen"
         bindgen.write_text('''#!/bin/bash
@@ -157,11 +158,11 @@ echo wasm > "$out/${app}_bg.wasm"
         bindgen.chmod(0o755)
         subprocess.run(["bash", "dev/scripts/build-web.sh", *apps],
                        cwd=self.root, env=self.env, check=True)
-        packages = "-p cyrus-web"
+        packages = "-p cyrus-assets-worker -p cyrus-web"
         if "cyrus-viewer" in apps:
-            packages += " -p cyrus-viewer -p cyrus-assets-worker"
+            packages += " -p cyrus-viewer"
             self.assertTrue((self.root / "target/web/viewer.html").is_file())
-            apps.append("cyrus-assets-worker")
+        apps.append("cyrus-assets-worker")
         self.assertEqual((self.root / "cargo-calls.txt").read_text().splitlines(),
                          [f"build {packages} --target wasm32-unknown-unknown --profile wasm-release"])
         for app in apps:

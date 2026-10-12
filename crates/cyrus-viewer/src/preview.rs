@@ -305,7 +305,7 @@ pub fn movie(
 ) {
     if let Some(handle) = viewer.movie_blob.as_ref() {
         if let Some(bytes) = blobs.get(handle) {
-            match cyrus_assets::media::Movie::open(&bytes.0) {
+            match cyrus_media::Movie::open(&bytes.0) {
                 Ok(movie) => viewer.movie = Some(movie),
                 Err(error) => viewer.error = Some(format!("Movie decode: {error:#}")),
             }

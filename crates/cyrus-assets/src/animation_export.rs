@@ -1,4 +1,4 @@
-//! Native animation extraction through rgpre; no binary format parsing lives here.
+//! Shared animation preparation through rgpre; no binary format parsing lives here.
 use crate::animation::{AnimationModel, Animations, model_key};
 use anyhow::Context;
 use rgpre::import::{
@@ -62,9 +62,13 @@ fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<AnimationMod
         .values()
         .filter(|entry| entry.file_type == FileType::Rob)
     {
-        let bytes = std::fs::read(&entry.path).with_context(|| entry.path.display().to_string())?;
+        let bytes = entry
+            .data
+            .as_ref()
+            .with_context(|| format!("model bytes absent: {}", entry.path.display()))
+            .with_context(|| entry.path.display().to_string())?;
         let archive =
-            rob::parse_rob_file(&bytes).with_context(|| entry.path.display().to_string())?;
+            rob::parse_rob_file(bytes).with_context(|| entry.path.display().to_string())?;
         for segment in archive
             .segments
             .iter()
@@ -99,15 +103,17 @@ fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<AnimationMod
     )
 }
 
-pub(crate) fn export(
+pub(crate) fn prepare(
     rgm: &RgmFile,
     placed: &[PositionedModel],
     registry: &Registry,
     world: u32,
+    source: &dyn crate::source::ReadAssets,
     out: &Path,
+    output: &mut dyn crate::preparation::Output,
 ) -> anyhow::Result<()> {
     let mut metadata = rgm::export_rgm_metadata_json(rgm, None);
-    let scripts = crate::script_export::prepare(rgm, &registry.root_path, world)?;
+    let scripts = crate::script_export::prepare_source(rgm, source, world)?;
     metadata["script_content_id"] = serde_json::json!(scripts.content_id);
     metadata["animation_scripts"] = serde_json::to_value(
         scripts
@@ -116,7 +122,10 @@ pub(crate) fn export(
             .map(|(name, actor)| (name, &actor.program))
             .collect::<BTreeMap<_, _>>(),
     )?;
-    crate::script_export::export(&scripts, out)?;
+    output.publish(
+        &out.with_extension("scripts"),
+        &serde_json::to_vec(&scripts)?,
+    )?;
     let mut sections = BTreeMap::new();
     for section in &rgm.sections {
         let (tag, bytes) = match section {
@@ -203,9 +212,12 @@ pub(crate) fn export(
                 .min_by_key(|entry| registry.source_rank_key(&entry.path));
             if let Some(entry) = entry {
                 (|| {
-                    let bytes = std::fs::read(&entry.path)
+                    let bytes = entry
+                        .data
+                        .as_ref()
+                        .with_context(|| format!("model bytes absent: {}", entry.path.display()))
                         .with_context(|| entry.path.display().to_string())?;
-                    let model = model3d::parse_3d_file(&bytes)
+                    let model = model3d::parse_3d_file(bytes)
                         .with_context(|| entry.path.display().to_string())?;
                     model_data(&model)
                 })()
@@ -232,14 +244,14 @@ pub(crate) fn export(
             out.with_extension("animations").display()
         );
     }
-    crate::native::publish(
+    output.publish(
         &out.with_extension("animations"),
         &serde_json::to_vec(&result)?,
     )?;
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native", not(target_arch = "wasm32")))]
 mod tests {
     #[test]
     fn installed_cyrus_compressed_frames_export_absolute_geometry() {

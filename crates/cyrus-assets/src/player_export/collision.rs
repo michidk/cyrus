@@ -1,11 +1,12 @@
 //! Installed static placements and authored collision geometry for the portable player cache.
 use crate::collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement};
 use anyhow::Context;
-use rgpre::import::{FileType, model3d, registry, rgm, rob, world_ini};
+use rgpre::import::{FileType, model3d, registry::Registry, rgm, rob, world_ini};
 use std::{collections::BTreeMap, path::Path};
 
 pub(super) fn export(
-    root: &Path,
+    source: &dyn crate::source::ReadAssets,
+    registry: &Registry,
     map: &rgm::RgmFile,
     world: u32,
 ) -> anyhow::Result<CollisionScene> {
@@ -22,10 +23,7 @@ pub(super) fn export(
             }
         }
     }
-    let registry = registry::scan_dir(root).context("collision registry")?;
-    let world_path =
-        world_ini::find_world_ini(root).context("collision export: missing WORLD.INI")?;
-    let worlds = world_ini::WorldIni::parse(&std::fs::read_to_string(&world_path)?);
+    let worlds = world_ini::WorldIni::parse(&crate::preparation::text(source, "WORLD.INI")?);
     let entry = worlds
         .entries
         .iter()
@@ -42,10 +40,13 @@ pub(super) fn export(
         .filter(|entry| entry.file_type == FileType::Rob && entry.name.eq_ignore_ascii_case(stem))
         .min_by_key(|entry| registry.source_rank_key(&entry.path))
         .with_context(|| format!("world {world}: missing world archive {stem}.ROB"))?;
-    let bytes = std::fs::read(&archive_entry.path)
+    let bytes = archive_entry
+        .data
+        .as_ref()
+        .context("collision archive bytes absent")
         .with_context(|| archive_entry.path.display().to_string())?;
     let archive =
-        rob::parse_rob_file(&bytes).with_context(|| archive_entry.path.display().to_string())?;
+        rob::parse_rob_file(bytes).with_context(|| archive_entry.path.display().to_string())?;
     let mut segments = BTreeMap::new();
     for segment in &archive.segments {
         segments
@@ -75,9 +76,12 @@ pub(super) fn export(
                     })
                     .min_by_key(|entry| registry.source_rank_key(&entry.path))
                     .with_context(|| format!("model {name}: missing external 3DC"))?;
-                let bytes =
-                    std::fs::read(&entry.path).with_context(|| entry.path.display().to_string())?;
-                decode(flags, &bytes)
+                let bytes = entry
+                    .data
+                    .as_ref()
+                    .context("collision model bytes absent")
+                    .with_context(|| entry.path.display().to_string())?;
+                decode(flags, bytes)
             } else {
                 anyhow::ensure!(
                     segment.has_embedded_3d_data() || segment.has_special_embedded_data(),
@@ -152,7 +156,7 @@ fn decode(flags: u8, bytes: &[u8]) -> anyhow::Result<CollisionModel> {
     Ok(result)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native", not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
 
@@ -167,7 +171,10 @@ mod tests {
         }
         let bytes = std::fs::read(root.join("maps/ISLAND.RGM")).unwrap();
         let map = rgm::parse_rgm_file(&bytes).unwrap();
-        let scene = export(&root, &map, 1).unwrap();
+        let install = crate::install::GameInstall::open(&root).unwrap();
+        let source = crate::native::Files::scan(&install, false).unwrap();
+        let world = crate::runtime::geometry::world(&source, "1").unwrap();
+        let scene = export(&source, &world.registry, &map, 1).unwrap();
         assert_eq!(scene.placements.len(), 1691);
         for name in ["PLANT000", "PLANT001", "PLANT002"] {
             assert!(

@@ -1,8 +1,5 @@
 //! Installed HUD artwork, font and layout exported for portable presentation.
-use crate::{
-    hud::{HudAsset, HudItem},
-    install::GameInstall,
-};
+use crate::hud::{HudAsset, HudItem};
 use anyhow::Context;
 use rgpre::import::{
     fnt::parse_fnt,
@@ -36,23 +33,18 @@ fn rtx_labels(entries: Vec<RtxEntry>) -> std::collections::BTreeMap<String, Stri
 /// Writes `hud/overlay.hud` with the candle, compass, logbook, power-up and item PNGs.
 /// The candle, compass, logbook and font file names are fixed by the engine; positions,
 /// modes, items and the power-up atlas come from the INI files.
-pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    let locate = |name: &str| -> anyhow::Result<std::path::PathBuf> {
-        let mut path = install.root.clone();
-        for part in name.split(['\\', '/']) {
-            anyhow::ensure!(
-                !part.is_empty() && part != ".." && part != ".",
-                "hud: invalid path {name}"
-            );
-            path = crate::scene::find_file(&path, part)
-                .with_context(|| format!("hud: {name} is missing"))?;
-        }
-        Ok(path)
-    };
-    let read = |name: &str| -> anyhow::Result<Vec<u8>> {
-        let path = locate(name)?;
-        std::fs::read(&path).with_context(|| format!("hud: reading {}", path.display()))
-    };
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub fn export_hud(install: &crate::install::GameInstall, cache: &Path) -> anyhow::Result<()> {
+    let source = crate::native::Files::scan(install, false)?;
+    prepare(&source, &mut crate::preparation::DiskOutput(cache))
+}
+
+pub(crate) fn prepare(
+    source: &dyn crate::source::ReadAssets,
+    output: &mut dyn crate::preparation::Output,
+) -> anyhow::Result<()> {
+    let read =
+        |name: &str| crate::preparation::read(source, name).with_context(|| format!("hud: {name}"));
     let system = read("SYSTEM.INI")?;
     let items = read("ITEM.INI")?;
     let keys = read("KEYS.INI")?;
@@ -67,19 +59,18 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let powerup_bytes = read(&powerup_name)?;
     let atlas_bytes = read(&atlas_name)?;
     let font_bytes = read("fonts/REDSEL.FNT")?;
-    // The RTX file is large; its size and modification time stand in for its bytes.
-    let rtx_path = locate(text(
-        &system_fields,
-        "SYSTEM.INI",
-        "system",
-        "rtx_filename",
-    )?)?;
-    let rtx_stamp = std::fs::metadata(&rtx_path)
-        .and_then(|m| Ok((m.len(), m.modified()?)))
-        .with_context(|| format!("hud: reading {}", rtx_path.display()))?;
+    let rtx_path = crate::preparation::path(
+        source,
+        text(&system_fields, "SYSTEM.INI", "system", "rtx_filename")?,
+    )?;
+    let rtx_stamp = &source
+        .manifest()
+        .find(&rtx_path)
+        .context("hud: RTX missing")?
+        .digest;
 
-    let output = cache.join("hud");
-    let stamp = output.join("source.txt");
+    let directory = Path::new("hud");
+    let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
         6u32,
@@ -96,8 +87,12 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     )
         .hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
-    if std::fs::read_to_string(&stamp).ok().as_deref() == Some(&fingerprint)
-        && output.join("overlay.hud").is_file()
+    if output
+        .read(&stamp)
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .as_deref()
+        == Some(&fingerprint)
+        && output.exists(&directory.join("overlay.hud"))
     {
         return Ok(());
     }
@@ -166,11 +161,12 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         }
     }
 
-    let rtx =
-        std::fs::read(&rtx_path).with_context(|| format!("hud: reading {}", rtx_path.display()))?;
+    let rtx = source
+        .read(&rtx_path)
+        .with_context(|| format!("hud: reading {}", rtx_path))?;
     let labels = rtx_labels(
         parse_rtx_file(&rtx)
-            .with_context(|| format!("hud: {}", rtx_path.display()))?
+            .with_context(|| format!("hud: {}", rtx_path))?
             .entries,
     );
     let label = |tag: &str| -> anyhow::Result<String> {
@@ -178,7 +174,7 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             .iter()
             .find(|(key, _)| key.eq_ignore_ascii_case(tag))
             .map(|(_, text)| text.clone())
-            .with_context(|| format!("hud: {}: no {tag} text", rtx_path.display()))
+            .with_context(|| format!("hud: {}: no {tag} text", rtx_path))
     };
     let atlas = parse_gxa_file(&atlas_bytes).with_context(|| format!("hud: {atlas_name}"))?;
     let item_number = |key: &str| number(&item_fields, "ITEM.INI", "items", key);
@@ -241,17 +237,12 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         labels,
     };
 
-    std::fs::create_dir_all(&output)
-        .with_context(|| format!("hud: creating {}", output.display()))?;
-    if stamp.exists() {
-        std::fs::remove_file(&stamp)?;
-    }
-    let save = |name: String, width: u32, height: u32, rgba: Vec<u8>| -> anyhow::Result<()> {
-        let path = output.join(name);
-        image::RgbaImage::from_raw(width, height, rgba)
-            .context("hud: frame pixel count is invalid")?
-            .save(&path)
-            .with_context(|| format!("hud: writing {}", path.display()))
+    output.remove(&stamp)?;
+    let mut save = |name: String, width: u32, height: u32, rgba: Vec<u8>| -> anyhow::Result<()> {
+        let path = directory.join(name);
+        let image = image::RgbaImage::from_raw(width, height, rgba)
+            .context("hud: frame pixel count is invalid")?;
+        output.image(&path, &image)
     };
     for (name, atlas) in [
         ("candle", candle),
@@ -269,8 +260,8 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
             )?;
         }
     }
-    std::fs::write(output.join("overlay.hud"), serde_json::to_vec(&hud)?)?;
-    std::fs::write(&stamp, fingerprint)?;
+    output.publish(&directory.join("overlay.hud"), &serde_json::to_vec(&hud)?)?;
+    output.publish(&stamp, fingerprint.as_bytes())?;
     Ok(())
 }
 

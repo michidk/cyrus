@@ -399,8 +399,7 @@ fn installed_asset_families_prepare_portable_previews() {
         }
         if let Content::Movie { smk, .. } = &preview.content {
             let mut movie =
-                cyrus_assets::media::Movie::open(&std::fs::read(library.cache.join(smk)).unwrap())
-                    .unwrap();
+                cyrus_media::Movie::open(&std::fs::read(library.cache.join(smk)).unwrap()).unwrap();
             assert_eq!(
                 movie.rgba().len(),
                 movie.width as usize * movie.height as usize * 4

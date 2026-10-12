@@ -14,59 +14,7 @@ use std::{
     time::Duration,
 };
 
-/// Reads only the header and current packet from the installed movie.
-pub(super) struct Packets {
-    reader: Box<dyn std::io::Read + Send>,
-    packet: Vec<u8>,
-    pub codec: smk::Smk,
-}
-impl Packets {
-    pub fn new(input: &cyrus_assets::movie::MovieInput, mask: u8) -> anyhow::Result<Self> {
-        use std::io::Read;
-        let mut reader = input.open()?;
-        let mut header = vec![0; 104];
-        reader.read_exact(&mut header)?;
-        let size = smk::Smk::header_size(&header)?.context("incomplete movie header")?;
-        ensure!(
-            size <= 8 * 1024 * 1024,
-            "movie header exceeds streaming capacity"
-        );
-        header.resize(size, 0);
-        reader.read_exact(&mut header[104..])?;
-        let mut codec = smk::Smk::open_stream(&header)?;
-        let video = codec.info_video();
-        ensure!(
-            video.width == 640
-                && video.height == 240
-                && matches!(
-                    video.y_scale,
-                    smk::YScaleMode::Double | smk::YScaleMode::Interlace
-                ),
-            "unsupported movie viewport"
-        );
-        codec.enable_all(mask);
-        Ok(Self {
-            reader,
-            packet: Vec::new(),
-            codec,
-        })
-    }
-    pub fn advance(&mut self) -> anyhow::Result<bool> {
-        let Some(size) = self.codec.packet_size() else {
-            return Ok(false);
-        };
-        ensure!(
-            size <= 8 * 1024 * 1024,
-            "movie packet exceeds streaming capacity"
-        );
-        self.packet.resize(size, 0);
-        self.reader
-            .read_exact(&mut self.packet)
-            .context("truncated movie packet")?;
-        self.codec.decode_packet(&self.packet)?;
-        Ok(true)
-    }
-}
+use cyrus_media::Packets;
 
 #[derive(Default)]
 struct Progress {
@@ -91,7 +39,14 @@ impl StreamingAudio {
         start: Duration,
         name: String,
     ) -> anyhow::Result<Self> {
-        let mut packets = Packets::new(input, 1)?;
+        let mut packets = Packets::new(input.open()?, 1)?;
+        let video = packets.codec.info_video();
+        ensure!(
+            video.width == 640
+                && video.height == 240
+                && video.y_scale != cyrus_media::codec::YScaleMode::None,
+            "movie {name}: unsupported movie viewport"
+        );
         let info = packets.codec.info_audio();
         ensure!(
             info.track_mask & 1 != 0,
@@ -284,19 +239,19 @@ mod tests {
         let movie = cyrus_assets::startup::movie_native::prepare(&install.root, 0).unwrap();
         let mut data = Vec::new();
         movie.source.open().unwrap().read_to_end(&mut data).unwrap();
-        let mut original = smk::Smk::open_memory(&data).unwrap();
+        let mut original = cyrus_media::codec::Smk::open_memory(&data).unwrap();
         original.enable_all(1);
         let info = original.info_audio();
         let mut pcm = Vec::new();
         let mut status = original.first_frame().unwrap();
         loop {
             pcm.extend_from_slice(original.audio_data(0).unwrap_or_default());
-            if status != smk::FrameStatus::More {
+            if status != cyrus_media::codec::FrameStatus::More {
                 break;
             }
             status = original.next_frame().unwrap();
         }
-        let wav = cyrus_assets::media::pcm_wav(
+        let wav = cyrus_media::pcm_wav(
             &pcm,
             info.rate[0],
             u16::from(info.channels[0]),

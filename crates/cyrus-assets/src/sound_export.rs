@@ -1,8 +1,5 @@
 //! MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
-use crate::{
-    install::GameInstall,
-    sound::{SoundBank, SoundEffect},
-};
+use crate::sound::{SoundBank, SoundEffect};
 use rgpre::import::sfx::{self, SfxEffect};
 use std::path::Path;
 
@@ -18,64 +15,28 @@ fn wav(effect: &SfxEffect) -> anyhow::Result<Vec<u8>> {
         effect.loop_offset == 0 && effect.loop_end == u32::MAX,
         "unsupported partial sound loop"
     );
-    let length = u32::try_from(effect.pcm_data.len())?;
-    let padding = length % 2;
-    let riff_length = length
-        .checked_add(36 + padding)
-        .ok_or_else(|| anyhow::anyhow!("sound too large"))?;
-    let byte_rate = effect
-        .sample_rate
-        .checked_mul(alignment.into())
-        .ok_or_else(|| anyhow::anyhow!("sound rate overflow"))?;
-    let mut bytes = Vec::with_capacity(riff_length as usize + 8);
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&riff_length.to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16u32.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&channels.to_le_bytes());
-    bytes.extend_from_slice(&effect.sample_rate.to_le_bytes());
-    bytes.extend_from_slice(&byte_rate.to_le_bytes());
-    bytes.extend_from_slice(&alignment.to_le_bytes());
-    bytes.extend_from_slice(&bits.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&length.to_le_bytes());
-    bytes.extend_from_slice(&effect.pcm_data);
-    if padding != 0 {
-        bytes.push(0);
-    }
-    Ok(bytes)
+    cyrus_media::pcm_wav(&effect.pcm_data, effect.sample_rate, channels, bits)
 }
 
-pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
-    let directory = std::fs::read_dir(&install.root)?
-        .filter_map(Result::ok)
-        .find(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("sound")
-        })
-        .ok_or_else(|| anyhow::anyhow!("missing sound directory"))?
-        .path();
-    let path = std::fs::read_dir(directory)?
-        .filter_map(Result::ok)
-        .find(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("MAIN.SFX")
-        })
-        .ok_or_else(|| anyhow::anyhow!("missing MAIN.SFX"))?
-        .path();
-    let source = sfx::parse_sfx_file(&std::fs::read(path)?)?;
-    let out = cache.join("sounds");
-    std::fs::create_dir_all(&out)?;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub fn export(install: &crate::install::GameInstall, cache: &Path) -> anyhow::Result<()> {
+    let source = crate::native::Files::scan(install, false)?;
+    prepare(&source, &mut crate::preparation::DiskOutput(cache))
+}
+
+pub(crate) fn prepare(
+    source: &dyn crate::source::ReadAssets,
+    output: &mut dyn crate::preparation::Output,
+) -> anyhow::Result<()> {
+    let bank = sfx::parse_sfx_file(&crate::preparation::read(source, "sound/MAIN.SFX")?)?;
+    let out = Path::new("sounds");
     let mut effects = Vec::new();
     let mut html = String::from(
         "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Redguard sound effects</title><body><h1>Sound effects</h1><p>Original effect IDs. Loops follow MAIN.SFX. Press play to audition.</p>",
     );
-    for (i, effect) in source.effects.iter().enumerate() {
+    for (i, effect) in bank.effects.iter().enumerate() {
         let bytes = wav(effect)?;
-        crate::native::publish(&out.join(format!("{i:03}.wav")), &bytes)?;
+        output.publish(&out.join(format!("{i:03}.wav")), &bytes)?;
         effects.push(SoundEffect {
             looping: effect.loop_flag != 0,
             sample_rate: effect.sample_rate,
@@ -86,13 +47,14 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         html.push_str(&format!("<p>Effect {i} <audio aria-label=\"Effect {i}\" controls preload=\"none\" {} src=\"{i:03}.wav\"></audio></p>",if effect.loop_flag != 0 {"loop"} else {""}));
     }
     html.push_str("</body></html>");
-    std::fs::write(out.join("index.html"), html)?;
-    let settings = crate::audio::read_settings(install);
-    std::fs::write(
-        out.join("bank.sounds"),
-        serde_json::to_vec(&SoundBank {
+    output.publish(&out.join("index.html"), html.as_bytes())?;
+    let settings =
+        crate::sound::SoundSettings::parse(&crate::preparation::text(source, "SYSTEM.INI")?);
+    output.publish(
+        &out.join("bank.sounds"),
+        &serde_json::to_vec(&SoundBank {
             effects,
-            music: Some(crate::music::settings(install)?),
+            music: Some(crate::music::settings_source(source)?),
             enabled: settings.effects,
             master_volume: settings.master_volume,
             sound_distance: settings.sound_distance,

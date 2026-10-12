@@ -12,7 +12,7 @@ export function directoryURL(value, base) {
   return url;
 }
 
-export async function validateInstall(value, { base = location.href, game = false, fetcher = fetch } = {}) {
+export async function validateInstall(value, { base = location.href, fetcher = fetch } = {}) {
   const url = directoryURL(value, base);
   const response = await fetcher(new URL("manifest.json", url), { cache: "no-store" });
   if (!response.ok) throw new Error("Game files: HTTP " + response.status);
@@ -30,9 +30,7 @@ export async function validateInstall(value, { base = location.href, game = fals
     const available = await fetcher(new URL(file.path, url), { method: "HEAD", cache: "no-store" });
     if (!available.ok) throw new Error(file.path + ": game files are no longer available: HTTP " + available.status);
   }));
-  const cache = manifest.cache ? directoryURL(manifest.cache, url) : null;
-  if (game && !cache) throw new Error("The game needs an install service with game preparation enabled. Start viewer-server.py with --install and --exporter.");
-  return { url: url.href, cache: cache?.href, worlds: manifest.worlds || [] };
+  return { url: url.href };
 }
 
 export async function chooseInstall() {
@@ -44,12 +42,11 @@ export async function chooseInstall() {
     const response = await fetch("./launch.json", { cache: "no-store" });
     if (response.ok) defaults = await response.json();
   } catch { /* Static hosting has no server defaults. */ }
-  const game = document.body.dataset.engine === "cyrus-web";
   const candidate = params.has("install") ? params.get("install") : defaults.install || saved;
   let message = "";
   async function accept(value) {
-    const source = await validateInstall(value, { game });
-    for (const [name, content] of [["cyrus-assets", source.url], ["cyrus-cache", source.cache], ["cyrus-worlds", source.worlds.join(",")]]) {
+    const source = await validateInstall(value);
+    for (const [name, content] of [["cyrus-assets", source.url]]) {
       if (!content) continue;
       let element = document.querySelector(`meta[name="${name}"]`);
       if (!element) {

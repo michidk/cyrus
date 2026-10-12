@@ -174,7 +174,7 @@ Default windowed and browser launches play the installed Windows Glide 3dfx spla
 then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
 installed Smacker files through the in-process decoder. Browser Movies uses
-locally exported Smacker files and first-track WAV audio with shared playback rules.
+bounded original Smacker ranges and incrementally decoded first-track PCM with shared playback rules.
 New Game enters the installed starting world and marker; Load temporarily starts
 the same fresh world. Saves, full gameplay/story initialization and progression
 unlocks remain unavailable. Native Quit closes the book and exits; browser Quit

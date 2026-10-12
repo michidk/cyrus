@@ -23,7 +23,7 @@ impl Files {
     pub fn open(install: &GameInstall) -> Result<Self> {
         Self::scan(install, true)
     }
-    fn scan(install: &GameInstall, fingerprint: bool) -> Result<Self> {
+    pub(crate) fn scan(install: &GameInstall, fingerprint: bool) -> Result<Self> {
         let mut paths = BTreeMap::new();
         for item in walkdir::WalkDir::new(&install.root).follow_links(false) {
             let item = item?;
@@ -53,16 +53,22 @@ impl Files {
                 paths.insert("splash/glide2x_emu.ovl".into(), path);
             }
         }
+        if let Some(parent) = install.root.parent() {
+            let path = parent.join("DOSBOX/3DfxSpl2.dll");
+            if path.is_file() {
+                paths.insert("splash/3DfxSpl2.dll".into(), path);
+            }
+        }
         let mut files = Vec::new();
         for (relative, path) in &paths {
             let mut hash = blake3::Hasher::new();
-            if fingerprint && relative.starts_with("disc/") {
-                // CD images are hundreds of megabytes; size and modification time identify them.
+            if !fingerprint || relative.starts_with("disc/") {
+                // Preparation scans and large CD images use size/mtime; catalog files use content.
                 let metadata = path.metadata()?;
                 hash.update(&metadata.len().to_le_bytes());
                 let modified = metadata.modified()?.duration_since(std::time::UNIX_EPOCH)?;
                 hash.update(&modified.as_nanos().to_le_bytes());
-            } else if fingerprint {
+            } else {
                 hash.update_reader(std::fs::File::open(path)?)?;
             }
             files.push(FileInfo {
