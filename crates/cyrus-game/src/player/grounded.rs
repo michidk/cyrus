@@ -2,7 +2,7 @@
 use super::data::PlayerScene;
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
-use cyrus_world::collision::{
+use cyrus_collision::{
     collision_world::StaticCandidates,
     ground::{FallbackProbe, GroundProbe, GroundSupport, SelectedSupport, SupportHistory},
 };

@@ -1,5 +1,5 @@
 //! Player-specific forward admission after world support queries.
-use cyrus_world::collision::ground::{GroundSupport, SelectedSupport};
+use cyrus_collision::ground::{GroundSupport, SelectedSupport};
 /// Stored support class including the original collision-attribute steep-ground override.
 pub fn classification(support: &SelectedSupport, collision_attribute: u8) -> u8 {
     let class = match support {

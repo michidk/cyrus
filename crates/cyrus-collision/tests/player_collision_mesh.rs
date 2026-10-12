@@ -1,7 +1,7 @@
 use bevy::math::Vec3;
 use cyrus_assets::collision::CollisionModel;
 use cyrus_assets::collision::CollisionSubobject;
-use cyrus_world::collision::collision_mesh::CollisionMesh;
+use cyrus_collision::collision_mesh::CollisionMesh;
 
 fn model() -> CollisionModel {
     CollisionModel {

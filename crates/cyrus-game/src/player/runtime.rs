@@ -13,9 +13,9 @@ use bevy::prelude::{
     AssetId, Assets, Commands, Entity, Handle, Mat3, Message, MessageReader, Messages, Query, Res,
     ResMut, Resource, State, Transform, Vec3, With,
 };
+use cyrus_collision::ground::SupportHistory;
 use cyrus_world::{
     animation::{AnimationPose, AnimationRequest, Animations},
-    collision::ground::SupportHistory,
     sound::{SoundCue, SoundSurface},
 };
 

@@ -1,13 +1,13 @@
 use bevy::math::Vec3;
-use cyrus_world::collision::geometry::CollisionFace;
-use cyrus_world::collision::ground::GroundProbe;
-use cyrus_world::collision::ground::GroundSupport;
-use cyrus_world::collision::ground::ModelSupport;
-use cyrus_world::collision::ground::SupportSource;
+use cyrus_collision::geometry::CollisionFace;
+use cyrus_collision::ground::GroundProbe;
+use cyrus_collision::ground::GroundSupport;
+use cyrus_collision::ground::ModelSupport;
+use cyrus_collision::ground::SupportSource;
 
 #[test]
 fn support_history_keeps_probe_changes_and_miss_metadata_across_actors() {
-    use cyrus_world::collision::ground::SupportHistory;
+    use cyrus_collision::ground::SupportHistory;
     let mut history = SupportHistory::new(0, 0);
     history.finish_query(Some(4), true);
     assert_eq!(history.ticks(), 12);

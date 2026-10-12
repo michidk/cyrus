@@ -2,8 +2,8 @@ use cyrus_assets::collision::CollisionModel;
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::CollisionSubobject;
 use cyrus_assets::collision::StaticPlacement;
-use cyrus_world::collision::collision_world::StaticCollision;
-use cyrus_world::collision::ground::GroundProbe;
+use cyrus_collision::collision_world::StaticCollision;
+use cyrus_collision::ground::GroundProbe;
 
 fn model(flags: u8) -> CollisionModel {
     CollisionModel {
@@ -34,7 +34,7 @@ fn placement(id: u32, position: [i32; 3], model: &str) -> StaticPlacement {
 
 #[test]
 fn startup_settling_keeps_first_equal_contact_and_uses_full_search_radius() {
-    use cyrus_world::collision::ground::SupportSource;
+    use cyrus_collision::ground::SupportSource;
     let world = StaticCollision::new(&CollisionScene {
         models: [("GROUND".into(), model(0))].into(),
         placements: vec![
@@ -97,7 +97,7 @@ fn startup_settling_accepts_static_support_above_unsupported_water() {
 
 #[test]
 fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
-    use cyrus_world::collision::ground::GroundSupport;
+    use cyrus_collision::ground::GroundSupport;
     let world = StaticCollision::new(&CollisionScene::default()).unwrap();
     let position = [5000 * 256, -62 * 256, 5000 * 256];
     for height in [-500.9, -500.0, 500.0, 500.9] {
@@ -133,7 +133,7 @@ fn startup_settling_truncates_terrain_before_strict_endpoint_admission() {
 
 #[test]
 fn startup_settling_retains_distinct_terrain_and_model_rank_scales() {
-    use cyrus_world::collision::ground::{GroundSupport, SupportSource};
+    use cyrus_collision::ground::{GroundSupport, SupportSource};
     let world = StaticCollision::new(&CollisionScene {
         models: [("GROUND".into(), model(0))].into(),
         placements: vec![placement(1, [5000, 100, 5000], "GROUND")],
@@ -156,8 +156,8 @@ fn startup_settling_retains_distinct_terrain_and_model_rank_scales() {
 
 #[test]
 fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
-    use cyrus_world::collision::ground::GroundSupport;
-    use cyrus_world::collision::ground::ModelSupport;
+    use cyrus_collision::ground::GroundSupport;
+    use cyrus_collision::ground::ModelSupport;
     let probe = GroundProbe::new([0; 3], 0, 50).unwrap();
     let steep = GroundSupport {
         height: -10.0,
@@ -236,9 +236,9 @@ fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
 
 #[test]
 fn fallback_keeps_first_non_side_contact_and_fractional_actor_height() {
-    use cyrus_world::collision::collision_world::StaticCandidates;
-    use cyrus_world::collision::ground::FallbackProbe;
-    use cyrus_world::collision::ground::SupportSource;
+    use cyrus_collision::collision_world::StaticCandidates;
+    use cyrus_collision::ground::FallbackProbe;
+    use cyrus_collision::ground::SupportSource;
     let mut scene = CollisionScene::default();
     let mut wall = model(0);
     wall.vertices = vec![[-50.0, -50.0, 0.0], [50.0, -50.0, 0.0], [0.0, 50.0, 0.0]];
@@ -275,8 +275,8 @@ fn fallback_keeps_first_non_side_contact_and_fractional_actor_height() {
 
 #[test]
 fn fallback_history_expands_radius_and_accepts_undersides() {
-    use cyrus_world::collision::collision_world::StaticCandidates;
-    use cyrus_world::collision::ground::FallbackProbe;
+    use cyrus_collision::collision_world::StaticCandidates;
+    use cyrus_collision::ground::FallbackProbe;
     let mut scene = CollisionScene::default();
     let mut underside = model(0);
     underside.normals = vec![[0.0, 1.0, 0.0]];

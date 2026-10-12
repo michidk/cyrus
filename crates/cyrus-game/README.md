@@ -1,7 +1,7 @@
 # cyrus-game
 
 Portable gameplay state, fidelity policy, player input and deterministic controller
-rules. Depends on `cyrus-world` and `cyrus-assets`; it does not load an install,
+rules. Depends on `cyrus-world`, `cyrus-collision` and `cyrus-assets`; it does not load an install,
 open sockets, spawn a camera, or play audio.
 
 `GamePlugin` installs app state, fidelity, `PlayerPlugin` and `ScriptPlugin`. The host supplies

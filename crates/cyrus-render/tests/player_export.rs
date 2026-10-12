@@ -51,8 +51,8 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         );
     }
     let material_position = [42008 * 256, 0, 40607 * 256];
-    let material_support = cyrus_world::collision::ground::SelectedSupport::Primary {
-        source: cyrus_world::collision::ground::SupportSource::Terrain,
+    let material_support = cyrus_collision::ground::SelectedSupport::Primary {
+        source: cyrus_collision::ground::SupportSource::Terrain,
         support: scene
             .terrain
             .as_ref()
@@ -162,12 +162,13 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
 }
 
 fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::Animations) {
+    use cyrus_collision::ground::SupportHistory;
     use cyrus_game::player::{
         grounded::{ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
         motion::upright_rotation,
         walk::WalkingStartup,
     };
-    use cyrus_world::{animation::ActorAnimation, collision::ground::SupportHistory};
+    use cyrus_world::animation::ActorAnimation;
     let mut animation = ActorAnimation::from_asset(data, "CYRUS", 0).unwrap();
     let mut reference = animation
         .request_with_sounds(20, 0, 1, &mut |_| Ok(()))

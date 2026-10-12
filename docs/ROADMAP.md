@@ -53,7 +53,7 @@ Remaining animation scheduling, startup fidelity follow-up and stages 3–6 are 
 - [ ] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. Verify and push before starting audio extraction.
 - [ ] Extract `cyrus-audio`: effects, speech playback, music and browser sound-bank playback. Presentation supplies listener, startup readiness and cinematic pause state; preserve preference/animation/cue ordering and headless support. Start from the latest pushed media change.
 - [ ] Extract `cyrus-startup` after audio boundaries are established: splash, title, book menu, settings, cinematic presentation and world-entry loading, with one presentation facade.
-- [ ] Evaluate a separate `cyrus-collision` crate when independent reuse or testing benefits justify it; keep player admission and response in gameplay.
+- [x] Extract `cyrus-collision` with terrain, model and static-world query contracts; keep player admission and response in gameplay and serialized inputs in assets.
 - [ ] Revisit `cyrus-animation` after production scheduling and actor ownership settle; retain explicit requests/ticks in the core and mesh presentation outside it.
 
 ## Verification still required

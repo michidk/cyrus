@@ -31,7 +31,7 @@ impl CollisionMesh {
             .context("missing collision model version; re-export")?;
         Ok(Self {
             radius: model.radius,
-            faces: crate::collision::geometry::CollisionFace::from_model(model)?,
+            faces: crate::geometry::CollisionFace::from_model(model)?,
             subobjects: if version[1] == b'5' {
                 model.subobjects.clone()
             } else {

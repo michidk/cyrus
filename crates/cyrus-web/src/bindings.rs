@@ -72,10 +72,8 @@ mod tests {
             definition: None,
             terrain: None,
             unavailable: Some("synthetic actor".into()),
-            static_collision: cyrus_world::collision::collision_world::StaticCollision::new(
-                &collision,
-            )
-            .unwrap(),
+            static_collision: cyrus_collision::collision_world::StaticCollision::new(&collision)
+                .unwrap(),
             collision,
         }
     }

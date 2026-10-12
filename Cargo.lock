@@ -2807,6 +2807,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrus-collision"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "cyrus-assets",
+]
+
+[[package]]
 name = "cyrus-control"
 version = "0.1.1"
 dependencies = [
@@ -2833,6 +2842,7 @@ dependencies = [
  "anyhow",
  "bevy",
  "cyrus-assets",
+ "cyrus-collision",
  "cyrus-script",
  "cyrus-world",
  "log",
@@ -2864,6 +2874,7 @@ dependencies = [
  "bevy",
  "cyrus-app",
  "cyrus-assets",
+ "cyrus-collision",
  "cyrus-game",
  "cyrus-text",
  "cyrus-world",
@@ -2918,6 +2929,7 @@ dependencies = [
  "bevy",
  "cyrus-app",
  "cyrus-assets",
+ "cyrus-collision",
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",

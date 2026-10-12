@@ -1,4 +1,4 @@
-use cyrus_world::collision::ground::TerrainGround;
+use cyrus_collision::ground::TerrainGround;
 
 #[test]
 fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
@@ -95,7 +95,7 @@ fn original_wall_contacts_roll_back_or_project_and_separate() {
 #[test]
 fn sphere_polygon_contact_keeps_plane_projection_and_boundary_equality() {
     use bevy::math::Vec3;
-    use cyrus_world::collision::geometry::CollisionFace;
+    use cyrus_collision::geometry::CollisionFace;
     let face = CollisionFace::new(
         vec![
             Vec3::ZERO,
@@ -268,9 +268,9 @@ fn original_wall_slide_adjusts_quantized_movement_heading() {
 #[test]
 fn collision_traversal_retries_misses_and_keeps_first_success_order() {
     use bevy::math::Vec3;
-    use cyrus_world::collision::geometry::CollisionFace;
-    use cyrus_world::collision::geometry::SphereCandidates;
-    use cyrus_world::collision::geometry::ordered_contacts;
+    use cyrus_collision::geometry::CollisionFace;
+    use cyrus_collision::geometry::SphereCandidates;
+    use cyrus_collision::geometry::ordered_contacts;
     let square = |z| {
         CollisionFace::new(
             vec![

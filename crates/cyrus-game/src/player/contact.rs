@@ -166,7 +166,7 @@ impl GroundedContact {
     /// Convert the world normal before classification, per preservation's body adapter.
     /// The original stores the scaled components at single precision without normalizing.
     pub fn from_body(
-        contact: &cyrus_world::collision::collision_world::BodyContact,
+        contact: &cyrus_collision::collision_world::BodyContact,
     ) -> anyhow::Result<Self> {
         let scaled = contact.normal * 256.0;
         anyhow::ensure!(
@@ -182,7 +182,7 @@ impl GroundedContact {
         let normal = scaled.to_array().map(|v| v.round_ties_even() as i32);
         Ok(Self {
             normal,
-            classification: cyrus_world::collision::ground::GroundSupport {
+            classification: cyrus_collision::ground::GroundSupport {
                 height: 0.0,
                 normal,
             }

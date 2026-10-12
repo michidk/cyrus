@@ -1,6 +1,6 @@
 [package]
 name = "cyrus-world"
-description = "World lifecycle, animation execution and collision queries."
+description = "World lifecycle, animation execution and actor transforms."
 version.workspace = true
 edition.workspace = true
 [dependencies]

@@ -1,6 +1,6 @@
 # cyrus-world
 
-World lifecycle, explicit animation execution and terrain/static collision queries,
+World lifecycle, explicit animation execution and actor transforms,
 with a one-way dependency on `cyrus-assets`. No renderer, camera, audio backend,
 install parser or sockets are required.
 
@@ -25,9 +25,8 @@ World defines `SoundCue` and `SoundSurface`; the audio consumer registers the cu
 queue. Without that consumer, sound-bearing animation remains explicitly
 unsupported. `AnimationSystems` lets composition preserve same-update ordering.
 
-Collision queries retain original units, traversal order and contextual errors.
-Player-specific forward admission is in `cyrus-game::player::support`.
-Run `cargo test -p cyrus-world` for deterministic execution and geometry contracts.
+Terrain and static collision queries live in [cyrus-collision](../cyrus-collision/README.md).
+Run `cargo test -p cyrus-world` for animation, lifecycle and transform contracts.
 
 `AnimationPlayback` consumes an explicitly selected forward group and finite
 loop count. `AnimationTick` supplies the original whole nominal-tick increment;
@@ -70,62 +69,6 @@ interpretation, mesh replacement across models, automatic actor activation,
 complete script scheduling, state-dependent default selection, other group types,
 cancellation requests and the host-clock driver remain
 unsupported. These APIs do not establish matched original-game playback.
-
-**Verified:** the independent polygon-segment and ground-support selection cores
-follow [preservation PR #27](https://github.com/michidk/redguard-preservation/pull/27).
-They retain distinct terrain/model rank scales and replace earlier equal-ranked
-contacts. Callers still supply admission, transforms and traversal order; these
-cores do not activate gameplay collision. Nearest-even segment conversion follows
-the documented default rounding evidence; a live halfway-boundary comparison
-remains unchecked.
-
-World exports also write a `.player` sidecar containing installed movement
-settings, named CYRUS attributes and bounds, decoded terrain heights, and the
-water mask.
-The optional terrain texture grid retains packed image/rotation bytes for material
-queries using the [published coordinate rules](https://github.com/michidk/redguard-preservation/blob/b2ddb1b/docs/engine/player.md#terrain-material-lookup).
-Old caches require re-export for these queries. Explicit selected-support surface
-queries apply the [generated terrain blend mask and water overrides](https://github.com/michidk/redguard-preservation/blob/94ea3ae/docs/engine/player.md#terrain-material-blend-coverage).
-They do not assign actor surface state or the shared movement veto. Terrain water
-height and buoyancy remain unsupported. Schema 2 also retains original static
-placement order, model polygons, ROB collision flags and ordered subobject face
-lists. Per-face texture set/image
-identity is retained for surface lookup. The cache includes the installed
-SURFACE.INI assignments, and textured contacts resolve their surface code.
-Version-4/5 solid-color contacts resolve to surface zero.
-Older caches without face textures or assignments cannot supply surface-dependent
-behavior. Missing model-version metadata requires re-export.
-Models resolve from the WORLD.INI-selected world archive in authored segment order. Missing models remain
-explicitly unsupported. Authored version-4 subobjects are retained in the cache
-but discarded during runtime preparation, matching the original loader.
-Native, headless, and browser entry load the same validated asset.
-Missing or unsupported actor definitions retain a contextual unavailable reason.
-Loading also prepares static collision meshes and their spatial registry.
-Explicit queries preserve view-centered cell order, separate actor-style
-candidates, transform original polygons, and retain segment contact order.
-Explicit static body probes test actor spheres against authored model faces and
-return ordered contacts for response. Coincident subgroup centers and saturated
-body-contact buffers remain unsupported.
-Archive selection follows [preservation PR #38](https://github.com/michidk/redguard-preservation/pull/38);
-segment admission and traversal follow [PR #41](https://github.com/michidk/redguard-preservation/pull/41).
-Sphere model admission and forward slope/support selection follow the
-[published player facts](https://github.com/michidk/redguard-preservation/blob/2810574/docs/engine/player.md).
-The caller supplies the retained surface veto after support-state updates;
-geometric support alone does not authorize forward movement.
-When primary support is absent, the selected-player fallback uses the caller's
-support-history state and retains the actor's runtime Y at the first accepted
-non-side contact. This follows the [published fallback rules](https://github.com/michidk/redguard-preservation/blob/3c5be4a/docs/engine/player.md#selected-player-fallback-support).
-Explicit selected-player queries also commit shared support history. Misses retain
-metadata, so they can reset the fallback timer; temporary forward probes retain
-those changes when position is restored. The caller supplies initial state and
-nominal ticks, following the [support-state rules](https://github.com/michidk/redguard-preservation/blob/ed296ed/docs/engine/player.md#support-query-misses).
-Ground support reads only face-model candidates. Actor-style obstacle response
-remains unsupported.
-Startup support uses an actor-centered window and radius 1000, with a vertical
-half-length of 500. Its distinct terrain/model ranking retains earlier equal
-contacts, following [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
-The game uses this static query for inspection placement. Dynamic/transient support
-and automatic locomotion remain unsupported. Re-export cached worlds after updating.
 
 `transform::Matrix` retains original single-precision actor matrices. Its products
 and sums use software x87 extended intermediates and nearest-even stores and

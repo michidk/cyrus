@@ -1,0 +1,10 @@
+[package]
+name = "cyrus-collision"
+description = "Portable terrain, model contact and static-world collision queries."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy.workspace = true
+cyrus-assets.workspace = true
+anyhow.workspace = true

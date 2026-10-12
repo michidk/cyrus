@@ -295,7 +295,7 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
         .get_mut(&scene_handle)
         .unwrap()
         .terrain = Some(
-        cyrus_world::collision::ground::TerrainGround::new(
+        cyrus_collision::ground::TerrainGround::new(
             vec![0; 256 * 256],
             vec![true; 256 * 256],
             None,

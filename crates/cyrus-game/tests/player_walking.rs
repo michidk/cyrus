@@ -4,11 +4,11 @@ use cyrus_assets::{
     collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement},
     player::MovementSettings,
 };
-use cyrus_game::player::{definition::PlayerDefinition, walk::WalkingStartup};
-use cyrus_world::collision::{
+use cyrus_collision::{
     collision_world::{BodyContact, StaticCandidates, StaticCollision},
     ground::{SupportHistory, TerrainGround},
 };
+use cyrus_game::player::{definition::PlayerDefinition, walk::WalkingStartup};
 
 fn data(groups: serde_json::Value) -> (PlayerDefinition, Animations) {
     let metadata = serde_json::json!({

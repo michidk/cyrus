@@ -17,11 +17,13 @@ edition = "2024"
 [dependencies]
 cyrus-assets = { path = "$root/crates/cyrus-assets" }
 cyrus-world = { path = "$root/crates/cyrus-world" }
+cyrus-collision = { path = "$root/crates/cyrus-collision" }
 cyrus-game = { path = "$root/crates/cyrus-game" }
 cyrus-script = { path = "$root/crates/cyrus-script" }
 MANIFEST
 cat > "$probe/src/lib.rs" <<'RUST'
 pub use cyrus_assets::animation::Animations;
+pub use cyrus_collision::collision_world::StaticCollision;
 pub use cyrus_world::{animation::AnimationPlugin, lifecycle::WorldPlugin};
 pub use cyrus_game::GamePlugin;
 pub use cyrus_script::Runtime;

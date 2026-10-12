@@ -1,5 +1,5 @@
 //! Terrain material coordinates from preservation engine/player.md.
-use cyrus_world::collision::ground::TerrainGround;
+use cyrus_collision::ground::TerrainGround;
 
 #[test]
 fn terrain_material_lookup_preserves_row_orientation_rotation_and_ties() {
@@ -48,7 +48,7 @@ fn terrain_material_lookup_preserves_row_orientation_rotation_and_ties() {
 
 #[test]
 fn shoreline_materials_keep_partial_and_full_water_distinct() {
-    use cyrus_world::collision::ground::TerrainMaterial;
+    use cyrus_collision::ground::TerrainMaterial;
     use std::collections::BTreeMap;
     let sample = |image: u8, rotation: u8, u: i64, v: i64, base| {
         let terrain = TerrainGround::new(

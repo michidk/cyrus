@@ -5,7 +5,7 @@ use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::{Asset, Handle, Resource, TypePath};
 use cyrus_assets::collision::CollisionScene;
 pub use cyrus_assets::player::{MovementSettings, SceneData};
-use cyrus_world::collision::{collision_world::StaticCollision, ground::TerrainGround};
+use cyrus_collision::{collision_world::StaticCollision, ground::TerrainGround};
 
 /// Validated player inputs. Loading this asset does not enable unsupported movement.
 #[derive(Asset, TypePath)]
@@ -33,7 +33,7 @@ impl PlayerScene {
         view: [i32; 2],
         position: [i64; 3],
         model: Option<&str>,
-    ) -> anyhow::Result<cyrus_world::collision::collision_world::StaticCandidates> {
+    ) -> anyhow::Result<cyrus_collision::collision_world::StaticCandidates> {
         let radius = model
             .map(|name| {
                 self.model_radii.get(name).copied().with_context(|| {
@@ -50,14 +50,14 @@ impl PlayerScene {
     /// Resolve selected support without changing actor surface state or the shared veto.
     pub fn support_surface(
         &self,
-        support: &cyrus_world::collision::ground::SelectedSupport,
+        support: &cyrus_collision::ground::SelectedSupport,
         position: [i64; 3],
     ) -> anyhow::Result<u8> {
         match support.source() {
-            cyrus_world::collision::ground::SupportSource::Model { model, face } => {
+            cyrus_collision::ground::SupportSource::Model { model, face } => {
                 self.static_collision.face_surface(model, face)
             }
-            cyrus_world::collision::ground::SupportSource::Terrain => {
+            cyrus_collision::ground::SupportSource::Terrain => {
                 let context = || format!("world {} terrain surface", self.world);
                 let terrain = self
                     .terrain

@@ -23,17 +23,17 @@ fn authored_collision_preserves_subsets_and_rejects_invalid_references() {
     assert_eq!(decoded.subobjects[0].faces, [0, 0]);
     assert!(decoded.subobjects[0].extents.is_none());
     assert_eq!(
-        cyrus_world::collision::geometry::CollisionFace::from_model(&decoded)
+        cyrus_collision::geometry::CollisionFace::from_model(&decoded)
             .unwrap()
             .len(),
         1
     );
     model.subobjects[0].faces.push(1);
-    assert!(cyrus_world::collision::geometry::CollisionFace::from_model(&model).is_err());
+    assert!(cyrus_collision::geometry::CollisionFace::from_model(&model).is_err());
     model.subobjects[0].faces.pop();
     model.faces[0][2] = 3;
-    assert!(cyrus_world::collision::geometry::CollisionFace::from_model(&model).is_err());
+    assert!(cyrus_collision::geometry::CollisionFace::from_model(&model).is_err());
     model.faces[0][2] = 2;
     model.normals[0] = [0.0; 3];
-    assert!(cyrus_world::collision::geometry::CollisionFace::from_model(&model).is_err());
+    assert!(cyrus_collision::geometry::CollisionFace::from_model(&model).is_err());
 }

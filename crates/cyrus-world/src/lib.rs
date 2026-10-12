@@ -1,6 +1,5 @@
-//! World lifetime, explicit animation execution and geometry queries.
+//! World lifetime, explicit animation execution and actor transforms.
 pub mod animation;
-pub mod collision;
 pub mod lifecycle;
 pub mod sound;
 pub mod transform;

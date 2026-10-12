@@ -56,6 +56,13 @@ module where it is defined and regenerate.
 - `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
 - `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 
+## `cyrus-collision` — Terrain and authored static geometry queries.
+
+- `src/collision_mesh.rs` — Authored model queries from preservation's segment and sphere admission rules.
+- `src/collision_world.rs` — Original static spatial ordering and model ground probes, independent of rendering.
+- `src/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
+- `src/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
+
 ## `cyrus-control` — Control protocol: one JSON object per line over TCP.
 
 - `src/server.rs` — Native line-delimited transport; the host applies requests in frame order.
@@ -145,17 +152,12 @@ module where it is defined and regenerate.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
 
-## `cyrus-world` — World lifetime, explicit animation execution and geometry queries.
+## `cyrus-world` — World lifetime, explicit animation execution and actor transforms.
 
 - `src/animation.rs` — Retained animation inputs; playback timing and actor activation are not inferred.
 - `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
 - `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
 - `src/animation/sequence.rs` — Forward current-group playback from preservation's engine/animation.md.
-- `src/collision/collision_mesh.rs` — Authored model queries from preservation's segment and sphere admission rules.
-- `src/collision/collision_world.rs` — Original static spatial ordering and model ground probes, independent of rendering.
-- `src/collision/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
-- `src/collision/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
-- `src/collision/mod.rs` — Terrain and authored static geometry queries.
 - `src/lifecycle.rs` — Shared world identity and prepared cache references.
 - `src/sound.rs` — Sound intents; only a playback consumer registers the message queue.
 - `src/transform.rs` — Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.

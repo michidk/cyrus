@@ -2,8 +2,8 @@ use cyrus_assets::collision::CollisionModel;
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::CollisionSubobject;
 use cyrus_assets::collision::StaticPlacement;
-use cyrus_world::collision::collision_world::StaticCollision;
-use cyrus_world::collision::ground::GroundProbe;
+use cyrus_collision::collision_world::StaticCollision;
+use cyrus_collision::ground::GroundProbe;
 
 fn model(flags: u8) -> CollisionModel {
     CollisionModel {
@@ -34,7 +34,7 @@ fn placement(id: u32, position: [i32; 3], model: &str) -> StaticPlacement {
 
 #[test]
 fn support_metadata_retains_all_model_flags_and_terrain_clears_them() {
-    use cyrus_world::collision::ground::SupportSource;
+    use cyrus_collision::ground::SupportSource;
     let mut scene = CollisionScene::default();
     scene.models.insert("floor".into(), model(0x84));
     scene.placements.push(placement(7, [600, 0, 600], "floor"));
@@ -55,9 +55,9 @@ fn support_metadata_retains_all_model_flags_and_terrain_clears_them() {
 
 #[test]
 fn selected_player_query_commits_history_on_hits_and_misses() {
-    use cyrus_world::collision::ground::FallbackProbe;
-    use cyrus_world::collision::ground::GroundSupport;
-    use cyrus_world::collision::ground::SupportHistory;
+    use cyrus_collision::ground::FallbackProbe;
+    use cyrus_collision::ground::GroundSupport;
+    use cyrus_collision::ground::SupportHistory;
     let mut scene = CollisionScene::default();
     scene.models.insert("floor".into(), model(4));
     scene.placements.push(placement(7, [600, 0, 600], "floor"));
