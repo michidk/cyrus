@@ -82,14 +82,18 @@ tags, either when pushed or selected in a manual `Release` dispatch.
 
 Run `Bump Version & Tag` on `main` with a version such as `0.2.0` to update the
 shared workspace version and lockfile, commit, and atomically push the commit
-and tag. This workflow requires a `RELEASE_TOKEN` repository secret with Contents
-and Workflows write access so its tag push triggers `Release`. Alternatively,
-update the version and lockfile locally and push the version commit and tag.
+and tag, then explicitly dispatch `Release` for that tag. It uses the built-in
+workflow token and needs no repository secret. Repeating a matching version/tag
+retries the release without another version commit. Alternatively, update the
+version and lockfile locally and push the version commit and tag.
 
 `Release` checks that every workspace package matches the tag and runs the gates
-before building all platforms. After every build succeeds, it generates notes
-from conventional commits with `cliff.toml`, attaches archives and `SHA256SUMS`
-to a draft, and publishes it. Reruns leave an already published release unchanged.
+before building all platforms. It generates draft notes from conventional commits
+with git-cliff and `cliff.toml`. Each successful build attaches its archives to the
+draft immediately, so they remain downloadable if another platform fails. After
+every build succeeds, it attaches `SHA256SUMS` and publishes the release. Reruns
+leave an already published release unchanged. A failed build leaves a draft;
+rerun failed jobs in Actions to finish it.
 Actions artifacts expire after seven days; GitHub release assets remain available.
 
 Archives contain application code and crate usage instructions. They contain

@@ -9,7 +9,8 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 concurrency:
   group: bump-version-${{ github.repository }}
@@ -22,7 +23,6 @@ defaults:
 env:
   VERSION: ${{ inputs.version }}
   DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-  RELEASE_TOKEN_SECRET: RELEASE_TOKEN
 
 jobs:
   bump-and-tag:
@@ -30,9 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Validate version, branch, and token
-        env:
-          RELEASE_TOKEN: ${{ secrets[env.RELEASE_TOKEN_SECRET] }}
+      - name: Validate version and branch
         run: |
           if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo '::error::Expected a stable X.Y.Z version without a v prefix.'
@@ -42,17 +40,12 @@ jobs:
             echo '::error::Run this workflow on the default branch.'
             exit 1
           fi
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            printf '::error::Set %s to a token with Contents and Workflows write access to this repository.\n' "$RELEASE_TOKEN_SECRET"
-            exit 1
-          fi
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
-          token: ${{ secrets[env.RELEASE_TOKEN_SECRET] }}
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
@@ -109,3 +102,10 @@ jobs:
           fi
           git tag "v$VERSION"
           git push --atomic origin "HEAD:refs/heads/$DEFAULT_BRANCH" "refs/tags/v$VERSION"
+
+      - name: Start release workflow for the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        # GITHUB_TOKEN tag pushes do not trigger workflows; dispatch explicitly.
+        run: gh workflow run release.yml --ref "v$VERSION"
