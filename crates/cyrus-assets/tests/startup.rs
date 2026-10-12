@@ -61,7 +61,9 @@ fn installed_swoosh_export_replaces_legacy_cache_and_reuses_complete_cache() {
         modified
     );
     std::fs::remove_file(output.join("splash-149.png")).unwrap();
+    std::fs::remove_file(output.join("title-sound.png")).unwrap();
     export_startup(&install, &cache).unwrap();
     assert!(output.join("splash-149.png").is_file());
+    assert!(output.join("title-sound.png").is_file());
     std::fs::remove_dir_all(cache).unwrap();
 }

@@ -14,6 +14,7 @@ const WORLD_ASSET_STEPS: usize = 8;
 #[derive(bevy::ecs::system::SystemParam)]
 struct WorldEntry<'w, 's> {
     game: Option<ResMut<'w, StartGame>>,
+    playback: ResMut<'w, super::Playback>,
     prepared: Option<Res<'w, PreparedWorld>>,
     preparation: Option<Res<'w, PreparationProgress>>,
     world_assets: Option<Res<'w, WorldAssets>>,
@@ -44,6 +45,7 @@ fn poll(
     let (keys, mut next) = input;
     let WorldEntry {
         mut game,
+        mut playback,
         prepared,
         preparation,
         world_assets,
@@ -59,19 +61,24 @@ fn poll(
         if let Some(error) = scene_error {
             startup.error = Some(error.0.clone());
         }
-        // Host preparation stages come first; sidecar loading continues the same bar.
         let offset = preparation.as_ref().map_or(0, |p| p.total);
         if prepared.is_none()
             && startup.error.is_none()
-            && let (Some(game), Some(stage)) = (game.as_mut(), preparation.as_ref())
+            && let Some(game) = game.as_mut()
         {
-            update_progress(game, &mut images, stage.done, offset + WORLD_ASSET_STEPS);
+            let (done, total, status) = preparation
+                .as_ref()
+                .map_or((0, WORLD_ASSET_STEPS, "Preparing world..."), |stage| {
+                    (stage.done, offset + WORLD_ASSET_STEPS, stage.label.as_str())
+                });
+            update_progress(game, &mut images, done, total, status);
         }
         if startup.error.is_none()
             && let Some(prepared) = prepared
         {
             if let Some(handles) = world_assets {
                 let mut loaded = 0;
+                let mut status = String::from("Entering world...");
                 for handle in &handles.0 {
                     if let Some(bevy::asset::LoadState::Failed(error)) =
                         assets.get_load_state(handle.id())
@@ -87,6 +94,14 @@ fn poll(
                     }
                     if assets.is_loaded_with_dependencies(handle.id()) {
                         loaded += 1;
+                    } else if status == "Entering world..." {
+                        status = assets.get_path(handle.id()).map_or_else(
+                            || "Loading world assets...".into(),
+                            |path| {
+                                let name = path.path().file_name().unwrap_or_default();
+                                format!("Loading {}...", name.to_string_lossy())
+                            },
+                        );
                     }
                 }
                 let spawned = !instances.is_empty()
@@ -96,7 +111,7 @@ fn poll(
                 if let Some(game) = game.as_mut() {
                     let total = offset + handles.0.len() + 2;
                     let done = offset + loaded + 1 + usize::from(spawned);
-                    update_progress(game, &mut images, done, total);
+                    update_progress(game, &mut images, done, total, &status);
                 }
                 if loaded == handles.0.len() && spawned && startup.error.is_none() {
                     commands.remove_resource::<StartGame>();
@@ -129,6 +144,15 @@ fn poll(
                         assets.reload(path);
                     }
                 }
+                if let Some(game) = game.as_mut() {
+                    update_progress(
+                        game,
+                        &mut images,
+                        offset + 1,
+                        offset + handles.len() + 2,
+                        "Loading world assets...",
+                    );
+                }
                 commands.insert_resource(WorldAssets(handles));
             }
         }
@@ -138,6 +162,15 @@ fn poll(
             next.set(AppState::Menu);
         }
     } else {
+        #[cfg(not(target_arch = "wasm32"))]
+        let title = if menu_prepared.is_some() {
+            "cache://startup/title-menu.png"
+        } else {
+            "cache://startup/title-preparing.png"
+        };
+        #[cfg(target_arch = "wasm32")]
+        let title = "cache://startup/title-menu.png";
+        playback.title = assets.load(title);
         #[cfg(not(target_arch = "wasm32"))]
         if menu_prepared.is_none() && startup.error.is_none() {
             return;
@@ -151,6 +184,7 @@ fn poll(
                     #[cfg(target_arch = "wasm32")]
                     {
                         if sound_settings.is_none() {
+                            playback.title = assets.load("cache://startup/title-sound.png");
                             let Some(bank) = sound_bank else {
                                 return;
                             };
@@ -203,16 +237,37 @@ fn poll(
     }
 }
 
-fn update_progress(game: &mut StartGame, images: &mut Assets<Image>, done: usize, total: usize) {
+fn update_progress(
+    game: &mut StartGame,
+    images: &mut Assets<Image>,
+    done: usize,
+    total: usize,
+    status: &str,
+) {
     let percent = ((done * 100 + total / 2) / total) as u8;
-    if percent <= game.percent || game.background.is_empty() {
+    let (previous_done, previous_total) = game.progress;
+    let previous_percent =
+        ((previous_done * 100 + previous_total / 2) / previous_total.max(1)) as u8;
+    if (percent <= previous_percent && status == game.status) || game.background.is_empty() {
         return;
     }
     if let Some(mut image) = images.get_mut(&game.image) {
         let mut pixels = game.background.clone();
-        paint_progress(&mut pixels, &game.font, done, total);
+        if percent >= previous_percent {
+            game.progress = (done, total);
+        }
+        paint_progress(&mut pixels, &game.font, game.progress.0, game.progress.1);
+        let mut status_font = game.font.clone();
+        status_font.palette.fill([63, 0, 0]);
+        status_font.draw_shadowed(
+            &mut pixels,
+            640,
+            status,
+            [608 - game.font.width(status), 451],
+            [255, 180],
+        );
         image.data = Some(pixels);
-        game.percent = percent;
+        game.status = status.into();
     }
 }
 
@@ -244,6 +299,59 @@ fn cleanup(mut commands: Commands) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn status_updates_without_percentage_changes_and_clears_old_text() {
+        let mut images = Assets::<Image>::default();
+        let image = images.add(Image::new(
+            bevy::render::render_resource::Extent3d {
+                width: 640,
+                height: 480,
+                depth_or_array_layers: 1,
+            },
+            bevy::render::render_resource::TextureDimension::D2,
+            [17, 18, 19, 255].repeat(640 * 480),
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            bevy::asset::RenderAssetUsages::default(),
+        ));
+        let mut game = StartGame {
+            image,
+            background: [17, 18, 19, 255].repeat(640 * 480),
+            font: cyrus_text::Font {
+                start: b'A'.into(),
+                glyphs: vec![cyrus_text::Glyph {
+                    enabled: true,
+                    width: 2,
+                    height: 1,
+                    pixels: vec![1, 1],
+                    ..default()
+                }],
+                palette: vec![[0; 3], [63, 39, 1]],
+                ..default()
+            },
+            ..default()
+        };
+        let handle = game.image.clone();
+        let pixel = |images: &Assets<Image>, x: usize, y: usize| {
+            let data = images.get(&handle).unwrap().data.as_ref().unwrap();
+            data[(y * 640 + x) * 4..][..4].to_vec()
+        };
+        update_progress(&mut game, &mut images, 0, 2, "AA");
+        assert_eq!(pixel(&images, 602, 451), [252, 0, 0, 255]);
+        assert_eq!(pixel(&images, 608, 451), [17, 18, 19, 255]);
+        assert_eq!(pixel(&images, 32, 448), [17, 18, 19, 255]);
+        update_progress(&mut game, &mut images, 0, 2, "A");
+        assert_eq!(pixel(&images, 602, 451), [17, 18, 19, 255]);
+        assert_eq!(pixel(&images, 605, 451), [252, 0, 0, 255]);
+        update_progress(&mut game, &mut images, 1, 6, "AA");
+        assert_eq!(pixel(&images, 127, 448), [252, 0, 0, 255]);
+        assert_eq!(pixel(&images, 128, 448), [0, 0, 0, 255]);
+        update_progress(&mut game, &mut images, 1, 2, "AA");
+        update_progress(&mut game, &mut images, 0, 2, "A");
+        assert_eq!(game.progress, (1, 2));
+        assert_eq!(pixel(&images, 319, 448), [252, 0, 0, 255]);
+        assert_eq!(pixel(&images, 320, 448), [0, 0, 0, 255]);
+    }
+
     #[test]
     fn progress_uses_the_original_rectangle_and_preserves_artwork() {
         let mut pixels = [17, 18, 19, 255].repeat(640 * 480);

@@ -140,7 +140,7 @@ accepts agent control and produces a repeatable comparison through SETUP command
 - [x] Native/browser Smacker playback, skip points, subtitles/interlace and retained menu selection. Browser video/audio streams before full download; CD tracks and world assignments export for shared music playback.
 - [x] New Game and temporary Load enter the installed starting world/marker behind destination artwork and a dependency barrier.
 - [ ] Compare splash pixels/timing, inherited menu lighting, camera-plane clipping, authored transitions and audible output with the original.
-- [ ] Replace the generic loading label when original map-registration stages exist; original internal progress weights remain unsupported.
+- [x] Bottom-right red loading status reports cyrus preparation stages and pending assets. **Verified:** installed export contracts and native menu-to-world captures; original internal progress weights remain unsupported.
 - [ ] Add save slots/thumbnails, overwrite/delete handling, Continue/pause, full New Game initialization and progression movie unlocks when the corresponding gameplay state exists.
 - [ ] Support mouse/joystick rebinding and gameplay snapshots. **Verified:** the original ordinary book menu has no pointer label selection.
 

@@ -47,7 +47,8 @@ pub struct StartGame {
     image: Handle<Image>,
     background: Vec<u8>,
     font: cyrus_text::Font,
-    percent: u8,
+    progress: (usize, usize),
+    status: String,
 }
 
 /// Browser host attempts to close its tab without terminating the game loop.

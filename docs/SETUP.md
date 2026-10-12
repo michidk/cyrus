@@ -211,7 +211,11 @@ New Game enters the `WORLD.INI` starting world and marker. Load currently starts
 the same fresh world; it does not read or overwrite saves. Save and Continue
 remain grayed without a resumable world. World entry shows the installed
 destination artwork and red percentage bar until required assets and dependencies
-are ready. Escape returns to the menu after a loading error. Full gameplay and
+are ready. Bottom-right red text reports native preparation stages, the pending asset filename,
+and scene entry using the installed font. The startup title also updates its bottom-right
+red label during menu/HUD preparation, menu loading and browser sound loading.
+These labels describe cyrus loading stages. Re-export browser startup caches for
+these labels. Escape returns to the menu after a loading error. Full gameplay and
 story initialization remain pending. Menu export writes `cache/menu/book.menu` and an rgpre-generated
 status font, plus the installed effects bank under `cache/sounds/` for browser menu
 playback without loading a world. Runtime redraws authored book frames and neighboring-page text during

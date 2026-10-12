@@ -456,6 +456,23 @@ fn startup_export_uses_authored_animation_and_preserves_title_artwork() {
             .enumerate_pixels()
             .any(|(x, y, p)| x > 500 && y >= 467 && p.0 == [50, 0, 0, 255])
     );
+    for name in ["title-preparing.png", "title-menu.png", "title-sound.png"] {
+        let stage = image(name);
+        assert_eq!(stage.dimensions(), (640, 480));
+        assert_eq!(
+            &stage.as_raw()[..640 * 467 * 4],
+            &title.as_raw()[..640 * 467 * 4]
+        );
+        assert!(
+            stage
+                .enumerate_pixels()
+                .any(|(x, y, p)| { x > 400 && y >= 467 && p.0 == [50, 0, 0, 255] })
+        );
+        assert_ne!(
+            stage, title,
+            "{name} must replace the generic loading label"
+        );
+    }
     let modified = std::fs::metadata(splash.join("title.png"))
         .unwrap()
         .modified()

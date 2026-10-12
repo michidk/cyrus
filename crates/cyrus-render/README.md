@@ -84,7 +84,8 @@ Native menu/HUD export begins after the title becomes visible. The full
 parser-coverage scan remains in direct/headless inspection launches.
 Loading stays asynchronous; skipping the splash retains required preparation.
 The title uses the configured FNT font and documented bottom-label positions.
-The loading label says “Loading...” rather than reporting original map IDs.
+The bottom-right red title label reports menu/HUD preparation, menu asset loading,
+and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
 the authored fade. The cache regenerates when replacing the older DOS shield
 splash. The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
@@ -115,6 +116,9 @@ New Game enters the installed starting world and marker. Load temporarily starts
 the same fresh world. Shared world entry waits for preparation, required asset dependencies and
 spawned scene instances behind the destination's installed GXA artwork, with preservation's
 red bar and REDSEL percentage label. Progress counts completed loading stages.
+Bottom-right red REDSEL status text reads native preparation stage labels and updates during asset loading and scene
+entry. Asset loading names the first pending top-level asset; dependencies remain
+in that asset's stage. Labels describe cyrus work rather than original loading messages.
 The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...feat/menu-game-entry)
 supplies the entry parser and loading layout. Saves, full story/gameplay
 initialization and progression unlocks remain unavailable.

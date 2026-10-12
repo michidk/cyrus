@@ -215,7 +215,9 @@ capture feedback dispatch installed effects through the shared native/browser
 sound path, using preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 Skipping startup retains required preparation behind the title and does not enable gameplay.
 Menu New/Load wait behind installed destination artwork and a red percentage bar
-for world preparation and asset dependencies. Failed world entry reports a
+for world preparation and asset dependencies. Bottom-right red labels report startup
+menu/HUD preparation and world-entry loading stages, including the pending asset
+filename. Labels describe cyrus work. Failed world entry reports a
 contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
 walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle

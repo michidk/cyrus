@@ -63,14 +63,21 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path.display()))?,
     );
     let mut fingerprint = DefaultHasher::new();
-    (4u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
+    (5u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
     let fingerprint = fingerprint.finish().to_string();
     let output = cache.join("startup");
     let stamp = output.join("source.txt");
     if std::fs::read_to_string(&stamp).ok().as_deref() == Some(&fingerprint)
         && (0..crate::SPLASH_FRAMES)
             .all(|frame| output.join(format!("splash-{frame:02}.png")).is_file())
-        && output.join("title.png").is_file()
+        && [
+            "title.png",
+            "title-preparing.png",
+            "title-menu.png",
+            "title-sound.png",
+        ]
+        .iter()
+        .all(|name| output.join(name).is_file())
     {
         return Ok(());
     }
@@ -118,15 +125,22 @@ pub fn export_startup(install: &GameInstall, cache: &Path) -> anyhow::Result<()>
             .save(&path)
             .with_context(|| format!("startup: writing {}", path.display()))?;
     }
-    let path = output.join("title.png");
-    let mut image = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
+    let mut background = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
         .context("startup: title pixel count is invalid")?;
-    draw_text(&mut image, &font, "Version 1.0.1.0", 10, [32, 32, 32]);
-    let text = "Loading...";
-    draw_text(&mut image, &font, text, 630 - font.width(text), [50, 0, 0]);
-    image
-        .save(&path)
-        .with_context(|| format!("startup: writing {}", path.display()))?;
+    draw_text(&mut background, &font, "Version 1.0.1.0", 10, [32, 32, 32]);
+    for (name, text) in [
+        ("title.png", "Loading..."),
+        ("title-preparing.png", "Preparing menu and HUD..."),
+        ("title-menu.png", "Loading menu..."),
+        ("title-sound.png", "Loading sound..."),
+    ] {
+        let mut image = background.clone();
+        draw_text(&mut image, &font, text, 630 - font.width(text), [50, 0, 0]);
+        let path = output.join(name);
+        image
+            .save(&path)
+            .with_context(|| format!("startup: writing {}", path.display()))?;
+    }
     std::fs::write(&stamp, fingerprint)?;
     Ok(())
 }
