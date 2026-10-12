@@ -58,8 +58,9 @@ Re-export worlds before using explicit player model poses.
 The opt-in `viewer` feature enables runtime parsing on native and browser targets.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`) owns parsing and recovered engine rules. This crate owns
-install validation, catalog identities, portable preview descriptions, generated
+Preservation (`rgpre`), pinned to release `v0.8.0`, owns parsing and recovered
+engine rules. This crate owns install validation, catalog identities, portable
+preview descriptions, generated
 files, PCM conversion, and the portable movie decoder wrapper.
 
 Native callers open an explicit `GameInstall`, then `native::Library`. Discovery

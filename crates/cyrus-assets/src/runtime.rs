@@ -38,8 +38,7 @@ impl<R: ReadAssets> Library<R> {
         let files = &source.manifest().files;
         for (index, file) in files.iter().enumerate() {
             progress(index, files.len(), &format!("Listing {}", file.path));
-            if FileType::from_path(Path::new(&file.path)).is_some_and(crate::excluded_file_type)
-                || file.path.starts_with("disc/")
+            if file.path.starts_with("disc/")
                 || file.path.starts_with("splash/")
                 || Path::new(&file.path).extension().is_some_and(|extension| {
                     extension.eq_ignore_ascii_case("dll") || extension.eq_ignore_ascii_case("exe")
