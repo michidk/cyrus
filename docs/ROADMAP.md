@@ -42,7 +42,6 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 | Startup/menu comparison and startup crate extraction after audio | Codex, `t3/compare-menu-presentation`; `magic/artifacts/2026-10-12-menu-comparison/` |
 | SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
-| Rendering and lighting | Match Faithful Rendering and Lighting, `t3/faithful-rendering-analysis` |
 | Sound | Implement Game Sound Effects |
 | HUD | Implement the Game Overlay UI |
 
@@ -126,7 +125,7 @@ of every palette and world still needs original-game comparison.
 
 | Resources | Implemented | Still required |
 | --- | --- | --- |
-| WORLD.INI, RGM, WLD | World selection, placements, terrain and per-world terrain lighting | Model/local lighting, exact water-edge normals and actor behavior |
+| WORLD.INI, RGM, WLD | World selection, placements, terrain and per-world ambient/directional lighting | Local lights, retained model prelighting, exact water-edge normals and actor behavior |
 | 3D, 3DC, ROB | Static models, retained frames, supplied-tick poses/groups and authored book motion | Production animation, remaining encodings/group types and all-actor model replacement |
 | BSI, COL, Glide sky | Textures/palettes, sky plane/tilt/sun, scrolling inputs, fog and terrain waves | Other animated textures and matched filtering/blending/lighting |
 | GXA, splash DLL, FNT | Installed splash/title, menu widgets, HUD artwork and shared text rendering | Remaining gameplay screens, software sky projection and exact splash hardware rendering |
@@ -186,7 +185,8 @@ world playback is incomplete.
 - [x] Worlds, terrain, textures and palettes; dry/water terrain lighting, faithful sky/tilt/sun/scroll inputs, fog/range defaults and water waves.
 - [x] Independent fidelity controls; optional Modern sky/fog/water presentation. Modern lighting currently reuses Faithful results.
 - [ ] Resolve dirty water-edge normal admission/retention; cyrus currently recomputes the grid.
-- [ ] Recover model transforms/material shading and local-light selection/attenuation in preservation, then replace fixed Bevy model lighting.
+- [x] Replace fixed Bevy model lighting with installed ambient/directional RGB, authored face brightness, supplied normals and solid-color tint. **Verified:** original-code/GPU arithmetic comparisons, render contracts and native ISLAND/BELLTOWR/START scene switches.
+- [ ] Recover local-light admission/attenuation, retained instance prelighting and actor overrides in preservation; compare matched original/native/browser views.
 - [ ] Compare terrain filtering/combiner precision and sky/sun filtering/alpha after menu/world transitions. **Verified:** cloud-filter arithmetic has isolated GPU checks; integrated comparisons remain open.
 - [ ] Compare sky scrolling, plane crossing, fog/clipping and water across original/native/browser views; implement other authored texture animation.
 

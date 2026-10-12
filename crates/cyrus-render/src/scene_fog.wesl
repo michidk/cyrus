@@ -1,63 +1,62 @@
 import bevy_pbr::render::{
-    forward_io::{VertexOutput, FragmentOutput},
-    mesh_view_bindings::{view, globals},
+    forward_io::{Vertex, VertexOutput, FragmentOutput, decompress_vertex},
+    mesh_functions,
+    mesh_view_bindings::view,
+    view_transformations::position_world_to_clip,
     pbr_fragment::pbr_input_from_standard_material,
-    pbr_functions::{alpha_discard, apply_pbr_lighting},
-    pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
+    pbr_functions::alpha_discard,
 };
-@if(TONEMAP_IN_SHADER)
-import bevy_core_pipeline::tonemapping::{tone_mapping, screen_space_dither};
-@if(TONEMAP_IN_SHADER)
-import bevy_render::maths::powsafe;
 @if(PREMULTIPLY_ALPHA)
 import bevy_pbr::render::pbr_functions::premultiply_alpha;
-import package::glide_fog::blend_fog;
+import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
 import package::scene_shading::{fog, scene_color};
 
+struct ModelVertex {
+    @builtin(position) position: vec4<f32>,
+    @location(0) world_position: vec4<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) color: vec3<f32>,
+    @location(4) @interpolate(flat) instance_index: u32,
+};
+
+@vertex
+fn vertex(raw: Vertex) -> ModelVertex {
+    let vertex = decompress_vertex(raw, raw.instance_index);
+    let transform = mesh_functions::get_world_from_local(raw.instance_index);
+    var out: ModelVertex;
+    out.world_position = mesh_functions::mesh_position_local_to_world(transform, vec4(vertex.position, 1.0));
+    out.position = position_world_to_clip(out.world_position.xyz);
+    // The original model matrix acts directly on normals, retaining their magnitude.
+    out.normal = (transform * vec4(vertex.normal, 0.0)).xyz;
+    out.uv = vertex.uv;
+    // shortcut: local lights and retained instance RGB await recovered admission and retention rules.
+    let weight = max(0.0, -dot(fog.direction.xyz, out.normal));
+    let color = clamp(fog.ambient.xyz + vec3(vertex.uv_b.x) + weight * fog.directional.xyz, vec3(0.0), vec3(255.0));
+    // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.
+    out.color = color * (vertex.uv_b.y / 255.0) * out.position.w;
+    out.instance_index = raw.instance_index;
+    return out;
+}
+
 @fragment
-fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> FragmentOutput {
+fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     let depth = -(view.view_from_world * in.world_position).z * 20.0;
-    // Bevy's infinite perspective projection only uses far for object culling.
     if depth < fog.clipping.x || depth > fog.clipping.y { discard; }
-    var surface = in;
-    var water_weight = 0.0;
-    var ripple = vec2(0.0);
-@if(VERTEX_UVS_B) {
-    water_weight = fog.water.x * fog.water.y * clamp(in.uv_b.x, 0.0, 1.0);
-    let position = in.world_position.xz;
-    ripple = vec2(sin(dot(position, vec2(1.3, 0.7)) - globals.time * 1.7),
-                  sin(dot(position, vec2(-0.6, 2.1)) - globals.time * 2.3));
-@if(VERTEX_UVS_A) {
-    surface.uv += ripple * (0.006 * water_weight);
-}
-}
-    var input = pbr_input_from_standard_material(surface, is_front);
-    if water_weight > 0.0 {
-        input.N = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
-    }
-    input.material.base_color = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
+    var surface: VertexOutput;
+    surface.position = in.position;
+    surface.world_position = in.world_position;
+    surface.world_normal = in.normal;
+    surface.uv = in.uv;
+@if(VERTEX_COLORS)
+    surface.color = vec4(1.0);
+@if(VERTEX_OUTPUT_INSTANCE_INDEX)
+    surface.instance_index = in.instance_index;
+    let input = pbr_input_from_standard_material(surface, is_front);
+    let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
+    let color = srgb_to_linear(linear_to_srgb(base.rgb) * (in.color * in.position.w));
     var out: FragmentOutput;
-    if (input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
-        out.color = apply_pbr_lighting(input);
-    } else {
-        out.color = input.material.base_color;
-    }
-@if(TONEMAP_IN_SHADER) {
-    out.color = tone_mapping(out.color, view.color_grading);
-@if(DEBAND_DITHER) {
-    var rgb = powsafe(out.color.rgb, 1.0 / 2.2);
-    rgb += screen_space_dither(input.frag_coord.xy);
-    out.color = vec4(powsafe(rgb, 2.2), out.color.a);
-}
-}
-    if water_weight > 0.0 {
-        let to_camera = normalize(view.world_position - in.world_position.xyz);
-        let sheen = pow(1.0 - clamp(dot(input.N, to_camera), 0.0, 1.0), 5.0);
-        let reflected_sky = blend_fog(vec3(0.0), fog.color.rgb, 255.0);
-        let rippled = out.color.rgb * (1.0 + 0.035 * (ripple.x + ripple.y) * water_weight);
-        out.color = vec4(mix(rippled, reflected_sky, sheen * 0.12 * water_weight), out.color.a);
-    }
-    out.color = vec4(scene_color(out.color.rgb, depth, in.position.xy), out.color.a);
+    out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }

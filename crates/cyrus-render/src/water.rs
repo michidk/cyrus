@@ -273,6 +273,7 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            model_lighting: Default::default(),
             sky: None,
             background: [0; 3],
             clipping: [7.0, 3800.0],
@@ -395,6 +396,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                model_lighting: Default::default(),
                 sky: None,
                 background: [0; 3],
                 clipping: [7.0, 3800.0],
@@ -414,6 +416,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                model_lighting: Default::default(),
                 sky: None,
                 background: [0; 3],
                 clipping: [7.0, 3800.0],

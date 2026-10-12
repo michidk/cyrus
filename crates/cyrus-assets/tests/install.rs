@@ -172,6 +172,23 @@ fn world_exports_include_declared_terrain_and_textures() {
         assert_eq!(nodes.iter().any(|node| node["name"] == "Terrain"), terrain);
         assert!(!document["images"].as_array().unwrap().is_empty());
         assert!(nodes.iter().any(|node| node.get("mesh").is_some()));
+        for node in nodes.iter().filter(|node| node["name"] != "Terrain") {
+            let Some(mesh) = node["mesh"].as_u64() else {
+                continue;
+            };
+            for primitive in document["meshes"][mesh as usize]["primitives"]
+                .as_array()
+                .unwrap()
+            {
+                let lighting = &primitive["extras"]["rgpre_lighting"];
+                assert_eq!(lighting["version"], 1, "{name}: {}", node["name"]);
+                let position = primitive["attributes"]["POSITION"].as_u64().unwrap() as usize;
+                assert_eq!(
+                    lighting["vertices"].as_array().unwrap().len() as u64,
+                    document["accessors"][position]["count"].as_u64().unwrap()
+                );
+            }
+        }
         let environment: cyrus_assets::environment::Environment =
             serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
                 .unwrap();
@@ -179,6 +196,8 @@ fn world_exports_include_declared_terrain_and_textures() {
         assert_eq!(environment.water.is_some(), terrain);
         assert_eq!(environment.terrain_lighting.is_some(), terrain);
         if name == "ISLAND" {
+            assert_eq!(environment.model_lighting.ambient, [64.0; 3]);
+            assert_eq!(environment.model_lighting.directional, [255.0; 3]);
             let light = environment.terrain_lighting.as_ref().unwrap();
             assert_eq!(light.side, 256);
             assert_eq!(light.ambient, [64.0; 3]);

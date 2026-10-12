@@ -264,6 +264,16 @@ Automatic world activation, host timing,
 interrupts, synchronization channels and other script operations remain unsupported. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
+### Model lighting
+
+World and player-model exports must include `rgpre_lighting` primitive metadata,
+and environment exports must include `model_lighting`. Native world entry regenerates
+these files; regenerate older browser exports.
+**Verified:** models use the installed ambient/directional RGB, authored face
+brightness and solid-color tint through the shared vertex shader. Invalid mesh
+metadata is reported with world/mesh context and the unsupported mesh is hidden.
+Local lights and complete static-prelighting behavior remain unsupported.
+
 ### Sky, fog, and water
 
 Re-export worlds to regenerate `.environment` sidecars. F1 provides independent

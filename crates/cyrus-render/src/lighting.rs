@@ -1,4 +1,4 @@
-//! Terrain RGB and quantized normals from preservation's terrain-lighting contract.
+//! Authored model lighting inputs and quantized terrain normals from preservation.
 
 use bevy::prelude::*;
 pub use cyrus_assets::environment::TerrainLighting;
@@ -55,9 +55,81 @@ pub(crate) fn grid_normals(grid: &[[f32; 3]], side: usize) -> Vec<[f32; 3]> {
         .collect()
 }
 
+/// Copy authored per-face inputs into a private mesh's unused second UV channel.
+pub(crate) fn model_mesh(mesh: &Mesh, extras: &str) -> anyhow::Result<Mesh> {
+    #[derive(serde::Deserialize)]
+    struct Inputs {
+        version: u32,
+        vertices: Vec<[u8; 2]>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Extras {
+        rgpre_lighting: Inputs,
+    }
+    let inputs = serde_json::from_str::<Extras>(extras)?.rgpre_lighting;
+    anyhow::ensure!(
+        inputs.version == 1,
+        "unsupported model lighting version {}",
+        inputs.version
+    );
+    anyhow::ensure!(
+        inputs.vertices.len() == mesh.count_vertices(),
+        "model lighting vertex count mismatch"
+    );
+    anyhow::ensure!(
+        inputs.vertices.iter().all(|v| v[1] <= 1),
+        "invalid solid-color model lighting flag"
+    );
+    let mut private = mesh.clone();
+    private.insert_attribute(
+        Mesh::ATTRIBUTE_UV_1,
+        inputs
+            .vertices
+            .into_iter()
+            .map(|[brightness, solid]| {
+                [
+                    f32::from(brightness),
+                    if solid == 1 { 255.0 / 256.0 } else { 1.0 },
+                ]
+            })
+            .collect::<Vec<_>>(),
+    );
+    Ok(private)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_inputs_preserve_face_brightness_and_reject_incompatible_exports() {
+        use bevy::mesh::{PrimitiveTopology, VertexAttributeValues};
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
+        let prepared = model_mesh(
+            &mesh,
+            r#"{"rgpre_lighting":{"version":1,"vertices":[[0,0],[64,0],[255,1]]}}"#,
+        )
+        .unwrap();
+        let Some(VertexAttributeValues::Float32x2(values)) =
+            prepared.attribute(Mesh::ATTRIBUTE_UV_1)
+        else {
+            panic!("missing model inputs")
+        };
+        assert_eq!(values, &vec![[0.0, 1.0], [64.0, 1.0], [255.0, 0.99609375]]);
+        assert!(mesh.attribute(Mesh::ATTRIBUTE_UV_1).is_none());
+        for invalid in [
+            r#"{}"#,
+            r#"{"rgpre_lighting":{"version":2,"vertices":[[0,0],[0,0],[0,0]]}}"#,
+            r#"{"rgpre_lighting":{"version":1,"vertices":[[0,0]]}}"#,
+            r#"{"rgpre_lighting":{"version":1,"vertices":[[0,0],[0,0],[0,2]]}}"#,
+        ] {
+            assert!(model_mesh(&mesh, invalid).is_err());
+        }
+    }
 
     #[test]
     fn live_day_flat_terrain_preserves_quantized_normal_magnitude() {

@@ -69,13 +69,25 @@ struct FogExtension {
     table: [Vec4; 16],
     #[uniform(100)]
     water: Vec4,
+    #[uniform(100)]
+    ambient: Vec4,
+    #[uniform(100)]
+    directional: Vec4,
+    #[uniform(100)]
+    direction: Vec4,
 }
 
 impl MaterialExtension for FogExtension {
+    fn vertex_shader() -> ShaderRef {
+        "embedded://cyrus_render/scene_fog.wesl".into()
+    }
     fn fragment_shader() -> ShaderRef {
         "embedded://cyrus_render/scene_fog.wesl".into()
     }
 }
+
+#[derive(Component)]
+struct RejectedLighting;
 
 pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
@@ -94,7 +106,7 @@ impl Plugin for FogPlugin {
 }
 
 // This system joins the active environment, camera and GLTF material assets.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn apply_scene_fog(
     mut commands: Commands,
     request: Res<EnvironmentRequest>,
@@ -102,7 +114,16 @@ fn apply_scene_fog(
     distance: Res<RenderDistance>,
     fidelity: Res<Fidelity>,
     mut cameras: Query<&mut Projection, With<ViewCamera>>,
-    meshes: Query<(Entity, &MeshMaterial3d<StandardMaterial>)>,
+    mut entities: Query<
+        (
+            Entity,
+            &MeshMaterial3d<StandardMaterial>,
+            &mut Mesh3d,
+            Option<&bevy::gltf::GltfExtras>,
+        ),
+        Without<RejectedLighting>,
+    >,
+    mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
     names: Query<&Name>,
     parents: Query<&ChildOf>,
@@ -126,6 +147,9 @@ fn apply_scene_fog(
         }
     }
     let extension = FogExtension {
+        ambient: Vec3::from(environment.model_lighting.ambient).extend(0.0),
+        directional: Vec3::from(environment.model_lighting.directional).extend(0.0),
+        direction: Vec3::from(environment.model_lighting.direction).extend(0.0),
         color: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
         clipping: Vec4::new(
             near,
@@ -164,7 +188,7 @@ fn apply_scene_fog(
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
-    for (entity, handle) in &meshes {
+    for (entity, handle, mut mesh, extras) in &mut entities {
         let Some(base) = materials.get(&handle.0) else {
             continue;
         };
@@ -193,6 +217,31 @@ fn apply_scene_fog(
                 .insert(MeshMaterial3d(material));
             continue;
         }
+        if !terrain {
+            let Some(original) = meshes.get(&mesh.0) else {
+                continue;
+            };
+            let prepared = extras
+                .ok_or_else(|| anyhow::anyhow!("missing model lighting metadata"))
+                .and_then(|extras| crate::lighting::model_mesh(original, &extras.value));
+            match prepared {
+                Ok(private) => mesh.0 = meshes.add(private),
+                Err(error) => {
+                    error!(
+                        "world {} mesh {:?}: {error}; re-export the world",
+                        request
+                            .0
+                            .path()
+                            .map_or("unknown".into(), ToString::to_string),
+                        names.get(entity).map(Name::as_str)
+                    );
+                    commands
+                        .entity(entity)
+                        .insert((RejectedLighting, Visibility::Hidden));
+                    continue;
+                }
+            }
+        }
         let material = converted
             .entry(handle.0.id())
             .or_insert_with(|| {
@@ -220,6 +269,11 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
+            model_lighting: cyrus_assets::environment::ModelLighting {
+                ambient: [64.0; 3],
+                directional: [255.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            },
             sky: None,
             background: [200, 190, 250],
             clipping: [7.0, 3800.0],
@@ -243,6 +297,7 @@ mod tests {
         app.insert_resource(environments)
             .insert_resource(EnvironmentRequest(environment))
             .insert_resource(materials)
+            .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<SceneMaterial>>()
             .init_resource::<Assets<TerrainMaterial>>()
             .init_resource::<Fidelity>()
@@ -255,12 +310,31 @@ mod tests {
             .world_mut()
             .spawn((ViewCamera, Projection::default()))
             .id();
-        let first = app.world_mut().spawn(MeshMaterial3d(base.clone())).id();
-        let second = app.world_mut().spawn(MeshMaterial3d(base.clone())).id();
+        let mut mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
+        let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let extras = bevy::gltf::GltfExtras {
+            value: r#"{"rgpre_lighting":{"version":1,"vertices":[[0,0],[64,0],[255,1]]}}"#.into(),
+        };
+        let first = app
+            .world_mut()
+            .spawn((
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                extras.clone(),
+            ))
+            .id();
+        let second = app
+            .world_mut()
+            .spawn((MeshMaterial3d(base.clone()), Mesh3d(mesh.clone()), extras))
+            .id();
         let terrain_root = app.world_mut().spawn(Name::new("Terrain")).id();
         let terrain = app
             .world_mut()
-            .spawn((MeshMaterial3d(base), ChildOf(terrain_root)))
+            .spawn((MeshMaterial3d(base), Mesh3d(mesh), ChildOf(terrain_root)))
             .id();
         app.update();
         let handle = app
@@ -299,6 +373,21 @@ mod tests {
             .resource::<Assets<SceneMaterial>>()
             .get(&handle)
             .unwrap();
+        assert_eq!(material.extension.ambient, Vec4::new(64.0, 64.0, 64.0, 0.0));
+        assert_eq!(
+            material.extension.directional,
+            Vec4::new(255.0, 255.0, 255.0, 0.0)
+        );
+        assert_eq!(material.extension.direction, Vec4::new(0.0, -1.0, 0.0, 0.0));
+        let mesh = app.world().get::<Mesh3d>(first).unwrap();
+        assert!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&mesh.0)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_UV_1)
+                .is_some()
+        );
         assert_eq!(material.base.base_color, Color::srgb(0.2, 0.4, 0.6));
         assert_eq!(material.base.alpha_mode, AlphaMode::Mask(0.4));
         assert!(material.base.unlit);

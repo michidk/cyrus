@@ -45,8 +45,22 @@ quantized shading normals follow preservation's
 Native export retains the per-world inputs in `.environment`; native and browser
 playback shade private terrain meshes, including displaced water. Terrain uses
 screen-linear vertex RGB and texture modulation before the existing scene fog,
-without Bevy PBR or tone mapping. Models retain the existing fixed Bevy light.
-Re-export browser worlds to include the new lighting inputs.
+without Bevy PBR or tone mapping.
+
+**Verified:** model ambient/directional shading follows preservation's
+[model-lighting rules](https://github.com/michidk/redguard-preservation/blob/feat/model-lighting/docs/engine/model-lighting.md).
+Models use the installed world RGB, authored face brightness and normals, and
+solid-color tint. RGB is calculated at vertices, interpolated in screen space
+and combined with encoded texture colors before fog. The fixed Bevy directional
+light and model PBR response are removed. Mesh transforms and explicitly selected
+animation frames feed the same shader on native and browser builds.
+
+Re-export worlds and player models for the `rgpre_lighting` primitive metadata
+and required environment model inputs. Invalid mesh lighting metadata hides the
+unsupported mesh and logs the world/mesh context with re-export instructions.
+**Unknown:** local-light admission, static prelighting retention/rounding,
+actor-specific lighting overrides and complete original-game pixel parity.
+The recovered ambient/directional calculation does not establish those behaviors.
 
 The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
 that reuses Faithful results. Existing Water and Fog switches remain independent.

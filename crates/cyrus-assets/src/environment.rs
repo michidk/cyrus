@@ -19,6 +19,8 @@ pub struct Environment {
     pub water: Option<Water>,
     /// Original per-world terrain shading inputs, absent for worlds without terrain.
     pub terrain_lighting: Option<TerrainLighting>,
+    /// Ambient and directional model inputs, including worlds without terrain.
+    pub model_lighting: ModelLighting,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -66,8 +68,31 @@ pub struct Water {
     pub animated_vertices: Vec<bool>,
 }
 
+#[derive(Clone, Default, Serialize, Deserialize)]
+/// Model RGB strengths and direction in exported axes, per preservation's model-lighting rules.
+pub struct ModelLighting {
+    /// Ambient strengths in encoded RGB units.
+    pub ambient: [f32; 3],
+    /// Directional strengths in encoded RGB units.
+    pub directional: [f32; 3],
+    /// Normalized light direction, or zero when disabled.
+    pub direction: [f32; 3],
+}
+
 impl Environment {
     pub fn validate(&self) -> anyhow::Result<()> {
+        let lighting = &self.model_lighting;
+        anyhow::ensure!(
+            lighting
+                .ambient
+                .iter()
+                .chain(&lighting.directional)
+                .chain(&lighting.direction)
+                .all(|v| v.is_finite())
+                && (Vec3::from(lighting.direction) == Vec3::ZERO
+                    || (Vec3::from(lighting.direction).length_squared() - 1.0).abs() < 0.00001),
+            "invalid model lighting strengths or direction"
+        );
         anyhow::ensure!(
             self.clipping.iter().all(|value| value.is_finite())
                 && self.clipping[0] > 0.0

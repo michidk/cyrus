@@ -161,6 +161,7 @@ mod tests {
         let pixels = vec![255, 0, 0, 255, 0, 255, 0, 255];
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            model_lighting: Default::default(),
             sky: Some(SkyImage {
                 width: 2,
                 height: 1,
@@ -183,6 +184,7 @@ mod tests {
             terrain_lighting: None,
         });
         let indoor = environments.add(Environment {
+            model_lighting: Default::default(),
             sky: None,
             background: [10, 20, 30],
             clipping: [7.0, 3800.0],

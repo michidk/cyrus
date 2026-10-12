@@ -6,6 +6,9 @@ struct SceneFog {
     clipping: vec4<f32>,
     table: array<vec4<f32>, 16>,
     water: vec4<f32>,
+    ambient: vec4<f32>,
+    directional: vec4<f32>,
+    direction: vec4<f32>,
 };
 @group(MATERIAL_BIND_GROUP) @binding(100) var<uniform> fog: SceneFog;
 

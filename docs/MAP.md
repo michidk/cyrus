@@ -100,7 +100,7 @@ module where it is defined and regenerate.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
-- `src/lighting.rs` — Terrain RGB and quantized normals from preservation's terrain-lighting contract.
+- `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.

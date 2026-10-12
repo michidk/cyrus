@@ -271,10 +271,15 @@ pub fn export(
     } else {
         None
     };
+    let inputs = rgpre::import::world_lighting::WorldLighting::parse(&ini, entry.index)?;
+    let [x, y, z] = inputs.direction;
+    let model_lighting = crate::environment::ModelLighting {
+        ambient: inputs.ambient,
+        directional: inputs.directional,
+        direction: [-x, -y, z],
+    };
     let terrain_lighting = terrain
         .map(|terrain| -> anyhow::Result<_> {
-            let inputs = rgpre::import::world_lighting::WorldLighting::parse(&ini, entry.index)?;
-            let [x, y, z] = inputs.direction;
             Ok(crate::environment::TerrainLighting {
                 side: terrain.combined_map(0)?.len().isqrt(),
                 ambient: inputs.ambient,
@@ -284,6 +289,7 @@ pub fn export(
         })
         .transpose()?;
     let environment = Environment {
+        model_lighting,
         terrain_lighting,
         sky,
         background,

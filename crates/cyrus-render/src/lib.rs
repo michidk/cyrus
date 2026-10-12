@@ -65,12 +65,4 @@ fn scene_presentation(
             assets.load(GltfAssetLabel::Scene(0).from_asset(prepared.scene_path.clone())),
         ),
     ));
-    commands.spawn((
-        SceneEntity,
-        DirectionalLight {
-            illuminance: 8000.0,
-            ..default()
-        },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.9, 0.4, 0.0)),
-    ));
 }
