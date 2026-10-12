@@ -994,7 +994,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
 
 fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
     let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(serde_json::json!({
-        "version":4,"world":world,"actor_pool_capacity":10,"content_id":"",
+        "version":5,"world":world,"actor_pool_capacity":10,"content_id":"",
         "definition":{"functions":[
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}

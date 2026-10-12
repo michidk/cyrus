@@ -34,10 +34,11 @@ unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
 retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
 program descriptors with names from the installed SOUP386.DEF. The independent
-version-4 `.scripts` sidecar retains the installed actor-pool capacity, actor RASC
+version-5 `.scripts` sidecar retains the installed actor-pool capacity, actor RASC
 origins, definitions, fresh-game flag values, locals, strings,
-initialized attributes, hooks and explicit unsupported records. Actor-load defaults
-come from preservation [PR #59](https://github.com/michidk/redguard-preservation/pull/59)
+initialized attributes, hooks and explicit unsupported records. Placement records retain
+the original model name and complete model-mode byte for actor initialization.
+Actor-load defaults come from preservation [PR #59](https://github.com/michidk/redguard-preservation/pull/59)
 and installed SYSTEM.INI; model-path message-group assignment remains separate. Its content identity rejects
 changed metadata. Animation metadata retains the same script identity; preparation
 rejects animation/script sidecars from different exports. The animation inspection adapter also retains those same
@@ -61,7 +62,7 @@ Re-export worlds before using explicit player model poses.
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`), pinned to release `v0.8.0`, owns parsing and recovered
+Preservation (`rgpre`), pinned to release `v0.9.0`, owns parsing and recovered
 engine rules. This crate owns install validation, catalog identities, portable
 preview descriptions, generated
 files, PCM conversion, and the portable movie decoder wrapper.

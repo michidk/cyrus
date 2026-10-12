@@ -145,7 +145,7 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 4,
+        version: 5,
         actor_pool_capacity: config.actor_pool_capacity,
         world,
         content_id: String::new(),
@@ -164,6 +164,8 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
                 actor: record.script_name(),
                 object_type: record.object_type,
                 active: record.is_active,
+                model_name: record.model_name(),
+                model_mode: record.is_static,
                 map_position: [
                     i64::from(record.pos_x),
                     i64::from(record.pos_y),

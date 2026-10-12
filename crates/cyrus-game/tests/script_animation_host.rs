@@ -69,7 +69,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 4,
+        version: 5,
         actor_pool_capacity: 10,
         content_id: String::new(),
         world: 17,
@@ -109,6 +109,8 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
                 actor: name.into(),
                 object_type: 0,
                 active: 0,
+                model_name: String::new(),
+                model_mode: 0,
                 map_position: [0; 3],
                 angles: [0; 3],
             })

@@ -233,6 +233,10 @@ pub struct Instance {
     pub actor: String,
     pub object_type: u8,
     pub active: u8,
+    /// Authored MPOB model override; empty when absent.
+    pub model_name: String,
+    /// Raw MPOB model-mode byte, retained without boolean conversion.
+    pub model_mode: u8,
     /// Packed map coordinates retained in their original field units.
     pub map_position: [i64; 3],
     pub angles: [u32; 3],
@@ -267,7 +271,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 4,
+            self.version == 5,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

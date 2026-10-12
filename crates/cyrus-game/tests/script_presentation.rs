@@ -11,7 +11,7 @@ use serde_json::json;
 #[test]
 fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
     let mut scripts: Scripts = serde_json::from_value(json!({
-        "version":4,"actor_pool_capacity":10,"content_id":"","world":17,
+        "version":5,"actor_pool_capacity":10,"content_id":"","world":17,
         "definition":{"functions":[
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}
@@ -26,7 +26,7 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
                 "1":{"next":2,"operation":{"type":"end","target":0}}
             }}
         }},
-        "instances":[{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"map_position":[0,0,0],"angles":[0,0,0]}],
+        "instances":[{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"model_name":"test","model_mode":2,"map_position":[0,0,0],"angles":[0,0,0]}],
         "unsupported":{}
     })).unwrap();
     scripts.content_id = scripts.content_identity().unwrap();

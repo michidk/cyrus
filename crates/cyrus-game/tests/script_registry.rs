@@ -73,7 +73,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 4,
+        version: 5,
         actor_pool_capacity: 32,
         content_id: String::new(),
         world: 7,
@@ -110,6 +110,8 @@ fn cache() -> Scripts {
                 actor: "LOGIC".into(),
                 object_type: 0,
                 active: 0,
+                model_name: String::new(),
+                model_mode: 0,
                 map_position: [0; 3],
                 angles: [0; 3],
             })
@@ -1344,6 +1346,8 @@ fn nested_families_compose_original_positions_and_keep_generation_identity() {
             actor: name.into(),
             object_type: 0,
             active: 0,
+            model_name: String::new(),
+            model_mode: 0,
             map_position: position,
             angles,
         });

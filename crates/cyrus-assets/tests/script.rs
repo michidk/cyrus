@@ -3,7 +3,7 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 4,
+        version: 5,
         actor_pool_capacity: 32,
         world: 7,
         content_id: String::new(),
@@ -43,11 +43,49 @@ fn content_identity_rejects_changed_programs_and_defaults() {
 }
 #[test]
 fn portable_script_records_round_trip_with_the_same_identity() {
-    let scripts = cache();
+    let mut scripts = cache();
+    scripts.instances = [0, 1, 2, 255]
+        .into_iter()
+        .enumerate()
+        .map(|(index, model_mode)| Instance {
+            object_id: index as u32,
+            actor: "LOGIC".into(),
+            object_type: 1,
+            active: 0,
+            model_name: format!("MODEL{index}"),
+            model_mode,
+            map_position: [0; 3],
+            angles: [0; 3],
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
     let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
     decoded.validate().unwrap();
     assert_eq!(decoded.content_id, scripts.content_id);
     assert_eq!(decoded.definition.flags[0].initial_value, 1);
+    assert_eq!(
+        decoded
+            .instances
+            .iter()
+            .map(|instance| (instance.model_name.as_str(), instance.model_mode))
+            .collect::<Vec<_>>(),
+        [("MODEL0", 0), ("MODEL1", 1), ("MODEL2", 2), ("MODEL3", 255)]
+    );
+    for change_name in [false, true] {
+        let mut changed = decoded.clone();
+        if change_name {
+            changed.instances[0].model_name = "OTHER".into();
+        } else {
+            changed.instances[0].model_mode = 1;
+        }
+        assert!(
+            changed
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("identity mismatch")
+        );
+    }
 }
 
 #[test]
@@ -140,6 +178,33 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         scripts.validate().unwrap();
         assert!(!scripts.actors.is_empty());
+        let placements: Vec<_> = map
+            .sections
+            .iter()
+            .filter_map(|section| match section {
+                rgpre::import::rgm::RgmSection::MpobParsed(_, records) => Some(records),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(scripts.instances.len(), placements.len());
+        for (instance, placement) in scripts.instances.iter().zip(placements) {
+            assert_eq!(instance.object_id, placement.id);
+            assert_eq!(
+                instance.model_name,
+                placement.model_name(),
+                "{} object {} model name",
+                path.display(),
+                placement.id
+            );
+            assert_eq!(
+                instance.model_mode,
+                placement.is_static,
+                "{} object {} model mode",
+                path.display(),
+                placement.id
+            );
+        }
         for (name, actor) in &scripts.actors {
             let attribute = |index: usize| {
                 let key = scripts
@@ -189,7 +254,7 @@ fn pool_capacity_participates_in_cache_identity_and_old_schemas_require_reexport
             .to_string()
             .contains("invalid script actor pool capacity")
     );
-    scripts.version = 3;
+    scripts.version = 4;
     assert!(
         scripts
             .validate()
