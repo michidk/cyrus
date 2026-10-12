@@ -3,9 +3,11 @@ use anyhow::{Context, Result};
 use bevy::prelude::{Assets, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
     animation::Animations,
-    script::{CallKind, Instance, Scripts},
+    script::{Call, CallKind, Instance, Operation, Scripts},
 };
-use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
+use cyrus_script::{
+    Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, TaskSource, Thread,
+};
 use cyrus_world::lifecycle::PreparedWorld;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -42,6 +44,7 @@ pub struct ScriptWorld {
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
     actors: Vec<ScriptActor>,
+    task_calls: BTreeMap<(CodeOrigin, u32), Call>,
 }
 impl ScriptWorld {
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
@@ -51,6 +54,22 @@ impl ScriptWorld {
             .iter()
             .map(|(name, actor)| (name, Arc::new(actor.program.clone())))
             .collect();
+        let mut task_calls = BTreeMap::new();
+        for actor in scripts.actors.values() {
+            for (&instruction, step) in &actor.program.steps {
+                if let Operation::Call { call } | Operation::ObjectCall { call } = &step.operation {
+                    let key = (CodeOrigin(actor.code_origin), instruction);
+                    if let Some(existing) = task_calls.insert(key, call.clone()) {
+                        anyhow::ensure!(
+                            existing == *call,
+                            "world {}: aliased script call differs at origin {} instruction {instruction}",
+                            scripts.world,
+                            actor.code_origin
+                        );
+                    }
+                }
+            }
+        }
         let mut allocations = BTreeMap::<&str, usize>::new();
         let actors = scripts
             .instances
@@ -73,6 +92,7 @@ impl ScriptWorld {
                     *allocated += 1;
                     Runtime::from_shared(
                         Arc::clone(&programs[&placement.actor]),
+                        cyrus_script::CodeOrigin(actor.code_origin),
                         locals,
                         context.clone(),
                     )
@@ -119,6 +139,7 @@ impl ScriptWorld {
                 .map(|flag| flag.initial_value)
                 .collect(),
             actors,
+            task_calls,
         })
     }
     pub fn generation(&self) -> u64 {
@@ -126,46 +147,45 @@ impl ScriptWorld {
     }
     /// Deterministic inspection of one body. This does not establish actor eligibility.
     pub fn step(&mut self, id: ScriptActorId, thread: Thread, budget: usize) -> Result<()> {
+        self.execute(id, |runtime, host, flags| {
+            runtime.invoke_body(thread, host, flags, budget)
+        })
+    }
+    /// Explicit task timing only. Missing scale fails before changing any actor state.
+    pub fn step_tasks(&mut self, id: ScriptActorId, frame_scale: Option<u32>) -> Result<()> {
+        self.resolve(id)?;
+        let frame_scale = frame_scale.with_context(|| {
+            format!(
+                "world {} instance {} task stage requires frame_scale",
+                self.world, id.index
+            )
+        })?;
+        self.execute(id, |runtime, host, flags| {
+            runtime.invoke_tasks_timed(host, flags, frame_scale)
+        })
+    }
+    fn execute(
+        &mut self,
+        id: ScriptActorId,
+        run: impl FnOnce(&mut Runtime, &mut InspectionHost<'_>, &mut [i32]) -> Result<()>,
+    ) -> Result<()> {
         let index = self.resolve(id)?;
         let actor = &mut self.actors[index];
-        let runtime = actor.runtime.as_mut().with_context(|| {
+        let mut runtime = actor.runtime.take().with_context(|| {
             actor
                 .unavailable
                 .clone()
                 .unwrap_or_else(|| "program absent".into())
         })?;
         let mut host = InspectionHost {
-            attributes: &actor.attributes,
-            waits: &mut actor.waits,
+            index,
+            actors: &mut self.actors,
+            task_calls: &self.task_calls,
             flag_state: &mut self.flag_state,
         };
-        runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
-    }
-    /// Explicit task timing only. Missing scale fails before changing any actor state.
-    pub fn step_tasks(&mut self, id: ScriptActorId, frame_scale: Option<u32>) -> Result<()> {
-        let index = self.resolve(id)?;
-        let frame_scale = frame_scale.with_context(|| {
-            format!(
-                "world {} instance {} task stage requires frame_scale",
-                self.world, index
-            )
-        })?;
-        let actor = &mut self.actors[index];
-        let runtime = actor.runtime.as_mut().with_context(|| {
-            actor
-                .unavailable
-                .clone()
-                .unwrap_or_else(|| "program absent".into())
-        })?;
-        runtime.invoke_tasks_timed(
-            &mut InspectionHost {
-                attributes: &actor.attributes,
-                waits: &mut actor.waits,
-                flag_state: &mut self.flag_state,
-            },
-            &mut self.flags,
-            frame_scale,
-        )
+        let result = run(&mut runtime, &mut host, &mut self.flags);
+        host.actors[index].runtime = Some(runtime);
+        result
     }
     fn resolve(&self, actor: ScriptActorId) -> Result<usize> {
         anyhow::ensure!(
@@ -298,9 +318,44 @@ pub(super) fn prepare(
 }
 
 struct InspectionHost<'a> {
-    attributes: &'a [u8],
+    index: usize,
+    actors: &'a mut [ScriptActor],
+    task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
     flag_state: &'a mut super::flags::Flags,
-    waits: &'a mut super::waits::Waits,
+}
+impl InspectionHost<'_> {
+    fn target_index(&self, target: &Target) -> Result<usize> {
+        let indices = match target {
+            Target::Me => return Ok(self.index),
+            Target::Named(name) => self
+                .actors
+                .iter()
+                .enumerate()
+                .filter(|(_, actor)| {
+                    actor
+                        .namespace
+                        .as_ref()
+                        .is_some_and(|namespace| namespace.eq_ignore_ascii_case(name))
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>(),
+            Target::Player => self
+                .actors
+                .iter()
+                .enumerate()
+                .filter(|(_, actor)| actor.placement.actor == "CYRUS")
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>(),
+            _ => anyhow::bail!("object target {target:?} unsupported"),
+        };
+        let [index] = indices.as_slice() else {
+            anyhow::bail!(
+                "object target {target:?}: {} matching receivers; runtime identifier ordering unavailable",
+                indices.len()
+            );
+        };
+        Ok(*index)
+    }
 }
 impl Host for InspectionHost<'_> {
     fn call(
@@ -316,7 +371,10 @@ impl Host for InspectionHost<'_> {
             target == &Target::Me,
             "inspection target {target:?} unsupported"
         );
-        if let Some(result) = self.waits.call(function, kind, arguments, invocation)? {
+        if let Some(result) = self.actors[self.index]
+            .waits
+            .call(function, kind, arguments, invocation)?
+        {
             return Ok(result);
         }
         anyhow::ensure!(
@@ -333,7 +391,7 @@ impl Host for InspectionHost<'_> {
             };
             let value = usize::try_from(index.integer()?)
                 .ok()
-                .and_then(|index| self.attributes.get(index))
+                .and_then(|index| self.actors[self.index].attributes.get(index))
                 .copied()
                 .unwrap_or(0);
             return Ok(CallResult::Complete(i32::from(value)));
@@ -350,14 +408,52 @@ impl Host for InspectionHost<'_> {
         invocation: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> Result<bool> {
-        self.waits.poll(token, arguments, invocation)
+        self.actors[self.index]
+            .waits
+            .poll(token, arguments, invocation)
     }
     fn cancel(&mut self, token: u64) -> Result<()> {
-        self.waits.cancel(token)
+        self.actors[self.index].waits.cancel(token)
+    }
+    fn route(
+        &mut self,
+        target: &Target,
+        call: &Call,
+        strings: &[String],
+        source: Option<TaskSource>,
+        flags: &mut [i32],
+    ) -> Result<Route> {
+        let index = self.target_index(target)?;
+        if index == self.index {
+            return Ok(Route::Here);
+        }
+        let actor = &mut self.actors[index];
+        let mut runtime = actor.runtime.take().with_context(|| {
+            format!(
+                "receiver instance {index} {}: {}",
+                actor.placement.actor,
+                actor
+                    .unavailable
+                    .as_deref()
+                    .unwrap_or("script runtime already active")
+            )
+        })?;
+        let caller = std::mem::replace(&mut self.index, index);
+        let result = runtime.receive(call, strings, source, self, flags);
+        self.index = caller;
+        self.actors[index].runtime = Some(runtime);
+        result.map(Route::Complete)
+    }
+    fn task_call(&mut self, origin: CodeOrigin, instruction: u32) -> Result<Call> {
+        self.task_calls
+            .get(&(origin, instruction))
+            .cloned()
+            .with_context(|| format!("task source {} instruction {instruction} absent", origin.0))
     }
     fn end(&mut self, _: Thread) -> Result<()> {
         anyhow::ensure!(
-            self.attributes[29] == 0 && self.attributes[30] == 0,
+            self.actors[self.index].attributes[29] == 0
+                && self.actors[self.index].attributes[30] == 0,
             "synchronization channels unsupported"
         );
         Ok(())

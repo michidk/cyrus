@@ -1,5 +1,5 @@
 //! Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
-use super::{CallResult, Host, Invocation, Runtime, Thread};
+use super::{CallResult, Host, Invocation, Runtime, Target, TaskSource};
 use anyhow::{Context, Result};
 use cyrus_assets::script::{Call, CallKind, Operation};
 use serde::{Deserialize, Serialize};
@@ -8,8 +8,8 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Task {
     pub token: u64,
-    pub instruction: u32,
-    pub owner: Thread,
+    pub source: TaskSource,
+    pub operand: u32,
     pub blocking: bool,
     pub paused: bool,
     pub counter: u16,
@@ -89,15 +89,20 @@ impl Runtime {
                 continue;
             }
             let completed = (|| {
-                let step = program
-                    .steps
-                    .get(&task.instruction)
-                    .context("task instruction absent")?;
-                let Operation::Call { call } = &step.operation else {
-                    anyhow::bail!("task instruction is not a call")
+                let call = if task.source.origin == self.origin {
+                    let step = program
+                        .steps
+                        .get(&task.source.instruction)
+                        .context("task instruction absent")?;
+                    match &step.operation {
+                        Operation::Call { call } | Operation::ObjectCall { call } => call.clone(),
+                        _ => anyhow::bail!("task instruction is not a call"),
+                    }
+                } else {
+                    host.task_call(task.source.origin, task.source.instruction)?
                 };
                 self.state.script_return = 0;
-                let arguments = self.arguments(call, flags, host)?;
+                let arguments = self.arguments(&call, flags, host, &program.strings)?;
                 let elapsed = frame_scale
                     .map(|scale| (u32::from(task.counter).wrapping_mul(scale) >> 8) as i32);
                 let invocation = self.invocation(elapsed);
@@ -108,7 +113,7 @@ impl Runtime {
             .with_context(|| {
                 format!(
                     "instruction {} thread {:?} token {}",
-                    task.instruction, task.owner, task.token
+                    task.source.instruction, task.source.thread, task.token
                 )
             })?;
             if completed {
@@ -117,51 +122,51 @@ impl Runtime {
         }
         Ok(())
     }
-    pub(super) fn start_call(
+    pub(super) fn receive_inner(
         &mut self,
         call: &Call,
-        cursor: u32,
-        thread: Thread,
+        strings: &[String],
+        source: Option<TaskSource>,
         host: &mut dyn Host,
         flags: &mut [i32],
-    ) -> Result<bool> {
+    ) -> Result<(i32, bool)> {
+        anyhow::ensure!(
+            (call.kind == CallKind::Function) == source.is_none(),
+            "native call/task source mismatch"
+        );
+        let operand = source.map(TaskSource::operand).transpose()?;
         if call.kind != CallKind::Function
             && self
                 .state
                 .tasks
                 .iter()
                 .flatten()
-                .any(|task| task.instruction == cursor)
+                .any(|task| Some(task.operand) == operand)
         {
-            return Ok(false);
+            return Ok((0, false));
         }
-        anyhow::ensure!(
-            call.kind == CallKind::Function || call.target == cyrus_assets::script::Object::Me,
-            "cross-actor task ownership unsupported"
-        );
         let slot = self.state.tasks.iter().position(Option::is_none);
         anyhow::ensure!(
             call.kind == CallKind::Function || slot.is_some(),
             "actor task capacity exhausted"
         );
-        let target = self.target(&call.target)?;
-        let arguments = self.arguments(call, flags, host)?;
+        let arguments = self.arguments(call, flags, host, strings)?;
         let invocation = self.invocation((call.kind != CallKind::Function).then_some(0));
         match host.call(
-            &target,
+            &Target::Me,
             call.kind,
             &call.function,
             &arguments,
             invocation,
             flags,
         )? {
-            CallResult::Complete(_) => {
+            CallResult::Complete(value) => {
                 anyhow::ensure!(
                     call.kind == CallKind::Function,
                     "native task {} must retain a token for its later completion pass",
                     call.function
                 );
-                Ok(false)
+                Ok((value, false))
             }
             CallResult::Pending(token) => {
                 anyhow::ensure!(
@@ -181,13 +186,13 @@ impl Runtime {
                 let blocking = call.kind == CallKind::Task;
                 self.state.tasks[slot.context("task slot absent")?] = Some(Task {
                     token,
-                    instruction: cursor,
-                    owner: thread,
+                    source: source.context("task source absent")?,
+                    operand: operand.context("task operand absent")?,
                     blocking,
                     paused: false,
                     counter: 1,
                 });
-                Ok(blocking)
+                Ok((0, blocking))
             }
         }
     }
@@ -197,8 +202,14 @@ impl Runtime {
         operation: &Operation,
         host: &mut dyn Host,
     ) -> Result<()> {
+        let operand = self
+            .origin
+            .0
+            .checked_add(label)
+            .and_then(|value| value.checked_add(1))
+            .context("task label overflow")?;
         for task in &mut self.state.tasks {
-            if task.as_ref().is_none_or(|task| task.instruction != label) {
+            if task.as_ref().is_none_or(|task| task.operand != operand) {
                 continue;
             }
             match operation {

@@ -3,7 +3,7 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 1,
+        version: 2,
         world: 7,
         content_id: String::new(),
         definition: Definition {

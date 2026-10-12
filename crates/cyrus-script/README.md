@@ -12,7 +12,7 @@ world/actor/instruction error. The core supplies no production clock or activati
 
 **Verified:** operand structure, cooperative invocation, End continuation, separate
 invocation cursors and actor return continuation, and integer operators follow preservation's
-[SOUP contract](https://github.com/michidk/redguard-preservation/blob/b1cdaca81ccfb309433bd02ff04ffc4f4f9469a8/docs/engine/SOUP.md).
+[SOUP contract](https://github.com/michidk/redguard-preservation/blob/a2ee1f123c9961aac44c3e24193975fb030600df/docs/engine/SOUP.md).
 Synthetic public-interface tests cover immediate statements, subroutines,
 shared locals, blocking completion, arithmetic, branches, and sticky failures.
 These tests do not establish complete game fidelity.
@@ -32,8 +32,16 @@ zero for initial task calls, and unpaused total/blocking slot counts that reflec
 earlier completions in the same pass. Untimed animation passes and Function calls
 have no established elapsed input. `Yield`, Anchor and ScriptRV retain actor state.
 Exceeding task capacity fails before a seventh host effect. Full save restoration
-and complete native command services remain unsupported. Object-targeted task
-routing is explicitly unavailable until receiver ownership is implemented. `State` is serializable for inspection;
+and complete native command services remain unsupported.
+
+`Host::route` resolves object calls before evaluating their operands. `Runtime::receive`
+uses receiver locals and task slots without running its body. Initial native strings
+use the executing actor's table; later ordinary receiver task passes use the receiver's.
+`CodeOrigin` and `TaskSource` retain the physical RASC operand identity across routing.
+`Host::task_call` supplies foreign instructions for reevaluation. Duplicate suppression
+and task controls compare physical operands. Object calls continue the caller, including
+explicit Me tasks. Hosts restore receiver context and runtime ownership on errors.
+The default host rejects non-Me routing. `State` is serializable for inspection;
 serialization alone is not a save/load implementation. Production task tokens
 must remain bound to their owning actor and world generation.
 

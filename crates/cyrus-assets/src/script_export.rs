@@ -76,6 +76,8 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
                     name.clone(),
                     Actor {
                         header_index: source.header_index,
+                        code_origin: u32::try_from(source.script_data_offset)
+                            .with_context(|| format!("{context}: invalid script origin"))?,
                         instances: source.instances,
                         namespace: record
                             .get("ranm_name")
@@ -118,7 +120,7 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 1,
+        version: 2,
         world,
         content_id: String::new(),
         definition,

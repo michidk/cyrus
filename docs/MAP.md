@@ -91,6 +91,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 
+- `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
 - `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
 - `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
 

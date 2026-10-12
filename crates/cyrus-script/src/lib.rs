@@ -1,4 +1,5 @@
 //! Explicit SOUP invocation, continuations and values from preservation's engine contract.
+mod routing;
 mod tasks;
 mod values;
 use anyhow::{Context, Result};
@@ -29,6 +30,34 @@ pub enum Target {
     Camera,
     Named(String),
     Variable(i32),
+}
+
+/// Byte offset of a program's base within its world's RASC data, not a runtime pointer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CodeOrigin(pub u32);
+
+/// Encoded task identity retains its source when routed to another actor.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct TaskSource {
+    pub origin: CodeOrigin,
+    pub instruction: u32,
+    pub object_call: bool,
+    pub thread: Thread,
+}
+impl TaskSource {
+    fn operand(self) -> Result<u32> {
+        self.origin
+            .0
+            .checked_add(self.instruction)
+            .and_then(|value| value.checked_add(if self.object_call { 4 } else { 1 }))
+            .context("task operand identity overflow")
+    }
+}
+
+/// Routing either resolves to this instance or finishes synchronously on another one.
+pub enum Route {
+    Here,
+    Complete(i32),
 }
 
 /// Numeric bit patterns remain intact until a native handler interprets their units.
@@ -83,6 +112,33 @@ pub trait Host {
         invocation: Invocation,
         flags: &mut [i32],
     ) -> Result<bool>;
+    /// Resolves an object before evaluating its native operands. Routed tasks belong to the receiver.
+    fn route(
+        &mut self,
+        target: &Target,
+        call: &cyrus_assets::script::Call,
+        strings: &[String],
+        source: Option<TaskSource>,
+        flags: &mut [i32],
+    ) -> Result<Route> {
+        let _ = (call, strings, source, flags);
+        anyhow::ensure!(
+            target == &Target::Me,
+            "object target {target:?} routing unsupported"
+        );
+        Ok(Route::Here)
+    }
+    /// Retrieves the encoded call retained by a foreign task, never receiver instructions.
+    fn task_call(
+        &mut self,
+        origin: CodeOrigin,
+        instruction: u32,
+    ) -> Result<cyrus_assets::script::Call> {
+        anyhow::bail!(
+            "task source {} instruction {instruction} unavailable",
+            origin.0
+        )
+    }
     /// Removes task bookkeeping without reversing already issued effects.
     fn cancel(&mut self, task: u64) -> Result<()> {
         anyhow::bail!("task {task} cancellation unsupported")
@@ -117,6 +173,7 @@ pub struct State {
 /// Validated execution core. Invocations continue until a real wait or authored yield.
 pub struct Runtime {
     program: Arc<Program>,
+    origin: CodeOrigin,
     context: String,
     state: State,
 }
@@ -124,11 +181,12 @@ pub struct Runtime {
 impl Runtime {
     pub fn new(program: Program, context: String) -> Result<Self> {
         let variables = program.variables.clone();
-        Self::from_shared(Arc::new(program), variables, context)
+        Self::from_shared(Arc::new(program), CodeOrigin(0), variables, context)
     }
     /// Instances share immutable instructions while retaining separate authored locals.
     pub fn from_shared(
         program: Arc<Program>,
+        origin: CodeOrigin,
         variables: Vec<i32>,
         context: String,
     ) -> Result<Self> {
@@ -160,6 +218,7 @@ impl Runtime {
         };
         Ok(Self {
             program,
+            origin,
             context,
             state,
         })
@@ -189,7 +248,7 @@ impl Runtime {
             .tasks
             .iter()
             .flatten()
-            .find(|task| task.owner == thread && task.blocking && !task.paused)
+            .find(|task| task.source.thread == thread && task.blocking && !task.paused)
             .map(|task| task.token)
     }
     pub fn failure(&self) -> Option<&str> {
@@ -292,15 +351,22 @@ impl Runtime {
                     yield_now = true;
                 }
                 Operation::Call { call } => {
-                    yield_now = self.start_call(call, cursor, thread, host, flags)?;
+                    let source = (call.kind != CallKind::Function).then_some(TaskSource {
+                        origin: self.origin,
+                        instruction: cursor,
+                        object_call: false,
+                        thread,
+                    });
+                    yield_now = self.dispatch(call, source, host, flags)?.1;
                 }
                 Operation::ObjectCall { call } => {
-                    anyhow::ensure!(
-                        call.kind == CallKind::Function,
-                        "object task routing unsupported for {}",
-                        call.function
-                    );
-                    self.start_call(call, cursor, thread, host, flags)?;
+                    let source = (call.kind != CallKind::Function).then_some(TaskSource {
+                        origin: self.origin,
+                        instruction: cursor,
+                        object_call: true,
+                        thread,
+                    });
+                    self.dispatch(call, source, host, flags)?;
                 }
                 Operation::Anchor { value } => self.state.anchor = *value,
                 Operation::Yield => yield_now = true,

@@ -18,7 +18,7 @@ blake3 = "1"
 toml = "0.9"
 clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
-redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "641ca43b327de2f30bed05466f23d930db43c988" }
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "a2ee1f123c9961aac44c3e24193975fb030600df" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }
 cyrus-render = { path = "crates/cyrus-render" }
