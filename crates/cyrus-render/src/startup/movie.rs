@@ -4,7 +4,9 @@ use super::menu::MenuState;
 use super::menu::MovieRequest;
 use super::menu::MovieStatus;
 #[cfg(not(target_arch = "wasm32"))]
-use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
+use super::movie_native::{Packets, StreamingAudio};
+#[cfg(not(target_arch = "wasm32"))]
+use bevy::audio::{AddAudioSource, AudioPlayer, AudioSink, PlaybackSettings};
 use bevy::prelude::*;
 use cyrus_assets::movie::{MovieDefinition, Prepared};
 use cyrus_game::AppState;
@@ -32,7 +34,7 @@ struct Playing {
     decoder: Decoder,
     image: Handle<Image>,
     #[cfg(not(target_arch = "wasm32"))]
-    audio: Option<Handle<AudioSource>>,
+    audio: Option<Handle<StreamingAudio>>,
     elapsed: f64,
     next_frame: u32,
     started: bool,
@@ -41,10 +43,15 @@ struct Playing {
 /// The audio of the playing movie; CD music pauses while it exists.
 #[derive(Component)]
 pub struct MovieAudio;
+#[cfg(not(target_arch = "wasm32"))]
+type NativeFrame = (Vec<u8>, Option<StreamingAudio>);
+
 /// Dropping it disconnects the channel, which stops the decoding thread.
 struct Decoder {
     #[cfg(not(target_arch = "wasm32"))]
-    frames: Mutex<mpsc::Receiver<anyhow::Result<Vec<u8>>>>,
+    frames: Mutex<mpsc::Receiver<anyhow::Result<NativeFrame>>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    audio: Option<StreamingAudio>,
     #[cfg(target_arch = "wasm32")]
     frames: Mutex<super::movie_stream::BrowserMovie>,
 }
@@ -53,7 +60,10 @@ impl Decoder {
         #[cfg(not(target_arch = "wasm32"))]
         {
             match self.frames.lock().unwrap().try_recv() {
-                Ok(frame) => frame.map(Some),
+                Ok(frame) => frame.map(|(pixels, audio)| {
+                    self.audio = audio;
+                    Some(pixels)
+                }),
                 Err(mpsc::TryRecvError::Empty) => Ok(None),
                 Err(mpsc::TryRecvError::Disconnected) => {
                     anyhow::bail!("Movie decoder disconnected before completion")
@@ -68,6 +78,8 @@ impl Decoder {
 }
 
 pub(super) fn register(app: &mut App) {
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_audio_source::<StreamingAudio>();
     #[cfg(target_arch = "wasm32")]
     cyrus_assets::movie::register(app);
     app.add_message::<MovieRequest>()
@@ -85,32 +97,51 @@ pub(super) fn register(app: &mut App) {
 /// earlier frames are decoded but not sent.
 #[cfg(not(target_arch = "wasm32"))]
 fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
-    let mut smk = smk::Smk::open_memory(&movie.data)?;
-    smk.enable_all(0x80);
+    let source = movie.source.clone();
     let (sender, receiver) = mpsc::sync_channel(2);
     let frames = movie.metadata.frames;
     let name = movie.metadata.definition.name.clone();
+    let start =
+        Duration::from_micros(u64::from(frame - 1) * u64::from(movie.metadata.frame_micros));
+    let has_audio = movie.metadata.has_audio;
+    let frame_micros = movie.metadata.frame_micros;
     std::thread::spawn(move || {
-        let mut status = smk.first_frame();
-        for index in 1..=frames {
-            let failed = status.is_err();
-            if failed || index >= frame {
-                let result = status
-                    .as_ref()
-                    .map_err(|e| anyhow::anyhow!("movie {name}: frame {index}: {e}"))
-                    .map(|_| stretch(smk.video_data(), smk.palette()));
-                if sender.send(result).is_err() || failed {
-                    break;
+        let result = (|| -> anyhow::Result<()> {
+            let mut packets = Packets::new(&source, 0x80)?;
+            let info = packets.codec.info();
+            anyhow::ensure!(
+                info.frame_count == frames
+                    && (info.microseconds_per_frame - f64::from(frame_micros)).abs() < 0.5,
+                "movie changed during preparation"
+            );
+            let mut audio = if has_audio {
+                Some(StreamingAudio::prepare(&source, start, name.clone())?)
+            } else {
+                None
+            };
+            for index in 1..=frames {
+                anyhow::ensure!(
+                    packets
+                        .advance()
+                        .map_err(|error| anyhow::anyhow!("frame {index}: {error:#}"))?,
+                    "missing frame {index}"
+                );
+                if index >= frame {
+                    let pixels = stretch(packets.codec.video_data(), packets.codec.palette());
+                    if sender.send(Ok((pixels, audio.take()))).is_err() {
+                        break;
+                    }
                 }
             }
-            if failed || index == frames {
-                break;
-            }
-            status = smk.next_frame();
+            Ok(())
+        })();
+        if let Err(error) = result {
+            let _ = sender.send(Err(anyhow::anyhow!("movie {name}: {error:#}")));
         }
     });
     Ok(Decoder {
         frames: Mutex::new(receiver),
+        audio: None,
     })
 }
 
@@ -161,9 +192,14 @@ fn drive(
         ResMut<Assets<Image>>,
         Query<&mut Sprite, With<StartupContent>>,
     ),
-    #[cfg(not(target_arch = "wasm32"))] mut sources: Option<ResMut<Assets<AudioSource>>>,
+    #[cfg(not(target_arch = "wasm32"))] audio: (
+        ResMut<Assets<StreamingAudio>>,
+        Query<&AudioSink, With<MovieAudio>>,
+    ),
 ) {
     let (mut commands, audio_players) = runtime;
+    #[cfg(not(target_arch = "wasm32"))]
+    let (mut sources, sinks) = audio;
     let (mut playback, mut menu) = state;
     let (mut images, mut sprite) = rendering;
     for request in requests.read() {
@@ -216,14 +252,6 @@ fn drive(
             })
         }) {
             Ok(playing) => {
-                #[cfg(not(target_arch = "wasm32"))]
-                let mut playing = playing;
-                #[cfg(not(target_arch = "wasm32"))]
-                if let Some(source) = playing.movie.audio.take()
-                    && let Some(sources) = sources.as_mut()
-                {
-                    playing.audio = Some(sources.add(AudioSource { bytes: source }));
-                }
                 menu.movie = Some(MovieStatus {
                     name: playing.movie.metadata.definition.name.clone(),
                     frame: 0,
@@ -248,7 +276,22 @@ fn drive(
     if playing.started {
         #[cfg(not(target_arch = "wasm32"))]
         {
-            playing.elapsed += input.0.delta_secs_f64();
+            if let Some(source) = playing
+                .audio
+                .as_ref()
+                .and_then(|handle| sources.get(handle))
+            {
+                failure = source.error();
+                if !sinks.is_empty() {
+                    playing.elapsed = source
+                        .elapsed()
+                        .unwrap_or(playing.elapsed + input.0.delta_secs_f64());
+                } else {
+                    playing.elapsed += input.0.delta_secs_f64();
+                }
+            } else {
+                playing.elapsed += input.0.delta_secs_f64();
+            }
         }
         #[cfg(target_arch = "wasm32")]
         {
@@ -262,6 +305,7 @@ fn drive(
             #[cfg(not(target_arch = "wasm32"))]
             let sought = decode(&playing.movie, frame).map(|decoder| {
                 playing.decoder = decoder;
+                playing.audio = None;
             });
             #[cfg(target_arch = "wasm32")]
             let sought = playing.decoder.frames.get_mut().unwrap().seek(frame);
@@ -313,6 +357,10 @@ fn drive(
         let result = playing.decoder.next();
         match result {
             Ok(Some(frame)) => {
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(audio) = playing.decoder.audio.take() {
+                    playing.audio = Some(sources.add(audio));
+                }
                 let index = playing.next_frame;
                 playing.next_frame += 1;
                 if let Some(status) = menu.movie.as_mut() {
@@ -383,8 +431,7 @@ fn drive(
                 commands.spawn((
                     MovieAudio,
                     AudioPlayer(audio.clone()),
-                    PlaybackSettings::DESPAWN
-                        .with_start_position(Duration::from_secs_f64(playing.elapsed)),
+                    PlaybackSettings::DESPAWN,
                 ));
             }
             #[cfg(target_arch = "wasm32")]
@@ -505,9 +552,70 @@ mod tests {
                 movie.metadata.definition.name,
                 started.elapsed()
             );
-            assert_eq!(frame.unwrap().unwrap().len(), 640 * 480 * 4);
-            assert_eq!(movie.audio.is_some(), movie.metadata.has_audio);
+            let (pixels, audio) = frame.unwrap().unwrap();
+            assert_eq!(pixels.len(), 640 * 480 * 4);
+            assert_eq!(audio.is_some(), movie.metadata.has_audio);
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn installed_movie_starts_from_only_its_first_packet() {
+        use std::io::Read;
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let started = std::time::Instant::now();
+        let mut movie = prepare(&install.root, 0).unwrap();
+        let (pixels, audio) = decode(&movie, 1)
+            .unwrap()
+            .frames
+            .into_inner()
+            .unwrap()
+            .recv()
+            .unwrap()
+            .unwrap();
+        eprintln!(
+            "installed INTRO request to first picture and audio block: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(pixels.len(), 640 * 480 * 4);
+        assert!(audio.is_some());
+        drop(audio);
+        let mut reader = movie.source.open().unwrap();
+        let mut bytes = vec![0; 104];
+        reader.read_exact(&mut bytes).unwrap();
+        let size = smk::Smk::header_size(&bytes).unwrap().unwrap();
+        bytes.resize(size, 0);
+        reader.read_exact(&mut bytes[104..]).unwrap();
+        let codec = smk::Smk::open_stream(&bytes).unwrap();
+        bytes.resize(size + codec.packet_size().unwrap(), 0);
+        reader.read_exact(&mut bytes[size..]).unwrap();
+        drop(reader);
+        let directory =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../cyrus-config/movie-tests");
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(format!("first-packet-{}.smk", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        movie.source = cyrus_assets::movie::MovieInput::File(path.clone());
+        let (first, audio) = decode(&movie, 1)
+            .unwrap()
+            .frames
+            .into_inner()
+            .unwrap()
+            .recv()
+            .unwrap()
+            .unwrap();
+        assert_eq!(first, pixels, "first picture requires later packets");
+        assert!(audio.is_some());
+        drop(audio);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

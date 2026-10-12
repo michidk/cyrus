@@ -8,7 +8,9 @@ belong to the consuming crates.
 The opt-in `native` feature enables read-only install discovery, preload scans,
 scene/startup/menu/HUD/movie export, and sound/CD/voice/font preparation through
 `rgpre`. It also enables native font conversion in `cyrus-text`. Export paths are
-caller-supplied; the install is never written. Sidecar filenames are stable; schema checks reject incompatible cache records. Native prepared audio is WAV bytes, never a Bevy audio handle. Browser movie
+caller-supplied; the install is never written. Sidecar filenames are stable; schema checks reject incompatible cache records. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
+Native movie preparation retains a read-only file or CD-image location and reads
+only metadata. Its bounded reader cancels CD extraction when dropped. Browser movie
 preparation loads metadata only; `movie::stream::MovieStream` consumes compressed
 chunks and discards decoded packets. The vendored `smk` codec adds sequential
 packet input without replacing the upstream decoder.

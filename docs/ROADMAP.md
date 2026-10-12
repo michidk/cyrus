@@ -139,7 +139,7 @@ accepts agent control and produces a repeatable comparison through SETUP command
 
 - [x] Installed Windows metallic-logo/swoosh splash, title and data-driven book pages, including authored turns, camera moves and Quit closing.
 - [x] Options, Display, Sound, Controls and Movies; keyboard navigation, persistent validated preferences and installed feedback effects. **Verified:** native MCP/export contracts and browser menu/movie/world-entry checks.
-- [x] Native/browser Smacker playback, skip points, subtitles/interlace and retained menu selection. Browser video/audio streams before full download; CD tracks and world assignments export for shared music playback.
+- [x] Native/browser Smacker playback, skip points, subtitles/interlace and retained menu selection. Native video/audio streams from the installed file or CD image without whole-movie preparation; browser video/audio streams before full download. CD tracks and world assignments export for shared music playback.
 - [x] New Game and temporary Load enter the installed starting world/marker behind destination artwork and a dependency barrier.
 - [ ] Compare splash pixels/timing, inherited menu lighting, camera-plane clipping, authored transitions and audible output with the original.
 - [x] Bottom-right red loading status reports cyrus preparation stages and pending assets. **Verified:** installed export contracts and native menu-to-world captures; original internal progress weights remain unsupported.

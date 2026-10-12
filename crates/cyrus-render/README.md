@@ -104,7 +104,12 @@ and Controls; Movies browses unlocked definitions and previews. Native Quit exit
 after the authored close. Browser Quit requests tab closure and leaves the menu
 running if the host refuses.
 Native Movies playback reads installed Smacker files or the GOG CD image via
-rgpre and decodes them in-process with the `smk` crate. It retains menu selection, consumes original
+rgpre and decodes them in-process with the `smk` crate. Playback starts from the
+header and first packet, without reading the entire movie or decoding its full
+audio track. Two video frames and four audio blocks bound decoded lookahead;
+the audio callback never waits for disk reads or decoding. Audio starvation
+outputs silence and freezes the sample clock without losing stereo alignment.
+Dropping playback cancels the bounded readers and producers. It retains menu selection, consumes original
 skip points and timed subtitle definitions, and exposes progress through menu
 control state. Browser Movies uses locally exported compressed video, first-track
 WAV audio, subtitle definitions, and the configured font. Video decodes as

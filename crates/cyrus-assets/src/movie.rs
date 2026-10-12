@@ -4,7 +4,7 @@ use bevy::asset::{AssetLoader, LoadContext, io::Reader};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 #[cfg(not(target_arch = "wasm32"))]
-use std::sync::Arc;
+use std::path::PathBuf;
 pub mod stream;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -31,15 +31,21 @@ pub struct MovieMetadata {
     pub font_color: [u8; 3],
 }
 
+/// Read-only native cinematic location. CD sector interpretation belongs to preservation.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+pub enum MovieInput {
+    File(PathBuf),
+    Disc { path: PathBuf, name: String },
+}
+
 #[derive(Asset, TypePath)]
 pub struct Prepared {
     #[cfg(not(target_arch = "wasm32"))]
-    pub data: Arc<[u8]>,
+    pub source: MovieInput,
     #[cfg(target_arch = "wasm32")]
     pub video_url: String,
     pub metadata: MovieMetadata,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub audio: Option<Arc<[u8]>>,
 }
 #[cfg(target_arch = "wasm32")]
 #[derive(Default, TypePath)]

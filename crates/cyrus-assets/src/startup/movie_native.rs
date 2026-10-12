@@ -1,12 +1,17 @@
 //! Read-only installed cinematic extraction and browser cache export.
 use crate::install::GameInstall;
-use crate::movie::{MovieDefinition, MovieMetadata, MovieSubtitle, Prepared};
+use crate::movie::{MovieDefinition, MovieInput, MovieMetadata, MovieSubtitle, Prepared};
 use anyhow::{Context, ensure};
 use rgpre::import::{
     cdrom::CdImage, fnt::parse_fnt, menu_movies::parse_menu_movies, sfx::AudioType,
     smacker::SmackerHeader,
 };
-use std::{fs::File, path::Path};
+use std::{
+    fs::File,
+    io::{self, Read, Write},
+    path::Path,
+    sync::mpsc,
+};
 
 /// Export the browsable installed cinematics for on-demand browser loading.
 /// Source files remain read-only; compressed video and decoded audio stay in the local cache.
@@ -22,8 +27,17 @@ pub fn export_movies(install: &GameInstall, cache: &Path) -> anyhow::Result<()> 
     {
         let index = (entry.action - 301) as usize;
         let movie = prepare(&install.root, index)?;
-        crate::native::publish(&output.join(format!("{index}.smk")), &movie.data)?;
-        if let Some(audio) = movie.audio {
+        let mut data = Vec::new();
+        movie.source.open()?.read_to_end(&mut data)?;
+        let audio = if movie.metadata.has_audio {
+            Some(decode_audio(&data).with_context(|| {
+                format!("movie {}: audio export", movie.metadata.definition.name)
+            })?)
+        } else {
+            None
+        };
+        crate::native::publish(&output.join(format!("{index}.smk")), &data)?;
+        if let Some(audio) = audio {
             crate::native::publish(&output.join(format!("{index}.wav")), &audio)?;
         }
         crate::native::publish(
@@ -45,7 +59,7 @@ pub fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
         std::fs::read_to_string(root.join("SYSTEM.INI")).context("movie: reading SYSTEM.INI")?;
     let name = &definition.name;
     let drive = crate::sound::ini_value(&system, "system", "animation_drive").unwrap_or("");
-    let data = if drive.contains(':') {
+    let source = if drive.contains(':') {
         let prefix = drive.as_bytes();
         ensure!(
             prefix.len() >= 3
@@ -58,14 +72,10 @@ pub fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
             .parent()
             .context("movie: install has no parent")?
             .join("game.gog");
-        let mut image = CdImage::open(std::io::BufReader::new(
-            File::open(&disc).with_context(|| format!("movie {name}: {}", disc.display()))?,
-        ))?;
-        let mut data = Vec::new();
-        image
-            .copy_file(name, &mut data)
-            .with_context(|| format!("movie {name}: CD extraction"))?;
-        data
+        MovieInput::Disc {
+            path: disc,
+            name: name.clone(),
+        }
     } else {
         let mut directory = root.to_path_buf();
         for part in drive.split(['/', '\\']).filter(|p| !p.is_empty()) {
@@ -78,9 +88,14 @@ pub fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
         }
         let path = crate::scene::find_file(&directory, name)
             .with_context(|| format!("movie {name}: not found in {}", directory.display()))?;
-        std::fs::read(&path).with_context(|| format!("movie {name}: reading {}", path.display()))?
+        MovieInput::File(path)
     };
-    let header = SmackerHeader::parse(&data)
+    let mut header = [0; 104];
+    source
+        .open()?
+        .read_exact(&mut header)
+        .with_context(|| format!("movie {name}: reading header"))?;
+    let header = SmackerHeader::parse(&header)
         .map_err(anyhow::Error::msg)
         .with_context(|| format!("movie {name}: Smacker header"))?;
     ensure!(
@@ -120,13 +135,8 @@ pub fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
         rgpre::import::palette::Palette::parse(&std::fs::read(root.join("fxart/REDGUARD.COL"))?)
             .context("movie: REDGUARD.COL")?;
     let font_color = palette.colors[161];
-    let audio = if header.has_audio {
-        Some(decode_audio(&data).with_context(|| format!("movie {name}: audio decode"))?)
-    } else {
-        None
-    };
     let prepared = Prepared {
-        data: data.into(),
+        source,
         metadata: MovieMetadata {
             definition: MovieDefinition {
                 name: definition.name,
@@ -149,7 +159,6 @@ pub fn prepare(root: &Path, index: usize) -> anyhow::Result<Prepared> {
             line_height,
             font_color,
         },
-        audio,
     };
     prepared.metadata.validate()?;
     Ok(prepared)
@@ -180,4 +189,107 @@ fn decode_audio(data: &[u8]) -> anyhow::Result<std::sync::Arc<[u8]>> {
     let bytes =
         crate::audio::pcm_wav(audio_type, info.rate[0], &pcm).map_err(anyhow::Error::msg)?;
     Ok(bytes.into())
+}
+
+impl MovieInput {
+    /// Open a bounded sequential reader. Dropping it cancels CD extraction.
+    pub fn open(&self) -> anyhow::Result<Box<dyn Read + Send>> {
+        match self {
+            Self::File(path) => Ok(Box::new(io::BufReader::new(
+                File::open(path).with_context(|| format!("movie: {}", path.display()))?,
+            ))),
+            Self::Disc { path, name } => {
+                let file = File::open(path)
+                    .with_context(|| format!("movie {name}: {}", path.display()))?;
+                let name = name.clone();
+                let (sender, receiver) = mpsc::sync_channel(2);
+                std::thread::spawn(move || {
+                    let result = (|| {
+                        let mut image = CdImage::open(io::BufReader::new(file))?;
+                        let mut output =
+                            io::BufWriter::with_capacity(64 * 1024, MovieWriter(&sender));
+                        image.copy_file(&name, &mut output)?;
+                        output.flush()
+                    })();
+                    if let Err(error) = result {
+                        let _ = sender.send(Err(error));
+                    }
+                });
+                Ok(Box::new(MovieReader {
+                    receiver,
+                    chunk: io::Cursor::new(Vec::new()),
+                }))
+            }
+        }
+    }
+}
+struct MovieWriter<'a>(&'a mpsc::SyncSender<io::Result<Vec<u8>>>);
+impl Write for MovieWriter<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0
+            .send(Ok(bytes.to_vec()))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "movie reader closed"))?;
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+struct MovieReader {
+    receiver: mpsc::Receiver<io::Result<Vec<u8>>>,
+    chunk: io::Cursor<Vec<u8>>,
+}
+impl Read for MovieReader {
+    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        if bytes.is_empty() {
+            return Ok(0);
+        }
+        loop {
+            let count = self.chunk.read(bytes)?;
+            if count > 0 {
+                return Ok(count);
+            }
+            match self.receiver.recv() {
+                Ok(chunk) => self.chunk = io::Cursor::new(chunk?),
+                Err(_) => return Ok(0),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn movie_reader_preserves_chunks_errors_eof_and_cancellation() {
+        let (sender, receiver) = mpsc::sync_channel(2);
+        let mut reader = MovieReader {
+            receiver,
+            chunk: io::Cursor::new(Vec::new()),
+        };
+        assert_eq!(reader.read(&mut []).unwrap(), 0);
+        sender.send(Ok(b"abcd".to_vec())).unwrap();
+        sender.send(Ok(b"ef".to_vec())).unwrap();
+        let mut bytes = [0; 5];
+        reader.read_exact(&mut bytes).unwrap();
+        assert_eq!(&bytes, b"abcde");
+        sender
+            .send(Err(io::Error::new(io::ErrorKind::InvalidData, "broken CD")))
+            .unwrap();
+        let mut tail = [0; 1];
+        reader.read_exact(&mut tail).unwrap();
+        assert_eq!(&tail, b"f");
+        assert_eq!(
+            reader.read(&mut tail).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        drop(sender);
+        assert_eq!(reader.read(&mut tail).unwrap(), 0);
+        let (sender, receiver) = mpsc::sync_channel(2);
+        drop(receiver);
+        assert_eq!(
+            MovieWriter(&sender).write(b"cancelled").unwrap_err().kind(),
+            io::ErrorKind::BrokenPipe
+        );
+    }
 }

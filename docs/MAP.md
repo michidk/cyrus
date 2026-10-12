@@ -113,6 +113,7 @@ module where it is defined and regenerate.
 - `src/startup/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
 - `src/startup/mod.rs` — Startup images rendered from the install's authored splash and title assets.
 - `src/startup/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+- `src/startup/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
 - `src/startup/movie_stream.rs` — Browser fetch backpressure and streamed WAV audio retain bounded movie preparation.
 - `src/startup/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`

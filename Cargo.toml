@@ -42,3 +42,7 @@ strip = true
 
 [profile.test]
 debug = 0
+
+# Movie packet decoding must keep pace with playback in development builds too.
+[profile.dev.package.smk]
+opt-level = 3

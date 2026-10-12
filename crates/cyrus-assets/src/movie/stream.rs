@@ -121,8 +121,10 @@ mod tests {
             Err(error) => return eprintln!("skipped: no install ({error})"),
         };
         let movie = crate::startup::movie_native::prepare(&install.root, 0).unwrap();
+        let mut data = Vec::new();
+        movie.source.open().unwrap().read_to_end(&mut data).unwrap();
         let mut stream = MovieStream::new(movie.metadata.clone());
-        let mut original = smk::Smk::open_memory(&movie.data).unwrap();
+        let mut original = smk::Smk::open_memory(&data).unwrap();
         original.enable_all(0x80);
         let mut supplied = 0;
         let mut max_pending = 0;
@@ -140,15 +142,15 @@ mod tests {
                     assert_eq!(frame.palette, original.palette(), "palette {number}");
                     break;
                 }
-                let end = (supplied + 997).min(movie.data.len());
+                let end = (supplied + 997).min(data.len());
                 assert!(end > supplied, "unexpected need for data at frame {number}");
-                stream.push(&movie.data[supplied..end]);
+                stream.push(&data[supplied..end]);
                 supplied = end;
                 max_pending = max_pending.max(stream.input.len());
             }
             if number == 1 {
                 assert!(
-                    supplied < movie.data.len() / 100,
+                    supplied < data.len() / 100,
                     "first frame waited for the movie"
                 );
             }
@@ -161,8 +163,8 @@ mod tests {
         let mut wrong_metadata = movie.metadata;
         wrong_metadata.frames += 1;
         let mut wrong = MovieStream::new(wrong_metadata);
-        let size = smk::Smk::header_size(&movie.data).unwrap().unwrap();
-        wrong.push(&movie.data[..size]);
+        let size = smk::Smk::header_size(&data).unwrap().unwrap();
+        wrong.push(&data[..size]);
         assert!(
             wrong
                 .next_frame()
