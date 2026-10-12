@@ -30,7 +30,6 @@ module where it is defined and regenerate.
 - `src/movie/stream.rs` — Incremental movie packets retain the existing Smacker codec and validate exported metadata.
 - `src/music.rs` — Read-only CD and world track preparation.
 - `src/native.rs` — Read-only filesystem adapter and optional disk cache for the shared runtime parsers.
-- `src/native/disc.rs` — CD track extraction shared with native game playback.
 - `src/native/geometry.rs` — Shared rgpre geometry export; game sidecars and preview presentation are separate.
 - `src/player.rs` — Serialized player scene inputs, before game-owned runtime preparation.
 - `src/player_export.rs` — Native extraction of player inputs through preservation's parsers.

@@ -16,23 +16,17 @@ pub struct MenuPrepared;
 
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (start, poll).chain().run_if(in_state(AppState::Loading)),
-        )
-        .add_systems(OnExit(AppState::Loading), teardown);
+        app.init_resource::<cyrus_app::LoadingProgress>()
+            .add_systems(
+                Update,
+                (start, poll).chain().run_if(in_state(AppState::Loading)),
+            )
+            .add_systems(OnExit(AppState::Loading), teardown);
     }
 }
 
 #[derive(Resource)]
 struct Channel(Arc<Mutex<Receiver<Progress>>>);
-
-#[derive(Component)]
-struct LoadingUi;
-#[derive(Component)]
-struct Bar;
-#[derive(Component)]
-struct Label;
 
 fn start(
     mut commands: Commands,
@@ -41,6 +35,7 @@ fn start(
     existing: Option<Res<Channel>>,
     preloaded: Option<Res<Preloaded>>,
     menu_prepared: Option<Res<MenuPrepared>>,
+    mut progress: ResMut<cyrus_app::LoadingProgress>,
 ) {
     if existing.is_some()
         || preloaded.is_some()
@@ -84,55 +79,16 @@ fn start(
     if startup.is_some() {
         return;
     }
-    commands.spawn((
-        LoadingUi,
-        Node {
-            width: percent(100),
-            height: percent(100),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            row_gap: px(12),
-            ..default()
-        },
-        BackgroundColor(Color::BLACK),
-        children![
-            (
-                Label,
-                Text::new("Reading install..."),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    ..default()
-                }
-            ),
-            (
-                Node {
-                    width: px(400),
-                    height: px(16),
-                    border: UiRect::all(px(1)),
-                    ..default()
-                },
-                BorderColor::all(Color::WHITE),
-                children![(
-                    Bar,
-                    Node {
-                        width: percent(0),
-                        height: percent(100),
-                        ..default()
-                    },
-                    BackgroundColor(Color::WHITE)
-                )],
-            ),
-        ],
-    ));
+    progress.visible = true;
+    progress.label = "Reading install...".into();
+    progress.fraction = Some(0.);
 }
 
 fn poll(
     mut commands: Commands,
     channel: Option<Res<Channel>>,
     mut startup: Option<ResMut<crate::startup::StartupPresentation>>,
-    mut bar: Query<&mut Node, With<Bar>>,
-    mut label: Query<&mut Text, With<Label>>,
+    mut progress: ResMut<cyrus_app::LoadingProgress>,
     mut next: ResMut<NextState<AppState>>,
 ) {
     let Some(channel) = channel else {
@@ -151,12 +107,8 @@ fn poll(
                 }
             }
             Progress::File { done, total, name } => {
-                if let Ok(mut node) = bar.single_mut() {
-                    node.width = percent(100.0 * done as f32 / total.max(1) as f32);
-                }
-                if let Ok(mut text) = label.single_mut() {
-                    text.0 = format!("{name} ({done}/{total})");
-                }
+                progress.fraction = Some(done as f32 / total.max(1) as f32);
+                progress.label = format!("{name} ({done}/{total})");
             }
             Progress::Done(preloaded) => {
                 info!(
@@ -182,10 +134,8 @@ fn poll(
     }
 }
 
-fn teardown(mut commands: Commands, ui: Query<Entity, With<LoadingUi>>) {
-    for e in &ui {
-        commands.entity(e).despawn();
-    }
+fn teardown(mut commands: Commands, mut progress: ResMut<cyrus_app::LoadingProgress>) {
+    progress.visible = false;
     commands.remove_resource::<Channel>();
 }
 

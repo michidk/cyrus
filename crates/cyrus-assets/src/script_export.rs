@@ -181,9 +181,7 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
 
 pub fn export(scripts: &Scripts, out: &Path) -> Result<()> {
     let path = out.with_extension("scripts");
-    let temporary = out.with_extension("scripts.tmp");
-    std::fs::write(&temporary, serde_json::to_vec(scripts)?)
-        .with_context(|| format!("write {}", temporary.display()))?;
-    std::fs::rename(&temporary, &path).with_context(|| format!("commit {}", path.display()))?;
+    crate::native::publish(&path, &serde_json::to_vec(scripts)?)
+        .with_context(|| format!("commit {}", path.display()))?;
     Ok(())
 }

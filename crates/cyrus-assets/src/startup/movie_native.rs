@@ -22,13 +22,13 @@ pub fn export_movies(install: &GameInstall, cache: &Path) -> anyhow::Result<()> 
     {
         let index = (entry.action - 301) as usize;
         let movie = prepare(&install.root, index)?;
-        std::fs::write(output.join(format!("{index}.smk")), &movie.data)?;
+        crate::native::publish(&output.join(format!("{index}.smk")), &movie.data)?;
         if let Some(audio) = movie.audio {
-            std::fs::write(output.join(format!("{index}.wav")), &audio)?;
+            crate::native::publish(&output.join(format!("{index}.wav")), &audio)?;
         }
-        std::fs::write(
-            output.join(format!("{index}.movie")),
-            serde_json::to_vec(&movie.metadata)?,
+        crate::native::publish(
+            &output.join(format!("{index}.movie")),
+            &serde_json::to_vec(&movie.metadata)?,
         )?;
     }
     Ok(())

@@ -5,8 +5,9 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-viewer = ["dep:redguard-preservation", "dep:image", "dep:hound"]
-native = ["dep:redguard-preservation", "cyrus-text/native", "dep:walkdir", "dep:image"]
+# Preservation parsers on any target; the browser worker decodes original bytes with them.
+parsers = ["dep:redguard-preservation", "cyrus-text/native", "dep:image", "dep:hound"]
+native = ["parsers", "dep:walkdir"]
 
 [dependencies]
 bevy = { workspace = true, features = ["bevy_asset"] }

@@ -1,6 +1,7 @@
 //! CD cue-sheet interpretation shared by both runtime targets.
 use anyhow::Result;
-const SECTOR_BYTES: u64 = 2352;
+/// Red Book raw sector size in bytes; audio is 44.1 kHz 16-bit stereo, 75 sectors per second.
+pub const SECTOR_BYTES: u64 = 2352;
 /// Byte range of `track` in the single `BINARY` file a cue sheet names:
 /// (file name, start, end). `audio` states whether the track must be audio or data.
 /// `end` is `None` for the last track, which runs to the end of the file.
@@ -64,4 +65,30 @@ fn msf_sector(msf: &str) -> Option<u64> {
     let mut parts = msf.split(':').map(|p| p.parse::<u64>().ok());
     let (m, s, f) = (parts.next()??, parts.next()??, parts.next()??);
     (s < 60 && f < 75 && parts.next().is_none()).then_some((m * 60 + s) * 75 + f)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cue_track_ranges_end_at_the_next_track() {
+        let cue = "FILE \"disc.bin\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n  TRACK 02 AUDIO\n    INDEX 00 00:10:00\n    INDEX 01 00:12:00\n  TRACK 03 AUDIO\n    INDEX 01 01:00:74\n";
+        assert_eq!(
+            cue_track(cue, 2, true).unwrap(),
+            (
+                "disc.bin".into(),
+                12 * 75 * SECTOR_BYTES,
+                Some((60 * 75 + 74) * SECTOR_BYTES)
+            )
+        );
+        assert_eq!(
+            cue_track(cue, 3, true).unwrap(),
+            ("disc.bin".into(), (60 * 75 + 74) * SECTOR_BYTES, None)
+        );
+        assert!(cue_track(cue, 1, true).is_err(), "data track");
+        assert_eq!(cue_track(cue, 1, false).unwrap().1, 0);
+        assert!(cue_track(cue, 4, true).is_err(), "missing track");
+        assert!(cue_track(&format!("{cue}FILE \"b.bin\" BINARY\n"), 2, true).is_err());
+        assert_eq!(msf_sector("00:60:00"), None);
+    }
 }

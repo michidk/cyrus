@@ -56,7 +56,7 @@ Re-export worlds before using explicit player model poses.
 
 ## Asset viewer
 
-The opt-in `viewer` feature enables runtime parsing on native and browser targets.
+The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
 Preservation (`rgpre`), pinned to release `v0.8.0`, owns parsing and recovered
@@ -86,7 +86,7 @@ Native adapters read files; the browser worker reads original bytes over HTTP.
 Generated media is returned as bytes. Only native callers write a disk cache.
 Browser presentation registers generated files with Bevy in memory.
 
-Run viewer contracts with `cargo test -p cyrus-assets --features native,viewer -- --nocapture`. Installed-data
+Run viewer contracts with `cargo test -p cyrus-assets --features native -- --nocapture`. Installed-data
 checks use `REDGUARD_DIR`, or the repository's test install link. They explicitly
 skip when neither is available. No game data is included in tests.
 

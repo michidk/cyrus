@@ -292,10 +292,10 @@ pub fn export(
         water,
     };
     environment.validate()?;
-    let path = out.with_extension("environment");
-    let temporary = out.with_extension("environment.tmp");
-    std::fs::write(&temporary, serde_json::to_vec(&environment)?)?;
-    std::fs::rename(temporary, path)?;
+    crate::native::publish(
+        &out.with_extension("environment"),
+        &serde_json::to_vec(&environment)?,
+    )?;
     Ok(())
 }
 

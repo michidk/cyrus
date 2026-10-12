@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+cyrus-app = { path = "../cyrus-app" }
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-game.workspace = true

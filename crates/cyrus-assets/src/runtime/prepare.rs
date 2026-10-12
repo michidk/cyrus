@@ -288,7 +288,7 @@ pub(super) fn prepare<R: ReadAssets>(
             },
             Some(FileType::Fnt) => {
                 let font = import::fnt::parse_fnt(bytes)?;
-                let content = crate::decode::font(&font)?;
+                let content = crate::decode::font(&cyrus_text::Font::from(&font))?;
                 preview.metadata = Some(
                     json!({"description":font.header.description_text,"max_width":font.header.max_width,"line_height":font.header.line_height,"character_start":font.header.character_start,"character_count":font.header.character_count,"chunk_order":font.chunk_order,"palette":font.palette.colors,"glyphs":font.glyphs.iter().map(|glyph|json!({"enabled":glyph.enabled,"offset_left":glyph.offset_left,"offset_top":glyph.offset_top,"width":glyph.width,"height":glyph.height})).collect::<Vec<_>>()}),
                 );

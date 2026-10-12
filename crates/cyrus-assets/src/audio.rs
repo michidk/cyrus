@@ -16,37 +16,15 @@ pub fn read_settings(install: &GameInstall) -> SoundSettings {
     }))
 }
 
-/// Wraps PCM in a RIFF/WAVE header. SFX, RTX and Red Book PCM is already
-/// WAV's layout: unsigned 8-bit or signed little-endian 16-bit, interleaved.
+/// Original SFX, RTX and Red Book PCM in a WAV container; see `media::pcm_wav`.
 pub fn pcm_wav(audio_type: AudioType, sample_rate: u32, pcm: &[u8]) -> Result<Vec<u8>, String> {
-    let channels = audio_type.channels();
-    let bits = audio_type.bits_per_sample();
-    let block_align = channels * bits / 8;
-    let len = pcm.len();
-    if sample_rate == 0 {
-        return Err("sample rate 0".into());
-    }
-    if !len.is_multiple_of(usize::from(block_align)) {
-        return Err(format!(
-            "{len} PCM bytes are not whole {block_align}-byte frames"
-        ));
-    }
-    let data_len = u32::try_from(len).map_err(|_| format!("{len} PCM bytes exceed WAV size"))?;
-    let mut wav = Vec::with_capacity(44 + len);
-    wav.extend_from_slice(b"RIFF");
-    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
-    wav.extend_from_slice(b"WAVEfmt ");
-    wav.extend_from_slice(&16u32.to_le_bytes());
-    wav.extend_from_slice(&1u16.to_le_bytes()); // integer PCM
-    wav.extend_from_slice(&channels.to_le_bytes());
-    wav.extend_from_slice(&sample_rate.to_le_bytes());
-    wav.extend_from_slice(&(sample_rate * u32::from(block_align)).to_le_bytes());
-    wav.extend_from_slice(&block_align.to_le_bytes());
-    wav.extend_from_slice(&bits.to_le_bytes());
-    wav.extend_from_slice(b"data");
-    wav.extend_from_slice(&data_len.to_le_bytes());
-    wav.extend_from_slice(pcm);
-    Ok(wav)
+    crate::media::pcm_wav(
+        pcm,
+        sample_rate,
+        audio_type.channels(),
+        audio_type.bits_per_sample(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 use crate::sound::VoiceClip;

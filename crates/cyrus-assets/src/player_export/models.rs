@@ -66,10 +66,10 @@ pub(crate) fn export(
         let (root, buffer) =
             convert_positioned_models_to_gltf(&[model], &[], Some(palette), Some(textures), false)
                 .with_context(|| format!("CYRUS model {name}: GLB export"))?;
-        let path = directory.join(format!("{name}.glb"));
-        let temporary = path.with_extension("glb.tmp");
-        std::fs::write(&temporary, to_glb(&root, &buffer)?)?;
-        std::fs::rename(&temporary, &path)?;
+        crate::native::publish(
+            &directory.join(format!("{name}.glb")),
+            &to_glb(&root, &buffer)?,
+        )?;
     }
     Ok(radii)
 }

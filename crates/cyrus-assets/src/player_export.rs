@@ -103,8 +103,6 @@ pub(crate) fn export(
         .with_context(|| format!("world {world}: serialize player inputs"))?;
     data.validate()?;
     let path = out.with_extension("player");
-    let temporary = out.with_extension("player.tmp");
-    std::fs::write(&temporary, bytes).with_context(|| format!("write {}", temporary.display()))?;
-    std::fs::rename(&temporary, &path).with_context(|| format!("publish {}", path.display()))?;
+    crate::native::publish(&path, &bytes).with_context(|| format!("publish {}", path.display()))?;
     Ok(())
 }

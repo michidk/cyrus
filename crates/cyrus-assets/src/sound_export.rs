@@ -75,10 +75,7 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     );
     for (i, effect) in source.effects.iter().enumerate() {
         let bytes = wav(effect)?;
-        let path = out.join(format!("{i:03}.wav"));
-        let temporary = path.with_extension("wav.tmp");
-        std::fs::write(&temporary, bytes)?;
-        std::fs::rename(temporary, path)?;
+        crate::native::publish(&out.join(format!("{i:03}.wav")), &bytes)?;
         effects.push(SoundEffect {
             looping: effect.loop_flag != 0,
             sample_rate: effect.sample_rate,

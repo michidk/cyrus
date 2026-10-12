@@ -2,18 +2,17 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "viewer")]
+#[cfg(feature = "parsers")]
 pub mod decode;
-#[cfg(feature = "viewer")]
 pub mod disc;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod install;
 pub mod media;
-#[cfg(all(feature = "viewer", feature = "native", not(target_arch = "wasm32")))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
-#[cfg(feature = "viewer")]
+#[cfg(feature = "parsers")]
 pub mod runtime;
-#[cfg(feature = "viewer")]
+#[cfg(feature = "parsers")]
 pub mod source;
 
 /// Local generated files, never the original installation.

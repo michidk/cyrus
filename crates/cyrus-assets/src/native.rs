@@ -13,7 +13,6 @@ use std::{
     sync::Mutex,
 };
 
-pub mod disc;
 pub mod geometry;
 
 pub struct Files {

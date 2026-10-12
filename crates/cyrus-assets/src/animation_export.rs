@@ -232,9 +232,10 @@ pub(crate) fn export(
             out.with_extension("animations").display()
         );
     }
-    let temporary = out.with_extension("animations.tmp");
-    std::fs::write(&temporary, serde_json::to_vec(&result)?)?;
-    std::fs::rename(&temporary, out.with_extension("animations"))?;
+    crate::native::publish(
+        &out.with_extension("animations"),
+        &serde_json::to_vec(&result)?,
+    )?;
     Ok(())
 }
 

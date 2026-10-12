@@ -78,12 +78,19 @@ pub fn textures(
         .collect::<Result<HashMap<_, _>>>()?;
     Ok(TextureCache::from_data(data, palette))
 }
+/// Terrain texture bank the original engine hard-wires for WLD terrain (per the
+/// preservation crate's WLD exporter).
+const TERRAIN_TEXBSI_ID: u16 = 302;
+
 pub struct WorldGeometry {
     pub entry: world_ini::WorldEntry,
     pub rgm: rgm::RgmFile,
     pub models: Vec<rgm::PositionedModel>,
     pub registry: registry::Registry,
     pub terrain: Option<Box<wld::WldFile>>,
+    pub palette: Palette,
+    /// Texture bank cache already holding every texture the world geometry used.
+    pub textures: TextureCache,
     pub glb: Vec<u8>,
 }
 pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
@@ -130,7 +137,7 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
     let (json, bytes) = if let Some(terrain) = &terrain {
         gltf::convert_wld_scene_to_gltf(
             terrain,
-            302,
+            TERRAIN_TEXBSI_ID,
             &models,
             Some(&palette),
             Some(&mut cache),
@@ -151,6 +158,8 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
         models,
         registry,
         terrain,
+        palette,
+        textures: cache,
         glb: gltf::to_glb(&json, &bytes)?,
     })
 }

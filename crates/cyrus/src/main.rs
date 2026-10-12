@@ -151,6 +151,7 @@ fn main() -> anyhow::Result<()> {
         .add_plugins((
             GamePlugin,
             cyrus_render::loading::LoadingPlugin,
+            cyrus_app::LoadingOverlayPlugin,
             scene::ScenePlugin,
             control::ControlPlugin,
             cyrus_render::sound::SoundPlugin,
