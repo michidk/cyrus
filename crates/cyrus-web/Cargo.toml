@@ -11,6 +11,7 @@ path = "src/main.rs"
 test = true
 
 [dependencies]
+cyrus-app = { path = "../cyrus-app" }
 anyhow.workspace = true
 cyrus-assets = { workspace = true }
 cyrus-world.workspace = true

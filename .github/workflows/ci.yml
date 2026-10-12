@@ -95,9 +95,14 @@ jobs:
       - name: Cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
+      - name: Check shared browser cache contract
+        run: |
+          node --test dev/web/*.test.cjs
+          python3 dev/scripts/test-viewer-server.py
+
       # Proves the install/thread/socket code stays behind cfg(not(wasm32)).
-      - name: Check cyrus-web for wasm32
-        run: cargo check -p cyrus-web --target wasm32-unknown-unknown
+      - name: Check both applications for wasm32
+        run: cargo check -p cyrus-web -p cyrus-viewer -p cyrus-assets-worker --target wasm32-unknown-unknown
 
   core:
     name: Portable core boundaries

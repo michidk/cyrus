@@ -55,13 +55,24 @@ Unavailable markers, unsupported terrain, and missing player definitions report 
 player-entry error. Dynamic ground support, locomotion and the original follow
 camera remain unsupported; use the independent debug flycam to inspect the world.
 
+## Asset viewer
+
+`just viewer --install /path/to/Redguard` launches the separate native asset
+viewer. It requires an explicit install path or `REDGUARD_DIR`.
+Build with `just viewer-web-build`, without an install. Run
+`just run-viewer-web /path/to/Redguard` to serve original files at runtime.
+The browser parses them in a worker and generates selected previews in memory.
+
+The game and viewer share `target/web`, the loader, Cache Storage, and
+`cyrus-config/cache`. The viewer server also serves an explicit read-only install.
+See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
+
 ## CI artifacts
 
 The `Build artifacts` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
-are present in the checked-out revision. The viewer currently lives on its
-separate development branch; game revisions without it contain only the game.
+are present in the checked-out revision. Both applications are built from this workspace.
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 

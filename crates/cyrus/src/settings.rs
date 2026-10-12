@@ -39,7 +39,7 @@ impl Settings {
     }
 
     pub fn cache_dir() -> PathBuf {
-        Path::new(CONFIG_DIR).join("cache")
+        PathBuf::from(cyrus_assets::CACHE_DIR)
     }
 }
 

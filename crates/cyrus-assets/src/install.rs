@@ -1,15 +1,12 @@
-//! Locating the player's own game files. The install is only ever read.
-
-use bevy::prelude::*;
+//! Explicit, read-only installation validation shared by applications.
 use std::path::{Path, PathBuf};
 
-pub const ENV_VAR: &str = "REDGUARD_DIR";
-pub const LINK_NAME: &str = "redguard";
-
-#[derive(Resource, Clone, Debug)]
+#[derive(bevy::prelude::Resource, Debug, Clone)]
 pub struct GameInstall {
     pub root: PathBuf,
 }
+pub const ENV_VAR: &str = "REDGUARD_DIR";
+pub const LINK_NAME: &str = "redguard";
 
 impl GameInstall {
     /// `explicit` > `$REDGUARD_DIR` > `./redguard` link next to the working directory.
@@ -26,16 +23,46 @@ impl GameInstall {
             .canonicalize()
             .map_err(|e| anyhow::anyhow!("{}: {e}", root.display()))?;
         for required in ["fxart", "maps", "RGFX.EXE"] {
-            if !root.join(required).exists() {
-                anyhow::bail!(
-                    "{} is not a Redguard GOG install: missing {required}. Link your install: ln -s /path/to/GOG/Redguard {LINK_NAME} (or set {ENV_VAR}).",
-                    root.display()
-                );
-            }
+            anyhow::ensure!(
+                root.join(required).exists(),
+                "{}: missing {required}; select your original Redguard installation",
+                root.display()
+            );
         }
         Ok(Self { root })
     }
-
+    /// Resolves an output directory without creating anything in the read-only install.
+    pub fn cache_path(&self, requested: &Path) -> anyhow::Result<PathBuf> {
+        let path = std::path::absolute(requested)?;
+        anyhow::ensure!(
+            !path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir)),
+            "cache path must not contain parent traversal"
+        );
+        let mut existing = path.as_path();
+        let mut suffix = Vec::new();
+        while !existing.exists() {
+            suffix.push(
+                existing
+                    .file_name()
+                    .ok_or_else(|| anyhow::anyhow!("invalid cache path"))?,
+            );
+            existing = existing
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("invalid cache parent"))?;
+        }
+        let mut resolved = existing.canonicalize()?;
+        for part in suffix.into_iter().rev() {
+            resolved.push(part);
+        }
+        anyhow::ensure!(
+            !resolved.starts_with(&self.root),
+            "cache must be outside the original install: {}",
+            resolved.display()
+        );
+        Ok(resolved)
+    }
     pub fn maps(&self) -> PathBuf {
         self.root.join("maps")
     }
@@ -43,7 +70,6 @@ impl GameInstall {
         self.root.join("fxart")
     }
 }
-
 /// Installed physical keyboard codes in the original up/down/left/right/a/b/c/d order.
 pub fn keyboard_codes(install: &GameInstall) -> Result<[u8; 8], String> {
     let path = install.root.join("KEYS.INI");

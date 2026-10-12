@@ -6,9 +6,9 @@ const handlers = new Map();
 let finishWrite;
 const writing = new Promise(resolve => { finishWrite = resolve; });
 let stored;
-vm.runInNewContext(await readFile(new URL("../../crates/cyrus-web/web/sw.js", import.meta.url), "utf8"), {
+vm.runInNewContext(await readFile(new URL("../web/sw.js", import.meta.url), "utf8"), {
   URL, console,
-  self: { location: { origin: "https://game.test" }, addEventListener: (name, fn) => handlers.set(name, fn) },
+  self: { location: { origin: "https://game.test", href: "https://game.test/sw.js" }, addEventListener: (name, fn) => handlers.set(name, fn) },
   caches: { open: async () => ({ match: async () => undefined, put: async (_, response) => {
     stored = await response.text();
     await writing;
@@ -17,7 +17,7 @@ vm.runInNewContext(await readFile(new URL("../../crates/cyrus-web/web/sw.js", im
 });
 let response, lifetime;
 handlers.get("fetch")({
-  request: new Request("https://game.test/scene.glb"),
+  request: new Request("https://game.test/cyrus-config/cache/scene.glb"),
   respondWith: promise => { response = promise; },
   waitUntil: promise => { lifetime = promise; },
 });

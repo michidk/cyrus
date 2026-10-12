@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
+viewer = ["dep:redguard-preservation", "dep:image", "dep:hound"]
 native = ["dep:redguard-preservation", "cyrus-text/native", "dep:walkdir", "dep:image"]
 
 [dependencies]
@@ -17,9 +18,9 @@ cyrus-text.workspace = true
 smk = "0.1"
 log.workspace = true
 walkdir = { version = "2", optional = true }
-image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "bmp"], optional = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+hound = { version = "3.5", optional = true }
 redguard-preservation = { workspace = true, optional = true }
 
 [dev-dependencies]

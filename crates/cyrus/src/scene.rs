@@ -1,7 +1,6 @@
 //! Background native scene export; commit cache references only after preparation succeeds.
 
 use crate::settings::Settings;
-use bevy::asset::io::AssetSourceBuilder;
 use bevy::prelude::*;
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::scene::export_scene;
@@ -10,15 +9,7 @@ pub struct ScenePlugin;
 
 /// Must run before `AssetPlugin` is added (Bevy builds sources at that point).
 pub fn register_cache_source(app: &mut App) -> anyhow::Result<()> {
-    let cache = std::path::absolute(Settings::cache_dir())
-        .map_err(|error| anyhow::anyhow!("resolve scene cache directory: {error}"))?;
-    std::fs::create_dir_all(&cache)
-        .map_err(|error| anyhow::anyhow!("create scene cache {}: {error}", cache.display()))?;
-    let path = cache
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("scene cache path is not UTF-8"))?;
-    app.register_asset_source("cache", AssetSourceBuilder::platform_default(path, None));
-    Ok(())
+    cyrus_app::register_cache(app)
 }
 
 use cyrus_world::lifecycle::{

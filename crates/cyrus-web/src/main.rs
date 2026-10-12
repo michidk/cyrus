@@ -5,7 +5,7 @@
 mod bindings;
 mod debug;
 mod preferences;
-use bevy::asset::io::AssetSourceBuilder;
+
 use bevy::prelude::*;
 use cyrus_game::GamePlugin;
 use cyrus_game::fidelity::Area;
@@ -45,20 +45,11 @@ fn main() {
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
     ));
-    app.register_asset_source(
-        "cache",
-        AssetSourceBuilder::platform_default("cyrus-config/cache", None),
-    );
+    cyrus_app::register_cache(&mut app).expect("browser cache source");
+
     app.add_plugins(
         DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "cyrus".into(),
-                    fit_canvas_to_parent: true,
-                    ..default()
-                }),
-                ..default()
-            })
+            .set(cyrus_app::window("cyrus"))
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
                 ..default()

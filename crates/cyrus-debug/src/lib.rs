@@ -1,9 +1,7 @@
 use bevy::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use bevy::shader::Source;
 use bevy_egui::{
-    EguiContext, EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPreUpdateSet,
-    EguiPrimaryContextPass, PrimaryEguiContext, egui,
+    EguiContext, EguiContexts, EguiGlobalSettings, EguiPreUpdateSet, EguiPrimaryContextPass,
+    PrimaryEguiContext, egui,
 };
 use bevy_inspector_egui::{DefaultInspectorConfigPlugin, bevy_inspector};
 use cyrus_game::fidelity::Area;
@@ -31,7 +29,7 @@ pub struct WorldPicker {
 
 impl Plugin for DebugMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((EguiPlugin::default(), DefaultInspectorConfigPlugin))
+        app.add_plugins((cyrus_app::EguiPlugin, DefaultInspectorConfigPlugin))
             .init_resource::<DebugMenu>()
             .init_resource::<WorldPicker>()
             .add_systems(
@@ -46,18 +44,6 @@ impl Plugin for DebugMenuPlugin {
                 )
                     .chain(),
             );
-
-        #[cfg(target_arch = "wasm32")]
-        if let Source::Wesl(source) = &mut app
-            .world_mut()
-            .resource_mut::<Assets<bevy::shader::Shader>>()
-            .get_mut(&bevy_egui::render::EGUI_SHADER_HANDLE)
-            .expect("bevy_egui shader is loaded by EguiPlugin")
-            .source
-        {
-            // WebGL cannot parse this bindless-only extension, even when bindless mode is disabled.
-            *source = source.replace("enable wgpu_binding_array;", "").into();
-        }
     }
 }
 

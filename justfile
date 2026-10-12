@@ -85,3 +85,14 @@ reference:
     git -C magic/reference/redguard-preservation pull -q --ff-only
     git -C magic/reference/redguard-unity pull -q --ff-only
     @echo "docs: magic/reference/redguard-preservation/docs  code: magic/reference/redguard-unity/Assets/Scripts"
+
+# Independent asset viewer; native launches require an explicit install.
+viewer *ARGS:
+    cargo run -p cyrus-viewer -- {{ARGS}}
+
+viewer-web-build:
+    dev/scripts/build-web.sh cyrus-viewer
+
+# Serve the viewer and an explicit read-only original install.
+run-viewer-web *args:
+    dev/scripts/run-web.sh cyrus-viewer {{args}}

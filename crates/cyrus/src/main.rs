@@ -11,14 +11,12 @@ use bevy::prelude::*;
 use clap::Parser;
 use cyrus_assets::install::GameInstall;
 use cyrus_game::GamePlugin;
-use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Redguard in Bevy, from your own GOG install.")]
 struct Args {
-    /// Path to the GOG install's Redguard directory (overrides $REDGUARD_DIR and ./redguard).
-    #[arg(long)]
-    install: Option<PathBuf>,
+    #[command(flatten)]
+    source: cyrus_app::cli::InstallArgs,
     /// WORLD.INI world ID or map stem to load (overrides settings.toml).
     #[arg(long)]
     scene: Option<String>,
@@ -46,7 +44,8 @@ fn main() -> anyhow::Result<()> {
     if let Some(scene) = args.scene {
         settings.scene = scene;
     }
-    let install = GameInstall::locate(args.install.as_deref())?;
+    let install = GameInstall::locate(args.source.install.as_deref())?;
+    install.cache_path(&Settings::cache_dir())?;
     if args.export_startup || args.export_all_worlds {
         cyrus_assets::music::export(&install, &Settings::cache_dir())?;
     }
@@ -93,13 +92,7 @@ fn main() -> anyhow::Result<()> {
             bevy::asset::AssetPlugin::default(),
         ));
     } else {
-        app.add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "cyrus".into(),
-                ..default()
-            }),
-            ..default()
-        }));
+        app.add_plugins(DefaultPlugins.set(cyrus_app::window("cyrus")));
     }
     app.add_plugins((
         cyrus_world::animation::AnimationPlugin,
