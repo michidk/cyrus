@@ -11,6 +11,14 @@ use std::{collections::BTreeMap, path::Path};
 
 /// Exports actor programs independently of mesh availability; unsupported actors remain visible.
 pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
+    let config_path = crate::scene::find_file(root, "SYSTEM.INI")
+        .with_context(|| format!("world {world}: SYSTEM.INI absent"))?;
+    let config = rgpre::import::soup_ini::SoupConfig::parse(
+        &std::fs::read_to_string(&config_path)
+            .with_context(|| format!("world {world}: {}", config_path.display()))?,
+    )
+    .map_err(anyhow::Error::msg)
+    .with_context(|| format!("world {world} script settings"))?;
     let definition = soup_def::load_soup_def(root).map_err(anyhow::Error::msg)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
     let mut actors = BTreeMap::new();
@@ -120,7 +128,8 @@ pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 2,
+        version: 3,
+        actor_pool_capacity: config.actor_pool_capacity,
         world,
         content_id: String::new(),
         definition,

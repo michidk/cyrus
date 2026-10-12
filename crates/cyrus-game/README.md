@@ -103,8 +103,19 @@ not grant update eligibility. Removing the prepared world clears this registry.
 
 Native control and MCP `scripts` page through at most 64 actor diagnostics.
 `step_script` runs a selected main, interrupt or existing-task stage. The
-inspection host supports the researched self `GetMyAttr`, `SetGlobalFlag`,
-`ResetGlobalFlag` and `TestGlobalFlag` services. Flag numeric values and latches
+inspection host supports the researched `GetAttribute`, `GetMyAttr`,
+`SetAttribute`, `SetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag` and `TestGlobalFlag`
+services. **Verified:** attribute writes retain the low byte; `SetAttribute`
+also maintains reserved collide/weight bytes, while `SetMyAttr` does not. Reads
+observe writes in the same stage and routed operands use receiver locals.
+`GetMyAttr` and `SetMyAttr` return zero outside the attribute table. Other
+out-of-range attribute access and attribute-44 writes remain explicit failures;
+the latter requires model/default-group ownership and cleanup integration.
+These contracts follow preservation's
+[attribute rules](https://github.com/michidk/redguard-preservation/blob/c5cbfb8/docs/engine/SOUP.md#attribute-reads-and-writes).
+`ScriptActor::attributes` exposes the prepared inspection bytes. Complete actor
+initialization and shared animation/player attribute state remain pending.
+Flag numeric values and latches
 remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
 requires `frame_scale` with eight fractional bits; omission fails before actor
@@ -114,11 +125,23 @@ waits remain unsupported because their timing context is not established.
 Other native services remain explicit failures. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.
 
-**Verified:** explicit inspection routing supports Me, unique RANM namespace names
-with ASCII case folding. The Player selector still requires a unique CYRUS placement;
-the installed standalone player definition has no logical instance yet. Functions
-use receiver locals and attributes; tasks occupy receiver slots while the caller
-continues. Foreign tasks retain their source instructions. Runtime ownership is restored
-on success and failure, and receiver failures remain sticky. Duplicate names fail because
-runtime identifier assignment is not established. Camera, variable references, scriptless
-receivers, reentrant native callbacks, and automatic scheduling remain unsupported.
+**Verified:** fresh inspection prepares standalone CYRUS, GREMLIN and CAMERA
+instances from installed definitions, after ordinary map actors. They have separate
+locals and task slots. Player defaults to CYRUS; Camera uses its own instance.
+`ScriptActorSource` distinguishes those roles from map placements. Type-2/type-6
+map records retain diagnostics for their separate unsupported object paths and do
+not consume ordinary actor locals. Status `instances` counts logical entries,
+including standalone roles and unavailable map records.
+
+Native routing supports Me, Player, Camera and installed RANM names with ASCII
+case folding. Name lookup uses signed 16-bit runtime identifiers, preserves first
+registration of an identifier, and chooses the first matching namespace. Initial
+map identifiers follow installed actor-pool capacity, activation flags and placement
+order, independently of MPOB object ids. Functions use receiver locals and
+attributes; tasks occupy receiver slots while the caller continues. Foreign tasks
+retain source instructions. Both runtimes are restored on errors, and failures
+remain sticky. These rules follow preservation's
+[SOUP contract](https://github.com/michidk/redguard-preservation/blob/1242ac1/docs/engine/SOUP.md).
+This is fresh logical preparation. Player switching, variable references, scriptless
+receivers, later allocation/recycling, reentrant callbacks, automatic scheduling,
+progression and saves remain unsupported.

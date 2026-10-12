@@ -62,6 +62,8 @@ Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
 are present in the checked-out revision. The viewer currently lives on its
 separate development branch; game revisions without it contain only the game.
+Browser artifact builds compile all available applications and the viewer worker
+in one Cargo invocation so they share dependency features and compiled libraries.
 
 Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
 lint CI still runs on every push and pull request. Artifact builds run only for
@@ -171,7 +173,7 @@ references, frame geometry, original animation section payloads, and environment
 inputs. Re-export for animation schema 2 and source-mapped GLB geometry. Explicit
 group playback accepts supplied simulation ticks and updates private model
 meshes. Re-export again to retain script payloads and version-2 typed SOUP
-program descriptors plus the independent version-2 `.scripts` sidecar with actor RASC origins. Explicit scripted playback accepts a caller-selected default,
+program descriptors plus the independent version-3 `.scripts` sidecar with actor RASC origins and installed actor-pool capacity. Explicit scripted playback accepts a caller-selected default,
 executes authored PushAnimation tasks, and applies their mesh frames. End stores
 its target for a later eligible stage through the shared `cyrus-script` core.
 Control `state.scripts` reports cache readiness, program and unsupported counts,
