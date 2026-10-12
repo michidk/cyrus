@@ -183,11 +183,19 @@ captured playback. **Verified:** the metallic logo and orange swoosh come from
 `3DfxSpl2.dll`; the full DOS Glide overlay contains the older shield variant.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
-`cyrus-viewer` is a separate native/browser inspection application. It requires
-an explicit native install path and uses generic textured rendering, without a
+`cyrus-viewer` is a separate native/browser inspection application. It accepts
+an install path or discovers default folders and uses generic textured rendering, without a
 Faithful appearance claim. It shares `cyrus-assets` and `cyrus-app` with the game;
 its controls do not change game preferences. See its crate README for asset
 coverage, browser runtime loading, and preview limitations.
+
+For browser testing, always supply the resolved install directly. Start the server
+with `just run-web --install /absolute/path/to/Redguard` or
+`just run-viewer-web --install /absolute/path/to/Redguard`. When using an existing
+server, pass `?install=<encoded-install-service-URL>` on the application URL.
+Do not ask the user to enter the location or rely on their saved browser selection.
+The shared server default applies to both game and viewer pages. Test the location
+picker only when the task specifically needs to verify that flow.
 
 For agent work, choose the entry point explicitly:
 

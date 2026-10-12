@@ -16,7 +16,7 @@ menu/HUD preparation. New Game and the temporary Load fallback export the
 installed starting world in a worker and enter after its dependencies are ready.
 
 Flags: `--export-startup` exports startup, menu, starting world, movies and HUD
-for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, else `./redguard`), `--scene STEM|ID`,
+for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, else default local/GOG folders), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
 Settings come from `cyrus-config/settings.toml`.
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`
@@ -28,3 +28,20 @@ This crate owns native settings and preference storage, binding initialization,
 scene preparation, debug world options and control-command application.
 `cyrus-control::server` handles TCP framing. Headless assembly omits the camera
 and audio backend; windowed assembly adds the shared presentation plugins.
+
+Shared browser/CLI options use exactly the same names:
+
+| CLI | Browser URL | Meaning |
+| --- | --- | --- |
+| `--install PATH` | `?install=URL` | Read-only original install, local directory or install-service URL |
+| `--scene START` | `?scene=START` | Load a map stem or WORLD.INI ID directly |
+| `--skip-startup` | `?skip-startup=true` | Bypass the splash |
+| `--water modern` | `?water=modern` | Water fidelity mode |
+| `--fog modern` | `?fog=modern` | Fog fidelity mode |
+| `--sky modern` | `?sky=modern` | Sky fidelity mode |
+
+Mode values are `faithful` or `modern`. Native flags override saved settings.
+Native-only flags include headless/control and export commands. `--export-scene
+--scene NAME` prepares one world and exits; `--list-worlds` prints accepted names
+as JSON. The browser install service uses these existing asset paths without
+starting a game window.

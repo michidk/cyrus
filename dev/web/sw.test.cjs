@@ -73,6 +73,8 @@ function request(path, origin = base, drain = true, headers = {}) {
   offline = true;
   assert.ok(await request("cyrus-config/cache/viewer/catalog.json"), "cached catalog remains available offline");
   assert.equal(request("cyrus-config/menu.json"), undefined, "local settings must not enter asset caching");
-  assert.equal(request(immutable, "https://other.test/"), undefined);
+  offline = false;
+  const remote = await request(immutable, "https://other.test/");
+  assert.equal(await remote.text(), "preview", "remote install media uses the shared cache too");
   console.log("shared web cache contracts passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });

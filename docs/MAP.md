@@ -127,7 +127,7 @@ module where it is defined and regenerate.
 - `src/preview.rs` — Selection-owned scene, camera and media playback.
 - `src/ui.rs` — Egui asset browser: content navigation and modern inspection controls.
 
-## `cyrus-web` — shortcut: the browser loads GLBs that the native game exported into
+## `cyrus-web` — Browser game host using the selected install service for prepared assets.
 
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/debug.rs` — Platform world-picker sources and navigation.

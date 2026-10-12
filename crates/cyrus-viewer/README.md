@@ -6,7 +6,7 @@ The viewer reads the installation without modifying it.
 
 ```sh
 cargo run -p cyrus-viewer -- --install /path/to/Redguard
-# REDGUARD_DIR can supply the same explicit location.
+# REDGUARD_DIR or default local/GOG folders can supply the location.
 ```
 
 Prebuilt archives run with `./cyrus-viewer --install /path/to/Redguard` or
@@ -51,7 +51,7 @@ Build without game files, then serve your original install at runtime:
 
 ```sh
 just viewer-web-build
-just run-viewer-web /path/to/Redguard
+just run-viewer-web --install /path/to/Redguard
 ```
 
 For a prebuilt browser archive, use Python 3.11 or newer from its `browser/`
@@ -82,8 +82,8 @@ For private static hosting, serve `target/web`, the original files beneath
 `bytes`, and 64-character content `digest`. The preview server's manifest
 endpoint supplies this listing. The virtual paths `disc/game.gog`,
 `disc/game.ins`, and `splash/glide2x_emu.ovl` refer to the associated GOG files.
-The host must support HTTP byte ranges. The HTML `cyrus-assets` meta element
-sets the original-file base URL.
+The host must support HTTP byte ranges. Pass `?install=https://your-private-host/original/` or select that URL at startup.
+The shared bootstrap validates and remembers it for both applications.
 
 Original files and generated previews contain game data. Keep them private,
 outside source control and application releases. Startup reads the file listing and small palette/configuration files. Archive
@@ -110,3 +110,24 @@ Scripts are inspected as data, never executed.
 
 `cyrus-assets` tests the portable catalog/runtime contracts. Native and browser
 runtime checks are also needed to verify rendering, input, and media playback.
+
+Native and browser selection options use exactly the same names:
+
+| CLI | Browser URL |
+| --- | --- |
+| `--install PATH` | `?install=URL` |
+| `--asset ID` | `?asset=ID` or `#asset=ID` |
+| `--file SOURCE` | `?asset=ID&file=SOURCE` or the same fragment |
+| `--palette NAME` | `?asset=ID&palette=NAME` or the same fragment |
+
+URL values must be percent-encoded. `file` identifies an archive to resolve an
+asset member; without it, older ID-only selections scan archive indexes.
+`file` and `palette` require `asset`. Native selection waits for the catalog and
+uses the same model palette rules as browser selection.
+
+Without a supplied source, browser startup asks "Where are the game files?".
+The validated URL is shared with the game in localStorage `cyrus-install` and
+checked again at each launch. Unavailable files reopen the picker. Use "Change
+game files" to choose another install. The server's `--install PATH` automatically
+supplies the source to both pages; `--install-url URL` supplies a remote default.
+AI-driven tests must always provide one of these sources explicitly.

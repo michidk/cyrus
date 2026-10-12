@@ -1,3 +1,5 @@
+import { chooseInstall, installControls } from "./install.js";
+
 // Bevy owns the output context; resume it inside the browser's trusted input event.
 if (globalThis.AudioContext) {
   const contexts = new Set();
@@ -43,7 +45,24 @@ const fill = document.getElementById("fill");
 const engine = document.body.dataset.engine;
 const scene = new URLSearchParams(location.search).get("scene")?.toUpperCase();
 try {
-  if (scene && !/^[A-Z0-9_]+$/.test(scene)) throw new Error("Invalid scene name");
+  if (scene !== undefined && !/^[A-Z0-9_]+$/.test(scene)) throw new Error("Invalid scene name");
+  if (engine === "cyrus-web" || engine === "cyrus-viewer") {
+    const params = new URLSearchParams(location.search);
+    if (engine === "cyrus-web") {
+      for (const area of ["water", "fog", "sky"]) {
+        if (params.has(area) && !["faithful", "modern"].includes(params.get(area))) throw new Error(area + ": expected faithful or modern");
+      }
+      if (params.has("skip-startup") && !["", "true", "false", "1", "0"].includes(params.get("skip-startup"))) throw new Error("skip-startup: expected true or false");
+    } else if (!location.hash && params.has("asset")) {
+      const selection = ["asset", "file", "palette"].filter(name => params.has(name))
+        .map(name => name + "=" + encodeURIComponent(params.get(name))).join("&");
+      history.replaceState(null, "", location.pathname + location.search + "#" + selection);
+    } else if (!params.has("asset") && (params.has("file") || params.has("palette"))) {
+      throw new Error("file and palette require asset");
+    }
+    await chooseInstall();
+    installControls();
+  }
   if ("serviceWorker" in navigator) {
     try {
       await navigator.serviceWorker.register("./sw.js");
@@ -68,9 +87,6 @@ try {
       version: encodeURIComponent(response.headers.get("last-modified") || Date.now()) };
   }
   const wasm = await download("./pkg/" + engine + "_bg.wasm", "Loading application");
-  if (engine === "cyrus-web" && scene) {
-    await download("./cyrus-config/cache/" + scene + ".glb", "Loading " + scene);
-  }
   label.textContent = "Starting application…";
   const { default: init } = await import("./pkg/" + engine + ".js?v=" + wasm.version);
   try { await init({ module_or_path: wasm.bytes }); }

@@ -1,6 +1,4 @@
-//! shortcut: the browser loads GLBs that the native game exported into
-//! `cyrus-config/cache/` (served next to the page); parsing the install's own
-//! files in the browser needs the preservation crate to run on wasm first.
+//! Browser game host using the selected install service for prepared assets.
 
 mod bindings;
 mod debug;
@@ -12,35 +10,13 @@ use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 
-fn scene_from_query() -> Option<String> {
-    #[cfg(target_arch = "wasm32")]
-    if let Some(window) = web_sys::window()
-        && let Ok(search) = window.location().search()
-        && let Some(name) = search
-            .trim_start_matches('?')
-            .split('&')
-            .find_map(|kv| kv.strip_prefix("scene="))
-    {
-        return Some(name.to_ascii_uppercase());
-    }
-    None
-}
-
-fn modern_area(_area: &str) -> bool {
-    #[cfg(target_arch = "wasm32")]
-    if let Some(window) = web_sys::window()
-        && let Ok(search) = window.location().search()
-    {
-        return search
-            .trim_start_matches('?')
-            .split('&')
-            .any(|part| part == format!("{_area}=modern"));
-    }
-    false
-}
-
 fn main() {
-    let scene = scene_from_query();
+    #[cfg(target_arch = "wasm32")]
+    let options = cyrus_app::launch::from_query::<cyrus_app::launch::GameOptions>()
+        .expect("validated game URL options");
+    #[cfg(not(target_arch = "wasm32"))]
+    let options = cyrus_app::launch::GameOptions::default();
+    let scene = options.scene;
     let mut app = App::new();
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
@@ -56,17 +32,17 @@ fn main() {
             }),
     )
     .insert_resource(Fidelity {
-        water: if modern_area("water") {
+        water: if options.water.as_deref() == Some("modern") {
             Mode::Modern
         } else {
             Mode::Faithful
         },
-        fog: if modern_area("fog") {
+        fog: if options.fog.as_deref() == Some("modern") {
             Mode::Modern
         } else {
             Mode::Faithful
         },
-        sky: if modern_area("sky") {
+        sky: if options.sky.as_deref() == Some("modern") {
             Mode::Modern
         } else {
             Mode::Faithful
@@ -89,12 +65,15 @@ fn main() {
                 .run_if(in_state(cyrus_game::AppState::Loading))
                 .run_if(resource_exists::<cyrus_render::startup::StartGame>),
         );
+    if options.skip_startup {
+        app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash());
+    }
+    app.add_plugins(cyrus_debug::DebugMenuPlugin);
+    debug::register(&mut app);
     if let Some(scene) = scene {
         app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash())
             .insert_resource(cyrus_render::startup::StartGame::default())
-            .insert_resource(cyrus_world::lifecycle::SceneRequest(scene))
-            .add_plugins(cyrus_debug::DebugMenuPlugin);
-        debug::register(&mut app);
+            .insert_resource(cyrus_world::lifecycle::SceneRequest(scene));
     }
     #[cfg(target_arch = "wasm32")]
     app.add_systems(Update, quit_tab);

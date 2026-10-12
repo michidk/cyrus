@@ -58,13 +58,13 @@ camera remain unsupported; use the independent debug flycam to inspect the world
 ## Asset viewer
 
 `just viewer --install /path/to/Redguard` launches the separate native asset
-viewer. It requires an explicit install path or `REDGUARD_DIR`.
+viewer. It accepts `--install`, `REDGUARD_DIR`, or the same default-folder discovery as the game.
 Build with `just viewer-web-build`, without an install. Run
-`just run-viewer-web /path/to/Redguard` to serve original files at runtime.
+`just run-viewer-web --install /path/to/Redguard` to serve original files at runtime.
 The browser parses them in a worker and generates selected previews in memory.
 
-The game and viewer share `target/web`, the loader, Cache Storage, and
-`cyrus-config/cache`. The viewer server also serves an explicit read-only install.
+The game and viewer share `target/web`, the loader, Cache Storage, and the
+selected read-only install service. The game prepares its cache outside the install.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
 
 ## CI artifacts
@@ -89,20 +89,52 @@ tag also attaches artifacts and creates a draft when no release exists.
 
 Archives contain application code and crate usage instructions. They contain
 no game files, exported previews, or local state. Native executables still need
-the player's GOG install. Browser bundles need locally exported game assets;
-the asset viewer needs privately served original files as described in its
-crate README. Downloading an artifact does not establish runtime or fidelity
+the player's GOG install. Browser bundles ask for an install-service URL, remember it, and validate it on
+each launch. The service supplies original files for the viewer and uses the native
+game exporter to prepare game assets outside the install. Downloading an artifact does not establish runtime or fidelity
 support on that platform.
 
 ## Browser build
 
 ```sh
 rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # version from Cargo.lock
-just run-web             # VibePod preview "cyrus-web"; ?scene=START picks a scene
+just run-web --install /path/to/Redguard # supplies files automatically to game and viewer
 ```
 
 Without a `scene` query, the page runs startup through the book menu.
-Export startup first with `cargo run -p cyrus -- --export-startup`. The exporter
+Native `--scene`, `--skip-startup`, `--water`, `--fog`, and `--sky` map directly
+to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
+to URL parameters or existing fragment links. `--install PATH` maps to
+`?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
+The game also needs the manifest's `cache` URL for prepared game assets.
+See the crate READMEs for the complete mappings.
+
+Both native applications discover `./redguard`, `./Redguard`,
+`~/GOG Games/Redguard`, `~/GOG Games/Redguard/app/Redguard`, and on Windows
+`%SystemDrive%/GOG Games/Redguard`. Explicit `--install` and `REDGUARD_DIR` take
+precedence and report errors instead of silently selecting a different install.
+
+The browser asks "Where are the game files?" when no valid source is available.
+It saves the validated URL under localStorage `cyrus-install`, shared by game and
+viewer, and checks the manifest and an original file again on every launch. A
+missing install reopens the picker. "Change game files" opens it explicitly.
+URL `install` overrides the server default, which overrides the saved location.
+A server may receive `--install-url URL` to supply a remote default.
+
+For unattended tests, always pass `--install /absolute/path/to/Redguard` to the
+web server or `?install=<encoded-service-URL>` to an existing preview. Do not
+make the user fill in the picker for an agent's test.
+
+`viewer-server.py` serves both applications. Its `--install` flag provides the
+original files and shared browser default, and `--exporter /path/to/cyrus` selects
+the native game used for preparation. It otherwise finds `cyrus` on PATH or under
+`target/debug` and `target/release`. The game generates startup and requested worlds
+on demand under `cyrus-config/web/`, separated by install identity. The server
+binds to loopback; remote install hosts need CORS and HTTP byte-range support.
+A static original-file host works for the viewer; the game requires prepared
+assets or the install service's native exporter.
+
+For manual export, prepare startup with `cargo run -p cyrus -- --export-startup`. The exporter
 reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 `gui_low_font` from the install; all generated images stay in
 `cyrus-config/cache/startup/`. Native windowed launch generates this cache when
@@ -173,18 +205,15 @@ path on native and browser builds. **Verified:** the original default book menu 
 hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,
 camera-plane clipping and runtime gameplay thumbnails remain unsupported.
 
-With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
-`cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry
-and its map-stem alias. Use `?scene=27` for a specific world variant or
-`?scene=START` for a map. Map stems select the lowest world ID using that map.
-Native scene loads regenerate the export; browser-only sessions need the
-export command after loading changes. The browser bootstrap downloads only the
-WebAssembly engine. Startup/menu and world downloads occur inside the running
-engine behind installed artwork. The title remains visible until the book is
-ready; world-entry progress counts completed preparation and required asset groups,
-without a minimum loading delay. The browser keeps the WebAssembly engine
-and downloaded GLB files in Cache Storage, then checks their timestamp and size
-before reusing them. Only locally exported assets are served; the install directory is not exposed.
+With `?scene=...`, the page requests that world's GLB and sidecars from the
+selected install service. The service prepares missing worlds through the native
+exporter. Map stems and WORLD.INI IDs retain native selection semantics.
+The browser bootstrap downloads only the WebAssembly engine after validating the
+install URL. Startup/menu and world downloads occur inside the running engine
+behind installed artwork. Cache Storage retains the engine and selected-host
+assets, revalidating mutable game exports. Original downloads retain digest-based
+caching. Browser builds contain application code only and do not link local game
+files into their web root.
 
 ### Animation data
 

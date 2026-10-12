@@ -20,6 +20,16 @@ state dump, from both games where the change claims fidelity.
 `vibepod-preview doctor <name>` prints the URL. Open `/vnc.html?autoconnect=1&resize=scale`.
 In a shared workspace, stop only the processes and previews this session owns.
 
+## Browser install source
+
+Always supply the game files for AI-driven web tests. Resolve the native install
+and run `just run-web --install /absolute/path/to/Redguard` or
+`just run-viewer-web --install /absolute/path/to/Redguard`. Reuse a running preview
+with `?install=<URL-encoded-install-service-URL>` when it already serves that install.
+The server default is shared by the game and viewer. Never leave the user to answer
+the location prompt or assume their browser has a saved URL. Only omit the source
+when explicitly testing the picker or its recovery flow.
+
 ## Prove the loop works
 
 `just smoke-mcp` starts the game headless and drives it through the MCP

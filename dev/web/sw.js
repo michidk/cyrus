@@ -5,11 +5,12 @@ self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   const scope = new URL("./", self.location.href).pathname;
   const relative = url.pathname.slice(scope.length);
-  const original = relative.startsWith("original/") && /^[a-f0-9]{64}$/i.test(url.searchParams.get("v") || "");
-  if (/^cyrus-config\/cache\/movies\/.*\.(smk|wav)$/.test(relative) ||
+  const original = /^[a-f0-9]{64}$/i.test(url.searchParams.get("v") || "");
+  if (/\/cyrus-config\/cache\/(?:[a-f0-9]{64}\/)?movies\/.*\.(smk|wav)$/.test(url.pathname) ||
       event.request.headers.has("Range")) return;
-  if (event.request.method !== "GET" || url.origin !== self.location.origin ||
-      !(relative.startsWith("cyrus-config/cache/") || relative.endsWith(".wasm") || original)) return;
+  if (event.request.method !== "GET" ||
+      !(url.pathname.includes("/cyrus-config/cache/") ||
+        (url.origin === self.location.origin && relative.endsWith(".wasm")) || original)) return;
   event.respondWith((async () => {
     const cache = await caches.open(FILE_CACHE);
     const key = original ? new Request(url.href) : event.request;

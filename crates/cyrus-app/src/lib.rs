@@ -2,23 +2,7 @@
 use bevy::{asset::io::AssetSourceBuilder, prelude::*};
 
 pub use bevy_egui;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod cli {
-    /// Install argument shared by native executables; fallback policy belongs to the caller.
-    #[derive(clap::Args, Debug)]
-    pub struct InstallArgs {
-        /// Original Redguard installation. Read only.
-        #[arg(long, env = "REDGUARD_DIR")]
-        pub install: Option<std::path::PathBuf>,
-    }
-    impl InstallArgs {
-        pub fn required(&self) -> anyhow::Result<cyrus_assets::install::GameInstall> {
-            let path = self.install.as_deref().ok_or_else(||anyhow::anyhow!("provide --install PATH or REDGUARD_DIR pointing to your original Redguard files"))?;
-            cyrus_assets::install::GameInstall::open(path)
-        }
-    }
-}
-
+pub mod launch;
 /// Register before AssetPlugin; native paths are independent of the executable location.
 pub fn register_cache(app: &mut App) -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -30,7 +14,7 @@ pub fn register_cache(app: &mut App) -> anyhow::Result<()> {
             .to_owned()
     };
     #[cfg(target_arch = "wasm32")]
-    let path = cyrus_assets::CACHE_DIR.to_owned();
+    let path = browser_source("cyrus-cache")?;
     app.register_asset_source("cache", AssetSourceBuilder::platform_default(&path, None));
     Ok(())
 }
@@ -180,4 +164,20 @@ fn loading(
             label.0.clone_from(&progress.label);
         }
     }
+}
+
+/// Validated HTTP source installed by the shared browser bootstrap.
+#[cfg(target_arch = "wasm32")]
+pub fn browser_source(name: &str) -> anyhow::Result<String> {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| {
+            document
+                .query_selector(&format!("meta[name={name}]"))
+                .ok()
+                .flatten()
+        })
+        .and_then(|element| element.get_attribute("content"))
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("select your game files before starting the application"))
 }

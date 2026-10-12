@@ -287,3 +287,144 @@ pub fn poll(
     }
     let _ = &mut commands;
 }
+
+/// Resolve a CLI selection after asynchronous catalog loading, including archive members.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn initial_selection(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    mut viewer: ResMut<Viewer>,
+    library: Option<Res<NativeLibrary>>,
+    options: Option<Res<cyrus_app::launch::ViewerOptions>>,
+    task: Option<Res<Preparation>>,
+    mut attempted: Local<bool>,
+) {
+    let (Some(options), Some(library)) = (options, library) else {
+        return;
+    };
+    if task.is_some() {
+        return;
+    }
+    let Some(id) = &options.asset else {
+        commands.remove_resource::<cyrus_app::launch::ViewerOptions>();
+        return;
+    };
+    let Some(catalog) = &viewer.catalog else {
+        return;
+    };
+    if let Some(index) = catalog.entries.iter().position(|entry| &entry.id == id) {
+        viewer.format = crate::ui::entry_format(&catalog.entries[index]).into();
+        viewer.model_palette.clone_from(&options.palette);
+        select(index, &mut viewer, &mut commands, &assets, Some(&library));
+        commands.remove_resource::<cyrus_app::launch::ViewerOptions>();
+        return;
+    }
+    if *attempted {
+        commands.remove_resource::<cyrus_app::launch::ViewerOptions>();
+        return;
+    }
+    *attempted = true;
+    let library = library.0.clone();
+    let id = id.clone();
+    let source = options.file.clone();
+    commands.insert_resource(Preparation(bevy::tasks::IoTaskPool::get().spawn(
+        async move {
+            let explicit_source = source.is_some();
+            let paths = source.map(|path| vec![path]).unwrap_or_else(|| {
+                library
+                    .catalog
+                    .entries
+                    .iter()
+                    .filter(|entry| matches!(entry.source, cyrus_assets::Source::Archive))
+                    .map(|entry| entry.path.clone())
+                    .collect()
+            });
+            for path in paths {
+                let catalog = match library.expand(&path) {
+                    Ok(catalog) => catalog,
+                    Err(error) if explicit_source => return Err(format!("{path}: {error:#}")),
+                    Err(_) => continue,
+                };
+                if catalog.entries.iter().any(|entry| entry.id == id) {
+                    return Ok(Prepared::Expanded(catalog));
+                }
+            }
+            Err(format!("asset {id}: not found in this installation"))
+        },
+    )));
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn cli_selection_opens_an_installed_archive_member() -> anyhow::Result<()> {
+        let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
+            eprintln!("skipped: no install (viewer CLI selection)");
+            return Ok(());
+        };
+        let cache =
+            std::env::temp_dir().join(format!("cyrus-viewer-selection-{}", std::process::id()));
+        let library = cyrus_assets::native::Library::open(install, cache.clone(), |_, _, _| {})?;
+        let archive = library
+            .catalog
+            .entries
+            .iter()
+            .find(|entry| entry.path.eq_ignore_ascii_case("fxart/MENU.ROB"))
+            .ok_or_else(|| anyhow::anyhow!("fxart/MENU.ROB missing from installed catalog"))?;
+        let members = library.expand(&archive.path)?;
+        let member = members
+            .entries
+            .iter()
+            .find(|entry| entry.error.is_none())
+            .ok_or_else(|| anyhow::anyhow!("fxart/MENU.ROB has no supported members"))?;
+        let options = cyrus_app::launch::ViewerOptions::try_parse_from([
+            "viewer",
+            "--asset",
+            &member.id,
+            "--file",
+            &archive.path,
+        ])?;
+        let expected = member.id.clone();
+        let mut viewer = Viewer::default();
+        viewer.set_catalog(library.catalog.clone());
+        let mut app = App::new();
+        app.register_asset_source(
+            "cache",
+            bevy::asset::io::AssetSourceBuilder::platform_default(
+                cache.to_str().expect("test cache path"),
+                None,
+            ),
+        );
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Blob>()
+            .init_asset_loader::<BlobLoader>()
+            .init_resource::<cyrus_app::LoadingProgress>()
+            .insert_resource(viewer)
+            .insert_resource(NativeLibrary(std::sync::Arc::new(library)))
+            .insert_resource(options)
+            .add_systems(Update, (poll, initial_selection).chain());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            app.update();
+            let viewer = app.world().resource::<Viewer>();
+            assert!(viewer.error.is_none(), "{:?}", viewer.error);
+            if let Some(index) = viewer.selected {
+                assert_eq!(viewer.catalog.as_ref().unwrap().entries[index].id, expected);
+                if viewer.preview.is_some() {
+                    break;
+                }
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "CLI selection never completed"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        drop(app);
+        let _ = std::fs::remove_dir_all(cache);
+        Ok(())
+    }
+}

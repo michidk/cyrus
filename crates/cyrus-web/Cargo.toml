@@ -1,6 +1,6 @@
 [package]
 name = "cyrus-web"
-description = "Browser build: loads scenes exported by the native game from the web server. No install access, no preload, no control port."
+description = "Browser game using a selected read-only install service and prepared assets."
 version.workspace = true
 edition.workspace = true
 
@@ -22,4 +22,5 @@ cyrus-game.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
-web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Document", "Element"] }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Document", "Element", "UrlSearchParams"] }

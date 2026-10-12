@@ -14,11 +14,6 @@ done
 cargo build "${packages[@]}" --target wasm32-unknown-unknown --profile wasm-release
 out=target/web
 mkdir -p "$out"
-worlds=""
-if [[ -d cyrus-config/cache ]]; then
-    worlds="$(find cyrus-config/cache -maxdepth 1 -type f -name '*.glb' -printf '%f\n' \
-        | sed -n 's/^\([A-Za-z0-9_]*\)\.glb$/\1/p' | sort -V | paste -sd, -)"
-fi
 for app in "${apps[@]}"; do
     case "$app" in cyrus-web) page=index.html ;; cyrus-viewer) page=viewer.html ;; esac
     wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" --out-name "$app" \
@@ -29,10 +24,12 @@ for app in "${apps[@]}"; do
         cp dev/web/asset-worker.js "$out/"
     fi
     cp "crates/$app/web/index.html" "$out/$page"
-    sed -i "s/<meta name=\"cyrus-worlds\" content=\"\">/<meta name=\"cyrus-worlds\" content=\"$worlds\">/" "$out/$page"
     echo "built $out ($(du -h "$out/pkg/${app}_bg.wasm" | cut -f1) wasm)"
 done
-cp dev/web/loader.js dev/web/sw.js dev/web/loading.css "$out/"
-if [ -L "$out/cyrus-config" ]; then rm "$out/cyrus-config"; fi
-mkdir -p "$out/cyrus-config"
-ln -sfn "$PWD/cyrus-config/cache" "$out/cyrus-config/cache"
+cp dev/web/loader.js dev/web/install.js dev/web/sw.js dev/web/loading.css "$out/"
+# Browser code has no implicit link to installed files or exported caches.
+if [ -L "$out/cyrus-config" ]; then
+    rm "$out/cyrus-config"
+elif [ -L "$out/cyrus-config/cache" ]; then
+    rm "$out/cyrus-config/cache"
+fi

@@ -11,8 +11,11 @@ test("browser loader hands its existing overlay to the application", async () =>
   try {
     await fs.mkdir(path.join(directory, "pkg"));
     await fs.copyFile(path.join(__dirname, "loader.js"), path.join(directory, "loader.mjs"));
-    await fs.writeFile(path.join(directory, "pkg/test.js"), "module.exports = async () => {};\n");
+    await fs.writeFile(path.join(directory, "install.js"), "export async function chooseInstall() {}\nexport function installControls() {}\n");
+    await fs.writeFile(path.join(directory, "package.json"), '{"type":"module"}');
+    await fs.writeFile(path.join(directory, "pkg/test.js"), "export default async () => {};\n");
     globalThis.location = { search: "" };
+    globalThis.window = { addEventListener() {} };
     Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
     globalThis.fetch = async () => new Response(new Uint8Array([0]), {
       headers: { "content-length": "1", "last-modified": "test" },
@@ -54,8 +57,15 @@ test("browser loader hands its existing overlay to the application", async () =>
       assert.equal(elements.label.textContent, "Starting application…");
       assert.equal(elements.fill.style.width, "100%");
     }
+    await fs.writeFile(path.join(directory, "pkg/cyrus-viewer.js"), "export default async () => {};\n");
+    globalThis.location = { pathname: "/viewer.html", hash: "", search: "?asset=abc&file=source%20path&palette=night%20palette" };
+    let replaced;
+    globalThis.history = { replaceState: (_, __, url) => { replaced = url; } };
+    document.body.dataset.engine = "cyrus-viewer";
+    await import(pathToFileURL(path.join(directory, "loader.mjs")) + "?selection=true");
+    assert.equal(replaced, "/viewer.html?asset=abc&file=source%20path&palette=night%20palette#asset=abc&file=source%20path&palette=night%20palette");
   } finally {
-    for (const key of ["document", "location", "navigator", "fetch", "AudioContext"]) {
+    for (const key of ["window", "document", "location", "history", "navigator", "fetch", "AudioContext"]) {
       if (original[key]) Object.defineProperty(globalThis, key, original[key]);
       else delete globalThis[key];
     }

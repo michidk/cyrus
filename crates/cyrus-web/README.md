@@ -1,29 +1,58 @@
 # cyrus-web
 
-The browser build (wasm32). Default launch shows startup through the book menu.
-Export its assets, including the configured starting world, with
-`cargo run -p cyrus -- --export-startup`. Bootstrap downloads only WASM;
-game assets load behind the installed title or world-entry artwork. New Game
-and the temporary Load fallback enter the starting world after dependencies
-finish loading. Quit attempts tab closure and keeps running when refused.
-With `?scene=...`, it shows scenes the native game exported to
-`cyrus-config/cache/`, served next to the page; it does not read the install
-and has no preload or control port. Movies plays the selected installed cinematic
-from `cyrus-config/cache/movies/`, exported by `--export-startup`. Video decodes
-in-process; playback shares native subtitle, interlace, skip, and menu-return rules.
+The browser game runs startup through the book menu by default. It uses the same
+world, game and presentation plugins as the native game. This host owns URL
+selection and localStorage preferences; it has no native control port.
 
 ```sh
-just web-build   # cargo build for wasm32 + wasm-bindgen into target/web
-just run-web     # serve target/web behind the VibePod preview "cyrus-web"
+just web-build
+just run-web --install /path/to/Redguard
+# Use --exporter /path/to/cyrus to select the native preparation executable.
 ```
 
-`web/index.html` streams the engine before starting Bevy. Direct scene launches
-load their assets behind the installed title. `?scene=START` or `?scene=27` picks a world (stem or
-WORLD.INI index). It shares `cyrus-world`, `cyrus-game` and `cyrus-render`
-plugins with native. This host owns URL/DOM world selection and localStorage
-persistence. Direct scene launches wait for exported keyboard defaults and apply
-saved bindings; controller fidelity defaults to Faithful.
-With a scene URL, press F1 to choose a world, set flycam speed, and change runtime fidelity.
+The server validates the read-only install and provides its URL to both the game
+and viewer automatically. It prepares startup and requested worlds through the
+native game exporter, outside the install under `cyrus-config/web/`. Browser builds
+contain code only and do not link the local install or its exports into the web root.
+For an extracted browser archive, run:
+
+```sh
+python3 viewer-server.py --directory . --page index.html --port 8080 \
+  --install /path/to/Redguard --exporter /path/to/cyrus
+```
+
+Without a supplied or remembered URL, startup asks "Where are the game files?".
+It saves a validated install-service URL under localStorage `cyrus-install`, shared
+with the viewer, and checks the original files at each launch. Missing files reopen
+the picker. "Change game files" chooses another source. URL `install` overrides
+the server default, which overrides the saved URL. Server `--install-url URL`
+provides a remote default. Cross-origin services require CORS and byte-range support.
+The manifest's `cache` field locates prepared game assets; a static original-file
+host without game preparation supports only the viewer.
+
+| Browser URL | Native CLI |
+| --- | --- |
+| `?install=URL` | `--install PATH` |
+| `?scene=START` | `--scene START` |
+| `?skip-startup=true` | `--skip-startup` |
+| `?water=modern` | `--water modern` |
+| `?fog=modern` | `--fog modern` |
+| `?sky=modern` | `--sky modern` |
+
+Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
+WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.
+Boolean `skip-startup` accepts an empty value, `true`/`1`, and `false`/`0`.
+World-picker navigation preserves the install URL and other launch options.
+AI-driven browser tests must always supply the install to the server or in the URL,
+so the user never has to answer the prompt during testing.
+
+WASM downloads before Bevy starts; selected-host game assets load behind installed
+artwork. New Game and the temporary Load fallback wait for world dependencies.
+Movies use the prepared Smacker files and first-track audio; subtitle, interlace,
+skip and menu-return rules share the native implementation. Quit attempts tab
+closure and keeps running when refused. F1 opens the world,
+flycam and fidelity controls. Direct scenes apply exported keyboard defaults and
+saved Controls settings. Gameplay and original-game comparison limits are unchanged.
 
 Not a default workspace member so day-to-day builds and tests stay lean.
 
@@ -31,6 +60,3 @@ Browser audio activates on keyboard input or pointer release. Movies, menu effec
 CD music share native playback rules; `--export-startup` exports the required CD tracks
 and installed assignments. Runtime exceptions and graphics context loss display an error
 instead of leaving an unexplained black screen.
-
-For a downloaded browser bundle, serve its directory with your HTTP server and
-keep `cyrus-config/cache/` beside the page.

@@ -32,12 +32,17 @@ Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
 ## Run cyrus
 
 You need the GOG release of *The Elder Scrolls Adventures: Redguard*, Rust, and
-`just`. Extract the game, then link its `Redguard` directory into this checkout:
+`just`. Extract the game, then provide its `Redguard` directory:
 
 ```sh
-ln -s /path/to/GOG/extracted/app/Redguard redguard
-just run
+just run --install /path/to/GOG/extracted/app/Redguard
 ```
+
+Without `--install`, both native applications use `REDGUARD_DIR` or search the
+default local/GOG folders. A `redguard` symlink in the working directory works too.
+For the browser, `just run-web --install /path/to/Redguard` supplies the files to
+both game and viewer automatically. Otherwise, select an install-service URL at
+startup; the browser remembers it and asks again if it becomes unavailable.
 
 Use `just run --scene START` to open a world directly. The
 [setup guide](docs/SETUP.md) covers the browser build, the original game runner,

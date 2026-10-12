@@ -170,16 +170,7 @@ pub fn install(app: &mut App) -> Result<()> {
         }
     });
     worker.set_onerror(Some(error.as_ref().unchecked_ref()));
-    let source = web_sys::window()
-        .and_then(|window| window.document())
-        .and_then(|document| {
-            document
-                .query_selector("meta[name=cyrus-assets]")
-                .ok()
-                .flatten()
-        })
-        .and_then(|element| element.get_attribute("content"))
-        .unwrap_or_else(|| "./original/".into());
+    let source = cyrus_app::browser_source("cyrus-assets")?;
     app.insert_resource(inbox);
     app.world_mut().insert_non_send(BrowserWorker {
         worker,

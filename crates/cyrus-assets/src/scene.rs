@@ -111,6 +111,25 @@ pub fn world_index(install: &GameInstall, name: &str) -> anyhow::Result<u32> {
     Ok(resolve_world(&read_worlds(install)?, name)?.index)
 }
 
+/// WORLD.INI IDs and map-stem aliases accepted by native and browser scene selection.
+pub fn world_names(install: &GameInstall) -> anyhow::Result<Vec<String>> {
+    let mut names = Vec::new();
+    for entry in read_worlds(install)?.entries {
+        names.push(entry.index.to_string());
+        let map = map_path(install, &entry.map)?;
+        let stem = map
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| {
+                anyhow::anyhow!("world {}: invalid map path {}", entry.index, entry.map)
+            })?;
+        names.push(stem.to_ascii_uppercase());
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
 fn read_worlds(install: &GameInstall) -> anyhow::Result<WorldIni> {
     let path = world_ini::find_world_ini(&install.root)
         .ok_or_else(|| anyhow::anyhow!("missing WORLD.INI"))?;

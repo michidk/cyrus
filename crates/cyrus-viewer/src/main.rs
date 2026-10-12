@@ -17,18 +17,24 @@ fn main() -> anyhow::Result<()> {
     )]
     struct Args {
         #[command(flatten)]
-        source: cyrus_app::cli::InstallArgs,
+        source: cyrus_app::launch::InstallArgs,
+        #[command(flatten)]
+        selection: cyrus_app::launch::ViewerOptions,
     }
     let args = Args::parse();
-    let install = args.source.required()?;
+    let install = args.source.locate()?;
     install.cache_path(std::path::Path::new(cyrus_assets::CACHE_DIR))?;
     let mut app = application()?;
-    app.insert_resource(loading::NativeSource(install));
+    app.insert_resource(loading::NativeSource(install))
+        .insert_resource(args.selection)
+        .add_systems(Update, loading::initial_selection.after(loading::poll));
     app.run();
     Ok(())
 }
 #[cfg(target_arch = "wasm32")]
 fn main() {
+    cyrus_app::launch::from_query::<cyrus_app::launch::ViewerOptions>()
+        .expect("validated viewer URL options");
     application().expect("viewer setup").run();
 }
 

@@ -61,6 +61,7 @@ These checks are separate from implementation. Passing unit tests does not
 establish original-game timing, visual fidelity or audible parity.
 
 - [x] Integrated `just gates`: publication/map/format/strict-Clippy and workspace tests passed with the install present and absent on 2026-10-11; zero installed tests skipped. The updated WASM target passes `cargo check`.
+- [x] Shared game/viewer CLI and URL option names, native install discovery, and remembered browser install URLs. Native START/mode flags and viewer archive-member selection pass runtime checks; browser selection, reuse, manual change, and unavailable-source recovery pass in the shared tab. The install service prepares worlds and music outside the install and serves byte ranges. Combined browser game/viewer rendering remains a separate check.
 - [x] MCP smoke against the integrated native binary passed, including independent flycam input and an unchanged install. The smoke script used the already-built test-profile executables.
 - [x] Compared 499 consecutive captured FLAG2 states through End/restart against the tested integrated library; a wrong asset schema is rejected. This proves supplied-tick state parity only.
 - [x] Explicit group/script sound dispatch passes headless runtime contracts with the native backend: pose updates, zero supplied ticks, starts, stops, script restart and multiple invocations in one update. The 16-channel limit and same-update Start/Stop regressions pass. These checks use synthetic audio and do not prove audible fidelity.

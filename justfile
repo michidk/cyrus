@@ -60,9 +60,9 @@ docker-build:
 web-build:
     dev/scripts/build-web.sh
 
-# serve the wasm build, VibePod preview "cyrus-web" (needs exported scenes in cyrus-config/cache)
-run-web:
-    dev/scripts/run-web.sh
+# serve the wasm build, VibePod preview "cyrus-web" (discovers an install or accepts --install PATH)
+run-web *ARGS:
+    dev/scripts/run-web.sh cyrus-web {{ARGS}}
 
 # headless game + MCP server round-trip (needs an install and built binaries)
 smoke-mcp:
@@ -86,7 +86,7 @@ reference:
     git -C magic/reference/redguard-unity pull -q --ff-only
     @echo "docs: magic/reference/redguard-preservation/docs  code: magic/reference/redguard-unity/Assets/Scripts"
 
-# Independent asset viewer; native launches require an explicit install.
+# Independent asset viewer; native launches accept --install or discover an install.
 viewer *ARGS:
     cargo run -p cyrus-viewer -- {{ARGS}}
 

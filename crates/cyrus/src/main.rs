@@ -9,23 +9,24 @@ mod debug;
 mod preferences;
 use bevy::prelude::*;
 use clap::Parser;
-use cyrus_assets::install::GameInstall;
 use cyrus_game::GamePlugin;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Redguard in Bevy, from your own GOG install.")]
 struct Args {
     #[command(flatten)]
-    source: cyrus_app::cli::InstallArgs,
-    /// WORLD.INI world ID or map stem to load (overrides settings.toml).
-    #[arg(long)]
-    scene: Option<String>,
+    source: cyrus_app::launch::InstallArgs,
+    #[command(flatten)]
+    launch: cyrus_app::launch::GameOptions,
     /// No window, no renderer: preload, scene export and the control server only.
     #[arg(long)]
     headless: bool,
-    /// Skip splash and title and open the book menu. --scene loads a world directly.
+    /// Export the selected scene and exit.
+    #[arg(long, requires = "scene")]
+    export_scene: bool,
+    /// Print accepted world names as JSON and exit.
     #[arg(long)]
-    skip_startup: bool,
+    list_worlds: bool,
     /// Export every WORLD.INI world to the browser cache and exit.
     #[arg(long)]
     export_all_worlds: bool,
@@ -39,15 +40,45 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let startup = args.scene.is_none() && !args.headless;
+    let install = args.source.locate()?;
+    if args.list_worlds {
+        println!(
+            "{}",
+            serde_json::to_string(&cyrus_assets::scene::world_names(&install)?)?
+        );
+        return Ok(());
+    }
+    let startup = args.launch.scene.is_none() && !args.headless;
     let mut settings = Settings::load()?;
-    if let Some(scene) = args.scene {
+    if let Some(scene) = args.launch.scene {
         settings.scene = scene;
     }
-    let install = GameInstall::locate(args.source.install.as_deref())?;
     install.cache_path(&Settings::cache_dir())?;
     if args.export_startup || args.export_all_worlds {
         cyrus_assets::music::export(&install, &Settings::cache_dir())?;
+    }
+    for (area, value) in [
+        (cyrus_game::fidelity::Area::Water, args.launch.water),
+        (cyrus_game::fidelity::Area::Fog, args.launch.fog),
+        (cyrus_game::fidelity::Area::Sky, args.launch.sky),
+    ] {
+        if let Some(value) = value {
+            settings.fidelity.set(
+                area,
+                if value == "modern" {
+                    cyrus_game::fidelity::Mode::Modern
+                } else {
+                    cyrus_game::fidelity::Mode::Faithful
+                },
+            );
+        }
+    }
+    if args.export_scene {
+        return cyrus_assets::scene::export_scene(
+            &install,
+            &settings.scene,
+            &Settings::cache_dir().join(format!("{}.glb", settings.scene)),
+        );
     }
     if args.export_startup {
         cyrus_assets::startup::export_movies(&install, &Settings::cache_dir())?;
@@ -103,14 +134,13 @@ fn main() -> anyhow::Result<()> {
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
         ));
+        app.add_plugins(cyrus_debug::DebugMenuPlugin);
+        debug::register(&mut app);
         if startup {
             app.add_plugins(cyrus_render::startup::StartupPlugin);
-            if args.skip_startup {
+            if args.launch.skip_startup {
                 app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash());
             }
-        } else {
-            app.add_plugins(cyrus_debug::DebugMenuPlugin);
-            debug::register(&mut app);
         }
     }
     app.add_systems(Startup, bindings::load);

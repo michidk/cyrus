@@ -2,8 +2,10 @@
 
 Small presentation and launch helpers shared by the game and viewer.
 
-- `cli::InstallArgs` defines `--install` and `REDGUARD_DIR`. `required()` rejects
-  a missing path; the game retains its existing fallback policy in its caller.
+- `launch::InstallArgs` defines `--install` and `REDGUARD_DIR`; `locate()` shares
+  native default-folder discovery. `GameOptions` and `ViewerOptions` define the
+  launch names and validation used by both CLI and URL parameters.
+- `browser_source` reads the validated install/cache URLs from the shared bootstrap.
 - `register_cache` registers the shared `cache://` asset source before Bevy's
   `AssetPlugin` starts.
 - `window` creates the common native/browser window configuration.

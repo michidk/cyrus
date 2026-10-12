@@ -9,13 +9,42 @@ pub const ENV_VAR: &str = "REDGUARD_DIR";
 pub const LINK_NAME: &str = "redguard";
 
 impl GameInstall {
-    /// `explicit` > `$REDGUARD_DIR` > `./redguard` link next to the working directory.
+    /// Explicit path, then REDGUARD_DIR, then conventional local/GOG install folders.
+    /// Invalid explicit or environment paths are errors rather than silent fallbacks.
     pub fn locate(explicit: Option<&Path>) -> anyhow::Result<Self> {
-        let candidate = explicit
-            .map(Path::to_path_buf)
-            .or_else(|| std::env::var_os(ENV_VAR).map(PathBuf::from))
-            .unwrap_or_else(|| PathBuf::from(LINK_NAME));
-        Self::open(&candidate)
+        if let Some(path) = explicit {
+            return Self::open(path);
+        }
+        if let Some(path) = std::env::var_os(ENV_VAR) {
+            return Self::open(Path::new(&path));
+        }
+        let mut candidates = vec![PathBuf::from(LINK_NAME), PathBuf::from("Redguard")];
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = PathBuf::from(home);
+            candidates.extend([
+                home.join("GOG Games/Redguard"),
+                home.join("GOG Games/Redguard/app/Redguard"),
+            ]);
+        }
+        if let Some(drive) = std::env::var_os("SystemDrive") {
+            candidates.push(PathBuf::from(format!(
+                "{}/GOG Games/Redguard",
+                drive.to_string_lossy()
+            )));
+        }
+        for path in &candidates {
+            if let Ok(install) = Self::open(path) {
+                return Ok(install);
+            }
+        }
+        anyhow::bail!(
+            "game files not found; provide --install PATH or REDGUARD_DIR. Searched: {}",
+            candidates
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 
     pub fn open(root: &Path) -> anyhow::Result<Self> {

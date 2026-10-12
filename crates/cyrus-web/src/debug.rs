@@ -19,23 +19,26 @@ fn update_web_world(mut picker: ResMut<WorldPicker>) {
         return;
     };
     if let Some(window) = web_sys::window()
-        && let Err(error) = window.location().set_search(&format!("?scene={requested}"))
+        && let Err(error) = set_scene(&window, &requested)
     {
         error!("load world {requested}: {error:?}");
     }
 }
 
 #[cfg(target_arch = "wasm32")]
+fn set_scene(window: &web_sys::Window, scene: &str) -> Result<(), wasm_bindgen::JsValue> {
+    let params = web_sys::UrlSearchParams::new_with_str(&window.location().search()?)?;
+    params.set("scene", scene);
+    window
+        .location()
+        .set_search(&params.to_string().as_string().unwrap_or_default())
+}
+
+#[cfg(target_arch = "wasm32")]
 fn web_scene() -> String {
-    web_sys::window()
-        .and_then(|window| window.location().search().ok())
-        .and_then(|search| {
-            search
-                .trim_start_matches('?')
-                .split('&')
-                .find_map(|part| part.strip_prefix("scene="))
-                .map(str::to_ascii_uppercase)
-        })
+    cyrus_app::launch::from_query::<cyrus_app::launch::GameOptions>()
+        .ok()
+        .and_then(|options| options.scene)
         .unwrap_or_else(|| "ISLAND".into())
 }
 

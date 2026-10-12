@@ -16,7 +16,7 @@ host.AudioContext = class extends EventTarget {
     return Promise.resolve();
   }
 };
-vm.runInNewContext((await readFile(new URL("../web/loader.js", import.meta.url), "utf8")).split("const label")[0], { globalThis: host, document: host, window: host, console });
+vm.runInNewContext((await readFile(new URL("../web/loader.js", import.meta.url), "utf8")).split("const label")[0].replace(/^import .*;$/gm, ""), { globalThis: host, document: host, window: host, console });
 const context = new host.AudioContext();
 assert.equal(resumes, 0);
 host.dispatchEvent(new Event("keydown"));
