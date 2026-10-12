@@ -171,6 +171,7 @@ world playback is incomplete.
 - [ ] Feed production activation conditions, health, sword/lockout/player type, heading/world and compass state into the HUD. Connect bitmap/logbook script handlers and player walk-mode/auto-defend behavior.
 - [ ] Verify native/browser HUD layout, candle cadence, prompt/item timing and compass semantics. **Unknown:** compass frame-zero direction and item-zero compass activation.
 - [ ] Compare effects, speech/subtitles and music by ear; establish listener/camera rules, pan handedness, text-only subtitle timing and attached-emitter eligibility.
+- [ ] Consider optional Modern suppression of the startup CD burst, retaining current playback in Faithful. **Verified:** installed and exported track bytes preserve the GOG disc-data overlap documented in the [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...docs/gog-audio-boundary). The user reports the burst in original Redguard and the web build; a paired audio capture remains open. No audio fidelity area or suppression is implemented.
 
 Done when every world renders, animates, sounds and executes its required scripts
 against repeatable original-game comparisons. Missing behavior remains a blocker.
