@@ -466,6 +466,7 @@ mod tests {
             },
             details: vec![],
             frame_interval_ms: None,
+            metadata: None,
             related: vec![],
         });
         viewer.playing = true;

@@ -27,6 +27,7 @@ pub(super) fn prepare<R: ReadAssets>(
             ("Bytes".into(), entry.bytes.to_string()),
         ],
         frame_interval_ms: None,
+        metadata: None,
         related: library
             .catalog
             .entries
@@ -59,6 +60,7 @@ pub(super) fn prepare<R: ReadAssets>(
                     embedded_palette: false,
                 }],
             };
+            preview.metadata = visual_metadata(&preview.content);
             return Ok(preview);
         }
         Source::World(id) => {
@@ -87,12 +89,12 @@ pub(super) fn prepare<R: ReadAssets>(
         }
         Source::CdTrack(track) => {
             let pcm = super::track_pcm(&library.source, *track)?;
-            preview.content = audio(library, entry, &pcm, 44100, 2, 16)?;
+            preview.content = audio(library, entry, &mut preview, &pcm, 44100, 2, 16)?;
             return Ok(preview);
         }
         Source::CdMovie(name) => {
             let bytes = super::movie_bytes(&library.source, name)?;
-            preview.content = movie(library, entry, &bytes)?;
+            preview.content = movie(library, entry, &mut preview, &bytes)?;
             return Ok(preview);
         }
         _ => {}
@@ -104,6 +106,9 @@ pub(super) fn prepare<R: ReadAssets>(
             if let Source::Image(index) = entry.source {
                 let mut file = AssetFile::open(&library.source, path)?.without_read_ahead();
                 let image = archive.read_image(&mut file, index)?;
+                preview.metadata = Some(
+                    json!({"name":image.name,"image_index":image.image_index,"width":image.width,"height":image.height,"x_offset":image.x_offset,"y_offset":image.y_offset,"frame_count":image.frame_count,"frame_interval_ms":image.anim_delay,"texture_scale":image.tex_scale,"data_encoding":image.data_encoding,"is_animated":image.is_animated,"palette":image.palette}),
+                );
                 preview.details.extend([
                     ("Width".into(), image.width.to_string()),
                     ("Height".into(), image.height.to_string()),
@@ -187,6 +192,7 @@ pub(super) fn prepare<R: ReadAssets>(
                 audio(
                     library,
                     entry,
+                    &mut preview,
                     &effect.pcm_data,
                     effect.sample_rate,
                     effect.audio_type.channels(),
@@ -220,6 +226,7 @@ pub(super) fn prepare<R: ReadAssets>(
                         audio(
                             library,
                             entry,
+                            &mut preview,
                             &pcm_data,
                             header.sample_rate,
                             header.audio_type.channels(),
@@ -234,20 +241,29 @@ pub(super) fn prepare<R: ReadAssets>(
             }
         }
         Input::File(bytes) => match FileType::from_path(std::path::Path::new(path)) {
-            Some(FileType::Pcx) => Content::Images {
-                frames: vec![indexed_picture(
-                    import::pcx::parse_pcx_file(bytes)?.image,
-                    0,
-                )],
-            },
-            Some(FileType::Lbm) => Content::Images {
-                frames: vec![indexed_picture(
-                    import::lbm::parse_lbm_file(bytes)?.image,
-                    0,
-                )],
-            },
+            Some(FileType::Pcx) => {
+                let image = import::pcx::parse_pcx_file(bytes)?;
+                preview.metadata = Some(
+                    json!({"version":image.version,"encoding":image.encoding,"x_min":image.x_min,"y_min":image.y_min,"bytes_per_line":image.bytes_per_line,"width":image.image.width,"height":image.image.height,"palette":image.image.palette.as_slice()}),
+                );
+                Content::Images {
+                    frames: vec![indexed_picture(image.image, 0)],
+                }
+            }
+            Some(FileType::Lbm) => {
+                let image = import::lbm::parse_lbm_file(bytes)?;
+                preview.metadata = Some(
+                    json!({"compression":image.compression,"masking":image.masking,"width":image.image.width,"height":image.image.height,"transparent_index":image.image.transparent_index,"palette":image.image.palette.as_slice(),"chunks":image.chunks.iter().map(|chunk|json!({"tag":String::from_utf8_lossy(&chunk.tag),"bytes":chunk.data.len()})).collect::<Vec<_>>()}),
+                );
+                Content::Images {
+                    frames: vec![indexed_picture(image.image, 0)],
+                }
+            }
             Some(FileType::Anm) => {
                 let animation = import::anm::parse_anm_file(bytes)?;
+                preview.metadata = Some(
+                    json!({"declared_frame_count":animation.declared_frame_count,"display_frame_count":animation.frames.len(),"frames_per_second":animation.frames_per_second,"frame_interval_ms":1000. / f64::from(animation.frames_per_second),"last_delta_valid":animation.last_delta_valid,"pages":animation.pages,"record_sizes":animation.records.iter().map(|record|record.len()).collect::<Vec<_>>(),"loop_delta_bytes":animation.loop_delta.map(|record|record.len()),"frames":animation.frames.iter().map(|frame|json!({"width":frame.width,"height":frame.height,"transparent_index":frame.transparent_index})).collect::<Vec<_>>(),"palette":animation.frames.first().map(|frame|frame.palette.as_slice())}),
+                );
                 preview.frame_interval_ms = Some(1000. / f64::from(animation.frames_per_second));
                 preview.details.push((
                     "Frames per second".into(),
@@ -262,30 +278,16 @@ pub(super) fn prepare<R: ReadAssets>(
                         .collect(),
                 }
             }
-            Some(FileType::Gxa) => {
-                let image = import::gxa::parse_gxa_file(bytes)?;
-                Content::Images {
-                    frames: image
-                        .frames
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, f)| Picture {
-                            label: format!("Frame {i}"),
-                            width: f.width.into(),
-                            height: f.height.into(),
-                            rgba: f.rgba,
-                            indices: None,
-                            embedded_palette: false,
-                        })
-                        .collect(),
-                }
-            }
+            Some(FileType::Gxa) => gxa_images(bytes, &mut preview)?,
             Some(FileType::Col) => Content::Palette {
                 colors: import::palette::Palette::parse(bytes)?.colors.to_vec(),
             },
             Some(FileType::Fnt) => {
                 let font = import::fnt::parse_fnt(bytes)?;
                 let content = crate::decode::font(&font)?;
+                preview.metadata = Some(
+                    json!({"description":font.header.description_text,"max_width":font.header.max_width,"line_height":font.header.line_height,"character_start":font.header.character_start,"character_count":font.header.character_count,"chunk_order":font.chunk_order,"palette":font.palette.colors,"glyphs":font.glyphs.iter().map(|glyph|json!({"enabled":glyph.enabled,"offset_left":glyph.offset_left,"offset_top":glyph.offset_top,"width":glyph.width,"height":glyph.height})).collect::<Vec<_>>()}),
+                );
                 preview
                     .details
                     .push(("Description".into(), font.header.description_text));
@@ -364,18 +366,15 @@ pub(super) fn prepare<R: ReadAssets>(
                 ),
             },
             None if entry.category == crate::Category::Images => {
-                let image = image::load_from_memory(bytes)
-                    .with_context(|| format!("Original image is malformed or uses an unsupported encoding ({} source bytes); the original file was not modified", bytes.len()))?
-                    .into_rgba8();
-                Content::Images {
-                    frames: vec![Picture {
-                        label: entry.name.clone(),
-                        width: image.width(),
-                        height: image.height(),
-                        rgba: image.into_raw(),
-                        indices: None,
-                        embedded_palette: false,
-                    }],
+                match image::load_from_memory(bytes) {
+                    Ok(image) => {
+                        let image = image.into_rgba8();
+                        Content::Images { frames: vec![Picture {label:entry.name.clone(),width:image.width(),height:image.height(),rgba:image.into_raw(),indices:None,embedded_palette:false}] }
+                    }
+                    Err(error) if entry.format.eq_ignore_ascii_case("BMP") => {
+                        gxa_images(bytes, &mut preview).with_context(|| format!("BMP: decoding failed for both Windows bitmap and GXA encodings: {error}"))?
+                    }
+                    Err(error) => return Err(error).context("Original image is malformed or uses an unsupported encoding"),
                 }
             }
             None if entry.category == crate::Category::Audio => {
@@ -403,13 +402,16 @@ pub(super) fn prepare<R: ReadAssets>(
                 audio(
                     library,
                     entry,
+                    &mut preview,
                     &pcm,
                     spec.sample_rate,
                     spec.channels,
                     spec.bits_per_sample,
                 )?
             }
-            None if entry.category == crate::Category::Movies => movie(library, entry, bytes)?,
+            None if entry.category == crate::Category::Movies => {
+                movie(library, entry, &mut preview, bytes)?
+            }
             None if entry.category == crate::Category::Data => text_data(bytes, &entry.path)?,
             None => Content::Unavailable {
                 reason: format!(
@@ -420,6 +422,9 @@ pub(super) fn prepare<R: ReadAssets>(
             Some(kind) => anyhow::bail!("{}: expected an archive source", kind.display_name()),
         },
     };
+    if preview.metadata.is_none() {
+        preview.metadata = visual_metadata(&preview.content);
+    }
     preview.related.sort();
     preview.related.dedup();
     Ok(preview)
@@ -543,6 +548,9 @@ fn model<R: ReadAssets>(
     selected_palette: Option<&str>,
 ) -> Result<Content> {
     let model = import::model3d::parse_3d_file(source)?;
+    preview.metadata = Some(
+        json!({"version":String::from_utf8_lossy(&model.header.version),"vertex_count":model.header.num_vertices,"face_count":model.header.num_faces,"frame_count":model.header.num_frames,"radius":model.header.radius,"total_face_vertices":model.header.total_face_vertices}),
+    );
     preview.details.extend([
         ("Vertices".into(), model.header.num_vertices.to_string()),
         ("Faces".into(), model.header.num_faces.to_string()),
@@ -646,12 +654,16 @@ fn model<R: ReadAssets>(
 fn audio<R: ReadAssets>(
     library: &Library<R>,
     entry: &Entry,
+    preview: &mut Preview,
     pcm: &[u8],
     rate: u32,
     channels: u16,
     bits: u16,
 ) -> Result<Content> {
     let wav = media::pcm_wav(pcm, rate, channels, bits)?;
+    preview.metadata = Some(
+        json!({"sample_rate":rate,"channels":channels,"bits_per_sample":bits,"sample_frames":pcm.len() / (usize::from(channels) * usize::from(bits / 8))}),
+    );
     let url = library.output(&entry.id, "wav");
     library.publish(&url, &wav)?;
     Ok(Content::Audio {
@@ -660,8 +672,16 @@ fn audio<R: ReadAssets>(
         seconds: pcm.len() as f64 / (f64::from(rate) * f64::from(channels) * f64::from(bits / 8)),
     })
 }
-fn movie<R: ReadAssets>(library: &Library<R>, entry: &Entry, bytes: &[u8]) -> Result<Content> {
+fn movie<R: ReadAssets>(
+    library: &Library<R>,
+    entry: &Entry,
+    preview: &mut Preview,
+    bytes: &[u8],
+) -> Result<Content> {
     let header = import::smacker::SmackerHeader::parse(bytes).map_err(anyhow::Error::msg)?;
+    preview.metadata = Some(
+        json!({"width":header.width,"height":header.height,"frame_count":header.frames,"frame_interval_microseconds":header.frame_micros,"double_height":header.double_height,"has_audio":header.has_audio}),
+    );
     library.source.progress(0, 1, "Opening movie decoder");
     let mut decoder = smk::Smk::open_memory(bytes)?;
     let info = decoder.info();
@@ -708,6 +728,36 @@ fn movie<R: ReadAssets>(library: &Library<R>, entry: &Entry, bytes: &[u8]) -> Re
         wav,
         seconds: info.frame_count as f64 * info.microseconds_per_frame / 1_000_000.,
     })
+}
+fn gxa_images(bytes: &[u8], preview: &mut Preview) -> Result<Content> {
+    let image = import::gxa::parse_gxa_file(bytes)?;
+    preview.metadata = Some(
+        json!({"encoding":"GXA","title":image.title,"frame_count":image.frame_count,"frames":image.frames.iter().map(|frame|json!({"width":frame.width,"height":frame.height})).collect::<Vec<_>>()}),
+    );
+    Ok(Content::Images {
+        frames: image
+            .frames
+            .into_iter()
+            .enumerate()
+            .map(|(i, frame)| Picture {
+                label: format!("Frame {i}"),
+                width: frame.width.into(),
+                height: frame.height.into(),
+                rgba: frame.rgba,
+                indices: None,
+                embedded_palette: false,
+            })
+            .collect(),
+    })
+}
+fn visual_metadata(content: &Content) -> Option<serde_json::Value> {
+    match content {
+        Content::Images { frames } => Some(
+            json!({"frame_count":frames.len(),"frames":frames.iter().map(|frame|json!({"label":frame.label,"width":frame.width,"height":frame.height,"indexed":frame.indices.is_some(),"embedded_palette":frame.embedded_palette})).collect::<Vec<_>>()}),
+        ),
+        Content::Palette { colors } => Some(json!({"colors":colors})),
+        _ => None,
+    }
 }
 fn indexed_picture(image: import::indexed_image::IndexedImage, index: usize) -> Picture {
     Picture {

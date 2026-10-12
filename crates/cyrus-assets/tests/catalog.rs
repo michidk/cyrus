@@ -73,6 +73,39 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
 }
 
 #[test]
+fn windows_bitmap_still_prepares_an_image() {
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    image::RgbImage::from_pixel(1, 1, image::Rgb([12, 34, 56]))
+        .save(root.join("sample.BMP"))
+        .unwrap();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    let entry = library
+        .catalog
+        .entries
+        .iter()
+        .find(|entry| entry.path == "sample.BMP")
+        .unwrap();
+    let output = library.prepare(&entry.id, None).unwrap();
+    let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+    let Content::Images { frames } = preview.content else {
+        panic!("expected BMP image")
+    };
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].rgba, [12, 34, 56, 255]);
+    assert_eq!(preview.metadata.unwrap()["frames"][0]["width"], 1);
+}
+
+#[test]
 fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source() {
     let scratch = Scratch::new();
     let root = scratch.0.join("install");
@@ -91,6 +124,7 @@ fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source
         "broken.anm",
         "broken.lbm",
         "broken.pcx",
+        "broken.bmp",
         "broken.opl",
         "broken.rst",
         "tools.exe/notes.txt",
@@ -114,6 +148,7 @@ fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source
         paths,
         [
             "broken.anm",
+            "broken.bmp",
             "broken.lbm",
             "broken.pcx",
             "tools.exe/notes.txt"
@@ -167,6 +202,7 @@ fn installed_preservation_images_prepare_pixels_and_animation_timing() {
         ("system/SKY_61.PCX", 1),
         ("system/gui.lbm", 1),
         ("system/gui.anm", 25),
+        ("system/pointers.bmp", 30),
     ] {
         let entry = library
             .catalog
@@ -182,8 +218,21 @@ fn installed_preservation_images_prepare_pixels_and_animation_timing() {
             panic!("{path}: {:?}", preview.content)
         };
         assert_eq!(frames.len(), count, "{path}");
+        let metadata = preview.metadata.as_ref().expect("image JSON metadata");
+        if path.ends_with(".bmp") {
+            assert_eq!(metadata["encoding"], "GXA");
+            assert_eq!(metadata["frame_count"], 30);
+            assert!(frames.iter().any(|frame| {
+                frame
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[3] == 0)
+            }));
+        }
         for frame in &frames {
-            assert!(frame.embedded_palette);
+            assert_eq!(frame.embedded_palette, !path.ends_with(".bmp"));
             assert_eq!(
                 frame.rgba.len(),
                 frame.width as usize * frame.height as usize * 4
@@ -203,11 +252,18 @@ fn installed_preservation_images_prepare_pixels_and_animation_timing() {
                     .as_chunks::<4>()
                     .0
                     .iter()
-                    .all(|pixel| pixel[3] == 255),
+                    .all(|pixel| path.ends_with(".bmp") || pixel[3] == 255),
                 "{path}: opaque indexed image"
             );
         }
-        if count > 1 {
+        if path.ends_with(".anm") {
+            assert_eq!(metadata["declared_frame_count"], 26);
+            assert_eq!(metadata["display_frame_count"], 25);
+            assert_eq!(metadata["frames_per_second"], 10);
+            assert_eq!(metadata["pages"].as_array().unwrap().len(), 2);
+            assert_eq!(metadata["record_sizes"].as_array().unwrap().len(), 26);
+            assert!(metadata["loop_delta_bytes"].as_u64().unwrap() > 0);
+            assert!(metadata.get("pixels").is_none());
             assert_eq!(preview.frame_interval_ms, Some(100.));
             assert_ne!(frames[0].rgba, frames[1].rgba);
         } else {
@@ -309,6 +365,16 @@ fn installed_asset_families_prepare_portable_previews() {
         let path = library.prepare(&entry.id, None).unwrap();
         let preview: Preview = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         preview.validate().unwrap();
+        assert!(
+            preview.metadata.is_some()
+                || matches!(
+                    &preview.content,
+                    Content::Data { .. }
+                        | Content::Spatial { .. }
+                        | Content::Model { data: Some(_), .. }
+                ),
+            "{family}: no JSON inspection fields"
+        );
         if family == "archive model" {
             let Content::Model { palettes, .. } = &preview.content else {
                 panic!("expected model");

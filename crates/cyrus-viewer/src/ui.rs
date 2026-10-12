@@ -430,6 +430,22 @@ pub fn draw(
         })
         .show(&mut viewport_ui, |ui| {
             if let Some(preview) = &preview {
+                if !matches!(
+                    &preview.content,
+                    Content::Model { data: Some(_), .. }
+                        | Content::Spatial { .. }
+                        | Content::Data { .. }
+                ) && let Some(metadata) = &preview.metadata
+                {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut viewer.data_mode, 0, "Preview");
+                        ui.selectable_value(&mut viewer.data_mode, 1, "JSON");
+                    });
+                    if viewer.data_mode == 1 {
+                        json_view(ui, &mut viewer, metadata);
+                        return;
+                    }
+                }
                 match &preview.content {
                     Content::Model {
                         frames,
@@ -1185,6 +1201,7 @@ mod tests {
             },
             details: vec![],
             frame_interval_ms: None,
+            metadata: None,
             related: vec![],
         };
         preview.frame_interval_ms = Some(125.);
@@ -1223,6 +1240,7 @@ mod tests {
             },
             details: vec![],
             frame_interval_ms: None,
+            metadata: None,
             related: vec![],
         });
         assert_eq!(viewer.spatial_depth, 3);

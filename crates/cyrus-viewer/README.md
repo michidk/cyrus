@@ -45,7 +45,16 @@ show a top-down octree slice with depth and height controls plus a JSON view.
 Malformed members remain visible with a reason. Unrecognized files are hidden.
 WAV lists standalone files; SFX, RTX, and CD audio contain additional sounds.
 PCX and LBM show indexed images with their embedded palettes. ANM shows decoded
-frames and initializes playback with its authored frame interval.
+frames and initializes playback with its authored frame interval. The installed
+`pointers.bmp` cursor sheet uses preservation's GXA decoder; standard Windows BMP
+images also remain supported.
+
+Supported previews also offer JSON inspection. Images retain parsed headers,
+frame descriptions, palettes and animation records; fonts retain glyph metrics;
+models retain geometry counts or their existing world metadata; audio retains
+sample format and frame counts; movies retain dimensions and timing. Existing
+archive indexes, spatial data, definitions and source views keep their decoded
+JSON. Pixel, compressed-frame and PCM payloads are omitted from inspection JSON.
 MDI, DIG, PIF, OPL, AD, RST, DLL and EXE files are excluded from the catalog.
 MDI, DIG, PIF, OPL, AD and RST are also excluded from preload parsing.
 

@@ -221,6 +221,7 @@ impl<R: ReadAssets> Library<R> {
                     },
                     details: Vec::new(),
                     frame_interval_ms: None,
+                    metadata: None,
                     related: Vec::new(),
                 }
             }

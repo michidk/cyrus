@@ -18,7 +18,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 10;
+pub const CATALOG_VERSION: u32 = 11;
 
 #[cfg(any(feature = "viewer", feature = "native"))]
 fn excluded_file_type(file_type: rgpre::import::FileType) -> bool {
@@ -248,6 +248,9 @@ pub enum Content {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preview {
     pub content: Content,
+    /// Parsed inspection fields, excluding pixel and audio payloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
     /// Authored image frame interval in milliseconds, when supplied by the format.
     #[serde(default)]
     pub frame_interval_ms: Option<f64>,
