@@ -166,9 +166,10 @@ World replacement drops old logical channels and queued browser starts; pending
 browser flat starts also honor selective cleanup. These handlers follow
 [preservation's sound rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).
 
-The HUD prompt helper retains pending text during lockout and activation hold-off,
-consumes it only on the prompt draw path, and delays item cycling until an item-path
-update. Timer zero crossings retain the path selected on entry, following
-[preservation's prompt lifecycle](https://github.com/michidk/redguard-preservation/blob/dd9f620/docs/engine/hud.md#activation-prompt).
-This helper is not a SOUP activation handler. Game-owned receiver arbitration,
-RTX lookup, and player eligibility and presentation suppression remain unwired.
+The HUD consumes `ScriptWorld` activation state when a matching `ActivationInputs`
+resource supplies caller-established conditions. It has no separate prompt owner
+or activation timers. Missing inputs retain pending text without displaying it;
+stale world inputs are ignored. Control `hud.prompt` reports the last drawn text,
+while script inspection reports pending text and ownership. Lockout retains 16 bits.
+Re-export HUD caches for the installed RTX label catalog, including text-only entries.
+Automatic actor eligibility and production interaction scheduling remain unsupported.

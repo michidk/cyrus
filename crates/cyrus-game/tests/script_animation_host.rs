@@ -950,3 +950,415 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
         ]
     );
 }
+
+fn activation_world(function: &str) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
+    activation_world_with_attributes(function, BTreeMap::new(), BTreeMap::new())
+}
+
+fn activation_world_with_attributes(
+    function: &str,
+    receiver_attributes: BTreeMap<String, u8>,
+    player_attributes: BTreeMap<String, u8>,
+) -> (ScriptWorld, cyrus_game::script::ActivationInputs) {
+    use cyrus_game::script::{ActivationActor, ActivationInputs};
+    let mut data = scripts(vec![Operation::End { target: 0 }]);
+    for (name, count) in [(function, 1), ("Deactivate", 0)] {
+        data.definition.functions.push(Function {
+            name: name.into(),
+            param_count: count,
+            kind: CallKind::Function,
+        });
+    }
+    let mut player = data.actors["OTHER"].clone();
+    player.namespace = Some("CYRUS".into());
+    player.code_origin = 200;
+    player.attributes = player_attributes;
+    data.actors.insert("CYRUS".into(), player);
+    data.actors.get_mut("OTHER").unwrap().attributes = receiver_attributes;
+    for name in ["ACTOR", "OTHER"] {
+        let actor = data.actors.get_mut(name).unwrap();
+        if name == "OTHER" {
+            actor.program.strings[0] = "ACTOR".into();
+        }
+        actor.program.strings.push("#OPN".into());
+        actor.program.steps = [
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 3,
+                            kind: CallKind::Function,
+                            target: Object::Named { string: 0 },
+                            function: function.into(),
+                            arguments: vec![Value::String { index: 1 }],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+        actor.program.entry = 2;
+        actor.program.steps.insert(
+            2,
+            Step {
+                next: 3,
+                operation: Operation::Call {
+                    call: Call {
+                        function_id: 4,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: "Deactivate".into(),
+                        arguments: vec![],
+                    },
+                },
+            },
+        );
+        actor.program.steps.insert(
+            3,
+            Step {
+                next: 4,
+                operation: Operation::End { target: 2 },
+            },
+        );
+    }
+    data.content_id = data.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&data, 7).unwrap();
+    let actor = ActivationActor {
+        state: 0,
+        on_rope: false,
+        water_state: 0,
+        torch_burning: 0,
+        weapon_assigned: false,
+        weapon_drawn: false,
+        animation_group: Some(0),
+    };
+    let inputs = ActivationInputs {
+        player: world.id(2).unwrap(),
+        actors: (0..3).map(|index| (index, actor)).collect(),
+        labels: BTreeMap::from([("#opn".into(), "Open".into())]),
+        lockout: 0,
+        dialogue_open: false,
+        lineup_result: 0,
+        use_held: true,
+        item_system_ready: true,
+        shell_execution: false,
+        render_disabled: false,
+    };
+    (world, inputs)
+}
+
+fn activate_world(world: &mut ScriptWorld, inputs: &cyrus_game::script::ActivationInputs) {
+    world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Interrupt),
+            cyrus_game::script::ScriptInputs {
+                activation: Some(inputs),
+                ..Default::default()
+            },
+            None,
+            30,
+        )
+        .unwrap();
+}
+
+#[test]
+fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
+    use cyrus_game::script::ActivationOverlay;
+    let (mut world, inputs) = activation_world("Activate");
+    activate_world(&mut world, &inputs);
+    assert_eq!(world.flags(), [1]);
+    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+    assert_eq!(world.activation().prompt(), Some("Open"));
+    assert_eq!(
+        world.activation_overlay(&inputs, 22, false, 24).unwrap(),
+        ActivationOverlay::Hidden
+    );
+    assert_eq!(world.activation().prompt(), Some("Open"));
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Prompt("Open".into())
+    );
+    assert_eq!(world.activation().prompt(), None);
+    activate_world(&mut world, &inputs);
+    assert_eq!(world.flags(), [1], "the existing owner may activate again");
+    // Deactivation on the caller clears holdoff but cannot release a foreign owner.
+    world
+        .advance(world.id(0).unwrap(), BODY, Default::default(), None, 30)
+        .unwrap();
+    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Prompt("Open".into())
+    );
+    world
+        .advance(world.id(1).unwrap(), BODY, Default::default(), None, 30)
+        .unwrap();
+    assert_eq!(world.activation().owner(), None);
+}
+
+#[test]
+fn activation_requires_receiver_eligibility_and_matching_torch_state() {
+    for (function, burning, expected) in [
+        ("Activate", 0, 1),
+        ("Activate", 1, 0),
+        ("TorchActivate", 0, 0),
+        ("TorchActivate", 1, 1),
+    ] {
+        let (mut world, mut inputs) = activation_world(function);
+        inputs.actors.get_mut(&2).unwrap().torch_burning = burning;
+        activate_world(&mut world, &inputs);
+        assert_eq!(world.flags(), [expected], "{function} burning={burning}");
+    }
+    for state in [10, 19] {
+        let (mut world, mut inputs) = activation_world("Activate");
+        inputs.actors.get_mut(&1).unwrap().state = state;
+        activate_world(&mut world, &inputs);
+        assert_eq!(world.flags(), [0]);
+        assert_eq!(world.activation().prompt(), None);
+    }
+    let (mut world, mut inputs) = activation_world("Activate");
+    inputs.actors.get_mut(&0).unwrap().on_rope = true;
+    inputs.actors.get_mut(&2).unwrap().on_rope = true;
+    activate_world(&mut world, &inputs);
+    assert_eq!(
+        world.flags(),
+        [1],
+        "rope admission uses the receiver, not caller or player"
+    );
+    assert_eq!(
+        world.activation_overlay(&inputs, 22, false, 24).unwrap(),
+        cyrus_game::script::ActivationOverlay::Hidden
+    );
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        cyrus_game::script::ActivationOverlay::Hidden
+    );
+    assert_eq!(world.activation().prompt(), Some("Open"));
+}
+
+#[test]
+fn missing_activation_labels_do_not_claim_owner_and_stale_inputs_fail_before_execution() {
+    let (mut world, mut inputs) = activation_world("Activate");
+    inputs.labels.clear();
+    activate_world(&mut world, &inputs);
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.activation().owner(), None);
+    assert_eq!(world.activation().prompt(), None);
+    let (mut world, mut inputs) = activation_world("Activate");
+    inputs.player.generation += 1;
+    assert!(
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Interrupt),
+                cyrus_game::script::ScriptInputs {
+                    activation: Some(&inputs),
+                    ..Default::default()
+                },
+                None,
+                30
+            )
+            .is_err()
+    );
+    assert!(world.actors()[0].failure().is_none());
+    assert_eq!(world.activation().owner(), None);
+}
+
+#[test]
+fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
+    for gate in 0..11 {
+        let (mut world, mut inputs) = activation_world("Activate");
+        match gate {
+            0 => inputs.lockout = 1,
+            1 => inputs.dialogue_open = true,
+            2 => inputs.lineup_result = 1,
+            3 => inputs.actors.get_mut(&1).unwrap().on_rope = true,
+            4 => inputs.actors.get_mut(&2).unwrap().state = 20,
+            5 => inputs.actors.get_mut(&2).unwrap().state = 21,
+            6 => inputs.actors.get_mut(&2).unwrap().animation_group = Some(91),
+            7 => inputs.actors.get_mut(&2).unwrap().animation_group = Some(129),
+            8 => {
+                let player = inputs.actors.get_mut(&2).unwrap();
+                player.weapon_assigned = true;
+                player.weapon_drawn = true;
+            }
+            9 => inputs.actors.get_mut(&1).unwrap().state = 10,
+            10 => inputs.actors.get_mut(&1).unwrap().state = 19,
+            _ => unreachable!(),
+        }
+        activate_world(&mut world, &inputs);
+        assert_eq!(world.flags(), [0], "gate {gate}");
+        assert_eq!(world.activation().owner(), None, "gate {gate}");
+        assert_eq!(world.activation().prompt(), None, "gate {gate}");
+    }
+    for gate in 0..5 {
+        let (mut world, mut inputs) = activation_world("Activate");
+        inputs.actors.get_mut(&2).unwrap().state = 20;
+        match gate {
+            0 => inputs.item_system_ready = false,
+            1 => inputs.shell_execution = true,
+            2 => inputs.actors.get_mut(&2).unwrap().animation_group = None,
+            3 => {
+                inputs.actors.get_mut(&2).unwrap().state = 0;
+                inputs.lockout = 257;
+            }
+            4 => {
+                inputs.actors.get_mut(&2).unwrap().state = 0;
+                inputs.actors.get_mut(&1).unwrap().state = 20;
+            }
+            _ => unreachable!(),
+        }
+        activate_world(&mut world, &inputs);
+        assert_eq!(world.flags(), [1], "admitted gate {gate}");
+    }
+}
+
+#[test]
+fn activation_prompt_waits_for_presentation_and_override_zero_crossings() {
+    use cyrus_game::script::ActivationOverlay;
+    let (mut world, mut inputs) = activation_world("Activate");
+    activate_world(&mut world, &inputs);
+    inputs.lockout = 1;
+    assert_eq!(
+        world.activation_overlay(&inputs, 100, false, 24).unwrap(),
+        ActivationOverlay::Hidden
+    );
+    inputs.lockout = 0;
+    assert_eq!(
+        world.activation_overlay(&inputs, 22, false, 24).unwrap(),
+        ActivationOverlay::Hidden
+    );
+    for gate in 0..5 {
+        inputs.dialogue_open = gate == 0;
+        inputs.render_disabled = gate == 1;
+        let player = inputs.actors.get_mut(&2).unwrap();
+        player.on_rope = gate == 2;
+        player.state = if gate == 3 { 10 } else { 0 };
+        player.water_state = if gate == 4 { 4 } else { 0 };
+        assert_eq!(
+            world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+            ActivationOverlay::Hidden
+        );
+        assert_eq!(world.activation().prompt(), Some("Open"));
+    }
+    inputs.actors.get_mut(&2).unwrap().water_state = 0;
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, true, 24).unwrap(),
+        ActivationOverlay::Prompt("Open".into())
+    );
+    inputs.use_held = false;
+    activate_world(&mut world, &inputs);
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(
+        world.activation_overlay(&inputs, 24, true, 24).unwrap(),
+        ActivationOverlay::Item {
+            visible: true,
+            cycle_allowed: true
+        }
+    );
+    assert_eq!(world.activation().prompt(), Some("Open"));
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Prompt("Open".into())
+    );
+    let (fresh, _) = activation_world("Activate");
+    assert_eq!(fresh.activation().owner(), None);
+    assert_eq!(fresh.activation().prompt(), None);
+}
+
+#[test]
+fn activation_reads_player_and_receiver_attributes_with_weapon_override() {
+    for (player_type, special, holding, expected) in [(1, 0, 0, 0), (1, 1, 0, 1), (0, 0, 1, 0)] {
+        let (mut world, mut inputs) = activation_world_with_attributes(
+            "Activate",
+            BTreeMap::from([("attr_106".into(), special)]),
+            BTreeMap::from([
+                ("attr_105".into(), player_type),
+                ("attr_110".into(), holding),
+            ]),
+        );
+        inputs.item_system_ready = false;
+        inputs.shell_execution = true;
+        inputs.actors.get_mut(&2).unwrap().animation_group = None;
+        activate_world(&mut world, &inputs);
+        assert_eq!(world.flags(), [expected]);
+    }
+}
+
+#[test]
+fn activation_owner_blocks_a_different_receiver_after_prompt_consumption() {
+    let (mut world, inputs) = activation_world("Activate");
+    activate_world(&mut world, &inputs);
+    world.activation_overlay(&inputs, 22, false, 24).unwrap();
+    world.activation_overlay(&inputs, 0, false, 24).unwrap();
+    world
+        .advance(
+            world.id(1).unwrap(),
+            ScriptStage::Body(Thread::Interrupt),
+            cyrus_game::script::ScriptInputs {
+                activation: Some(&inputs),
+                ..Default::default()
+            },
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+    assert_eq!(world.activation().prompt(), None);
+}
+
+#[test]
+fn activation_item_path_keeps_rendering_and_weapon_cycling_gates_separate() {
+    use cyrus_game::script::ActivationOverlay;
+    let (mut world, mut inputs) = activation_world("Activate");
+    inputs.render_disabled = true;
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Item {
+            visible: false,
+            cycle_allowed: true
+        }
+    );
+    let player = inputs.actors.get_mut(&2).unwrap();
+    player.weapon_assigned = true;
+    player.weapon_drawn = true;
+    inputs.render_disabled = false;
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Item {
+            visible: true,
+            cycle_allowed: false
+        }
+    );
+    inputs.item_system_ready = false;
+    assert_eq!(
+        world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+        ActivationOverlay::Hidden
+    );
+}
+
+#[test]
+fn empty_rtx_text_still_activates_an_existing_entry() {
+    let (mut world, mut inputs) = activation_world("Activate");
+    inputs.labels.insert("#opn".into(), String::new());
+    activate_world(&mut world, &inputs);
+    assert_eq!(world.flags(), [1]);
+    assert_eq!(world.activation().prompt(), Some(""));
+    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+}

@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 /// the RTX file, GXA and FNT files. Positions are top-left corners in 640×480 pixels.
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct HudAsset {
+    /// Installed RTX text by label, including entries without speech audio.
+    pub labels: BTreeMap<String, String>,
     /// Runtime image dependencies; cache serialization retains installed metadata only.
     #[dependency]
     #[serde(skip)]

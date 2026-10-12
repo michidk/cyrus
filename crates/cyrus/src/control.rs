@@ -79,6 +79,7 @@ struct Inspection<'w, 's> {
     hud: Option<Res<'w, cyrus_render::hud::HudState>>,
     scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
+    activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
     script_nodes: Query<
@@ -119,6 +120,7 @@ fn handle(
         hud,
         scripts,
         mut script_actors,
+        activation,
         prepared,
         animations,
         script_nodes,
@@ -419,6 +421,7 @@ fn handle(
                     Ok(cyrus_game::script::PlayerQuery { position, heading: pose.heading })
                 }).transpose()?;
                 let inputs = cyrus_game::script::ScriptInputs {
+                    activation: activation.as_deref(),
                     nominal_ticks, frame_scale,
                     player_query: Some(cyrus_game::script::QueryInputs {
                         player, distance_override, fallback_position, linked_position: None,

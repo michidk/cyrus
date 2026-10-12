@@ -485,6 +485,23 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     assert_eq!(data["candle"], serde_json::json!([12, 8]));
     assert_eq!(data["pickup"], serde_json::json!([12, 386]));
     assert_eq!(data["selected"], 1);
+    let labels = data["labels"].as_object().unwrap();
+    for (tag, notice) in [
+        ("#wof", (0, 0)),
+        ("#won", (0, 1)),
+        ("#dof", (1, 0)),
+        ("#don", (1, 1)),
+    ] {
+        let text = labels
+            .iter()
+            .find(|(label, _)| label.eq_ignore_ascii_case(tag))
+            .unwrap()
+            .1;
+        assert_eq!(
+            text, &data["notices"][notice.0][notice.1],
+            "text-only RTX label {tag}"
+        );
+    }
     let items: Vec<_> = data["items"]
         .as_array()
         .unwrap()

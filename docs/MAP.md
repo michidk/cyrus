@@ -77,6 +77,7 @@ module where it is defined and regenerate.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
+- `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.

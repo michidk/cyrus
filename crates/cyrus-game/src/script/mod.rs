@@ -1,4 +1,6 @@
 //! Game-owned SOUP hosts; stages remain explicit until production timing is established.
+mod activation;
+pub use activation::{ActivationActor, ActivationInputs, ActivationOverlay, ActivationState};
 mod animation;
 mod attributes;
 mod flags;

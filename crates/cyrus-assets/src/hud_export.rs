@@ -4,7 +4,12 @@ use crate::{
     install::GameInstall,
 };
 use anyhow::Context;
-use rgpre::import::{fnt::parse_fnt, gxa::parse_gxa_file, keys_ini::KeysIni, rtx::parse_rtx_file};
+use rgpre::import::{
+    fnt::parse_fnt,
+    gxa::parse_gxa_file,
+    keys_ini::KeysIni,
+    rtx::{RtxEntry, parse_rtx_file},
+};
 use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -12,6 +17,21 @@ use std::{
 };
 
 type Fields = BTreeMap<(String, String), String>;
+
+fn rtx_labels(entries: Vec<RtxEntry>) -> std::collections::BTreeMap<String, String> {
+    // Activation needs entry presence; build_label_map omits empty captions.
+    entries
+        .into_iter()
+        .map(|entry| {
+            let tag = entry.tag_str();
+            let text = match entry {
+                RtxEntry::Text { text, .. } => text,
+                RtxEntry::Audio { label, .. } => label,
+            };
+            (tag, text)
+        })
+        .collect()
+}
 
 /// Writes `hud/overlay.hud` with the candle, compass, logbook, power-up and item PNGs.
 /// The candle, compass, logbook and font file names are fixed by the engine; positions,
@@ -62,7 +82,7 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
     let stamp = output.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        5u32,
+        6u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
@@ -148,9 +168,11 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
 
     let rtx =
         std::fs::read(&rtx_path).with_context(|| format!("hud: reading {}", rtx_path.display()))?;
-    let labels = parse_rtx_file(&rtx)
-        .with_context(|| format!("hud: {}", rtx_path.display()))?
-        .build_label_map();
+    let labels = rtx_labels(
+        parse_rtx_file(&rtx)
+            .with_context(|| format!("hud: {}", rtx_path.display()))?
+            .entries,
+    );
     let label = |tag: &str| -> anyhow::Result<String> {
         labels
             .iter()
@@ -216,6 +238,7 @@ pub fn export_hud(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         bindings: keys.control_codes(),
         font,
         text_alpha,
+        labels,
     };
 
     std::fs::create_dir_all(&output)
@@ -327,6 +350,15 @@ fn ini_fields(bytes: &[u8], file: &str) -> anyhow::Result<Fields> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn activation_label_export_retains_empty_text_entries() {
+        let labels = super::rtx_labels(vec![rgpre::import::rtx::RtxEntry::Text {
+            tag: *b"#nil",
+            text: String::new(),
+        }]);
+        assert_eq!(labels.get("#nil").map(String::as_str), Some(""));
+    }
+
     use super::*;
 
     #[test]

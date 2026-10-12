@@ -198,3 +198,19 @@ until refresh. Override, fallback and linked-position inputs are explicit; the
 script host still rejects unattached linked-position queries until their state
 owner is integrated. This does not establish automatic actor scheduling or the
 complete lever interaction.
+
+`Activate`, `TorchActivate` and `Deactivate` share one `ScriptWorld` owner,
+pending prompt and timer state, following
+[preservation's activation rules](https://github.com/michidk/redguard-preservation/blob/2e03012/docs/engine/hud.md#activation-prompt).
+`ScriptInputs::activation` supplies an explicit selected-player identity, actor
+conditions, RTX labels, dialogue/lineup state and held use. Missing actor state
+fails explicitly. Attributes come from the receiving and selected logical actors;
+a bound player animation overrides the supplied animation-group snapshot.
+Routed activation owns the receiver. Deactivation clears holdoff for every
+receiver but releases only a matching owner. World replacement resets this state.
+
+`activation_overlay` consumes pending text only on a drawable prompt path.
+Lockout, holdoff, override and selected-player presentation gates retain it.
+`ActivationInputs` may also be installed as a Bevy resource for the HUD and native
+inspection adapter. No production system supplies these complete actor conditions
+yet, so this does not enable automatic interaction or player switching.

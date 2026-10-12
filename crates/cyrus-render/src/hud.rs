@@ -6,7 +6,10 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::hud::{HudAsset, HudItem};
-use cyrus_game::AppState;
+use cyrus_game::{
+    AppState,
+    script::{ActivationInputs, ActivationOverlay, ScriptActors},
+};
 use serde::{Deserialize, Serialize};
 
 /// Shows the exported `hud/overlay.hud` over gameplay, fitted like the original 640×480 viewport.
@@ -19,8 +22,6 @@ const TICKS_PER_SECOND: f64 = 12.0 * 18.2065 / 18.0;
 /// Show timer values: a trigger shows the candle for 25 ticks; 50 pins it and never decays.
 const SHOW_TICKS: u32 = 25;
 const SHOW_PINNED: u32 = 50;
-/// Activation hold-off after an activation fires, in ticks.
-const ACTIVATION_HOLD_OFF: u32 = 22;
 /// Walk-mode and auto-defend notices last 24 ticks.
 const NOTICE_TICKS: u32 = 24;
 
@@ -115,11 +116,11 @@ pub struct HudState {
     candle: Candle,
     /// Candle show timer in ticks (25 after a trigger, 50 pinned).
     show_timer: u32,
-    /// Value last passed to the script function `LockoutPlayer`; *unwired*.
-    pub lockout: u8,
+    /// Caller-supplied activation lockout, retaining all 16 bits.
+    pub lockout: u16,
     /// Sword drawn; use [`HudState::set_sword_drawn`]. *Unwired*.
     pub sword_drawn: bool,
-    /// SOUP386.DEF `attr_player_type`: 1 (`ply_gremlin`) hides the icon and compass. *Unwired*.
+    /// Selected script player attribute 105 when activation inputs are supplied.
     pub player_type: u8,
     /// Player heading in 2048-unit turns and the WORLD.INI world ID, for the compass. *Unwired*.
     pub heading: u16,
@@ -138,11 +139,8 @@ pub struct HudState {
     pub auto_defend: bool,
     /// Remaining ticks of the walk-mode and auto-defend notices.
     notices: [u32; 2],
-    /// Pending activation prompt, retained until drawn; see [`HudState::activate`].
+    /// Activation prompt drawn by the last HUD update; pending text belongs to ScriptWorld.
     pub prompt: Option<String>,
-    /// Activation hold-off and prompt override timers, in ticks.
-    hold_off: u32,
-    prompt_override: u32,
     /// Selected item ID, or `None` when nothing is owned.
     pub selected: Option<u16>,
     pub count: Option<u32>,
@@ -167,13 +165,6 @@ struct Frames {
     compass: Vec<Handle<Image>>,
     logbook: Vec<Handle<Image>>,
     powerup: Vec<Handle<Image>>,
-}
-
-#[derive(Debug, PartialEq)]
-enum ItemOverlay {
-    Hidden,
-    Prompt(String),
-    Item,
 }
 
 impl HudState {
@@ -203,8 +194,6 @@ impl HudState {
             auto_defend: preferences.auto_defend,
             notices: [0; 2],
             prompt: None,
-            hold_off: 0,
-            prompt_override: 0,
             selected: hud.selected.or_else(|| hud.items.first().map(|i| i.id)),
             count: None,
             elapsed: 0.0,
@@ -231,52 +220,6 @@ impl HudState {
             self.show_timer = SHOW_TICKS;
         }
         self.sword_drawn = drawn;
-    }
-
-    /// Offers an already-admitted prompt. Held use retains it behind a 22-tick hold-off.
-    /// This presentation helper is not a SOUP handler: receiver ownership and the other
-    /// player eligibility conditions must be established by the game host before use.
-    pub fn activate(&mut self, text: &str, use_held: bool) -> bool {
-        if self.lockout == 1 || self.sword_drawn || self.hold_off > 0 || self.prompt.is_some() {
-            return false;
-        }
-        self.prompt = Some(text.to_owned());
-        if use_held {
-            self.hold_off = ACTIVATION_HOLD_OFF;
-            return true;
-        }
-        false
-    }
-
-    /// Script `Deactivate`: clears the activation hold-off.
-    pub fn deactivate(&mut self) {
-        self.hold_off = 0;
-    }
-
-    fn item_overlay(&mut self, ticks: u32, cycle_held: bool, override_ticks: u32) -> ItemOverlay {
-        if self.prompt.is_none() {
-            self.prompt_override = 0;
-        }
-        if self.lockout == 1 {
-            return ItemOverlay::Hidden;
-        }
-        if self.hold_off != 0 {
-            self.hold_off = self.hold_off.saturating_sub(ticks);
-            return ItemOverlay::Hidden;
-        }
-        if self.prompt_override != 0 {
-            self.prompt_override = self.prompt_override.saturating_sub(ticks);
-        } else if let Some(prompt) = self.prompt.take() {
-            if cycle_held {
-                self.prompt_override = override_ticks;
-            }
-            return ItemOverlay::Prompt(prompt);
-        }
-        if self.player_type == 1 {
-            ItemOverlay::Hidden
-        } else {
-            ItemOverlay::Item
-        }
     }
 
     /// Script `ShowBitmap(id, frame)`: `id` 0 or 1, `frame` a `game_bitmap` frame.
@@ -506,6 +449,7 @@ fn update(
     text_layer: Query<Entity, With<HudText>>,
     (keys, time): (Res<ButtonInput<KeyCode>>, Res<Time>),
     mut images: ResMut<Assets<Image>>,
+    (mut actors, activation): (Option<ResMut<ScriptActors>>, Option<Res<ActivationInputs>>),
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -590,6 +534,14 @@ fn update(
     let ticks = state.ticks.floor() as u32;
     state.ticks -= f64::from(ticks);
 
+    let world = actors.as_mut().and_then(|actors| actors.current.as_mut());
+    let activation = activation.as_deref().filter(|inputs| {
+        world
+            .as_ref()
+            .is_some_and(|world| world.generation() == inputs.player.generation)
+    });
+    state.lockout = activation.map_or(0, |inputs| inputs.lockout);
+
     // Candle.
     if state.sword_drawn && state.lockout == 0 {
         state.show_timer = SHOW_PINNED;
@@ -604,8 +556,34 @@ fn update(
     let scan = |action: usize| cyrus_game::player::input::scan_key(bindings[action]);
     let pressed = |action: usize| scan(action).is_some_and(|k| keys.just_pressed(k));
     let held = |action: usize| scan(action).is_some_and(|k| keys.pressed(k));
-    let overlay = state.item_overlay(ticks, held(13) || held(14), hud.override_ticks);
-    if !state.sword_drawn && overlay == ItemOverlay::Item {
+    let overlay = match (world, activation) {
+        (Some(world), Some(inputs)) => {
+            match world.activation_overlay(inputs, ticks, held(13) || held(14), hud.override_ticks)
+            {
+                Ok(overlay) => {
+                    state.player_type = world.actors()[inputs.player.index].attributes()[105];
+                    overlay
+                }
+                Err(error) => {
+                    warn!("HUD activation: {error:#}");
+                    ActivationOverlay::Hidden
+                }
+            }
+        }
+        (Some(world), None) if world.activation().prompt().is_some() => ActivationOverlay::Hidden,
+        _ if state.player_type == 1 => ActivationOverlay::Hidden,
+        _ => ActivationOverlay::Item {
+            visible: true,
+            cycle_allowed: !state.sword_drawn,
+        },
+    };
+    if matches!(
+        overlay,
+        ActivationOverlay::Item {
+            cycle_allowed: true,
+            ..
+        }
+    ) {
         // Menu actions 723 and 724: next and previous item.
         let position = hud.items.iter().position(|i| Some(i.id) == state.selected);
         let step = match (pressed(14), pressed(13)) {
@@ -619,13 +597,14 @@ fn update(
     }
 
     let (shown_item, prompt) = match overlay {
-        ItemOverlay::Hidden => (None, None),
-        ItemOverlay::Prompt(text) => (None, Some(text)),
-        ItemOverlay::Item => (
+        ActivationOverlay::Hidden | ActivationOverlay::Item { visible: false, .. } => (None, None),
+        ActivationOverlay::Prompt(text) => (None, Some(text)),
+        ActivationOverlay::Item { visible: true, .. } => (
             hud.items.iter().find(|i| Some(i.id) == state.selected),
             None,
         ),
     };
+    state.prompt = prompt.clone();
     state.count = shown_item.map(|i| i.count);
 
     // Compass: owning item 0 and its display flag.
@@ -816,83 +795,6 @@ mod tests {
     }
 
     #[test]
-    fn activation_fires_with_use_and_holds_off() {
-        let mut state = HudState::new(&asset(2), None, Frames::default());
-        assert!(!state.activate("Open", false));
-        assert_eq!(state.prompt.as_deref(), Some("Open"));
-        state.prompt = None;
-        assert!(state.activate("Open", true));
-        assert_eq!(state.hold_off, ACTIVATION_HOLD_OFF);
-        assert_eq!(state.prompt.as_deref(), Some("Open"));
-        assert!(!state.activate("Open", false), "hold-off blocks prompts");
-        state.deactivate();
-        assert_eq!(state.prompt.as_deref(), Some("Open"));
-        assert_eq!(
-            state.item_overlay(0, false, 24),
-            ItemOverlay::Prompt("Open".into())
-        );
-        state.set_sword_drawn(true);
-        assert!(
-            !state.activate("Open", false),
-            "a drawn sword blocks prompts"
-        );
-    }
-
-    #[test]
-    fn pending_prompt_survives_lockout_and_holdoff_zero_crossing() {
-        let mut state = HudState::new(&asset(2), None, Frames::default());
-        assert!(state.activate("Open", true));
-        state.lockout = 1;
-        assert_eq!(state.item_overlay(100, false, 24), ItemOverlay::Hidden);
-        assert_eq!(state.hold_off, 22);
-        assert_eq!(state.prompt.as_deref(), Some("Open"));
-        state.lockout = 0;
-        assert_eq!(state.item_overlay(0, false, 24), ItemOverlay::Hidden);
-        assert_eq!(state.item_overlay(22, false, 24), ItemOverlay::Hidden);
-        assert_eq!(state.hold_off, 0);
-        assert_eq!(state.prompt.as_deref(), Some("Open"));
-        assert_eq!(
-            state.item_overlay(0, false, 24),
-            ItemOverlay::Prompt("Open".into())
-        );
-        assert_eq!(state.prompt, None);
-        assert_eq!(state.item_overlay(0, false, 24), ItemOverlay::Item);
-    }
-
-    #[test]
-    fn cycle_override_begins_after_prompt_and_retains_the_next_offer() {
-        let mut state = HudState::new(&asset(2), None, Frames::default());
-        assert!(!state.activate("Open", false));
-        assert_eq!(
-            state.item_overlay(1, true, 24),
-            ItemOverlay::Prompt("Open".into())
-        );
-        assert_eq!(state.prompt_override, 24);
-        assert!(!state.activate("Open", false));
-        assert_eq!(state.item_overlay(24, true, 24), ItemOverlay::Item);
-        assert_eq!(state.prompt_override, 0);
-        assert_eq!(state.prompt.as_deref(), Some("Open"));
-        assert_eq!(
-            state.item_overlay(0, false, 24),
-            ItemOverlay::Prompt("Open".into())
-        );
-        assert_eq!(state.prompt, None);
-    }
-
-    #[test]
-    fn no_pending_prompt_clears_override_even_during_lockout() {
-        let mut state = HudState::new(&asset(2), None, Frames::default());
-        assert!(!state.activate("Open", false));
-        assert_eq!(
-            state.item_overlay(0, true, 24),
-            ItemOverlay::Prompt("Open".into())
-        );
-        state.lockout = 1;
-        assert_eq!(state.item_overlay(0, false, 24), ItemOverlay::Hidden);
-        assert_eq!(state.prompt_override, 0);
-    }
-
-    #[test]
     fn text_lines_centre_health_under_the_candle_and_place_counts() {
         let digit = cyrus_text::Glyph {
             enabled: true,
@@ -921,6 +823,7 @@ mod tests {
 
     fn asset(candle_mode: u8) -> HudAsset {
         HudAsset {
+            labels: BTreeMap::new(),
             images: Vec::new(),
             candle_mode,
             candle: [12, 8],
@@ -944,6 +847,131 @@ mod tests {
             font: default(),
             text_alpha: [255, 199],
         }
+    }
+
+    fn prepare_prompt(app: &mut App) {
+        use cyrus_assets::script::*;
+        use cyrus_game::script::{ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread};
+        let player = Actor {
+            header_index: 0,
+            code_origin: 100,
+            instances: 1,
+            namespace: Some("CYRUS".into()),
+            instance_variables: vec![vec![]],
+            attributes: BTreeMap::new(),
+            hooks: vec![],
+            program: Program {
+                version: 2,
+                entry: 0,
+                variables: vec![],
+                strings: vec!["#OPN".into()],
+                steps: BTreeMap::from([(
+                    0,
+                    Step {
+                        next: 1,
+                        operation: Operation::End { target: 0 },
+                    },
+                )]),
+            },
+        };
+        let mut lever = player.clone();
+        lever.namespace = Some("LEVER".into());
+        lever.code_origin = 0;
+        lever.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::Call {
+                        call: Call {
+                            function_id: 1,
+                            kind: CallKind::Function,
+                            target: Object::Me,
+                            function: "Activate".into(),
+                            arguments: vec![Value::String { index: 0 }],
+                        },
+                    },
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+        let mut scripts = Scripts {
+            version: 3,
+            actor_pool_capacity: 10,
+            content_id: String::new(),
+            world: 1,
+            definition: Definition {
+                functions: vec![
+                    Function {
+                        name: "NullFunction".into(),
+                        param_count: 0,
+                        kind: CallKind::Function,
+                    },
+                    Function {
+                        name: "Activate".into(),
+                        param_count: 1,
+                        kind: CallKind::Function,
+                    },
+                ],
+                flags: vec![],
+                references: vec![],
+                attributes: vec![],
+            },
+            actors: BTreeMap::from([("CYRUS".into(), player), ("LEVER".into(), lever)]),
+            instances: vec![Instance {
+                object_id: 1,
+                actor: "LEVER".into(),
+                object_type: 0,
+                active: 0,
+                map_position: [0; 3],
+                angles: [0; 3],
+            }],
+            unsupported: BTreeMap::new(),
+        };
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let state = ActivationActor {
+            state: 0,
+            on_rope: false,
+            water_state: 0,
+            torch_burning: 0,
+            weapon_assigned: false,
+            weapon_drawn: false,
+            animation_group: Some(0),
+        };
+        let inputs = ActivationInputs {
+            player: world.id(1).unwrap(),
+            actors: BTreeMap::from([(0, state), (1, state)]),
+            labels: BTreeMap::from([("#opn".into(), "Open".into())]),
+            lockout: 0,
+            dialogue_open: false,
+            lineup_result: 0,
+            use_held: false,
+            item_system_ready: true,
+            shell_execution: false,
+            render_disabled: false,
+        };
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    activation: Some(&inputs),
+                    ..Default::default()
+                },
+                None,
+                10,
+            )
+            .unwrap();
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        app.insert_resource(actors).insert_resource(inputs);
     }
 
     #[test]
@@ -977,18 +1005,31 @@ mod tests {
         app.update();
         app.world_mut().resource_mut::<HudState>().bindings = bindings;
         app.update();
-        assert!(
-            !app.world_mut()
-                .resource_mut::<HudState>()
-                .activate("Open", false)
+        prepare_prompt(&mut app);
+        let inputs = app
+            .world_mut()
+            .remove_resource::<ActivationInputs>()
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .activation()
+                .prompt(),
+            Some("Open")
         );
+        assert_eq!(app.world().resource::<HudState>().prompt, None);
+        app.insert_resource(inputs);
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::Period);
         app.update();
         let state = app.world().resource::<HudState>();
         assert_eq!(state.selected, Some(1));
-        assert_eq!(state.prompt, None);
+        assert_eq!(state.prompt.as_deref(), Some("Open"));
         assert_eq!(state.text, vec![("Open".into(), [12, 436])]);
         assert!(
             app.world_mut()

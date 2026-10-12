@@ -57,7 +57,8 @@ pub enum ScriptStage {
 
 /// Inputs supplied by the owning scheduler; missing values never imply a clock tick.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ScriptInputs {
+pub struct ScriptInputs<'a> {
+    pub activation: Option<&'a super::ActivationInputs>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
@@ -98,6 +99,11 @@ impl ScriptActor {
     pub fn attributes(&self) -> &[u8] {
         &self.attributes
     }
+    pub(super) fn bound_animation_group(&self) -> Option<Option<u16>> {
+        self.animation
+            .as_ref()
+            .map(|animation| animation.playback.current_group())
+    }
     /// Sticky script or animation failure; failed effects are never retried.
     pub fn failure(&self) -> Option<&str> {
         self.animation_failure
@@ -118,6 +124,7 @@ pub struct ScriptWorld {
     flag_state: super::flags::Flags,
     actors: Vec<ScriptActor>,
     spatial: Option<super::spatial::SpatialWorld>,
+    activation: super::ActivationState,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     names: BTreeMap<i16, usize>,
 }
@@ -258,6 +265,7 @@ impl ScriptWorld {
             task_calls,
             names,
             spatial: None,
+            activation: Default::default(),
         })
     }
     /// Prepare ordinary map poses and unique attachment families transactionally.
@@ -397,11 +405,14 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         stage: ScriptStage,
-        inputs: ScriptInputs,
+        inputs: ScriptInputs<'_>,
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
         budget: usize,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        if let Some(activation) = inputs.activation {
+            self.validate_activation(activation)?;
+        }
         let nominal_ticks = inputs.nominal_ticks;
         if matches!(stage, ScriptStage::Tasks) {
             anyhow::ensure!(
@@ -442,6 +453,7 @@ impl ScriptWorld {
             flag_state: &mut self.flag_state,
             sounds,
             spatial: self.spatial.as_mut(),
+            activation: &mut self.activation,
             inputs,
         };
         if matches!(stage, ScriptStage::Animation) {
@@ -479,6 +491,42 @@ impl ScriptWorld {
         host.actors[index].runtime = Some(runtime);
         result
     }
+    /// Shared ownership and pending text; fresh world preparation resets both.
+    pub fn activation(&self) -> &super::ActivationState {
+        &self.activation
+    }
+
+    fn validate_activation(&self, inputs: &super::ActivationInputs) -> Result<()> {
+        let player = self.resolve(inputs.player)?;
+        anyhow::ensure!(
+            matches!(self.actors[player].source, ScriptActorSource::Player),
+            "activation selected-player switching unsupported"
+        );
+        for &index in inputs.actors.keys() {
+            self.id(index)?;
+        }
+        Ok(())
+    }
+
+    /// Advance one explicit overlay update using the same world-owned prompt as SOUP.
+    /// The caller supplies nominal ticks and the selected player's current conditions.
+    pub fn activation_overlay(
+        &mut self,
+        inputs: &super::ActivationInputs,
+        ticks: u32,
+        cycle_held: bool,
+        override_ticks: u32,
+    ) -> Result<super::ActivationOverlay> {
+        self.validate_activation(inputs)?;
+        self.activation.overlay(
+            inputs,
+            &self.actors[inputs.player.index],
+            ticks,
+            cycle_held,
+            override_ticks,
+        )
+    }
+
     fn resolve(&self, actor: ScriptActorId) -> Result<usize> {
         anyhow::ensure!(
             actor.generation == self.generation,
@@ -499,6 +547,7 @@ impl ScriptWorld {
     pub fn inspect(&self, offset: usize, limit: usize) -> serde_json::Value {
         serde_json::json!({
             "world": self.world, "generation": self.generation, "content_id": self.content_id, "total": self.actors.len(),
+            "activation": self.activation,
             "actors": self.actors.iter().enumerate().skip(offset).take(limit.min(64)).map(|(index, actor)| serde_json::json!({
                 "id": ScriptActorId { generation: self.generation, index }, "name": actor.name(),
                 "source": actor.source.label(), "runtime_identifier": actor.runtime_identifier,
@@ -617,9 +666,10 @@ pub(super) fn prepare(
     }
 }
 
-struct GameHost<'a, 'sound> {
+struct GameHost<'a, 'sound, 'input> {
+    activation: &'a mut super::ActivationState,
     spatial: Option<&'a mut super::spatial::SpatialWorld>,
-    inputs: ScriptInputs,
+    inputs: ScriptInputs<'input>,
     index: usize,
     generation: u64,
     sounds: Option<&'sound mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
@@ -628,7 +678,7 @@ struct GameHost<'a, 'sound> {
     names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
-impl GameHost<'_, '_> {
+impl GameHost<'_, '_, '_> {
     fn advance_animation(&mut self) -> Result<()> {
         let id = ScriptActorId {
             generation: self.generation,
@@ -678,7 +728,7 @@ impl GameHost<'_, '_> {
         index.with_context(|| format!("object target {target:?}: receiver absent"))
     }
 }
-impl Host for GameHost<'_, '_> {
+impl Host for GameHost<'_, '_, '_> {
     fn call(
         &mut self,
         target: &Target,
@@ -696,6 +746,22 @@ impl Host for GameHost<'_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        if kind == CallKind::Function {
+            let selected_player = self
+                .inputs
+                .activation
+                .map(|inputs| &self.actors[inputs.player.index]);
+            if let Some(value) = self.activation.call(
+                id,
+                function,
+                arguments,
+                self.inputs.activation,
+                &self.actors[self.index].attributes,
+                selected_player,
+            )? {
+                return Ok(CallResult::Complete(value));
+            }
+        }
         let mut emit = |sound| match &mut self.sounds {
             Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
