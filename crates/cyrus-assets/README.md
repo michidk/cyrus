@@ -22,7 +22,7 @@ unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
 retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
 program descriptors with names from the installed SOUP386.DEF. The independent
-`.scripts` sidecar retains definitions, fresh-game flag values, locals, strings,
+version-2 `.scripts` sidecar retains actor RASC origins, definitions, fresh-game flag values, locals, strings,
 attributes, hooks and explicit unsupported records. Its content identity rejects
 changed metadata. Animation metadata retains the same script identity; preparation
 rejects animation/script sidecars from different exports. The animation inspection adapter also retains those same

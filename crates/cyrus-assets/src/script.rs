@@ -214,6 +214,8 @@ pub struct Definition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Actor {
     pub header_index: usize,
+    /// Byte offset within RASC data, retained for foreign task operand identity.
+    pub code_origin: u32,
     pub instances: u16,
     pub namespace: Option<String>,
     pub instance_variables: Vec<Vec<i32>>,
@@ -260,7 +262,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 1,
+            self.version == 2,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
@@ -314,7 +316,7 @@ impl bevy::asset::AssetLoader for ScriptLoader {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
         let scripts: Scripts = serde_json::from_slice(&bytes)
-            .with_context(|| format!("script cache {}", context.path()))?;
+            .with_context(|| format!("script cache {}; re-export the world", context.path()))?;
         scripts.validate()?;
         Ok(scripts)
     }

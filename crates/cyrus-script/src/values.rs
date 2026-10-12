@@ -1,5 +1,5 @@
 //! SOUP formula and condition evaluation in the original integer domain.
-use super::{Argument, CallResult, Host, Runtime};
+use super::{Argument, Host, Runtime};
 use anyhow::{Context, Result};
 use cyrus_assets::script::{Call, CallKind, Condition, Formula, Value};
 
@@ -9,12 +9,13 @@ impl Runtime {
         call: &Call,
         flags: &mut [i32],
         host: &mut dyn Host,
+        strings: &[String],
     ) -> Result<Vec<Argument>> {
         let mut arguments = call
             .arguments
             .iter()
             .rev()
-            .map(|value| self.value(value, flags, host))
+            .map(|value| self.value(value, flags, host, strings))
             .collect::<Result<Vec<_>>>()?;
         arguments.reverse();
         Ok(arguments)
@@ -24,12 +25,12 @@ impl Runtime {
         value: &Value,
         flags: &mut [i32],
         host: &mut dyn Host,
+        strings: &[String],
     ) -> Result<Argument> {
         Ok(match value {
             Value::Integer { value } => Argument::Integer(*value),
             Value::String { index } => Argument::String(
-                self.program
-                    .strings
+                strings
                     .get(*index as usize)
                     .context("script string absent")?
                     .clone(),
@@ -46,17 +47,9 @@ impl Runtime {
                     "value call is not a function"
                 );
                 let target = self.target(&call.target)?;
-                let args = self.arguments(call, flags, host)?;
-                let CallResult::Complete(value) = host.call(
-                    &target,
-                    CallKind::Function,
-                    &call.function,
-                    &args,
-                    self.invocation(None),
-                    flags,
-                )?
-                else {
-                    anyhow::bail!("function {} returned a blocking task", call.function);
+                let value = match host.route(&target, call, strings, None, flags)? {
+                    super::Route::Here => self.receive_inner(call, strings, None, host, flags)?.0,
+                    super::Route::Complete(value) => value,
                 };
                 Argument::Integer(value)
             }
@@ -68,9 +61,14 @@ impl Runtime {
         flags: &mut [i32],
         host: &mut dyn Host,
     ) -> Result<i32> {
-        let mut result = self.value(&formula.first, flags, host)?.integer()?;
+        let program = std::sync::Arc::clone(&self.program);
+        let mut result = self
+            .value(&formula.first, flags, host, &program.strings)?
+            .integer()?;
         for (operator, value) in &formula.rest {
-            let rhs = self.value(value, flags, host)?.integer()?;
+            let rhs = self
+                .value(value, flags, host, &program.strings)?
+                .integer()?;
             result = match operator {
                 1 => result.wrapping_add(rhs),
                 2 => result.wrapping_sub(rhs),
@@ -95,11 +93,16 @@ impl Runtime {
         host: &mut dyn Host,
     ) -> Result<bool> {
         anyhow::ensure!(!conditions.is_empty(), "condition list absent");
+        let program = std::sync::Arc::clone(&self.program);
         let mut result = false;
         let mut previous = 0;
         for (index, condition) in conditions.iter().enumerate() {
-            let lhs = self.value(&condition.lhs, flags, host)?.integer()?;
-            let rhs = self.value(&condition.rhs, flags, host)?.integer()?;
+            let lhs = self
+                .value(&condition.lhs, flags, host, &program.strings)?
+                .integer()?;
+            let rhs = self
+                .value(&condition.rhs, flags, host, &program.strings)?
+                .integer()?;
             let value = match condition.comparison {
                 0 => lhs == rhs,
                 1 => lhs != rhs,

@@ -104,21 +104,18 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
     #[derive(Default)]
     struct Ordered {
         observed: Vec<Vec<Argument>>,
+        reads: i32,
     }
     impl Host for Ordered {
         fn call(
             &mut self,
             _: &Target,
             kind: CallKind,
-            name: &str,
+            _: &str,
             arguments: &[Argument],
             _: cyrus_script::Invocation,
-            flags: &mut [i32],
+            _: &mut [i32],
         ) -> anyhow::Result<CallResult> {
-            if name == "Bump" {
-                flags[0] += 1;
-                return Ok(CallResult::Complete(flags[0]));
-            }
             self.observed.push(arguments.to_vec());
             Ok(if kind == CallKind::Function {
                 CallResult::Complete(9)
@@ -139,20 +136,27 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
         fn end(&mut self, _: Thread) -> anyhow::Result<()> {
             Ok(())
         }
+        fn read_property(&mut self, _: &Target, _: u8) -> anyhow::Result<i32> {
+            self.reads += 1;
+            Ok(self.reads)
+        }
     }
-    let Operation::Call { call: bump } = call("Bump", CallKind::Function) else {
-        unreachable!()
-    };
     for kind in [CallKind::Function, CallKind::Task] {
         let Operation::Call { call: mut outer } = call("Observe", kind) else {
             unreachable!()
         };
         outer.arguments = vec![
-            Value::Call {
-                call: Box::new(bump.clone()),
+            Value::Read {
+                place: Place::Property {
+                    object: Object::Me,
+                    reference: 0,
+                },
             },
-            Value::Call {
-                call: Box::new(bump.clone()),
+            Value::Read {
+                place: Place::Property {
+                    object: Object::Me,
+                    reference: 0,
+                },
             },
         ];
         let operation = if kind == CallKind::Function {
@@ -588,9 +592,10 @@ fn interrupt_controls_pause_the_shared_main_task_without_polling_it() {
 
 #[test]
 fn object_tasks_fail_before_effects_instead_of_using_the_callers_slots() {
-    let Operation::Call { call } = call("Wait", CallKind::Task) else {
+    let Operation::Call { mut call } = call("Wait", CallKind::Task) else {
         unreachable!()
     };
+    call.target = Object::Player;
     let mut vm = runtime(vec![
         Operation::ObjectCall { call },
         Operation::End { target: 0 },
@@ -600,7 +605,7 @@ fn object_tasks_fail_before_effects_instead_of_using_the_callers_slots() {
         .invoke(Thread::Main, &mut host, &mut [], 20)
         .unwrap_err()
         .to_string();
-    assert!(error.contains("object task routing unsupported"));
+    assert!(error.contains("object target Player routing unsupported"));
     assert!(host.calls.is_empty());
     assert_eq!(vm.active_tasks(), 0);
 }
@@ -685,4 +690,196 @@ fn paused_tasks_keep_their_counter_and_later_slots_see_earlier_completions() {
         .unwrap();
     vm.invoke_tasks_timed(&mut host, &mut [], 512).unwrap();
     assert_eq!(host.invocations[1].elapsed, Some(2));
+}
+
+struct ForeignTasks {
+    tasks: Tasks,
+    call: Call,
+}
+impl Host for ForeignTasks {
+    fn call(
+        &mut self,
+        target: &Target,
+        kind: CallKind,
+        function: &str,
+        arguments: &[Argument],
+        invocation: Invocation,
+        flags: &mut [i32],
+    ) -> anyhow::Result<CallResult> {
+        self.tasks
+            .call(target, kind, function, arguments, invocation, flags)
+    }
+    fn poll(
+        &mut self,
+        token: u64,
+        arguments: &[Argument],
+        invocation: Invocation,
+        flags: &mut [i32],
+    ) -> anyhow::Result<bool> {
+        self.tasks.poll(token, arguments, invocation, flags)
+    }
+    fn task_call(&mut self, origin: CodeOrigin, instruction: u32) -> anyhow::Result<Call> {
+        assert_eq!((origin, instruction), (CodeOrigin(100), 0));
+        Ok(self.call.clone())
+    }
+    fn end(&mut self, thread: Thread) -> anyhow::Result<()> {
+        self.tasks.end(thread)
+    }
+}
+fn foreign_call() -> Call {
+    Call {
+        function_id: 0,
+        kind: CallKind::Task,
+        target: Object::Player,
+        function: "Observe".into(),
+        arguments: vec![
+            Value::String { index: 0 },
+            Value::Read {
+                place: Place::Local { index: 0 },
+            },
+        ],
+    }
+}
+fn foreign_source() -> TaskSource {
+    TaskSource {
+        origin: CodeOrigin(100),
+        instruction: 0,
+        object_call: true,
+        thread: Thread::Main,
+    }
+}
+#[test]
+fn routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals() {
+    let mut recipient = program(0, vec![Operation::Yield, Operation::End { target: 0 }]);
+    recipient.variables[0] = 37;
+    recipient.strings = vec!["receiver strings".into()];
+    let mut vm = Runtime::new(recipient, "receiver".into()).unwrap();
+    let call = foreign_call();
+    let mut host = ForeignTasks {
+        tasks: Tasks::default(),
+        call: call.clone(),
+    };
+    vm.receive(
+        &call,
+        &["caller strings".into()],
+        Some(foreign_source()),
+        &mut host,
+        &mut [],
+    )
+    .unwrap();
+    assert_eq!(vm.program_counter(Thread::Main), Some(0));
+    assert_eq!(
+        host.tasks.arguments,
+        [(
+            1,
+            vec![
+                Argument::String("caller strings".into()),
+                Argument::Integer(37)
+            ]
+        )]
+    );
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(
+        host.tasks.arguments[1],
+        (
+            1,
+            vec![
+                Argument::String("receiver strings".into()),
+                Argument::Integer(37)
+            ]
+        )
+    );
+    assert_eq!(vm.active_tasks(), 1);
+    host.tasks.ready = true;
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    assert_eq!(vm.active_tasks(), 0);
+}
+#[test]
+fn routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operand() {
+    let mut vm = runtime(vec![
+        Operation::TaskStop { label: 103 },
+        Operation::End { target: 0 },
+    ]);
+    let mut call = foreign_call();
+    call.kind = CallKind::Multitask;
+    call.arguments.clear();
+    let mut host = Tasks::default();
+    vm.receive(&call, &[], Some(foreign_source()), &mut host, &mut [])
+        .unwrap();
+    let alias = TaskSource {
+        origin: CodeOrigin(103),
+        instruction: 0,
+        object_call: false,
+        thread: Thread::Interrupt,
+    };
+    vm.receive(&call, &[], Some(alias), &mut host, &mut [])
+        .unwrap();
+    assert_eq!(host.next, 1);
+    assert_eq!(vm.active_tasks(), 1);
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    assert_eq!(host.cancelled, [1]);
+    assert_eq!(vm.active_tasks(), 0);
+}
+#[test]
+fn missing_foreign_task_source_fails_before_polling_and_is_sticky() {
+    let mut vm = runtime(vec![Operation::Yield, Operation::End { target: 0 }]);
+    let mut call = foreign_call();
+    call.arguments.clear();
+    let mut host = Tasks::default();
+    vm.receive(&call, &[], Some(foreign_source()), &mut host, &mut [])
+        .unwrap();
+    let error = vm
+        .invoke_tasks_timed(&mut host, &mut [], 256)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("task source 100 instruction 0 unavailable"),
+        "{error}"
+    );
+    assert_eq!(host.arguments.len(), 1);
+    assert_eq!(vm.failure(), Some(error.as_str()));
+    assert_eq!(
+        vm.invoke_tasks_timed(&mut host, &mut [], 256)
+            .unwrap_err()
+            .to_string(),
+        error
+    );
+}
+#[test]
+fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
+    let mut vm = runtime(vec![Operation::Yield, Operation::End { target: 0 }]);
+    let mut call = foreign_call();
+    call.arguments.clear();
+    let mut host = Tasks::default();
+    for instruction in 0..6 {
+        let source = TaskSource {
+            instruction,
+            ..foreign_source()
+        };
+        vm.receive(&call, &[], Some(source), &mut host, &mut [])
+            .unwrap();
+    }
+    let source = TaskSource {
+        instruction: 6,
+        ..foreign_source()
+    };
+    let error = vm
+        .receive(&call, &[], Some(source), &mut host, &mut [])
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("actor task capacity exhausted"), "{error}");
+    assert_eq!(host.next, 6);
+    assert_eq!(vm.active_tasks(), 6);
+    let mut vm = runtime(vec![Operation::Yield, Operation::End { target: 0 }]);
+    let source = TaskSource {
+        origin: CodeOrigin(u32::MAX),
+        ..foreign_source()
+    };
+    let error = vm
+        .receive(&call, &[], Some(source), &mut host, &mut [])
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("task operand identity overflow"), "{error}");
+    assert_eq!(host.next, 6);
 }

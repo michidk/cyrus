@@ -73,7 +73,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 1,
+        version: 2,
         content_id: String::new(),
         world: 7,
         definition: Definition {
@@ -94,6 +94,7 @@ fn cache() -> Scripts {
             "LOGIC".into(),
             Actor {
                 header_index: 0,
+                code_origin: 0,
                 instances: 2,
                 namespace: Some("logic".into()),
                 instance_variables: vec![vec![4], vec![9]],
@@ -673,4 +674,272 @@ fn wait_non_multi_ignores_multiple_unpaused_multitasks() {
     world.step(id, Thread::Main, 20).unwrap();
     assert_eq!(world.flags(), [7]);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 2);
+}
+
+fn routed_cache(caller: Vec<Operation>, receiver: Vec<Operation>) -> Scripts {
+    let mut scripts = wait_cache(caller);
+    let program_steps = |ops: Vec<Operation>| {
+        ops.into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32 * 16,
+                    Step {
+                        next: (index as u32 + 1) * 16,
+                        operation,
+                    },
+                )
+            })
+            .collect()
+    };
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    let ops = actor
+        .program
+        .steps
+        .values()
+        .map(|step| step.operation.clone())
+        .collect();
+    actor.program.steps = program_steps(ops);
+    actor.namespace = Some("caller".into());
+    actor.instances = 1;
+    actor.instance_variables = vec![vec![4]];
+    actor.program.strings = vec!["receiver".into()];
+    let mut recipient = actor.clone();
+    recipient.header_index = 1;
+    recipient.code_origin = 100;
+    recipient.namespace = Some("receiver".into());
+    recipient.program.steps = program_steps(receiver);
+    recipient.program.variables = vec![9];
+    recipient.instance_variables = vec![vec![9]];
+    scripts.actors.insert("RECEIVER".into(), recipient);
+    scripts.instances[1].actor = "RECEIVER".into();
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+fn object_wait(target: Object, kind: CallKind, duration: Value) -> Operation {
+    let Operation::Call { mut call } = wait(1, "Wait", kind, vec![duration]) else {
+        unreachable!()
+    };
+    call.target = target;
+    Operation::ObjectCall { call }
+}
+#[test]
+fn routed_task_uses_receiver_locals_and_slots_while_the_caller_continues() {
+    let scripts = routed_cache(
+        vec![
+            object_wait(
+                Object::Named { string: 0 },
+                CallKind::Task,
+                Value::Read {
+                    place: Place::Local { index: 0 },
+                },
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ],
+        vec![set_flag(8), Operation::End { target: 0 }],
+    );
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    world.step(receiver, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    world.step_tasks(receiver, Some(768)).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    world.step_tasks(receiver, Some(1024)).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 0);
+    world.step(receiver, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [8]);
+}
+#[test]
+fn source_operand_identity_keeps_equal_cursors_distinct_and_receiver_labels_local() {
+    let scripts = routed_cache(
+        vec![
+            object_wait(
+                Object::Named { string: 0 },
+                CallKind::Multitask,
+                Value::Integer { value: 100 },
+            ),
+            Operation::TaskStop { label: 3 },
+            Operation::End { target: 0 },
+        ],
+        vec![
+            wait(
+                1,
+                "Wait",
+                CallKind::Multitask,
+                vec![Value::Integer { value: 100 }],
+            ),
+            Operation::TaskStop { label: 0 },
+            Operation::End { target: 0 },
+        ],
+    );
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    world.step(receiver, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    world.step_tasks(receiver, Some(256)).unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+}
+#[test]
+fn explicit_me_object_task_continues_and_matches_the_embedded_dispatch_label() {
+    let scripts = routed_cache(
+        vec![
+            object_wait(Object::Me, CallKind::Task, Value::Integer { value: 100 }),
+            set_flag(7),
+            Operation::TaskPause { label: 3 },
+            Operation::Yield,
+            Operation::TaskResume { label: 3 },
+            Operation::TaskStop { label: 3 },
+            Operation::End { target: 0 },
+        ],
+        vec![Operation::End { target: 0 }],
+    );
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert!(!world.actors()[0].runtime().unwrap().has_blocking_task());
+    world.step_tasks(caller, Some(256)).unwrap();
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+#[test]
+fn named_functions_resolve_namespace_and_receiver_arguments_case_insensitively() {
+    let call = Call {
+        function_id: 4,
+        target: Object::Named { string: 0 },
+        kind: CallKind::Function,
+        function: "GetMyAttr".into(),
+        arguments: vec![Value::Read {
+            place: Place::Local { index: 0 },
+        }],
+    };
+    let mut scripts = routed_cache(
+        vec![
+            Operation::Assign {
+                destination: Place::Local { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(call),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ],
+        vec![Operation::End { target: 0 }],
+    );
+    scripts.definition.functions.push(Function {
+        name: "GetMyAttr".into(),
+        param_count: 1,
+        kind: CallKind::Function,
+    });
+    scripts.definition.attributes = (0..10).map(|index| format!("attribute_{index}")).collect();
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "ReCeIvEr".into();
+    scripts
+        .actors
+        .get_mut("RECEIVER")
+        .unwrap()
+        .attributes
+        .insert("attribute_9".into(), 255);
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attribute_4".into(), 11);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    world.step(caller, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [255]);
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), [9]);
+}
+#[test]
+fn unresolved_and_failed_receiver_calls_restore_registry_and_keep_failures_sticky() {
+    let mut scripts = routed_cache(
+        vec![
+            object_wait(
+                Object::Named { string: 0 },
+                CallKind::Task,
+                Value::Integer { value: 100 },
+            ),
+            Operation::End { target: 0 },
+        ],
+        vec![Operation::End { target: 0 }],
+    );
+    scripts.actors.get_mut("RECEIVER").unwrap().namespace = Some("caller".into());
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "caller".into();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    assert!(
+        world
+            .step(caller, Thread::Main, 20)
+            .unwrap_err()
+            .to_string()
+            .contains("2 matching receivers")
+    );
+    assert!(world.actors().iter().all(|actor| actor.runtime().is_some()));
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 0);
+
+    scripts.actors.get_mut("RECEIVER").unwrap().namespace = Some("receiver".into());
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings[0] = "receiver".into();
+    let Operation::ObjectCall { call } = &mut scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation
+    else {
+        unreachable!()
+    };
+    call.arguments = vec![Value::Read {
+        place: Place::Local { index: 0 },
+    }];
+    scripts
+        .actors
+        .get_mut("RECEIVER")
+        .unwrap()
+        .program
+        .variables = vec![];
+    scripts
+        .actors
+        .get_mut("RECEIVER")
+        .unwrap()
+        .instance_variables = vec![vec![]];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    let error = world
+        .step(caller, Thread::Main, 20)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("local variable absent"), "{error}");
+    assert!(world.actors().iter().all(|actor| actor.runtime().is_some()));
+    assert!(world.actors()[0].runtime().unwrap().failure().is_some());
+    assert!(world.actors()[1].runtime().unwrap().failure().is_some());
+    assert_eq!(
+        world
+            .step(caller, Thread::Main, 20)
+            .unwrap_err()
+            .to_string(),
+        error
+    );
+    assert!(world.step(receiver, Thread::Main, 20).is_err());
 }

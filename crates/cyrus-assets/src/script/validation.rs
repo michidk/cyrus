@@ -67,7 +67,14 @@ impl Program {
     }
     pub(super) fn validate_operation(&self, operation: &Operation) -> Result<()> {
         match operation {
-            Operation::Call { call } | Operation::ObjectCall { call } => self.call(call, 0)?,
+            Operation::Call { call } => {
+                anyhow::ensure!(
+                    call.target == Object::Me,
+                    "self call carries an object selector"
+                );
+                self.call(call, 0)?;
+            }
+            Operation::ObjectCall { call } => self.call(call, 0)?,
             Operation::Assign {
                 destination,
                 formula,
@@ -155,6 +162,10 @@ impl Program {
     fn call(&self, call: &Call, depth: usize) -> Result<()> {
         self.object(&call.target)?;
         for argument in &call.arguments {
+            anyhow::ensure!(
+                !matches!(argument, Value::Call { .. } | Value::Update { .. }),
+                "native parameter expression unsupported"
+            );
             self.value(argument, depth)?;
         }
         Ok(())

@@ -103,3 +103,12 @@ completion applies on a later task pass, including duration zero and one. Functi
 waits remain unsupported because their timing context is not established.
 Other native services remain explicit failures. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.
+
+**Verified:** explicit inspection routing supports Me, unique RANM namespace names
+with ASCII case folding. The Player selector still requires a unique CYRUS placement;
+the installed standalone player definition has no logical instance yet. Functions
+use receiver locals and attributes; tasks occupy receiver slots while the caller
+continues. Foreign tasks retain their source instructions. Runtime ownership is restored
+on success and failure, and receiver failures remain sticky. Duplicate names fail because
+runtime identifier assignment is not established. Camera, variable references, scriptless
+receivers, reentrant native callbacks, and automatic scheduling remain unsupported.
