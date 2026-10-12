@@ -67,7 +67,9 @@ JSON inspection, font preview, ANM playback and movie frame stepping. Tagged Lin
 viewer checks also verify visible wireframe geometry, Orbit drag, Flycam look and
 held-key movement, and Frame object recovery; the virtual display requires window
 focus for keyboard input. Image Fit/1:1/zoom and CD waveform, seek, pause and
-playback also pass; a paced virtual audio sink receives nonzero samples. These
+playback and loop wrap also pass; a paced virtual audio sink receives nonzero
+samples. Installed LBM palette replacement and movie play/seek/pause/step controls
+respond through the GUI. These
 checks establish runtime behavior, not visual or audible parity with the original. Further shared-tab inspection and
 headless control captures time out, so remaining browser interaction/audio
 checks stay open. Runtime evidence predates subsequent HUD and actor-default
@@ -83,7 +85,7 @@ integration changes; those changes need their own runtime checks.
 | Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
 | Browser tools | F1 during unskipped startup; fidelity controls, render-distance editing/reset and cache reuse/invalidation |
-| Asset viewer | Audio loop completion and remaining palette/movie controls; inspection makes no Faithful rendering claim |
+| Asset viewer | Other-platform runtime and browser media checks; native inspection controls pass, without a Faithful rendering claim |
 | Releases | Browser package job and publication after hosted-runner communication failure; clean-machine play/save/resume and other-platform runtime checks |
 
 ## Resource coverage
