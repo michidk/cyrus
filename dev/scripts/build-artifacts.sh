@@ -28,7 +28,7 @@ case "${1:-}" in
     web)
         apps=(cyrus-web)
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
-        for app in "${apps[@]}"; do bash dev/scripts/build-web.sh "$app"; done
+        bash dev/scripts/build-web.sh "${apps[@]}"
         mkdir -p "$stage/browser/pkg"
         cp target/web/index.html target/web/sw.js "$stage/browser/"
         cp crates/cyrus-web/README.md "$stage/browser/README.md"
