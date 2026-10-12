@@ -36,6 +36,10 @@ An explicit ordinary grounded update now composes animation advancement/default
 requests, forward support admission, walking translation, support-height assignment,
 ordered wall response, residual separation, and startup reset. It preserves
 separate animation invocations with the same caller-supplied nominal ticks.
+With animation enabled, a pending walking request does not advance startup.
+An active ordinary walking group can continue after input release without
+requesting the group again or replacing its pending idle request, following
+[preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 The ordinary idle default comes from installed `attr_panic_group`, following
 [preservation](https://github.com/michidk/redguard-preservation/blob/976422b/docs/engine/player.md#ordinary-idle-animation-default).
 The forward probe uses installed bounds and walk distance with nearest-even

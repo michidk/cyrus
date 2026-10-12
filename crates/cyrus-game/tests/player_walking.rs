@@ -121,6 +121,35 @@ fn walking_request_reads_the_marker_after_immediate_animation_advance() {
 }
 
 #[test]
+fn pending_walking_group_does_not_advance_startup() {
+    let (definition, data) = data(serde_json::json!([
+        {"group_index":1,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":10},{"opcode":1}
+        ]},
+        {"group_index":20,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":20},{"opcode":1}
+        ]}
+    ]));
+    let mut animation =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+    animation.request(1, 0, 0).unwrap();
+    let mut walk = WalkingStartup::new(1).unwrap();
+    assert!(
+        walk.request(&mut animation, &definition, 256, 0, &mut |_| Ok(()))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(animation.current_group(), Some(1));
+    assert_eq!(animation.pending_group(), Some(20));
+    animation.force_request(20, 0, 0).unwrap();
+    let step = walk
+        .request(&mut animation, &definition, 256, 0, &mut |_| Ok(()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(step.distance, 512);
+}
+
+#[test]
 fn missing_walk_group_preserves_startup_and_zero_speed_uses_runtime_fallback() {
     let (definition, data) = data(serde_json::json!([]));
     let mut animation =
@@ -490,7 +519,7 @@ fn residual_distance_rounds_before_map_unit_shift() {
 }
 
 #[test]
-fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
+fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_default() {
     use bevy::math::Mat3;
     use cyrus_game::player::grounded::{
         ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate,
@@ -552,7 +581,84 @@ fn admitted_update_keeps_animation_invocations_and_resets_released_startup() {
     )
     .unwrap();
     assert_eq!(animation.pending_group(), Some(3));
+    assert_eq!(animation.current_group(), Some(20));
+    assert_eq!(walk.position, [start[0], start[1], start[2] + 512 + 682]);
+    animation.force_request(3, 0, 0).unwrap();
+    walk.update(
+        &query,
+        &mut input,
+        (&mut history, &mut veto),
+        &mut animation,
+        &mut |_| Ok(()),
+    )
+    .unwrap();
+    assert_eq!(walk.position, [start[0], start[1], start[2] + 512 + 682]);
     assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
+}
+
+#[test]
+fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
+    use bevy::math::Mat3;
+    use cyrus_game::player::grounded::{
+        ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate,
+    };
+    for (surface, expected_next) in [(6, 1024), (11, 512)] {
+        let scene = ground_scene(surface);
+        let candidates = StaticCandidates {
+            faces: vec![],
+            actors: vec![],
+        };
+        let query = StaticGroundQuery {
+            scene: &scene,
+            candidates: &candidates,
+            rotation: Mat3::IDENTITY,
+            collision_attribute: 6,
+            alternate_collision: false,
+            sidedness: true,
+            surface_update: SurfaceUpdate::Assign,
+        };
+        let (_, data) = data(serde_json::json!([
+            {"group_index":3,"anim_type":0,"anim_id":1,"commands":[
+                {"opcode":0,"frame_reference":30},{"opcode":2,"value":0}
+            ]},
+            {"group_index":20,"anim_type":1,"anim_id":1,"commands":[
+                {"opcode":5},{"opcode":0,"frame_reference":20},
+                {"opcode":0,"frame_reference":21},{"opcode":1}
+            ]}
+        ]));
+        let mut animation =
+            cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 3).unwrap();
+        animation.request(20, 0, 0).unwrap();
+        let start = [512 * 256, -64 * 256, 512 * 256];
+        let mut walk = GroundedWalk {
+            position: start,
+            surface: 0,
+            startup: WalkingStartup::new(1).unwrap(),
+        };
+        assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
+        let mut input = GroundedUpdate {
+            motion: ForwardWalk {
+                heading: 0,
+                frame_scale: 256,
+                nominal_ticks: 0,
+            },
+            walk: false,
+        };
+        let frame = walk
+            .update(
+                &query,
+                &mut input,
+                (&mut SupportHistory::new(0, 0), &mut 0),
+                &mut animation,
+                &mut |_| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(frame, Some(20));
+        assert_eq!(walk.position, start);
+        assert_eq!(animation.pending_group(), Some(3));
+        assert!(animation.translation_suppressed());
+        assert_eq!(walk.startup.advance(8, 24, 256, true), expected_next);
+    }
 }
 
 #[test]
