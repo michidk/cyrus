@@ -57,8 +57,9 @@ restart retains Display preferences and a rebound key. Installed INTRO skips
 reach the authored points and return to the selected Movies entry; authored Quit
 exits. Native Load enters the starting world, F8/Tab/F7 update HUD state, and
 held flycam input leaves the player position unchanged. Browser audio/cache,
-movie streaming and server/package contracts pass. Current served WASM matches
-the optimized build. Headless browser checks at 1280×800 exercise URL startup
+movie streaming and server/package contracts pass. The earlier served WASM matched
+its optimized build. The subsequent rebuild was terminated before emitting a
+bundle, and the shared server returns 404; current browser runtime remains unverified. Headless browser checks at 1280×800 exercise URL startup
 skip, temporary Load/New artwork/progress, world entry, F1 in the menu and
 after New Game, and F1 in a direct START launch. F8/Tab/F7 write browser HUD
 preferences and show notices.
