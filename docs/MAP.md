@@ -58,6 +58,7 @@ module where it is defined and regenerate.
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
+- `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.

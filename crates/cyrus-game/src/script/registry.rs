@@ -69,6 +69,10 @@ impl ScriptActor {
     pub fn runtime(&self) -> Option<&Runtime> {
         self.runtime.as_ref()
     }
+    /// Prepared attribute bytes, including immediate script writes and backup copies.
+    pub fn attributes(&self) -> &[u8] {
+        &self.attributes
+    }
     pub fn unavailable(&self) -> Option<&str> {
         self.unavailable.as_deref()
     }
@@ -294,6 +298,7 @@ impl ScriptWorld {
                 "main": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Main)),
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
                 "locals": actor.runtime.as_ref().map(|runtime| runtime.variables()),
+                "attributes": actor.attributes,
                 "tasks": actor.runtime.as_ref().map(|runtime| runtime.active_tasks()),
                 "failure": actor.runtime.as_ref().and_then(|runtime| runtime.failure()),
             })).collect::<Vec<_>>()
@@ -456,16 +461,10 @@ impl Host for InspectionHost<'_> {
         if let Some(value) = self.flag_state.call(function, arguments, flags)? {
             return Ok(CallResult::Complete(value));
         }
-        if function.eq_ignore_ascii_case("GetMyAttr") {
-            let [index] = arguments else {
-                anyhow::bail!("GetMyAttr requires one argument")
-            };
-            let value = usize::try_from(index.integer()?)
-                .ok()
-                .and_then(|index| self.actors[self.index].attributes.get(index))
-                .copied()
-                .unwrap_or(0);
-            return Ok(CallResult::Complete(i32::from(value)));
+        if let Some(value) =
+            super::attributes::call(function, arguments, &mut self.actors[self.index].attributes)?
+        {
+            return Ok(CallResult::Complete(value));
         }
         anyhow::bail!(
             "native {:?} {function} unsupported by inspection host",

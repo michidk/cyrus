@@ -1151,3 +1151,171 @@ fn registering_an_existing_identifier_keeps_the_first_namespace_only() {
     assert!(world.actors()[3].runtime().is_some());
     assert_eq!(world.actors()[3].runtime().unwrap().active_tasks(), 0);
 }
+
+fn attribute_call(id: u16, name: &str, index: i32, value: Option<i32>) -> Call {
+    let mut arguments = vec![Value::Integer { value: index }];
+    if let Some(value) = value {
+        arguments.push(Value::Integer { value });
+    }
+    Call {
+        function_id: id,
+        target: Object::Me,
+        kind: CallKind::Function,
+        function: name.into(),
+        arguments,
+    }
+}
+fn attribute_cache(operations: Vec<Operation>) -> Scripts {
+    let mut scripts = wait_cache(operations);
+    scripts.definition.functions.truncate(1);
+    for (name, param_count) in [
+        ("SetAttribute", 2),
+        ("SetMyAttr", 2),
+        ("GetAttribute", 1),
+        ("GetMyAttr", 1),
+    ] {
+        scripts.definition.functions.push(Function {
+            name: name.into(),
+            kind: CallKind::Function,
+            param_count,
+        });
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+#[test]
+fn attribute_writes_truncate_and_only_set_attribute_updates_backup_bytes() {
+    let scripts = attribute_cache(vec![
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(attribute_call(1, "SetAttribute", 1, Some(-2))),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::Yield,
+        Operation::Call {
+            call: attribute_call(1, "SetAttribute", 6, Some(0x123)),
+        },
+        Operation::Call {
+            call: attribute_call(2, "SetMyAttr", 1, Some(511)),
+        },
+        Operation::Call {
+            call: attribute_call(2, "SetMyAttr", 6, Some(-1)),
+        },
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(attribute_call(3, "GetAttribute", 115, None)),
+                },
+                rest: vec![(
+                    1,
+                    Value::Call {
+                        call: Box::new(attribute_call(4, "GetMyAttr", 119, None)),
+                    },
+                )],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [289]);
+    let mut expected = [0; 256];
+    expected[1] = 255;
+    expected[6] = 255;
+    expected[115] = 35;
+    expected[119] = 254;
+    assert_eq!(world.actors()[0].attributes(), &expected);
+    assert_eq!(world.actors()[1].attributes(), &[0; 256]);
+}
+#[test]
+fn set_my_attribute_ignores_out_of_range_indices_without_mutation() {
+    for index in [i32::MIN, -1, 256, i32::MAX] {
+        let scripts = attribute_cache(vec![
+            Operation::Assign {
+                destination: Place::Local { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(attribute_call(2, "SetMyAttr", index, Some(5))),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+        assert_eq!(world.actors()[0].attributes(), &[0; 256]);
+    }
+}
+#[test]
+fn routed_attribute_writes_use_receiver_locals_and_are_visible_in_the_same_stage() {
+    let mut write = attribute_call(1, "SetAttribute", 1, Some(0));
+    write.target = Object::Named { string: 0 };
+    write.arguments[1] = Value::Read {
+        place: Place::Local { index: 0 },
+    };
+    let mut read = attribute_call(3, "GetAttribute", 119, None);
+    read.target = Object::Named { string: 0 };
+    let mut scripts = attribute_cache(vec![
+        Operation::ObjectCall { call: write },
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(read),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    scripts.actors.get_mut("LOGIC").unwrap().program.strings = vec!["LoGiC".into()];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.step(world.id(1).unwrap(), Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[0].attributes()[1], 4);
+    assert_eq!(world.actors()[0].attributes()[119], 4);
+    assert_eq!(world.actors()[1].attributes(), &[0; 256]);
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), [4]);
+}
+#[test]
+fn unsupported_attribute_access_fails_before_mutation_and_remains_sticky() {
+    for (id, name, index, value, reason) in [
+        (1, "SetAttribute", -1, Some(9), "index outside"),
+        (1, "SetAttribute", 256, Some(9), "index outside"),
+        (3, "GetAttribute", 256, None, "index outside"),
+        (1, "SetAttribute", 44, Some(9), "coupling unsupported"),
+        (2, "SetMyAttr", 44, Some(9), "coupling unsupported"),
+    ] {
+        let scripts = attribute_cache(vec![
+            Operation::Call {
+                call: attribute_call(id, name, index, value),
+            },
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let actor = world.id(0).unwrap();
+        let error = world.step(actor, Thread::Main, 20).unwrap_err().to_string();
+        assert!(error.contains(reason), "{error}");
+        assert!(
+            error.contains("world 7") && error.contains("instruction 0"),
+            "{error}"
+        );
+        assert_eq!(world.actors()[0].attributes(), &[0; 256]);
+        assert_eq!(world.flags(), [12]);
+        assert_eq!(
+            world.step(actor, Thread::Main, 20).unwrap_err().to_string(),
+            error
+        );
+    }
+}

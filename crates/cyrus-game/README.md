@@ -94,8 +94,19 @@ not grant update eligibility. Removing the prepared world clears this registry.
 
 Native control and MCP `scripts` page through at most 64 actor diagnostics.
 `step_script` runs a selected main, interrupt or existing-task stage. The
-inspection host supports the researched self `GetMyAttr`, `SetGlobalFlag`,
-`ResetGlobalFlag` and `TestGlobalFlag` services. Flag numeric values and latches
+inspection host supports the researched `GetAttribute`, `GetMyAttr`,
+`SetAttribute`, `SetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag` and `TestGlobalFlag`
+services. **Verified:** attribute writes retain the low byte; `SetAttribute`
+also maintains reserved collide/weight bytes, while `SetMyAttr` does not. Reads
+observe writes in the same stage and routed operands use receiver locals.
+`GetMyAttr` and `SetMyAttr` return zero outside the attribute table. Other
+out-of-range attribute access and attribute-44 writes remain explicit failures;
+the latter requires model/default-group ownership and cleanup integration.
+These contracts follow preservation's
+[attribute rules](https://github.com/michidk/redguard-preservation/blob/c5cbfb8/docs/engine/SOUP.md#attribute-reads-and-writes).
+`ScriptActor::attributes` exposes the prepared inspection bytes. Complete actor
+initialization and shared animation/player attribute state remain pending.
+Flag numeric values and latches
 remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
 requires `frame_scale` with eight fractional bits; omission fails before actor

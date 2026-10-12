@@ -1,5 +1,6 @@
 //! Game-owned SOUP hosts; stages remain explicit until production timing is established.
 mod animation;
+mod attributes;
 mod flags;
 mod playback;
 mod registry;
