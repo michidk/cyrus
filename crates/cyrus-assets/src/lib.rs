@@ -18,7 +18,21 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 9;
+pub const CATALOG_VERSION: u32 = 10;
+
+#[cfg(any(feature = "viewer", feature = "native"))]
+fn excluded_file_type(file_type: rgpre::import::FileType) -> bool {
+    use rgpre::import::FileType;
+    matches!(
+        file_type,
+        FileType::Mdi
+            | FileType::Dig
+            | FileType::Pif
+            | FileType::Opl
+            | FileType::Ad
+            | FileType::Rst
+    )
+}
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

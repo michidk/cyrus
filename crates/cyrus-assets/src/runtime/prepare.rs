@@ -363,18 +363,6 @@ pub(super) fn prepare<R: ReadAssets>(
                         .collect::<Vec<_>>()
                 ),
             },
-            Some(FileType::Dig | FileType::Mdi) => Content::Data {
-                value: serde_json::to_value(import::miles_driver::parse_miles_driver(bytes)?)?,
-            },
-            Some(FileType::Pif) => Content::Data {
-                value: serde_json::to_value(import::pif::parse_pif_file(bytes)?)?,
-            },
-            Some(FileType::Opl | FileType::Ad) => Content::Data {
-                value: serde_json::to_value(import::opl::parse_opl_file(bytes)?)?,
-            },
-            Some(FileType::Rst) => Content::Data {
-                value: serde_json::to_value(import::rst::parse_rst_file(bytes)?)?,
-            },
             None if entry.category == crate::Category::Images => {
                 let image = image::load_from_memory(bytes)
                     .with_context(|| format!("Original image is malformed or uses an unsupported encoding ({} source bytes); the original file was not modified", bytes.len()))?

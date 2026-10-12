@@ -45,7 +45,11 @@ pub fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
             return;
         }
     };
-    let mut entries: Vec<_> = registry.files.values().collect();
+    let mut entries: Vec<_> = registry
+        .files
+        .values()
+        .filter(|entry| !crate::excluded_file_type(entry.file_type))
+        .collect();
     entries.sort_by(|a, b| a.path.cmp(&b.path));
     let total = entries.len();
     let mut failed = Vec::new();
@@ -149,18 +153,12 @@ pub fn parse_one(path: &std::path::Path, file_type: FileType) -> Result<(), Stri
         FileType::Rtx => rtx::parse_rtx_file(&data)
             .map(drop)
             .map_err(|e| e.to_string()),
-        FileType::Dig | FileType::Mdi => miles_driver::parse_miles_driver(&data)
-            .map(drop)
-            .map_err(|e| e.to_string()),
-        FileType::Pif => pif::parse_pif_file(&data)
-            .map(drop)
-            .map_err(|e| e.to_string()),
-        FileType::Opl | FileType::Ad => opl::parse_opl_file(&data)
-            .map(drop)
-            .map_err(|e| e.to_string()),
-        FileType::Rst => rst::parse_rst_file(&data)
-            .map(drop)
-            .map_err(|e| e.to_string()),
+        FileType::Dig
+        | FileType::Mdi
+        | FileType::Pif
+        | FileType::Opl
+        | FileType::Ad
+        | FileType::Rst => Err("Support file excluded from parsing".into()),
     };
     r
 }
