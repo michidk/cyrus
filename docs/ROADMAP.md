@@ -135,7 +135,8 @@ of every palette and world still needs original-game comparison.
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
 | SMK | Native/browser video, first-track audio, installed skip/subtitle rules and streamed browser playback | Original comparison, A/V sync and player-hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Cursor/indexed image inspection and authored-rate ANM playback | Game cursor integration and palette cycling |
-| CHT, PVO | Preload parsing; PVO viewer inspection | Game runtime use |
+| CHT | Preload parsing | Game runtime use |
+| PVO | Preload parsing and viewer inspection | Runtime culling excluded at user request |
 | Save data | Unsupported | Safe world/player/script/quest persistence |
 
 ## 0. Development tooling
@@ -180,6 +181,7 @@ world playback is incomplete.
 
 ### Rendering
 
+- Won't implement PVO runtime culling at user request. No performance benefit or visible fidelity difference has been demonstrated. Keep PVO parsing and viewer inspection. **Unknown:** whether the original's PVO exclusions change visible output; revisit only if profiling or original-game comparison establishes a need.
 - [x] Worlds, terrain, textures and palettes; dry/water terrain lighting, faithful sky/tilt/sun/scroll inputs, fog/range defaults and water waves.
 - [x] Independent fidelity controls; optional Modern sky/fog/water presentation. Modern lighting currently reuses Faithful results.
 - [ ] Resolve dirty water-edge normal admission/retention; cyrus currently recomputes the grid.
