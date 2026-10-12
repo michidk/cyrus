@@ -122,7 +122,7 @@ precedence and report errors instead of silently selecting a different install.
 The browser asks "Where are the game files?" when no valid source is available.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and
 viewer, and checks the manifest and an original file again on every launch. A
-missing install reopens the picker. "Change game files" opens it explicitly.
+missing install reopens the picker.
 URL `install` overrides the server default, which overrides the saved location.
 A server may receive `--install-url URL` to supply a remote default.
 

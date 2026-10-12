@@ -24,7 +24,7 @@ python3 viewer-server.py --directory . --page index.html --port 8080 \
 Without a supplied or remembered URL, startup asks "Where are the game files?".
 It saves a validated install-service URL under localStorage `cyrus-install`, shared
 with the viewer, and checks the original files at each launch. Missing files reopen
-the picker. "Change game files" chooses another source. URL `install` overrides
+the picker. URL `install` overrides
 the server default, which overrides the saved URL. Server `--install-url URL`
 provides a remote default. Cross-origin services require CORS and byte-range support.
 The manifest's `cache` field locates prepared game assets; a static original-file

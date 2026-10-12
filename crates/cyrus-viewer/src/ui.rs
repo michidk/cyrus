@@ -248,10 +248,6 @@ pub fn draw(
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.toggle_value(&mut viewer.details, "Details");
-                #[cfg(target_arch = "wasm32")]
-                if ui.button("Change game files").clicked() {
-                    crate::browser::change_game_files();
-                }
             });
         });
         ui.add_space(6.);

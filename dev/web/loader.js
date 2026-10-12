@@ -1,4 +1,4 @@
-import { chooseInstall, installControls } from "./install.js";
+import { chooseInstall } from "./install.js";
 
 // Bevy owns the output context; resume it inside the browser's trusted input event.
 if (globalThis.AudioContext) {
@@ -61,7 +61,6 @@ try {
       throw new Error("file and palette require asset");
     }
     await chooseInstall();
-    installControls();
   }
   if ("serviceWorker" in navigator) {
     try {

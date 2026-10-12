@@ -8,7 +8,6 @@ canvas{width:100%;height:100%;display:block;outline:none}
 #install-picker label{font-size:20px;color:#fff}
 #install-picker input,#install-picker button{font:inherit;padding:10px}
 #install-picker p{margin:0}
-#change-install{position:fixed;right:8px;bottom:8px;z-index:20;padding:6px;font:inherit}
 
 #fill.indeterminate{width:25%!important;animation:loading-progress 1s ease-in-out infinite alternate}
 @keyframes loading-progress{from{transform:translateX(0)}to{transform:translateX(300%)}}

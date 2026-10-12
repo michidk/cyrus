@@ -302,10 +302,3 @@ fn follow_link(
         }
     }
 }
-
-#[wasm_bindgen(
-    inline_js = "export function change_game_files() { document.getElementById('change-install').click(); }"
-)]
-extern "C" {
-    pub fn change_game_files();
-}

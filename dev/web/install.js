@@ -111,17 +111,3 @@ export async function chooseInstall() {
 function directoryValue(value) {
   try { return directoryURL(value, location.href).href; } catch { return value; }
 }
-
-export function installControls() {
-  const change = document.createElement("button");
-  change.id = "change-install";
-  change.textContent = "Change game files";
-  change.hidden = document.body.dataset.engine === "cyrus-viewer";
-  change.addEventListener("click", () => {
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* Storage may be disabled. */ }
-    const url = new URL(location.href);
-    url.searchParams.set("install", "");
-    location.href = url.href;
-  });
-  document.body.append(change);
-}

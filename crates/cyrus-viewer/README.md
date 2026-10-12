@@ -31,7 +31,7 @@ viewport; Q/E moves down/up and Shift boosts speed fourfold. Flight speed scales
 with the framed asset size, crossing twice the framing distance per second.
 Loading shows a progress bar, including archive indexing, preview preparation,
 model dependencies and media. Stages without a measurable total use an animated
-bar. The browser's Change game files button sits beside Details in the header.
+bar.
 Models start with the first available scene palette. The palette selector lists
 palettes from their referencing worlds, including time-of-day variants, with
 Without palette last. Indexed images use their embedded palette first when present; otherwise they
@@ -147,7 +147,7 @@ uses the same model palette rules as browser selection.
 
 Without a supplied source, browser startup asks "Where are the game files?".
 The validated URL is shared with the game in localStorage `cyrus-install` and
-checked again at each launch. Unavailable files reopen the picker. Use "Change
-game files" to choose another install. The server's `--install PATH` automatically
+checked again at each launch. Unavailable files reopen the picker. The server's
+`--install PATH` automatically
 supplies the source to both pages; `--install-url URL` supplies a remote default.
 AI-driven tests must always provide one of these sources explicitly.

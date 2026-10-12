@@ -11,7 +11,7 @@ test("browser loader hands its existing overlay to the application", async () =>
   try {
     await fs.mkdir(path.join(directory, "pkg"));
     await fs.copyFile(path.join(__dirname, "loader.js"), path.join(directory, "loader.mjs"));
-    await fs.writeFile(path.join(directory, "install.js"), "export async function chooseInstall() {}\nexport function installControls() {}\n");
+    await fs.writeFile(path.join(directory, "install.js"), "export async function chooseInstall() {}\n");
     await fs.writeFile(path.join(directory, "package.json"), '{"type":"module"}');
     await fs.writeFile(path.join(directory, "pkg/test.js"), "export default async () => {};\n");
     globalThis.location = { search: "" };
