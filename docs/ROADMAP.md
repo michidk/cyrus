@@ -59,9 +59,11 @@ exits. Native Load enters the starting world, F8/Tab/F7 update HUD state, and
 held flycam input leaves the player position unchanged. Browser audio/cache,
 movie streaming and server/package contracts pass. Current served WASM matches
 the optimized build. Headless browser checks at 1280×800 exercise URL startup
-skip, temporary Load artwork/progress, world entry and F1 in the loaded world.
+skip, temporary Load/New artwork/progress, world entry, F1 in the menu and
+after New Game, and F1 in a direct START launch. F8/Tab/F7 write browser HUD
+preferences and show notices.
 Native viewer GUI checks cover textured/unlit/solid rendering, edge overlays,
-JSON inspection and font preview. These checks establish runtime behavior, not
+JSON inspection, font preview, ANM playback and movie frame stepping. These checks establish runtime behavior, not
 visual or audible parity with the original.
 
 | Area | Remaining acceptance checks |
@@ -70,10 +72,10 @@ visual or audible parity with the original.
 | Sky and water | Tilt, synchronized scrolling, above-plane views, sun alpha/filter state after transitions, waves, water-edge normals and hardware color precision |
 | Animation and scripts | Production clock and eligible callers; rendered/audible sequences; actor removal and world replacement with active scripts, meshes and sounds |
 | Player | Complete startup/steady/release updates, ground and wall responses, native/browser input, original follow camera and flycam independence after integration |
-| HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser runtime inputs |
+| HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser restart persistence |
 | Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
-| Browser tools | Persistent F1 through startup, menu, New Game and direct scenes; fidelity controls, current served assets and cache invalidation |
+| Browser tools | F1 during unskipped startup; fidelity controls, render-distance editing/reset and cache reuse/invalidation |
 | Asset viewer | Native Orbit/Flycam movement, wireframe visibility and remaining media; inspection makes no Faithful rendering claim |
 | Releases | Exercise the new tagged release workflow and clean-machine packages; publishing has not validated the current flow |
 
