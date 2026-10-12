@@ -11,8 +11,30 @@ pub struct InstallArgs {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl InstallArgs {
+    /// Resolves CLI/environment, remembered location, then conventional folders.
+    /// Invalid supplied or remembered locations remain errors for noninteractive callers.
     pub fn locate(&self) -> anyhow::Result<cyrus_assets::install::GameInstall> {
-        cyrus_assets::install::GameInstall::locate(self.install.as_deref())
+        let path = self.install.clone().or_else(|| {
+            std::env::var_os(cyrus_assets::install::ENV_VAR).map(std::path::PathBuf::from)
+        });
+        crate::native_install::locate(
+            path.as_deref(),
+            std::path::Path::new(crate::native_install::LOCATION),
+        )
+    }
+    /// Shows the shared native picker on failure, then continues in a fresh process.
+    /// Returns None when the picker closes; headless callers should use locate instead.
+    pub fn locate_or_prompt(
+        &self,
+        title: &str,
+    ) -> anyhow::Result<Option<cyrus_assets::install::GameInstall>> {
+        match self.locate() {
+            Ok(install) => Ok(Some(install)),
+            Err(error) => {
+                crate::native_install::prompt(self.install.as_deref(), title, error)?;
+                Ok(None)
+            }
+        }
     }
 }
 

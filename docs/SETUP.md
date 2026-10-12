@@ -123,7 +123,14 @@ See the crate READMEs for the complete mappings.
 Both native applications discover `./redguard`, `./Redguard`,
 `~/GOG Games/Redguard`, `~/GOG Games/Redguard/app/Redguard`, and on Windows
 `%SystemDrive%/GOG Games/Redguard`. Explicit `--install` and `REDGUARD_DIR` take
-precedence and report errors instead of silently selecting a different install.
+precedence over the remembered native location in `cyrus-config/install.json`;
+conventional discovery follows when there is no saved location. Windowed game
+and viewer launches open a shared install-selection screen when resolution fails.
+Enter a path or choose Browse, then Continue to validate and remember the resolved
+root. Cancel closes the application without changing preferences. A missing or
+invalid remembered folder reopens the picker. Headless, world-listing and export
+commands report contextual command-line errors instead of opening a window.
+Linux Browse uses a desktop file portal or Zenity; manual input needs neither.
 
 Native game and viewer share path resolution: `--install` and `REDGUARD_DIR` also accept a GOG
 library folder, the outer Redguard package folder, or any directory inside the
@@ -131,7 +138,8 @@ install. Resolution checks enclosing directories and known `Redguard`,
 `Redguard/Redguard`, and `app/Redguard` layouts for `fxart`, `maps`, and
 `RGFX.EXE`, without recursively scanning the library. A sibling `DOSBOX`
 selection resolves through the enclosing package. Missing paths and unresolved
-selections report an error with `--install PATH` instructions.
+selections remain on the picker with validation details; noninteractive commands
+report an error with `--install PATH` instructions.
 
 The browser asks "Where are the game files?" when no valid source is available.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and

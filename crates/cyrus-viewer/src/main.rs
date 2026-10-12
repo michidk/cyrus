@@ -22,7 +22,9 @@ fn main() -> anyhow::Result<()> {
         selection: cyrus_app::launch::ViewerOptions,
     }
     let args = Args::parse();
-    let install = args.source.locate()?;
+    let Some(install) = args.source.locate_or_prompt("cyrus-viewer")? else {
+        return Ok(());
+    };
     install.cache_path(std::path::Path::new(cyrus_assets::CACHE_DIR))?;
     let mut app = application()?;
     app.insert_resource(loading::NativeSource(install))

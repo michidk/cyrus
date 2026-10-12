@@ -40,7 +40,19 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let install = args.source.locate()?;
+    let install = if args.headless
+        || args.list_worlds
+        || args.export_scene
+        || args.export_all_worlds
+        || args.export_startup
+    {
+        args.source.locate()?
+    } else {
+        let Some(install) = args.source.locate_or_prompt("cyrus")? else {
+            return Ok(());
+        };
+        install
+    };
     if args.list_worlds {
         println!(
             "{}",

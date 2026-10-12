@@ -7,6 +7,7 @@ module where it is defined and regenerate.
 ## `cyrus-app` — Shared window, cache source, egui and progress presentation for Cyrus applications.
 
 - `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
+- `src/native_install.rs` — Shared native install selection, remembered location and desktop folder picker.
 
 ## `cyrus-assets-worker` — Worker-only WASM bridge. HTTP supplies original bytes; shared Rust parsers decode them.
 

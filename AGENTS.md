@@ -197,6 +197,14 @@ Do not ask the user to enter the location or rely on their saved browser selecti
 The shared server default applies to both game and viewer pages. Test the location
 picker only when the task specifically needs to verify that flow.
 
+Native game and viewer share the install picker in `cyrus-app`. CLI/environment
+paths precede the remembered `cyrus-config/install.json` location and default
+folder discovery. Windowed resolution failures show a path field, Browse and
+Continue; a successful selection saves the resolved root outside the install.
+Invalid remembered locations reopen the picker. Cancel leaves saved state alone.
+Headless, world-listing and export commands retain command-line errors. Browser
+selection remains an install-service URL in shared localStorage `cyrus-install`.
+
 For agent work, choose the entry point explicitly:
 
 - `cargo run -p cyrus -- --skip-startup` skips the splash and prepares the menu behind the title.

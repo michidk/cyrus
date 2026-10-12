@@ -38,8 +38,11 @@ You need the GOG release of *The Elder Scrolls Adventures: Redguard*, Rust, and
 just run --install /path/to/GOG/extracted/app/Redguard
 ```
 
-Without `--install`, both native applications use `REDGUARD_DIR` or search the
-default local/GOG folders. A `redguard` symlink in the working directory works too.
+Without `--install`, both native applications use `REDGUARD_DIR`, a remembered
+location, or the default local/GOG folders. A `redguard` symlink in the working
+directory works too. If no usable install is found, a window lets you enter a
+folder or browse for it. Continue remembers the resolved location for both the
+game and viewer; a missing saved folder reopens the picker.
 For the browser, `just run-web --install /path/to/Redguard` supplies the files to
 both game and viewer automatically. Otherwise, select an install-service URL at
 startup; the browser remembers it and asks again if it becomes unavailable.

@@ -13,6 +13,13 @@ Prebuilt archives run with `./cyrus-viewer --install /path/to/Redguard` or
 `cyrus-viewer.exe --install C:\path\to\Redguard` on Windows.
 The Linux archive uses Ubuntu 24.04 system libraries.
 
+If no usable install is found, enter its folder in the shared native picker or
+choose Browse, then Continue. The picker accepts outer GOG folders and install
+subfolders. It remembers the resolved location in `cyrus-config/install.json`,
+shared with the game, and asks again when that location stops working. Cancel
+closes the application without changing the saved location. Linux Browse needs
+a desktop file portal or Zenity; entering a path also works without either.
+
 Choose a file format, search by name or source path, and select an item. RGM, WLD,
 ROB, 3D, and 3DC have separate categories. Numbered TEXBSI banks share one
 category; derived World previews and CD audio have their own entries.

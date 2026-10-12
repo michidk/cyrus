@@ -15,8 +15,13 @@ Without `--scene`, a windowed launch runs startup through the book menu.
 menu/HUD preparation. New Game and the temporary Load fallback export the
 installed starting world in a worker and enter after its dependencies are ready.
 
+Windowed launches show the shared install picker when their explicit, remembered,
+or discovered game-files location is unusable. Continue validates and remembers
+the location in `cyrus-config/install.json`, shared with the viewer. Headless,
+world-listing and export commands keep contextual command-line errors.
+
 Flags: `--export-startup` exports startup, menu, starting world, movies and HUD
-for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, else default local/GOG folders), `--scene STEM|ID`,
+for the browser and exits; `--install PATH` (else `$REDGUARD_DIR`, then the remembered location, then default local/GOG folders), `--scene STEM|ID`,
 `--headless`, `--skip-startup`, `--control ADDR` (control server, default `127.0.0.1:7117`).
 Settings come from `cyrus-config/settings.toml`.
 With a prebuilt archive, extract it and run `./cyrus --install /path/to/Redguard`

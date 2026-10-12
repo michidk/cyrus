@@ -3,6 +3,8 @@ use bevy::{asset::io::AssetSourceBuilder, prelude::*};
 
 pub use bevy_egui;
 pub mod launch;
+#[cfg(not(target_arch = "wasm32"))]
+mod native_install;
 /// Register before AssetPlugin; native paths are independent of the executable location.
 pub fn register_cache(app: &mut App) -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
