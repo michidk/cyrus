@@ -80,7 +80,7 @@ integration changes; those changes need their own runtime checks.
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
 | Browser tools | F1 during unskipped startup; fidelity controls, render-distance editing/reset and cache reuse/invalidation |
 | Asset viewer | Native Orbit/Flycam movement, wireframe visibility and remaining media; inspection makes no Faithful rendering claim |
-| Releases | Exercise the new tagged release workflow and clean-machine packages; publishing has not validated the current flow |
+| Releases | Browser package job and publication after hosted-runner communication failure; clean-machine play/save/resume and other-platform runtime checks |
 
 ## Resource coverage
 
@@ -239,7 +239,8 @@ Later. Requires full-game fidelity; packaging infrastructure already exists.
 
 - [ ] Choose and test supported platforms/hardware and clean setup with a purchased GOG install.
 - [ ] Measure loading, frame pacing and bounded memory across repeated transitions; fix observed bottlenecks.
-- [ ] Exercise tagged release publishing and audit packages for game data/research artifacts.
+- [x] Audit tagged native packages. **Verified:** all eight archives from the [tagged release run](https://github.com/michidk/cyrus/actions/runs/38272630723) contain only the executable and README. Linux game/viewer help runs in a clean runtime container; the packaged game reaches the menu and enters New Game with a read-only install. Windows and both macOS build/package/help jobs passed on their runners.
+- [ ] Complete browser packaging and tagged publication. **Verified:** the same run lost its hosted browser runner; release creation was skipped. No browser package was uploaded.
 - [ ] Publish setup, controls and known limitations; verify install, play, save and resume on a clean machine.
 
 Follow [METHOD.md](METHOD.md) for evidence and fidelity, [WORKFLOW.md](WORKFLOW.md)
