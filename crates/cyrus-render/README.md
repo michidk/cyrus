@@ -120,9 +120,10 @@ initialization and progression unlocks remain unavailable.
 native `cyrus-config/menu.json` or browser localStorage. It validates local state,
 saves before applying edits, and leaves malformed files intact. Existing player
 input uses edited bindings, including direct scene launches. Subtitle and interlace
-settings apply to cinematics; saved Sound preferences apply to native
-effects, speech, and CD music. Book motion and direction/capture feedback dispatch
-installed effects through the shared native/browser sound path, following
+settings apply to cinematics; saved Sound preferences apply to shared
+effects and CD music, and native speech. Browser CD tracks use exported WAV files and
+installed world assignments; native playback reads the CD image. Book motion and
+direction/capture feedback dispatch installed effects through the shared native/browser sound path, following
 preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 **Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
 rebinding, lighting, camera-plane clipping and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.

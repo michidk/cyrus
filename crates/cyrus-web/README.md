@@ -26,3 +26,11 @@ saved bindings; controller fidelity defaults to Faithful.
 With a scene URL, press F1 to choose a world, set flycam speed, and change runtime fidelity.
 
 Not a default workspace member so day-to-day builds and tests stay lean.
+
+Browser audio activates on keyboard input or pointer release. Movies, menu effects and
+CD music share native playback rules; `--export-startup` exports the required CD tracks
+and installed assignments. Runtime exceptions and graphics context loss display an error
+instead of leaving an unexplained black screen.
+
+For a downloaded browser bundle, serve its directory with your HTTP server and
+keep `cyrus-config/cache/` beside the page.

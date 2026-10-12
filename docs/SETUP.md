@@ -129,8 +129,8 @@ Changes persist to `cyrus-config/menu.json` on native builds and localStorage
 under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
-Saved Sound preferences apply to native effects, speech, and CD music; the book
-menu plays its installed CD track. Cinematics consume subtitle and interlace preferences.
+Saved Sound preferences apply to effects and CD music on native and browser
+builds, and to native speech. The book menu plays its installed CD track. Cinematics consume subtitle and interlace preferences.
 
 Movies browses the initially unlocked entries and installed previews. Native
 playback reads the configured movie file or GOG `game.gog` beside the install
@@ -143,7 +143,10 @@ For browser playback, `--export-startup` also exports the browsable compressed
 Smacker files, first-track WAV audio, subtitle definitions, and configured font
 into `cyrus-config/cache/movies/`. The browser downloads the selected cinematic
 on demand and decodes video in-process, using the same skip, subtitle, interlace,
-and menu-return rules. Re-export startup and rebuild the browser after updating.
+and menu-return rules. Re-export startup and rebuild the browser after updating. The
+export includes CD tracks under `cache/music/` and their installed world assignments in
+the sound bank. A key press or pointer release activates browser audio. Runtime
+exceptions and graphics context loss produce a visible error above the game.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
 installed `force_movies` setting exposes all cinematic entries. Progression
 unlocks remain unavailable. Native Quit closes the book and exits. Browser Quit

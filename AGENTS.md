@@ -217,8 +217,9 @@ Wait for `state.menu.ready` before sending menu input. Settings use original act
 units and persist outside the install in native `cyrus-config/menu.json` or
 browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
 including direct world launches. Subtitle and interlace preferences affect
-cinematics. Native effects, speech, and CD music consume the saved Sound preferences;
-the menu plays its installed CD track.
+cinematics. Native/browser effects and CD music, and native speech, consume the saved Sound
+preferences; the menu plays its installed CD track. Browser CD tracks use exported
+WAV files and installed world assignments.
 `state.menu.movie` reports cinematic loading and one-based frame progress;
 menu input is suspended during playback. A new key press uses the installed
 forward skip points, then returns to the same selected entry.
