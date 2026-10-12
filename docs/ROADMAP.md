@@ -43,7 +43,6 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Every documented overlay element is implemented; gameplay must still feed health, sword, lockout, player type, heading/world, compass flag, `Activate`/`ShowBitmap`/logbook events and walk/auto-defend behaviour |
 | Startup and book menu | Published increments; fidelity follow-up unassigned | Installed loading, New/temporary Load, settings, Movies and Quit implemented; saves, full gameplay, lighting/clipping, device capture and audible comparisons remain open |
-| Browser loading and audio | `t3/fix-game-loading-audio` | Fix New Game downloads and silent browser playback; evidence in `magic/artifacts/2026-10-12-browser-loading-audio/` |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
 Earlier bounded research milestones remain published, with their limitations
@@ -112,6 +111,8 @@ Remaining intro implementation and verification are listed under
 - [x] Native and browser Smacker playback with installed skip points, subtitle/interlace preferences and retained menu selection. Browser cinematics load on demand from the local startup export.
 - [x] Authored book page turns, submenu camera moves, startup camera entry, and closing Quit sequence; input waits for settling.
 - [x] Installed book/menu effects, Sound preference ordering and menu-only effects-bank export through the portable sound backend.
+- [x] Browser audio resumes on trusted keyboard, pointer and touch input; installed CD tracks and world assignments export to the shared native/browser music player. **Verified:** native gates, installed exports and browser loader/cache contracts. Final combined browser playback and listening comparisons remain pending.
+- [x] Browser movie input streams before the complete download. **Verified:** isolated headless playback displayed the first picture before the full SMK transferred, with a running AudioContext and nonzero PCM buffers. Long skips still decode preceding delta frames; listening and A/V comparisons remain pending.
 - [x] Native scene loading and headless scene export.
 - [x] WORLD.INI map, terrain, and palette selection; numeric IDs and map aliases.
 - [x] Per-world terrain lighting, quantized normals and encoded texture modulation in shared native/browser rendering; independent Lighting setting defaults to Faithful, with Modern reusing it.
@@ -157,7 +158,7 @@ committed support; unverified work stays in the TODO column.
 | `KEYS.INI` | Menu activation, installed key names/capture prompt, fifteen saved bindings, and held player-input foundation | Gameplay locomotion and remaining quick-action handlers |
 | `COMBAT.INI`, `ITEM.INI` | Starting-item HUD icons and counts from ITEM.INI | Combat, item use, pickups and shared inventory |
 | `SMK` | Native and browser video via the in-process Smacker decoder, first embedded audio stream, installed skip points and subtitle definitions; native CD music pauses during playback | Audible output, A/V synchronization and original-game comparison |
-| CD audio | World tracks and the book menu's track 2 play from GOG's CD image and repeat; the Music slider and `redbook_volume` set the drive level | Credits and ending music, audible comparison with the original |
+| CD audio | Native world tracks and the book menu's track 2 play from GOG's CD image and repeat; browser WAV exports retain installed settings and world assignments through the shared music player; the Music slider and `redbook_volume` set the drive level | Final combined browser playback, credits and ending music, audible comparison with the original |
 | Save data | No save/load support accepted | Persistent world, player, script, and quest state |
 
 **Verified:** Glide sky textures, their independent COL palettes, and the static
