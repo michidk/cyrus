@@ -31,7 +31,7 @@ test("browser loader hands its existing overlay to the application", async () =>
       const elements = {
         loading: { remove: () => { removed = true; } },
         label: { textContent: "" },
-        fill: { style: {} },
+        fill: { style: {}, classList: { toggle() {}, add() {} } },
       };
       globalThis.document = {
         addEventListener: (event, callback) => { listeners[event] = callback; },
