@@ -52,6 +52,15 @@ Remaining animation scheduling, startup fidelity follow-up and stages 3–6 are 
 and WASM compilation. Explicit animation, sound, spatial and activation hosts have
 headless contracts. These establish the supported cores, not automatic gameplay.
 
+**Verified:** optimized native default and skipped startup reach the ready menu;
+restart retains Display preferences and a rebound key. Installed INTRO skips
+reach the authored points and return to the selected Movies entry; authored Quit
+exits. Native Load enters the starting world, F8/Tab/F7 update HUD state, and
+held flycam input leaves the player position unchanged. Browser audio/cache,
+movie streaming and server/package contracts pass. Current served WASM matches
+the optimized build. These checks establish runtime behavior, not visual or
+audible parity with the original.
+
 | Area | Remaining acceptance checks |
 | --- | --- |
 | World rendering | Matched original/native/browser views across worlds and palettes; placement, scale, visibility, transparency, clipping and terrain/model lighting |
@@ -59,8 +68,8 @@ headless contracts. These establish the supported cores, not automatic gameplay.
 | Animation and scripts | Production clock and eligible callers; rendered/audible sequences; actor removal and world replacement with active scripts, meshes and sounds |
 | Player | Complete startup/steady/release updates, ground and wall responses, native/browser input, original follow camera and flycam independence after integration |
 | HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser runtime inputs |
-| Startup and menu | Browser skip routes, book motion, restart persistence, loading artwork, lighting/clipping and optimized native startup |
-| Movies and audio | Picture, skips, subtitles, interlace, A/V sync, cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
+| Startup and menu | Browser skip routes and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
+| Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
 | Browser tools | Persistent F1 through startup, menu, New Game and direct scenes; fidelity controls, current served assets and cache invalidation |
 | Asset viewer | Native GUI controls and media; the latest controls have headless browser checks and make no Faithful rendering claim |
 | Releases | Exercise the new tagged release workflow and clean-machine packages; publishing has not validated the current flow |
@@ -164,7 +173,7 @@ enable live locomotion or the original follow camera.
 
 - [x] Installed keyboard bindings, independent debug flycam, marker placement and static/dry-terrain startup settling.
 - [x] Explicit GroundedTick adapter composes ordinary walking/turning, support and wall response with player/render/animation poses. **Verified:** installed ISLAND startup and twelve supplied-tick walking-release updates, plus headless lifecycle/input contracts. Production ticks are not supplied.
-- [x] Walking and SOUP share logical-player animation, selected frames and sound ownership. **Verified:** [headless interleaving contracts](https://github.com/michidk/cyrus/commit/21b9b40); combined-tree native smoke remains pending. Playback defaults have one owner; model-default attribute writes remain unsupported.
+- [x] Walking and SOUP share logical-player animation, selected frames and sound ownership. **Verified:** [headless interleaving contracts](https://github.com/michidk/cyrus/commit/21b9b40); combined-tree native startup/world-entry smoke passes; explicit walking/script interleaving still needs rendered verification. Playback defaults have one owner; model-default attribute writes remain unsupported.
 - [ ] Establish complete eligibility and simulation timing; compare fractional startup, steady movement, release, walls and ground updates.
 - [ ] Implement movement, turning, original follow camera, jumping, gravity and remaining quick actions.
 - [ ] Complete Faithful controls and optional Modern camera-relative WASD, mouse camera, Space jump and held Shift run; keep flycam independent.
