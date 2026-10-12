@@ -26,9 +26,11 @@ pub fn scene_transform(pose: Pose) -> Affine3A {
         let (row, column) = (index % 3, index / 3);
         sign[row] * pose.matrix.0[row][column] * sign[column]
     }));
-    let position = Vec3::from_array(std::array::from_fn(|axis| {
+    let mut position = Vec3::from_array(std::array::from_fn(|axis| {
         sign[axis] * (pose.position[axis] >> 8) as f32 / 20.0
     }));
+    // rgpre offsets scene Z to align authored placements with the exported terrain.
+    position.z = -((16_777_215.0 - (pose.position[2] >> 8) as f64 * 256.0) as f32) * (1.0 / 5120.0);
     Affine3A::from_mat3_translation(matrix, position)
 }
 

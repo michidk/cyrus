@@ -14,7 +14,10 @@ fn scene_conversion_preserves_nonorthogonal_matrix_and_integer_position_shift() 
         matrix: Matrix([[1.0, 0.25, 0.5], [0.0, 0.75, 0.0], [0.125, 0.0, 1.0]]),
     };
     let affine = scene_transform(pose);
-    assert_eq!(Vec3::from(affine.translation), Vec3::new(-0.05, 0.05, 0.05));
+    assert_eq!(
+        Vec3::from(affine.translation),
+        Vec3::new(-0.05, 0.05, -3276.7498)
+    );
     assert_eq!(
         affine.matrix3.to_cols_array(),
         [1.0, 0.0, -0.125, 0.25, 0.75, 0.0, -0.5, 0.0, 1.0]
@@ -64,14 +67,14 @@ fn binding_updates_descendants_and_removal_restores_authored_transforms() {
             .get::<GlobalTransform>(node)
             .unwrap()
             .translation(),
-        Vec3::new(8.0, 3.0, 4.0)
+        Vec3::new(8.0, 3.0, -3272.7998)
     );
     assert_eq!(
         app.world()
             .get::<GlobalTransform>(child)
             .unwrap()
             .translation(),
-        Vec3::new(8.0, 4.0, 4.0)
+        Vec3::new(8.0, 4.0, -3272.7998)
     );
     app.world_mut().entity_mut(node).remove::<ScriptBinding>();
     app.update();
@@ -89,4 +92,42 @@ fn binding_updates_descendants_and_removal_restores_authored_transforms() {
             .translation(),
         Vec3::new(11.0, 3.0, 3.0)
     );
+}
+
+#[test]
+fn script_pose_stays_at_the_exported_world_marker() {
+    use rgpre::import::rgm::{RgmFile, RgmSection, RgmSectionHeader, export_rgm_metadata_json};
+    let positions = [[20i32, -40, 65_536], [100, 60, 30_000], [0, 0, 0]];
+    let mut data = (positions.len() as u32).to_le_bytes().to_vec();
+    for position in positions {
+        for coordinate in position {
+            data.extend_from_slice(&coordinate.to_le_bytes());
+        }
+    }
+    data.extend_from_slice(&[1; 3]);
+    let map = RgmFile {
+        sections: vec![RgmSection::Mpm(
+            RgmSectionHeader {
+                name: *b"MPMK",
+                data_length: data.len() as u32,
+                record_count: None,
+            },
+            data,
+        )],
+    };
+    let metadata = export_rgm_metadata_json(&map, None);
+    for (index, position) in positions.into_iter().enumerate() {
+        let exported: [f32; 3] =
+            serde_json::from_value(metadata["markers"][index]["position"].clone()).unwrap();
+        let pose = Pose {
+            position: position.map(|value| value * 256),
+            angles: [0; 3],
+            matrix: Matrix::IDENTITY,
+        };
+        let rendered = Vec3::from(scene_transform(pose).translation);
+        assert!(
+            rendered.distance(Vec3::from_array(exported)) < 0.00001,
+            "marker {index}: exported {exported:?}, script rendered {rendered:?}"
+        );
+    }
 }

@@ -7,6 +7,7 @@ Depends on game/world/assets; none of those crates depends on presentation.
 `WorldRenderPlugin` composes the shared scene-spawn path, environment,
 `CameraPlugin` and `AnimationRenderPlugin`. Native and browser hosts submit the
 same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
+Script-driven actor poses retain the same scene origin as exported world placements and markers.
 Sound, HUD and startup remain separate plugins. Native headless assembly keeps
 sound control state without installing Bevy's audio backend.
 

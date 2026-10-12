@@ -41,6 +41,7 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 | Audio crate extraction | Codex, `t3/check-roadmap-next`; `magic/artifacts/2026-10-12-byte-source/` |
 | Startup/menu comparison and startup crate extraction after audio | Codex, `t3/compare-menu-presentation`; `magic/artifacts/2026-10-12-menu-comparison/` |
 | SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| Model lighting and world appearance comparisons | Codex, `t3/match-original-visuals`; `magic/artifacts/2026-10-12-local-lighting/` |
 | Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
 | Sound | Implement Game Sound Effects |
 | HUD | Implement the Game Overlay UI |
