@@ -33,6 +33,7 @@ pub enum Target {
 }
 
 /// Byte offset of a program's base within its world's RASC data, not a runtime pointer.
+/// All interacting runtimes must use the same RASC allocation's offset domain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CodeOrigin(pub u32);
 
@@ -271,6 +272,37 @@ impl Runtime {
             self.invoke_tasks(host, flags)?;
         }
         self.invoke_body(thread, host, flags, budget)
+    }
+    /// Ordinary entry work is suppressed by an unpaused blocking operand at or
+    /// before its saved cursor. Direct interrupts deliberately bypass this gate.
+    /// A program without a separate entry continuation has no entry work.
+    pub fn invoke_entry(
+        &mut self,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        budget: usize,
+    ) -> Result<()> {
+        if let Some(error) = &self.state.failure {
+            anyhow::bail!("{error}");
+        }
+        let Some(cursor) = self.program_counter(Thread::Interrupt) else {
+            return Ok(());
+        };
+        let cursor = self
+            .origin
+            .0
+            .checked_add(cursor)
+            .with_context(|| format!("{} entry cursor identity overflow", self.context))?;
+        if self
+            .state
+            .tasks
+            .iter()
+            .flatten()
+            .any(|task| task.blocking && !task.paused && task.operand <= cursor)
+        {
+            return Ok(());
+        }
+        self.invoke_body(Thread::Interrupt, host, flags, budget)
     }
     /// Runs a body without an existing-task pass. Main work waits for unpaused blocking slots.
     pub fn invoke_body(

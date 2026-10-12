@@ -37,7 +37,15 @@ Use it after loading the reference world. It synchronizes sky motion for
 comparison; it does not synchronize other users of the original random stream.
 
 `scripts {offset, limit}` returns bounded logical actor state. `step_script
-{generation, index, stage, frame_scale}` selects `main`, `interrupt`, or `tasks`.
+{generation, index, stage, frame_scale, nominal_ticks}` selects `animation`,
+`entry`, `main`, `interrupt`, or `tasks`.
 `tasks` requires an explicit unsigned `frame_scale` with eight fractional bits.
 For example, 256 supplies scale one; zero is accepted. Main and interrupt body
 steps do not poll existing tasks. These inspection tools do not enable gameplay.
+
+`bind_script_animation {generation, index, default_group, node?}` prepares an
+actor once for this world generation. The caller supplies the established default
+group. An optional exact scene node name transfers its animation presentation to
+the logical actor. Without a node, stepping captures sound intents in the response's `captured_sounds` array instead of playing them. Once any actor is animation-bound,
+all steps require explicit `nominal_ticks`, including zero, before execution.
+These tools do not determine production eligibility or pacing.

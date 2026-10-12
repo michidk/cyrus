@@ -64,6 +64,14 @@ pub enum Command {
         #[serde(default = "script_page_size")]
         limit: usize,
     },
+    /// Prepare animation for an inspected actor, optionally binding a named scene node.
+    BindScriptAnimation {
+        generation: u64,
+        index: usize,
+        default_group: u16,
+        #[serde(default)]
+        node: Option<String>,
+    },
     /// Invoke one explicit stage; does not enable automatic gameplay.
     StepScript {
         generation: u64,
@@ -72,6 +80,9 @@ pub enum Command {
         /// Required for tasks; eight fractional bits, supplied by the inspection caller.
         #[serde(default)]
         frame_scale: Option<u32>,
+        /// Required for animation-bound actors; whole original nominal ticks, including zero.
+        #[serde(default)]
+        nominal_ticks: Option<u32>,
     },
     Quit,
 }
@@ -82,6 +93,8 @@ fn script_page_size() -> usize {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptStage {
+    Animation,
+    Entry,
     Main,
     Interrupt,
     Tasks,

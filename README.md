@@ -26,6 +26,9 @@ Bring your own GOG install. cyrus ships no game data.
 
 See the [roadmap](docs/ROADMAP.md) for verified support and remaining work.
 
+Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
+`rg-unity-devtalk`.
+
 ## Run cyrus
 
 You need the GOG release of *The Elder Scrolls Adventures: Redguard*, Rust, and

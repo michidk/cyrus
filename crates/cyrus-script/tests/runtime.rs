@@ -883,3 +883,79 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
     assert!(error.contains("task operand identity overflow"), "{error}");
     assert_eq!(host.next, 6);
 }
+
+#[test]
+fn ordinary_entry_respects_blocking_operand_but_direct_interrupt_does_not() {
+    let mut runtime = Runtime::new(
+        program(
+            3,
+            vec![
+                call("Wait", CallKind::Task),
+                Operation::Increment {
+                    destination: Place::Local { index: 0 },
+                    delta: 1,
+                },
+                Operation::Endint,
+                Operation::End { target: 3 },
+            ],
+        ),
+        "entry test".into(),
+    )
+    .unwrap();
+    let mut host = Service::default();
+    runtime.invoke_entry(&mut host, &mut [], 10).unwrap();
+    assert_eq!(runtime.program_counter(Thread::Interrupt), Some(1));
+    runtime.invoke_entry(&mut host, &mut [], 10).unwrap();
+    assert_eq!(runtime.variables(), [0]);
+    assert_eq!(host.calls, ["Wait"]);
+    runtime
+        .invoke_body(Thread::Interrupt, &mut host, &mut [], 10)
+        .unwrap();
+    assert_eq!(runtime.variables(), [1]);
+    assert_eq!(runtime.program_counter(Thread::Interrupt), Some(0));
+    assert_eq!(runtime.active_tasks(), 1);
+}
+
+#[test]
+fn entry_compares_foreign_task_operands_in_shared_code_identity() {
+    for (origin, expected) in [(10, 0), (200, 1)] {
+        let mut runtime = Runtime::from_shared(
+            std::sync::Arc::new(program(
+                2,
+                vec![
+                    Operation::Increment {
+                        destination: Place::Local { index: 0 },
+                        delta: 1,
+                    },
+                    Operation::Endint,
+                    Operation::End { target: 2 },
+                ],
+            )),
+            CodeOrigin(100),
+            vec![0],
+            "foreign entry".into(),
+        )
+        .unwrap();
+        let mut host = Service::default();
+        let Operation::Call { call } = call("Wait", CallKind::Task) else {
+            unreachable!()
+        };
+        runtime
+            .receive(
+                &call,
+                &[],
+                Some(TaskSource {
+                    origin: CodeOrigin(origin),
+                    instruction: 0,
+                    object_call: false,
+                    thread: Thread::Main,
+                }),
+                &mut host,
+                &mut [],
+            )
+            .unwrap();
+        runtime.invoke_entry(&mut host, &mut [], 10).unwrap();
+        assert_eq!(runtime.variables(), [expected]);
+        assert_eq!(runtime.active_tasks(), 1);
+    }
+}

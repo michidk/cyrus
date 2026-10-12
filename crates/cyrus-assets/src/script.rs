@@ -1,4 +1,5 @@
 //! Portable SOUP programs and validated installed-definition records.
+pub mod inventory;
 mod validation;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};

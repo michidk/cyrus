@@ -307,3 +307,18 @@ inspection host supports self `GetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag`
 and `TestGlobalFlag`; unsupported services produce a
 sticky contextual failure. Automatic actor eligibility, simulation timing,
 complete native handlers, progression and resumable saves remain unavailable.
+
+### Explicit shared script animation
+
+Native control/MCP `scripts` returns logical actor IDs and world generations.
+Use `bind_script_animation` with that generation, index, and an established
+`default_group` to prepare actor animation. An optional exact scene `node` name
+binds its visible pose and animation sound source. Without a node, preparation
+supports logical inspection and returns sound intents in `captured_sounds` without playback.
+
+`step_script` accepts separate `animation`, `entry`, `tasks`, `main`, and
+`interrupt` stages. Supply `nominal_ticks` whenever any actor has animation bound, including
+zero. The `tasks` stage additionally needs `frame_scale` with eight fractional
+bits. These are explicit original timing inputs, not milliseconds or frame counts.
+The shared host can combine animation tasks, waits, attributes, and flags.
+These commands do not infer actor eligibility or start automatic gameplay.

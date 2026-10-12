@@ -46,6 +46,21 @@ impl ScriptActorSource {
     }
 }
 
+/// Explicit stages preserve separate animation, task and script-body invocations.
+#[derive(Debug, Clone, Copy)]
+pub enum ScriptStage {
+    Animation,
+    Entry,
+    Tasks { frame_scale: u32 },
+    Body(Thread),
+}
+
+struct ScriptAnimation {
+    playback: cyrus_world::animation::ActorAnimation,
+    default: u16,
+    frame: Option<u32>,
+}
+
 pub struct ScriptActor {
     pub source: ScriptActorSource,
     /// Signed low word used by namespace lookup; absent for separate map object paths.
@@ -54,7 +69,9 @@ pub struct ScriptActor {
     runtime: Option<Runtime>,
     unavailable: Option<String>,
     attributes: Vec<u8>,
-    waits: super::waits::Waits,
+    tasks: super::tasks::NativeTasks,
+    animation: Option<ScriptAnimation>,
+    animation_failure: Option<String>,
 }
 impl ScriptActor {
     pub fn name(&self) -> &str {
@@ -72,6 +89,12 @@ impl ScriptActor {
     /// Prepared attribute bytes, including immediate script writes and backup copies.
     pub fn attributes(&self) -> &[u8] {
         &self.attributes
+    }
+    /// Sticky script or animation failure; failed effects are never retried.
+    pub fn failure(&self) -> Option<&str> {
+        self.animation_failure
+            .as_deref()
+            .or_else(|| self.runtime.as_ref().and_then(Runtime::failure))
     }
     pub fn unavailable(&self) -> Option<&str> {
         self.unavailable.as_deref()
@@ -152,7 +175,9 @@ impl ScriptWorld {
                     namespace: metadata.and_then(|actor| actor.namespace.clone()),
                     runtime,
                     unavailable,
-                    waits: Default::default(),
+                    tasks: Default::default(),
+                    animation: None,
+                    animation_failure: None,
                     attributes: (0..256)
                         .map(|index| {
                             metadata
@@ -228,11 +253,52 @@ impl ScriptWorld {
     pub fn generation(&self) -> u64 {
         self.generation
     }
+    /// Prepares one actor's animation without granting update eligibility.
+    /// The default group is supplied by an established caller, not inferred from placement.
+    pub fn bind_animation(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        default: u16,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        anyhow::ensure!(
+            data.world == self.world,
+            "world {} animation data belongs to world {}",
+            self.world,
+            data.world
+        );
+        anyhow::ensure!(
+            data.metadata["script_content_id"].as_str() == Some(&self.content_id),
+            "world {} animation/script cache generation mismatch; re-export the world",
+            self.world
+        );
+        let actor = &mut self.actors[index];
+        anyhow::ensure!(
+            actor.animation.is_none(),
+            "world {} instance {index}: animation already prepared",
+            self.world
+        );
+        let playback =
+            cyrus_world::animation::ActorAnimation::from_asset(data, actor.name(), default)?;
+        actor.animation = Some(ScriptAnimation {
+            playback,
+            default,
+            frame: None,
+        });
+        Ok(())
+    }
+    /// Last selected file frame; resolve through this world's animation asset for presentation.
+    pub fn animation_frame(&self, id: ScriptActorId) -> Result<Option<u32>> {
+        let index = self.resolve(id)?;
+        Ok(self.actors[index]
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.frame))
+    }
     /// Deterministic inspection of one body. This does not establish actor eligibility.
     pub fn step(&mut self, id: ScriptActorId, thread: Thread, budget: usize) -> Result<()> {
-        self.execute(id, |runtime, host, flags| {
-            runtime.invoke_body(thread, host, flags, budget)
-        })
+        self.advance(id, ScriptStage::Body(thread), None, None, budget)
     }
     /// Explicit task timing only. Missing scale fails before changing any actor state.
     pub fn step_tasks(&mut self, id: ScriptActorId, frame_scale: Option<u32>) -> Result<()> {
@@ -243,31 +309,76 @@ impl ScriptWorld {
                 self.world, id.index
             )
         })?;
-        self.execute(id, |runtime, host, flags| {
-            runtime.invoke_tasks_timed(host, flags, frame_scale)
-        })
+        self.advance(id, ScriptStage::Tasks { frame_scale }, None, None, 0)
     }
-    fn execute(
+    /// Invokes one explicit stage against the actor's shared native services.
+    /// Worlds with any animation-bound actor require nominal ticks, including zero. Sound effects
+    /// are dispatched synchronously with the receiving actor's identity.
+    pub fn advance(
         &mut self,
         id: ScriptActorId,
-        run: impl FnOnce(&mut Runtime, &mut InspectionHost<'_>, &mut [i32]) -> Result<()>,
+        stage: ScriptStage,
+        nominal_ticks: Option<u32>,
+        sounds: Option<
+            &mut dyn FnMut(ScriptActorId, cyrus_world::animation::AnimationSound) -> Result<()>,
+        >,
+        budget: usize,
     ) -> Result<()> {
         let index = self.resolve(id)?;
-        let actor = &mut self.actors[index];
+        if let Some(error) = self.actors[index].failure() {
+            anyhow::bail!("{error}");
+        }
+        if self.actors.iter().any(|actor| actor.animation.is_some())
+            || matches!(stage, ScriptStage::Animation)
+        {
+            anyhow::ensure!(
+                nominal_ticks.is_some(),
+                "world {} instance {index}: animation requires nominal_ticks",
+                self.world
+            );
+        }
+        let mut host = GameHost {
+            index,
+            generation: self.generation,
+            actors: &mut self.actors,
+            task_calls: &self.task_calls,
+            names: &self.names,
+            flag_state: &mut self.flag_state,
+            nominal_ticks,
+            sounds,
+        };
+        if matches!(stage, ScriptStage::Animation) {
+            anyhow::ensure!(
+                host.actors[index].animation.is_some(),
+                "world {} instance {index}: actor animation not prepared",
+                self.world
+            );
+            return host.advance_animation().map_err(|error| {
+                let message = format!(
+                    "world {} instance {index} animation stage: {error:#}",
+                    self.world
+                );
+                host.actors[index].animation_failure = Some(message.clone());
+                anyhow::anyhow!(message)
+            });
+        }
+        let actor = &mut host.actors[index];
         let mut runtime = actor.runtime.take().with_context(|| {
             actor
                 .unavailable
                 .clone()
                 .unwrap_or_else(|| "program absent".into())
         })?;
-        let mut host = InspectionHost {
-            index,
-            actors: &mut self.actors,
-            task_calls: &self.task_calls,
-            names: &self.names,
-            flag_state: &mut self.flag_state,
+        let result = match stage {
+            ScriptStage::Entry => runtime.invoke_entry(&mut host, &mut self.flags, budget),
+            ScriptStage::Body(thread) => {
+                runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
+            }
+            ScriptStage::Tasks { frame_scale } => {
+                runtime.invoke_tasks_timed(&mut host, &mut self.flags, frame_scale)
+            }
+            ScriptStage::Animation => unreachable!(),
         };
-        let result = run(&mut runtime, &mut host, &mut self.flags);
         host.actors[index].runtime = Some(runtime);
         result
     }
@@ -299,8 +410,13 @@ impl ScriptWorld {
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
                 "locals": actor.runtime.as_ref().map(|runtime| runtime.variables()),
                 "attributes": actor.attributes,
+                "animation": actor.animation.as_ref().map(|animation| serde_json::json!({
+                    "current_group": animation.playback.current_group(),
+                    "pending_group": animation.playback.pending_group(),
+                    "frame": animation.frame,
+                })),
                 "tasks": actor.runtime.as_ref().map(|runtime| runtime.active_tasks()),
-                "failure": actor.runtime.as_ref().and_then(|runtime| runtime.failure()),
+                "failure": actor.failure(),
             })).collect::<Vec<_>>()
         })
     }
@@ -403,14 +519,45 @@ pub(super) fn prepare(
     }
 }
 
-struct InspectionHost<'a> {
+struct GameHost<'a, 'sound> {
     index: usize,
+    generation: u64,
+    nominal_ticks: Option<u32>,
+    sounds: Option<
+        &'sound mut dyn FnMut(ScriptActorId, cyrus_world::animation::AnimationSound) -> Result<()>,
+    >,
     actors: &'a mut [ScriptActor],
     task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
     names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
-impl InspectionHost<'_> {
+impl GameHost<'_, '_> {
+    fn advance_animation(&mut self) -> Result<()> {
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let ticks = self
+            .nominal_ticks
+            .context("animation requires nominal_ticks")?;
+        let mut emit = |sound| match &mut self.sounds {
+            Some(sounds) => sounds(id, sound),
+            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        };
+        let animation = self.actors[self.index]
+            .animation
+            .as_mut()
+            .context("actor animation not prepared")?;
+        let frame = animation.playback.advance_with_sounds(ticks, &mut emit)?;
+        animation.frame = frame.or(animation.frame);
+        let frame =
+            animation
+                .playback
+                .request_with_sounds(animation.default, 0, ticks, &mut emit)?;
+        animation.frame = frame.or(animation.frame);
+        Ok(())
+    }
+
     fn target_index(&self, target: &Target) -> Result<usize> {
         let index = match target {
             Target::Me => return Ok(self.index),
@@ -433,7 +580,7 @@ impl InspectionHost<'_> {
         index.with_context(|| format!("object target {target:?}: receiver absent"))
     }
 }
-impl Host for InspectionHost<'_> {
+impl Host for GameHost<'_, '_> {
     fn call(
         &mut self,
         target: &Target,
@@ -447,9 +594,30 @@ impl Host for InspectionHost<'_> {
             target == &Target::Me,
             "inspection target {target:?} unsupported"
         );
-        if let Some(result) = self.actors[self.index]
-            .waits
-            .call(function, kind, arguments, invocation)?
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let mut emit = |sound| match &mut self.sounds {
+            Some(sounds) => sounds(id, sound),
+            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        };
+        let actor = &mut self.actors[self.index];
+        let mut animation =
+            actor
+                .animation
+                .as_mut()
+                .zip(self.nominal_ticks)
+                .map(|(animation, ticks)| super::tasks::AnimationCall {
+                    animation: &mut animation.playback,
+                    ticks,
+                    frame: &mut animation.frame,
+                    sounds: Some(&mut emit),
+                });
+        if let Some(result) =
+            actor
+                .tasks
+                .call(function, kind, arguments, invocation, &mut animation)?
         {
             return Ok(result);
         }
@@ -478,12 +646,32 @@ impl Host for InspectionHost<'_> {
         invocation: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> Result<bool> {
-        self.actors[self.index]
-            .waits
-            .poll(token, arguments, invocation)
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let mut emit = |sound| match &mut self.sounds {
+            Some(sounds) => sounds(id, sound),
+            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        };
+        let actor = &mut self.actors[self.index];
+        let mut animation =
+            actor
+                .animation
+                .as_mut()
+                .zip(self.nominal_ticks)
+                .map(|(animation, ticks)| super::tasks::AnimationCall {
+                    animation: &mut animation.playback,
+                    ticks,
+                    frame: &mut animation.frame,
+                    sounds: Some(&mut emit),
+                });
+        actor
+            .tasks
+            .poll(token, arguments, invocation, &mut animation)
     }
     fn cancel(&mut self, token: u64) -> Result<()> {
-        self.actors[self.index].waits.cancel(token)
+        self.actors[self.index].tasks.cancel(token)
     }
     fn route(
         &mut self,
@@ -494,6 +682,13 @@ impl Host for InspectionHost<'_> {
         flags: &mut [i32],
     ) -> Result<Route> {
         let index = self.target_index(target)?;
+        if let Some(error) = self.actors[index].failure() {
+            anyhow::bail!("{error}");
+        }
+        anyhow::ensure!(
+            self.actors[index].animation.is_none() || self.nominal_ticks.is_some(),
+            "receiver instance {index}: animation requires nominal_ticks"
+        );
         if index == self.index {
             return Ok(Route::Here);
         }

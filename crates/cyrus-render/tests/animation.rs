@@ -213,6 +213,29 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
     assert!(data.sections.contains_key("RASC"));
     let mut script = cyrus_game::script::AnimationScript::from_asset(&data, "FLAG2").unwrap();
     let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "FLAG2", 0).unwrap();
+    let scripts: cyrus_assets::script::Scripts =
+        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
+    let mut world = cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "FLAG2")
+        .unwrap();
+    let id = world.id(index).unwrap();
+    world.bind_animation(id, &data, 0).unwrap();
+    let advance = |world: &mut cyrus_game::script::ScriptWorld, ticks| {
+        use cyrus_game::script::{ScriptStage, Thread};
+        for stage in [
+            ScriptStage::Animation,
+            ScriptStage::Entry,
+            ScriptStage::Tasks { frame_scale: 256 },
+            ScriptStage::Body(Thread::Main),
+        ] {
+            world
+                .advance(id, stage, Some(ticks), None, 100_000)
+                .unwrap();
+        }
+    };
     let mut transitions = Vec::new();
     let mut ended = false;
     for _ in 0..10_000 {
@@ -220,6 +243,14 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         actor.request(0, 0, 1).unwrap();
         let before = script.program_counter();
         script.advance(&mut actor, 1).unwrap();
+        advance(&mut world, 1);
+        assert_eq!(
+            world.actors()[index]
+                .runtime()
+                .unwrap()
+                .program_counter(cyrus_game::script::Thread::Main),
+            Some(script.program_counter())
+        );
         if script.program_counter() != before {
             if script.waiting_for_group().is_none() {
                 ended = true;
@@ -261,6 +292,14 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
             .unwrap()
             .or(frame)
             .unwrap();
+        advance(&mut world, ticks);
+        let shared_frame = data
+            .resolve_frame("FLAG2", world.animation_frame(id).unwrap().unwrap())
+            .unwrap();
+        assert_eq!(
+            (&*shared_frame.model, shared_frame.frame),
+            ("FLAGA01", expected_frame)
+        );
         let frame = data.resolve_frame("FLAG2", frame).unwrap();
         assert_eq!((&*frame.model, frame.frame), ("FLAGA01", expected_frame));
         assert_eq!(actor.current_group(), Some(1));

@@ -182,3 +182,98 @@ fn pool_capacity_participates_in_cache_identity_and_old_schemas_require_reexport
             .contains("re-export")
     );
 }
+
+#[test]
+fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_claims() {
+    let mut scripts = cache();
+    scripts.actors.insert(
+        "Unplaced".into(),
+        Actor {
+            header_index: 0,
+            code_origin: 0,
+            instances: 1,
+            namespace: None,
+            instance_variables: vec![vec![]],
+            attributes: BTreeMap::new(),
+            hooks: vec![4, 9],
+            program: Program {
+                version: 2,
+                entry: 0,
+                variables: vec![],
+                strings: vec![],
+                steps: BTreeMap::from([
+                    (
+                        0,
+                        Step {
+                            next: 1,
+                            operation: Operation::Assign {
+                                destination: Place::Property {
+                                    object: Object::Player,
+                                    reference: 3,
+                                },
+                                formula: Formula {
+                                    first: Value::Call {
+                                        call: Box::new(Call {
+                                            function_id: 1,
+                                            kind: CallKind::Function,
+                                            target: Object::Local { index: 0 },
+                                            function: "Outer".into(),
+                                            arguments: vec![Value::Call {
+                                                call: Box::new(Call {
+                                                    function_id: 2,
+                                                    kind: CallKind::Function,
+                                                    target: Object::Camera,
+                                                    function: "Inner".into(),
+                                                    arguments: vec![Value::Update {
+                                                        place: Place::Flag { index: 0 },
+                                                        delta: 1,
+                                                    }],
+                                                }),
+                                            }],
+                                        }),
+                                    },
+                                    rest: vec![(1, Value::Integer { value: 2 })],
+                                },
+                            },
+                        },
+                    ),
+                    (
+                        1,
+                        Step {
+                            next: 1,
+                            operation: Operation::Unsupported {
+                                reason: "unknown form".into(),
+                            },
+                        },
+                    ),
+                ]),
+            },
+        },
+    );
+    let report = inventory::inspect(&scripts);
+    assert_eq!(report.declared_functions, ["NullFunction"]);
+    let actor = &report.actors["Unplaced"];
+    assert_eq!(actor.placements, 0);
+    assert_eq!(actor.instances, 1);
+    assert_eq!(actor.hooks, [4, 9]);
+    assert_eq!(
+        actor.calls,
+        BTreeMap::from([
+            ("1:Function:Outer".into(), 1),
+            ("2:Function:Inner".into(), 1)
+        ])
+    );
+    assert_eq!(
+        actor.references,
+        BTreeMap::from([
+            ("object:player".into(), 1),
+            ("object:local".into(), 1),
+            ("object:camera".into(), 1),
+            ("property:3".into(), 1),
+        ])
+    );
+    assert_eq!(actor.operands["value:call"], 2);
+    assert_eq!(actor.operands["value:update"], 1);
+    assert_eq!(actor.instructions["assign"], 1);
+    assert_eq!(actor.unsupported, ["unknown form"]);
+}

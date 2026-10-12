@@ -102,7 +102,7 @@ inspection state, not progression, revisit or save semantics. Preparation does
 not grant update eligibility. Removing the prepared world clears this registry.
 
 Native control and MCP `scripts` page through at most 64 actor diagnostics.
-`step_script` runs a selected main, interrupt or existing-task stage. The
+`step_script` runs a selected animation, entry, main, interrupt or existing-task stage. The
 inspection host supports the researched `GetAttribute`, `GetMyAttr`,
 `SetAttribute`, `SetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag` and `TestGlobalFlag`
 services. **Verified:** attribute writes retain the low byte; `SetAttribute`
@@ -145,3 +145,31 @@ remain sticky. These rules follow preservation's
 This is fresh logical preparation. Player switching, variable references, scriptless
 receivers, later allocation/recycling, reentrant callbacks, automatic scheduling,
 progression and saves remain unsupported.
+
+`ScriptWorld::bind_animation` attaches animation state to the logical instance
+only after world/content identity checks. The caller supplies an established
+default group. `advance` runs one animation, ordinary entry, task, or body stage;
+these stages remain separate. Once any actor has animation bound, all invocations
+require explicit nominal ticks, including zero. Task stages separately require frame scale. Waits and
+PushAnimation share one native-token map and the VM's six slots, including routed
+receiver tasks. The standalone animation adapter uses the same task handler.
+Animation failures are sticky and appear in actor diagnostics.
+
+`ScriptBinding` makes a scene node observe the logical actor's selected frame.
+It expires on world-generation or source changes. Presentation does not advance
+the script. Native MCP `bind_script_animation` can select a node by exact name;
+omitting the node prepares logical inspection only. `step_script` accepts
+`animation`, `entry`, `tasks`, `main`, and `interrupt`, with `nominal_ticks` for
+worlds with animation-bound actors and `frame_scale` for tasks. Bound sound dispatch
+uses the unique scene binding and existing sound consumer. Logical-only actors
+return sound intents in `captured_sounds` without audio playback.
+
+**Verified:** ordinary entry suppresses execution when an unpaused blocking task's
+physical operand identity is at or before the saved entry cursor. Direct
+interrupts bypass that entry gate, following preservation's SOUP contract.
+**Verified:** [preservation PR54](https://github.com/michidk/redguard-preservation/pull/54)
+establishes signed group comparison, finite-count writes only before animation
+task startup, and distinct model/playback default state. Attribute-44 writes
+remain unsupported because model state, actor-mode eligibility and navigation
+reservation ownership are not integrated. The inspection default is not a
+replacement for original state-dependent selection.

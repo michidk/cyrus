@@ -74,11 +74,23 @@ struct Audio<'w> {
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
-struct Inspection<'w> {
+struct Inspection<'w, 's> {
     preloaded: Option<Res<'w, Preloaded>>,
     hud: Option<Res<'w, cyrus_render::hud::HudState>>,
     scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
+    prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
+    animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
+    script_nodes: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static Name,
+            Option<&'static cyrus_game::script::ScriptBinding>,
+        ),
+    >,
+    script_sounds: Option<ResMut<'w, Messages<cyrus_world::sound::SoundCue>>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -106,6 +118,10 @@ fn handle(
         hud,
         scripts,
         mut script_actors,
+        prepared,
+        animations,
+        script_nodes,
+        mut script_sounds,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, flycam): (
@@ -118,6 +134,10 @@ fn handle(
     mut audio: Audio,
 ) {
     let rx = inbox.0.lock().unwrap();
+    let mut script_bindings: std::collections::BTreeMap<_, _> = script_nodes
+        .iter()
+        .filter_map(|(entity, _, binding)| binding.map(|binding| (entity, binding.actor)))
+        .collect();
     while let Ok(Pending { request, reply }) = rx.try_recv() {
         let id = request.id;
         let result = match request.cmd {
@@ -253,34 +273,116 @@ fn handle(
                     None => Err("script world is not prepared".into()),
                 }
             }
+            Command::BindScriptAnimation {
+                generation,
+                index,
+                default_group,
+                node,
+            } => (|| -> anyhow::Result<_> {
+                let world = script_actors
+                    .as_mut()
+                    .and_then(|actors| actors.current.as_mut())
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                let source = &prepared
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("world is not prepared"))?
+                    .animations;
+                let data = animations
+                    .get(source)
+                    .ok_or_else(|| anyhow::anyhow!("animation data is not loaded"))?;
+                let entity = if let Some(name) = node {
+                    let matches: Vec<_> = script_nodes
+                        .iter()
+                        .filter(|(_, candidate, _)| candidate.as_str() == name)
+                        .collect();
+                    anyhow::ensure!(
+                        matches.len() == 1,
+                        "scene node {name:?}: expected one match, found {}",
+                        matches.len()
+                    );
+                    anyhow::ensure!(
+                        script_bindings.get(&matches[0].0).is_none_or(|bound| bound.generation != generation),
+                        "scene node {name:?} already has a script binding"
+                    );
+                    Some(matches[0].0)
+                } else {
+                    None
+                };
+                let actor = cyrus_game::script::ScriptActorId { generation, index };
+                world.bind_animation(actor, data, default_group)?;
+                if let Some(entity) = entity {
+                    script_bindings.insert(entity, actor);
+                    commands
+                        .entity(entity)
+                        .remove::<(
+                            cyrus_game::script::ScriptedPlayback,
+                            cyrus_world::animation::AnimationPlayback,
+                            cyrus_world::animation::AnimationPose,
+                        )>()
+                        .insert(cyrus_game::script::ScriptBinding {
+                            actor,
+                            source: source.clone(),
+                        });
+                }
+                Ok(world.inspect(index, 1))
+            })()
+            .map_err(|error| format!("{error:#}")),
             Command::StepScript {
                 generation,
                 index,
                 stage,
                 frame_scale,
-            } => {
-                match script_actors
+                nominal_ticks,
+            } => (|| -> anyhow::Result<_> {
+                use cyrus_game::script::{ScriptActorId, ScriptStage, Thread};
+                let world = script_actors
                     .as_mut()
                     .and_then(|actors| actors.current.as_mut())
-                {
-                    Some(world) => {
-                        let id = cyrus_game::script::ScriptActorId { generation, index };
-                        let result = match stage {
-                            cyrus_control::ScriptStage::Tasks => world.step_tasks(id, frame_scale),
-                            cyrus_control::ScriptStage::Main => {
-                                world.step(id, cyrus_game::script::Thread::Main, 100_000)
-                            }
-                            cyrus_control::ScriptStage::Interrupt => {
-                                world.step(id, cyrus_game::script::Thread::Interrupt, 100_000)
-                            }
+                    .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
+                let id = ScriptActorId { generation, index };
+                let stage = match stage {
+                    cyrus_control::ScriptStage::Animation => ScriptStage::Animation,
+                    cyrus_control::ScriptStage::Entry => ScriptStage::Entry,
+                    cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks {
+                        frame_scale: frame_scale.ok_or_else(|| anyhow::anyhow!("task stage requires frame_scale"))?,
+                    },
+                    cyrus_control::ScriptStage::Main => ScriptStage::Body(Thread::Main),
+                    cyrus_control::ScriptStage::Interrupt => ScriptStage::Body(Thread::Interrupt),
+                };
+                let mut captured_sounds = Vec::new();
+                let mut emit = |actor: ScriptActorId, sound| -> anyhow::Result<()> {
+                    let mut nodes = script_bindings.iter().filter(|(_, bound)| **bound == actor);
+                    let Some((entity, _)) = nodes.next() else {
+                        use cyrus_world::animation::AnimationSound;
+                        let event = match sound {
+                            AnimationSound::Play { effect, rate_offset_hz } =>
+                                json!({"type":"play", "effect":effect, "rate_offset_hz":rate_offset_hz}),
+                            AnimationSound::Stop => json!({"type":"stop"}),
+                            AnimationSound::Forget => json!({"type":"forget"}),
                         };
-                        result
-                            .map(|()| world.inspect(index, 1))
-                            .map_err(|error| format!("{error:#}"))
-                    }
-                    None => Err("script world is not prepared".into()),
-                }
-            }
+                        captured_sounds.push(json!({"actor":actor, "sound":event}));
+                        return Ok(());
+                    };
+                    let entity = *entity;
+                    anyhow::ensure!(
+                        nodes.next().is_none(),
+                        "script sound receiver has multiple scene bindings"
+                    );
+                    script_sounds
+                        .as_mut()
+                        .ok_or_else(|| anyhow::anyhow!("script sound consumer unavailable"))?
+                        .write(cyrus_world::sound::SoundCue::Animation {
+                            actor: entity,
+                            sound,
+                        });
+                    Ok(())
+                };
+                world.advance(id, stage, nominal_ticks, Some(&mut emit), 100_000)?;
+                let mut result = world.inspect(index, 1);
+                result["captured_sounds"] = json!(captured_sounds);
+                Ok(result)
+            })()
+            .map_err(|error| format!("{error:#}")),
             Command::Quit => {
                 exit.write(AppExit::Success);
                 Ok(json!("bye"))
@@ -304,8 +406,7 @@ mod tests {
     use cyrus_control::Request;
     use std::sync::mpsc::channel;
 
-    #[test]
-    fn control_taps_survive_keyboard_update_and_release_next_frame() {
+    fn app() -> App {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -313,6 +414,7 @@ mod tests {
             bevy::input::InputPlugin,
         ))
         .init_state::<cyrus_game::AppState>()
+        .init_resource::<Assets<cyrus_assets::animation::Animations>>()
         .init_resource::<Fidelity>()
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
@@ -321,6 +423,12 @@ mod tests {
         .insert_resource(SceneRequest(String::new()))
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);
+        app
+    }
+
+    #[test]
+    fn control_taps_survive_keyboard_update_and_release_next_frame() {
+        let mut app = app();
         let (tx, rx) = channel();
         app.insert_resource(Inbox(Mutex::new(rx)));
         let (reply, result) = channel();
@@ -346,5 +454,183 @@ mod tests {
         let keys = app.world().resource::<ButtonInput<KeyCode>>();
         assert!(!keys.pressed(KeyCode::Enter));
         assert!(keys.just_released(KeyCode::Enter));
+    }
+
+    fn script_app() -> App {
+        use cyrus_assets::{animation::Animations, script::Scripts};
+        use cyrus_game::script::{ScriptActors, ScriptWorld};
+        let mut app = app();
+        let mut scripts: Scripts = serde_json::from_value(json!({
+            "version":3,"actor_pool_capacity":10,"content_id":"","world":17,
+            "definition":{"functions":[
+                {"name":"NullFunction","param_count":0,"kind":"function"},
+                {"name":"PushAnimation","param_count":2,"kind":"task"}
+            ],"flags":[],"references":[],"attributes":[]},
+            "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
+                "namespace":"ACTOR","instance_variables":[[]],"attributes":{},"hooks":[],
+                "program":{"version":2,"entry":0,"steps":{
+                    "0":{"next":1,"operation":{"type":"call","call":{
+                        "function_id":1,"kind":"task","target":{"type":"me"},
+                        "function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]
+                    }}},
+                    "1":{"next":2,"operation":{"type":"end","target":0}}
+                }}
+            }},
+            "instances":[{"object_id":0,"actor":"ACTOR","object_type":0,"active":0,"map_position":[0,0,0],"angles":[0,0,0]}],
+            "unsupported":{}
+        })).unwrap();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut actors = ScriptActors::default();
+        actors.current = Some(ScriptWorld::prepare(&scripts, 1).unwrap());
+        let data: Animations = serde_json::from_value(json!({
+            "version":2,"world":17,"sections":{},"models":{},"unsupported":{},
+            "metadata":{"script_content_id":scripts.content_id,"actors":[{
+                "script_name":"ACTOR","animation_groups":[
+                    {"group_index":1,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+                    {"group_index":7,"anim_type":0,"anim_id":1,"commands":[
+                        {"opcode":4,"sound_param":-17,"volume_shift":-1},
+                        {"opcode":0,"frame_reference":1},{"opcode":2,"value":0},{"opcode":1}]}
+                ]
+            }]}
+        })).unwrap();
+        let animations = app
+            .world_mut()
+            .resource_mut::<Assets<Animations>>()
+            .add(data);
+        app.insert_resource(actors)
+            .insert_resource(cyrus_world::lifecycle::PreparedWorld {
+                requested_name: "TEST".into(),
+                world: Some(17),
+                animations,
+                scripts: default(),
+                player_path: "test.player".into(),
+                scene_path: "test.glb".into(),
+                environment_path: "test.environment".into(),
+            });
+        app
+    }
+
+    fn run_commands(app: &mut App, commands: Vec<Command>) -> Vec<serde_json::Value> {
+        let (tx, rx) = channel();
+        let (reply, results) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let count = commands.len();
+        for (id, cmd) in commands.into_iter().enumerate() {
+            tx.send(Pending {
+                request: Request { id: id as u64, cmd },
+                reply: reply.clone(),
+            })
+            .unwrap();
+        }
+        app.update();
+        (0..count)
+            .map(|_| {
+                let response = results.try_recv().unwrap();
+                assert!(response.ok, "{:?}", response.error);
+                response.result.unwrap()
+            })
+            .collect()
+    }
+
+    fn bind_and_step(node: Option<&str>) -> Vec<Command> {
+        vec![
+            Command::BindScriptAnimation {
+                generation: 1,
+                index: 0,
+                default_group: 1,
+                node: node.map(str::to_owned),
+            },
+            Command::StepScript {
+                generation: 1,
+                index: 0,
+                stage: cyrus_control::ScriptStage::Main,
+                frame_scale: None,
+                nominal_ticks: Some(0),
+            },
+        ]
+    }
+
+    #[test]
+    fn node_less_script_sound_is_captured_without_poisoning_the_actor() {
+        let mut app = script_app();
+        let responses = run_commands(&mut app, bind_and_step(None));
+        assert_eq!(
+            responses[1]["captured_sounds"],
+            json!([{
+                "actor":{"generation":1,"index":0},
+                "sound":{"type":"play","effect":-17,"rate_offset_hz":-64}
+            }])
+        );
+        let response = run_commands(
+            &mut app,
+            vec![Command::StepScript {
+                generation: 1,
+                index: 0,
+                stage: cyrus_control::ScriptStage::Tasks,
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+            }],
+        );
+        assert_eq!(response[0]["captured_sounds"], json!([]));
+        let actors = app.world().resource::<cyrus_game::script::ScriptActors>();
+        assert!(
+            actors.current.as_ref().unwrap().actors()[0]
+                .failure()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn script_binding_routes_sound_in_the_same_command_drain() {
+        use cyrus_world::{animation::AnimationSound, sound::SoundCue};
+        let mut app = script_app();
+        app.add_message::<SoundCue>();
+        let source = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations
+            .clone();
+        let entity = app
+            .world_mut()
+            .spawn((
+                Name::new("actor-node"),
+                cyrus_game::script::ScriptBinding {
+                    actor: cyrus_game::script::ScriptActorId {
+                        generation: 0,
+                        index: 0,
+                    },
+                    source,
+                },
+                cyrus_world::animation::AnimationPose {
+                    model: "OLD".into(),
+                    frame: 9,
+                },
+            ))
+            .id();
+        let responses = run_commands(&mut app, bind_and_step(Some("actor-node")));
+        assert_eq!(responses[1]["captured_sounds"], json!([]));
+        assert!(
+            app.world()
+                .get::<cyrus_world::animation::AnimationPose>(entity)
+                .is_none()
+        );
+        let cues: Vec<_> = app
+            .world_mut()
+            .resource_mut::<Messages<SoundCue>>()
+            .drain()
+            .collect();
+        assert_eq!(cues.len(), 1);
+        assert!(matches!(cues[0], SoundCue::Animation {
+            actor,
+            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }
+        } if actor == entity));
+        assert_eq!(
+            app.world()
+                .get::<cyrus_game::script::ScriptBinding>(entity)
+                .unwrap()
+                .actor
+                .index,
+            0
+        );
     }
 }

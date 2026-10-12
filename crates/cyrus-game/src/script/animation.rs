@@ -1,4 +1,5 @@
 //! Animation host for the shared SOUP core; eligibility and ticks remain explicit.
+use super::tasks::{AnimationCall, NativeTasks};
 use anyhow::Context;
 use cyrus_assets::{
     animation::Animations,
@@ -7,16 +8,10 @@ use cyrus_assets::{
 use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 
-struct BlockingTask {
-    group: u16,
-    count: u8,
-    started: bool,
-}
-
 /// Explicit animation-only host. Unknown native services fail instead of succeeding.
 pub struct AnimationScript {
     runtime: Runtime,
-    task: Option<BlockingTask>,
+    tasks: NativeTasks,
 }
 impl AnimationScript {
     pub fn from_asset(data: &Animations, actor: &str) -> anyhow::Result<AnimationScript> {
@@ -53,7 +48,7 @@ impl AnimationScript {
         anyhow::ensure!(program.entry == 0, "{context}: interrupt entry unsupported");
         Ok(AnimationScript {
             runtime: cyrus_script::Runtime::new(program, context)?,
-            task: None,
+            tasks: NativeTasks::default(),
         })
     }
 }
@@ -63,7 +58,7 @@ impl AnimationScript {
         self.runtime.program_counter(Thread::Main).unwrap()
     }
     pub fn waiting_for_group(&self) -> Option<u16> {
-        self.task.as_ref().map(|task| task.group)
+        self.tasks.animation_group()
     }
     pub fn advance(
         &mut self,
@@ -86,43 +81,25 @@ impl AnimationScript {
         ticks: u32,
         sounds: Option<&mut dyn FnMut(AnimationSound) -> anyhow::Result<()>>,
     ) -> anyhow::Result<Option<u32>> {
+        let mut frame = None;
         let mut host = AnimationHost {
-            animation,
-            ticks,
-            sounds,
-            task: &mut self.task,
-            frame: None,
+            input: Some(AnimationCall {
+                animation,
+                ticks,
+                sounds,
+                frame: &mut frame,
+            }),
+            tasks: &mut self.tasks,
         };
         // This explicit inspection host has no gameplay globals or calibrated production clock.
         self.runtime
             .invoke(Thread::Main, &mut host, &mut [], 100_000)?;
-        Ok(host.frame)
+        Ok(frame)
     }
 }
 struct AnimationHost<'a, 'sound> {
-    animation: &'a mut ActorAnimation,
-    ticks: u32,
-    sounds: Option<&'sound mut dyn FnMut(AnimationSound) -> anyhow::Result<()>>,
-    task: &'a mut Option<BlockingTask>,
-    frame: Option<u32>,
-}
-impl AnimationHost<'_, '_> {
-    fn request(&mut self) -> anyhow::Result<()> {
-        let task = self.task.as_mut().context("animation task absent")?;
-        if self.animation.current_group() == Some(task.group) {
-            self.animation.set_loop_count(task.count)?;
-            task.started = true;
-        } else {
-            let frame = match &mut self.sounds {
-                Some(sounds) => self
-                    .animation
-                    .request_with_sounds(task.group, 0, self.ticks, *sounds)?,
-                None => self.animation.request(task.group, 0, self.ticks)?,
-            };
-            self.frame = frame.or(self.frame);
-        }
-        Ok(())
-    }
+    input: Option<AnimationCall<'a, 'sound>>,
+    tasks: &'a mut NativeTasks,
 }
 impl Host for AnimationHost<'_, '_> {
     fn call(
@@ -131,7 +108,7 @@ impl Host for AnimationHost<'_, '_> {
         kind: CallKind,
         function: &str,
         arguments: &[Argument],
-        _: cyrus_script::Invocation,
+        invocation: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<CallResult> {
         anyhow::ensure!(
@@ -142,59 +119,22 @@ impl Host for AnimationHost<'_, '_> {
             kind == CallKind::Task && function.eq_ignore_ascii_case("PushAnimation"),
             "task {function} unsupported"
         );
-        let [group, count] = arguments else {
-            anyhow::bail!("PushAnimation requires two arguments")
-        };
-        let group = u16::try_from(group.integer()?)
-            .context("PushAnimation group outside supported range")?;
-        anyhow::ensure!(
-            group <= i16::MAX as u16,
-            "PushAnimation signed group unsupported"
-        );
-        *self.task = Some(BlockingTask {
-            group,
-            count: count.integer()? as u8,
-            started: false,
-        });
-        self.request()?;
-        Ok(CallResult::Pending(1))
+        self.tasks
+            .call(function, kind, arguments, invocation, &mut self.input)?
+            .context("animation task absent")
     }
     fn poll(
         &mut self,
         token: u64,
         arguments: &[Argument],
-        _: cyrus_script::Invocation,
+        invocation: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
-        anyhow::ensure!(token == 1, "animation task token unavailable");
-        let [group, count] = arguments else {
-            anyhow::bail!("PushAnimation requires two arguments")
-        };
-        let group = u16::try_from(group.integer()?)
-            .context("PushAnimation group outside supported range")?;
-        anyhow::ensure!(
-            group <= i16::MAX as u16,
-            "PushAnimation signed group unsupported"
-        );
-        let task = self.task.as_mut().context("animation task absent")?;
-        task.group = group;
-        task.count = count.integer()? as u8;
-        let task = self.task.as_ref().context("animation task absent")?;
-        if task.started {
-            if self.animation.current_group() == Some(task.group) {
-                return Ok(false);
-            }
-            *self.task = None;
-            Ok(true)
-        } else {
-            self.request()?;
-            Ok(false)
-        }
+        self.tasks
+            .poll(token, arguments, invocation, &mut self.input)
     }
     fn cancel(&mut self, token: u64) -> anyhow::Result<()> {
-        anyhow::ensure!(token == 1, "animation task token unavailable");
-        *self.task = None;
-        Ok(())
+        self.tasks.cancel(token)
     }
     fn end(&mut self, _: Thread) -> anyhow::Result<()> {
         Ok(())

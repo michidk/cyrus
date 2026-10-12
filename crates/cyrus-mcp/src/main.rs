@@ -99,12 +99,26 @@ struct ScriptsParams {
 struct ScriptStepParams {
     generation: u64,
     index: usize,
-    #[schemars(description = "main, interrupt, or tasks")]
+    #[schemars(description = "animation, entry, main, interrupt, or tasks")]
     stage: String,
     #[schemars(
         description = "Required for tasks; original scale with eight fractional bits. No production clock is implied."
     )]
     frame_scale: Option<u32>,
+    #[schemars(
+        description = "Required when any actor has animation bound; original whole nominal ticks, including zero."
+    )]
+    nominal_ticks: Option<u32>,
+}
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ScriptAnimationParams {
+    generation: u64,
+    index: usize,
+    default_group: u16,
+    #[schemars(
+        description = "Exact scene node name for visual/sound binding; omit to capture sound intents without playback."
+    )]
+    node: Option<String>,
 }
 
 #[derive(Clone)]
@@ -265,6 +279,20 @@ impl Cyrus {
         })?)
     }
     #[tool(
+        description = "Prepare one inspected actor's animation with an explicitly supplied default group. Does not start gameplay."
+    )]
+    fn bind_script_animation(
+        &self,
+        Parameters(p): Parameters<ScriptAnimationParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::BindScriptAnimation {
+            generation: p.generation,
+            index: p.index,
+            default_group: p.default_group,
+            node: p.node,
+        })?)
+    }
+    #[tool(
         description = "Step one explicit script stage for an inspected actor generation. Automatic gameplay remains disabled."
     )]
     fn step_script(
@@ -272,12 +300,14 @@ impl Cyrus {
         Parameters(p): Parameters<ScriptStepParams>,
     ) -> Result<CallToolResult, McpError> {
         let stage = match p.stage.as_str() {
+            "animation" => cyrus_control::ScriptStage::Animation,
+            "entry" => cyrus_control::ScriptStage::Entry,
             "main" => cyrus_control::ScriptStage::Main,
             "interrupt" => cyrus_control::ScriptStage::Interrupt,
             "tasks" => cyrus_control::ScriptStage::Tasks,
             _ => {
                 return Err(McpError::invalid_params(
-                    "stage must be main, interrupt, or tasks",
+                    "stage must be animation, entry, main, interrupt, or tasks",
                     None,
                 ));
             }
@@ -287,6 +317,7 @@ impl Cyrus {
             index: p.index,
             stage,
             frame_scale: p.frame_scale,
+            nominal_ticks: p.nominal_ticks,
         })?)
     }
 
