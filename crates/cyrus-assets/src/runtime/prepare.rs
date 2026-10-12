@@ -641,6 +641,7 @@ fn model<R: ReadAssets>(
         library.publish(&url, &gltf::to_glb(&json, &bytes)?)?;
         frames.push(url);
     }
+    library.source.progress(count, count, "Model frames ready");
     preview.details.push((
         "Appearance".into(),
         "Generic textured preview; world palette and lighting may differ.".into(),

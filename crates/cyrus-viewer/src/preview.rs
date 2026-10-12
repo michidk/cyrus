@@ -1,5 +1,8 @@
 //! Selection-owned scene, camera and media playback.
-use crate::{loading::Blob, ui::Viewer};
+use crate::{
+    loading::Blob,
+    ui::{Shading, Viewer},
+};
 use bevy::{
     audio::{AudioSinkPlayback, Volume},
     camera::{Viewport, primitives::Aabb},
@@ -97,22 +100,42 @@ pub fn sync(
         }
         viewer.scene_dirty = false;
     }
+    viewer.render_loading = false;
+    if let Some(Content::Model { frames, .. }) = viewer.preview.as_ref().map(|p| &p.content) {
+        let total = frames.len();
+        let done = roots
+            .iter()
+            .filter(|(_, root, _, _)| assets.is_loaded_with_dependencies(root.0.id()))
+            .count();
+        viewer.render_loading = done < total;
+        if viewer.render_loading {
+            viewer.load_status = format!("Loading model frames and textures ({done}/{total})");
+            viewer.load_fraction = Some(done as f32 / total.max(1) as f32);
+        }
+    }
     if !selection_changed {
         for (_, root, _, _) in &roots {
             if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(root.0.id())
             {
                 viewer.error = Some(format!("Model load: {error}"));
                 viewer.needs_frame = false;
+                viewer.render_loading = false;
             }
         }
     }
     if !viewer.audio_dirty {
         for (_, player) in &audio {
+            if !assets.is_loaded_with_dependencies(player.0.id()) {
+                viewer.render_loading = true;
+                viewer.load_fraction = None;
+                viewer.load_status = "Loading audio…".into();
+            }
             if let Some(bevy::asset::LoadState::Failed(error)) =
                 assets.get_load_state(player.0.id())
             {
                 viewer.error = Some(format!("Audio load: {error}"));
                 viewer.playing = false;
+                viewer.render_loading = false;
             }
         }
     }
@@ -160,7 +183,7 @@ pub fn frame_camera(
         ),
     >,
 ) {
-    if viewer.needs_frame && !ready.is_empty() && !meshes.is_empty() {
+    if viewer.needs_frame && !viewer.render_loading && !ready.is_empty() && !meshes.is_empty() {
         let (mut min, mut max) = (Vec3::MAX, Vec3::MIN);
         for (bounds, t) in &meshes {
             // Transform all corners so rotated placements contribute correct bounds.
@@ -193,7 +216,7 @@ pub fn frame_camera(
                 .preview
                 .as_ref()
                 .is_some_and(|p| matches!(p.content, Content::Model { .. }));
-        let rotation = Quat::from_euler(EulerRot::YXZ, viewer.yaw, viewer.pitch, 0.);
+        let rotation = viewer.rotation();
         transform.translation = viewer.center + rotation * Vec3::new(0., 0., viewer.distance);
         transform.look_at(viewer.center, Vec3::Y);
         if !viewer
@@ -323,6 +346,16 @@ pub fn movie(
         }
     }
     viewer.decoding = waiting;
+    if viewer.movie_blob.is_some() || waiting {
+        viewer.render_loading = true;
+        viewer.load_fraction = None;
+        viewer.load_status = if waiting {
+            "Decoding movie frames…"
+        } else {
+            "Loading movie…"
+        }
+        .into();
+    }
     for mut sink in &mut sinks {
         sink.set_volume(Volume::Linear(viewer.volume));
         if viewer.playing && !waiting {
@@ -357,7 +390,39 @@ pub fn texture(
 pub struct Edges;
 #[derive(Component)]
 pub struct EdgesPrepared;
+#[derive(Component)]
+pub struct SurfaceStyle {
+    original: StandardMaterial,
+    mode: Shading,
+}
+fn shaded_material(original: &StandardMaterial, mode: Shading) -> StandardMaterial {
+    let mut material = original.clone();
+    match mode {
+        Shading::Textured => {}
+        Shading::Unlit => material.unlit = true,
+        Shading::Solid | Shading::Wireframe => {
+            material.unlit = mode == Shading::Wireframe;
+            material.base_color_texture = None;
+            material.normal_map_texture = None;
+            material.metallic_roughness_texture = None;
+            material.emissive_texture = None;
+            material.emissive = LinearRgba::BLACK;
+            material.base_color = if mode == Shading::Wireframe {
+                Color::NONE
+            } else {
+                Color::srgb(0.65, 0.7, 0.75)
+            };
+            material.alpha_mode = AlphaMode::Mask(0.5);
+        }
+    }
+    material
+}
 type UnpreparedMesh = (Without<Edges>, Without<EdgesPrepared>);
+type SurfaceMaterials<'a> = (
+    Entity,
+    &'a mut MeshMaterial3d<StandardMaterial>,
+    Option<&'a SurfaceStyle>,
+);
 
 /// Line geometry also works on WebGL, which has no polygon wireframe mode.
 pub fn edges(
@@ -365,17 +430,43 @@ pub fn edges(
     viewer: Res<Viewer>,
     sources: Query<(Entity, &Mesh3d), UnpreparedMesh>,
     mut visibility: Query<&mut Visibility, With<Edges>>,
+    mut surfaces: Query<SurfaceMaterials<'_>, Without<Edges>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    for (entity, mut handle, style) in &mut surfaces {
+        if style.is_some_and(|style| style.mode == viewer.shading) {
+            continue;
+        }
+        let original = if let Some(style) = style {
+            style.original.clone()
+        } else if let Some(material) = materials.get(&handle.0) {
+            material.clone()
+        } else {
+            continue;
+        };
+        let material = shaded_material(&original, viewer.shading);
+        if style.is_some() {
+            if let Some(mut displayed) = materials.get_mut(&handle.0) {
+                *displayed = material;
+            }
+        } else {
+            handle.0 = materials.add(material);
+        }
+        commands.entity(entity).insert(SurfaceStyle {
+            original,
+            mode: viewer.shading,
+        });
+    }
+    let show_edges = viewer.edges || viewer.shading == Shading::Wireframe;
     for mut visibility in &mut visibility {
-        *visibility = if viewer.wireframe {
+        *visibility = if show_edges {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
     }
-    if !viewer.wireframe {
+    if !show_edges {
         return;
     }
     for (entity, handle) in &sources {
@@ -411,7 +502,6 @@ pub fn edges(
         let material = materials.add(StandardMaterial {
             base_color: Color::srgb(0.3, 0.9, 0.7),
             unlit: true,
-            depth_bias: -1.,
             ..default()
         });
         commands.entity(entity).insert(EdgesPrepared).with_child((
@@ -454,6 +544,117 @@ pub fn animate(mut viewer: ResMut<Viewer>, time: Res<Time>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn edges_use_valid_lines_and_shading_restores_original_material() {
+        let mut app = App::new();
+        app.world_mut()
+            .register_required_components::<Mesh3d, Visibility>();
+        app.init_resource::<Viewer>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .add_systems(Update, edges);
+        let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(
+            Mesh::new(
+                bevy::mesh::PrimitiveTopology::TriangleList,
+                bevy::asset::RenderAssetUsages::default(),
+            )
+            .with_inserted_attribute(
+                Mesh::ATTRIBUTE_POSITION,
+                vec![[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]],
+            ),
+        );
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial {
+                base_color: Color::srgb(0.2, 0.4, 0.6),
+                ..default()
+            });
+        let surface = app
+            .world_mut()
+            .spawn((Mesh3d(mesh), MeshMaterial3d(material)))
+            .id();
+        app.world_mut().resource_mut::<Viewer>().shading = Shading::Wireframe;
+        app.update();
+        let world = app.world_mut();
+        let (line, line_material, visibility) = world.query_filtered::<(&Mesh3d, &MeshMaterial3d<StandardMaterial>, &Visibility), With<Edges>>().single(world).unwrap();
+        assert_eq!(*visibility, Visibility::Inherited);
+        assert_eq!(
+            world
+                .resource::<Assets<Mesh>>()
+                .get(line)
+                .unwrap()
+                .primitive_topology(),
+            bevy::mesh::PrimitiveTopology::LineList
+        );
+        assert_eq!(
+            world
+                .resource::<Assets<Mesh>>()
+                .get(line)
+                .unwrap()
+                .count_vertices(),
+            6
+        );
+        assert_eq!(
+            world
+                .resource::<Assets<StandardMaterial>>()
+                .get(&line_material.0)
+                .unwrap()
+                .depth_bias,
+            0.
+        );
+        let handle = world
+            .get::<MeshMaterial3d<StandardMaterial>>(surface)
+            .unwrap();
+        assert_eq!(
+            world
+                .resource::<Assets<StandardMaterial>>()
+                .get(&handle.0)
+                .unwrap()
+                .base_color,
+            Color::NONE
+        );
+        world.resource_mut::<Viewer>().shading = Shading::Textured;
+        app.update();
+        let world = app.world_mut();
+        let handle = world
+            .get::<MeshMaterial3d<StandardMaterial>>(surface)
+            .unwrap();
+        assert_eq!(
+            world
+                .resource::<Assets<StandardMaterial>>()
+                .get(&handle.0)
+                .unwrap()
+                .base_color,
+            Color::srgb(0.2, 0.4, 0.6)
+        );
+        let visibility = world
+            .query_filtered::<&Visibility, With<Edges>>()
+            .single(world)
+            .unwrap();
+        assert_eq!(*visibility, Visibility::Hidden);
+    }
+
+    #[test]
+    fn flight_is_frame_rate_independent_and_shift_boosts_speed() {
+        let mut once = Viewer::default();
+        once.yaw = 0.;
+        once.pitch = 0.;
+        once.distance = 100.;
+        let mut twice = Viewer::default();
+        twice.yaw = 0.;
+        twice.pitch = 0.;
+        twice.distance = 100.;
+        once.fly(Vec3::NEG_Z, 1., false);
+        twice.fly(Vec3::NEG_Z, 0.5, false);
+        twice.fly(Vec3::NEG_Z, 0.5, false);
+        assert_eq!(once.center, Vec3::new(0., 0., -200.));
+        assert_eq!(once.center, twice.center);
+        twice.center = Vec3::ZERO;
+        twice.fly(Vec3::NEG_Z, 1., true);
+        assert_eq!(twice.center, Vec3::new(0., 0., -800.));
+    }
+
     #[test]
     fn frame_playback_advances_stops_and_loops() {
         let mut app = App::new();

@@ -11,12 +11,16 @@ struct HttpFiles {
     base: String,
     manifest: Manifest,
     progress: js_sys::Function,
+    reporting: bool,
 }
 impl ReadAssets for HttpFiles {
     fn manifest(&self) -> &Manifest {
         &self.manifest
     }
     fn progress(&self, done: usize, total: usize, label: &str) {
+        if !self.reporting {
+            return;
+        }
         let _ = self.progress.call3(
             &JsValue::NULL,
             &JsValue::from_f64(done as f64),
@@ -42,11 +46,7 @@ impl ReadAssets for HttpFiles {
             .map(|part| String::from(js_sys::encode_uri_component(part)))
             .collect::<Vec<_>>()
             .join("/");
-        self.progress(
-            start as usize,
-            file.bytes as usize,
-            &format!("Reading {path}"),
-        );
+        self.progress(0, length, &format!("Reading {path}"));
         const CHUNK: usize = 1024 * 1024;
         let mut bytes = vec![0; length];
         for offset in (0..length).step_by(CHUNK) {
@@ -100,20 +100,7 @@ impl ReadAssets for HttpFiles {
                 chunk.length()
             );
             chunk.copy_to(&mut bytes[offset..offset + length]);
-            if bytes.len() >= CHUNK {
-                let received = offset + length;
-                let name = format!(
-                    "{path} · {:.1} / {:.1} MiB",
-                    received as f64 / 1_048_576.,
-                    bytes.len() as f64 / 1_048_576.
-                );
-                let _ = self.progress.call3(
-                    &JsValue::NULL,
-                    &JsValue::from_f64(100. * received as f64 / bytes.len() as f64),
-                    &JsValue::from_f64(100.),
-                    &JsValue::from_str(&name),
-                );
-            }
+            self.progress(offset + length, bytes.len(), &format!("Reading {path}"));
         }
         Ok(bytes)
     }
@@ -138,11 +125,12 @@ impl AssetLibrary {
         progress: js_sys::Function,
     ) -> std::result::Result<AssetLibrary, JsValue> {
         let manifest: Manifest = serde_json::from_str(manifest).map_err(bridge_error)?;
-        let library = Library::open(
+        let mut library = Library::open(
             HttpFiles {
                 base,
                 manifest,
                 progress: progress.clone(),
+                reporting: false,
             },
             |done, total, name| {
                 let _ = progress.call3(
@@ -154,6 +142,7 @@ impl AssetLibrary {
             },
         )
         .map_err(|error| bridge_error(format!("{error:#}")))?;
+        library.source.reporting = true;
         Ok(Self { library })
     }
     pub fn catalog(&self) -> std::result::Result<String, JsValue> {

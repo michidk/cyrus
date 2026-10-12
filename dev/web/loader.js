@@ -79,6 +79,7 @@ try {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value); received += value.length;
+      fill.classList.toggle("indeterminate", !total);
       fill.style.width = total ? (100 * received / total) + "%" : "0%";
       label.textContent = name + " · " + (received / 1048576).toFixed(1) + " MB" +
         (total ? " / " + (total / 1048576).toFixed(1) + " MB" : "");
@@ -88,6 +89,7 @@ try {
   }
   const wasm = await download("./pkg/" + engine + "_bg.wasm", "Loading application");
   label.textContent = "Starting application…";
+  fill.classList.add("indeterminate");
   const { default: init } = await import("./pkg/" + engine + ".js?v=" + wasm.version);
   try { await init({ module_or_path: wasm.bytes }); }
   catch (error) { if (!String(error).includes("Using exceptions for control flow")) throw error; }

@@ -202,8 +202,9 @@ fn poll(
         match message {
             Message::Progress(done, total, name) => {
                 viewer.load_status = format!("{name} ({done}/{total})");
+                viewer.load_fraction = (total > 0).then(|| done as f32 / total as f32);
                 progress.label = viewer.load_status.clone();
-                progress.fraction = Some(done as f32 / total.max(1) as f32);
+                progress.fraction = viewer.load_fraction;
             }
             Message::Catalog(catalog) => {
                 viewer.set_catalog(catalog);
@@ -300,4 +301,11 @@ fn follow_link(
             viewer.audio_dirty = true;
         }
     }
+}
+
+#[wasm_bindgen(
+    inline_js = "export function change_game_files() { document.getElementById('change-install').click(); }"
+)]
+extern "C" {
+    pub fn change_game_files();
 }

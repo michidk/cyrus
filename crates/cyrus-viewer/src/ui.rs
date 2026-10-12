@@ -11,6 +11,21 @@ pub enum ImagePalette {
     Indices,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraMode {
+    #[default]
+    Orbit,
+    Flycam,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Shading {
+    #[default]
+    Textured,
+    Unlit,
+    Solid,
+    Wireframe,
+}
+
 #[derive(Resource)]
 pub struct Viewer {
     pub catalog: Option<Catalog>,
@@ -39,7 +54,11 @@ pub struct Viewer {
     pub model_palette: Option<String>,
     pub zoom: f32,
     pub fit: bool,
-    pub wireframe: bool,
+    pub edges: bool,
+    pub shading: Shading,
+    pub camera_mode: CameraMode,
+    pub load_fraction: Option<f32>,
+    pub render_loading: bool,
     pub scene_dirty: bool,
     pub audio_dirty: bool,
     pub needs_frame: bool,
@@ -63,6 +82,14 @@ pub struct Viewer {
     styled: bool,
 }
 impl Viewer {
+    pub fn rotation(&self) -> Quat {
+        Quat::from_euler(EulerRot::YXZ, self.yaw, self.pitch, 0.)
+    }
+    pub fn fly(&mut self, direction: Vec3, seconds: f32, boost: bool) {
+        let speed = (self.distance * 2.).max(100.) * if boost { 4. } else { 1. };
+        self.center += self.rotation() * direction.normalize_or_zero() * speed * seconds;
+    }
+
     pub fn set_preview(&mut self, preview: Preview) {
         if let Content::Spatial { cells, .. } = &preview.content {
             self.spatial_depth = 3.min(cells.iter().map(|cell| cell.depth).max().unwrap_or(0));
@@ -131,7 +158,11 @@ impl Default for Viewer {
             model_palette: None,
             zoom: 1.,
             fit: true,
-            wireframe: false,
+            edges: false,
+            shading: Shading::Textured,
+            camera_mode: CameraMode::Orbit,
+            load_fraction: None,
+            render_loading: false,
             scene_dirty: false,
             audio_dirty: false,
             needs_frame: false,
@@ -162,6 +193,7 @@ pub fn draw(
     mut viewer: ResMut<Viewer>,
     mut commands: Commands,
     assets: Res<AssetServer>,
+    time: Res<Time>,
     #[cfg(not(target_arch = "wasm32"))] library: Option<Res<loading::NativeLibrary>>,
     #[cfg(target_arch = "wasm32")] worker: NonSend<crate::browser::BrowserWorker>,
 ) -> Result {
@@ -216,7 +248,10 @@ pub fn draw(
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.toggle_value(&mut viewer.details, "Details");
-                ui.label("Original assets · read only");
+                #[cfg(target_arch = "wasm32")]
+                if ui.button("Change game files").clicked() {
+                    crate::browser::change_game_files();
+                }
             });
         });
         ui.add_space(6.);
@@ -430,6 +465,9 @@ pub fn draw(
         })
         .show(&mut viewport_ui, |ui| {
             if let Some(preview) = &preview {
+                if viewer.render_loading {
+                    loading_bar(ui, viewer.load_fraction, &viewer.load_status);
+                }
                 if !matches!(
                     &preview.content,
                     Content::Model { data: Some(_), .. }
@@ -468,7 +506,20 @@ pub fn draw(
                             .inner_margin(8.)
                             .show(ui, |ui| {
                                 ui.horizontal_wrapped(|ui| {
-                                    ui.checkbox(&mut viewer.wireframe, "Edges");
+                                    egui::ComboBox::from_id_salt("camera-mode")
+                                        .selected_text(format!("{:?}", viewer.camera_mode))
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut viewer.camera_mode, CameraMode::Orbit, "Orbit");
+                                            ui.selectable_value(&mut viewer.camera_mode, CameraMode::Flycam, "Flycam");
+                                        });
+                                    egui::ComboBox::from_id_salt("shading")
+                                        .selected_text(format!("{:?}", viewer.shading))
+                                        .show_ui(ui, |ui| {
+                                            for mode in [Shading::Textured, Shading::Unlit, Shading::Solid, Shading::Wireframe] {
+                                                ui.selectable_value(&mut viewer.shading, mode, format!("{mode:?}"));
+                                            }
+                                        });
+                                    ui.checkbox(&mut viewer.edges, "Edges");
                                     if ui.button("Frame object").clicked() {
                                         viewer.needs_frame = true;
                                     }
@@ -485,7 +536,10 @@ pub fn draw(
                                             viewer.scene_dirty = true;
                                         }
                                     }
-                                    ui.weak("Textured · orbit / pan / zoom");
+                                });
+                                ui.weak(match viewer.camera_mode {
+                                    CameraMode::Orbit => "Drag to orbit · right-drag to pan · scroll to zoom",
+                                    CameraMode::Flycam => "Right-drag to look · WASD to fly · Q/E down/up · Shift faster",
                                 });
                                 frame_transport(ui, &mut viewer, frames.len());
                                 if catalog
@@ -539,22 +593,32 @@ pub fn draw(
                         viewer.viewport = rect;
                         viewer.pixels_per_point = ctx.pixels_per_point();
                         let response = ui.allocate_rect(rect, egui::Sense::drag());
-                        if response.dragged_by(egui::PointerButton::Primary) {
+                        let fly = viewer.camera_mode == CameraMode::Flycam;
+                        if response.dragged_by(if fly { egui::PointerButton::Secondary } else { egui::PointerButton::Primary }) {
+                            let position = viewer.center + viewer.rotation() * Vec3::Z * viewer.distance;
                             let delta = response.drag_delta();
                             viewer.yaw -= delta.x * 0.008;
                             viewer.pitch = (viewer.pitch - delta.y * 0.008).clamp(-1.5, 1.5);
+                            if fly {
+                                viewer.center = position - viewer.rotation() * Vec3::Z * viewer.distance;
+                            }
                         }
-                        if response.dragged_by(egui::PointerButton::Secondary) {
+                        if !fly && response.dragged_by(egui::PointerButton::Secondary) {
                             let delta = response.drag_delta();
                             let scale = viewer.distance * 0.002;
                             let rotation = Quat::from_rotation_y(viewer.yaw);
-                            viewer.center +=
-                                rotation * Vec3::new(-delta.x * scale, delta.y * scale, 0.);
+                            viewer.center += rotation * Vec3::new(-delta.x * scale, delta.y * scale, 0.);
                         }
-                        if response.hovered() {
-                            viewer.distance = (viewer.distance
-                                * (-ctx.input(|i| i.smooth_scroll_delta.y) * 0.002).exp())
-                            .clamp(0.02, 1_000_000.);
+                        if response.hovered() && !ctx.text_edit_focused() {
+                            if fly {
+                                let (direction, boost) = ctx.input(|i| {
+                                    let axis = |positive, negative| u8::from(i.key_down(positive)) as f32 - u8::from(i.key_down(negative)) as f32;
+                                    (Vec3::new(axis(egui::Key::D, egui::Key::A), axis(egui::Key::E, egui::Key::Q), axis(egui::Key::S, egui::Key::W)), i.modifiers.shift)
+                                });
+                                viewer.fly(direction, time.delta_secs(), boost);
+                            } else {
+                                viewer.distance = (viewer.distance * (-ctx.input(|i| i.smooth_scroll_delta.y) * 0.002).exp()).clamp(0.02, 1_000_000.);
+                            }
                         }
                     }
                     Content::Images { frames } => {
@@ -842,13 +906,12 @@ pub fn draw(
                 ui.vertical_centered(|ui| {
                     ui.add_space((ui.available_height() * 0.5 - 40.).max(0.));
                     if viewer.indexing || viewer.preparing || viewer.pending.is_some() {
-                        ui.add(egui::Spinner::new().size(32.));
+                        loading_bar(ui, viewer.load_fraction, &viewer.load_status);
                         ui.heading(if viewer.indexing {
                             "Reading archive index…"
                         } else {
                             "Loading selected asset…"
                         });
-                        ui.label(&viewer.load_status);
                     } else if let Some(error) = &viewer.error {
                         ui.heading("Preview could not load");
                         ui.label(error);
@@ -1177,6 +1240,15 @@ fn visibility_view(ui: &mut egui::Ui, viewer: &mut Viewer, cells: &[cyrus_assets
             ));
         }
     }
+}
+
+fn loading_bar(ui: &mut egui::Ui, fraction: Option<f32>, label: &str) {
+    ui.add(
+        egui::ProgressBar::new(fraction.unwrap_or(0.))
+            .animate(fraction.is_none())
+            .desired_width(300.)
+            .text(label),
+    );
 }
 
 #[cfg(test)]

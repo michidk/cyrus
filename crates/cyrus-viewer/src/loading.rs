@@ -151,7 +151,9 @@ pub fn select(
     viewer.frame_elapsed = 0.;
     viewer.data_mode = 0;
     viewer.data_text.clear();
-    viewer.load_status.clear();
+    viewer.load_status = "Preparing selected asset…".into();
+    viewer.load_fraction = None;
+    viewer.render_loading = false;
     viewer.playing = false;
     viewer.position = 0.;
     viewer.scene_dirty = true;

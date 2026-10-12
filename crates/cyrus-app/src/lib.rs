@@ -87,6 +87,14 @@ fn loading(progress: Res<LoadingProgress>) {
     }
     if let Some(fill) = document.get_element_by_id("fill") {
         let _ = fill.set_attribute(
+            "class",
+            if progress.fraction.is_none() {
+                "indeterminate"
+            } else {
+                ""
+            },
+        );
+        let _ = fill.set_attribute(
             "style",
             &format!(
                 "width:{}%",
@@ -100,11 +108,12 @@ fn loading(progress: Res<LoadingProgress>) {
 fn loading(
     mut commands: Commands,
     progress: Res<LoadingProgress>,
+    time: Res<Time>,
     roots: Query<Entity, With<LoadingUi>>,
     mut bars: Query<&mut Node, With<Bar>>,
     mut labels: Query<&mut Text, With<Label>>,
 ) {
-    if !progress.is_changed() {
+    if !progress.is_changed() && !(progress.visible && progress.fraction.is_none()) {
         return;
     }
     if !progress.visible {
@@ -147,7 +156,9 @@ fn loading(
                     children![(
                         Bar,
                         Node {
-                            width: percent(progress.fraction.unwrap_or(0.) * 100.),
+                            width: percent(
+                                progress.fraction.map_or(25., |fraction| fraction * 100.)
+                            ),
                             height: percent(100),
                             ..default()
                         },
@@ -158,7 +169,12 @@ fn loading(
         ));
     } else {
         for mut bar in &mut bars {
-            bar.width = percent(progress.fraction.unwrap_or(0.) * 100.);
+            bar.width = percent(progress.fraction.map_or(25., |fraction| fraction * 100.));
+            bar.margin.left = percent(if progress.fraction.is_none() {
+                (time.elapsed_secs() * 0.75).sin().mul_add(0.5, 0.5) * 75.
+            } else {
+                0.
+            });
         }
         for mut label in &mut labels {
             label.0.clone_from(&progress.label);

@@ -23,8 +23,15 @@ world variants. Panels resize by dragging their boundaries.
 Images support fit, zoom, frame selection, and palette selection for indexed
 sources. Animated images and models have Play/Pause, Loop, and an editable frame
 interval in milliseconds. Fonts show a sample and glyph atlas. Models and worlds have a
-textured orbit view, edge overlay, frame controls where supported, and automatic
-framing. Drag to orbit, right-drag to pan, and scroll to zoom.
+Orbit (default) and Flycam camera modes, Textured, Unlit, Solid and Wireframe
+shading, an optional edge overlay, frame controls where supported, and automatic
+framing. Orbit uses drag to rotate, right-drag to pan, and scroll to zoom.
+Flycam uses right-drag to look and WASD to move while the pointer is over the
+viewport; Q/E moves down/up and Shift boosts speed fourfold. Flight speed scales
+with the framed asset size, crossing twice the framing distance per second.
+Loading shows a progress bar, including archive indexing, preview preparation,
+model dependencies and media. Stages without a measurable total use an animated
+bar. The browser's Change game files button sits beside Details in the header.
 Models start with the first available scene palette. The palette selector lists
 palettes from their referencing worlds, including time-of-day variants, with
 Without palette last. Indexed images use their embedded palette first when present; otherwise they

@@ -116,6 +116,7 @@ export function installControls() {
   const change = document.createElement("button");
   change.id = "change-install";
   change.textContent = "Change game files";
+  change.hidden = document.body.dataset.engine === "cyrus-viewer";
   change.addEventListener("click", () => {
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* Storage may be disabled. */ }
     const url = new URL(location.href);

@@ -1,7 +1,7 @@
 html,body{margin:0;height:100%;background:#000;overflow:hidden;font:13px system-ui;color:#ccc}
 canvas{width:100%;height:100%;display:block;outline:none}
 #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000;z-index:10}
-#bar{width:min(400px,85vw);height:16px;border:1px solid #fff}
+#bar{overflow:hidden;width:min(400px,85vw);height:16px;border:1px solid #fff}
 #fill{height:100%;width:0;background:#fff}
 
 #install-picker{display:flex;flex-direction:column;gap:12px;width:min(480px,85vw)}
@@ -9,3 +9,6 @@ canvas{width:100%;height:100%;display:block;outline:none}
 #install-picker input,#install-picker button{font:inherit;padding:10px}
 #install-picker p{margin:0}
 #change-install{position:fixed;right:8px;bottom:8px;z-index:20;padding:6px;font:inherit}
+
+#fill.indeterminate{width:25%!important;animation:loading-progress 1s ease-in-out infinite alternate}
+@keyframes loading-progress{from{transform:translateX(0)}to{transform:translateX(300%)}}
