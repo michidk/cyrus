@@ -8,6 +8,11 @@ use bevy::{
 use cyrus_assets::hud::{HudAsset, HudItem};
 use cyrus_game::{
     AppState,
+    player::{
+        Player,
+        data::{PlayerScene, PlayerSceneRequest},
+        placement::PlayerPose,
+    },
     script::{ActivationInputs, ActivationOverlay, ScriptActors},
 };
 use serde::{Deserialize, Serialize};
@@ -108,7 +113,8 @@ impl HudPreferences {
 /// no gameplay system writing them yet; they keep the defaults of a fresh session.
 #[derive(Resource, Serialize, Debug)]
 pub struct HudState {
-    /// Player health, 0..=100. Use [`HudState::set_health`]; *unwired*, stays at 100.
+    /// Player health, 0..=100: script attribute 3 while activation inputs are supplied,
+    /// else the fresh-session 100. Use [`HudState::set_health`].
     pub health: u8,
     /// Candle visibility mode; F8 cycles 0 → 1 → 2 → 0.
     pub candle_mode: u8,
@@ -122,7 +128,7 @@ pub struct HudState {
     pub sword_drawn: bool,
     /// Selected script player attribute 105 when activation inputs are supplied.
     pub player_type: u8,
-    /// Player heading in 2048-unit turns and the WORLD.INI world ID, for the compass. *Unwired*.
+    /// Placed player's heading in 2048-unit turns and the loaded WORLD.INI world ID, for the compass.
     pub heading: u16,
     pub world: Option<u32>,
     /// Compass display flag, toggled by using item 0. *Unwired*.
@@ -436,6 +442,14 @@ fn text_image(hud: &HudAsset, lines: &[(String, [i32; 2])]) -> Image {
     )
 }
 
+/// The placed player and the loaded world's player scene, which supply the compass.
+#[derive(bevy::ecs::system::SystemParam)]
+struct CompassInputs<'w, 's> {
+    player: Query<'w, 's, &'static PlayerPose, With<Player>>,
+    request: Option<Res<'w, PlayerSceneRequest>>,
+    scenes: Option<Res<'w, Assets<PlayerScene>>>,
+}
+
 #[allow(clippy::too_many_arguments)] // One Bevy system owning the overlay's input, state and nodes.
 fn update(
     preferences_store: Res<cyrus_game::preferences::Preferences>,
@@ -450,6 +464,7 @@ fn update(
     (keys, time): (Res<ButtonInput<KeyCode>>, Res<Time>),
     mut images: ResMut<Assets<Image>>,
     (mut actors, activation): (Option<ResMut<ScriptActors>>, Option<Res<ActivationInputs>>),
+    compass: CompassInputs,
 ) {
     let (Some(handle), Ok(viewport)) = (handle, viewport.single()) else {
         return;
@@ -561,7 +576,10 @@ fn update(
             match world.activation_overlay(inputs, ticks, held(13) || held(14), hud.override_ticks)
             {
                 Ok(overlay) => {
-                    state.player_type = world.actors()[inputs.player.index].attributes()[105];
+                    let attributes = world.actors()[inputs.player.index].attributes();
+                    state.player_type = attributes[105];
+                    // attr_health is attribute 3, clamped to 0..=100 by `set_health`.
+                    state.set_health(attributes[3]);
                     overlay
                 }
                 Err(error) => {
@@ -606,6 +624,15 @@ fn update(
     };
     state.prompt = prompt.clone();
     state.count = shown_item.map(|i| i.count);
+
+    // Compass inputs: the placed player's heading and the loaded world's WORLD.INI ID.
+    state.heading = compass.player.single().map_or(0, |pose| pose.heading);
+    state.world = compass
+        .request
+        .as_deref()
+        .zip(compass.scenes.as_deref())
+        .and_then(|(request, scenes)| scenes.get(&request.0))
+        .map(|scene| scene.world);
 
     // Compass: owning item 0 and its display flag.
     let owns_compass = hud.items.iter().any(|i| i.id == 0 && i.count > 0);
@@ -972,6 +999,43 @@ mod tests {
         let mut actors = ScriptActors::default();
         actors.current = Some(world);
         app.insert_resource(actors).insert_resource(inputs);
+    }
+
+    #[test]
+    fn compass_follows_the_placed_player_heading() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .init_asset::<HudAsset>()
+            .init_resource::<cyrus_game::preferences::Preferences>()
+            .init_resource::<ButtonInput<KeyCode>>()
+            .add_systems(Update, update);
+        let hud = app
+            .world_mut()
+            .resource_mut::<Assets<HudAsset>>()
+            .add(HudAsset {
+                items: vec![HudItem {
+                    id: 0,
+                    bitmap: 0,
+                    count: 1,
+                    size: [1, 1],
+                }],
+                ..asset(0)
+            });
+        app.world_mut().insert_resource(HudHandle(hud));
+        app.world_mut().spawn(HudViewport);
+        app.world_mut().spawn((
+            Player,
+            PlayerPose {
+                position: [0; 3],
+                heading: 1024,
+            },
+        ));
+        app.update();
+        app.world_mut().resource_mut::<HudState>().compass_on = true;
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!((state.heading, state.compass_frame), (1024, Some(16)));
     }
 
     #[test]
