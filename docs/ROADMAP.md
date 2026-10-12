@@ -277,6 +277,7 @@ Agents and developers must run, drive and compare both games on a machine withou
 - [ ] World-resource audit: skipped placements, missing assets, failed animation/script initialization, and unsupported script operations.
 - [x] Shared debug menu for native and WASM ([`ba0ab4a`](https://github.com/michidk/cyrus/commit/ba0ab4a)).
 - [x] Add the debug world dropdown and independent inspector toggle.
+- [x] Register F1 in every native windowed and browser launch, with a debug camera that survives startup and world-camera replacement.
 - [ ] Verify persistent F1 across browser startup, the book menu, New Game, and direct world launches.
   **Verified:** the shared debug UI regression sends keyboard input, replaces the startup camera, and checks that F1 still draws and hides the menu. Live browser verification remains pending.
 - [x] `just smoke-mcp` drives the headless game through MCP; movement and the full loop verified in [c713082](https://github.com/michidk/cyrus/commit/c713082).
