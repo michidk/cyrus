@@ -59,6 +59,7 @@ preserved separately; adopting it requires a fresh migration plan.
 These checks are separate from implementation. Passing unit tests does not
 establish original-game timing, visual fidelity or audible parity.
 
+- [x] Upgrade redguard-preservation to release `v0.8.0` and remove references to its deleted driver/tooling APIs. **Verified:** [10a953b](https://github.com/michidk/cyrus/commit/10a953b) passed workspace tests with zero install skips, strict Clippy, formatting and publication/map checks; optimized browser game, viewer and asset-worker builds passed. A headless viewer smoke check at 1280 pixels wide loaded the installed catalog. Native GUI and original-game comparison were not checked for this migration.
 - [x] Integrated `just gates`: publication/map/format/strict-Clippy and workspace tests passed with the install present and absent on 2026-10-11; zero installed tests skipped. The updated WASM target passes `cargo check`.
 - [x] Shared game/viewer CLI and URL option names, native install discovery, and remembered browser install URLs. Native START/mode flags and viewer archive-member selection pass runtime checks; browser selection, reuse, manual change, and unavailable-source recovery pass in the shared tab. The install service prepares worlds and music outside the install and serves byte ranges. Combined browser game/viewer rendering remains a separate check.
 - [x] MCP smoke against the integrated native binary passed, including independent flycam input and an unchanged install. The smoke script used the already-built test-profile executables.
@@ -313,7 +314,7 @@ The remaining work is unassigned.
 - [x] **Verified:** identify the driver-specific splash variants and publish the Windows DLL parser and rendering facts in the [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource).
 - [x] **Verified:** select the installed Windows splash, render its authored frames and fade, replace legacy shield caches, and recover missing cached frames in the shared native/browser export path.
 - [x] **Verified:** native playback reaches the title and ready book menu; CLI and MCP skip reach the menu. Full gates pass with 171 tests and zero install skips; all 22 compiled test executables also pass without the install.
-- [ ] **To do:** merge the preservation contribution upstream and update the rgpre pin to the accepted revision.
+- [x] **Verified:** the Windows splash parser and documentation are included in the pinned preservation release `v0.8.0`; [10a953b](https://github.com/michidk/cyrus/commit/10a953b) updates cyrus to that release.
 - [x] **Verified:** rebuild the main browser engine and re-export all 29 worlds, script-schema-3 sidecars and startup assets. The existing `cyrus-web` registration serves main's `target/web`; served and local Wasm hashes match, and local/public HTTP checks pass. Headless 640×480 captures show the corrected splash, title and ready book menu. Evidence stays in `magic/artifacts/2026-10-12-web-preview/`.
 - [ ] **To do:** verify both browser startup skip routes and compare startup with the original.
 - [ ] **To do:** compare Windows-driver splash timing and pixels with the original, including hardware edge coverage, reciprocal-square-root approximations and pixel quantization.
