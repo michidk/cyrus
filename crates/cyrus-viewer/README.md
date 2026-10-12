@@ -68,7 +68,9 @@ native viewer. Selecting an entry produces its preview and media in browser
 memory. The server supplies only a file listing and original bytes. No preview
 export is required.
 
-The game and viewer share the loader, loading overlay, and service-worker cache.
+The game and viewer share the browser bootstrap loader and service-worker cache.
+The viewer keeps that loading overlay visible while its catalog starts; the game
+uses its installed artwork for world loading.
 Original downloads are cached by content digest. CD reads use byte ranges.
 The selected asset is encoded as `#asset=<id>&file=<source-path>` in the browser URL. Copy that
 URL to reopen the asset in the same installation; browser Back restores selection.

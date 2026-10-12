@@ -61,13 +61,15 @@ done and what is next), then the `README.md` of the crate you touch. The maintai
    it, a new format or engine fact, documentation that conflicts with what
    the game data or the original shows, or anything it is missing, open a pull
    request against [redguard-preservation](https://github.com/michidk/redguard-preservation)
-   with the fix or the documented fact and its evidence (counts, samples,
-   observations). Preservation docs contain only durable format and engine
-   facts. Put verification methods in the pull request or commit, and keep
-   open questions, investigation plans, and cyrus implementation status out
-   of preservation docs. Do not work around a preservation bug silently in
-   cyrus: link the pull request from the cyrus change, and keep any workaround
-   marked until the fix is released.
+   with the fix or documented fact. Preservation docs contain only durable
+   format and engine facts, stated directly without verification labels or
+   research narrative. Put supporting samples, observation logs, traces,
+   debugger details, and validation-only counts in the pull request or commit.
+   Stable counts that are part of the format may remain in the docs as direct
+   facts. Keep open questions, investigation plans, and cyrus implementation
+   status out of preservation docs. Do not work around a preservation bug
+   silently in cyrus: link the pull request from the cyrus change, and keep any
+   workaround marked until the fix is released.
 
 These rules govern what ships, not what may be said. That cyrus is informed by
 reverse engineering of the original, and which projects were read, is stated
@@ -90,18 +92,29 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 - `just setup` once per clone (pre-commit hook, local agent config,
   cargo-hauler). With cargo-hauler, agents' cargo commands and the build
-  scripts share one queue; `hauler status` shows what is running. Long
-  builds may return a ticket: `hauler await cc-N`, never retry them.
+  scripts share one queue with at most three concurrent builds; `hauler status`
+  shows what is running. Long builds may return a ticket: `hauler await cc-N`,
+  never retry them.
 - Full workspace builds take a long time. During development, run the narrowest
   relevant test and build small, isolated test scenes that exercise one system
-  without loading the full game. Run `just gates` before the commit.
+  without loading the full game.
 - Conventional Commits: `type(scope): description`. The scope is the crate
   without its prefix (`game`, `web`, `mcp`), the module (`scene`, `player`,
   `loading`), or `dev`, `docs`, `roadmap`, `agents`, `repo`.
-- Gates before every commit: `just gates` (publish-check, generated map
-  current, fmt, clippy with `-D warnings`, tests). Tests that need the install
-  skip when it is absent and say so; with an install linked, a skip fails the
-  gate, and the suite runs once more with the install unreachable.
+- Match verification to the change before committing:
+  - Documentation-only changes, including Rust doc comments, need
+    `dev/scripts/publish-check.sh` and `git diff --check`. Also run
+    `dev/scripts/genmap.sh --check` when module documentation may affect
+    `docs/MAP.md`. Do not run Cargo for these changes.
+  - Rust, Cargo, build-script and gate changes need the narrowest relevant test
+    during development, then one `just gates` run after the final relevant edit.
+    Tests that need the install skip when it is absent and say so; with an
+    install linked, a skip fails the gate. CI verifies the no-install path.
+  - Runtime and fidelity changes also need the relevant headless run, replay or
+    original-game comparison. Generic workspace tests do not replace it.
+- Do not repeat `just gates` when the tested tree and gate inputs are unchanged.
+  A commit, wait, or rebase alone is not a reason to rerun it. CI supplies the
+  full-workspace check after every push.
 - Say what was verified and how: a test, a headless run, a replay compared
   with the original. "It compiles" is not verification. Say what was not
   checked, and whether the root cause or a symptom was fixed.
@@ -115,11 +128,12 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## Structure and quality
 
-- Keep public APIs small and group crates by concern: assets, world, rendering,
-  player, and control. `rgpre` owns formats and engine facts. Agree on file
+- Group crates by concern: assets, world, rendering, text, player, and
+  control. `rgpre` owns formats and engine facts. Agree on file
   ownership before a crate split or other change across shared boundaries.
 - Keep dependencies one-way. Core rules must not depend on rendering, a window,
-  or networking. Use the browser build to check these boundaries.
+  or networking. Run `dev/scripts/check-core-boundaries.sh` for an isolated
+  consumer check and the browser build for platform boundaries.
 - Document public APIs with their invariants, units, and provenance where
   applicable. Use explicit names that make the code readable without tracing
   unrelated modules.
@@ -135,12 +149,17 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## References and playtesting
 
-Default windowed and browser launches play the installed 3dfx splash and title,
+Default windowed and browser launches play the installed Windows Glide 3dfx splash and title,
 then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
-installed Smacker files through the in-process decoder. New Game, saves, and browser
-cinematic playback remain unavailable. Startup uses original-file assets, never
-captured playback.
+installed Smacker files through the in-process decoder. Browser Movies uses
+locally exported Smacker files and first-track WAV audio with shared playback rules.
+New Game enters the installed starting world and marker; Load temporarily starts
+the same fresh world. Saves, full gameplay/story initialization and progression
+unlocks remain unavailable. Native Quit closes the book and exits; browser Quit
+attempts tab closure and leaves the menu running when refused. Startup uses original-file assets, never
+captured playback. **Verified:** the metallic logo and orange swoosh come from
+`3DfxSpl2.dll`; the full DOS Glide overlay contains the older shield variant.
 Preservation owns extraction and rendering facts; cyrus owns presentation.
 
 `cyrus-viewer` is a separate native/browser inspection application. It requires
@@ -151,7 +170,7 @@ coverage, browser runtime loading, and preview limitations.
 
 For agent work, choose the entry point explicitly:
 
-- `cargo run -p cyrus -- --skip-startup` skips splash/title to the book menu.
+- `cargo run -p cyrus -- --skip-startup` skips the splash and prepares the menu behind the title.
 - `cargo run -p cyrus -- --scene START` skips startup and loads that world directly.
 - `--headless --scene START` runs preload, export, and control without a window.
 - MCP `skip_startup` skips presentation to the menu; MCP `load_scene {name}`
@@ -160,12 +179,23 @@ For agent work, choose the entry point explicitly:
 
 Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
-Skipping startup does not enable gameplay. `state.menu` exposes the installed
+**Verified:** the original default book menu has no pointer hover/click selection; do not add
+label hit boxes. Mouse/joystick rebinding needs separate device handling and is
+currently unsupported. Book turns, cover crossings and successful direction/key
+capture feedback dispatch installed effects through the shared native/browser
+sound path, using preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
+Skipping startup retains required preparation behind the title and does not enable gameplay.
+Menu New/Load wait behind installed destination artwork and a red percentage bar
+for world preparation and asset dependencies. Failed world entry reports a
+contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
+candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
+walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle
+candle mode, walk mode and auto-defend. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action
 units and persist outside the install in native `cyrus-config/menu.json` or
 browser localStorage `cyrus-menu`. Existing player input consumes edited bindings,
-including direct world launches. Subtitle and interlace preferences affect native
+including direct world launches. Subtitle and interlace preferences affect
 cinematics. Native effects, speech, and CD music consume the saved Sound preferences;
 the menu plays its installed CD track.
 `state.menu.movie` reports cinematic loading and one-based frame progress;

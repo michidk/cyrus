@@ -25,10 +25,16 @@ Drive Options and Movies with `input`; the same saved bindings and values
 apply after a native restart. Native Movies playback uses the saved subtitle and
 interlace preferences and reports progress in `state.menu.movie`. A new key press
 advances to the next installed skip point, then returns to the menu. Saved Sound
-preferences apply to native effects, speech, and CD music. Browser cinematic
-playback remains unavailable.
+preferences apply to native effects, speech, and CD music. Browser Movies shares
+playback rules using locally exported cinematic assets; it has no control port.
 
 `set_sky_scroll {direction, offset}` applies a captured original sky direction
 from 0 through 2047 and two texture offsets in texels from -256 through 256.
 Use it after loading the reference world. It synchronizes sky motion for
 comparison; it does not synchronize other users of the original random stream.
+
+`scripts {offset, limit}` returns bounded logical actor state. `step_script
+{generation, index, stage, frame_scale}` selects `main`, `interrupt`, or `tasks`.
+`tasks` requires an explicit unsigned `frame_scale` with eight fractional bits.
+For example, 256 supplies scale one; zero is accepted. Main and interrupt body
+steps do not poll existing tasks. These inspection tools do not enable gameplay.

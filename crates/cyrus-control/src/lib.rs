@@ -42,7 +42,7 @@ pub enum Command {
     LoadScene {
         name: String,
     },
-    /// Skip splash and title and stop at the book menu; does not start a world.
+    /// Skip the splash, retain required menu preparation behind the title, and stop at the menu.
     SkipStartup,
     /// Play effect `effect` (0-based index in `MAIN.SFX`); looping effects play until stopped.
     /// With `position` (world space, as in `state`) it attenuates with the camera's distance.
@@ -57,7 +57,34 @@ pub enum Command {
     },
     /// Stop every effect and voice clip; music keeps playing.
     StopSounds,
+    /// Inspect at most 64 logical script actors in the prepared world.
+    Scripts {
+        #[serde(default)]
+        offset: usize,
+        #[serde(default = "script_page_size")]
+        limit: usize,
+    },
+    /// Invoke one explicit stage; does not enable automatic gameplay.
+    StepScript {
+        generation: u64,
+        index: usize,
+        stage: ScriptStage,
+        /// Required for tasks; eight fractional bits, supplied by the inspection caller.
+        #[serde(default)]
+        frame_scale: Option<u32>,
+    },
     Quit,
+}
+
+fn script_page_size() -> usize {
+    32
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptStage {
+    Main,
+    Interrupt,
+    Tasks,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -145,3 +172,6 @@ impl Client {
         }
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server;

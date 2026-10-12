@@ -1,20 +1,27 @@
 [package]
 name = "cyrus-assets"
-description = "Shared installed asset catalog and portable previews."
+description = "Portable cache records and native install preparation."
 version.workspace = true
 edition.workspace = true
 
+[features]
+viewer = ["dep:redguard-preservation", "dep:image", "dep:hound"]
+native = ["dep:redguard-preservation", "cyrus-text/native", "dep:walkdir", "dep:image"]
+
 [dependencies]
+bevy = { workspace = true, features = ["bevy_asset"] }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+blake3.workspace = true
+cyrus-text.workspace = true
 smk = "0.1"
-redguard-preservation.workspace = true
+log.workspace = true
+walkdir = { version = "2", optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "bmp"], optional = true }
 
-blake3 = "1"
-image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
+hound = { version = "3.5", optional = true }
+redguard-preservation = { workspace = true, optional = true }
 
-hound = "3.5"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-walkdir = "2"
+[dev-dependencies]
+toml.workspace = true

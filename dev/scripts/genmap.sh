@@ -5,8 +5,9 @@
 #   genmap.sh          write docs/MAP.md
 #   genmap.sh --check  exit 1 when docs/MAP.md differs from the sources
 set -euo pipefail
-export LC_ALL=C
 cd "$(dirname "$0")/../.."
+# Byte order, so the map does not depend on the caller's locale.
+export LC_ALL=C
 
 first_doc() {
     local line

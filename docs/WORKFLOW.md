@@ -32,6 +32,8 @@ that bind everyone are in `AGENTS.md`.
   rustup, the wasm target, wasm-bindgen and Bevy's Linux libraries under
   `magic/build-tools/`; every `just` recipe and `gates.sh` pick it up. CI
   uses the system toolchain and runs the same gates plus a wasm32 check.
+  `Build artifacts` separately packages release-mode native and browser builds;
+  see `SETUP.md` for triggers, platforms, and package contents.
 - `git pull` before starting and while working. Commit completed, verified
   work directly to `main` and push; no feature branches or pull requests
   unless asked. Other agents work in the same checkout: stage only the files
@@ -99,8 +101,11 @@ from such facts), **Unknown**. Unlabelled claims are Unknown. The same labels
 go on anything sent to redguard-preservation.
 
 Before committing, read the diff: remove probe code and debug leftovers, keep
-only tests that guard a contract. `just gates` runs `publish-check`; passing it
-means the forbidden shapes are absent, not that the change is clean.
+only tests that guard a contract. Choose the checks from `AGENTS.md`. Run the
+full gate at most once after the final relevant code or build edit, and reuse a
+passing result while the tested tree and gate inputs remain unchanged.
+Documentation-only changes do not run Cargo. `just gates` runs `publish-check`;
+passing it means the forbidden shapes are absent, not that the change is clean.
 
 ## Reference projects
 

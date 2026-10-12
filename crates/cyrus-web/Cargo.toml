@@ -4,12 +4,22 @@ description = "Browser build: loads scenes exported by the native game from the 
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "cyrus-web"
+path = "src/main.rs"
+# Host adapters have persistence, lifecycle and navigation tests.
+test = true
+
 [dependencies]
 cyrus-app = { path = "../cyrus-app" }
-bevy = { workspace = true, features = ["webgl2"] }
+anyhow.workspace = true
+cyrus-assets = { workspace = true }
+cyrus-world.workspace = true
+cyrus-render.workspace = true
+bevy = { workspace = true, features = ["default", "webgl2"] }
 cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
-web-sys = { version = "0.3", features = ["Window", "Location"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Document", "Element"] }

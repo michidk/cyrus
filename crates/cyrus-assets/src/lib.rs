@@ -2,19 +2,23 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "viewer")]
 pub mod decode;
+#[cfg(feature = "viewer")]
 pub mod disc;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod install;
 pub mod media;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "viewer", feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
+#[cfg(feature = "viewer")]
 pub mod runtime;
+#[cfg(feature = "viewer")]
 pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 7;
+pub const CATALOG_VERSION: u32 = 8;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -368,3 +372,40 @@ mod tests {
         assert!(picture.validate().is_ok());
     }
 }
+
+pub mod animation;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod animation_export;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod audio;
+pub mod collision;
+pub mod environment;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod environment_export;
+pub mod hud;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod hud_export;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod loading;
+pub mod menu;
+pub mod movie;
+pub mod player;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod player_export;
+pub mod preferences;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod scene;
+pub mod script;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod script_export;
+pub mod sound;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod sound_export;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod startup;
+
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod music;
+
+/// Number of cached Windows Glide splash frames, including the authored fade.
+pub const SPLASH_FRAMES: usize = 150;

@@ -1,0 +1,114 @@
+//! Player model replacement without a second animation interpreter.
+use bevy::prelude::*;
+use cyrus_game::player::Player;
+use cyrus_render::player_model::PlayerModelPlugin;
+use cyrus_world::{
+    animation::{AnimationPlugin, AnimationPose},
+    lifecycle::PreparedWorld,
+};
+
+#[test]
+fn player_pose_binds_updates_replaces_and_removes_its_model() {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        AnimationPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
+        PlayerModelPlugin,
+    ))
+    .init_asset::<WorldAsset>();
+    let prepared =
+        PreparedWorld::from_cache("ISLAND".into(), app.world().resource::<AssetServer>());
+    app.insert_resource(prepared);
+    let player = app
+        .world_mut()
+        .spawn((
+            Player,
+            Transform::default(),
+            AnimationPose {
+                model: "CYRSA001".into(),
+                frame: 1,
+            },
+        ))
+        .id();
+    app.update();
+    let (root, handle) = app
+        .world_mut()
+        .query::<(Entity, &WorldAssetRoot)>()
+        .single(app.world())
+        .unwrap();
+    let path = app
+        .world()
+        .resource::<AssetServer>()
+        .get_path(handle.0.id())
+        .unwrap();
+    assert_eq!(
+        path.to_string(),
+        "cache://ISLAND.player-models/CYRSA001.glb#Scene0"
+    );
+    assert_eq!(
+        *app.world().get::<Visibility>(root).unwrap(),
+        Visibility::Hidden
+    );
+    let node = app
+        .world_mut()
+        .spawn((Name::new("CYRSA001"), ChildOf(root)))
+        .id();
+    app.update();
+    assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 1);
+    assert_eq!(
+        *app.world().get::<Visibility>(root).unwrap(),
+        Visibility::Inherited
+    );
+    app.world_mut()
+        .get_mut::<AnimationPose>(player)
+        .unwrap()
+        .frame = 2;
+    app.update();
+    assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 2);
+    app.world_mut()
+        .get_mut::<AnimationPose>(player)
+        .unwrap()
+        .model = "CYRSA012".into();
+    app.update();
+    assert!(app.world().get_entity(root).is_err());
+    assert!(app.world().get_entity(node).is_err());
+    let (_, handle) = app
+        .world_mut()
+        .query::<(Entity, &WorldAssetRoot)>()
+        .single(app.world())
+        .unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<AssetServer>()
+            .get_path(handle.0.id())
+            .unwrap()
+            .to_string(),
+        "cache://ISLAND.player-models/CYRSA012.glb#Scene0"
+    );
+    app.world_mut().resource_mut::<PreparedWorld>().scene_path = "cache://PALACE.glb".into();
+    app.update();
+    let (_, handle) = app
+        .world_mut()
+        .query::<(Entity, &WorldAssetRoot)>()
+        .single(app.world())
+        .unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<AssetServer>()
+            .get_path(handle.0.id())
+            .unwrap()
+            .to_string(),
+        "cache://PALACE.player-models/CYRSA012.glb#Scene0"
+    );
+    app.world_mut().entity_mut(player).remove::<AnimationPose>();
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .query::<&WorldAssetRoot>()
+            .iter(app.world())
+            .count(),
+        0
+    );
+}

@@ -42,7 +42,7 @@ struct InputParams {
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct FidelityParams {
-    #[schemars(description = "player_controller, camera, water, fog or sky")]
+    #[schemars(description = "player_controller, camera, water, fog, sky or lighting")]
     area: String,
     #[schemars(description = "faithful or modern")]
     mode: String,
@@ -88,6 +88,23 @@ struct SoundParams {
 struct SpeechParams {
     #[schemars(description = "4-character RTX label of a voice clip, e.g. &005")]
     label: String,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ScriptsParams {
+    offset: Option<usize>,
+    limit: Option<usize>,
+}
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ScriptStepParams {
+    generation: u64,
+    index: usize,
+    #[schemars(description = "main, interrupt, or tasks")]
+    stage: String,
+    #[schemars(
+        description = "Required for tasks; original scale with eight fractional bits. No production clock is implied."
+    )]
+    frame_scale: Option<u32>,
 }
 
 #[derive(Clone)]
@@ -233,6 +250,44 @@ impl Cyrus {
     #[tool(description = "Stop every playing sound effect and voice clip; music keeps playing.")]
     fn stop_sounds(&self) -> Result<CallToolResult, McpError> {
         text(call(Command::StopSounds)?)
+    }
+
+    #[tool(
+        description = "Inspect logical script actors and explicit execution state without returning installed bytecode."
+    )]
+    fn scripts(
+        &self,
+        Parameters(p): Parameters<ScriptsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::Scripts {
+            offset: p.offset.unwrap_or(0),
+            limit: p.limit.unwrap_or(32),
+        })?)
+    }
+    #[tool(
+        description = "Step one explicit script stage for an inspected actor generation. Automatic gameplay remains disabled."
+    )]
+    fn step_script(
+        &self,
+        Parameters(p): Parameters<ScriptStepParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let stage = match p.stage.as_str() {
+            "main" => cyrus_control::ScriptStage::Main,
+            "interrupt" => cyrus_control::ScriptStage::Interrupt,
+            "tasks" => cyrus_control::ScriptStage::Tasks,
+            _ => {
+                return Err(McpError::invalid_params(
+                    "stage must be main, interrupt, or tasks",
+                    None,
+                ));
+            }
+        };
+        text(call(Command::StepScript {
+            generation: p.generation,
+            index: p.index,
+            stage,
+            frame_scale: p.frame_scale,
+        })?)
     }
 
     #[tool(description = "Exit the game.")]

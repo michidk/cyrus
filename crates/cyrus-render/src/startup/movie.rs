@@ -1,0 +1,686 @@
+//! Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+use super::StartupContent;
+use super::menu::MenuState;
+use super::menu::MovieRequest;
+use super::menu::MovieStatus;
+#[cfg(any(target_arch = "wasm32", test))]
+use bevy::platform::time::Instant;
+use bevy::{
+    audio::{AudioPlayer, AudioSource, PlaybackSettings},
+    prelude::*,
+};
+use cyrus_assets::movie::{MovieDefinition, Prepared};
+use cyrus_game::AppState;
+use std::{sync::Mutex, time::Duration};
+#[cfg(target_arch = "wasm32")]
+const BROWSER_DECODE_BUDGET: Duration = Duration::from_millis(8);
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    bevy::tasks::{IoTaskPool, Task, futures::check_ready},
+    cyrus_assets::install::GameInstall,
+    cyrus_assets::startup::movie_native::prepare,
+    std::sync::mpsc,
+};
+
+#[derive(Resource, Default)]
+struct MoviePlayback {
+    #[cfg(not(target_arch = "wasm32"))]
+    load: Option<Task<anyhow::Result<Prepared>>>,
+    #[cfg(target_arch = "wasm32")]
+    load: Option<Handle<Prepared>>,
+    playing: Option<Playing>,
+}
+struct Playing {
+    movie: Prepared,
+    decoder: Decoder,
+    image: Handle<Image>,
+    audio: Option<Handle<AudioSource>>,
+    elapsed: f64,
+    next_frame: u32,
+    started: bool,
+    audio_started: bool,
+}
+/// The audio of the playing movie; CD music pauses while it exists.
+#[derive(Component)]
+pub struct MovieAudio;
+/// Dropping it disconnects the channel, which stops the decoding thread.
+struct Decoder {
+    #[cfg(not(target_arch = "wasm32"))]
+    frames: Mutex<mpsc::Receiver<anyhow::Result<Vec<u8>>>>,
+    #[cfg(target_arch = "wasm32")]
+    frames: Mutex<BrowserDecoder>,
+}
+#[cfg(any(target_arch = "wasm32", test))]
+struct BrowserDecoder {
+    smk: smk::Smk,
+    next: u32,
+    target: u32,
+}
+
+impl Decoder {
+    fn next(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            match self.frames.lock().unwrap().try_recv() {
+                Ok(frame) => frame.map(Some),
+                Err(mpsc::TryRecvError::Empty) => Ok(None),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    anyhow::bail!("Movie decoder disconnected before completion")
+                }
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.frames
+                .get_mut()
+                .unwrap()
+                .next_frame(BROWSER_DECODE_BUDGET)
+        }
+    }
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+impl BrowserDecoder {
+    fn next_frame(&mut self, budget: Duration) -> anyhow::Result<Option<Vec<u8>>> {
+        // Yield long delta-frame seeks without imposing a frame-count limit.
+        let started = Instant::now();
+        loop {
+            if self.next == 1 {
+                self.smk.first_frame()?;
+            } else {
+                self.smk.next_frame()?;
+            }
+            let frame = self.next;
+            self.next += 1;
+            if frame >= self.target {
+                return Ok(Some(stretch(self.smk.video_data(), self.smk.palette())));
+            }
+            if started.elapsed() >= budget {
+                return Ok(None);
+            }
+        }
+    }
+}
+
+pub(super) fn register(app: &mut App) {
+    #[cfg(target_arch = "wasm32")]
+    cyrus_assets::movie::register(app);
+    app.add_message::<MovieRequest>()
+        .init_resource::<MoviePlayback>()
+        .add_systems(
+            Update,
+            drive
+                .after(super::menu::drive)
+                .run_if(in_state(AppState::Menu)),
+        )
+        .add_systems(OnExit(AppState::Menu), cleanup);
+}
+
+/// Decodes on a thread from one-based `frame` on; Smacker frames are deltas, so
+/// earlier frames are decoded but not sent.
+#[cfg(not(target_arch = "wasm32"))]
+fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
+    let mut smk = smk::Smk::open_memory(&movie.data)?;
+    smk.enable_all(0x80);
+    let (sender, receiver) = mpsc::sync_channel(2);
+    let frames = movie.metadata.frames;
+    let name = movie.metadata.definition.name.clone();
+    std::thread::spawn(move || {
+        let mut status = smk.first_frame();
+        for index in 1..=frames {
+            let failed = status.is_err();
+            if failed || index >= frame {
+                let result = status
+                    .as_ref()
+                    .map_err(|e| anyhow::anyhow!("movie {name}: frame {index}: {e}"))
+                    .map(|_| stretch(smk.video_data(), smk.palette()));
+                if sender.send(result).is_err() || failed {
+                    break;
+                }
+            }
+            if failed || index == frames {
+                break;
+            }
+            status = smk.next_frame();
+        }
+    });
+    Ok(Decoder {
+        frames: Mutex::new(receiver),
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decode(movie: &Prepared, frame: u32) -> anyhow::Result<Decoder> {
+    let mut smk = smk::Smk::open_memory(&movie.data)?;
+    smk.enable_all(0x80);
+    Ok(Decoder {
+        frames: Mutex::new(BrowserDecoder {
+            smk,
+            next: 1,
+            target: frame,
+        }),
+    })
+}
+
+/// A 640×240 indexed frame as 640×480 RGBA, filtered vertically like a
+/// bilinear texture stretch (sample centres at `(y + 0.5) / 2 − 0.5`).
+fn stretch(indices: &[u8], palette: &[[u8; 3]; 256]) -> Vec<u8> {
+    let row = |y: usize| &indices[y * 640..(y + 1) * 640];
+    let mut pixels = Vec::with_capacity(640 * 480 * 4);
+    for y in 0..480 {
+        let source = ((y as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, 239.0);
+        let (top, weight) = (source.floor() as usize, source.fract());
+        let (upper, lower) = (row(top), row((top + 1).min(239)));
+        for x in 0..640 {
+            let (a, b) = (
+                palette[usize::from(upper[x])],
+                palette[usize::from(lower[x])],
+            );
+            for c in 0..3 {
+                let mixed = f32::from(a[c]) * (1.0 - weight) + f32::from(b[c]) * weight;
+                pixels.push(mixed.round() as u8);
+            }
+            pixels.push(255);
+        }
+    }
+    pixels
+}
+
+fn skip_point(movie: &MovieDefinition, frame: u32) -> Option<u32> {
+    movie.keys.iter().copied().find(|key| *key > frame)
+}
+
+fn drive(
+    runtime: (Commands, Query<Entity, With<MovieAudio>>),
+    #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
+    #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
+    #[cfg(target_arch = "wasm32")] mut prepared: ResMut<Assets<Prepared>>,
+    mut requests: MessageReader<MovieRequest>,
+    state: (ResMut<MoviePlayback>, ResMut<MenuState>),
+    input: (Res<Time<Real>>, Res<ButtonInput<KeyCode>>),
+    rendering: (
+        ResMut<Assets<Image>>,
+        Query<&mut Sprite, With<StartupContent>>,
+    ),
+    mut sources: Option<ResMut<Assets<AudioSource>>>,
+) {
+    let (mut commands, audio_players) = runtime;
+    let (mut playback, mut menu) = state;
+    let (mut images, mut sprite) = rendering;
+    for request in requests.read() {
+        if playback.load.is_some() || playback.playing.is_some() {
+            continue;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let root = install.root.clone();
+        let index = request.0;
+        menu.movie = Some(MovieStatus {
+            name: String::new(),
+            frame: 0,
+            frames: 0,
+            loading: true,
+        });
+        menu.ready = false;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            playback.load = Some(IoTaskPool::get().spawn(async move { prepare(&root, index) }));
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            playback.load = Some(assets.load(format!("cache://movies/{index}.movie")));
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let loaded = playback.load.as_mut().and_then(check_ready);
+    #[cfg(target_arch = "wasm32")]
+    let loaded = playback.load.as_ref().and_then(|handle| {
+        if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(handle.id()) {
+            Some(Err(anyhow::anyhow!("{error}")))
+        } else {
+            prepared.remove(handle.id()).map(Ok)
+        }
+    });
+    if let Some(result) = loaded {
+        playback.load = None;
+        match result.and_then(|movie| {
+            let decoder = decode(&movie, 1)?;
+            Ok(Playing {
+                movie,
+                decoder,
+                image: Handle::default(),
+                audio: None,
+                elapsed: 0.0,
+                next_frame: 1,
+                started: false,
+                audio_started: false,
+            })
+        }) {
+            Ok(mut playing) => {
+                if let Some(source) = playing.movie.audio.take()
+                    && let Some(sources) = sources.as_mut()
+                {
+                    playing.audio = Some(sources.add(AudioSource { bytes: source }));
+                }
+                menu.movie = Some(MovieStatus {
+                    name: playing.movie.metadata.definition.name.clone(),
+                    frame: 0,
+                    frames: playing.movie.metadata.frames,
+                    loading: true,
+                });
+                playback.playing = Some(playing);
+            }
+            Err(error) => {
+                menu.movie = None;
+                menu.unavailable = Some(format!("Movie unavailable: {error:#}"));
+                menu.dirty = true;
+            }
+        }
+    }
+    let Some(playing) = playback.playing.as_mut() else {
+        return;
+    };
+    let mut finished = false;
+    let mut failure = None;
+    let frame_seconds = f64::from(playing.movie.metadata.frame_micros) / 1_000_000.0;
+    if playing.started {
+        playing.elapsed += input.0.delta_secs_f64();
+    }
+    // The activation key from this update starts playback; it must not also skip it.
+    if playing.started && input.1.get_just_pressed().next().is_some() {
+        let current = menu.movie.as_ref().map_or(0, |m| m.frame);
+        if let Some(frame) = skip_point(&playing.movie.metadata.definition, current) {
+            match decode(&playing.movie, frame) {
+                Ok(decoder) => {
+                    playing.decoder = decoder;
+                    playing.next_frame = frame;
+                    playing.elapsed = f64::from(frame - 1) * frame_seconds;
+                    playing.started = false;
+                    playing.audio_started = false;
+                    if let Some(status) = menu.movie.as_mut() {
+                        status.loading = true;
+                    }
+                    for entity in &audio_players {
+                        commands.entity(entity).despawn();
+                    }
+                }
+                Err(error) => failure = Some(error.to_string()),
+            }
+        } else {
+            finished = true;
+        }
+    }
+    let due = if playing.started {
+        ((playing.elapsed / frame_seconds).floor() as u32).saturating_add(1)
+    } else {
+        playing.next_frame
+    };
+    let mut pixels = None;
+    #[cfg(target_arch = "wasm32")]
+    let decode_started = Instant::now();
+    while !finished && playing.next_frame <= due.min(playing.movie.metadata.frames) {
+        #[cfg(target_arch = "wasm32")]
+        if decode_started.elapsed() >= BROWSER_DECODE_BUDGET {
+            break;
+        }
+        let result = playing.decoder.next();
+        match result {
+            Ok(Some(frame)) => {
+                let index = playing.next_frame;
+                playing.next_frame += 1;
+                if let Some(status) = menu.movie.as_mut() {
+                    status.frame = index;
+                    status.loading = false;
+                }
+                pixels = Some(frame);
+                playing.started = true;
+            }
+            Err(error) => {
+                failure = Some(error.to_string());
+                break;
+            }
+            Ok(None) => break,
+        }
+    }
+    if let Some(mut pixels) = pixels.filter(|_| failure.is_none() && !finished) {
+        if menu
+            .preferences
+            .as_ref()
+            .is_some_and(|p| p.values[&505] != 0)
+        {
+            for y in (1..480).step_by(2) {
+                for rgba in pixels[y * 640 * 4..(y + 1) * 640 * 4]
+                    .as_chunks_mut::<4>()
+                    .0
+                {
+                    *rgba = [0, 0, 0, 255];
+                }
+            }
+        }
+        let frame = menu.movie.as_ref().unwrap().frame;
+        let subtitles = menu
+            .preferences
+            .as_ref()
+            .is_some_and(|p| p.values[&504] != 0);
+        paint_subtitles(
+            &mut pixels,
+            &playing.movie.metadata.font,
+            playing.movie.metadata.line_height,
+            playing.movie.metadata.font_color,
+            &playing.movie.metadata.definition,
+            frame,
+            subtitles,
+        );
+        let image = Image::new(
+            bevy::render::render_resource::Extent3d {
+                width: 640,
+                height: 480,
+                depth_or_array_layers: 1,
+            },
+            bevy::render::render_resource::TextureDimension::D2,
+            pixels,
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        if let Some(mut previous) = images.get_mut(&playing.image) {
+            *previous = image;
+        } else {
+            playing.image = images.add(image);
+        }
+        if let Ok(mut sprite) = sprite.single_mut() {
+            sprite.image = playing.image.clone();
+        }
+        if !playing.audio_started {
+            if let Some(audio) = &playing.audio {
+                commands.spawn((
+                    MovieAudio,
+                    AudioPlayer(audio.clone()),
+                    PlaybackSettings::DESPAWN
+                        .with_start_position(Duration::from_secs_f64(playing.elapsed)),
+                ));
+            }
+            playing.audio_started = true;
+        }
+    }
+    if playing.next_frame > playing.movie.metadata.frames
+        && playing.elapsed >= f64::from(playing.movie.metadata.frames) * frame_seconds
+    {
+        finished = true;
+    }
+    if finished || failure.is_some() {
+        for entity in &audio_players {
+            commands.entity(entity).despawn();
+        }
+        playback.playing = None;
+        menu.movie = None;
+        menu.dirty = true;
+        if let Some(error) = failure {
+            menu.unavailable = Some(error);
+        }
+    }
+}
+
+fn subtitle_lines(text: &str) -> Vec<&str> {
+    let mut lines = Vec::new();
+    let mut start = 0;
+    let mut search = 35;
+    while search + 1 < text.len() {
+        if text.as_bytes()[search] == b' ' {
+            lines.push(&text[start..search]);
+            start = search + 1;
+            search += 35;
+        }
+        search += 1;
+    }
+    lines.push(&text[start..]);
+    lines
+}
+
+fn paint_subtitles(
+    pixels: &mut [u8],
+    font: &cyrus_text::Font,
+    line_height: u16,
+    color: [u8; 3],
+    movie: &MovieDefinition,
+    frame: u32,
+    enabled: bool,
+) {
+    let Some(subtitle) = movie
+        .subtitles
+        .iter()
+        .find(|s| s.start <= frame && frame < s.stop && (enabled || s.always))
+    else {
+        return;
+    };
+    let lines = subtitle_lines(&subtitle.text);
+    for (row, line) in lines.iter().enumerate() {
+        let x = 320 - font.width(line) / 2;
+        let y = 470 - (lines.len() - row) as i32 * i32::from(line_height);
+        font.draw(line, [x, y], |px, py, _| {
+            if (0..640).contains(&px) && (0..480).contains(&py) {
+                let offset = (py as usize * 640 + px as usize) * 4;
+                pixels[offset..offset + 4].copy_from_slice(&[color[0], color[1], color[2], 255]);
+            }
+        });
+    }
+}
+
+fn cleanup(
+    mut commands: Commands,
+    mut playback: ResMut<MoviePlayback>,
+    audio: Query<Entity, With<MovieAudio>>,
+) {
+    *playback = MoviePlayback::default();
+    for entity in &audio {
+        commands.entity(entity).despawn();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(not(target_arch = "wasm32"))]
+    use cyrus_assets::movie::MovieSubtitle;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn installed_movies_decode_in_process() {
+        use {rgpre::import::menu_movies::parse_menu_movies, std::path::Path};
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let ini = std::fs::read_to_string(install.root.join("MENU.INI")).unwrap();
+        let definitions = parse_menu_movies(&ini).unwrap();
+        assert!(!definitions.is_empty(), "no installed movie definitions");
+        for index in 0..definitions.len() {
+            let movie = prepare(&install.root, index)
+                .unwrap_or_else(|error| panic!("movie {index}: {error:#}"));
+            let last = movie.metadata.frames;
+            let started = std::time::Instant::now();
+            let frame = decode(&movie, last)
+                .unwrap()
+                .frames
+                .into_inner()
+                .unwrap()
+                .recv();
+            eprintln!(
+                "{}: {last} frames, last frame decoded in {:?}",
+                movie.metadata.definition.name,
+                started.elapsed()
+            );
+            assert_eq!(frame.unwrap().unwrap().len(), 640 * 480 * 4);
+            assert_eq!(movie.audio.is_some(), movie.metadata.has_audio);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn browser_delta_seek_matches_native_frames_and_yields() {
+        use std::path::Path;
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => return eprintln!("skipped: no install ({error})"),
+        };
+        let movie = prepare(&install.root, 0).unwrap();
+        for target in [1, 17, movie.metadata.definition.keys[0]] {
+            let mut smk = smk::Smk::open_memory(&movie.data).unwrap();
+            smk.enable_all(0x80);
+            let mut browser = BrowserDecoder {
+                smk,
+                next: 1,
+                target,
+            };
+            let first = browser.next_frame(Duration::ZERO).unwrap();
+            if target > 1 {
+                assert!(first.is_none());
+            }
+            let actual = first
+                .or_else(|| (1..target).find_map(|_| browser.next_frame(Duration::ZERO).unwrap()))
+                .expect("seek did not reach the requested frame");
+            let native = decode(&movie, target)
+                .unwrap()
+                .frames
+                .into_inner()
+                .unwrap()
+                .recv()
+                .unwrap()
+                .unwrap();
+            assert_eq!(actual, native, "seek to frame {target}");
+            let next = browser.next_frame(Duration::ZERO).unwrap().unwrap();
+            let native = decode(&movie, target + 1)
+                .unwrap()
+                .frames
+                .into_inner()
+                .unwrap()
+                .recv()
+                .unwrap()
+                .unwrap();
+            assert_eq!(next, native, "frame after seek {target}");
+        }
+    }
+
+    #[test]
+    fn subtitle_breaks_at_first_space_after_column_35() {
+        assert_eq!(
+            subtitle_lines("01234567890123456789012345678901234 end, Cyrus."),
+            ["01234567890123456789012345678901234", "end, Cyrus."]
+        );
+        assert_eq!(
+            subtitle_lines("0123456789012345678901234567890123456789 end"),
+            ["0123456789012345678901234567890123456789", "end"]
+        );
+    }
+    #[test]
+    fn skip_points_are_forward_only_and_end_after_the_last() {
+        let movie = MovieDefinition {
+            name: "test".into(),
+            keys: vec![10, 20],
+            subtitles: vec![],
+        };
+        assert_eq!(skip_point(&movie, 1), Some(10));
+        assert_eq!(skip_point(&movie, 10), Some(20));
+        assert_eq!(skip_point(&movie, 20), None);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn subtitles_obey_frame_bounds_and_always_flag() {
+        let font = rgpre::import::fnt::FntFile {
+            chunk_order: vec![],
+            header: rgpre::import::fnt::FntHeader {
+                description_raw: [0; 32],
+                description_text: String::new(),
+                unknown_24: 0,
+                has_rdat: 0,
+                unknown_28: 0,
+                unknown_2a: 0,
+                unknown_2c: 0,
+                max_width: 1,
+                line_height: 2,
+                character_start: 65,
+                character_count: 1,
+                unknown_36: 0,
+                unknown_38: 0,
+                has_palette: 0,
+            },
+            palette: rgpre::import::fnt::FntPalette {
+                tag: *b"FPAL",
+                colors: vec![],
+            },
+            glyphs: vec![rgpre::import::fnt::FntGlyph {
+                enabled: 1,
+                offset_left: 0,
+                offset_top: 0,
+                width: 1,
+                height: 1,
+                pixels: vec![7],
+            }],
+            rdat: None,
+            trailing_padding: vec![],
+        };
+        let mut movie = MovieDefinition {
+            name: "test".into(),
+            keys: vec![],
+            subtitles: vec![MovieSubtitle {
+                always: false,
+                start: 10,
+                stop: 20,
+                text: "A".into(),
+            }],
+        };
+        let draw = |movie: &MovieDefinition, frame, enabled| {
+            let mut pixels = vec![0; 640 * 480 * 4];
+            paint_subtitles(
+                &mut pixels,
+                &cyrus_text::Font::from(&font),
+                2,
+                [240, 240, 240],
+                movie,
+                frame,
+                enabled,
+            );
+            pixels
+        };
+        let offset = (468 * 640 + 319) * 4;
+        assert_eq!(
+            &draw(&movie, 10, true)[offset..offset + 4],
+            &[240, 240, 240, 255]
+        );
+        assert!(draw(&movie, 9, true).iter().all(|v| *v == 0));
+        assert!(draw(&movie, 20, true).iter().all(|v| *v == 0));
+        assert!(draw(&movie, 10, false).iter().all(|v| *v == 0));
+        movie.subtitles[0].always = true;
+        assert_eq!(
+            &draw(&movie, 10, false)[offset..offset + 4],
+            &[240, 240, 240, 255]
+        );
+
+        let mut font = font;
+        font.header.character_start = 31;
+        font.header.character_count = 35;
+        font.header.max_width = 3;
+        font.glyphs.resize(35, font.glyphs[0].clone());
+        font.glyphs[1].pixels[0] = 0;
+        font.glyphs[2].width = 3;
+        font.glyphs[2].pixels = vec![0; 3];
+        movie.subtitles[0].text = " A".into();
+        let mut pixels = vec![0; 640 * 480 * 4];
+        paint_subtitles(
+            &mut pixels,
+            &cyrus_text::Font::from(&font),
+            2,
+            [240; 3],
+            &movie,
+            10,
+            true,
+        );
+        let offset = (468 * 640 + 322) * 4;
+        assert_eq!(&pixels[offset..offset + 4], &[240, 240, 240, 255]);
+    }
+}

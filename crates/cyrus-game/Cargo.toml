@@ -1,30 +1,18 @@
 [package]
 name = "cyrus-game"
-description = "Game plugins: install discovery, preload, scene loading, fidelity switch, player, control server."
+description = "Portable player rules, input and fidelity policy."
 version.workspace = true
 edition.workspace = true
-
 [dependencies]
-cyrus-app = { path = "../cyrus-app" }
-cyrus-assets = { path = "../cyrus-assets" }
-bevy = { workspace = true, features = ["wav"] }
-cyrus-control.workspace = true
+log.workspace = true
+bevy = { workspace = true, features = ["bevy_asset", "bevy_state", "keyboard"] }
+cyrus-assets.workspace = true
+cyrus-world.workspace = true
+cyrus-script.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-toml.workspace = true
-log.workspace = true
-walkdir = "2"
-image = { version = "0.25", default-features = false, features = ["png"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Storage"] }
-
-# Native only: reads the install, spawns threads, listens on TCP.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-redguard-preservation.workspace = true
-# Smacker cutscenes; LGPL-2.1 (chosen by the maintainer).
-smk = "0.1"
-
 [dev-dependencies]
 toml.workspace = true
+cyrus-assets = { workspace = true, features = ["native"] }
+redguard-preservation.workspace = true

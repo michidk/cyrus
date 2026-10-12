@@ -1,0 +1,26 @@
+[package]
+name = "cyrus-render"
+description = "Shared scene, camera, menu, HUD and audio presentation."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cyrus-assets.workspace = true
+cyrus-world.workspace = true
+cyrus-game.workspace = true
+bevy = { workspace = true, features = ["default", "wav"] }
+cyrus-text.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Smacker cutscenes; LGPL-2.1 (chosen by the maintainer).
+smk = "0.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Native presentation adapters consume installed media.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cyrus-assets = { workspace = true, features = ["native"] }
+
+[dev-dependencies]
+toml.workspace = true
+redguard-preservation.workspace = true

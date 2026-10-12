@@ -5,14 +5,15 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-bevy = { workspace = true, features = ["wav", "webgl2"] }
-cyrus-assets = { path = "../cyrus-assets" }
+bevy = { workspace = true, features = ["default", "wav", "webgl2"] }
+cyrus-assets = { path = "../cyrus-assets", features = ["viewer"] }
 cyrus-app = { path = "../cyrus-app" }
 anyhow.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap.workspace = true
+cyrus-assets = { path = "../cyrus-assets", features = ["native"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }

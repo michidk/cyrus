@@ -4,9 +4,18 @@ description = "The game binary."
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "cyrus"
+path = "src/main.rs"
+# Host adapters have persistence, lifecycle and navigation tests.
+test = true
+
 [dependencies]
 cyrus-app = { path = "../cyrus-app" }
-bevy.workspace = true
+cyrus-assets = { workspace = true, features = ["native"] }
+cyrus-world.workspace = true
+cyrus-render.workspace = true
+bevy = { workspace = true, features = ["default"] }
 cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true
 cyrus-control.workspace = true
@@ -14,3 +23,6 @@ anyhow.workspace = true
 clap.workspace = true
 # Load libwayland at runtime instead of linking it, so the binary starts on hosts without it.
 winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true

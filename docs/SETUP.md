@@ -23,26 +23,60 @@ The link is gitignored. cyrus only reads from it.
 
 ```sh
 just run                 # splash, title, then the book menu
-just run --skip-startup   # skip splash/title to the book menu
+just run --skip-startup   # skip splash, prepare menu assets behind the title
 just run --scene START
 just run --scene 27       # WORLD.INI ID selects the night island variant
 cargo run -p cyrus -- --export-all-worlds # rebuild all worlds and exit
-cargo run -p cyrus -- --export-startup    # render startup and menu assets for the browser
+cargo run -p cyrus -- --export-startup    # export startup, menu, starting world, cinematics and HUD for the browser
 just run-headless        # no window: preload + scene export + control server
 just run-native          # in dev/docker/dev with a virtual display, no preview: control port 7117 for MCP and compare
 ```
 
+Headless mode creates no camera or audio backend. Control state reports a null
+flycam position; player input, preload, world export and protocol commands remain
+available. Use a windowed run for flycam and screenshot checks.
+
 Settings, caches and screenshots live in `cyrus-config/`.
+
+Unoptimized native loader threads need a larger stack. Launch such binaries
+with `RUST_MIN_STACK=8388608`; container launches also need
+`-e RUST_MIN_STACK=8388608`. The test runner sets this automatically; native
+development launchers do not yet supply it by default.
 
 ### Player placement
 
 Direct scene inspection uses available marker zero for initial player placement.
 Native, headless, and browser loading consume the same marker metadata. Re-export
 worlds after updating to populate exact marker coordinates in `.animations`
-and installed movement/terrain inputs in `.player`.
-Unavailable markers report a player-entry error. Ground settling, locomotion,
-and the original follow camera remain unsupported; use the independent debug
-flycam to inspect the world.
+and installed movement/terrain inputs in `.player`. Re-export for player schema 2,
+which adds authored static collision geometry and placement lists.
+Entry waits for both sidecars and settles against dry terrain and static models.
+Unavailable markers, unsupported terrain, and missing player definitions report a
+player-entry error. Dynamic ground support, locomotion and the original follow
+camera remain unsupported; use the independent debug flycam to inspect the world.
+
+## CI artifacts
+
+The `Build artifacts` workflow packages the native game for Linux x64,
+Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
+It also includes `cyrus-viewer` and its browser worker when the viewer crates
+are present in the checked-out revision. Both applications are built from this workspace.
+
+Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
+lint CI still runs on every push and pull request. Artifact builds run only for
+version tags and manual dispatch. Actions artifacts expire after seven days.
+Pushing a version tag matching `v*` builds its revision and creates
+a draft GitHub release with all archives and `SHA256SUMS` after every platform
+succeeds. Review the draft's assets and notes before publishing it; publishing
+does not rebuild them. A manual dispatch with `release_tag` set to an existing
+tag also attaches artifacts and creates a draft when no release exists.
+
+Archives contain application code and crate usage instructions. They contain
+no game files, exported previews, or local state. Native executables still need
+the player's GOG install. Browser bundles need locally exported game assets;
+the asset viewer needs privately served original files as described in its
+crate README. Downloading an artifact does not establish runtime or fidelity
+support on that platform.
 
 ## Asset viewer
 
@@ -61,8 +95,7 @@ See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
 The `Build artifacts` workflow packages the native game for Linux x64,
 Windows x64, macOS Intel, and macOS Apple Silicon, plus a browser bundle.
 It also includes `cyrus-viewer` and its browser worker when the viewer crates
-are present in the checked-out revision. The viewer currently lives on its
-separate development branch; game revisions without it contain only the game.
+are present in the checked-out revision. Both applications are built from this workspace.
 
 Full hosted artifact builds exceed the ten-minute per-commit budget. Test and
 lint CI still runs on every push and pull request. Artifact builds run only for
@@ -89,12 +122,15 @@ just run-web             # VibePod preview "cyrus-web"; ?scene=START picks a sce
 
 Without a `scene` query, the page runs startup through the book menu.
 Export startup first with `cargo run -p cyrus -- --export-startup`. The exporter
-reads the sibling `DOSBOX/glide2x_emu.ovl`, `system/STARTUP2.GXA`, and the configured
+reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 `gui_low_font` from the install; all generated images stay in
 `cyrus-config/cache/startup/`. Native windowed launch generates this cache when
-needed. Keep the GOG `DOSBOX` directory next to `Redguard`, or the supplied
-Glide overlay within `Redguard`. Enter, Space, or Escape advances startup.
-`--skip-startup` bypasses splash/title presentation and export; menu export still runs. `--scene` loads
+needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
+directory as a fallback. **Verified:** its metallic logo and orange swoosh are
+the Windows Glide splash; the full DOS overlay contains the older shield logo.
+The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
+documents both paths. Re-export browser startup caches after updating. Enter, Space, or Escape advances startup.
+`--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--scene` loads
 a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
 a world from startup or the menu. Control `state` reports the current app state.
 
@@ -113,7 +149,7 @@ under `cyrus-menu` in browsers. Installed defaults apply when no local state
 exists. Malformed state disables edits without overwriting it; failed saves
 leave the previous runtime values intact. The install stays read-only.
 Saved Sound preferences apply to native effects, speech, and CD music; the book
-menu plays its installed CD track. Native cinematics consume subtitle and interlace preferences.
+menu plays its installed CD track. Cinematics consume subtitle and interlace preferences.
 
 Movies browses the initially unlocked entries and installed previews. Native
 playback reads the configured movie file or GOG `game.gog` beside the install
@@ -121,28 +157,45 @@ into memory and decodes it in-process; the native virtual-display runner mounts 
 stream, uses the installed subtitle definitions and GUI font, and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
 skip point, or finishes after the last one. Playback returns to the same menu
-selection. Nothing is written to `cache/`.
+selection. Native playback does not write movie data to `cache/`.
+For browser playback, `--export-startup` also exports the browsable compressed
+Smacker files, first-track WAV audio, subtitle definitions, and configured font
+into `cyrus-config/cache/movies/`. The browser downloads the selected cinematic
+on demand and decodes video in-process, using the same skip, subtitle, interlace,
+and menu-return rules. Re-export startup and rebuild the browser after updating.
 MCP `state.menu.movie` reports loading, filename, frame, and total frames. The
-installed `force_movies` setting exposes all cinematic entries. Browser movie
-playback and progression unlocks remain unavailable. Quit exits; New Game, Save, Load,
-and Continue remain unavailable, with Save and Continue grayed without a
-resumable world. Menu export writes `cache/menu/book.menu` and an rgpre-generated
-status font. Runtime redraws authored book frames and neighboring-page text during
+installed `force_movies` setting exposes all cinematic entries. Progression
+unlocks remain unavailable. Native Quit closes the book and exits. Browser Quit
+attempts to close the tab; when the browser refuses, the menu remains usable.
+New Game enters the `WORLD.INI` starting world and marker. Load currently starts
+the same fresh world; it does not read or overwrite saves. Save and Continue
+remain grayed without a resumable world. World entry shows the installed
+destination artwork and red percentage bar until required assets and dependencies
+are ready. Escape returns to the menu after a loading error. Full gameplay and
+story initialization remain pending. Menu export writes `cache/menu/book.menu` and an rgpre-generated
+status font, plus the installed effects bank under `cache/sounds/` for browser menu
+playback without loading a world. Runtime redraws authored book frames and neighboring-page text during
 startup camera entry, submenu turns, and the closing Quit sequence. Navigation waits for
 motion to settle; MCP drivers must wait for `state.menu.ready` after each page
 change. Timing uses the startup presentation cadence rather than original update
-performance. Re-export browser caches for the authored-model schema. Lighting,
-camera-plane clipping, book sound cues, mouse selection, and runtime gameplay thumbnails
-remain unsupported.
+performance. Re-export browser caches for the authored-model schema. Book/page
+motion and navigation feedback play installed effects through the shared sound
+path on native and browser builds. **Verified:** the original default book menu has no pointer
+hover/click selection. Mouse/joystick rebinding remains unsupported. Lighting,
+camera-plane clipping and runtime gameplay thumbnails remain unsupported.
 
 With `?scene=...`, the page loads `cyrus-config/cache/<SCENE>.glb`. Run
 `cargo run -p cyrus -- --export-all-worlds` to rebuild every WORLD.INI entry
 and its map-stem alias. Use `?scene=27` for a specific world variant or
 `?scene=START` for a map. Map stems select the lowest world ID using that map.
 Native scene loads regenerate the export; browser-only sessions need the
-export command after loading changes. The browser keeps the WebAssembly engine
+export command after loading changes. The browser bootstrap downloads only the
+WebAssembly engine. Startup/menu and world downloads occur inside the running
+engine behind installed artwork. The title remains visible until the book is
+ready; world-entry progress counts completed preparation and required asset groups,
+without a minimum loading delay. The browser keeps the WebAssembly engine
 and downloaded GLB files in Cache Storage, then checks their timestamp and size
-before reusing them. Nothing from the install itself is served.
+before reusing them. Only locally exported assets are served; the install directory is not exposed.
 
 ### Animation data
 
@@ -151,10 +204,13 @@ each GLB. Native and browser scene loading retain animation groups, model
 references, frame geometry, original animation section payloads, and environment
 inputs. Re-export for animation schema 2 and source-mapped GLB geometry. Explicit
 group playback accepts supplied simulation ticks and updates private model
-meshes. Re-export again to retain script payloads and typed literal-task/End
-program descriptors. Explicit scripted playback accepts a caller-selected default,
+meshes. Re-export again to retain script payloads and version-2 typed SOUP
+program descriptors plus the independent version-2 `.scripts` sidecar with actor RASC origins. Explicit scripted playback accepts a caller-selected default,
 executes authored PushAnimation tasks, and applies their mesh frames. End stores
-its target for a later eligible stage. Automatic world activation, host timing,
+its target for a later eligible stage through the shared `cyrus-script` core.
+Control `state.scripts` reports cache readiness, program and unsupported counts,
+and bounded unsupported examples. Loaded scripts do not imply live execution.
+Automatic world activation, host timing,
 interrupts, synchronization channels and other script operations remain unsupported. Missing animation models
 are listed in the `.animations` asset's `unsupported` map.
 
@@ -249,5 +305,21 @@ the original follow camera remain unsupported.
 
 Native player input reads `KEYS.INI` and its user overrides. The TCP/MCP `state`
 response reports held `player_input` actions and the separate `flycam` position.
-The browser currently supports inspection only; keyboard bindings are not yet
-exported for it.
+Direct browser scene launches load exported keyboard defaults and saved local
+Controls overrides. Re-export worlds to include the keyboard defaults. Locomotion
+remains unsupported.
+
+### Explicit SOUP inspection
+
+Native control and MCP `scripts` return paged logical actor state after
+`state.scripts` reports `Loaded`. `step_script` takes the returned actor
+`generation`, `index`, and stage `main`, `interrupt`, or `tasks`. Actor IDs
+expire when a world is replaced, including a reload of the same cache handle.
+
+**Verified:** the portable core supports expressions, control flow, actor return
+state and shared task slots through explicit hosts. Installed programs and
+initial instance locals are retained independently of rendered meshes. The
+inspection host supports self `GetMyAttr`, `SetGlobalFlag`, `ResetGlobalFlag`
+and `TestGlobalFlag`; unsupported services produce a
+sticky contextual failure. Automatic actor eligibility, simulation timing,
+complete native handlers, progression and resumable saves remain unavailable.

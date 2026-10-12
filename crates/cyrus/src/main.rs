@@ -1,6 +1,16 @@
+//! Native install, persistence and control adapters with game/presentation assembly.
+mod control;
+mod scene;
+mod settings;
+use crate::control::ControlAddr;
+use crate::settings::Settings;
+mod bindings;
+mod debug;
+mod preferences;
 use bevy::prelude::*;
 use clap::Parser;
-use cyrus_game::{GamePlugin, control::ControlAddr, install::GameInstall, settings::Settings};
+use cyrus_assets::install::GameInstall;
+use cyrus_game::GamePlugin;
 
 #[derive(Parser, Debug)]
 #[command(version, about = "Redguard in Bevy, from your own GOG install.")]
@@ -19,7 +29,7 @@ struct Args {
     /// Export every WORLD.INI world to the browser cache and exit.
     #[arg(long)]
     export_all_worlds: bool,
-    /// Export splash, title, book-menu and HUD images to the browser cache and exit.
+    /// Export splash, title, book-menu, cinematics and HUD assets to the browser cache and exit.
     #[arg(long)]
     export_startup: bool,
     /// Control server bind address.
@@ -35,22 +45,30 @@ fn main() -> anyhow::Result<()> {
         settings.scene = scene;
     }
     let install = GameInstall::locate(args.source.install.as_deref())?;
+    install.cache_path(&Settings::cache_dir())?;
     if args.export_startup {
-        cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
-        cyrus_game::export_hud(&install, &Settings::cache_dir())?;
-        return cyrus_game::startup::export_startup(&install, &Settings::cache_dir());
+        cyrus_assets::startup::export_movies(&install, &Settings::cache_dir())?;
+        cyrus_assets::startup::export_menu(&install, &Settings::cache_dir())?;
+        cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
+        let menu: cyrus_assets::menu::MenuAsset = serde_json::from_slice(&std::fs::read(
+            Settings::cache_dir().join("menu/book.menu"),
+        )?)?;
+        let name = menu.new_game.world.to_string();
+        cyrus_assets::scene::export_scene(
+            &install,
+            &name,
+            &Settings::cache_dir().join(format!("{name}.glb")),
+        )?;
+        return cyrus_assets::startup::export_startup(&install, &Settings::cache_dir());
     }
     if args.export_all_worlds {
-        return cyrus_game::scene::export_all_worlds(&install, &Settings::cache_dir());
+        return cyrus_assets::scene::export_all_worlds(&install, &Settings::cache_dir());
     }
-    if !args.headless {
-        cyrus_game::export_hud(&install, &Settings::cache_dir())?;
+    if !args.headless && !startup {
+        cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
     }
     if startup {
-        cyrus_game::startup::export_menu(&install, &Settings::cache_dir())?;
-    }
-    if startup && !args.skip_startup {
-        cyrus_game::startup::export_startup(&install, &Settings::cache_dir())?;
+        cyrus_assets::startup::export_startup(&install, &Settings::cache_dir())?;
     }
     let control = ControlAddr(
         args.control
@@ -58,7 +76,10 @@ fn main() -> anyhow::Result<()> {
     );
 
     let mut app = App::new();
-    cyrus_game::scene::register_cache_source(&mut app)?;
+    app.insert_resource(cyrus_game::preferences::Preferences::new(
+        preferences::LocalPreferences,
+    ));
+    crate::scene::register_cache_source(&mut app)?;
     if args.headless {
         app.add_plugins((
             MinimalPlugins,
@@ -70,26 +91,39 @@ fn main() -> anyhow::Result<()> {
     } else {
         app.add_plugins(DefaultPlugins.set(cyrus_app::window("cyrus")));
     }
-    app.add_plugins(cyrus_game::animation::AnimationPlugin);
+    app.add_plugins((
+        cyrus_world::animation::AnimationPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
+    ));
     if !args.headless {
         app.add_plugins((
-            cyrus_game::environment::EnvironmentPlugin,
-            cyrus_game::hud::HudPlugin,
+            cyrus_render::WorldRenderPlugin,
+            cyrus_render::hud::HudPlugin,
         ));
         if startup {
-            app.add_plugins(cyrus_game::startup::StartupPlugin);
+            app.add_plugins(cyrus_render::startup::StartupPlugin);
             if args.skip_startup {
-                app.insert_state(cyrus_game::AppState::Menu);
+                app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash());
             }
         } else {
             app.add_plugins(cyrus_debug::DebugMenuPlugin);
+            debug::register(&mut app);
         }
     }
+    app.add_systems(Startup, bindings::load);
     app.insert_resource(control)
-        .add_plugins(GamePlugin { install, settings });
-    if args.headless {
-        app.insert_resource(cyrus_game::scene::Headless);
-    }
+        .insert_resource(install)
+        .insert_resource(settings.fidelity.clone())
+        .insert_resource(cyrus_world::lifecycle::SceneRequest(settings.scene.clone()))
+        .add_plugins((
+            GamePlugin,
+            cyrus_render::loading::LoadingPlugin,
+            scene::ScenePlugin,
+            control::ControlPlugin,
+            cyrus_render::sound::SoundPlugin,
+            cyrus_render::music::MusicPlugin,
+            cyrus_render::subtitles::SubtitlePlugin,
+        ));
     app.run();
     Ok(())
 }

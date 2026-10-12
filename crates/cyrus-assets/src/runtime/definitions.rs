@@ -38,7 +38,7 @@ pub fn decode(text: &str, path: &str) -> Result<Value> {
             json!({"pages":pages})
         }
         "SOUP386.DEF" => {
-            let soup = import::soup_def::parse_soup_def(text);
+            let soup = import::soup_def::parse_soup_def(text).map_err(anyhow::Error::msg)?;
             json!({"functions":soup.functions.iter().map(|f|json!({"name":f.name,"parameters":f.param_count})).collect::<Vec<_>>(),"flags":soup.flags.iter().map(|f|json!({"name":f.name,"type":f.flag_type})).collect::<Vec<_>>(),"references":soup.references,"attributes":soup.attributes,"animation_groups":soup.anim_groups})
         }
         _ => Value::Null,

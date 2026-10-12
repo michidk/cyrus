@@ -1,5 +1,5 @@
 //! Public catalog/cache contracts, without copyrighted fixtures.
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(all(feature = "viewer", feature = "native", not(target_arch = "wasm32")))]
 use cyrus_assets::{Category, Content, Preview, Source, install::GameInstall, native::Library};
 use std::path::{Path, PathBuf};
 

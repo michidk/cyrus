@@ -1,10 +1,10 @@
-use cyrus_game::player::ground::TerrainGround;
+use cyrus_world::collision::ground::TerrainGround;
 
 #[test]
 fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
     let mut heights = vec![-680; 256 * 256];
     heights[(256 - 161) * 256 + 160] = -720;
-    let terrain = TerrainGround::new(heights, vec![false; 256 * 256]).unwrap();
+    let terrain = TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap();
     let spawn = terrain.sample([10_448_896, -178_944, 10_502_144]).unwrap();
     assert_eq!(spawn.height, -680.0);
     assert_eq!(spawn.normal, [0, -256, 0]);
@@ -25,16 +25,17 @@ fn original_terrain_probe_preserves_integer_query_and_actor_origin() {
 fn unsupported_water_and_outside_grid_do_not_fabricate_support() {
     let mut water = vec![false; 256 * 256];
     water[(256 - 161) * 256 + 159] = true;
-    let terrain = TerrainGround::new(vec![-680; 256 * 256], water).unwrap();
+    let terrain = TerrainGround::new(vec![-680; 256 * 256], water, None).unwrap();
     assert!(terrain.sample([10_448_896, 0, 10_502_144]).is_none());
     assert!(terrain.sample([-256, 0, 0]).is_none());
     assert!(terrain.sample([65_536 * 256, 0, 0]).is_none());
-    assert!(TerrainGround::new(vec![], vec![]).is_err());
+    assert!(TerrainGround::new(vec![], vec![], None).is_err());
 }
 
 #[test]
 fn original_walking_route_uses_single_precision_heading_projection() {
-    use cyrus_game::player::{motion::translate, walk::WalkingStartup};
+    use cyrus_game::player::motion::translate;
+    use cyrus_game::player::walk::WalkingStartup;
     let mut startup = WalkingStartup::new(1).unwrap();
     let mut position = [10_446_802, -190_464, 10_818_615];
     for expected in [
@@ -49,7 +50,7 @@ fn original_walking_route_uses_single_precision_heading_projection() {
         [10_447_127, -190_464, 10_827_449],
     ] {
         let permits_translation = expected != [10_446_802, -190_464, 10_818_615];
-        let distance = startup.advance(8, 170, permits_translation);
+        let distance = startup.advance(8, 0, 170, permits_translation);
         if permits_translation {
             position = translate(position, 2036, distance as i64);
         }
@@ -60,7 +61,9 @@ fn original_walking_route_uses_single_precision_heading_projection() {
 
 #[test]
 fn original_wall_contacts_roll_back_or_project_and_separate() {
-    use cyrus_game::player::contact::{WallResponse, resolve_wall, separate_residual};
+    use cyrus_game::player::contact::WallResponse;
+    use cyrus_game::player::contact::resolve_wall;
+    use cyrus_game::player::contact::separate_residual;
     assert_eq!(
         resolve_wall(
             [10_449_205, -190_464, 10_770_526],
@@ -92,7 +95,7 @@ fn original_wall_contacts_roll_back_or_project_and_separate() {
 #[test]
 fn sphere_polygon_contact_keeps_plane_projection_and_boundary_equality() {
     use bevy::math::Vec3;
-    use cyrus_game::player::geometry::CollisionFace;
+    use cyrus_world::collision::geometry::CollisionFace;
     let face = CollisionFace::new(
         vec![
             Vec3::ZERO,
@@ -133,10 +136,11 @@ fn sphere_polygon_contact_keeps_plane_projection_and_boundary_equality() {
 
 #[test]
 fn installed_player_attributes_build_original_upright_spheres() {
-    use cyrus_game::player::definition::{BodySphere, PlayerDefinition};
+    use cyrus_game::player::definition::BodySphere;
+    use cyrus_game::player::definition::PlayerDefinition;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
-    let Ok(install) = cyrus_game::install::GameInstall::locate(Some(&root)) else {
-        eprintln!("skipping player body check: no Redguard install");
+    let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (player body check)");
         return;
     };
     let path = std::fs::read_dir(install.maps())
@@ -186,24 +190,53 @@ fn player_cache_rejects_partial_terrain_and_retains_unavailable_definition() {
             "settings": {"standing_height": -2, "post_collide_height": 50, "slide_range": -60000, "turn_speed": 12, "turn_max_speed": 48, "poly_push_units": 16},
             "heights": heights,
             "water": water,
+            "collision": {"placements": [], "models": {}, "unsupported": {}},
         }))
         .unwrap()
     };
     let scene =
-        PlayerScene::decode(&bytes(1, serde_json::Value::Null, serde_json::Value::Null)).unwrap();
+        PlayerScene::decode(&bytes(2, serde_json::Value::Null, serde_json::Value::Null)).unwrap();
     assert_eq!(scene.world, 1);
     assert!(scene.terrain.is_none());
     assert!(scene.definition.is_none());
-    assert!(scene.unavailable.unwrap().contains("world 1 player: CYRUS"));
     assert!(
-        PlayerScene::decode(&bytes(2, serde_json::Value::Null, serde_json::Value::Null)).is_err()
+        scene
+            .unavailable
+            .as_ref()
+            .unwrap()
+            .contains("world 1 player: CYRUS")
+    );
+    assert!(scene.model_radii.is_empty());
+    let missing = scene.candidates([0, 0], [0; 3], Some("CYRSA001"));
+    assert!(missing.unwrap_err().to_string().contains("radius absent"));
+    let mut invalid_radius: serde_json::Value =
+        serde_json::from_slice(&bytes(2, serde_json::Value::Null, serde_json::Value::Null))
+            .unwrap();
+    invalid_radius["model_radii"] = serde_json::json!({"CYRSA001": -1.0});
+    let error = PlayerScene::decode(&serde_json::to_vec(&invalid_radius).unwrap())
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(error.contains("world 1 player model CYRSA001: invalid radius"));
+    let mut stray_textures: serde_json::Value =
+        serde_json::from_slice(&bytes(2, serde_json::Value::Null, serde_json::Value::Null))
+            .unwrap();
+    stray_textures["terrain_textures"] = serde_json::json!(vec![0; 256 * 256]);
+    assert!(PlayerScene::decode(&serde_json::to_vec(&stray_textures).unwrap()).is_err());
+    assert!(
+        PlayerScene::decode(&bytes(
+            999,
+            serde_json::Value::Null,
+            serde_json::Value::Null
+        ))
+        .is_err()
     );
     assert!(
-        PlayerScene::decode(&bytes(1, serde_json::json!([]), serde_json::Value::Null)).is_err()
+        PlayerScene::decode(&bytes(2, serde_json::json!([]), serde_json::Value::Null)).is_err()
     );
-    assert!(PlayerScene::decode(&bytes(1, serde_json::json!([]), serde_json::json!([]))).is_err());
+    assert!(PlayerScene::decode(&bytes(2, serde_json::json!([]), serde_json::json!([]))).is_err());
     let scene = PlayerScene::decode(&bytes(
-        1,
+        2,
         serde_json::json!(vec![-680; 256 * 256]),
         serde_json::json!(vec![false; 256 * 256]),
     ))
@@ -221,7 +254,8 @@ fn player_cache_rejects_partial_terrain_and_retains_unavailable_definition() {
 
 #[test]
 fn original_wall_slide_adjusts_quantized_movement_heading() {
-    use cyrus_game::player::{contact::wall_heading, motion::displacement_heading};
+    use cyrus_game::player::contact::wall_heading;
+    use cyrus_game::player::motion::displacement_heading;
     let movement = displacement_heading(-3341, 1893);
     assert_eq!(movement, 345);
     assert_eq!(wall_heading(344, movement, [256, 0, 0]), 313);
@@ -234,7 +268,9 @@ fn original_wall_slide_adjusts_quantized_movement_heading() {
 #[test]
 fn collision_traversal_retries_misses_and_keeps_first_success_order() {
     use bevy::math::Vec3;
-    use cyrus_game::player::geometry::{CollisionFace, SphereCandidates, ordered_contacts};
+    use cyrus_world::collision::geometry::CollisionFace;
+    use cyrus_world::collision::geometry::SphereCandidates;
+    use cyrus_world::collision::geometry::ordered_contacts;
     let square = |z| {
         CollisionFace::new(
             vec![
@@ -282,4 +318,108 @@ fn collision_traversal_retries_misses_and_keeps_first_success_order() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn ordered_grounded_contacts_preserve_displacement_and_filter_facing() {
+    use cyrus_game::player::contact::{GroundedContact, resolve_grounded_contacts};
+    let previous = [10447534, -190464, 10771472];
+    let attempted = [10444193, -190464, 10773365];
+    let mut heading = 344;
+    assert_eq!(
+        resolve_grounded_contacts(
+            previous,
+            attempted,
+            &mut heading,
+            &[GroundedContact {
+                normal: [256, 0, 0],
+                classification: 1
+            }],
+            -60000
+        ),
+        [10447534, -190464, 10773491]
+    );
+    assert_eq!(heading, 313);
+    for (normal, classification) in [([256, 0, 0], 4), ([-256, 0, 0], 1)] {
+        let mut heading = 344;
+        assert_eq!(
+            resolve_grounded_contacts(
+                previous,
+                attempted,
+                &mut heading,
+                &[GroundedContact {
+                    normal,
+                    classification
+                }],
+                -60000
+            ),
+            attempted
+        );
+        assert_eq!(heading, 344);
+    }
+    // The original 2047 wrap admits one geometric quarter-turn boundary.
+    for (normal, distance) in [([256, 0, 0], 256), ([-256, 0, 0], 4096)] {
+        let mut heading = 0;
+        assert_eq!(
+            resolve_grounded_contacts(
+                [0; 3],
+                [0, 0, 256],
+                &mut heading,
+                &[GroundedContact {
+                    normal,
+                    classification: 1
+                }],
+                -60000
+            ),
+            [0, 0, distance]
+        );
+    }
+    // A second contact uses the original heading and displacement, not the first projection.
+    let mut heading = 344;
+    assert_eq!(
+        resolve_grounded_contacts(
+            previous,
+            attempted,
+            &mut heading,
+            &[
+                GroundedContact {
+                    normal: [256, 0, 0],
+                    classification: 1
+                },
+                GroundedContact {
+                    normal: [0, 0, -256],
+                    classification: 1
+                }
+            ],
+            -60000
+        ),
+        [10443970, -190464, 10771472]
+    );
+}
+
+#[test]
+fn upright_orientation_retains_original_half_turn_residual_and_heading_sign() {
+    use bevy::math::Vec3;
+    use cyrus_game::player::motion::upright_rotation;
+    let half = upright_rotation(1024);
+    assert_eq!(half.x_axis, Vec3::new(-1.0, 0.0, -1.509958e-7));
+    assert_eq!(half.y_axis, Vec3::Y);
+    assert_eq!(half.z_axis, Vec3::new(1.509958e-7, 0.0, -1.0));
+    assert_eq!(upright_rotation(0), upright_rotation(2048));
+    assert!(upright_rotation(2036).z_axis.x > 0.0);
+    assert!(upright_rotation(12).z_axis.x < 0.0);
+}
+
+#[test]
+fn incremental_upright_refresh_matches_selected_player_without_rebuilding() {
+    use bevy::math::{Mat3, Vec3};
+    use cyrus_game::player::motion::refresh_upright_rotation;
+    let mut matrix = Mat3::from_diagonal(Vec3::new(-1.0, 1.0, -1.0));
+    refresh_upright_rotation(&mut matrix, 0, 12);
+    assert_eq!(matrix.x_axis, Vec3::new(-0.999_322_35, 0.0, -0.036_807_153));
+    assert_eq!(matrix.y_axis, Vec3::Y);
+    assert_eq!(matrix.z_axis, Vec3::new(0.036_807_153, 0.0, -0.999_322_35));
+    let refreshed = matrix;
+    refresh_upright_rotation(&mut matrix, 12, 12);
+    assert_eq!(matrix, refreshed);
 }

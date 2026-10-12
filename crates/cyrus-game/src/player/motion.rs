@@ -7,6 +7,38 @@ static ROTATION: LazyLock<[f32; 2560]> = LazyLock::new(|| {
     std::array::from_fn(|index| f64::from((index as f64 * 6.2831852 / 2048.0) as f32).sin() as f32)
 });
 
+/// Upright actor rotation in original axes, with heading in 1/2048 turns.
+/// Retains table residuals per preservation player.md's upright orientation rules.
+pub fn upright_rotation(heading: u16) -> bevy::math::Mat3 {
+    use bevy::math::{Mat3, Vec3};
+    let index = usize::from(heading.wrapping_neg() & 2047);
+    let (sine, cosine) = (ROTATION[index], ROTATION[index + 512]);
+    Mat3::from_cols(
+        Vec3::new(cosine, 0.0, -sine),
+        Vec3::Y,
+        Vec3::new(sine, 0.0, cosine),
+    )
+}
+
+/// Refresh an admitted upright mode-zero matrix without consuming the angle snapshot.
+/// Per preservation PR49, each output component is stored at single precision.
+/// The caller snapshots headings at update start and chooses the refresh stage.
+pub fn refresh_upright_rotation(
+    rotation: &mut bevy::math::Mat3,
+    previous_heading: u16,
+    heading: u16,
+) {
+    if heading == previous_heading {
+        return;
+    }
+    let index = usize::from(previous_heading.wrapping_sub(heading) & 2047);
+    let (sine, cosine) = (f64::from(ROTATION[index]), f64::from(ROTATION[index + 512]));
+    let x = rotation.x_axis.as_dvec3();
+    let z = rotation.z_axis.as_dvec3();
+    rotation.x_axis = (x * cosine - z * sine).as_vec3();
+    rotation.z_axis = (x * sine + z * cosine).as_vec3();
+}
+
 /// Translate in original axes using an integer runtime distance. Y is unchanged.
 /// Positions and distance have eight fractional bits; heading uses 1/2048 turns.
 /// Single-precision coordinate addition is part of the original movement rule.

@@ -10,75 +10,109 @@ module where it is defined and regenerate.
 
 ## `cyrus-assets` — Renderer-independent asset catalog and portable preview contracts.
 
+- `src/animation.rs` — Validated animation cache records and source-frame lookup.
+- `src/animation_export.rs` — Native animation extraction through rgpre; no binary format parsing lives here.
+- `src/audio.rs` — Native installed audio readers and PCM conversion.
+- `src/collision.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
 - `src/decode.rs` — In-memory presentation of preservation parser results, shared by both targets.
 - `src/disc.rs` — CD cue-sheet interpretation shared by both runtime targets.
+- `src/environment.rs` — Validated world environment records.
+- `src/environment_export.rs` — Native extraction of per-world environment assets into the browser cache.
+- `src/hud.rs` — Installed HUD layout, item and font records.
+- `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
+- `src/loading.rs` — Native preload scan and parser coverage results.
 - `src/media.rs` — Portable Smacker decoding and PCM conversion; game presentation policy is separate.
+- `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
+- `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
+- `src/music.rs` — Read-only CD and world track preparation.
 - `src/native.rs` — Read-only filesystem adapter and optional disk cache for the shared runtime parsers.
 - `src/native/disc.rs` — CD track extraction shared with native game playback.
 - `src/native/geometry.rs` — Shared rgpre geometry export; game sidecars and preview presentation are separate.
+- `src/player.rs` — Serialized player scene inputs, before game-owned runtime preparation.
+- `src/player_export.rs` — Native extraction of player inputs through preservation's parsers.
+- `src/player_export/collision.rs` — Installed static placements and authored collision geometry for the portable player cache.
+- `src/player_export/models.rs` — Textured player frame-source models, prepared for the shared GLB loader.
+- `src/preferences.rs` — Local book preferences, expressed in original menu action units.
 - `src/runtime.rs` — Shared runtime catalog and preview decoding from read-only original files.
 - `src/runtime/definitions.rs` — Presentation of configuration fields decoded by preservation.
 - `src/runtime/geometry.rs` — Geometry built from original file bytes, without filesystem access.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
+- `src/scene.rs` — Native scene export and installed world selection.
+- `src/script.rs` — Portable SOUP programs and validated installed-definition records.
+- `src/script/validation.rs` — Validate portable operands before a script can issue host side effects.
+- `src/script_export.rs` — Native SOUP cache export through preservation's typed decoder and installed definitions.
+- `src/sound.rs` — Portable sound settings and exported effect metadata.
+- `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/source.rs` — Original-file access. Browser workers and native installs share the same parsers.
+- `src/startup/export.rs` — (undocumented)
+- `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.
+- `src/startup/mod.rs` — Native startup and movie preparation.
+- `src/startup/movie_native.rs` — Read-only installed cinematic extraction and browser cache export.
+- `src/startup/raster.rs` — Windows splash projection and lighting follow preservation's `docs/engine/startup.md`.
 
 ## `cyrus-control` — Control protocol: one JSON object per line over TCP.
 
+- `src/server.rs` — Native line-delimited transport; the host applies requests in frame order.
+
 ## `cyrus-debug` — (undocumented)
 
-## `cyrus-game` — Portable startup, HUD, animation, environment, fidelity, player and settings plugins
+## `cyrus-game` — Gameplay state, fidelity and player rules, independent of presentation.
 
-- `src/animation.rs` — Retained animation inputs; playback timing and actor activation are not inferred.
-- `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
-- `src/animation/frame.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
-- `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
-- `src/animation/script.rs` — Explicit main-script stages from preservation's SOUP and animation contracts.
-- `src/animation/sequence.rs` — Forward current-group playback from preservation's engine/animation.md.
-- `src/animation_export.rs` — Native animation extraction through rgpre; no binary format parsing lives here.
-- `src/animation_export/script.rs` — Native script extraction through rgpre; portable playback reads descriptors only.
-- `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
-- `src/environment.rs` — Cached environment inputs shared by native and browser builds.
-- `src/environment_export.rs` — Native extraction of per-world environment assets into the browser cache.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
-- `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
-- `src/hud.rs` — In-game overlay from installed HUD data: the health candle, its number, and the
-- `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
-- `src/install.rs` — Locating the player's own game files. The install is only ever read.
-- `src/loading.rs` — Startup preload: scan the install and parse every known file with the
-- `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
-- `src/player.rs` — Inspection camera and the player input foundation. Faithful locomotion is
+- `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
 - `src/player/definition.rs` — Player attributes and upright collision bounds from preservation's RGM metadata.
-- `src/player/export.rs` — Native extraction of player inputs through preservation's parsers.
-- `src/player/geometry.rs` — Sphere-to-polygon contacts from preservation's engine/player.md.
-- `src/player/ground.rs` — Terrain support in original map coordinates, per preservation's engine/player.md.
+- `src/player/grounded.rs` — Composed static ground queries from preservation's ordinary player update rules.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
 - `src/player/motion.rs` — Original heading projection, per preservation's player and water engine specs.
 - `src/player/placement.rs` — Marker-based entry from preservation's player and RGM documentation.
+- `src/player/support.rs` — Player-specific forward admission after world support queries.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's
 - `src/player/walk.rs` — Forward-walking startup from redguard-preservation's
-- `src/scene.rs` — Scene loading. shortcut: the scene goes through the preservation crate's GLB
-- `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
-- `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
-- `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
-- `src/sound_bank.rs` — Original effects bank, loaded without inventing script or ambient triggers.
-- `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
-- `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
-- `src/startup/export.rs` — (undocumented)
-- `src/startup/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
-- `src/startup/menu_data.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
-- `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.
-- `src/startup/menu_preferences.rs` — Local book preferences, expressed in original menu action units.
-- `src/startup/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
-- `src/startup/mod.rs` — Startup images rendered from the install's authored splash and title assets.
-- `src/startup/movie.rs` — Native installed Smacker playback. Rules live in preservation's engine/movies.md.
-- `src/startup/raster.rs` — Projection and materials follow preservation's `docs/engine/startup.md`.
-- `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
-- `src/water.rs` — Terrain wave playback from preservation's engine/water.md.
+- `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
+- `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
+- `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
+- `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
+- `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
+- `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
+- `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
+- `src/script/waits.rs` — Actor-owned wait tokens apply preservation's elapsed and unpaused-slot predicates.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
+
+## `cyrus-render` — Shared native/browser graphics, camera, menu, HUD and audio presentation.
+
+- `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
+- `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
+- `src/environment.rs` — Cached environment inputs shared by native and browser builds.
+- `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
+- `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
+- `src/lighting.rs` — Terrain RGB and quantized normals from preservation's terrain-lighting contract.
+- `src/loading.rs` — Startup preload: scan the install and parse every known file with the
+- `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
+- `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
+- `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
+- `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
+- `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
+- `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
+- `src/startup/loading.rs` — The installed title stays visible until menu or world assets are ready.
+- `src/startup/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
+- `src/startup/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
+- `src/startup/mod.rs` — Startup images rendered from the install's authored splash and title assets.
+- `src/startup/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+- `src/startup/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
+- `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
+- `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
+
+## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
+
+- `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
+- `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
+- `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
+
+## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 
 ## `cyrus-viewer` — Independent native and browser entry points for the shared asset viewer.
 
@@ -89,4 +123,29 @@ module where it is defined and regenerate.
 
 ## `cyrus-web` — shortcut: the browser loads GLBs that the native game exported into
 
-## `cyrus` — (undocumented)
+- `src/bindings.rs` — Host initialization of saved and installed player bindings.
+- `src/debug.rs` — Platform world-picker sources and navigation.
+- `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
+
+## `cyrus-world` — World lifetime, explicit animation execution and geometry queries.
+
+- `src/animation.rs` — Retained animation inputs; playback timing and actor activation are not inferred.
+- `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
+- `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
+- `src/animation/sequence.rs` — Forward current-group playback from preservation's engine/animation.md.
+- `src/collision/collision_mesh.rs` — Authored model queries from preservation's segment and sphere admission rules.
+- `src/collision/collision_world.rs` — Original static spatial ordering and model ground probes, independent of rendering.
+- `src/collision/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
+- `src/collision/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
+- `src/collision/mod.rs` — Terrain and authored static geometry queries.
+- `src/lifecycle.rs` — Shared world identity and prepared cache references.
+- `src/sound.rs` — Sound intents; only a playback consumer registers the message queue.
+
+## `cyrus` — Native install, persistence and control adapters with game/presentation assembly.
+
+- `src/bindings.rs` — Host initialization of saved and installed player bindings.
+- `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
+- `src/debug.rs` — Platform world-picker sources and navigation.
+- `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
+- `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
+- `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.

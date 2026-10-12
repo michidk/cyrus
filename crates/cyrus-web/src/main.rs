@@ -2,9 +2,15 @@
 //! `cyrus-config/cache/` (served next to the page); parsing the install's own
 //! files in the browser needs the preservation crate to run on wasm first.
 
+mod bindings;
+mod debug;
+mod preferences;
+
 use bevy::prelude::*;
-use cyrus_game::fidelity::{Area, Fidelity, Mode};
-use cyrus_game::player::PlayerPlugin;
+use cyrus_game::GamePlugin;
+use cyrus_game::fidelity::Area;
+use cyrus_game::fidelity::Fidelity;
+use cyrus_game::fidelity::Mode;
 
 fn scene_from_query() -> Option<String> {
     #[cfg(target_arch = "wasm32")]
@@ -34,9 +40,13 @@ fn modern_area(_area: &str) -> bool {
 }
 
 fn main() {
-    let direct_scene = scene_from_query().is_some();
+    let scene = scene_from_query();
     let mut app = App::new();
+    app.insert_resource(cyrus_game::preferences::Preferences::new(
+        preferences::LocalPreferences,
+    ));
     cyrus_app::register_cache(&mut app).expect("browser cache source");
+
     app.add_plugins(
         DefaultPlugins
             .set(cyrus_app::window("cyrus"))
@@ -63,52 +73,63 @@ fn main() {
         },
         ..default()
     })
-    .insert_state(if direct_scene {
-        cyrus_game::AppState::InGame
-    } else {
-        cyrus_game::AppState::Loading
-    })
-    .add_plugins((PlayerPlugin, cyrus_game::hud::HudPlugin));
-    if direct_scene {
-        app.add_plugins((
-            cyrus_game::environment::EnvironmentPlugin,
-            cyrus_game::animation::AnimationPlugin,
-            cyrus_debug::DebugMenuPlugin,
-        ))
-        .add_systems(Startup, spawn_scene);
-    } else {
-        app.add_plugins(cyrus_game::startup::StartupPlugin);
+    .add_plugins((
+        GamePlugin,
+        cyrus_render::WorldRenderPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
+        cyrus_world::animation::AnimationPlugin,
+        cyrus_render::hud::HudPlugin,
+        cyrus_render::sound::SoundPlugin,
+    ));
+    app.add_plugins(cyrus_render::startup::StartupPlugin)
+        .add_systems(
+            Update,
+            load_new_game
+                .run_if(in_state(cyrus_game::AppState::Loading))
+                .run_if(resource_exists::<cyrus_render::startup::StartGame>),
+        );
+    if let Some(scene) = scene {
+        app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash())
+            .insert_resource(cyrus_render::startup::StartGame::default())
+            .insert_resource(cyrus_world::lifecycle::SceneRequest(scene))
+            .add_plugins(cyrus_debug::DebugMenuPlugin);
+        debug::register(&mut app);
     }
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Update, quit_tab);
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(
+        Update,
+        bindings::load_scene_bindings
+            .after(cyrus_game::player::data::PlayerSceneLoading)
+            .before(cyrus_game::player::input::InputSample),
+    );
     app.run();
     let _ = Area::ALL;
 }
 
-fn spawn_scene(
+fn load_new_game(
     mut commands: Commands,
     assets: Res<AssetServer>,
-    mut frame: ResMut<cyrus_game::player::FrameScene>,
+    request: Res<cyrus_world::lifecycle::SceneRequest>,
+    startup: Res<cyrus_render::startup::StartupPresentation>,
+    prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
 ) {
-    let Some(name) = scene_from_query() else {
+    if !startup.loading_visible() || prepared.is_some() {
         return;
-    };
-    commands.insert_resource(cyrus_game::animation::AnimationRequest(
-        assets.load(format!("cache://{name}.animations")),
+    }
+    commands.insert_resource(cyrus_world::lifecycle::PreparedWorld::from_cache(
+        request.0.clone(),
+        &assets,
     ));
-    commands.insert_resource(cyrus_game::player::data::PlayerSceneRequest(
-        assets.load(format!("cache://{name}.player")),
-    ));
-    commands.insert_resource(cyrus_game::environment::EnvironmentRequest(
-        assets.load(format!("cache://{name}.environment")),
-    ));
-    frame.0 = true;
-    commands.spawn(WorldAssetRoot(assets.load(
-        GltfAssetLabel::Scene(0).from_asset(format!("cache://{name}.glb")),
-    )));
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 8000.0,
-            ..default()
-        },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.9, 0.4, 0.0)),
-    ));
+}
+
+#[cfg(target_arch = "wasm32")]
+fn quit_tab(mut requests: MessageReader<cyrus_render::startup::QuitRequest>) {
+    for _ in requests.read() {
+        if let Some(window) = web_sys::window() {
+            // Browsers refuse to close ordinary user-opened tabs; keep the menu running.
+            let _ = window.close();
+        }
+    }
 }

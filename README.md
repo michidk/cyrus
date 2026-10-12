@@ -19,6 +19,8 @@ Bring your own GOG install. cyrus ships no game data.
 ## What works today
 
 - Play the installed splash and title, then browse the data-driven book menu.
+- Play unlocked movies, edit persistent settings, and enter the starting world
+  with New Game. Load currently starts the same fresh world; saves are pending.
 - Load Redguard worlds from a local GOG install in the native or browser viewer.
 - Inspect loaded worlds with a free camera.
 
@@ -59,9 +61,20 @@ load faster, and run at a higher frame rate without changing game behavior.
 
 File formats and engine documentation come from
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
-[RGUnity](https://github.com/RGUnity/redguard-unity) is a related Unity project.
 cyrus publishes recovered format and engine facts through redguard-preservation.
 No original code or game data is part of this repository.
+
+## Acknowledgements
+
+[RGUnity](https://github.com/RGUnity/redguard-unity) inspired cyrus and provided
+foundational Redguard research used by this project. RGUnity is a human-developed
+Unity reimplementation built without AI assistance. Its contributors focus on
+meticulous fidelity and the small details that make the original game behave
+correctly.
+
+cyrus uses AI-assisted development to reach broad working coverage quickly. This
+complements RGUnity's detail-first work. We are grateful to its contributors for
+their research, implementation, and continued care for Redguard.
 
 ## Project documentation
 
