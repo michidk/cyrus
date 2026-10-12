@@ -16,6 +16,14 @@ pub struct CurrentScene {
     /// Resolved WORLD.INI identity, distinct from an alias or numeric request string.
     pub world: Option<u32>,
 }
+/// Host preparation stages before `PreparedWorld` exists. Retained while sidecars load
+/// so a loading bar continues from the preparation share instead of restarting.
+#[derive(Resource, Debug, Clone)]
+pub struct PreparationProgress {
+    pub done: usize,
+    pub total: usize,
+    pub label: String,
+}
 /// A host has completed preparation; sidecar loading remains asynchronous.
 #[derive(Resource)]
 pub struct PreparedWorld {

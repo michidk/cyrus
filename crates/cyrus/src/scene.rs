@@ -3,7 +3,7 @@
 use crate::settings::Settings;
 use bevy::prelude::*;
 use cyrus_assets::install::GameInstall;
-use cyrus_assets::scene::export_scene;
+use cyrus_assets::scene::export_scene_reporting;
 use cyrus_game::AppState;
 pub struct ScenePlugin;
 
@@ -13,14 +13,18 @@ pub fn register_cache_source(app: &mut App) -> anyhow::Result<()> {
 }
 
 use cyrus_world::lifecycle::{
-    CurrentScene, PreparedWorld, SceneLoadError, SceneRequest, WorldChange,
+    CurrentScene, PreparationProgress, PreparedWorld, SceneLoadError, SceneRequest, WorldChange,
 };
 use std::sync::{Mutex, mpsc};
 
+enum Message {
+    Stage(usize, usize, String),
+    Done(anyhow::Result<u32>),
+}
 #[derive(Resource)]
 struct Preparation {
     name: String,
-    result: Mutex<mpsc::Receiver<anyhow::Result<u32>>>,
+    result: Mutex<mpsc::Receiver<Message>>,
 }
 
 #[derive(Resource)]
@@ -68,6 +72,7 @@ fn load_requested(
         return;
     }
     commands.remove_resource::<SceneLoadError>();
+    commands.remove_resource::<PreparationProgress>();
     commands.insert_resource(LastAttempt(name.clone()));
     let install = install.clone();
     let requested = name.clone();
@@ -76,14 +81,17 @@ fn load_requested(
         .name(format!("prepare world {name}"))
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
+            let stages = sender.clone();
             let result = (|| {
                 let world = cyrus_assets::scene::world_index(&install, &requested)?;
                 let glb = Settings::cache_dir().join(format!("{requested}.glb"));
-                export_scene(&install, &requested, &glb)?;
+                export_scene_reporting(&install, &requested, &glb, &|done, total, stage| {
+                    let _ = stages.send(Message::Stage(done, total, stage.into()));
+                })?;
                 cyrus_assets::sound_export::export(&install, &Settings::cache_dir())?;
                 Ok(world)
             })();
-            let _ = sender.send(result);
+            let _ = sender.send(Message::Done(result));
         });
     match worker {
         Ok(_) => {
@@ -109,11 +117,16 @@ fn finish(
     let Some(pending) = pending else {
         return;
     };
-    let result = match pending.result.lock().unwrap().try_recv() {
-        Ok(result) => result,
-        Err(mpsc::TryRecvError::Empty) => return,
-        Err(mpsc::TryRecvError::Disconnected) => {
-            Err(anyhow::anyhow!("preparation worker disconnected"))
+    let result = loop {
+        match pending.result.lock().unwrap().try_recv() {
+            Ok(Message::Stage(done, total, label)) => {
+                commands.insert_resource(PreparationProgress { done, total, label });
+            }
+            Ok(Message::Done(result)) => break result,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                break Err(anyhow::anyhow!("preparation worker disconnected"));
+            }
         }
     };
     commands.remove_resource::<Preparation>();

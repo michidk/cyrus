@@ -4,15 +4,18 @@ use bevy::world_serialization::WorldInstance;
 use bevy::{asset::RecursiveDependencyLoadState, prelude::*};
 use cyrus_assets::menu::MenuAsset;
 use cyrus_game::AppState;
-use cyrus_world::lifecycle::{PreparedWorld, SceneLoadError};
+use cyrus_world::lifecycle::{PreparationProgress, PreparedWorld, SceneLoadError};
 
 #[derive(Resource)]
 struct WorldAssets(Vec<UntypedHandle>);
+/// Six sidecar handles plus the spawn and entry steps counted after preparation.
+const WORLD_ASSET_STEPS: usize = 8;
 
 #[derive(bevy::ecs::system::SystemParam)]
 struct WorldEntry<'w, 's> {
     game: Option<ResMut<'w, StartGame>>,
     prepared: Option<Res<'w, PreparedWorld>>,
+    preparation: Option<Res<'w, PreparationProgress>>,
     world_assets: Option<Res<'w, WorldAssets>>,
     scene_error: Option<Res<'w, SceneLoadError>>,
     spawner: Res<'w, WorldInstanceSpawner>,
@@ -42,6 +45,7 @@ fn poll(
     let WorldEntry {
         mut game,
         prepared,
+        preparation,
         world_assets,
         scene_error,
         spawner,
@@ -54,6 +58,14 @@ fn poll(
     if game.is_some() {
         if let Some(error) = scene_error {
             startup.error = Some(error.0.clone());
+        }
+        // Host preparation stages come first; sidecar loading continues the same bar.
+        let offset = preparation.as_ref().map_or(0, |p| p.total);
+        if prepared.is_none()
+            && startup.error.is_none()
+            && let (Some(game), Some(stage)) = (game.as_mut(), preparation.as_ref())
+        {
+            update_progress(game, &mut images, stage.done, offset + WORLD_ASSET_STEPS);
         }
         if startup.error.is_none()
             && let Some(prepared) = prepared
@@ -82,8 +94,9 @@ fn poll(
                         instance.is_some_and(|instance| spawner.instance_is_ready(**instance))
                     });
                 if let Some(game) = game.as_mut() {
-                    let total = handles.0.len() + 2;
-                    update_progress(game, &mut images, loaded + 1 + usize::from(spawned), total);
+                    let total = offset + handles.0.len() + 2;
+                    let done = offset + loaded + 1 + usize::from(spawned);
+                    update_progress(game, &mut images, done, total);
                 }
                 if loaded == handles.0.len() && spawned && startup.error.is_none() {
                     commands.remove_resource::<StartGame>();

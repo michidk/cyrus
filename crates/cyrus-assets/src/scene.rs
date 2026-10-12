@@ -7,12 +7,36 @@ use std::path::{Path, PathBuf};
 
 /// WLD scenes (outdoor) get terrain plus their RGM placements; indoor scenes are RGM only.
 pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Result<()> {
+    export_scene_reporting(install, name, out, &|_, _, _| {})
+}
+
+/// Preparation stages in order; `progress(done, total, stage)` precedes each one.
+pub const SCENE_STAGES: [&str; 6] = [
+    "World geometry",
+    "Animations",
+    "Player models",
+    "Environment",
+    "Player inputs",
+    "Scene file",
+];
+
+pub fn export_scene_reporting(
+    install: &GameInstall,
+    name: &str,
+    out: &Path,
+    progress: &dyn Fn(usize, usize, &str),
+) -> anyhow::Result<()> {
+    let total = SCENE_STAGES.len();
+    let stage = |index: usize| progress(index, total, SCENE_STAGES[index]);
+    stage(0);
     let mut world = crate::native::geometry::world(&install.root, name)?;
     let entry = world.entry.clone();
     if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
+    stage(1);
     crate::animation_export::export(&world.rgm, &world.models, &world.registry, entry.index, out)?;
+    stage(2);
     let player_model_radii = crate::player_export::models::export(
         &world.rgm,
         &world.registry,
@@ -20,7 +44,9 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         &mut world.textures,
         out,
     )?;
+    stage(3);
     crate::environment_export::export(install, &entry, world.terrain.as_deref(), out)?;
+    stage(4);
     crate::player_export::export(
         &install.root,
         &world.rgm,
@@ -29,7 +55,9 @@ pub fn export_scene(install: &GameInstall, name: &str, out: &Path) -> anyhow::Re
         &player_model_radii,
         out,
     )?;
+    stage(5);
     crate::native::publish(out, &world.glb)?;
+    progress(total, total, "World ready");
     info!(
         "scene {name}: exported {} models to {}",
         world.models.len(),
