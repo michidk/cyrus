@@ -88,12 +88,13 @@ retries the release without another version commit. Alternatively, update the
 version and lockfile locally and push the version commit and tag.
 
 `Release` checks that every workspace package matches the tag and runs the gates
-before building all platforms. It generates draft notes from conventional commits
-with git-cliff and `cliff.toml`. Each successful build attaches its archives to the
-draft immediately, so they remain downloadable if another platform fails. After
-every build succeeds, it attaches `SHA256SUMS` and publishes the release. Reruns
-leave an already published release unchanged. A failed build leaves a draft;
-rerun failed jobs in Actions to finish it.
+before building all platforms. Browser release builds use one Cargo job and thin
+link-time optimization to limit hosted-runner memory use; build logs include
+resource usage. After every build succeeds, it generates notes from conventional
+commits with git-cliff and `cliff.toml`, attaches all archives and `SHA256SUMS`,
+and publishes the release. No release is created when a build fails; successful
+packages remain available as Actions artifacts. Rerun failed jobs in Actions to
+finish. Reruns leave an already published release unchanged.
 Actions artifacts expire after seven days; GitHub release assets remain available.
 
 Archives contain application code and crate usage instructions. They contain

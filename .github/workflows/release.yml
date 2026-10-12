@@ -56,46 +56,9 @@ jobs:
       - name: Run gates
         run: bash dev/scripts/gates.sh
 
-  draft:
-    name: Prepare GitHub release draft
-    needs: verify
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    env:
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - name: Checkout full history
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Generate release changelog
-        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
-        with:
-          config: cliff.toml
-          args: --current --strip header --output CHANGELOG.md
-      - name: Create or update draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          release_state="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" |
-            jq -r --arg tag "$TAG_NAME" '.[] | select(.tag_name == $tag) | .draft')"
-          if [[ "$release_state" == "false" ]]; then
-            echo 'Release is already published; leaving it unchanged.'
-          elif [[ "$release_state" == "true" ]]; then
-            gh release edit "$TAG_NAME" --notes-file CHANGELOG.md
-          else
-            gh release create "$TAG_NAME" --verify-tag --draft \
-              --title "${TAG_NAME#v}" --notes-file CHANGELOG.md
-          fi
-
   native:
-    needs: draft
+    needs: verify
     name: Native (${{ matrix.target }})
-    permissions:
-      contents: write
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -151,22 +114,13 @@ jobs:
           compression-level: 0
           retention-days: 7
 
-      - name: Attach packages to draft
-        env:
-          BUILD_TARGET: ${{ matrix.target }}
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)"
-          if [[ "$is_draft" == "true" ]]; then
-            gh release upload "$TAG_NAME" target/artifacts/*-"$BUILD_TARGET".tar.gz --clobber
-          fi
-
   web:
-    needs: draft
+    # Keep concurrent compilation and whole-program linking within hosted-runner memory.
+    env:
+      CARGO_BUILD_JOBS: 1
+      CARGO_PROFILE_WASM_RELEASE_LTO: thin
+    needs: verify
     name: Browser bundles
-    permissions:
-      contents: write
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -187,7 +141,7 @@ jobs:
           version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)
           cargo install wasm-bindgen-cli --version "$version" --locked
       - name: Build and package
-        run: bash dev/scripts/build-artifacts.sh web
+        run: /usr/bin/time -v bash dev/scripts/build-artifacts.sh web
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: browser
@@ -195,16 +149,6 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
-
-      - name: Attach packages to draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)"
-          if [[ "$is_draft" == "true" ]]; then
-            gh release upload "$TAG_NAME" target/artifacts/cyrus-browser.tar.gz --clobber
-          fi
 
   release:
     name: Publish GitHub release
@@ -216,6 +160,16 @@ jobs:
     env:
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate release changelog
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        with:
+          config: cliff.toml
+          args: --current --strip header --output CHANGELOG.md
       - name: Download build artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -226,14 +180,20 @@ jobs:
         working-directory: artifacts
         run: sha256sum -- * > SHA256SUMS
 
-      - name: Attach checksums and publish
+      - name: Create release with all packages and publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          is_draft="$(gh release view "$TAG_NAME" --json isDraft --jq .isDraft)"
-          if [[ "$is_draft" == "false" ]]; then
+          release_state="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" |
+            jq -r --arg tag "$TAG_NAME" '.[] | select(.tag_name == $tag) | .draft')"
+          if [[ "$release_state" == "false" ]]; then
             echo 'Release is already published; leaving it unchanged.'
             exit 0
+          elif [[ "$release_state" == "true" ]]; then
+            gh release upload "$TAG_NAME" artifacts/* --clobber
+            gh release edit "$TAG_NAME" --notes-file CHANGELOG.md
+          else
+            gh release create "$TAG_NAME" artifacts/* --verify-tag --draft \
+              --title "${TAG_NAME#v}" --notes-file CHANGELOG.md
           fi
-          gh release upload "$TAG_NAME" artifacts/SHA256SUMS --clobber
           gh release edit "$TAG_NAME" --draft=false

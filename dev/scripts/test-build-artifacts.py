@@ -169,6 +169,42 @@ echo wasm > "$out/${app}_bg.wasm"
                 self.assertTrue((self.root / f"target/web/pkg/{app}{suffix}").is_file())
         self.assertTrue((self.root / "target/web/index.html").is_file())
 
+    def test_release_publishes_all_packages_and_skips_published_versions(self):
+        workflow = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
+        script = workflow.split("      - name: Create release with all packages and publish\n", 1)[1]
+        script = script.split("        run: |\n", 1)[1]
+        script = "\n".join(line[10:] for line in script.splitlines())
+        gh = self.root / "bin/gh"
+        gh.write_text('''#!/bin/bash
+set -euo pipefail
+if [[ "$1" = api ]]; then
+    if [[ "$RELEASE_STATE" = missing ]]; then echo '[]';
+    else printf '[{"tag_name":"v0.1.1","draft":%s}]\\n' "$RELEASE_STATE"; fi
+else
+    printf '%s\\n' "$*" >> release-calls.txt
+fi
+''')
+        gh.chmod(0o755)
+        artifacts = self.root / "artifacts"
+        artifacts.mkdir()
+        for name in ("native.tar.gz", "browser.tar.gz", "SHA256SUMS"):
+            (artifacts / name).write_text(name)
+        (self.root / "CHANGELOG.md").write_text("Release notes")
+        env = dict(self.env, GH_REPO="michidk/cyrus", TAG_NAME="v0.1.1")
+        for state in ("missing", "true", "false"):
+            calls = self.root / "release-calls.txt"
+            calls.unlink(missing_ok=True)
+            subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=self.root,
+                           env=dict(env, RELEASE_STATE=state), check=True)
+            commands = calls.read_text().splitlines() if calls.exists() else []
+            if state == "false":
+                self.assertEqual(commands, [])
+                continue
+            self.assertEqual(commands[-1], "release edit v0.1.1 --draft=false")
+            for name in ("native.tar.gz", "browser.tar.gz", "SHA256SUMS"):
+                self.assertIn(f"artifacts/{name}", commands[0])
+            self.assertIn("--notes-file CHANGELOG.md", "\n".join(commands))
+
     def test_build_failure_produces_no_archive(self):
         (self.root / "bin/cargo").write_text("#!/bin/bash\nexit 7\n")
         with self.assertRaises(subprocess.CalledProcessError) as error:
