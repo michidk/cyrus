@@ -119,7 +119,7 @@ Remaining intro implementation and verification are listed under
 - [x] In-game HUD from installed data: candle, health number and show timer, compass, logbook icon, power-up slots, active item, count and activation prompt, walk-mode/auto-defend notices; F8/Tab/F7 toggles persist locally. Gameplay inputs are not wired (see stages 1–3).
 - [x] DOSBox-X runner for observing the original game.
 - [x] Repository checks and CI.
-- [x] Release-tag and manual artifact builds for Linux x64, Windows x64, macOS Intel/Apple Silicon, and browsers. The asset-viewer branch uses the same workflow; version tags create draft releases with archives and checksums. Hosted game and viewer matrices passed, with archive contents and native executable architectures checked.
+- [x] Main-push, release-tag and manual artifact builds for Linux x64, Windows x64, macOS Intel/Apple Silicon, and browsers. The asset-viewer branch uses the same workflow; version tags create draft releases with archives and checksums. Hosted game and viewer matrices passed, with archive contents and native executable architectures checked.
 
 Evidence: [foundation](https://github.com/michidk/cyrus/commit/8d179e4),
 [world exports](https://github.com/michidk/cyrus/commit/1df0990),
