@@ -64,8 +64,10 @@ engine rules. This crate owns install validation, catalog identities, portable
 preview descriptions, generated
 files, PCM conversion, and the portable movie decoder wrapper.
 
-Native callers open an explicit `GameInstall`, then `native::Library`. Discovery
-preserves files with duplicate names and lists archives without reading them.
+Native game and viewer share `GameInstall::locate`, which resolves selected
+library/package folders and install descendants through `GameInstall::resolve`.
+Internal callers use `GameInstall::open` to validate an exact root, then
+`native::Library`. Discovery preserves files with duplicate names and lists archives without reading them.
 `expand` reads a selected archive index and gives members separate IDs; `prepare`
 decodes one selected member from its byte range at runtime. Model previews accept
 an optional palette from their world references; absence selects the first known

@@ -3,7 +3,8 @@
 Small presentation and launch helpers shared by the game and viewer.
 
 - `launch::InstallArgs` defines `--install` and `REDGUARD_DIR`; `locate()` shares
-  native default-folder discovery. `GameOptions` and `ViewerOptions` define the
+  native default-folder discovery and resolution of GOG library/package folders
+  and install subdirectories. `GameOptions` and `ViewerOptions` define the
   launch names and validation used by both CLI and URL parameters.
 - `browser_source` reads the validated install/cache URLs from the shared bootstrap.
 - `register_cache` registers the shared `cache://` asset source before Bevy's

@@ -125,6 +125,14 @@ Both native applications discover `./redguard`, `./Redguard`,
 `%SystemDrive%/GOG Games/Redguard`. Explicit `--install` and `REDGUARD_DIR` take
 precedence and report errors instead of silently selecting a different install.
 
+Native game and viewer share path resolution: `--install` and `REDGUARD_DIR` also accept a GOG
+library folder, the outer Redguard package folder, or any directory inside the
+install. Resolution checks enclosing directories and known `Redguard`,
+`Redguard/Redguard`, and `app/Redguard` layouts for `fxart`, `maps`, and
+`RGFX.EXE`, without recursively scanning the library. A sibling `DOSBOX`
+selection resolves through the enclosing package. Missing paths and unresolved
+selections report an error with `--install PATH` instructions.
+
 The browser asks "Where are the game files?" when no valid source is available.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and
 viewer, and checks the manifest and an original file again on every launch. A

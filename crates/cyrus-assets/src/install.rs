@@ -13,10 +13,10 @@ impl GameInstall {
     /// Invalid explicit or environment paths are errors rather than silent fallbacks.
     pub fn locate(explicit: Option<&Path>) -> anyhow::Result<Self> {
         if let Some(path) = explicit {
-            return Self::open(path);
+            return Self::resolve(path);
         }
         if let Some(path) = std::env::var_os(ENV_VAR) {
-            return Self::open(Path::new(&path));
+            return Self::resolve(Path::new(&path));
         }
         let mut candidates = vec![PathBuf::from(LINK_NAME), PathBuf::from("Redguard")];
         if let Some(home) = std::env::var_os("HOME") {
@@ -33,7 +33,7 @@ impl GameInstall {
             )));
         }
         for path in &candidates {
-            if let Ok(install) = Self::open(path) {
+            if let Ok(install) = Self::resolve(path) {
                 return Ok(install);
             }
         }
@@ -44,6 +44,46 @@ impl GameInstall {
                 .map(|path| path.display().to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
+        )
+    }
+
+    /// Resolves a native selection to the read-only game-data directory.
+    /// Accepts install descendants, GOG library folders and outer package folders.
+    /// Searches ancestors and known Redguard layouts, without recursively scanning libraries.
+    pub fn resolve(selected: &Path) -> anyhow::Result<Self> {
+        let selected = selected.canonicalize().map_err(|error| {
+            anyhow::anyhow!(
+                "{}: {error}; provide --install PATH pointing to your Redguard installation",
+                selected.display()
+            )
+        })?;
+        // Prefer the enclosing install before looking for a neighboring package.
+        for path in selected.ancestors() {
+            if let Ok(install) = Self::open(path) {
+                return Ok(install);
+            }
+        }
+        let mut searched = Vec::new();
+        for parent in selected.ancestors() {
+            searched.push(parent.display().to_string());
+            for layout in [
+                "Redguard",
+                "redguard",
+                "app/Redguard",
+                "Redguard/Redguard",
+                "Redguard/app/Redguard",
+            ] {
+                let path = parent.join(layout);
+                if let Ok(install) = Self::open(&path) {
+                    return Ok(install);
+                }
+                searched.push(path.display().to_string());
+            }
+        }
+        anyhow::bail!(
+            "{}: game files not found; expected fxart, maps and RGFX.EXE; provide --install PATH or REDGUARD_DIR. Searched: {}",
+            selected.display(),
+            searched.join(", ")
         )
     }
 
