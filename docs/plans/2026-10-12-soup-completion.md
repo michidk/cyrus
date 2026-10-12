@@ -1,0 +1,209 @@
+# SOUP completion plan
+
+This is the remaining implementation plan for running shipped SOUP content on
+native and browser builds. It updates the priorities in the
+[original integration plan](2026-10-11-gitnexus-plan-soup-runtime-game-integration.md).
+Do not repeat its already implemented crate creation, cache export, or VM migration.
+
+**Verified below means inspected source at cyrus `a5bbaa8`, not a fresh runtime
+comparison.** Recommendations are **Inferred**. Unresolved original behavior is
+**Unknown** until established from installed data or preservation evidence.
+No runtime tests or original-game comparisons were run for this planning update.
+
+## Current implementation
+
+**Verified:** the implementation is a portable execution core with explicit game
+hosts and inspection tools. Normal world loading prepares scripts but does not
+automatically execute all eligible actors. `ScriptPlugin` prepares the registry,
+updates diagnostics, and advances explicitly attached animation playback.
+
+- `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
+  initial flags, locals, strings, attributes, hooks, placements, and decoded
+  programs. The script cache is version 3, programs are version 2, and content
+  identity is validated. Unsupported decoding remains visible.
+- `cyrus-script` implements values, control flow, main and interrupt continuations,
+  the shared actor return continuation, six task slots, operand reevaluation,
+  pause/resume/stop, receiver dispatch, and sticky failures. Callers supply stages
+  and timing. Serializable state is not a working save implementation.
+- `cyrus-game/src/script/registry.rs` prepares logical map actors and standalone
+  player, gremlin, and camera roles. It guards world generations and supports
+  Me, Player, Camera, and named receivers. Inspection handlers support attribute
+  reads/writes, flag helpers, Wait, WaitOnTasks, and WaitNonMulti.
+- `cyrus-game/src/script/animation.rs` separately hosts PushAnimation. It uses the
+  same VM but is not the registry's general game host. Interrupt entry and
+  synchronization are rejected by this adapter. Registry inspection cannot run
+  arbitrary animation and game commands together.
+- Native control and MCP expose bounded `scripts` inspection and `step_script`.
+  Native and browser load the shared cache and game plugin. That wiring does not
+  establish browser execution parity.
+- Public-interface tests exist in `cyrus-script/tests/runtime.rs`,
+  `cyrus-game/tests/script_registry.rs`, `script_instances.rs`, animation tests,
+  and `cyrus-assets/tests/script.rs`. They cover many isolated contracts, including
+  task routing, waits, attribute effects, stale identities, and cache validation.
+
+**Verified limitations:** property reads/writes default to unsupported in `Host`.
+Variable object references, scriptless receivers, later allocation/recycling,
+player switching, reentrant callbacks, model-coupled attribute writes, hooks,
+synchronization, production scheduling, most native commands, progression,
+revisits, and saves remain incomplete. Decoder unsupported counts do not count
+all missing host commands and cannot measure gameplay completeness.
+
+## Existing documentation and roadmap placement
+
+- [Original integration plan](2026-10-11-gitnexus-plan-soup-runtime-game-integration.md):
+  architecture, evidence links, verification cases, and final completion criteria.
+  Its early current-state description predates the implementation. Its final
+  corrections override earlier assumptions about return continuations and tasks.
+- [Script README](../../crates/cyrus-script/README.md): current core contract and limits.
+- [Game README](../../crates/cyrus-game/README.md): current hosts, routing, and waits.
+- [Roadmap](../ROADMAP.md): stage 1 owns automatic world script execution;
+  stages 3 and 4 own interaction, persistence, and complete gameplay;
+  stage 5 owns full-game verification. The remaining SOUP work is unassigned.
+- [Method](../METHOD.md): original-game evidence and reproducible comparisons.
+
+**Verified:** the roadmap records an unresolved production clock and parks the
+player controller at the user's request. This plan does not resume that work.
+Script research, explicit host integration, and world inspection can proceed;
+player-dependent acceptance remains a separate dependency.
+
+## Ordered implementation checklist
+
+The order and milestones below are **Inferred** recommendations. Each item ends
+in a reviewable result. Move a command earlier when the selected installed
+scenario requires it. Do not substitute guessed behavior or successful stubs.
+
+### 1. Establish the remaining content and evidence inventory
+
+- [ ] Extend existing installed export tests/tooling to enumerate every WORLD.INI
+  entry, including palette variants and standalone roles. Record instructions,
+  operand/reference forms, hooks, native calls, and unsupported actor paths.
+- [ ] Separate declared, statically present, exercised, and original-verified
+  operations. Map each used operation to its current host, missing dependency,
+  evidence, and acceptance scenario. Keep generated installed content in `magic/`.
+- [ ] Select one installed interaction that combines a wait, flag mutation, and
+  visible response. Inspect its full prerequisites before choosing its handlers.
+
+Exit: every encountered form has a status and owner; the first scenario has a
+reproducible setup. A static inventory makes no reachability or parity claim.
+Owners: asset export/tests and preservation parsers for missing records.
+
+### 2. Connect one authoritative actor state to the game host
+
+- [ ] Reuse the existing registry and VM. Connect animation and immediate
+  attributes/flags/waits through one game-owned host without introducing another
+  interpreter or duplicate mutable actor state.
+- [ ] Establish shared ownership of model, default animation group, attributes,
+  player state, and task tokens. Resolve model-coupled attribute writes against
+  preservation before supporting them.
+- [ ] Complete needed property and variable-reference access, scriptless
+  receivers, special map object paths, player switching, allocation/recycling,
+  and reentrant dispatch in evidence-backed increments.
+- [ ] Preserve synchronous read-after-write effects, receiver task ownership,
+  physical operand identity, and contextual sticky errors. Test removal and
+  replacement while a foreign task is pending.
+
+Exit: an explicit stage can run the selected installed mixed-command sequence
+and update the same authoritative actor observed by animation and diagnostics.
+All receiver forms required by the inventory have tests or explicit blockers.
+Owners: `cyrus-game/src/script`, world animation/lifecycle, and domain state.
+
+### 3. Complete scheduling, interrupts, hooks, and synchronization
+
+- [ ] Recover unresolved timing and eligibility rules in preservation. Define
+  ordinary actor order, selected-player stages, task/body order, pause behavior,
+  interrupt suppression, hook dispatch, and synchronization release.
+- [ ] Keep explicit stepping as the deterministic test entry point. Add the
+  automatic scheduler only for established rules, with shared native/browser
+  execution and no actor allowlist or arbitrary render-frame timer.
+- [ ] Cancel old-world tasks and effects before replacement. Reject stale
+  callbacks, including same-world reloads and shared-map variants. Preserve the
+  current world when destination preparation fails.
+- [ ] Compare zero-tick, multiple-invocation, pause/resume, interruption, and
+  same-stage completion sequences with the original. Calibrate the diagnostic
+  instruction budget against executing content without turning it into a yield.
+
+Exit: eligible actors run automatically in the correct order; a deliberately
+wrong ordering or timing rule fails the comparison. Full clock fidelity is
+**Unknown** today and is a blocker, not a constant to choose during coding.
+Owners: game scheduler, animation/player timing, lifecycle, preservation research.
+
+### 4. Finish one playable script scenario across hosts
+
+- [ ] Run the scenario selected in item 1 automatically, with its real installed
+  scripts, objects, state changes, and visible/audio effects.
+- [ ] Compare the original with native and browser behavior, plus headless state.
+  Add a replay fixture containing inputs rather than captured game data.
+- [ ] Exercise interruption, world exit, and re-entry. Preserve FLAG2 supplied-tick
+  animation contracts as regression coverage, not proof of general gameplay.
+
+Exit: the scenario works without debug stepping or replacement content. If it
+requires the parked player controller, retain explicit verification and mark
+the playable acceptance blocked until that dependency is resumed.
+
+### 5. Complete native services by shipped-content dependency
+
+- [ ] Audio and presentation: sound ownership/cancellation, ambient tasks,
+  speech/subtitles, HUD prompts, bitmap slots, and logbook events. Reuse existing
+  sound and HUD paths and verify task completion/cancellation against them.
+- [ ] World behavior: lifecycle/visibility, groups, attachments, movement,
+  rotation, platforms, collision/spatial queries, lights, and effects.
+- [ ] Interaction: player lockout/restoration, inventory and item use, dialogue
+  choices, and scripted camera ownership. Feed the same state to HUD and saves.
+- [ ] Gameplay: navigation/perception, combat/projectiles, health/death,
+  puzzles, cinematics, and script-requested world transitions.
+- [ ] Give every used handler a verified contract, success scenario, and relevant
+  failure/interruption tests. Keep unused or unresolved declarations explicitly
+  classified rather than silently returning zero or immediate completion.
+
+Exit: no operation required by shipped progression lacks an implemented,
+verified service. VM opcode coverage alone cannot close this item.
+Owners: game-domain handlers, existing rendering/audio consumers, and preservation.
+
+### 6. Implement fresh games, revisits, and persistence
+
+- [ ] Establish reset and retention rules for globals, actors, locals, tasks,
+  inventory, dialogue/quests, and world changes from original evidence.
+- [ ] Implement real New Game initialization and revisits before treating menu
+  Load as a restored game. Define allowed save points from the original.
+- [ ] Restore versioned logical identities, continuations, tasks, and host state
+  with content compatibility checks. Recreate presentation resources afterward.
+- [ ] Use atomic native writes outside the install and transactional browser
+  storage. Validate before replacing live state or overwriting durable saves.
+- [ ] Compare save/restart/resume with uninterrupted execution, including waits,
+  foreign tasks, transitions, corrupt saves, and failed writes.
+
+Exit: supported save points and revisits preserve progression on both platforms.
+Original save-file import remains a separate format requirement.
+
+### 7. Close full-game coverage
+
+- [ ] Exercise all worlds, alternate quest order, deaths, interrupted dialogue,
+  repeated transitions, and the ending. Close encountered unsupported paths.
+- [ ] Compare native/browser outcomes and timing with reproducible original
+  scenarios. Prove selected comparisons reject a deliberately wrong behavior.
+- [ ] Update roadmap support only after acceptance. Retain distinct milestones:
+  complete VM semantics, complete automatic engine integration, and complete
+  shipped-game progression with persistence.
+
+Exit: a verified new-game-to-ending playthrough and required alternate/failure
+paths, with no silent exclusions. Do not report a completion percentage from
+function counts or cache preparation.
+
+## Verification for implementation work
+
+Use the narrowest existing public-interface tests for each change. Preserve
+asset validation, VM, registry, animation, sound, and render contracts as their
+owners change. Add tests for behavior rather than internal data arrangements.
+Run install-dependent checks with the install present and report any skips.
+Execute shared fixtures on native and WebAssembly; compilation alone does not
+prove browser runtime parity.
+
+Each runtime increment requires its relevant original comparison or headless
+replay, followed by one final `just gates` for code changes. Check portable
+boundaries and browser builds when their inputs change. Keep per-worktree build
+outputs separate and all game data/research under ignored local directories.
+Publish newly recovered engine facts in preservation before depending on them.
+
+For this documentation-only plan, run `dev/scripts/publish-check.sh` and
+`git diff --check`; do not run Cargo. No compiler, editor, JIT, mod API, or new
+generic scripting framework is needed for this completion plan.

@@ -407,7 +407,7 @@ for the ownership decisions and migration constraints.
   - [ ] Rope sounds from MPRP thresholds and the torch loop (effect 25), once rope and torch objects exist at runtime.
   - [ ] Refresh positional volume and pan while a sound plays.
 - [x] **Verified:** portable SOUP cache and execution core, independent actor locals, shared flags, six task slots, pause/resume/stop, animation migration and bounded MCP stepping. Explicit hosts support researched flag helpers, attribute reads/writes and wait commands through explicit frame-scale task passes. Attribute-44 model coupling remains unsupported. Explicit routing supports Me, standalone player/camera receivers and names ordered by signed runtime identifiers, with receiver locals, slots and foreign operands. Variable references, scriptless receivers and later allocation/recycling remain unsupported; this does not enable ordinary gameplay.
-- [ ] Run SOUP automatically with actor eligibility/timing, object references and receiver-owned tasks, main/interrupt execution, waits, hooks and synchronization.
+- [ ] Run SOUP automatically with actor eligibility/timing, object references and receiver-owned tasks, main/interrupt execution, waits, hooks and synchronization. Follow the [remaining SOUP implementation checklist](plans/2026-10-12-soup-completion.md), which also covers the stage 3–5 service, persistence, and full-game dependencies.
 - [ ] Activate every required object script; report unsupported operations rather than silently excluding objects.
 - [ ] Support scripted object groups, attachments, movement, lights, visibility, and world-required NPC navigation and perception.
 - [ ] Synchronize scripts, animation events, speech/subtitles, and sound; resume waiting scripts at the correct time.
