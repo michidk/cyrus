@@ -73,8 +73,11 @@ samples. Installed LBM palette replacement and movie play/seek/pause/step contro
 respond through the GUI. These
 checks establish runtime behavior, not visual or audible parity with the original. Further shared-tab inspection and
 headless control captures time out, so remaining browser interaction/audio
-checks stay open. Runtime evidence predates subsequent HUD and actor-default
-integration changes; those changes need their own runtime checks.
+checks stay open. **Verified:** the subsequent native development build also reaches a ready menu
+and New Game world 0 with initialized script actors, health/world HUD state and
+F8/Tab/F7 updates. Its shared loading edits are recorded separately from the tagged
+package evidence; browser checks after these integrations remain open. Starting-world
+settling reports unsupported water/terrain-edge support and retains the marker.
 
 | Area | Remaining acceptance checks |
 | --- | --- |
