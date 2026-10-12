@@ -95,6 +95,7 @@ pub fn export(install: &GameInstall, cache: &Path) -> anyhow::Result<()> {
         out.join("bank.sounds"),
         serde_json::to_vec(&SoundBank {
             effects,
+            music: Some(crate::music::settings(install)?),
             enabled: settings.effects,
             master_volume: settings.master_volume,
             sound_distance: settings.sound_distance,

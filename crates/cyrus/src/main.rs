@@ -47,6 +47,9 @@ fn main() -> anyhow::Result<()> {
         settings.scene = scene;
     }
     let install = GameInstall::locate(args.install.as_deref())?;
+    if args.export_startup || args.export_all_worlds {
+        cyrus_assets::music::export(&install, &Settings::cache_dir())?;
+    }
     if args.export_startup {
         cyrus_assets::startup::export_movies(&install, &Settings::cache_dir())?;
         cyrus_assets::startup::export_menu(&install, &Settings::cache_dir())?;

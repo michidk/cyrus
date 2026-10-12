@@ -8,7 +8,7 @@ out=target/web
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" --out-name cyrus-web \
     target/wasm32-unknown-unknown/wasm-release/cyrus-web.wasm
-cp crates/cyrus-web/web/index.html crates/cyrus-web/web/sw.js "$out/"
+cp crates/cyrus-web/web/index.html crates/cyrus-web/web/sw.js crates/cyrus-web/web/audio.js "$out/"
 worlds=""
 if [[ -d cyrus-config/cache ]]; then
     worlds="$(find cyrus-config/cache -maxdepth 1 -type f -name '*.glb' -printf '%f\n' \

@@ -8,7 +8,6 @@ mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;
 pub use menu::MenuState;
-#[cfg(not(target_arch = "wasm32"))]
 pub use movie::MovieAudio;
 
 /// Plays installed startup images through the installed book menu, before gameplay.

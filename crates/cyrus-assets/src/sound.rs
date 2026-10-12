@@ -5,12 +5,24 @@ use serde::{Deserialize, Serialize};
 #[derive(Asset, TypePath, Deserialize, Serialize)]
 pub struct SoundBank {
     pub effects: Vec<SoundEffect>,
+    /// Installed CD settings and per-world track selection; old caches require re-export.
+    #[serde(default)]
+    pub music: Option<MusicSettings>,
     /// `[system] sound`; when off no effect plays.
     pub enabled: bool,
     /// `[system] volume`; 256 when absent.
     pub master_volume: i32,
     /// `[system] sound_distance`; `None` when absent.
     pub sound_distance: Option<i32>,
+}
+
+/// Installed Red Book configuration for browser playback, using WORLD.INI IDs.
+#[derive(Resource, Clone, Deserialize, Serialize)]
+pub struct MusicSettings {
+    pub enabled: bool,
+    /// Original redbook volume units; values outside 0..=127 are ignored by the drive.
+    pub volume: i32,
+    pub world_tracks: std::collections::BTreeMap<u32, i32>,
 }
 
 #[derive(Deserialize, Serialize)]

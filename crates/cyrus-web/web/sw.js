@@ -28,11 +28,10 @@ self.addEventListener("fetch", event => {
 
     const response = await fetch(event.request, { cache: "no-store" });
     if (response.ok) {
-      try {
-        await cache.put(event.request, response.clone());
-      } catch (error) {
+      // Consume both branches together instead of buffering the entire game file before returning it.
+      event.waitUntil(cache.put(event.request, response.clone()).catch(error => {
         console.warn("Download cache unavailable", error);
-      }
+      }));
     }
     return response;
   })());

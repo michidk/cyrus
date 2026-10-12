@@ -7,7 +7,6 @@ pub mod hud;
 pub mod lighting;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod loading;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod music;
 pub mod player_model;
 mod sky;

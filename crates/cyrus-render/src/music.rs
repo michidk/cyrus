@@ -24,8 +24,11 @@
 
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
+#[cfg(not(target_arch = "wasm32"))]
 use cyrus_assets::install::GameInstall;
+#[cfg(not(target_arch = "wasm32"))]
 use cyrus_assets::music::{cue_path, read_track, world_track};
 use cyrus_assets::sound::SoundSettings;
 use cyrus_world::lifecycle::CurrentScene;
@@ -39,7 +42,10 @@ impl Plugin for MusicPlugin {
             .add_systems(
                 Update,
                 (
-                    start_world_track.run_if(resource_changed::<CurrentScene>),
+                    start_world_track.run_if(
+                        resource_changed::<CurrentScene>
+                            .or_else(resource_exists_and_changed::<SoundSettings>),
+                    ),
                     finish_track,
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
                     pause_track,
@@ -55,7 +61,10 @@ pub struct Music {
     pub track: Option<u32>,
     /// The drive's linear channel gain; it starts at full level and only accepted volumes change it.
     pub gain: f32,
+    #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<Result<AudioSource, String>>>,
+    #[cfg(target_arch = "wasm32")]
+    load: Option<Handle<AudioSource>>,
 }
 
 impl Default for Music {
@@ -91,6 +100,7 @@ fn music_enabled(
 }
 
 /// Starts loading `track`; the playing track is replaced once it is read.
+#[cfg(not(target_arch = "wasm32"))]
 fn request(install: &GameInstall, music: &mut Music, track: u32) {
     let Some(cue) = cue_path(install) else {
         return warn!(
@@ -106,21 +116,33 @@ fn request(install: &GameInstall, music: &mut Music, track: u32) {
     }));
 }
 
+#[cfg(target_arch = "wasm32")]
+fn request(assets: &AssetServer, music: &mut Music, track: u32) {
+    music.track = Some(track);
+    music.load = Some(assets.load(format!("cache://music/{track:02}.wav")));
+}
+
 fn start_menu_track(
-    install: Res<GameInstall>,
+    #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
+    #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     settings: Option<Res<SoundSettings>>,
     audio: Option<Res<Assets<AudioSource>>>,
     mut music: ResMut<Music>,
 ) {
     if music_enabled(&settings, &audio) {
+        #[cfg(not(target_arch = "wasm32"))]
         request(&install, &mut music, MENU_TRACK);
+        #[cfg(target_arch = "wasm32")]
+        request(&assets, &mut music, MENU_TRACK);
     }
 }
 
 fn start_world_track(
     mut commands: Commands,
-    install: Res<GameInstall>,
+    #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
+    #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     current: Res<CurrentScene>,
+    #[cfg(target_arch = "wasm32")] bank: Option<Res<cyrus_assets::sound::MusicSettings>>,
     settings: Option<Res<SoundSettings>>,
     audio: Option<Res<Assets<AudioSource>>>,
     mut music: ResMut<Music>,
@@ -129,9 +151,17 @@ fn start_world_track(
     if !music_enabled(&settings, &audio) || current.name.is_empty() {
         return;
     }
+    #[cfg(not(target_arch = "wasm32"))]
     let value = match world_track(&install, &current.name) {
         Ok(value) => value,
         Err(e) => return error!("music: scene {}: {e}", current.name),
+    };
+    #[cfg(target_arch = "wasm32")]
+    let value = {
+        let (Some(bank), Some(world)) = (bank, current.world) else {
+            return;
+        };
+        bank.world_tracks.get(&world).copied().unwrap_or(-1)
     };
     if value == -1 || u32::try_from(value).ok() == music.track {
         return;
@@ -142,7 +172,10 @@ fn start_world_track(
     music.track = None;
     music.load = None;
     if let Ok(track @ 1..) = u32::try_from(value) {
+        #[cfg(not(target_arch = "wasm32"))]
         request(&install, &mut music, track);
+        #[cfg(target_arch = "wasm32")]
+        request(&assets, &mut music, track);
     }
 }
 
@@ -152,12 +185,27 @@ fn finish_track(
     mut audio: Option<ResMut<Assets<AudioSource>>>,
     settings: Option<Res<SoundSettings>>,
     playing: Query<Entity, With<MusicPlayer>>,
+    #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
 ) {
     let (Some(load), Some(audio)) = (music.load.as_mut(), audio.as_mut()) else {
         return;
     };
+    #[cfg(not(target_arch = "wasm32"))]
     let Some(result) = check_ready(load) else {
         return;
+    };
+    #[cfg(target_arch = "wasm32")]
+    let result = match assets.get_load_state(load.id()) {
+        Some(bevy::asset::LoadState::Failed(error)) => {
+            Err(format!("CD track {:?}: {error}", music.track))
+        }
+        Some(bevy::asset::LoadState::Loaded) => {
+            let Some(source) = audio.get(load).cloned() else {
+                return;
+            };
+            Ok(source)
+        }
+        _ => return,
     };
     music.load = None;
     let source = match result {

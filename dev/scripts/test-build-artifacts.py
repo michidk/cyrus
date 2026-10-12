@@ -64,6 +64,7 @@ echo private > cyrus-config/cache/private.glb
 ln -sfn "$PWD/cyrus-config" target/web/cyrus-config
 echo page > target/web/index.html
 echo service > target/web/sw.js
+echo audio > target/web/audio.js
 echo code > "target/web/pkg/$app.js"
 echo wasm > "target/web/pkg/${app}_bg.wasm"
 echo private > target/web/pkg/other.wasm
@@ -104,7 +105,7 @@ done
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.tar.gz").exists())
 
     def test_browser_excludes_install_cache_and_stale_outputs(self):
-        expected = {"browser/index.html", "browser/sw.js", "browser/README.md",
+        expected = {"browser/index.html", "browser/sw.js", "browser/audio.js", "browser/README.md",
                     "browser/pkg/cyrus-web.js", "browser/pkg/cyrus-web_bg.wasm",
                     "browser/pkg/snippets/module/helper.js"}
         self.build("web")
@@ -132,6 +133,7 @@ done
             web.mkdir()
             (web / "index.html").write_text('<meta name="cyrus-worlds" content="">')
             (web / "sw.js").write_text("service worker")
+            (web / "audio.js").write_text("audio activation")
         web = self.root / "dev/web"
         web.mkdir()
         for name in ("loader.js", "sw.js", "loading.css", "asset-worker.js"):

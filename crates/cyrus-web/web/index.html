@@ -11,12 +11,28 @@ canvas{width:100%;height:100%;display:block;outline:none}
 #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000}
 #bar{width:min(400px,80vw);height:16px;border:1px solid #fff}
 #fill{height:100%;width:0;background:#fff}
+#failure{position:fixed;top:0;left:0;right:0;padding:12px;background:#000;color:#fff;white-space:pre-wrap;z-index:1}
 </style>
 </head>
 <body>
 <div id="loading"><div id="label">Loading…</div><div id="bar"><div id="fill"></div></div></div>
 <div id="hint">WASD move · right-drag look · Space/Shift up/down · ?scene=START</div>
 <script type="module">
+import { unlockAudio } from "./audio.js";
+unlockAudio();
+function reportFailure(error) {
+  let notice = document.getElementById("failure");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.id = "failure";
+    notice.setAttribute("role", "alert");
+    document.body.append(notice);
+  }
+  notice.textContent = `Game stopped: ${error?.message || String(error)}\nReload the page to try again.`;
+}
+window.addEventListener("error", event => reportFailure(event.error || event.message));
+window.addEventListener("unhandledrejection", event => reportFailure(event.reason));
+document.addEventListener("webglcontextlost", () => reportFailure("Graphics context lost"), true);
 const label = document.getElementById("label"), fill = document.getElementById("fill");
 const scene = new URLSearchParams(location.search).get("scene")?.toUpperCase();
 if (!scene) {

@@ -30,7 +30,7 @@ case "${1:-}" in
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
         bash dev/scripts/build-web.sh "${apps[@]}"
         mkdir -p "$stage/browser/pkg"
-        cp target/web/index.html target/web/sw.js "$stage/browser/"
+        cp target/web/index.html target/web/sw.js target/web/audio.js "$stage/browser/"
         cp crates/cyrus-web/README.md "$stage/browser/README.md"
         for app in "${apps[@]}"; do
             cp "target/web/pkg/$app.js" "target/web/pkg/${app}_bg.wasm" "$stage/browser/pkg/"

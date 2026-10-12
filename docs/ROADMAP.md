@@ -43,6 +43,7 @@ requested runtime feature. Reduce repeated verification, not implementation scop
 | Step 1: sound | Implement Game Sound Effects, resumed | `SoundCue` backend on main; next: SURFACE.INI remap, channel ownership, script/rope/torch triggers |
 | HUD | Implement the Game Overlay UI, resumed | Every documented overlay element is implemented; gameplay must still feed health, sword, lockout, player type, heading/world, compass flag, `Activate`/`ShowBitmap`/logbook events and walk/auto-defend behaviour |
 | Startup and book menu | Published increments; fidelity follow-up unassigned | Installed loading, New/temporary Load, settings, Movies and Quit implemented; saves, full gameplay, lighting/clipping, device capture and audible comparisons remain open |
+| Browser loading and audio | `t3/fix-game-loading-audio` | Fix New Game downloads and silent browser playback; evidence in `magic/artifacts/2026-10-12-browser-loading-audio/` |
 | Steps 3–6 | Unassigned | Interaction, persistence and complete gameplay |
 
 Earlier bounded research milestones remain published, with their limitations

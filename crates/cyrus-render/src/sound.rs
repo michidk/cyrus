@@ -645,6 +645,13 @@ fn finish_bank(
     settings.master_volume = bank.master_volume;
     settings.sound_distance = bank.sound_distance;
     settings.effects = bank.enabled;
+    if let Some(music) = &bank.music {
+        settings.music = music.enabled;
+        settings.redbook_volume = music.volume;
+        commands.insert_resource(music.clone());
+    } else {
+        warn!("sound: CD metadata absent; re-export startup assets for browser music");
+    }
     if let Some(preferences) = menu.as_ref().and_then(|m| m.preferences.as_ref()) {
         settings.apply_menu(preferences);
     }
