@@ -16,7 +16,7 @@ done and what is next), then the `README.md` of the crate you touch. The maintai
 
 ## Hard rules
 
-1. **Nothing from the install, and nothing from `magic/`, enters a tracked file.**
+1. **Nothing from the install, and nothing from `magic/`, enters a tracked file in cyrus.**
    Game assets, extracted archives, screenshots of copyrighted art, save games,
    working notes and research journals live under `magic/` (gitignored) or
    `cyrus-config/` (gitignored). `git add -f` is never the answer. If unsure
@@ -77,6 +77,27 @@ openly and credited in `README.md`. What stays out is the material itself:
 decompilation, dumps, addresses, journals. `dev/scripts/publish-check.sh` (run
 by `just gates`, the pre-commit hook and CI) greps the tracked tree for those
 shapes; passing it proves nothing about where code came from.
+
+## Private research archive
+
+Research documentation and decompiler output must be committed and pushed to
+the private [redguard-decomp](https://github.com/michidk/redguard-decomp)
+repository before a research task is handed over. Archive new or updated
+specifications, journals, task notes, handoffs, text observations, decompiled
+C-like exports, and supporting analysis records from `magic/`. A local-only
+copy does not complete the handoff.
+
+Use a separate checkout, read its `AGENTS.md`, preserve source paths and hashes,
+and add a dated snapshot for changed evidence. Update its research index,
+commit to `main`, push, and verify the remote commit. Record the archive commit
+in the local task handoff. Keep the working files under gitignored `magic/`;
+do not stage them in cyrus.
+
+Game executables, installers, assets, extracted game scripts, screenshots,
+audio, video, manuals, saves, binary dumps, Ghidra databases, credentials,
+dependencies, and build caches stay local. The private archive accepts research
+text, decompilation, and analysis records. Durable engine and format facts
+still belong in redguard-preservation; implementation belongs here.
 
 ## Repository map
 

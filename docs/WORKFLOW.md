@@ -73,6 +73,15 @@ are never edited or renamed; a correction is a new `N+1` slice. Only the
 artifact `README.md` and living docs change. Logs, probes and JSON dumps go in
 the artifact, not loose in `magic/`.
 
+Research documentation and decompiler output also require a durable copy in
+the private [redguard-decomp](https://github.com/michidk/redguard-decomp)
+repository. Before handing over a research task, archive its new or updated
+text records and exports, commit and push them there, and verify the remote
+commit. Preserve paths and hashes, keep changed evidence in a dated snapshot,
+and record the archive commit in the local handoff. Follow `AGENTS.md`'s
+private-archive rules for file selection; installed assets and binary databases
+stay local. Nothing from the research archive is staged in cyrus.
+
 The artifact `README.md` starts with:
 
 ```
