@@ -43,14 +43,12 @@ impl GroundedWalk {
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
         shared.0.begin_player_update(input.motion.nominal_ticks);
-        let default_group = u16::from(
-            query
-                .scene
-                .definition
-                .as_ref()
-                .context("grounded update: player definition unavailable")?
-                .ordinary_default_group,
-        );
+        let definition = query
+            .scene
+            .definition
+            .as_ref()
+            .context("grounded update: player definition unavailable")?;
+        let default_group = u16::from(definition.ordinary_default_group);
         animation.set_default_group(default_group);
         let mut frame = animation.advance_with_sounds(input.motion.nominal_ticks, sounds)?;
         frame = animation
@@ -70,6 +68,25 @@ impl GroundedWalk {
         if let Some(step) = &step {
             frame = step.frame.or(frame);
         }
+        let mut accepted = step.is_some();
+        if !accepted && animation.current_group() == Some(20) {
+            let probe = definition.forward_probe(self.position, query.rotation)?;
+            if query
+                .forward_support(probe, shared.0, &mut self.surface, shared.1)?
+                .is_some()
+            {
+                // Continuation must preserve the pending default, without another request.
+                let distance = self.startup.advance(
+                    definition.forward_walk,
+                    definition.forward_speed,
+                    input.motion.frame_scale,
+                    !animation.translation_suppressed(),
+                );
+                self.position =
+                    super::motion::translate(self.position, input.motion.heading, distance as i64);
+                accepted = true;
+            }
+        }
         self.resolve_ground(
             query,
             previous,
@@ -77,7 +94,7 @@ impl GroundedWalk {
             shared.0,
             shared.1,
         )?;
-        self.startup.finish_update(step.is_some());
+        self.startup.finish_update(accepted);
         Ok(frame)
     }
 

@@ -16,7 +16,8 @@ pub struct WalkingStep {
 impl WalkingStartup {
     /// Request the supported ordinary walking group before reading its movement marker.
     /// Caller must establish sheathed/non-combat eligibility and pass the forward probe.
-    /// Missing groups do not advance startup; sound errors propagate without translation.
+    /// Requires the enabled animation system. Missing or pending groups do not advance
+    /// startup; sound errors propagate without translation.
     pub fn request(
         &mut self,
         animation: &mut cyrus_world::animation::ActorAnimation,
@@ -29,6 +30,9 @@ impl WalkingStartup {
             return Ok(None);
         }
         let frame = animation.request_with_sounds(20, 0, nominal_ticks, sounds)?;
+        if animation.current_group() != Some(20) {
+            return Ok(None);
+        }
         let distance = self.advance(
             definition.forward_walk,
             definition.forward_speed,
