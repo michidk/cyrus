@@ -5,6 +5,7 @@ mod flags;
 mod playback;
 mod presentation;
 mod registry;
+mod spatial;
 mod status;
 mod tasks;
 pub use animation::AnimationScript;
@@ -13,8 +14,10 @@ pub use cyrus_script::Thread;
 pub use playback::ScriptedPlayback;
 pub use presentation::ScriptBinding;
 pub use registry::{
-    ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptStage, ScriptWorld,
+    ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs, ScriptStage,
+    ScriptWorld,
 };
+pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs};
 pub use status::ScriptStatus;
 
 pub struct ScriptPlugin;

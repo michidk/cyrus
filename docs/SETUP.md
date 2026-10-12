@@ -356,3 +356,12 @@ zero. The `tasks` stage additionally needs `frame_scale` with eight fractional
 bits. These are explicit original timing inputs, not milliseconds or frame counts.
 The shared host can combine animation tasks, waits, attributes, and flags.
 These commands do not infer actor eligibility or start automatic gameplay.
+
+For explicit SOUP spatial inspection, use `step_script` with `prepare_spatial`
+once per world generation, then `families` to compose attached poses. Use
+`snapshot` at an established actor-update boundary and `transform` to refresh an
+unattached actor matrix. Executable stages then require both `frame_scale` and
+`nominal_ticks`. Spatial state appears in `scripts`; bound scene nodes consume it
+without advancing scripts. PlayerDistance requires explicit `distance_override`
+and uses `fallback_position` only when no selected player pose exists. These
+inspection inputs do not establish production scheduling or gameplay readiness.

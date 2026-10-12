@@ -33,7 +33,10 @@ updates diagnostics, and advances explicitly attached animation playback.
   logical actor. Native task tokens are shared, including routed receiver tasks.
   The standalone animation adapter reuses that task handler. Explicit animation,
   ordinary entry, task, and body stages still require caller-established timing
-  and eligibility. Other native game commands remain unsupported.
+  and eligibility. Explicit spatial preparation adds local/composed poses,
+  RotateByAxis tasks, and player queries with supplied global inputs. Linked
+  position ownership and dynamic attachment changes remain unsupported.
+  These paths still require the installed mixed-scenario acceptance below.
 - Native control and MCP expose bounded `scripts` inspection, explicit animation
   binding, and `step_script`. Shared scene bindings read the logical actor's pose
   and expire with its world generation. Native and browser load the shared cache
@@ -60,7 +63,7 @@ all missing host commands and cannot measure gameplay completeness.
 - [Game README](../../crates/cyrus-game/README.md): current hosts, routing, and waits.
 - [Roadmap](../ROADMAP.md): stage 1 owns automatic world script execution;
   stages 3 and 4 own interaction, persistence, and complete gameplay;
-  stage 5 owns full-game verification. The remaining SOUP work is unassigned.
+  stage 5 owns full-game verification. The active SOUP task owns the remaining implementation checklist.
 - [Method](../METHOD.md): original-game evidence and reproducible comparisons.
 
 **Verified:** the roadmap records unresolved production invocation pacing and parks the
@@ -230,8 +233,10 @@ and synthetic mixed-command tests do not close them.
 **Verified:** the installed PI_LVRA lever is a small mixed-command acceptance
 candidate. Its prerequisites include player distance/facing queries, activation,
 player animation, positional sound, and object rotation.
-Those services remain unsupported; its authored flag change cannot establish
-playable acceptance by itself. **Inferred next implementation order:**
+Spatial queries, attached transforms and rotation are connected through explicit
+supplied stages and verified by a native headless PALACE replay. Activation, player animation ownership, and positional sound still
+require integration; the authored flag change cannot establish playable
+acceptance by itself. **Inferred next implementation order:**
 
 1. Connect the player-query and rotation-task contracts published in
    [preservation PR55](https://github.com/michidk/redguard-preservation/pull/55).

@@ -228,11 +228,21 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
         for stage in [
             ScriptStage::Animation,
             ScriptStage::Entry,
-            ScriptStage::Tasks { frame_scale: 256 },
+            ScriptStage::Tasks,
             ScriptStage::Body(Thread::Main),
         ] {
             world
-                .advance(id, stage, Some(ticks), None, 100_000)
+                .advance(
+                    id,
+                    stage,
+                    cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(ticks),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    100_000,
+                )
                 .unwrap();
         }
     };

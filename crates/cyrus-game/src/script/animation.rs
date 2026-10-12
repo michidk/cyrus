@@ -120,7 +120,14 @@ impl Host for AnimationHost<'_, '_> {
             "task {function} unsupported"
         );
         self.tasks
-            .call(function, kind, arguments, invocation, &mut self.input)?
+            .call(
+                function,
+                kind,
+                arguments,
+                invocation,
+                &mut self.input,
+                &mut None,
+            )?
             .context("animation task absent")
     }
     fn poll(
@@ -131,7 +138,7 @@ impl Host for AnimationHost<'_, '_> {
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
         self.tasks
-            .poll(token, arguments, invocation, &mut self.input)
+            .poll(token, arguments, invocation, &mut self.input, &mut None)
     }
     fn cancel(&mut self, token: u64) -> anyhow::Result<()> {
         self.tasks.cancel(token)

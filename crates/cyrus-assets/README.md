@@ -19,6 +19,14 @@ Run `cargo test -p cyrus-assets` for portable records, or
 Installed tests report skips when the install is unavailable. Exported content
 stays in the ignored local cache; no game data ships in this crate.
 
+The installed `every_world_exports_valid_animation_geometry` test exports every
+WORLD.INI entry, including shared-map palette variants, and validates all exported
+animation models and frames, including each authored ShowFrame reference through
+its actor's RAAN table or each type-one placement's model frame table. Definitions
+without a supported instance frame source are reported separately. It fails on
+unsupported model references. This checks
+asset coverage, not automatic animation playback or script progression.
+
 World exports include `.animations` sidecars containing actor animation groups,
 RAAN model references, and decoded model frame positions and normals. Missing or
 unsupported model references remain explicit in the asset's `unsupported` map.
@@ -102,3 +110,7 @@ cargo run -p cyrus-assets --features native --example soup_inventory > magic/art
 Keep this generated installed-content report under `magic/`. Handler ownership,
 missing services, and scenario evidence belong to the completion investigation;
 the asset census does not infer them from function names.
+
+Placed-object frame lookup uses the instance metadata retained by preservation,
+following [the frame-source rules](https://github.com/michidk/redguard-preservation/blob/6488b6e/docs/engine/animation.md#placed-object-frame-sources).
+This lookup does not establish automatic actor or animation eligibility.

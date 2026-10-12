@@ -26,7 +26,7 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
                 "1":{"next":2,"operation":{"type":"end","target":0}}
             }}
         }},
-        "instances":[{"object_id":0,"actor":"ACTOR","object_type":0,"active":0,"map_position":[0,0,0],"angles":[0,0,0]}],
+        "instances":[{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"map_position":[0,0,0],"angles":[0,0,0]}],
         "unsupported":{}
     })).unwrap();
     scripts.content_id = scripts.content_identity().unwrap();
@@ -34,8 +34,9 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
         "version":2,"world":17,"sections":{},"unsupported":{},
         "models":{"TEST":{"base_positions":[[0,0,0]],"base_normals":[],"faces":[],"encoding":"animated_i32",
             "positions":[[[0,0,0]],[[0,1,0]]],"normals":[[],[]]}},
-        "metadata":{"script_content_id":scripts.content_id,"actors":[{
-            "script_name":"ACTOR","raan_entries":[{"file_path":"test.3dc","frame_count":2}],
+        "metadata":{"script_content_id":scripts.content_id,
+        "mpob_objects":[{"script_name":"ACTOR","object_type":1,"is_static":2,"model_name":"test"}],"actors":[{
+            "script_name":"ACTOR",
             "animation_groups":[
                 {"group_index":1,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
                 {"group_index":7,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":1},{"opcode":2,"value":0},{"opcode":1}]}
@@ -91,10 +92,16 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
         });
     let node = app
         .world_mut()
-        .spawn(ScriptBinding {
-            actor: id,
-            source: animation_handle.clone(),
-        })
+        .spawn((
+            ScriptBinding {
+                actor: id,
+                source: animation_handle.clone(),
+            },
+            AnimationPose {
+                model: "PREVIOUS".into(),
+                frame: 42,
+            },
+        ))
         .id();
     app.update();
     assert!(app.world().get::<AnimationPose>(node).is_none());
@@ -103,7 +110,17 @@ fn bound_pose_follows_explicit_actor_stage_and_expires_on_same_world_reload() {
         .current
         .as_mut()
         .unwrap()
-        .advance(id, ScriptStage::Body(Thread::Main), Some(0), None, 10)
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            10,
+        )
         .unwrap();
     app.update();
     let pose = app.world().get::<AnimationPose>(node).unwrap();

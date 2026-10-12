@@ -152,3 +152,9 @@ applies the requested frame, and replaces the model when the source changes.
 Removing the pose or player removes its model. The model stays hidden until its
 pose reaches the loaded node. Native and browser use the same loader path.
 This adds no animation interpreter, actor activation, or simulation clock.
+
+`ScriptTransformPlugin` presents explicitly prepared logical script poses through
+existing `ScriptBinding` nodes. It preserves the stored affine matrix, converts
+original axes to the shared scene coordinates, and updates descendant global
+transforms after ordinary propagation. Removing or expiring a binding restores
+the authored local transforms. Presentation never advances script stages.

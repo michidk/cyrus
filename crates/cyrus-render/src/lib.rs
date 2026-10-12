@@ -9,6 +9,7 @@ pub mod lighting;
 pub mod loading;
 pub mod music;
 pub mod player_model;
+pub mod script_transform;
 mod sky;
 pub mod sound;
 #[cfg(target_arch = "wasm32")]
@@ -25,6 +26,7 @@ impl Plugin for WorldRenderPlugin {
         app.add_plugins((
             camera::CameraPlugin,
             animation::AnimationRenderPlugin,
+            script_transform::ScriptTransformPlugin,
             player_model::PlayerModelPlugin,
             environment::EnvironmentPlugin,
         ))

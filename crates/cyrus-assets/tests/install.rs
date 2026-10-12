@@ -1,6 +1,7 @@
 #![cfg(all(feature = "native", not(target_arch = "wasm32")))]
 //! Needs an install: skips (and says so) when `redguard`/`$REDGUARD_DIR` is absent.
 
+use anyhow::Context;
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::loading::parse_one;
 use rgpre::import::registry;
@@ -41,6 +42,111 @@ fn every_scene_file_in_maps_parses() {
         })
         .collect();
     assert!(failed.is_empty(), "{failed:#?}");
+}
+
+#[test]
+fn every_world_exports_valid_animation_geometry() {
+    let Some(install) = install() else { return };
+    let ini = rgpre::import::world_ini::find_world_ini(&install.root).unwrap();
+    let worlds = rgpre::import::world_ini::WorldIni::parse(&std::fs::read_to_string(ini).unwrap());
+    assert!(!worlds.entries.is_empty());
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("all-world-animations-test-{}", std::process::id()));
+    let mut failures = Vec::new();
+    for world in worlds.entries {
+        let result = (|| -> anyhow::Result<()> {
+            let path = output.join(format!("{}.glb", world.index));
+            cyrus_assets::scene::export_scene(&install, &world.index.to_string(), &path)?;
+            let animations: cyrus_assets::animation::Animations =
+                serde_json::from_slice(&std::fs::read(path.with_extension("animations"))?)?;
+            anyhow::ensure!(animations.world == world.index, "animation world mismatch");
+            animations.validate()?;
+            for actor in animations.metadata["actors"].as_array().unwrap() {
+                let Some(groups) = actor.get("animation_groups") else {
+                    continue;
+                };
+                let name = actor["script_name"].as_str().context("actor name absent")?;
+                let sources: Vec<Option<usize>> = if actor["raan_entries"]
+                    .as_array()
+                    .is_some_and(|entries| !entries.is_empty())
+                {
+                    vec![None]
+                } else {
+                    animations.metadata["mpob_objects"]
+                        .as_array()
+                        .context("placed objects absent")?
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, placement)| {
+                            placement["script_name"].as_str() == Some(name)
+                                && placement["object_type"] == 1
+                                && placement["is_static"] != 1
+                                && placement["model_name"]
+                                    .as_str()
+                                    .is_some_and(|name| !name.is_empty())
+                        })
+                        .map(|(index, _)| Some(index))
+                        .collect()
+                };
+                if sources.is_empty() {
+                    eprintln!(
+                        "world {} actor {name}: definition has groups but no supported instance frame source",
+                        world.index
+                    );
+                }
+                for group in groups
+                    .as_array()
+                    .context("animation groups are not an array")?
+                {
+                    for command in group["commands"]
+                        .as_array()
+                        .context("animation commands absent")?
+                    {
+                        if command["opcode"] == 0 {
+                            let reference = u32::try_from(
+                                command["frame_reference"]
+                                    .as_u64()
+                                    .context("frame reference absent")?,
+                            )?;
+                            for source in &sources {
+                                match source {
+                                    Some(index) => animations.resolve_map_frame(*index, reference),
+                                    None => animations.resolve_frame(name, reference),
+                                }
+                                .with_context(|| {
+                                    format!("actor {name} group {}", group["group_index"])
+                                })?;
+                            }
+                        }
+                    }
+                }
+            }
+            anyhow::ensure!(
+                animations.unsupported.is_empty(),
+                "unsupported animation references: {:?}",
+                animations.unsupported
+            );
+            eprintln!(
+                "world {}: validated {} animation models, {} frames",
+                world.index,
+                animations.models.len(),
+                animations
+                    .models
+                    .values()
+                    .map(|model| model.positions.len())
+                    .sum::<usize>()
+            );
+            Ok(())
+        })();
+        if let Err(error) = result {
+            failures.push(format!("world {} ({}): {error:#}", world.index, world.map));
+        }
+        if output.exists() {
+            std::fs::remove_dir_all(&output).unwrap();
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]

@@ -91,6 +91,7 @@ struct Inspection<'w, 's> {
         ),
     >,
     script_sounds: Option<ResMut<'w, Messages<cyrus_world::sound::SoundCue>>>,
+    player_poses: Query<'w, 's, &'static cyrus_game::player::placement::PlayerPose, With<Player>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -122,6 +123,7 @@ fn handle(
         animations,
         script_nodes,
         mut script_sounds,
+        player_poses,
     }: Inspection,
     frames: Res<bevy::diagnostic::FrameCount>,
     (input, flycam): (
@@ -333,6 +335,8 @@ fn handle(
                 stage,
                 frame_scale,
                 nominal_ticks,
+                distance_override,
+                fallback_position,
             } => (|| -> anyhow::Result<_> {
                 use cyrus_game::script::{ScriptActorId, ScriptStage, Thread};
                 let world = script_actors
@@ -340,12 +344,20 @@ fn handle(
                     .and_then(|actors| actors.current.as_mut())
                     .ok_or_else(|| anyhow::anyhow!("script world is not prepared"))?;
                 let id = ScriptActorId { generation, index };
+                anyhow::ensure!(world.id(index)? == id, "stale script actor generation");
+                match stage {
+                    cyrus_control::ScriptStage::PrepareSpatial => world.prepare_spatial()?,
+                    cyrus_control::ScriptStage::Snapshot => world.snapshot_spatial(id)?,
+                    cyrus_control::ScriptStage::Transform => world.refresh_transform(id)?,
+                    cyrus_control::ScriptStage::Families => world.refresh_families()?,
+                    _ => {},
+                }
                 let stage = match stage {
+                    cyrus_control::ScriptStage::PrepareSpatial | cyrus_control::ScriptStage::Snapshot
+                    | cyrus_control::ScriptStage::Transform | cyrus_control::ScriptStage::Families => return Ok(world.inspect(index, 1)),
                     cyrus_control::ScriptStage::Animation => ScriptStage::Animation,
                     cyrus_control::ScriptStage::Entry => ScriptStage::Entry,
-                    cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks {
-                        frame_scale: frame_scale.ok_or_else(|| anyhow::anyhow!("task stage requires frame_scale"))?,
-                    },
+                    cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks,
                     cyrus_control::ScriptStage::Main => ScriptStage::Body(Thread::Main),
                     cyrus_control::ScriptStage::Interrupt => ScriptStage::Body(Thread::Interrupt),
                 };
@@ -377,7 +389,23 @@ fn handle(
                         });
                     Ok(())
                 };
-                world.advance(id, stage, nominal_ticks, Some(&mut emit), 100_000)?;
+                let mut poses = player_poses.iter();
+                let selected = poses.next();
+                anyhow::ensure!(poses.next().is_none(), "selected-player query has multiple player poses");
+                let player = selected.map(|pose| -> anyhow::Result<_> {
+                    let mut position = [0; 3];
+                    for (axis, coordinate) in pose.position.into_iter().enumerate() {
+                        position[axis] = i32::try_from(coordinate).map_err(|_| anyhow::anyhow!("player query coordinate axis {axis} outside Q8 i32 range"))?;
+                    }
+                    Ok(cyrus_game::script::PlayerQuery { position, heading: pose.heading })
+                }).transpose()?;
+                let inputs = cyrus_game::script::ScriptInputs {
+                    nominal_ticks, frame_scale,
+                    player_query: Some(cyrus_game::script::QueryInputs {
+                        player, distance_override, fallback_position, linked_position: None,
+                    }),
+                };
+                world.advance(id, stage, inputs, Some(&mut emit), 100_000)?;
                 let mut result = world.inspect(index, 1);
                 result["captured_sounds"] = json!(captured_sounds);
                 Ok(result)
@@ -546,6 +574,8 @@ mod tests {
                 stage: cyrus_control::ScriptStage::Main,
                 frame_scale: None,
                 nominal_ticks: Some(0),
+                distance_override: None,
+                fallback_position: None,
             },
         ]
     }
@@ -569,6 +599,8 @@ mod tests {
                 stage: cyrus_control::ScriptStage::Tasks,
                 frame_scale: Some(256),
                 nominal_ticks: Some(0),
+                distance_override: None,
+                fallback_position: None,
             }],
         );
         assert_eq!(response[0]["captured_sounds"], json!([]));

@@ -122,7 +122,9 @@ requires `frame_scale` with eight fractional bits; omission fails before actor
 mutation. Native wait tokens belong to each logical instance. Initial waits always allocate;
 completion applies on a later task pass, including duration zero and one. Function-encoded
 waits remain unsupported because their timing context is not established.
-Other native services remain explicit failures. End notifications with synchronization
+Prepared spatial hosts also support `RotateByAxis`, `PlayerDistance`, and
+`PlayerFacing` with the explicit inputs and limits described below. Remaining
+native services are explicit failures. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.
 
 **Verified:** fresh inspection prepares standalone CYRUS, GREMLIN and CAMERA
@@ -173,3 +175,21 @@ task startup, and distinct model/playback default state. Attribute-44 writes
 remain unsupported because model state, actor-mode eligibility and navigation
 reservation ownership are not integrated. The inspection default is not a
 replacement for original state-dependent selection.
+
+`ScriptWorld::prepare_spatial` prepares ordinary map poses and unique attachment
+families. Separate map-object paths and standalone role poses remain unavailable.
+`ScriptInputs` supplies nominal ticks, frame scale, and current query inputs to
+explicit invocations. `RotateByAxis` shares the native task store with waits and
+animation, mutating local angles without implicitly refreshing matrices or
+attachments. Snapshot, unattached transform refresh, and family refresh are
+separate operations. Spatial preparation rejects ambiguous or cyclic families;
+attachment-sensitive attribute changes remain unsupported after preparation.
+
+**Verified:** [preservation PR55](https://github.com/michidk/redguard-preservation/pull/55)
+defines rotation task arithmetic, player distance/facing queries, and local versus
+composed attachment transforms. Actor inspection exposes both poses and the
+previous-angle/delta fields. Attached queries retain the previously composed pose
+until refresh. Override, fallback and linked-position inputs are explicit; the
+script host still rejects unattached linked-position queries until their state
+owner is integrated. This does not establish automatic actor scheduling or the
+complete lever interaction.

@@ -140,10 +140,22 @@ fn animations(scripts: &Scripts, sound: bool) -> Animations {
     }
 }
 fn stage(world: &mut ScriptWorld, id: ScriptActorId, stage: ScriptStage) {
-    world.advance(id, stage, Some(1), None, 30).unwrap();
+    world
+        .advance(
+            id,
+            stage,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            30,
+        )
+        .unwrap();
 }
 const BODY: ScriptStage = ScriptStage::Body(Thread::Main);
-const TASKS: ScriptStage = ScriptStage::Tasks { frame_scale: 256 };
+const TASKS: ScriptStage = ScriptStage::Tasks;
 
 #[test]
 fn animation_wait_and_flags_share_one_runtime_and_separate_stages() {
@@ -193,7 +205,11 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
         .advance(
             caller,
             BODY,
-            Some(0),
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
             Some(&mut |id, sound| {
                 events.push((id, sound));
                 Ok(())
@@ -282,7 +298,17 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
     for stage in [BODY, TASKS, ScriptStage::Animation] {
         assert!(
             world
-                .advance(id, stage, None, None, 30)
+                .advance(
+                    id,
+                    stage,
+                    cyrus_game::script::ScriptInputs {
+                        nominal_ticks: None,
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    30
+                )
                 .unwrap_err()
                 .to_string()
                 .contains("nominal_ticks")
@@ -295,7 +321,11 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
                         ..id
                     },
                     stage,
-                    Some(1),
+                    cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
                     None,
                     30
                 )
@@ -307,7 +337,17 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
     let unbound = world.id(1).unwrap();
     assert!(
         world
-            .advance(unbound, BODY, None, None, 30)
+            .advance(
+                unbound,
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: None,
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                30
+            )
             .unwrap_err()
             .to_string()
             .contains("nominal_ticks")
@@ -344,21 +384,51 @@ fn animation_stage_sound_failure_stops_later_effects_and_is_visible() {
         anyhow::bail!("sound unavailable")
     };
     let error = world
-        .advance(id, ScriptStage::Animation, Some(1), Some(&mut emit), 30)
+        .advance(
+            id,
+            ScriptStage::Animation,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut emit),
+            30,
+        )
         .unwrap_err()
         .to_string();
     assert!(error.contains("world 17 instance 0 animation stage"));
     assert!(error.contains("sound unavailable"));
     assert_eq!(
         world
-            .advance(id, BODY, Some(1), Some(&mut emit), 30)
+            .advance(
+                id,
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut emit),
+                30
+            )
             .unwrap_err()
             .to_string(),
         error
     );
     assert_eq!(
         world
-            .advance(id, ScriptStage::Animation, Some(1), Some(&mut emit), 30)
+            .advance(
+                id,
+                ScriptStage::Animation,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut emit),
+                30
+            )
             .unwrap_err()
             .to_string(),
         error
@@ -425,7 +495,17 @@ fn unsupported_animation_group_is_not_narrowed_into_a_valid_request() {
         .bind_animation(id, &animations(&scripts, false), 1)
         .unwrap();
     let error = world
-        .advance(id, BODY, Some(1), None, 30)
+        .advance(
+            id,
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            30,
+        )
         .unwrap_err()
         .to_string();
     assert!(error.contains("PushAnimation group outside supported range"));
@@ -479,7 +559,17 @@ fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
     };
     assert!(
         world
-            .advance(caller, BODY, Some(0), Some(&mut fail), 30)
+            .advance(
+                caller,
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut fail),
+                30
+            )
             .is_err()
     );
     for id in [caller, receiver] {
@@ -491,7 +581,17 @@ fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
         );
         assert!(
             world
-                .advance(id, ScriptStage::Animation, Some(0), Some(&mut fail), 30)
+                .advance(
+                    id,
+                    ScriptStage::Animation,
+                    cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(0),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    Some(&mut fail),
+                    30
+                )
                 .is_err()
         );
     }
@@ -521,4 +621,224 @@ fn missing_animation_group_keeps_requesting_fallback_without_completing_task() {
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
         assert_eq!(world.flags(), [0]);
     }
+}
+
+fn rotating_scripts(axis: i32, delta: i32, duration: i32) -> Scripts {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Task,
+                target: Object::Me,
+                function: "RotateByAxis".into(),
+                arguments: [axis, delta, duration]
+                    .map(|value| Value::Integer { value })
+                    .to_vec(),
+            },
+        },
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "RotateByAxis".into(),
+        param_count: 3,
+        kind: CallKind::Task,
+    });
+    data.content_id = data.content_identity().unwrap();
+    data
+}
+
+#[test]
+fn rotation_changes_local_angles_and_completes_before_body_continues() {
+    let data = rotating_scripts(1, 128, 4);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 32, 0]);
+    assert_eq!(world.flags(), [0]);
+    for expected in [64, 96, 128] {
+        stage(&mut world, id, TASKS);
+        assert_eq!(world.spatial(id).unwrap().local.angles, [0, expected, 0]);
+    }
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn rotation_zero_scale_and_nominal_tick_fallback_remain_distinct() {
+    use cyrus_game::script::ScriptInputs;
+    let data = rotating_scripts(-1, -128, 4);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let zero = ScriptInputs {
+        frame_scale: Some(0),
+        nominal_ticks: Some(0),
+        ..Default::default()
+    };
+    world.advance(id, BODY, zero, None, 30).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
+    let tick = ScriptInputs {
+        nominal_ticks: Some(256),
+        ..zero
+    };
+    world.advance(id, TASKS, tick, None, 30).unwrap();
+    // The fallback sign follows the saved target, not the negative delta.
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 0, 1]);
+    world.advance(id, TASKS, zero, None, 30).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 0, 1]);
+}
+
+#[test]
+fn spatial_timing_is_checked_before_script_mutation() {
+    use cyrus_game::script::ScriptInputs;
+    let data = rotating_scripts(0, 128, 4);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    assert!(
+        world
+            .advance(id, BODY, ScriptInputs::default(), None, 30)
+            .is_err()
+    );
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
+    assert!(world.actors()[0].failure().is_none());
+    stage(&mut world, id, BODY);
+    assert_eq!(world.spatial(id).unwrap().local.angles, [32, 0, 0]);
+}
+
+#[test]
+fn routed_rotation_keeps_receiver_angles_and_task_slots() {
+    let mut data = rotating_scripts(1, 128, 4);
+    let operation = &mut data
+        .actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation;
+    let Operation::Call { call } = operation else {
+        unreachable!()
+    };
+    call.target = Object::Named { string: 0 };
+    *operation = Operation::ObjectCall { call: call.clone() };
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    stage(&mut world, caller, BODY);
+    assert_eq!(world.spatial(caller).unwrap().local.angles, [0; 3]);
+    assert_eq!(world.spatial(receiver).unwrap().local.angles, [0, 32, 0]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.actors()[1].runtime().unwrap().active_tasks(), 1);
+    stage(&mut world, receiver, TASKS);
+    assert_eq!(world.spatial(receiver).unwrap().local.angles, [0, 64, 0]);
+}
+
+#[test]
+fn attached_facing_stays_composed_until_family_refresh() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    use cyrus_script::Argument;
+    let mut data = rotating_scripts(1, 128, 4);
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_26".into(), 1);
+    data.actors
+        .get_mut("OTHER")
+        .unwrap()
+        .attributes
+        .insert("attr_25".into(), 1);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    let id = world.id(0).unwrap();
+    world.snapshot_spatial(id).unwrap();
+    stage(&mut world, id, BODY);
+    let query = QueryInputs {
+        player: Some(PlayerQuery {
+            position: [0; 3],
+            heading: 0,
+        }),
+        distance_override: None,
+        fallback_position: None,
+        linked_position: None,
+    };
+    let args = [Argument::Integer(0), Argument::Integer(0)];
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 32);
+    assert_eq!(
+        world
+            .spatial(id)
+            .unwrap()
+            .query("PlayerFacing", &args, query)
+            .unwrap(),
+        Some(1)
+    );
+    world.refresh_families().unwrap();
+    assert_eq!(world.spatial(id).unwrap().effective.unwrap().angles[1], 32);
+    assert_eq!(
+        world
+            .spatial(id)
+            .unwrap()
+            .query("PlayerFacing", &args, query)
+            .unwrap(),
+        Some(0)
+    );
+}
+
+#[test]
+fn cancelling_rotation_retains_last_local_angle() {
+    let mut data = rotating_scripts(1, 128, 4);
+    let actor = data.actors.get_mut("ACTOR").unwrap();
+    let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation else {
+        unreachable!()
+    };
+    call.kind = CallKind::Multitask;
+    actor.program.steps.get_mut(&1).unwrap().operation = Operation::TaskStop { label: 0 };
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 32);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 32);
+}
+
+#[test]
+fn rotation_reevaluates_delta_without_replacing_saved_target() {
+    let mut data = rotating_scripts(1, 128, 4);
+    data.definition.flags[0].initial_value = 128;
+    let actor = data.actors.get_mut("ACTOR").unwrap();
+    let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation else {
+        unreachable!()
+    };
+    call.kind = CallKind::Multitask;
+    call.arguments[1] = Value::Read {
+        place: Place::Flag { index: 0 },
+    };
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 32);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 34);
+    for _ in 0..41 {
+        stage(&mut world, id, TASKS);
+    }
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 126);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 128);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }

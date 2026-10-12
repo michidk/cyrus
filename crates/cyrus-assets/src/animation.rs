@@ -147,7 +147,73 @@ pub struct ModelFrame {
     pub frame: usize,
 }
 
+pub(crate) fn model_key(path: &str) -> String {
+    let filename = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    filename
+        .rsplit_once('.')
+        .map_or(filename, |(stem, _)| stem)
+        .to_ascii_uppercase()
+}
+
 impl Animations {
+    /// Resolves a placed object's frame using its actor table or its own MPOB model.
+    /// The index is the original MPOB order, not an object ID or render-node index.
+    pub fn resolve_map_frame(&self, index: usize, reference: u32) -> anyhow::Result<ModelFrame> {
+        let context = format!(
+            "world {} MPOB {index} frame reference {reference}",
+            self.world
+        );
+        let placement = self.metadata["mpob_objects"]
+            .as_array()
+            .and_then(|objects| objects.get(index))
+            .with_context(|| format!("{context}: placement absent; re-export the world"))?;
+        let name = placement["script_name"]
+            .as_str()
+            .with_context(|| format!("{context}: actor name absent"))?;
+        let actor = self.actor(name)?;
+        if actor["raan_entries"]
+            .as_array()
+            .is_some_and(|entries| !entries.is_empty())
+        {
+            return self.resolve_frame(name, reference).with_context(|| context);
+        }
+        anyhow::ensure!(
+            placement["object_type"] == 1,
+            "{context}: separate object frame source unsupported"
+        );
+        let count = placement["is_static"]
+            .as_u64()
+            .with_context(|| format!("{context}: placed frame count absent"))?;
+        anyhow::ensure!(
+            count <= u64::from(u8::MAX),
+            "{context}: invalid placed frame count {count}"
+        );
+        anyhow::ensure!(
+            count != 1,
+            "{context}: static placement has no animation frame table"
+        );
+        anyhow::ensure!(
+            u64::from(reference) < count,
+            "{context}: outside placed frame table"
+        );
+        let model = model_key(
+            placement["model_name"]
+                .as_str()
+                .filter(|name| !name.is_empty())
+                .with_context(|| format!("{context}: placed model absent"))?,
+        );
+        let data = self
+            .models
+            .get(&model)
+            .with_context(|| format!("{context}: model {model} unavailable"))?;
+        let frame = usize::try_from(reference)?;
+        anyhow::ensure!(
+            frame < data.positions.len(),
+            "{context}: model {model} has no frame {frame}"
+        );
+        Ok(ModelFrame { model, frame })
+    }
+
     /// Resolves a file ShowFrame reference across RAAN entries in their original order.
     pub fn resolve_frame(&self, actor: &str, reference: u32) -> anyhow::Result<ModelFrame> {
         let context = format!(
@@ -167,11 +233,7 @@ impl Animations {
                 let path = entry["file_path"]
                     .as_str()
                     .with_context(|| format!("{context}: RAAN model path absent"))?;
-                let filename = path.rsplit(['/', '\\']).next().unwrap_or(path);
-                let model = filename
-                    .rsplit_once('.')
-                    .map_or(filename, |(stem, _)| stem)
-                    .to_ascii_uppercase();
+                let model = model_key(path);
                 let frame = usize::try_from(remaining)?;
                 let data = self
                     .models

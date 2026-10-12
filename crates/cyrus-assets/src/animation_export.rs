@@ -1,5 +1,5 @@
 //! Native animation extraction through rgpre; no binary format parsing lives here.
-use crate::animation::{AnimationModel, Animations};
+use crate::animation::{AnimationModel, Animations, model_key};
 use anyhow::Context;
 use rgpre::import::{
     FileType,
@@ -145,12 +145,33 @@ pub(crate) fn export(
                 let path = entry["file_path"]
                     .as_str()
                     .context("RAAN file_path missing")?;
-                let filename = path.rsplit(['/', '\\']).next().unwrap_or(path);
-                let stem = filename.rsplit_once('.').map_or(filename, |(stem, _)| stem);
-                names.insert(stem.to_ascii_uppercase());
+                names.insert(model_key(path));
             }
         }
     }
+    names.extend(
+        rgm.sections
+            .iter()
+            .filter_map(|section| match section {
+                RgmSection::MpobParsed(_, records) => Some(records),
+                _ => None,
+            })
+            .flatten()
+            .filter(|record| {
+                record.object_type == 1
+                    && record.is_static != 1
+                    && metadata["actors"].as_array().is_some_and(|actors| {
+                        actors.iter().any(|actor| {
+                            actor["script_name"].as_str() == Some(record.script_name().as_str())
+                                && actor["raan_entries"]
+                                    .as_array()
+                                    .is_none_or(|entries| entries.is_empty())
+                        })
+                    })
+            })
+            .map(|record| model_key(&record.model_name()))
+            .filter(|name| !name.is_empty()),
+    );
     names.extend(
         placed
             .iter()

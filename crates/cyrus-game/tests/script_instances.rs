@@ -66,3 +66,55 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
     assert!(maps > 0);
     eprintln!("SOUP receiver preparation: {maps} installed maps");
 }
+
+#[test]
+fn installed_palace_nested_family_reconstructs_authored_poses() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP nested family)");
+        return;
+    }
+    let path = std::fs::read_dir(root.join("maps"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("PALACE.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 3).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let ids: Vec<_> = ["PI_PILA", "PI_PLTA", "PI_LVRA"]
+        .into_iter()
+        .map(|name| {
+            world
+                .id(world
+                    .actors()
+                    .iter()
+                    .position(|actor| actor.name() == name)
+                    .unwrap())
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(world.spatial(ids[1]).unwrap().parent, Some(ids[0].index));
+    assert_eq!(world.spatial(ids[2]).unwrap().parent, Some(ids[1].index));
+    world.refresh_families().unwrap();
+    for id in ids {
+        let placement = world.actors()[id.index].placement().unwrap();
+        let pose = world.spatial(id).unwrap().query_pose().unwrap();
+        assert_eq!(
+            pose.position,
+            placement
+                .map_position
+                .map(|value| i32::try_from(value * 256).unwrap())
+        );
+        assert_eq!(
+            pose.angles,
+            placement.angles.map(|value| (value & 2047) as u16)
+        );
+    }
+}

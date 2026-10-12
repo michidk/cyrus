@@ -99,7 +99,9 @@ struct ScriptsParams {
 struct ScriptStepParams {
     generation: u64,
     index: usize,
-    #[schemars(description = "animation, entry, main, interrupt, or tasks")]
+    #[schemars(
+        description = "prepare_spatial, snapshot, transform, families, animation, entry, main, interrupt, or tasks"
+    )]
     stage: String,
     #[schemars(
         description = "Required for tasks; original scale with eight fractional bits. No production clock is implied."
@@ -109,6 +111,12 @@ struct ScriptStepParams {
         description = "Required when any actor has animation bound; original whole nominal ticks, including zero."
     )]
     nominal_ticks: Option<u32>,
+    #[schemars(description = "Explicit PlayerDistance override state; omit when unknown.")]
+    distance_override: Option<bool>,
+    #[schemars(
+        description = "Q8 fallback coordinates for PlayerDistance without a selected player."
+    )]
+    fallback_position: Option<[i32; 3]>,
 }
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ScriptAnimationParams {
@@ -300,6 +308,10 @@ impl Cyrus {
         Parameters(p): Parameters<ScriptStepParams>,
     ) -> Result<CallToolResult, McpError> {
         let stage = match p.stage.as_str() {
+            "prepare_spatial" => cyrus_control::ScriptStage::PrepareSpatial,
+            "snapshot" => cyrus_control::ScriptStage::Snapshot,
+            "transform" => cyrus_control::ScriptStage::Transform,
+            "families" => cyrus_control::ScriptStage::Families,
             "animation" => cyrus_control::ScriptStage::Animation,
             "entry" => cyrus_control::ScriptStage::Entry,
             "main" => cyrus_control::ScriptStage::Main,
@@ -307,7 +319,7 @@ impl Cyrus {
             "tasks" => cyrus_control::ScriptStage::Tasks,
             _ => {
                 return Err(McpError::invalid_params(
-                    "stage must be animation, entry, main, interrupt, or tasks",
+                    "stage must be prepare_spatial, snapshot, transform, families, animation, entry, main, interrupt, or tasks",
                     None,
                 ));
             }
@@ -318,6 +330,8 @@ impl Cyrus {
             stage,
             frame_scale: p.frame_scale,
             nominal_ticks: p.nominal_ticks,
+            distance_override: p.distance_override,
+            fallback_position: p.fallback_position,
         })?)
     }
 

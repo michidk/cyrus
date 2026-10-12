@@ -1,18 +1,14 @@
 //! Original heading projection, per preservation's player and water engine specs.
 use std::sync::LazyLock;
 
-static ROTATION: LazyLock<[f32; 2560]> = LazyLock::new(|| {
-    // The authored approximation and single-precision angle are observable in movement.
-    #[allow(clippy::approx_constant)]
-    std::array::from_fn(|index| f64::from((index as f64 * 6.2831852 / 2048.0) as f32).sin() as f32)
-});
+use cyrus_world::transform::rotation_sample;
 
 /// Upright actor rotation in original axes, with heading in 1/2048 turns.
 /// Retains table residuals per preservation player.md's upright orientation rules.
 pub fn upright_rotation(heading: u16) -> bevy::math::Mat3 {
     use bevy::math::{Mat3, Vec3};
     let index = usize::from(heading.wrapping_neg() & 2047);
-    let (sine, cosine) = (ROTATION[index], ROTATION[index + 512]);
+    let (sine, cosine) = (rotation_sample(index), rotation_sample(index + 512));
     Mat3::from_cols(
         Vec3::new(cosine, 0.0, -sine),
         Vec3::Y,
@@ -32,7 +28,10 @@ pub fn refresh_upright_rotation(
         return;
     }
     let index = usize::from(previous_heading.wrapping_sub(heading) & 2047);
-    let (sine, cosine) = (f64::from(ROTATION[index]), f64::from(ROTATION[index + 512]));
+    let (sine, cosine) = (
+        f64::from(rotation_sample(index)),
+        f64::from(rotation_sample(index + 512)),
+    );
     let x = rotation.x_axis.as_dvec3();
     let z = rotation.z_axis.as_dvec3();
     rotation.x_axis = (x * cosine - z * sine).as_vec3();
@@ -45,10 +44,10 @@ pub fn refresh_upright_rotation(
 pub fn translate(position: [i64; 3], heading: u16, distance: i64) -> [i64; 3] {
     let sine = usize::from(heading.wrapping_neg() & 2047);
     let mut result = position;
-    result[0] = ((f64::from(position[0] as f32) + distance as f64 * f64::from(ROTATION[sine]))
-        as f32) as i64;
-    result[2] = ((f64::from(position[2] as f32) + distance as f64 * f64::from(ROTATION[sine + 512]))
-        as f32) as i64;
+    result[0] = ((f64::from(position[0] as f32)
+        + distance as f64 * f64::from(rotation_sample(sine))) as f32) as i64;
+    result[2] = ((f64::from(position[2] as f32)
+        + distance as f64 * f64::from(rotation_sample(sine + 512))) as f32) as i64;
     result
 }
 

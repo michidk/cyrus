@@ -83,6 +83,12 @@ pub enum Command {
         /// Required for animation-bound actors; whole original nominal ticks, including zero.
         #[serde(default)]
         nominal_ticks: Option<u32>,
+        /// Explicit inspection override for PlayerDistance; absence remains unsupported.
+        #[serde(default)]
+        distance_override: Option<bool>,
+        /// Original Q8 fallback coordinates used only without a selected player.
+        #[serde(default)]
+        fallback_position: Option<[i32; 3]>,
     },
     Quit,
 }
@@ -93,6 +99,10 @@ fn script_page_size() -> usize {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptStage {
+    PrepareSpatial,
+    Snapshot,
+    Transform,
+    Families,
     Animation,
     Entry,
     Main,

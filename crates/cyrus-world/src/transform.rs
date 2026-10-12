@@ -1,0 +1,114 @@
+//! Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.
+use anyhow::{Result, ensure};
+use rustc_apfloat::{
+    Float, FloatConvert, Round, Status,
+    ieee::{Single, X87DoubleExtended},
+};
+use std::sync::LazyLock;
+
+static ROTATION: LazyLock<[f32; 2560]> = LazyLock::new(|| {
+    #[allow(clippy::approx_constant)] // Published original table-generation constant.
+    std::array::from_fn(|index| f64::from((index as f64 * 6.2831852 / 2048.0) as f32).sin() as f32)
+});
+
+/// Original sine table sample; cosine uses the masked angle index plus 512.
+/// The caller must supply an index below 2560, retaining the extended cosine tail.
+pub fn rotation_sample(index: usize) -> f32 {
+    ROTATION[index]
+}
+
+/// Row-major original actor matrix with single-precision stored components.
+/// Operations use nearest-even extended intermediates, per [preservation PR55].
+///
+/// [preservation PR55]: https://github.com/michidk/redguard-preservation/pull/55
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Matrix(pub [[f32; 3]; 3]);
+
+impl Matrix {
+    pub const IDENTITY: Self = Self([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+
+    /// Build an orientation from pitch, yaw and roll in 1/2048 turns.
+    pub fn orientation(angles: [u16; 3]) -> Self {
+        let mut result = Self::IDENTITY;
+        result.rotate(angles);
+        result
+    }
+
+    /// Apply negative yaw, pitch, then roll, wrapping each angle to 1/2048 turns.
+    /// Each axis reads the old row and stores each resulting component as f32.
+    pub fn rotate(&mut self, [pitch, yaw, roll]: [u16; 3]) {
+        for (axis, angle) in [(1, yaw), (0, pitch), (2, roll)] {
+            let index = usize::from(angle.wrapping_neg() & 2047);
+            let sine = extended(rotation_sample(index));
+            let cosine = extended(rotation_sample(index + 512));
+            for row in &mut self.0 {
+                let [x, y, z] = row.map(extended);
+                match axis {
+                    1 => {
+                        let next_x = stored(((x * cosine).value - (z * sine).value).value);
+                        row[2] = stored(((z * cosine).value + (x * sine).value).value);
+                        row[0] = next_x;
+                    }
+                    0 => {
+                        let next_y = stored(((y * cosine).value + (z * sine).value).value);
+                        row[2] = stored(((z * cosine).value - (y * sine).value).value);
+                        row[1] = next_y;
+                    }
+                    _ => {
+                        let next_x = stored(((x * cosine).value + (y * sine).value).value);
+                        row[1] = stored(((y * cosine).value - (x * sine).value).value);
+                        row[0] = next_x;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Transform original Q8 coordinates, storing inputs and each dot product as f32.
+    /// Final integer conversion rounds nearest-even and rejects nonfinite/overflow results.
+    pub fn transform(self, position: [i32; 3]) -> Result<[i32; 3]> {
+        let inputs: [X87DoubleExtended; 3] = position.map(|value| {
+            let single = Single::from_i128(i128::from(value)).value;
+            single.convert(&mut false).value
+        });
+        let mut result = [0; 3];
+        for (axis, row) in self.0.into_iter().enumerate() {
+            let products: [X87DoubleExtended; 3] =
+                std::array::from_fn(|i| (inputs[i] * extended(row[i])).value);
+            let first = if axis == 0 {
+                (products[1] + products[0]).value
+            } else {
+                (products[0] + products[1]).value
+            };
+            let single =
+                Single::from_bits(u128::from(stored((first + products[2]).value).to_bits()));
+            let integer = single.to_i128_r(32, Round::NearestTiesToEven, &mut false);
+            ensure!(
+                !integer.status.contains(Status::INVALID_OP),
+                "actor matrix transform axis {axis}: position {position:?} with row {row:?} cannot convert to i32"
+            );
+            result[axis] = integer.value as i32;
+        }
+        Ok(result)
+    }
+
+    /// Apply the transpose using the original inverse-transform arithmetic.
+    /// This is an inverse only for an orthogonal matrix; it performs no matrix inversion.
+    pub fn inverse_transform(self, position: [i32; 3]) -> Result<[i32; 3]> {
+        Self(std::array::from_fn(|row| {
+            std::array::from_fn(|column| self.0[column][row])
+        }))
+        .transform(position)
+    }
+}
+
+fn extended(value: f32) -> X87DoubleExtended {
+    Single::from_bits(u128::from(value.to_bits()))
+        .convert(&mut false)
+        .value
+}
+
+fn stored(value: X87DoubleExtended) -> f32 {
+    let single: Single = value.convert(&mut false).value;
+    f32::from_bits(single.to_bits() as u32)
+}

@@ -84,6 +84,7 @@ module where it is defined and regenerate.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
+- `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
 
@@ -100,6 +101,7 @@ module where it is defined and regenerate.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
+- `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 - `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
@@ -148,6 +150,7 @@ module where it is defined and regenerate.
 - `src/collision/mod.rs` — Terrain and authored static geometry queries.
 - `src/lifecycle.rs` — Shared world identity and prepared cache references.
 - `src/sound.rs` — Sound intents; only a playback consumer registers the message queue.
+- `src/transform.rs` — Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.
 
 ## `cyrus` — Native install, persistence and control adapters with game/presentation assembly.
 

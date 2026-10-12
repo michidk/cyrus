@@ -1319,3 +1319,140 @@ fn unsupported_attribute_access_fails_before_mutation_and_remains_sticky() {
         );
     }
 }
+
+#[test]
+fn nested_families_compose_original_positions_and_keep_generation_identity() {
+    let mut scripts = cache();
+    let template = scripts.actors["LOGIC"].clone();
+    scripts.actors.clear();
+    scripts.instances.clear();
+    for (index, (name, parent, master, position, angles)) in [
+        ("ROOT", 0, 20, [100, 200, 300], [0, 0, 0]),
+        ("PLATFORM", 20, 24, [100, 500, 300], [0, 0, 0]),
+        ("LEVER", 24, 0, [110, 480, 330], [0, 512, 0]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut actor = template.clone();
+        actor.instances = 1;
+        actor.instance_variables.truncate(1);
+        actor.attributes = BTreeMap::from([("attr_25".into(), master), ("attr_26".into(), parent)]);
+        scripts.actors.insert(name.into(), actor);
+        scripts.instances.push(Instance {
+            object_id: index as u32,
+            actor: name.into(),
+            object_type: 0,
+            active: 0,
+            map_position: position,
+            angles,
+        });
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 12).unwrap();
+    world.prepare_spatial().unwrap();
+    let lever = world.id(2).unwrap();
+    assert_eq!(
+        world.spatial(lever).unwrap().local.position,
+        [2560, -5120, 7680]
+    );
+    assert!(world.spatial(lever).unwrap().effective.is_none());
+    world.refresh_families().unwrap();
+    let pose = world.spatial(lever).unwrap();
+    assert_eq!(pose.effective.unwrap().position, [28160, 122880, 84480]);
+    assert_eq!(pose.effective.unwrap().angles, [0, 512, 0]);
+    assert_eq!(pose.previous_effective_position, Some([2560, -5120, 7680]));
+    assert!(world.prepare_spatial().is_err());
+    let replacement = ScriptWorld::prepare(&scripts, 13).unwrap();
+    assert!(
+        replacement
+            .spatial(lever)
+            .unwrap_err()
+            .to_string()
+            .contains("stale")
+    );
+}
+
+#[test]
+fn spatial_distance_requires_explicit_override_and_fallback_state() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    let scripts = cache();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let actor = world.spatial(world.id(0).unwrap()).unwrap();
+    let mut inputs = QueryInputs {
+        player: Some(PlayerQuery {
+            position: [256, -512, 768],
+            heading: 2047,
+        }),
+        distance_override: None,
+        fallback_position: None,
+        linked_position: Some(None),
+    };
+    assert!(actor.query("PlayerDistance", &[], inputs).is_err());
+    inputs.distance_override = Some(false);
+    assert_eq!(
+        actor.query("PlayerDistance", &[], inputs).unwrap(),
+        Some(1536)
+    );
+    assert_eq!(
+        actor
+            .query(
+                "PlayerFacing",
+                &[Argument::Integer(0), Argument::Integer(1)],
+                inputs
+            )
+            .unwrap(),
+        Some(1)
+    );
+    assert_eq!(
+        actor
+            .query(
+                "PlayerFacing",
+                &[Argument::Integer(0), Argument::Integer(-1)],
+                inputs
+            )
+            .unwrap(),
+        Some(0)
+    );
+    inputs.player = None;
+    assert!(
+        actor
+            .query(
+                "PlayerFacing",
+                &[Argument::Integer(0), Argument::Integer(1)],
+                inputs
+            )
+            .is_err()
+    );
+    assert!(actor.query("PlayerDistance", &[], inputs).is_err());
+    inputs.fallback_position = Some([1, 2, 3]);
+    assert_eq!(actor.query("PlayerDistance", &[], inputs).unwrap(), Some(6));
+    inputs.distance_override = Some(true);
+    assert_eq!(
+        actor.query("PlayerDistance", &[], inputs).unwrap(),
+        Some(9_999_999)
+    );
+}
+
+#[test]
+fn ambiguous_attachment_preparation_does_not_install_partial_state() {
+    let mut data = cache();
+    data.actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_25".into(), 1);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    let error = world.prepare_spatial().unwrap_err();
+    assert!(format!("{error:#}").contains("duplicate masters"));
+    assert!(
+        world
+            .spatial(world.id(0).unwrap())
+            .unwrap_err()
+            .to_string()
+            .contains("not prepared")
+    );
+    assert_eq!(world.flags(), [12]);
+}

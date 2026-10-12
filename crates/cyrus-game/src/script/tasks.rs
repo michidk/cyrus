@@ -13,8 +13,16 @@ pub(super) struct AnimationCall<'a, 'sound> {
     pub sounds: Option<&'sound mut dyn FnMut(AnimationSound) -> Result<()>>,
 }
 
+/// Current receiver angles and shared timing inputs for spatial native tasks.
+pub(super) struct RotationCall<'a> {
+    pub angles: &'a mut [u16; 3],
+    pub frame_scale: u32,
+    pub nominal_ticks: u32,
+}
+
 #[derive(Clone, Copy)]
 enum Task {
+    Rotation { target: i32, accumulator: i32 },
     Duration,
     Tasks,
     Blocking,
@@ -26,8 +34,57 @@ impl Task {
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
+        rotation: &mut Option<RotationCall<'_>>,
     ) -> Result<bool> {
         Ok(match self {
+            Self::Rotation {
+                target,
+                accumulator,
+            } => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("RotateByAxis requires three arguments")
+                };
+                let (delta, duration) = (delta.integer()?, duration.integer()?);
+                if delta == 0 || duration == 0 {
+                    return Ok(true);
+                }
+                let input = rotation.as_mut().context(
+                    "RotateByAxis requires spatial state, frame_scale and nominal_ticks",
+                )?;
+                let axis = match axis.integer()? {
+                    0 => 0,
+                    1 => 1,
+                    _ => 2,
+                };
+                let current = i32::from(input.angles[axis]);
+                let elapsed = invocation
+                    .elapsed
+                    .context("RotateByAxis requires explicit elapsed input")?;
+                let quotient = delta
+                    .wrapping_shl(8)
+                    .checked_div(duration)
+                    .context("RotateByAxis fixed-point division overflow")?;
+                if *target == 0 && elapsed == 0 {
+                    *target = (current.wrapping_add(delta) & 2047) << 8;
+                    *accumulator = current << 8;
+                }
+                let mut step = quotient.wrapping_mul(input.frame_scale as i32) >> 8;
+                if step == 0 && input.nominal_ticks != 0 {
+                    step = input.nominal_ticks as i32;
+                    if *target < 0 {
+                        step = step.wrapping_neg();
+                    }
+                }
+                let difference = ((current - (*target >> 8) + 1024) & 2047) - 1024;
+                if difference.abs() <= (step >> 8).abs() {
+                    input.angles[axis] = (*target >> 8) as u16;
+                    true
+                } else {
+                    *accumulator = accumulator.wrapping_add(step);
+                    input.angles[axis] = ((*accumulator >> 8) & 2047) as u16;
+                    false
+                }
+            }
             Self::Duration => {
                 let [duration] = arguments else {
                     anyhow::bail!("Wait requires one argument")
@@ -100,8 +157,14 @@ impl NativeTasks {
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
+        rotation: &mut Option<RotationCall<'_>>,
     ) -> Result<Option<CallResult>> {
-        let mut task = if function.eq_ignore_ascii_case("Wait") {
+        let mut task = if function.eq_ignore_ascii_case("RotateByAxis") {
+            Task::Rotation {
+                target: 0,
+                accumulator: 0,
+            }
+        } else if function.eq_ignore_ascii_case("Wait") {
             Task::Duration
         } else if function.eq_ignore_ascii_case("WaitOnTasks") {
             Task::Tasks
@@ -124,7 +187,7 @@ impl NativeTasks {
             .checked_add(1)
             .context("native task identity exhausted")?;
         // Initial completion still allocates a slot and yields until a later task pass.
-        task.complete(arguments, invocation, animation)?;
+        task.complete(arguments, invocation, animation, rotation)?;
         self.next = next;
         self.tasks.insert(next, task);
         Ok(Some(CallResult::Pending(next)))
@@ -135,12 +198,13 @@ impl NativeTasks {
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
+        rotation: &mut Option<RotationCall<'_>>,
     ) -> Result<bool> {
         let task = self
             .tasks
             .get_mut(&token)
             .with_context(|| format!("native task {token} absent"))?;
-        let completed = task.complete(arguments, invocation, animation)?;
+        let completed = task.complete(arguments, invocation, animation, rotation)?;
         if completed {
             self.tasks.remove(&token);
         }

@@ -51,8 +51,16 @@ impl ScriptActorSource {
 pub enum ScriptStage {
     Animation,
     Entry,
-    Tasks { frame_scale: u32 },
+    Tasks,
     Body(Thread),
+}
+
+/// Inputs supplied by the owning scheduler; missing values never imply a clock tick.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScriptInputs {
+    pub nominal_ticks: Option<u32>,
+    pub frame_scale: Option<u32>,
+    pub player_query: Option<super::QueryInputs>,
 }
 
 struct ScriptAnimation {
@@ -109,6 +117,7 @@ pub struct ScriptWorld {
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
     actors: Vec<ScriptActor>,
+    spatial: Option<super::spatial::SpatialWorld>,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     names: BTreeMap<i16, usize>,
 }
@@ -248,8 +257,63 @@ impl ScriptWorld {
             actors,
             task_calls,
             names,
+            spatial: None,
         })
     }
+    /// Prepare ordinary map poses and unique attachment families transactionally.
+    /// Separate map paths and standalone roles remain unavailable for spatial services.
+    pub fn prepare_spatial(&mut self) -> Result<()> {
+        anyhow::ensure!(
+            self.spatial.is_none(),
+            "world {} spatial state already prepared",
+            self.world
+        );
+        self.spatial = Some(
+            super::spatial::SpatialWorld::prepare(&self.actors)
+                .with_context(|| format!("world {} spatial preparation", self.world))?,
+        );
+        Ok(())
+    }
+
+    /// Authoritative local and composed pose for this generation's actor.
+    pub fn spatial(&self, id: ScriptActorId) -> Result<&super::ActorSpatial> {
+        let index = self.resolve(id)?;
+        self.spatial
+            .as_ref()
+            .context("spatial state not prepared")?
+            .actor(index)
+    }
+
+    /// Snapshot local angles at the explicit ordinary actor update boundary.
+    pub fn snapshot_spatial(&mut self, id: ScriptActorId) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.spatial
+            .as_mut()
+            .context("spatial state not prepared")?
+            .actor_mut(index)?
+            .snapshot();
+        Ok(())
+    }
+
+    /// Refresh an unattached actor matrix without consuming its angle snapshot.
+    pub fn refresh_transform(&mut self, id: ScriptActorId) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.spatial
+            .as_mut()
+            .context("spatial state not prepared")?
+            .actor_mut(index)?
+            .refresh_transform()
+    }
+
+    /// Explicit family pass; does not infer timing or actor update eligibility.
+    pub fn refresh_families(&mut self) -> Result<()> {
+        self.spatial
+            .as_mut()
+            .context("spatial state not prepared")?
+            .refresh_families()
+            .with_context(|| format!("world {} attachment refresh", self.world))
+    }
+
     pub fn generation(&self) -> u64 {
         self.generation
     }
@@ -298,7 +362,13 @@ impl ScriptWorld {
     }
     /// Deterministic inspection of one body. This does not establish actor eligibility.
     pub fn step(&mut self, id: ScriptActorId, thread: Thread, budget: usize) -> Result<()> {
-        self.advance(id, ScriptStage::Body(thread), None, None, budget)
+        self.advance(
+            id,
+            ScriptStage::Body(thread),
+            ScriptInputs::default(),
+            None,
+            budget,
+        )
     }
     /// Explicit task timing only. Missing scale fails before changing any actor state.
     pub fn step_tasks(&mut self, id: ScriptActorId, frame_scale: Option<u32>) -> Result<()> {
@@ -309,7 +379,16 @@ impl ScriptWorld {
                 self.world, id.index
             )
         })?;
-        self.advance(id, ScriptStage::Tasks { frame_scale }, None, None, 0)
+        self.advance(
+            id,
+            ScriptStage::Tasks,
+            ScriptInputs {
+                frame_scale: Some(frame_scale),
+                ..Default::default()
+            },
+            None,
+            0,
+        )
     }
     /// Invokes one explicit stage against the actor's shared native services.
     /// Worlds with any animation-bound actor require nominal ticks, including zero. Sound effects
@@ -318,13 +397,32 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         stage: ScriptStage,
-        nominal_ticks: Option<u32>,
+        inputs: ScriptInputs,
         sounds: Option<
             &mut dyn FnMut(ScriptActorId, cyrus_world::animation::AnimationSound) -> Result<()>,
         >,
         budget: usize,
     ) -> Result<()> {
         let index = self.resolve(id)?;
+        let nominal_ticks = inputs.nominal_ticks;
+        if matches!(stage, ScriptStage::Tasks) {
+            anyhow::ensure!(
+                inputs.frame_scale.is_some(),
+                "task stage requires frame_scale"
+            );
+        }
+        if self.spatial.is_some() {
+            anyhow::ensure!(
+                inputs.frame_scale.is_some() && nominal_ticks.is_some(),
+                "spatial script stages require frame_scale and nominal_ticks"
+            );
+        }
+        if let Some(query) = inputs.player_query {
+            anyhow::ensure!(
+                query.linked_position.is_none(),
+                "script query linked-position ownership must be established per receiver"
+            );
+        }
         if let Some(error) = self.actors[index].failure() {
             anyhow::bail!("{error}");
         }
@@ -344,8 +442,9 @@ impl ScriptWorld {
             task_calls: &self.task_calls,
             names: &self.names,
             flag_state: &mut self.flag_state,
-            nominal_ticks,
             sounds,
+            spatial: self.spatial.as_mut(),
+            inputs,
         };
         if matches!(stage, ScriptStage::Animation) {
             anyhow::ensure!(
@@ -374,8 +473,8 @@ impl ScriptWorld {
             ScriptStage::Body(thread) => {
                 runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
             }
-            ScriptStage::Tasks { frame_scale } => {
-                runtime.invoke_tasks_timed(&mut host, &mut self.flags, frame_scale)
+            ScriptStage::Tasks => {
+                runtime.invoke_tasks_timed(&mut host, &mut self.flags, inputs.frame_scale.unwrap())
             }
             ScriptStage::Animation => unreachable!(),
         };
@@ -410,6 +509,7 @@ impl ScriptWorld {
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
                 "locals": actor.runtime.as_ref().map(|runtime| runtime.variables()),
                 "attributes": actor.attributes,
+                "spatial": self.spatial.as_ref().and_then(|spatial| spatial.actor(index).ok()),
                 "animation": actor.animation.as_ref().map(|animation| serde_json::json!({
                     "current_group": animation.playback.current_group(),
                     "pending_group": animation.playback.pending_group(),
@@ -520,9 +620,10 @@ pub(super) fn prepare(
 }
 
 struct GameHost<'a, 'sound> {
+    spatial: Option<&'a mut super::spatial::SpatialWorld>,
+    inputs: ScriptInputs,
     index: usize,
     generation: u64,
-    nominal_ticks: Option<u32>,
     sounds: Option<
         &'sound mut dyn FnMut(ScriptActorId, cyrus_world::animation::AnimationSound) -> Result<()>,
     >,
@@ -538,6 +639,7 @@ impl GameHost<'_, '_> {
             index: self.index,
         };
         let ticks = self
+            .inputs
             .nominal_ticks
             .context("animation requires nominal_ticks")?;
         let mut emit = |sound| match &mut self.sounds {
@@ -607,18 +709,33 @@ impl Host for GameHost<'_, '_> {
             actor
                 .animation
                 .as_mut()
-                .zip(self.nominal_ticks)
+                .zip(self.inputs.nominal_ticks)
                 .map(|(animation, ticks)| super::tasks::AnimationCall {
                     animation: &mut animation.playback,
                     ticks,
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
-        if let Some(result) =
-            actor
-                .tasks
-                .call(function, kind, arguments, invocation, &mut animation)?
-        {
+        let mut rotation = self
+            .spatial
+            .as_deref_mut()
+            .and_then(|spatial| spatial.actor_mut(self.index).ok())
+            .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
+            .map(
+                |(spatial, (frame_scale, nominal_ticks))| super::tasks::RotationCall {
+                    angles: &mut spatial.local.angles,
+                    frame_scale,
+                    nominal_ticks,
+                },
+            );
+        if let Some(result) = actor.tasks.call(
+            function,
+            kind,
+            arguments,
+            invocation,
+            &mut animation,
+            &mut rotation,
+        )? {
             return Ok(result);
         }
         anyhow::ensure!(
@@ -626,8 +743,36 @@ impl Host for GameHost<'_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        if function.eq_ignore_ascii_case("PlayerDistance")
+            || function.eq_ignore_ascii_case("PlayerFacing")
+        {
+            let inputs = self
+                .inputs
+                .player_query
+                .context("player query inputs unavailable")?;
+            let spatial = self
+                .spatial
+                .as_deref()
+                .context("spatial state not prepared")?
+                .actor(self.index)?;
+            return Ok(CallResult::Complete(
+                spatial
+                    .query(function, arguments, inputs)?
+                    .context("spatial query absent")?,
+            ));
+        }
         if let Some(value) = self.flag_state.call(function, arguments, flags)? {
             return Ok(CallResult::Complete(value));
+        }
+        if self.spatial.is_some()
+            && (function.eq_ignore_ascii_case("SetAttribute")
+                || function.eq_ignore_ascii_case("SetMyAttr"))
+            && let Some(index) = arguments.first()
+        {
+            anyhow::ensure!(
+                !matches!(index.integer()?, 25..=28 | 33 | 37..=39),
+                "{function}: attachment/rotation attribute lifecycle unsupported after spatial preparation"
+            );
         }
         if let Some(value) =
             super::attributes::call(function, arguments, &mut self.actors[self.index].attributes)?
@@ -659,16 +804,28 @@ impl Host for GameHost<'_, '_> {
             actor
                 .animation
                 .as_mut()
-                .zip(self.nominal_ticks)
+                .zip(self.inputs.nominal_ticks)
                 .map(|(animation, ticks)| super::tasks::AnimationCall {
                     animation: &mut animation.playback,
                     ticks,
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
+        let mut rotation = self
+            .spatial
+            .as_deref_mut()
+            .and_then(|spatial| spatial.actor_mut(self.index).ok())
+            .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
+            .map(
+                |(spatial, (frame_scale, nominal_ticks))| super::tasks::RotationCall {
+                    angles: &mut spatial.local.angles,
+                    frame_scale,
+                    nominal_ticks,
+                },
+            );
         actor
             .tasks
-            .poll(token, arguments, invocation, &mut animation)
+            .poll(token, arguments, invocation, &mut animation, &mut rotation)
     }
     fn cancel(&mut self, token: u64) -> Result<()> {
         self.actors[self.index].tasks.cancel(token)
@@ -686,7 +843,7 @@ impl Host for GameHost<'_, '_> {
             anyhow::bail!("{error}");
         }
         anyhow::ensure!(
-            self.actors[index].animation.is_none() || self.nominal_ticks.is_some(),
+            self.actors[index].animation.is_none() || self.inputs.nominal_ticks.is_some(),
             "receiver instance {index}: animation requires nominal_ticks"
         );
         if index == self.index {

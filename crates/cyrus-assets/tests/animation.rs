@@ -71,3 +71,69 @@ fn old_frame_reference_schema_is_rejected() {
         "world 17: animation schema 1 unsupported; re-export the world"
     );
 }
+
+#[test]
+fn placed_frame_sources_belong_to_instances_and_preserve_table_bounds() {
+    let mut data = asset();
+    let other =
+        serde_json::from_value(serde_json::to_value(&data.models["TEST"]).unwrap()).unwrap();
+    data.models.insert("OTHER".into(), other);
+    data.metadata["actors"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("raan_entries");
+    data.metadata["mpob_objects"] = serde_json::json!([
+        {"script_name":"ACTOR", "object_type":1, "is_static":2, "model_name":"test."},
+        {"script_name":"ACTOR", "object_type":1, "is_static":2, "model_name":"other.3dc"},
+        {"script_name":"ACTOR", "object_type":1, "is_static":1, "model_name":"test"},
+        {"script_name":"ACTOR", "object_type":1, "is_static":0, "model_name":"test"},
+        {"script_name":"ACTOR", "object_type":2, "is_static":2, "model_name":"test"}
+    ]);
+    assert_eq!(
+        data.resolve_map_frame(0, 1).unwrap(),
+        cyrus_assets::animation::ModelFrame {
+            model: "TEST".into(),
+            frame: 1
+        }
+    );
+    assert_eq!(
+        data.resolve_map_frame(1, 1).unwrap(),
+        cyrus_assets::animation::ModelFrame {
+            model: "OTHER".into(),
+            frame: 1
+        }
+    );
+    assert!(
+        data.resolve_map_frame(0, 2)
+            .unwrap_err()
+            .to_string()
+            .contains("outside placed frame table")
+    );
+    assert!(
+        data.resolve_map_frame(2, 0)
+            .unwrap_err()
+            .to_string()
+            .contains("static placement")
+    );
+    assert!(
+        data.resolve_map_frame(3, 0)
+            .unwrap_err()
+            .to_string()
+            .contains("outside placed frame table")
+    );
+    assert!(
+        data.resolve_map_frame(4, 0)
+            .unwrap_err()
+            .to_string()
+            .contains("separate object")
+    );
+    assert!(
+        data.resolve_map_frame(5, 0)
+            .unwrap_err()
+            .to_string()
+            .contains("placement absent")
+    );
+    data.metadata["actors"][0]["raan_entries"] =
+        serde_json::json!([{ "file_path":"other.3dc", "frame_count":2 }]);
+    assert_eq!(data.resolve_map_frame(0, 1).unwrap().model, "OTHER");
+}

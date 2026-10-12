@@ -46,3 +46,16 @@ group. An optional exact scene node name transfers its animation presentation to
 the logical actor. Without a node, stepping captures sound intents in the response's `captured_sounds` array instead of playing them. Once any actor is animation-bound,
 all steps require explicit `nominal_ticks`, including zero, before execution.
 These tools do not determine production eligibility or pacing.
+
+Spatial inspection uses `step_script` stages `prepare_spatial`, `snapshot`,
+`transform`, and `families`. Preparation is explicit and transactional. Snapshot
+copies the selected actor's local angles; transform refreshes an unattached
+matrix; families composes prepared attachments. These operations grant no actor
+eligibility. Once spatial state is prepared, executable stages need both
+`frame_scale` and `nominal_ticks`, including zero.
+
+Player queries use the current `PlayerPose`, not the inspection camera.
+`distance_override` must explicitly establish the PlayerDistance override flag;
+`fallback_position` supplies original Q8 coordinates when no player exists.
+Missing required inputs fail. Attached queries read the last composed pose.
+Unattached linked-position selection remains unsupported in the script host.

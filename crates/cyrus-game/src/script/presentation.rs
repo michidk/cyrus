@@ -34,7 +34,14 @@ pub(super) fn apply(
         };
         let result = world.animation_frame(binding.actor).and_then(|frame| {
             frame
-                .map(|frame| data.resolve_frame(world.actors()[binding.actor.index].name(), frame))
+                .map(|frame| {
+                    let actor = &world.actors()[binding.actor.index];
+                    if actor.placement().is_some() {
+                        data.resolve_map_frame(binding.actor.index, frame)
+                    } else {
+                        data.resolve_frame(actor.name(), frame)
+                    }
+                })
                 .transpose()
         });
         match result {
@@ -47,7 +54,11 @@ pub(super) fn apply(
                     commands.entity(entity).insert(next);
                 }
             }
-            Ok(None) => {}
+            Ok(None) => {
+                if pose.is_some() {
+                    commands.entity(entity).remove::<AnimationPose>();
+                }
+            }
             Err(error) => {
                 log::error!(
                     "world {} script instance {} pose: {error:#}",

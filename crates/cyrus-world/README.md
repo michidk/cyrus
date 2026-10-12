@@ -122,3 +122,9 @@ half-length of 500. Its distinct terrain/model ranking retains earlier equal
 contacts, following [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 The game uses this static query for inspection placement. Dynamic/transient support
 and automatic locomotion remain unsupported. Re-export cached worlds after updating.
+
+`transform::Matrix` retains original single-precision actor matrices. Its products
+and sums use software x87 extended intermediates and nearest-even stores and
+integer conversion, following preservation PR55. The shared rotation table also
+supplies player heading projection. Matrix arithmetic requires no renderer or
+host floating-point-mode changes.
