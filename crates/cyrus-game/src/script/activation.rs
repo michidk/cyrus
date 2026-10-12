@@ -5,6 +5,12 @@ use cyrus_script::Argument;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+/// Existing animation state, which may not have a current group yet.
+#[derive(Clone, Copy, Debug)]
+pub struct ActivationAnimation {
+    pub group: Option<u16>,
+}
+
 /// Caller-established actor state; absence of a record means unknown, not eligible.
 #[derive(Clone, Copy, Debug)]
 pub struct ActivationActor {
@@ -14,8 +20,8 @@ pub struct ActivationActor {
     pub torch_burning: u8,
     pub weapon_assigned: bool,
     pub weapon_drawn: bool,
-    /// None means the caller established that there is no current animation.
-    pub animation_group: Option<u16>,
+    /// None means no animation state; an existing state may have no current group.
+    pub animation: Option<ActivationAnimation>,
 }
 impl ActivationActor {
     fn on_edge(self) -> bool {
@@ -26,10 +32,10 @@ impl ActivationActor {
         holding_attribute: u8,
         inputs: &ActivationInputs,
     ) -> (bool, bool, bool) {
-        let ready =
-            inputs.item_system_ready && !inputs.shell_execution && self.animation_group.is_some();
-        let drawing = ready && (self.state == 20 || self.animation_group == Some(91));
-        let sheathing = ready && (self.state == 21 || self.animation_group == Some(129));
+        let ready = inputs.item_system_ready && !inputs.shell_execution && self.animation.is_some();
+        let group = self.animation.and_then(|animation| animation.group);
+        let drawing = ready && (self.state == 20 || group == Some(91));
+        let sheathing = ready && (self.state == 21 || group == Some(129));
         let holding = holding_attribute != 0
             || (ready && self.weapon_assigned && self.weapon_drawn && !sheathing);
         (holding, drawing, sheathing)
@@ -55,7 +61,7 @@ impl ActivationInputs {
     fn player_state(&self, player: &super::ScriptActor) -> Result<ActivationActor> {
         let mut state = self.actor(self.player.index)?;
         if let Some(group) = player.bound_animation_group() {
-            state.animation_group = group;
+            state.animation = Some(ActivationAnimation { group });
         }
         Ok(state)
     }

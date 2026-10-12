@@ -213,6 +213,8 @@ pending prompt and timer state, following
 conditions, RTX labels, dialogue/lineup state and held use. Missing actor state
 fails explicitly. Attributes come from the receiving and selected logical actors;
 a bound player animation overrides the supplied animation-group snapshot.
+Animation-state presence is separate from its current group; a bound state with no
+current group still satisfies the weapon predicates' animation-state gate.
 Routed activation owns the receiver. Deactivation clears holdoff for every
 receiver but releases only a matching owner. World replacement resets this state.
 

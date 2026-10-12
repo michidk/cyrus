@@ -1044,7 +1044,7 @@ fn activation_world_with_attributes(
         torch_burning: 0,
         weapon_assigned: false,
         weapon_drawn: false,
-        animation_group: Some(0),
+        animation: Some(cyrus_game::script::ActivationAnimation { group: Some(0) }),
     };
     let inputs = ActivationInputs {
         player: world.id(2).unwrap(),
@@ -1190,8 +1190,26 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
             3 => inputs.actors.get_mut(&1).unwrap().on_rope = true,
             4 => inputs.actors.get_mut(&2).unwrap().state = 20,
             5 => inputs.actors.get_mut(&2).unwrap().state = 21,
-            6 => inputs.actors.get_mut(&2).unwrap().animation_group = Some(91),
-            7 => inputs.actors.get_mut(&2).unwrap().animation_group = Some(129),
+            6 => {
+                inputs
+                    .actors
+                    .get_mut(&2)
+                    .unwrap()
+                    .animation
+                    .as_mut()
+                    .unwrap()
+                    .group = Some(91)
+            }
+            7 => {
+                inputs
+                    .actors
+                    .get_mut(&2)
+                    .unwrap()
+                    .animation
+                    .as_mut()
+                    .unwrap()
+                    .group = Some(129)
+            }
             8 => {
                 let player = inputs.actors.get_mut(&2).unwrap();
                 player.weapon_assigned = true;
@@ -1212,7 +1230,7 @@ fn activation_shared_and_weapon_gates_reject_without_claiming_a_prompt() {
         match gate {
             0 => inputs.item_system_ready = false,
             1 => inputs.shell_execution = true,
-            2 => inputs.actors.get_mut(&2).unwrap().animation_group = None,
+            2 => inputs.actors.get_mut(&2).unwrap().animation = None,
             3 => {
                 inputs.actors.get_mut(&2).unwrap().state = 0;
                 inputs.lockout = 257;
@@ -1294,7 +1312,7 @@ fn activation_reads_player_and_receiver_attributes_with_weapon_override() {
         );
         inputs.item_system_ready = false;
         inputs.shell_execution = true;
-        inputs.actors.get_mut(&2).unwrap().animation_group = None;
+        inputs.actors.get_mut(&2).unwrap().animation = None;
         activate_world(&mut world, &inputs);
         assert_eq!(world.flags(), [expected]);
     }
@@ -1361,4 +1379,57 @@ fn empty_rtx_text_still_activates_an_existing_entry() {
     assert_eq!(world.flags(), [1]);
     assert_eq!(world.activation().prompt(), Some(""));
     assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+}
+
+#[test]
+fn activation_distinguishes_animation_state_from_its_current_group() {
+    use cyrus_game::script::{ActivationAnimation, ScriptInputs};
+    for (state, armed) in [(20, false), (21, false), (0, true)] {
+        for (present, bound) in [(false, false), (true, false), (false, true)] {
+            let (mut world, mut inputs) = activation_world("Activate");
+            let player = inputs.actors.get_mut(&inputs.player.index).unwrap();
+            player.state = state;
+            player.weapon_assigned = armed;
+            player.weapon_drawn = armed;
+            player.animation = present.then_some(ActivationAnimation { group: None });
+            if bound {
+                let data = Animations {
+                    version: 2,
+                    world: world.world,
+                    sections: BTreeMap::new(),
+                    models: BTreeMap::new(),
+                    unsupported: BTreeMap::new(),
+                    metadata: json!({
+                        "script_content_id": world.content_id,
+                        "actors": [{"script_name": "CYRUS", "animation_groups": []}]
+                    }),
+                };
+                world.bind_animation(inputs.player, &data, 0).unwrap();
+            }
+            world
+                .advance(
+                    world.id(0).unwrap(),
+                    ScriptStage::Body(Thread::Interrupt),
+                    ScriptInputs {
+                        activation: Some(&inputs),
+                        nominal_ticks: Some(0),
+                        ..Default::default()
+                    },
+                    None,
+                    30,
+                )
+                .unwrap();
+            let admitted = !present && !bound;
+            assert_eq!(
+                world.flags(),
+                [i32::from(admitted)],
+                "state={state}, armed={armed}, present={present}, bound={bound}"
+            );
+            assert_eq!(world.activation().prompt(), admitted.then_some("Open"));
+            assert_eq!(
+                world.activation().owner(),
+                admitted.then(|| world.id(1).unwrap())
+            );
+        }
+    }
 }

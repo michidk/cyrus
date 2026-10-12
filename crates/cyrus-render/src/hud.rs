@@ -970,7 +970,7 @@ mod tests {
             torch_burning: 0,
             weapon_assigned: false,
             weapon_drawn: false,
-            animation_group: Some(0),
+            animation: Some(cyrus_game::script::ActivationAnimation { group: Some(0) }),
         };
         let inputs = ActivationInputs {
             player: world.id(1).unwrap(),
@@ -1116,5 +1116,23 @@ mod tests {
             .map(|(_, node, visibility)| (node.image.clone(), *visibility))
             .unwrap();
         assert_eq!((image, visibility), (expected, Visibility::Inherited));
+
+        {
+            let mut inputs = app.world_mut().resource_mut::<ActivationInputs>();
+            let player_index = inputs.player.index;
+            let player = inputs.actors.get_mut(&player_index).unwrap();
+            player.weapon_assigned = true;
+            player.weapon_drawn = true;
+            player.animation = Some(cyrus_game::script::ActivationAnimation { group: None });
+        }
+        app.update();
+        assert_eq!(app.world().resource::<HudState>().selected, Some(2));
+        {
+            let mut inputs = app.world_mut().resource_mut::<ActivationInputs>();
+            let player_index = inputs.player.index;
+            inputs.actors.get_mut(&player_index).unwrap().animation = None;
+        }
+        app.update();
+        assert_eq!(app.world().resource::<HudState>().selected, Some(1));
     }
 }
