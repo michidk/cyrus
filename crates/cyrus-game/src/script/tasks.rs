@@ -21,6 +21,8 @@ pub(super) struct SpatialCall<'a> {
     pub nominal_ticks: u32,
     pub matrix: cyrus_world::transform::Matrix,
     pub slave: bool,
+    pub locations: &'a [[i32; 3]],
+    pub effective_position: Option<[i32; 3]>,
     pub actor_index: usize,
     pub map_updates: &'a mut Vec<usize>,
 }
@@ -45,6 +47,7 @@ enum Task {
     AbsoluteRotation { movement: i32, accumulator: i32 },
     ScaledRotation { origin: i32 },
     ScaledRelativeRotation { origin: i32 },
+    Location,
     Duration,
     Tasks,
     Blocking,
@@ -101,6 +104,63 @@ impl Task {
                 );
                 *channel = updated.channel;
                 !updated.active
+            }
+            Self::Location => {
+                let [location, duration] = arguments else {
+                    anyhow::bail!("MoveToLocation requires two arguments")
+                };
+                let (location, duration) = (location.integer()?, duration.integer()?);
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveToLocation requires elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("MoveToLocation requires receiver pose and frame_scale")?;
+                let count = i32::try_from(input.locations.len())
+                    .context("MoveToLocation location count exceeds signed range")?;
+                let target = if location < 0 || location > count {
+                    input
+                        .locations
+                        .first()
+                        .context("MoveToLocation home unavailable")?
+                } else {
+                    input.locations.get(location as usize).context("MoveToLocation selector equals location count: original out-of-range access unsupported")?
+                };
+                if elapsed > duration {
+                    *input.position = *target;
+                    if !input.map_updates.contains(&input.actor_index) {
+                        input.map_updates.push(input.actor_index);
+                    }
+                    return Ok(true);
+                }
+                let source = if input.slave {
+                    input
+                        .effective_position
+                        .context("MoveToLocation attached receiver pose unavailable")?
+                } else {
+                    *input.position
+                };
+                let differences =
+                    std::array::from_fn(|axis| target[axis].wrapping_sub(source[axis]));
+                let direction = super::spatial::normalized_direction(differences);
+                // Distance subtracts in the opposite order; wrapping makes this significant at MIN.
+                let distance = super::spatial::rounded_distance(std::array::from_fn(|axis| {
+                    source[axis].wrapping_sub(target[axis])
+                }))?;
+                let divisor = duration.wrapping_add(1).wrapping_sub(elapsed);
+                let movement = distance
+                    .checked_div(divisor)
+                    .context("MoveToLocation division invalid")?
+                    .wrapping_mul(input.frame_scale as i32)
+                    >> 8;
+                for (axis, component) in direction.into_iter().enumerate() {
+                    input.position[axis] = input.position[axis]
+                        .wrapping_add(((component >> 8).wrapping_mul(movement)) >> 8);
+                }
+                if !input.map_updates.contains(&input.actor_index) {
+                    input.map_updates.push(input.actor_index);
+                }
+                false
             }
             Self::ObjectMovement { target, traveled } => {
                 let [axis, delta, duration] = arguments else {
@@ -499,6 +559,8 @@ impl NativeTasks {
             Task::Movement { target: 0 }
         } else if function.eq_ignore_ascii_case("sMoveByAxis") {
             Task::ScaledMovement { origin: 0 }
+        } else if function.eq_ignore_ascii_case("MoveToLocation") {
+            Task::Location
         } else if function.eq_ignore_ascii_case("Wait") {
             Task::Duration
         } else if function.eq_ignore_ascii_case("WaitOnTasks") {

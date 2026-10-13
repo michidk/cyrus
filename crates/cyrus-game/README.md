@@ -318,7 +318,7 @@ owns each fresh receiver's absent linked-position record, following
 [preservation PR66](https://github.com/michidk/redguard-preservation/pull/66).
 Automatic traversal supplies the selected player pose and the live native
 `neversaydie` distance override. Hosts without initialized cheat storage use
-the installed override from the version 9 script cache.
+the installed override from the version 10 script cache.
 Dynamic linked-position creation remains unsupported until its state
 owner is integrated. Complete lever interaction acceptance remains open.
 
@@ -366,6 +366,15 @@ Movement leaves collision, axis-lock restoration and family refresh to their
 own stages. An installed ISLAND mechanism test supplies its enabling flag,
 runs the authored movement, and checks deferred child-pose refresh. Automatic
 admission and moving-platform passenger response remain unsupported.
+
+`MoveToLocation` retains each instance's original home as location zero and
+prepares its authored RALC offsets relative to that home. Its task reads the local
+or attached effective source position, advances local coordinates with the
+original normalization and frame-scale arithmetic, and completes strictly after
+the duration. Every invocation queues the actor's deferred map update. Collision
+and family refresh remain separate stages. Selectors at the original out-of-range
+count boundary report unsupported access. These rules follow
+[preservation's authored location movement](https://github.com/michidk/redguard-preservation/blob/c077ed1/docs/engine/SOUP.md#authored-location-movement).
 
 The `ordinary_hook` stage applies the installed task-system switch and the
 receiver's native-hook suppression flag. With the task system enabled, every

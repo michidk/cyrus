@@ -440,7 +440,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 9,
+        version: 10,
         clock: ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,
@@ -487,6 +487,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
                 instances: 1,
                 namespace: Some("player".into()),
                 instance_variables: vec![vec![]],
+                location_offsets: vec![],
                 attributes: Default::default(),
                 native_hook: None,
                 program: Program {

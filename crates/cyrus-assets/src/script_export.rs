@@ -130,6 +130,9 @@ pub fn prepare_source(
                             .and_then(|value| value.as_str())
                             .map(str::to_owned),
                         instance_variables: source.instance_variables,
+                        location_offsets: rgm::actor_location_offsets(rgm, source.header_index)
+                            .map_err(anyhow::Error::msg)
+                            .with_context(|| format!("{context}: authored locations"))?,
                         program,
                         attributes,
                         native_hook
@@ -166,7 +169,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 9,
+        version: 10,
         player_distance_override,
         clock,
         updates,

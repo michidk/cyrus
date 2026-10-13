@@ -885,6 +885,7 @@ mod tests {
             instances: 1,
             namespace: Some("CYRUS".into()),
             instance_variables: vec![vec![]],
+            location_offsets: vec![],
             attributes: BTreeMap::new(),
             native_hook: None,
             program: Program {
@@ -931,7 +932,7 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 9,
+            version: 10,
             player_distance_override: false,
             updates: cyrus_assets::script::UpdateSettings {
                 task_system: true,

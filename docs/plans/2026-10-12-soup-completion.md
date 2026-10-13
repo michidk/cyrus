@@ -27,7 +27,7 @@ collision/combat/intro services and complete all-world acceptance remain open.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
-  metadata, and decoded programs. The script cache is version 9, programs are
+  metadata, and decoded programs. The script cache is version 10, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).

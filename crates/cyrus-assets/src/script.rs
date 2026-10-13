@@ -311,6 +311,8 @@ pub struct Actor {
     pub instances: u16,
     pub namespace: Option<String>,
     pub instance_variables: Vec<Vec<i32>>,
+    /// Authored Q8 RALC offsets relative to each instance's original home.
+    pub location_offsets: Vec<[i32; 3]>,
     pub program: Program,
     /// Independent actor-load attribute defaults; model-path message groups are assigned later.
     pub attributes: BTreeMap<String, u8>,
@@ -370,7 +372,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 9,
+            self.version == 10,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

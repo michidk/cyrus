@@ -46,6 +46,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         instances: 1,
         namespace: Some(name.into()),
         instance_variables: vec![vec![]],
+        location_offsets: vec![],
         attributes: BTreeMap::new(),
         native_hook: None,
         program: Program {
@@ -69,7 +70,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 9,
+        version: 10,
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
@@ -2071,4 +2072,195 @@ fn new_game_applies_lockout_cleanup_before_replacing_the_registry() {
     assert_eq!(actors[1]["attributes"][117], 0);
     assert_eq!(actors[2]["attributes"][117], 9);
     assert_eq!(actors[3]["attributes"][117], 0);
+}
+
+fn location_task_scripts(selector: i32, duration: i32) -> Scripts {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Task,
+                target: Object::Me,
+                function: "MoveToLocation".into(),
+                arguments: [selector, duration]
+                    .map(|value| Value::Integer { value })
+                    .to_vec(),
+            },
+        },
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "MoveToLocation".into(),
+        param_count: 2,
+        kind: CallKind::Task,
+    });
+    data.actors.get_mut("ACTOR").unwrap().location_offsets = vec![[1024, 0, 0]];
+    data.content_id = data.content_identity().unwrap();
+    data
+}
+
+#[test]
+fn location_movement_reaches_target_but_finishes_only_after_duration() {
+    let data = location_task_scripts(1, 2);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    for (index, expected) in [341, 682, 1024, 1024].into_iter().enumerate() {
+        stage(&mut world, id, if index == 0 { BODY } else { TASKS });
+        assert_eq!(world.spatial(id).unwrap().local.position, [expected, 0, 0]);
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().active_tasks(),
+            usize::from(index < 3)
+        );
+    }
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn location_zero_and_invalid_selectors_use_original_home_after_movement() {
+    for selector in [0, -1, 3] {
+        let mut data = location_task_scripts(selector, -1);
+        data.instances[0].map_position = [10, -3, 7];
+        let program = &mut data.actors.get_mut("ACTOR").unwrap().program;
+        let mut return_home = program.steps[&0].clone();
+        return_home.next = 2;
+        let mut leave_home = return_home.clone();
+        leave_home.next = 1;
+        if let Operation::Call { call } = &mut leave_home.operation {
+            call.arguments[0] = Value::Integer { value: 1 };
+        }
+        program.steps = BTreeMap::from([
+            (0, leave_home),
+            (1, return_home),
+            (
+                2,
+                Step {
+                    next: 3,
+                    operation: flag(),
+                },
+            ),
+            (
+                3,
+                Step {
+                    next: 4,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]);
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        stage(&mut world, id, BODY);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [3584, -768, 1792]
+        );
+        stage(&mut world, id, TASKS);
+        stage(&mut world, id, BODY);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [2560, -768, 1792]
+        );
+        stage(&mut world, id, TASKS);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn location_count_boundary_reports_original_out_of_range_access() {
+    let data = location_task_scripts(2, 1);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let error = world
+        .advance(
+            id,
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("selector equals location count"));
+}
+
+#[test]
+fn attached_location_motion_reads_effective_pose_but_updates_local_coordinates() {
+    let mut data = location_task_scripts(1, 2);
+    data.definition.attributes = (0..256).map(|i| format!("attr_{i}")).collect();
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_26".into(), 1);
+    data.actors
+        .get_mut("OTHER")
+        .unwrap()
+        .attributes
+        .insert("attr_25".into(), 1);
+    data.instances[0].map_position = [110, 0, 0];
+    data.instances[1].map_position = [100, 0, 0];
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.spatial(id).unwrap().local.position, [2901, 0, 0]);
+}
+
+#[test]
+fn authored_locations_are_relative_to_each_instance_original_home() {
+    let mut data = location_task_scripts(1, -1);
+    data.instances[0].map_position = [10, 0, 0];
+    data.instances[1].actor = "ACTOR".into();
+    data.instances[1].map_position = [20, 0, 0];
+    let actor = data.actors.get_mut("ACTOR").unwrap();
+    actor.instances = 2;
+    actor.instance_variables.push(vec![]);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    for (index, expected) in [3584, 6144].into_iter().enumerate() {
+        let id = world.id(index).unwrap();
+        stage(&mut world, id, BODY);
+        assert_eq!(world.spatial(id).unwrap().local.position, [expected, 0, 0]);
+    }
+}
+
+#[test]
+fn location_movement_quantizes_normalized_components_and_snaps_after_overshoot() {
+    let mut data = location_task_scripts(1, 0);
+    data.actors.get_mut("ACTOR").unwrap().location_offsets = vec![[3, 4, 0]];
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(384),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.position, [4, 5, 0]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.spatial(id).unwrap().local.position, [3, 4, 0]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }

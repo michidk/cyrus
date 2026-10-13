@@ -73,7 +73,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 9,
+        version: 10,
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
@@ -113,6 +113,7 @@ fn cache() -> Scripts {
                 instances: 2,
                 namespace: Some("logic".into()),
                 instance_variables: vec![vec![4], vec![9]],
+                location_offsets: vec![],
                 program,
                 attributes: BTreeMap::new(),
                 native_hook: None,

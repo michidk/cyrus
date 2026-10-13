@@ -39,6 +39,8 @@ pub struct Pose {
 #[derive(Clone, Debug, Serialize)]
 pub struct ActorSpatial {
     pub local: Pose,
+    /// Original home followed by authored RALC destinations, all in Q8 units.
+    pub(super) locations: Vec<[i32; 3]>,
     pub effective: Option<Pose>,
     pub previous_effective_position: Option<[i32; 3]>,
     /// Local position captured at the ordinary update boundary, in Q8 units.
@@ -138,6 +140,13 @@ impl SpatialWorld {
             }
             states.push(Some(ActorSpatial {
                 local,
+                locations: std::iter::once(original.position)
+                    .chain(actor.location_offsets.iter().map(|offset| {
+                        std::array::from_fn(|axis| {
+                            original.position[axis].wrapping_add(offset[axis])
+                        })
+                    }))
+                    .collect(),
                 effective: parent.is_none().then_some(original),
                 previous_effective_position: None,
                 previous_local_position: local.position,
@@ -377,6 +386,15 @@ fn serialize_matrix<S: serde::Serializer>(
 
 /// Original mixed-precision Euclidean distance, rounded to a signed integer.
 pub fn rounded_distance(differences: [i32; 3]) -> Result<i32> {
+    let length = single_precision_length(differences).round_ties_even();
+    ensure!(
+        f64::from(length) <= f64::from(i32::MAX),
+        "distance exceeds signed integer range"
+    );
+    Ok(length as i32)
+}
+
+fn single_precision_length(differences: [i32; 3]) -> f32 {
     // Stored f32 differences are integers; their squared sum fits u64 exactly.
     let squared: u64 = differences
         .into_iter()
@@ -403,10 +421,14 @@ pub fn rounded_distance(differences: [i32; 3]) -> Result<i32> {
             single = single.max(neighbor);
         }
     }
-    let length = single.round_ties_even();
-    ensure!(
-        f64::from(length) <= f64::from(i32::MAX),
-        "distance exceeds signed integer range"
-    );
-    Ok(length as i32)
+    single
+}
+
+/// Original single-precision normalization to Q16, using nearest-even integers.
+pub(super) fn normalized_direction(differences: [i32; 3]) -> [i32; 3] {
+    let divisor = single_precision_length(differences) / 65536.0;
+    if divisor == 0.0 {
+        return [0; 3];
+    }
+    differences.map(|component| ((component as f32) / divisor).round_ties_even() as i32)
 }

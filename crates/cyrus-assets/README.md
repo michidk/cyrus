@@ -184,3 +184,9 @@ Generated filesystem paths use portable slash-separated cache keys on every plat
 including Windows. Absolute paths and traversal remain rejected.
 
 Native preload failures retain install-relative filenames, including directories and extensions, so audit diagnostics identify the source file without depending on the local install location.
+
+Catalog version 19 invalidates older browser export caches. Script schema 10 retains each actor definition's authored RALC offsets in Q8 units.
+Preparation uses preservation's validated per-header location parser; original
+home positions are assigned per instance by the game. Location offsets participate
+in script content identity. The parser increment is published on
+[the authored-location review branch](https://github.com/michidk/redguard-preservation/compare/main...feat/authored-location-offsets).

@@ -107,6 +107,7 @@ pub struct ScriptActor {
     attributes: Vec<u8>,
     control: Option<ActorControlState>,
     surface: Option<u8>,
+    pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
@@ -271,6 +272,9 @@ impl ScriptWorld {
                 native_hook: metadata.and_then(|actor| actor.native_hook.clone()),
                 runtime,
                 unavailable,
+                location_offsets: metadata
+                    .map(|actor| actor.location_offsets.clone())
+                    .unwrap_or_default(),
                 tasks: Default::default(),
                 animation: None,
                 animation_failure: None,
@@ -1455,6 +1459,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .map(
                 |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
                     matrix: spatial.local.matrix,
+                    locations: &spatial.locations,
+                    effective_position: spatial.effective.map(|pose| pose.position),
                     slave: actor.attributes[26] != 0,
                     actor_index: self.index,
                     map_updates: self.map_updates,
@@ -1713,6 +1719,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .map(
                 |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
                     matrix: spatial.local.matrix,
+                    locations: &spatial.locations,
+                    effective_position: spatial.effective.map(|pose| pose.position),
                     slave: actor.attributes[26] != 0,
                     actor_index: self.index,
                     map_updates: self.map_updates,

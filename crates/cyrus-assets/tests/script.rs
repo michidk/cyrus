@@ -3,7 +3,7 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 9,
+        version: 10,
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
@@ -302,6 +302,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
             instances: 1,
             namespace: None,
             instance_variables: vec![vec![]],
+            location_offsets: vec![],
             attributes: BTreeMap::new(),
             native_hook: Some(Call {
                 function_id: 3,
@@ -499,7 +500,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 9);
+    assert_eq!(scripts.version, 10);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -547,6 +548,7 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
             instances: 1,
             namespace: None,
             instance_variables: vec![vec![]],
+            location_offsets: vec![],
             attributes: BTreeMap::new(),
             native_hook: Some(Call {
                 function_id: 0,
@@ -667,4 +669,43 @@ fn installed_update_switch_conversion_rejects_missing_inputs() {
         let error = parse(&text.replace(line, "")).unwrap_err().to_string();
         assert!(error.contains(line.split('=').next().unwrap()), "{error}");
     }
+}
+
+#[test]
+fn authored_location_offsets_participate_in_content_identity() {
+    let mut scripts = cache();
+    let mut actor = cyrus_assets::script::Actor {
+        header_index: 0,
+        code_origin: 0,
+        instances: 1,
+        namespace: None,
+        instance_variables: vec![vec![]],
+        location_offsets: vec![[1, 2, 3]],
+        program: Program {
+            version: 2,
+            entry: 0,
+            variables: vec![],
+            strings: vec![],
+            steps: BTreeMap::from([(
+                0,
+                Step {
+                    next: 0,
+                    operation: Operation::End { target: 0 },
+                },
+            )]),
+        },
+        attributes: BTreeMap::new(),
+        native_hook: None,
+    };
+    scripts.actors.insert("ACTOR".into(), actor.clone());
+    scripts.content_id = scripts.content_identity().unwrap();
+    actor.location_offsets[0][1] = 4;
+    scripts.actors.insert("ACTOR".into(), actor);
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
 }
