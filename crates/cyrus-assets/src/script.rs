@@ -61,6 +61,41 @@ impl ClockSettings {
     }
 }
 
+/// Installed switches for ordinary actor updates, separate from per-actor control flags.
+/// Eligibility and stage ordering follow preservation's engine/animation.md and SOUP.md.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UpdateSettings {
+    pub task_system: bool,
+    pub animation_system: bool,
+    pub disable_slaves: bool,
+    pub disable_master_slaves: bool,
+}
+
+impl UpdateSettings {
+    /// Missing switches are unsupported rather than assigned invented defaults.
+    #[cfg(feature = "parsers")]
+    pub fn from_system(settings: &rgpre::import::system_ini::SystemIni) -> anyhow::Result<Self> {
+        Ok(Self {
+            task_system: settings
+                .system
+                .task_system
+                .context("SYSTEM.INI [system] task_system missing")?,
+            animation_system: settings
+                .system
+                .animation_system
+                .context("SYSTEM.INI [system] animation_system missing")?,
+            disable_slaves: settings
+                .debug
+                .disable_slaves
+                .context("SYSTEM.INI [debug] disable_slaves missing")?,
+            disable_master_slaves: settings
+                .debug
+                .disable_master_slaves
+                .context("SYSTEM.INI [debug] disable_master_slaves missing")?,
+        })
+    }
+}
+
 /// Versioned actor-local instructions and initial state, independent of a renderer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Program {
@@ -303,6 +338,7 @@ pub struct Instance {
 pub struct Scripts {
     pub version: u32,
     pub clock: ClockSettings,
+    pub updates: UpdateSettings,
     /// Installed reusable actor-pool capacity, including the engine's minimum of ten.
     pub actor_pool_capacity: u32,
     pub content_id: String,
@@ -319,6 +355,7 @@ impl Scripts {
         let bytes = serde_json::to_vec(&(
             self.version,
             &self.clock,
+            &self.updates,
             self.actor_pool_capacity,
             self.world,
             &self.definition,
@@ -330,7 +367,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 7,
+            self.version == 8,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

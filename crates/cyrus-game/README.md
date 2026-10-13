@@ -284,3 +284,11 @@ Movement leaves collision, axis-lock restoration and family refresh to their
 own stages. An installed ISLAND mechanism test supplies its enabling flag,
 runs the authored movement, and checks deferred child-pose refresh. Automatic
 admission and moving-platform passenger response remain unsupported.
+
+The `ordinary_hook` stage applies the installed task-system switch and the
+receiver's native-hook suppression flag. With the task system enabled, every
+unpaused task suppresses this hook, including nonblocking multitasks. Paused
+slots do not suppress it. `ordinary_main` does no work when the installed task
+system is disabled. Direct inspection stages retain their explicit behavior.
+These gates follow [preservation's ordinary update rules](https://github.com/michidk/redguard-preservation/blob/e4e2aca/docs/engine/SOUP.md#ordinary-update-gates).
+Combat dispatch and complete automatic actor admission remain unsupported.

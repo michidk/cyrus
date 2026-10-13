@@ -51,6 +51,8 @@ impl ScriptActorSource {
 pub enum ScriptStage {
     /// Caller has admitted the ordinary main stage; actor script-control flags still apply.
     OrdinaryMain,
+    /// Caller has admitted this actor; task-system and hook-suppression gates still apply.
+    OrdinaryHook,
     NativeHook,
     Animation,
     Entry,
@@ -151,6 +153,7 @@ pub struct ScriptWorld {
     generation: u64,
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
+    updates: cyrus_assets::script::UpdateSettings,
     actors: Vec<ScriptActor>,
     spatial: Option<super::spatial::SpatialWorld>,
     activation: super::ActivationState,
@@ -298,6 +301,7 @@ impl ScriptWorld {
             }
         }
         Ok(Self {
+            updates: scripts.updates,
             world: scripts.world,
             content_id: scripts.content_id.clone(),
             generation,
@@ -710,6 +714,27 @@ impl ScriptWorld {
                 self.world
             );
         }
+        if matches!(stage, ScriptStage::OrdinaryMain) && !self.updates.task_system {
+            return Ok(());
+        }
+        if matches!(stage, ScriptStage::OrdinaryHook) {
+            let actor = &self.actors[index];
+            let control = actor.control.as_ref().with_context(|| {
+                format!(
+                    "world {} instance {index}: script-control lifecycle unavailable",
+                    self.world
+                )
+            })?;
+            if control.script_control & 2 != 0
+                || (self.updates.task_system
+                    && actor
+                        .runtime
+                        .as_ref()
+                        .is_some_and(Runtime::has_unpaused_task))
+            {
+                return Ok(());
+            }
+        }
         let bypass_tasks = if matches!(stage, ScriptStage::OrdinaryMain) {
             let control = self.actors[index].control.as_ref().with_context(|| {
                 format!(
@@ -767,7 +792,7 @@ impl ScriptWorld {
                 budget,
                 bypass_tasks,
             ),
-            ScriptStage::NativeHook => match native_hook {
+            ScriptStage::NativeHook | ScriptStage::OrdinaryHook => match native_hook {
                 Some(call) => runtime
                     .invoke_native_hook(&call, &mut host, &mut self.flags)
                     .map(|_| ()),

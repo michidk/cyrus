@@ -18,8 +18,8 @@ automatically execute all eligible actors. `ScriptPlugin` prepares the registry,
 updates diagnostics, and advances explicitly attached animation playback.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
-  initial flags, locals, strings, initialized attributes, native hooks, placement model
-  metadata, and decoded programs. The script cache is version 7, programs are
+  initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
+  metadata, and decoded programs. The script cache is version 8, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
@@ -38,7 +38,9 @@ updates diagnostics, and advances explicitly attached animation playback.
   Me, Player, Camera, and named receivers. Inspection handlers support attribute
   reads/writes, flag helpers, Wait, WaitOnTasks, and WaitNonMulti.
   Ordinary map actors also support EnableScript/DisableScript and an explicit
-  ordinary-main stage that retains pending tasks while disabled. Task bypass
+  ordinary-main stage that retains pending tasks while disabled. The installed
+  task-system switch suppresses that stage; ordinary-hook admission distinguishes
+  paused slots from all unpaused tasks, including multitasks. Task bypass
   preserves the entry gate but skips polling and the main blocking-slot gate.
   Production eligibility, native-hook gating and combat remain separate.
 - The registry host combines PushAnimation, waits, attributes, and flags on one

@@ -18,6 +18,10 @@ impl Runtime {
     pub fn active_tasks(&self) -> usize {
         self.state.tasks.iter().flatten().count()
     }
+    /// Ordinary native hooks are gated by every unpaused slot, including multitasks.
+    pub fn has_unpaused_task(&self) -> bool {
+        self.state.tasks.iter().flatten().any(|task| !task.paused)
+    }
     pub fn has_blocking_task(&self) -> bool {
         self.state
             .tasks

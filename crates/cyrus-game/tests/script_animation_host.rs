@@ -69,7 +69,13 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 7,
+        version: 8,
+        updates: cyrus_assets::script::UpdateSettings {
+            task_system: true,
+            animation_system: true,
+            disable_slaves: false,
+            disable_master_slaves: false,
+        },
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,

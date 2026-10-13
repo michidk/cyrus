@@ -100,6 +100,7 @@ fn script_page_size() -> usize {
 #[serde(rename_all = "snake_case")]
 pub enum ScriptStage {
     OrdinaryMain,
+    OrdinaryHook,
     NativeHook,
     PrepareSpatial,
     Snapshot,

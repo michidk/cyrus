@@ -1,7 +1,7 @@
 //! Shared SOUP preparation through preservation's typed decoder and installed definitions.
 use crate::script::{
     Actor, CallKind, ClockSettings, Definition, Flag, Function, Instance, Operation, Program,
-    Scripts, Step,
+    Scripts, Step, UpdateSettings,
 };
 use anyhow::{Context, Result};
 use rgpre::import::{
@@ -36,6 +36,8 @@ pub fn prepare_source(
         .with_context(|| format!("world {world} SYSTEM.INI clock settings"))?;
     let clock = ClockSettings::from_system(&system.system)
         .with_context(|| format!("world {world} script clock"))?;
+    let updates = UpdateSettings::from_system(&system)
+        .with_context(|| format!("world {world} script update settings"))?;
     let definition = crate::preparation::soup(source)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
     let mut actors = BTreeMap::new();
@@ -162,8 +164,9 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 7,
+        version: 8,
         clock,
+        updates,
         actor_pool_capacity: config.actor_pool_capacity,
         world,
         content_id: String::new(),

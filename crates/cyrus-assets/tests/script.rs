@@ -3,7 +3,13 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 7,
+        version: 8,
+        updates: cyrus_assets::script::UpdateSettings {
+            task_system: true,
+            animation_system: true,
+            disable_slaves: false,
+            disable_master_slaves: false,
+        },
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,
@@ -447,7 +453,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     }
     let prepare = |normal: i32, min: i32| {
-        let system = format!("[system]\nmax_active_objects=10\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\n").into_bytes();
+        let system = format!("[system]\nmax_active_objects=10\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n").into_bytes();
         let source = Source {
             manifest: Manifest {
                 files: vec![
@@ -482,7 +488,16 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 7);
+    assert_eq!(scripts.version, 8);
+    assert_eq!(
+        scripts.updates,
+        UpdateSettings {
+            task_system: true,
+            animation_system: false,
+            disable_slaves: true,
+            disable_master_slaves: false
+        }
+    );
     for (normal, min, field) in [(-1, 6, "normal_frame_rate"), (12, 0, "min_frame_rate")] {
         let error = format!("{:#}", prepare(normal, min).unwrap_err());
         assert!(
@@ -570,5 +585,57 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
                 .to_string()
                 .contains("actor HOOK native hook")
         );
+    }
+}
+
+#[test]
+fn update_switches_are_required_and_part_of_cache_identity() {
+    let scripts = cache();
+    for field in [
+        "task_system",
+        "animation_system",
+        "disable_slaves",
+        "disable_master_slaves",
+    ] {
+        let mut data = serde_json::to_value(&scripts).unwrap();
+        let value = data["updates"][field].as_bool().unwrap();
+        data["updates"][field] = (!value).into();
+        let changed: Scripts = serde_json::from_value(data.clone()).unwrap();
+        assert!(
+            changed
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("content identity")
+        );
+        data["updates"].as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<Scripts>(data).is_err());
+    }
+}
+
+#[cfg(feature = "parsers")]
+#[test]
+fn installed_update_switch_conversion_rejects_missing_inputs() {
+    let text = "[system]\ntask_system=no\nanimation_system=yes\n[debug]\ndisable_slaves=no\ndisable_master_slaves=yes\n";
+    let parse = |text: &str| {
+        UpdateSettings::from_system(&rgpre::import::system_ini::SystemIni::parse(text).unwrap())
+    };
+    assert_eq!(
+        parse(text).unwrap(),
+        UpdateSettings {
+            task_system: false,
+            animation_system: true,
+            disable_slaves: false,
+            disable_master_slaves: true
+        }
+    );
+    for line in [
+        "task_system=no\n",
+        "animation_system=yes\n",
+        "disable_slaves=no\n",
+        "disable_master_slaves=yes\n",
+    ] {
+        let error = parse(&text.replace(line, "")).unwrap_err().to_string();
+        assert!(error.contains(line.split('=').next().unwrap()), "{error}");
     }
 }

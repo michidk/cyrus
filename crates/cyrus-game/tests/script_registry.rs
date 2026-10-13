@@ -73,7 +73,13 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 7,
+        version: 8,
+        updates: cyrus_assets::script::UpdateSettings {
+            task_system: true,
+            animation_system: true,
+            disable_slaves: false,
+            disable_master_slaves: false,
+        },
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,
@@ -2135,4 +2141,104 @@ fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes
         .unwrap();
     assert_eq!(world.flags(), [14]);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+}
+
+#[test]
+fn ordinary_hook_observes_unpaused_multitasks_and_installed_task_switch() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for task_system in [false, true] {
+        for paused in [false, true] {
+            let mut operations = vec![wait(
+                1,
+                "Wait",
+                CallKind::Multitask,
+                vec![Value::Integer { value: 100 }],
+            )];
+            if paused {
+                operations.push(Operation::TaskPause { label: 0 });
+            }
+            operations.push(Operation::End { target: 0 });
+            let mut scripts = wait_cache(operations);
+            scripts.updates.task_system = task_system;
+            scripts.definition.functions.push(Function {
+                name: "SetMyAttr".into(),
+                param_count: 2,
+                kind: CallKind::Function,
+            });
+            scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
+                function_id: 4,
+                function: "SetMyAttr".into(),
+                kind: CallKind::Function,
+                target: Object::Me,
+                arguments: vec![Value::Integer { value: 6 }, Value::Integer { value: 19 }],
+            });
+            scripts.content_id = scripts.content_identity().unwrap();
+            let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+            let id = world.id(0).unwrap();
+            let inputs = ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            };
+            world
+                .advance(id, ScriptStage::Body(Thread::Main), inputs, None, 20)
+                .unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+            assert!(!world.actors()[0].runtime().unwrap().has_blocking_task());
+            world
+                .advance(id, ScriptStage::OrdinaryHook, inputs, None, 20)
+                .unwrap();
+            assert_eq!(
+                world.actors()[0].attributes()[6],
+                if !task_system || paused { 19 } else { 0 }
+            );
+            assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        }
+    }
+}
+
+#[test]
+fn disabled_task_system_preserves_main_continuation_and_task_state() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = wait_cache(vec![
+        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 3 }]),
+        set_flag(99),
+        Operation::End { target: 0 },
+    ]);
+    scripts.updates.task_system = false;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let inputs = ScriptInputs {
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world
+        .advance(id, ScriptStage::OrdinaryMain, inputs, None, 20)
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(
+        world.actors()[0]
+            .runtime()
+            .unwrap()
+            .program_counter(Thread::Main),
+        Some(0)
+    );
+    world
+        .advance(id, ScriptStage::Body(Thread::Main), inputs, None, 20)
+        .unwrap();
+    for _ in 0..10 {
+        world
+            .advance(id, ScriptStage::OrdinaryMain, inputs, None, 20)
+            .unwrap();
+    }
+    assert_eq!(world.flags(), [12]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    world
+        .advance(id, ScriptStage::Tasks, inputs, None, 20)
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    world
+        .advance(id, ScriptStage::Tasks, inputs, None, 20)
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }

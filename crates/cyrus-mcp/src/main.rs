@@ -100,7 +100,7 @@ struct ScriptStepParams {
     generation: u64,
     index: usize,
     #[schemars(
-        description = "prepare_spatial, snapshot, axis_locks, transform, families, animation, native_hook, ordinary_main, entry, main, interrupt, or tasks"
+        description = "prepare_spatial, snapshot, axis_locks, transform, families, animation, native_hook, ordinary_hook, ordinary_main, entry, main, interrupt, or tasks"
     )]
     stage: String,
     #[schemars(
@@ -314,6 +314,7 @@ impl Cyrus {
             "transform" => cyrus_control::ScriptStage::Transform,
             "families" => cyrus_control::ScriptStage::Families,
             "animation" => cyrus_control::ScriptStage::Animation,
+            "ordinary_hook" => cyrus_control::ScriptStage::OrdinaryHook,
             "ordinary_main" => cyrus_control::ScriptStage::OrdinaryMain,
             "native_hook" => cyrus_control::ScriptStage::NativeHook,
             "entry" => cyrus_control::ScriptStage::Entry,
@@ -322,7 +323,7 @@ impl Cyrus {
             "tasks" => cyrus_control::ScriptStage::Tasks,
             _ => {
                 return Err(McpError::invalid_params(
-                    "stage must be prepare_spatial, snapshot, axis_locks, transform, families, animation, native_hook, ordinary_main, entry, main, interrupt, or tasks",
+                    "stage must be prepare_spatial, snapshot, axis_locks, transform, families, animation, native_hook, ordinary_hook, ordinary_main, entry, main, interrupt, or tasks",
                     None,
                 ));
             }

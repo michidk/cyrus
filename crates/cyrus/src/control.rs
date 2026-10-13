@@ -354,6 +354,7 @@ fn handle(
                     | cyrus_control::ScriptStage::AxisLocks | cyrus_control::ScriptStage::Transform | cyrus_control::ScriptStage::Families => return Ok(world.inspect(index, 1)),
                     cyrus_control::ScriptStage::Animation => ScriptStage::Animation,
                     cyrus_control::ScriptStage::OrdinaryMain => ScriptStage::OrdinaryMain,
+                    cyrus_control::ScriptStage::OrdinaryHook => ScriptStage::OrdinaryHook,
                     cyrus_control::ScriptStage::NativeHook => ScriptStage::NativeHook,
                     cyrus_control::ScriptStage::Entry => ScriptStage::Entry,
                     cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks,
@@ -508,7 +509,7 @@ mod tests {
         use cyrus_game::script::{ScriptActors, ScriptWorld};
         let mut app = app();
         let mut scripts: Scripts = serde_json::from_value(json!({
-            "version":7,"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":8,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}
