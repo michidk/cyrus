@@ -156,7 +156,17 @@ shader arithmetic checks cover the dither matrix and fog boundaries.
 Faithful sky filtering uses encoded palette bytes, four-bit subtexel fractions,
 and horizontal then vertical integer rounding, following preservation
 [sky filtering facts](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
-Sun alpha rounding, other texture filtering, lighting, and physical-hardware
+Sun alpha uses the same staged integer interpolation and wrapped texture loads,
+following preservation's [sun filtering](https://github.com/michidk/redguard-preservation/commit/306bdf59a3a968dcec73848f24db6c7cab7bda9d).
+With Faithful Sky and Fog, the sun reads truncated RGB565 destination channels,
+subtracts dithering and blends separately truncated source/destination terms,
+following the [sun blend contract](https://github.com/michidk/redguard-preservation/commit/421912a01adfbce8c6116fc4b1892cbdc77551ea).
+Modern Sky retains hardware alpha filtering; either Modern Sky or Modern Fog
+retains continuous blending. Modern Fog continues to bypass framebuffer
+quantization. **Verified:** original/native/browser ISLAND captures use the same
+viewpoint and 640×480 render size; the native/browser build sources match.
+Cloud phases are unsynchronized and visible terrain/sky differences remain.
+Other texture filtering, lighting, menu-to-world transitions and physical-hardware
 pixel parity remain unverified.
 
 Startup, the book menu, settings, cinematic playback and world-entry loading live in

@@ -34,10 +34,14 @@ fn blend_fog_integer(linear_rgb: vec3<f32>, fog_rgb: vec3<f32>, density: f32) ->
     return srgb_to_linear(result / 255.0);
 }
 
-fn framebuffer_rgb565(linear_rgb: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
+fn framebuffer_dither(pixel: vec2<f32>) -> u32 {
     let thresholds = array<u32, 16>(0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u, 3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u);
     let position = vec2<u32>(pixel) % vec2(4u);
-    let threshold = f32(thresholds[position.y * 4u + position.x]);
+    return thresholds[position.y * 4u + position.x];
+}
+
+fn framebuffer_rgb565(linear_rgb: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
+    let threshold = f32(framebuffer_dither(pixel));
     let color = round(clamp(linear_to_srgb(linear_rgb), vec3(0.0), vec3(1.0)) * 255.0);
     let packed = vec3<u32>(floor((color * vec3(2.0, 4.0, 2.0) - floor(color / 16.0)
         + floor(color / vec3(128.0, 64.0, 128.0)) + threshold) / 16.0));
