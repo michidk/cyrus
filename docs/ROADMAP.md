@@ -255,7 +255,9 @@ enable live locomotion or the original follow camera.
 - [x] Walking and SOUP share logical-player animation, selected frames and sound ownership. **Verified:** [headless interleaving contracts](https://github.com/michidk/cyrus/commit/21b9b40); combined-tree native startup/world-entry smoke passes; explicit walking/script interleaving still needs rendered verification. Playback defaults have one owner; model-default attribute writes remain unsupported.
 - [ ] Establish complete eligibility and simulation timing; compare fractional startup, steady movement, release, walls and ground updates.
 - [ ] Implement movement, turning, original follow camera, jumping, gravity and remaining quick actions.
-- [ ] Complete Faithful controls and optional Modern camera-relative WASD, mouse camera, Space jump and held Shift run; keep flycam independent.
+- [ ] Complete Faithful controls and the original follow camera.
+- [ ] Add an optional Modern character controller with camera-relative movement, mouse camera, Space jump and held Shift run; keep flycam independent and Faithful as the default.
+- [ ] Add native/browser gamepad support for menu navigation and character control, including configurable bindings, analog movement/camera input, deadzones and connection/disconnection handling. Route gameplay input through the selected Faithful or Modern controller.
 - [x] HUD takes heading and world ID (compass) from the placed player and loaded world, and health and player type from the player script actor while activation inputs are supplied.
 - [ ] Feed sword state to the HUD and consume walk mode and auto-defend in movement. Preservation records the HUD consequences of the sword and the walk-mode key, but not how the sword is drawn, what walk mode changes in movement, or the quick-sword and quick-health actions; recover and publish those rules first.
 - [ ] Complete wall/slope/step and animated-geometry collision, subgroup/dynamic admission, orientation refresh, slope sliding and airborne/rollback responses.
