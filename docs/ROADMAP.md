@@ -58,8 +58,11 @@ therefore does not establish animated or playable world behavior.
 | --- | --- |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
+| World appearance: water-edge normals, map-light, sky/fog/water and terrain/sky filtering comparisons | Unassigned session; avoids `camera.rs` and `script_transform.rs` |
+| Tooling: per-world audit report and matched original/native/browser captures | Unassigned session |
+| SURFACE.INI parsing and docs in redguard-preservation (cyrus SoundSurface waits for SOUP) | Unassigned session, preservation repository |
 
-The SOUP assignment includes remaining animation and script scheduling. Model lighting, sky, sound and HUD sessions have ended; their open items, startup fidelity follow-up and the rest of stages 3–6 are unassigned.
+The SOUP assignment includes remaining animation and script scheduling. Sound and HUD sessions have ended; their open items, startup fidelity follow-up and the rest of stages 3–6 are unassigned.
 
 ### Crate boundaries
 
