@@ -56,13 +56,10 @@ therefore does not establish animated or playable world behavior.
 
 | Work | Session |
 | --- | --- |
-| SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
-| Model lighting and world appearance comparisons | Codex, `t3/match-original-visuals`; `magic/artifacts/2026-10-12-local-lighting/` |
-| Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
-| Sound | Implement Game Sound Effects |
-| HUD | Implement the Game Overlay UI |
+| SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 
-The SOUP assignment includes remaining animation and script scheduling. Startup fidelity follow-up and stages 3–6 are unassigned.
+The SOUP assignment includes remaining animation and script scheduling. Model lighting, sky, sound and HUD sessions have ended; their open items, startup fidelity follow-up and the rest of stages 3–6 are unassigned.
 
 ### Crate boundaries
 
@@ -166,6 +163,7 @@ screen or root access.
 - [x] Native/browser debug menu, independent flycam, world picker and F1 registration across camera replacement.
 - [x] Separate asset viewer with Orbit/Flycam, four shading modes, edge overlay and staged loading progress. **Verified:** [viewer increment](https://github.com/michidk/cyrus/commit/4ee41d8) includes viewer tests, installed gates and headless browser checks.
 - [x] Shared CLI/URL options, explicit browser install source, digest-based caching, byte-range serving and read-only install preparation.
+- [x] Browser play from a locally selected GOG folder through read-only File handles without upload; native install selection and preparation in the game window without a launcher process. **Verified:** [implementation](https://github.com/michidk/cyrus/commit/8279a2f) passes focused native tests, browser builds and networkless worker tests. Windows and the complete native Continue transition remain unverified.
 - [x] CI checks and native/browser packaging. Stable version tags build and publish packages; push/PR CI runs checks without packaging. **Verified:** [release workflow checks](https://github.com/michidk/cyrus/commit/938ae35); [v0.1.1 publication](https://github.com/michidk/cyrus/releases/tag/v0.1.1) passed with native/browser packages.
 - [x] Preservation release v0.8.0 integration, including the Windows splash parser. **Verified:** [migration checks](https://github.com/michidk/cyrus/commit/10a953b) cover installed workspace gates and optimized browser builds.
 - [x] Asset viewer review: failed previews are never cached, CD images fingerprint by size and time, asset lookup and catalog classification are shared, and the viewer UI is split per content kind. Game and viewer share one world geometry pipeline, cue-sheet parser, WAV writer, file lookup, world resolver, font conversion, atomic cache publish and loading overlay; native world preparation reports its stages on the entry bar. **Verified:** [viewer fixes](https://github.com/michidk/cyrus/commit/949ff34), [shared assets](https://github.com/michidk/cyrus/commit/e389da4) and [stage progress](https://github.com/michidk/cyrus/commit/9139981) pass installed tests and a headless START export; the painted stage bar is unobserved.
