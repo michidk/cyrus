@@ -70,6 +70,11 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
     let mut files = BTreeMap::new();
     let output: &mut dyn Output = &mut files;
     match path.split('/').next().unwrap_or_default() {
+        "console" => crate::console::prepare(source, output)?,
+        "cheats" => output.publish(
+            Path::new("cheats/startup.json"),
+            &serde_json::to_vec(&crate::cheats::prepare(source)?)?,
+        )?,
         "startup" => crate::startup::prepare_startup(source, output)?,
         "menu" => crate::startup::prepare_menu(source, output)?,
         "hud" => crate::hud_export::prepare(source, output)?,

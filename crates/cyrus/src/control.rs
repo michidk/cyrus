@@ -53,7 +53,8 @@ impl Plugin for ControlPlugin {
                 PreUpdate,
                 (release_taps, handle)
                     .chain()
-                    .after(bevy::input::InputSystems),
+                    .after(bevy::input::InputSystems)
+                    .before(cyrus_game::console::ConsoleInput),
             );
     }
 }
@@ -81,6 +82,7 @@ struct Inspection<'w, 's> {
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
     cheats: ResMut<'w, cyrus_game::cheats::Cheats>,
+    console: ResMut<'w, cyrus_game::console::Console>,
     activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
@@ -117,6 +119,7 @@ fn handle(
         mut script_actors,
         mut random,
         mut cheats,
+        mut console,
         activation,
         prepared,
         animations,
@@ -147,6 +150,15 @@ fn handle(
             Command::Cheat { name, value } => cheats.execute(&name, value)
                 .map(|effect| json!({"effect":effect,"cheats":cheats.inspect()}))
                 .map_err(|error| format!("{error:#}")),
+            Command::Console { open, line } => {
+                if *state.get() != cyrus_game::AppState::InGame {
+                    Err("console requires an active world".into())
+                } else {
+                    if let Some(open) = open { console.open = open; }
+                    if let Some(line) = line { console.submit(&mut cheats, &line); }
+                    Ok(json!({"console": *console, "cheats": cheats.inspect()}))
+                }
+            }
             Command::State => {
                 let transform = player.single().ok().map(|t| {
                     let (yaw, pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
@@ -156,7 +168,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": "cyrus-config/preload-report.json"})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "cheats": cheats.inspect(), "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -479,6 +491,7 @@ mod tests {
         .init_resource::<Fidelity>()
         .init_resource::<cyrus_game::random::EngineRandom>()
         .init_resource::<cyrus_game::cheats::Cheats>()
+        .init_resource::<cyrus_game::console::Console>()
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
         .init_resource::<cyrus_game::player::input::PlayerInput>()

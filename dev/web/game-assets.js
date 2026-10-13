@@ -27,7 +27,7 @@ export async function openGameAssets(source, { createWorker = () => new Worker('
   }
   function group(path) {
     const root = path.split('/')[0];
-    if (['startup', 'menu', 'hud', 'sounds'].includes(root)) return root;
+    if (['startup', 'menu', 'hud', 'sounds', 'cheats', 'console'].includes(root)) return root;
     if (root === 'music' || root === 'movies') return path;
     return root.replace(/\.(glb|animations|scripts|environment|player|player-models)$/, '');
   }

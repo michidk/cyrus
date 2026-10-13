@@ -33,6 +33,12 @@ struct TeleportParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ConsoleParams {
+    open: Option<bool>,
+    line: Option<String>,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct CheatParams {
     name: String,
     #[schemars(
@@ -164,6 +170,19 @@ impl Cyrus {
         text(call(Command::Cheat {
             name: p.name,
             value: p.value,
+        })?)
+    }
+
+    #[tool(
+        description = "Inspect, open or close the F12 console and submit a command through its shared editor."
+    )]
+    fn console(
+        &self,
+        Parameters(p): Parameters<ConsoleParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::Console {
+            open: p.open,
+            line: p.line,
         })?)
     }
 

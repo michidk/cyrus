@@ -1,6 +1,66 @@
 //! Portable cheat state; preservation owns CHT names and binary encoding.
 use serde::Serialize;
 
+/// SYSTEM.INI replaces these three slots after startup CHT restoration.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+pub struct CheatDefaults {
+    pub task: bool,
+    pub animation: bool,
+    pub nodemarker: bool,
+}
+
+impl CheatDefaults {
+    pub fn apply(&self, state: &mut CheatFile) -> anyhow::Result<()> {
+        for (name, value) in [
+            ("task", self.task),
+            ("animation", self.animation),
+            ("nodemarker", self.nodemarker),
+        ] {
+            state.set(name, u32::from(value))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "parsers")]
+    pub fn parse(system: &str) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        let system = rgpre::import::system_ini::SystemIni::parse(system)?;
+        Ok(Self {
+            task: system
+                .system
+                .task_system
+                .context("SYSTEM.INI [system] task_system missing")?,
+            animation: system
+                .system
+                .animation_system
+                .context("SYSTEM.INI [system] animation_system missing")?,
+            nodemarker: system
+                .debug
+                .node_marker
+                .context("SYSTEM.INI [debug] node_marker missing")?,
+        })
+    }
+}
+
+/// Read-only browser startup input. Local bytes take precedence before decoding.
+#[derive(Serialize, serde::Deserialize)]
+pub struct CheatSeed {
+    pub installed: Option<Vec<u8>>,
+    pub defaults: CheatDefaults,
+}
+
+#[cfg(feature = "parsers")]
+pub(crate) fn prepare(source: &dyn crate::source::ReadAssets) -> anyhow::Result<CheatSeed> {
+    Ok(CheatSeed {
+        installed: source
+            .manifest()
+            .find("REDGUARD.CHT")
+            .map(|file| source.read(&file.path))
+            .transpose()?,
+        defaults: CheatDefaults::parse(&crate::preparation::text(source, "SYSTEM.INI")?)?,
+    })
+}
+
 /// A named cheat or unnamed persistence slot, retaining its original integer value.
 #[derive(Clone, Debug, Serialize)]
 pub struct CheatEntry {

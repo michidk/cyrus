@@ -255,10 +255,13 @@ Native `state.cheats` reports CHT load readiness, raw values and supported effec
 TCP/MCP `cheat {name, value?}` toggles or assigns state; `oracle` lists it and
 `savecheats` writes `cyrus-config/REDGUARD.CHT`. Local state precedes the installed
 read-only CHT file; malformed state blocks edits and saves. **Verified:** runtime
-`neversaydie` supplies the documented PlayerDistance override to explicit script
-steps unless the caller supplies `distance_override`; `oddjob` has no gameplay
-effect. Other cheat effects, gameplay typing, F12 console UI and browser cheat
-persistence remain unsupported.
+`neversaydie` supplies the documented PlayerDistance override to automatic world
+updates and explicit script steps unless the caller supplies `distance_override`. Other effects, including
+unknown `oddjob` behavior, report unsupported. F12 opens the shared console while
+in a world; F12/Escape closes it. Gameplay accepts typed cheat names then Enter.
+Browser `savecheats` uses localStorage `cyrus-cheats`; F1 Cheat files imports and
+exports CHT. Startup SYSTEM.INI defaults replace task, animation and nodemarker.
+TCP/MCP `console {open?, line?}` and `state.console` expose the shared editor.
 
 Book turns and camera moves suspend navigation. Readiness becomes true after the
 final settling update. Quit plays the authored close before exiting. Menu motion

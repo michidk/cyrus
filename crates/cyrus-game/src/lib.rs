@@ -1,6 +1,8 @@
 //! Gameplay state, fidelity and player rules, independent of presentation.
+pub mod cheat_command;
 pub mod cheats;
 pub mod clock;
+pub mod console;
 pub mod fidelity;
 pub mod player;
 pub mod preferences;
@@ -24,8 +26,13 @@ impl Plugin for GamePlugin {
         app.init_resource::<preferences::Preferences>()
             .init_resource::<random::EngineRandom>()
             .init_resource::<cheats::Cheats>()
+            .init_resource::<cheats::CheatTransfer>()
             .init_state::<AppState>()
             .init_resource::<fidelity::Fidelity>()
-            .add_plugins((player::PlayerPlugin, script::ScriptPlugin));
+            .add_plugins((
+                player::PlayerPlugin,
+                script::ScriptPlugin,
+                console::ConsolePlugin,
+            ));
     }
 }

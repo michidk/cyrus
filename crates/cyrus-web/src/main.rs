@@ -5,8 +5,10 @@ mod assets;
 mod bindings;
 #[cfg(target_arch = "wasm32")]
 mod capture;
+mod cheats;
 mod debug;
 mod preferences;
+mod storage;
 
 use bevy::prelude::*;
 use cyrus_game::GamePlugin;
@@ -33,6 +35,7 @@ fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     cyrus_app::register_cache(&mut app).expect("cache source");
 
+    app.insert_resource(cheats::initial());
     app.add_plugins(
         DefaultPlugins
             .set(cyrus_app::window("cyrus"))
@@ -78,6 +81,7 @@ fn main() {
         app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
     }
     app.add_plugins(cyrus_debug::DebugMenuPlugin);
+    cheats::register(&mut app);
     debug::register(&mut app);
     if let Some(scene) = scene {
         app.insert_resource(cyrus_startup::StartupPresentation::without_splash())

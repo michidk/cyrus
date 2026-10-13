@@ -153,7 +153,7 @@ impl Plugin for CameraPlugin {
                     frame_scene.run_if(|f: Res<FrameScene>, camera: Res<FlycamSettings>| {
                         f.0 && camera.enabled
                     }),
-                    flycam_controller.run_if(|f: Res<FlycamSettings>| f.enabled),
+                    flycam_controller.run_if(|f: Res<FlycamSettings>, console: Option<Res<cyrus_game::console::Console>>| f.enabled && !console.is_some_and(|console| console.open)),
                     follow_player
                         .after(cyrus_game::player::placement::PlayerPlacement)
                         .run_if(|f: Res<FlycamSettings>| !f.enabled),

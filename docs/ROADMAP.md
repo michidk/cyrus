@@ -184,18 +184,19 @@ accepts agent control and produces a repeatable comparison through SETUP command
 and [REDGUARD.CHT format](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/CHT.md).
 Cyrus parses CHT during preload and exposes decoded values in the asset viewer.
 Native startup restores local or installed CHT state; TCP/MCP supports named
-toggles, integer assignment, `oracle` and `savecheats`. Explicit script steps
-use runtime `neversaydie` state unless the inspection caller overrides it.
-Other gameplay effects report unsupported, except the documented no-op `oddjob`.
-The F1 debug menu and TCP/MCP controls do not implement the original F12 console.
+toggles, integer assignment, `oracle` and `savecheats`. Automatic world updates and explicit script steps
+use runtime `neversaydie` state; inspection callers may override it.
+Other gameplay effects report unsupported, including the unknown `oddjob` effect.
+F12 opens the shared native/browser editor; browser CHT import/export lives in F1.
 
 - [x] Shared cheat state, native CHT restore/save and TCP/MCP commands, including explicit SOUP `neversaydie` integration. Native storage shares byte read/replacement code with preferences. Verification is recorded in the implementation commit.
-- [ ] Implement the original F12 console interface/UI on native and browser builds: opening/closing, text input/editing, command submission and output. Establish its appearance, input focus and gameplay timing from the original; publish missing rules in preservation before implementation.
-- [ ] Implement gameplay cheat-name entry followed by Enter, console toggles, explicit integer assignment and `oracle` output through shared runtime cheat state. Use preservation's names and rules; keep unsupported effects explicit.
-- [ ] Add browser cheat persistence and CHT file import/export using the shared state and preservation codec. Share storage, safe file replacement, import/export and error handling with save-game persistence where their requirements match; keep each format's encoding separate. Native startup restore and `savecheats` writing to `cyrus-config/REDGUARD.CHT` are implemented; the install remains read-only.
-- [ ] Connect each documented cheat effect to its owning gameplay, script, animation or rendering system as those systems become available in stages 1–4. Extend `neversaydie` integration beyond explicit inspection steps when production script queries are supported; retain `oddjob`'s documented lack of gameplay effect. The inspection flycam does not implement player flight cheats.
+- [x] Native/browser F12 console with installed paper/font, world-palette inks, text editing, retained output and command submission. **Verified:** presentation rules are [published in preservation](https://github.com/michidk/redguard-preservation/compare/main...feat/console-presentation). Pixel parity remains part of the comparison item below.
+- [x] Implement gameplay cheat-name entry followed by Enter, console toggles, explicit integer assignment and `oracle` output through shared runtime cheat state. Use preservation's names and rules; keep unsupported effects explicit.
+- [x] Add browser cheat persistence and CHT file import/export using the shared state and preservation codec. Share storage, safe file replacement, import/export and error handling with save-game persistence where their requirements match; keep each format's encoding separate. Native startup restore and `savecheats` writing to `cyrus-config/REDGUARD.CHT` are implemented; the install remains read-only.
+- [ ] Connect each documented cheat effect to its owning gameplay, script, animation or rendering system as those systems become available in stages 1–4. `neversaydie` already reaches automatic and explicit script queries; leave the unknown `oddjob` gameplay effect unsupported. The inspection flycam does not implement player flight cheats.
 - [ ] Inventory and implement the original console's non-cheat commands from preservation evidence and original-game observations, including documented sky/water controls. Report unsupported commands explicitly; publish missing command contracts first.
-- [ ] Compare console presentation, input and cheat effects with the original. Verify CHT read/write round trips, arbitrary integer states, restart restoration, reset, malformed files and failed writes on native/browser builds; verify the install remains unchanged.
+- [x] Verify native input isolation, CHT save/restart, malformed state and failed writes, and install immutability. Verify browser keyboard entry, persistence/reload, malformed import rejection and byte-exact CHT import/export in headless Chrome at desktop and narrow widths.
+- [ ] Complete original-console pixel parity, preferences and cursor-timing comparisons, and compare remaining cheat gameplay effects as their owners become available.
 
 ### Startup and book menu
 

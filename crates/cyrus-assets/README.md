@@ -149,3 +149,7 @@ preservation's [reporting extension](https://github.com/michidk/redguard-preserv
 The observer changes neither asset selection nor fallback behavior. The native
 `cyrus --audit-worlds` command combines these records with preload and runtime
 preparation diagnostics. Generated installed-content reports belong under `magic/`.
+
+`CheatSeed` carries read-only installed CHT bytes and SYSTEM.INI startup defaults
+for the browser host. `console` prepares the installed paper, configured FNT and
+per-world palette inks for native and browser presentation.

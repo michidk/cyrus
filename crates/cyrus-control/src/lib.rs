@@ -20,6 +20,13 @@ pub enum Command {
         #[serde(default)]
         value: Option<u32>,
     },
+    /// Inspect or operate the same editor used by the F12 console.
+    Console {
+        #[serde(default)]
+        open: Option<bool>,
+        #[serde(default)]
+        line: Option<String>,
+    },
     /// App state, scene name, player transform, fidelity settings, frame counter.
     State,
     /// Capture the primary window to `path` (PNG). The file appears a frame or two later.

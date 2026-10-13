@@ -3085,6 +3085,44 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         snapshot(&app)["actors"][0]["locals"],
         serde_json::json!([7])
     );
+    app.init_resource::<cyrus_game::console::Console>();
+    app.world_mut()
+        .resource_mut::<cyrus_game::console::Console>()
+        .open = true;
+    let before_console = snapshot(&app);
+    let before_clock = app
+        .world()
+        .resource::<cyrus_game::clock::SimulationClock>()
+        .step();
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        std::time::Duration::from_secs(60),
+    ));
+    for _ in 0..3 {
+        app.update();
+        assert_eq!(snapshot(&app), before_console);
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::clock::SimulationClock>()
+                .step(),
+            before_clock
+        );
+    }
+    app.world_mut()
+        .resource_mut::<cyrus_game::console::Console>()
+        .open = false;
+    app.update();
+    assert_eq!(
+        snapshot(&app)["actors"][0]["locals"],
+        serde_json::json!([8])
+    );
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_game::clock::SimulationClock>()
+            .step()
+            .frame_scale,
+        before_clock.frame_scale
+    );
+    app.insert_resource(bevy::time::TimeUpdateStrategy::Automatic);
     let prepared = app.world().resource::<PreparedWorld>();
     let replacement = PreparedWorld {
         requested_name: prepared.requested_name.clone(),

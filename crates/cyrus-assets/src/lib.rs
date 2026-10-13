@@ -1,5 +1,6 @@
 //! Renderer-independent asset catalog and portable preview contracts.
 pub mod cheats;
+pub mod console;
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 

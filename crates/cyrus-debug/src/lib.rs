@@ -36,6 +36,13 @@ impl Plugin for DebugMenuPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((cyrus_app::EguiPlugin, DefaultInspectorConfigPlugin))
             .init_resource::<DebugMenu>()
+            .init_resource::<cyrus_game::cheats::CheatTransfer>()
+            .configure_sets(
+                PreUpdate,
+                cyrus_game::console::ConsoleInput
+                    .after(toggle_menu)
+                    .before(EguiPreUpdateSet::ProcessInput),
+            )
             .init_resource::<WorldPicker>()
             .add_systems(PreStartup, setup_debug_camera)
             .add_systems(
@@ -79,11 +86,17 @@ fn setup_debug_camera(mut commands: Commands) {
 fn toggle_menu(
     keys: Res<ButtonInput<KeyCode>>,
     mut menu: ResMut<DebugMenu>,
+    mut console: Option<ResMut<cyrus_game::console::Console>>,
     mut egui: ResMut<EguiGlobalSettings>,
 ) {
-    if keys.just_pressed(KeyCode::F1) {
+    if keys.just_pressed(KeyCode::F1) && !console.as_ref().is_some_and(|console| console.open) {
         menu.open = !menu.open;
         egui.enable_absorb_bevy_input_system = menu.open || menu.inspector_open;
+    }
+    if let Some(console) = console.as_mut()
+        && console.blocked != (menu.open || menu.inspector_open)
+    {
+        console.blocked = menu.open || menu.inspector_open;
     }
 }
 
@@ -97,6 +110,7 @@ fn debug_menu(
     mut flycam: ResMut<FlycamSettings>,
     mut fidelity: ResMut<Fidelity>,
     mut distance: ResMut<RenderDistance>,
+    mut transfers: ResMut<cyrus_game::cheats::CheatTransfer>,
     player: Query<&Transform, With<Player>>,
 ) -> Result {
     let player_position = player.single().ok().map(|transform| transform.translation);
@@ -124,6 +138,20 @@ fn debug_menu(
             ));
         }
 
+        if transfers.available {
+            ui.collapsing("Cheat files", |ui| {
+                ui.label("F12 opens the cheat console while in a world.");
+                if ui.button("Import REDGUARD.CHT").clicked() {
+                    transfers.action = Some(cyrus_game::cheats::CheatFileAction::Import);
+                }
+                if ui.button("Export REDGUARD.CHT").clicked() {
+                    transfers.action = Some(cyrus_game::cheats::CheatFileAction::Export);
+                }
+                if let Some(status) = &transfers.status {
+                    ui.label(status);
+                }
+            });
+        }
         ui.checkbox(&mut flycam.enabled, "Flycam");
         ui.horizontal(|ui| {
             ui.label("Flycam speed");

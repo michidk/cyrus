@@ -64,4 +64,5 @@ Unattached linked-position selection remains unsupported in the script host.
 Without a value, `oracle` lists state and `savecheats` writes the complete CHT file.
 `state.cheats` reports readiness, load errors, raw values and each effect's support.
 Unsupported effects retain their values but do not change gameplay. This is an
-inspection interface; the original F12 console and gameplay typing remain pending.
+inspection interface. `console {open?, line?}` opens/closes or submits to the
+shared F12 editor. `state.console` exposes its output and selection.

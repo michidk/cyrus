@@ -382,11 +382,20 @@ animation status separately from SOUP failures through read-only accessors.
 The host supplies a `CheatStore` that decodes and encodes through the asset adapter
 and preservation. Failed loads stay errors and cannot be overwritten by commands.
 Changes remain in memory until `savecheats`; failed saves retain runtime state.
-`oracle` lists values and effect support. `oddjob` retains its documented no-op,
-while other unfinished gameplay effects are reported as unsupported.
+`oracle` lists raw values. Unfinished gameplay effects, including the unknown
+`oddjob` effect, are reported as unsupported. The saved `savecheats` slot is zero;
+its live value becomes one after a successful write. Explicit import persists
+a validated file before replacing live state, including recovery from a bad load.
 
 **Verified:** preservation's [cheat rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
-define the `neversaydie` PlayerDistance override. Native automatic world updates
-and explicit script steps use the shared value; explicit steps may supply an
-inspection override. Full automatic gameplay, hidden keyboard entry and the
-original F12 console remain unsupported.
+define the `neversaydie` PlayerDistance override. Automatic world updates and
+explicit script steps use the shared value; explicit steps may supply an
+inspection override. Opening the console suspends automatic actors and their clock.
+
+`ConsolePlugin` owns F12 focus, retained editable commands and report lines,
+keyboard editing, history recall and hidden gameplay entry. `cheat_command`
+normalizes one console command and supports decimal, signed decimal and hex
+assignments. Symbolic/exotic numeric forms and non-cheat commands other than
+`console clear` remain unsupported. Console toggles use parity; gameplay toggles
+use zero versus nonzero. Hosts share this editor and dispatcher; rendering and
+file dialogs stay outside the core.

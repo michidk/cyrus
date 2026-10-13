@@ -203,3 +203,10 @@ stale world inputs are ignored. Control `hud.prompt` reports the last drawn text
 while script inspection reports pending text and ownership. Lockout retains 16 bits.
 Re-export HUD caches for the installed RTX label catalog, including text-only entries.
 Automatic actor eligibility and production interaction scheduling remain unsupported.
+
+The F12 console renders installed `SYSTEM/PAPER.GXA` and the configured bitmap
+font through the shared game editor. **Verified:** presentation inputs, palette
+ink selection and editing rules follow the published [console contract](https://github.com/michidk/redguard-preservation/compare/main...feat/console-presentation).
+The header identifies cyrus instead of displaying original-engine memory totals.
+Exact pixel parity, preference commands and non-cheat diagnostic views remain
+outside current coverage.

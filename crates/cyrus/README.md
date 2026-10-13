@@ -59,13 +59,17 @@ settings, cinematic playback and world-entry loading. Hosts add it alongside
 cyrus-render and cyrus-audio.
 
 Native cheat state loads after install selection. `cyrus-config/REDGUARD.CHT`
-takes precedence over the installed `REDGUARD.CHT`; if both are absent, values
-start at zero. A malformed or unreadable local file blocks cheat changes without
-falling back to the install. TCP/MCP `cheat` supports toggles, raw values, `oracle`
-and `savecheats`. Saving writes only the local file and preserves unnamed slots.
-To reset, remove the local file; installed state is imported again if present.
-For an explicit all-off local state, set the named values to zero and save.
-Browser persistence and the original console UI are not implemented.
+takes precedence over the installed file; absent files start at zero, then
+SYSTEM.INI replaces task, animation and node-marker defaults. Malformed local
+state blocks commands without falling back to the install. `savecheats` writes
+only the local file and preserves unnamed slots. Remove it to restore installed
+state on the next launch. Startup defaults still apply.
+
+F12 opens the console in a world; F12 or Escape closes it. Type a cheat name,
+`name = integer`, `oracle`, or `savecheats`. Gameplay also accepts a typed cheat
+name followed by Enter. TCP/MCP `cheat` retains its explicit raw-value API;
+`console {open?, line?}` operates the shared editor and `state.console` reports it.
+Unsupported commands and gameplay effects report their limits.
 
 `cargo run -p cyrus -- --audit-worlds` runs without a window and writes
 `magic/artifacts/world-audit/report.json` and `report.txt`. It enumerates numeric

@@ -2979,6 +2979,7 @@ dependencies = [
  "cyrus-world",
  "getrandom 0.3.4",
  "js-sys",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

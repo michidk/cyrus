@@ -194,6 +194,10 @@ pub(crate) fn sample_clock(
         .state
         .as_ref()
         .is_some_and(|state| *state.get() == crate::AppState::InGame)
+        && !prepared
+            .console
+            .as_ref()
+            .is_some_and(|console| console.open)
         && actors.current.is_some()
         && actors.error.is_none()
         && prepared
@@ -222,6 +226,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     assets: Res<'w, Assets<Animations>>,
     sample: Option<Res<'w, ClockSample>>,
     cheats: Option<Res<'w, crate::cheats::Cheats>>,
+    console: Option<Res<'w, crate::console::Console>>,
     state: Option<Res<'w, State<crate::AppState>>>,
 }
 
@@ -240,9 +245,12 @@ pub(crate) fn step(
         assets,
         sample,
         cheats,
+        console,
         state,
     } = prepared;
-    if !state.is_some_and(|state| *state.get() == crate::AppState::InGame) || actors.error.is_some()
+    if !state.is_some_and(|state| *state.get() == crate::AppState::InGame)
+        || console.is_some_and(|console| console.open)
+        || actors.error.is_some()
     {
         return;
     }

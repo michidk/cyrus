@@ -14,7 +14,8 @@ test = true
 cyrus-audio.workspace = true
 cyrus-app = { path = "../cyrus-app" }
 anyhow.workspace = true
-cyrus-assets = { workspace = true }
+serde_json.workspace = true
+cyrus-assets = { workspace = true, features = ["parsers"] }
 cyrus-world.workspace = true
 cyrus-render.workspace = true
 cyrus-startup.workspace = true

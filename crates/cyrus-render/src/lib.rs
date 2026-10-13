@@ -1,6 +1,7 @@
 //! Shared native/browser graphics, camera, HUD and subtitles.
 pub mod animation;
 pub mod camera;
+pub mod console;
 pub mod environment;
 pub mod fog;
 pub mod hud;
@@ -20,6 +21,7 @@ impl Plugin for WorldRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             camera::CameraPlugin,
+            console::ConsoleRenderPlugin,
             animation::AnimationRenderPlugin,
             script_transform::ScriptTransformPlugin,
             player_model::PlayerModelPlugin,

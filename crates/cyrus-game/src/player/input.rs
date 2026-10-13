@@ -126,10 +126,11 @@ pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Res<PlayerBindings>,
     suppressed: Res<InputSuppressed>,
+    console: Option<Res<crate::console::Console>>,
     fidelity: Res<Fidelity>,
     mut input: ResMut<PlayerInput>,
 ) {
-    if suppressed.0 {
+    if suppressed.0 || console.is_some_and(|console| console.open) {
         *input = PlayerInput::default();
         return;
     }

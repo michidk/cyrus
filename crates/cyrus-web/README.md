@@ -80,3 +80,12 @@ read-only `window.__cyrusCapture` observation after world entry, containing the
 requested world and live scene-space camera pose. It does not change simulation
 or camera behavior. See [tracked fixtures](../../dev/fixtures/README.md) for the
 original/native/browser replay workflow and local artifact rules.
+
+F12 opens the shared cheat console while in a world. Cheat state restores from
+localStorage `cyrus-cheats`, falling back to the read-only installed CHT only when
+local state is absent. SYSTEM.INI startup defaults apply afterwards. `savecheats`
+persists through the same browser storage helper as preferences. The F1 debug
+menu's Cheat files section imports or downloads original-format CHT files.
+Import validates and saves before replacing live state; cancellation, invalid
+files and storage failures preserve the current state. Import also recovers from
+malformed local state. Clear the storage key to restore the installed seed.

@@ -20,6 +20,7 @@ module where it is defined and regenerate.
 - `src/audio.rs` — Native installed audio readers and PCM conversion.
 - `src/cheats.rs` — Portable cheat state; preservation owns CHT names and binary encoding.
 - `src/collision.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
+- `src/console.rs` — Original console paper and configured monochrome font, decoded through preservation.
 - `src/decode.rs` — In-memory presentation of preservation parser results, shared by both targets.
 - `src/disc.rs` — CD cue-sheet interpretation shared by both runtime targets.
 - `src/environment.rs` — Validated world environment records.
@@ -81,8 +82,10 @@ module where it is defined and regenerate.
 
 ## `cyrus-game` — Gameplay state, fidelity and player rules, independent of presentation.
 
+- `src/cheat_command.rs` — Console cheat syntax and numeric literals from preservation's console contract.
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
 - `src/clock.rs` — Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
+- `src/console.rs` — Shared console editor and hidden gameplay entry from preservation's console rules.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
@@ -127,6 +130,7 @@ module where it is defined and regenerate.
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
 - `src/camera/projection.rs` — Original Glide horizontal field of view, independent of viewport aspect ratio.
+- `src/console.rs` — Installed paper and bitmap-font presentation for the shared console editor.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
@@ -178,8 +182,10 @@ module where it is defined and regenerate.
 - `src/assets.rs` — Cache asset reads await original-file preparation in the browser worker.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/capture.rs` — Opt-in, read-only world/camera observation for matched browser captures.
+- `src/cheats.rs` — Browser CHT storage uses the same codec and startup rules as the native host.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
+- `src/storage.rs` — Shared browser document storage for preferences, cheats and future save records.
 
 ## `cyrus-world` — World lifetime, explicit animation execution and actor transforms.
 

@@ -18,7 +18,6 @@ pub enum CheatEffect {
     List,
     Save,
     PlayerDistance,
-    NoEffect,
     Unsupported,
 }
 
@@ -60,7 +59,6 @@ impl Cheats {
             "oracle" => CheatEffect::List,
             "savecheats" => CheatEffect::Save,
             "neversaydie" => CheatEffect::PlayerDistance,
-            "oddjob" => CheatEffect::NoEffect,
             _ => CheatEffect::Unsupported,
         }
     }
@@ -87,10 +85,16 @@ impl Cheats {
             match effect {
                 CheatEffect::List => return Ok(effect),
                 CheatEffect::Save => {
+                    let mut saved = self.state()?.clone();
+                    saved.set("savecheats", 0)?;
                     self.store
                         .as_ref()
                         .context("cheat storage is not initialized")?
-                        .save(self.state()?)?;
+                        .save(&saved)?;
+                    self.state
+                        .as_mut()
+                        .map_err(|error| anyhow::anyhow!("{error}"))?
+                        .set("savecheats", 1)?;
                     return Ok(effect);
                 }
                 _ => {}
@@ -104,6 +108,29 @@ impl Cheats {
         Ok(effect)
     }
 
+    /// Explicit CHT import is the recovery path for malformed local state.
+    /// Validate before calling; commit runtime state only after durable storage succeeds.
+    pub fn import(&mut self, state: CheatFile) -> Result<()> {
+        self.store
+            .as_ref()
+            .context("cheat storage is not initialized")?
+            .save(&state)?;
+        self.state = Ok(state);
+        Ok(())
+    }
+
+    /// Console toggles use parity, unlike gameplay's nonzero toggle.
+    pub fn console(&mut self, name: &str, value: Option<u32>) -> Result<CheatEffect> {
+        if matches!(Self::effect(name), CheatEffect::List | CheatEffect::Save) {
+            return self.execute(name, None);
+        }
+        let previous = self
+            .state()?
+            .value(name)
+            .with_context(|| format!("unknown cheat {name:?}"))?;
+        self.execute(name, Some(value.unwrap_or((previous & 1) ^ 1)))
+    }
+
     pub fn inspect(&self) -> serde_json::Value {
         match self.state() {
             Ok(state) => serde_json::json!({
@@ -115,4 +142,17 @@ impl Cheats {
             Err(error) => serde_json::json!({"ready":false,"error":error.to_string()}),
         }
     }
+}
+
+/// Host-owned file dialogs are exposed through the existing debug UI.
+#[derive(Resource, Default)]
+pub struct CheatTransfer {
+    pub available: bool,
+    pub action: Option<CheatFileAction>,
+    pub status: Option<String>,
+}
+#[derive(Clone, Copy)]
+pub enum CheatFileAction {
+    Import,
+    Export,
 }

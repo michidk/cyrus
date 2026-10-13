@@ -15,13 +15,19 @@ impl CheatStore for LocalCheats {
             .install
             .cache_path(&self.directory)?
             .join("REDGUARD.CHT");
+        let mut state = cyrus_assets::cheats::empty();
         for path in [local, self.install.root.join("REDGUARD.CHT")] {
             if let Some(bytes) = crate::storage::read(&path)? {
-                return cyrus_assets::cheats::decode(&bytes)
-                    .with_context(|| format!("{}", path.display()));
+                state = cyrus_assets::cheats::decode(&bytes)
+                    .with_context(|| format!("{}", path.display()))?;
+                break;
             }
         }
-        Ok(cyrus_assets::cheats::empty())
+        let system = self.install.root.join("SYSTEM.INI");
+        let text = std::fs::read_to_string(&system)
+            .with_context(|| format!("reading {}", system.display()))?;
+        cyrus_assets::cheats::CheatDefaults::parse(&text)?.apply(&mut state)?;
+        Ok(state)
     }
     fn save(&self, state: &CheatFile) -> Result<()> {
         let local = self
@@ -36,6 +42,11 @@ pub(crate) fn load(install: Option<Res<GameInstall>>, mut commands: Commands) {
     let Some(install) = install else {
         return;
     };
+    if let Err(error) =
+        cyrus_assets::console::export(&install, &crate::settings::Settings::cache_dir())
+    {
+        error!("console artwork unavailable: {error:#}");
+    }
     let cheats = Cheats::new(LocalCheats {
         install: install.clone(),
         directory: crate::settings::CONFIG_DIR.into(),
@@ -60,6 +71,11 @@ mod tests {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             std::fs::create_dir_all(path.join("install")).unwrap();
+            std::fs::write(
+                path.join("install/SYSTEM.INI"),
+                "[system]\ntask_system=no\nanimation_system=no\n[debug]\nnode_marker=no\n",
+            )
+            .unwrap();
             Self(path)
         }
         fn store(&self) -> LocalCheats {
@@ -75,6 +91,26 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn system_defaults_replace_only_the_three_startup_slots() {
+        let fixture = Fixture::new();
+        std::fs::write(
+            fixture.0.join("install/SYSTEM.INI"),
+            "[system]\ntask_system=yes\nanimation_system=no\n[debug]\nnode_marker=yes\n",
+        )
+        .unwrap();
+        let mut file = cyrus_assets::cheats::empty();
+        for name in ["task", "animation", "nodemarker", "neversaydie"] {
+            file.set(name, 42).unwrap();
+        }
+        fixture.store().save(&file).unwrap();
+        let loaded = fixture.store().load().unwrap();
+        assert_eq!(loaded.value("task"), Some(1));
+        assert_eq!(loaded.value("animation"), Some(0));
+        assert_eq!(loaded.value("nodemarker"), Some(1));
+        assert_eq!(loaded.value("neversaydie"), Some(42));
     }
 
     #[test]
