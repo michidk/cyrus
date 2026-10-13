@@ -7,6 +7,10 @@ open sockets, spawn a camera, or play audio.
 `GameConsolePlugin` registers cheat handlers with `cyrus-console` and controls
 input availability from `AppState`. The console crate owns editing and command
 dispatch; game handlers own cheat state and call host-provided storage.
+Cheat assignments resolve named SOUP flags against the active world's live values.
+Missing or mismatched script metadata blocks symbolic assignments without changing
+cheats. Unknown names in a loaded definition report a diagnostic and use one,
+following preservation's console rules.
 
 `GamePlugin` installs app state, fidelity, `PlayerPlugin` and `ScriptPlugin`. The host supplies
 Bevy's asset/input/state infrastructure and `Preferences` with a concrete

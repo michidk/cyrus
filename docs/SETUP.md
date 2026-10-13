@@ -459,7 +459,10 @@ command dispatcher and reports retained output through `state.console`.
 Assignments use `name = value`, with decimal, negative decimal, hexadecimal,
 percent-prefixed or packed four-byte values. **Verified:** the original percent
 syntax returns zero; quoted input packs the first four following bytes after
-lowercasing. Short quoted input and symbolic lookup remain unsupported.
+lowercasing. Decimal and hexadecimal conversion consume the numeric prefix and
+wrap at 32 bits. Assignments can also read a named SOUP flag's current value.
+Unknown names report a diagnostic and use one; unavailable or stale world
+metadata blocks symbolic assignments. Short quoted input remains unsupported.
 
 Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can

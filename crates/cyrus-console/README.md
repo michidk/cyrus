@@ -17,7 +17,9 @@ event. Other queued submissions run in `ConsoleDispatch` after input. An
 exclusive host adapter can use `submit` for synchronous execution and reports.
 
 The shared `number` parser accepts decimal, hexadecimal, percent-prefixed and
-packed four-byte values. It rejects unresolved symbols and short quoted inputs.
+packed four-byte values. Decimal and hexadecimal conversion consume the numeric
+prefix and wrap at 32 bits. Command owners supply live symbol lookup through the
+`number` callback. Short quoted inputs remain unsupported.
 **Verified:** percent-prefixed input returns zero under the
 [preservation console rules](https://github.com/michidk/redguard-preservation/blob/feat/console-presentation/docs/engine/console.md).
 
