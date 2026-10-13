@@ -139,7 +139,8 @@ fn apply_scene_fog(
         return;
     };
     for mut projection in &mut cameras {
-        if let Projection::Perspective(perspective) = &mut *projection
+        if let Projection::Custom(custom) = &mut *projection
+            && let Some(crate::camera::projection::GameProjection(perspective)) = custom.get_mut()
             && (perspective.near != near / 20.0 || perspective.far != far / 20.0)
         {
             perspective.near = near / 20.0;
@@ -326,7 +327,10 @@ mod tests {
             .add_systems(Update, apply_scene_fog);
         let camera = app
             .world_mut()
-            .spawn((ViewCamera, Projection::default()))
+            .spawn((
+                ViewCamera,
+                Projection::custom(crate::camera::projection::GameProjection::default()),
+            ))
             .id();
         let mut mesh = Mesh::new(
             bevy::mesh::PrimitiveTopology::TriangleList,
@@ -422,11 +426,10 @@ mod tests {
                 .resource_mut::<RenderDistance>()
                 .override_far = override_far;
             app.update();
-            let Projection::Perspective(projection) =
-                app.world().get::<Projection>(camera).unwrap()
-            else {
-                panic!("expected perspective camera");
+            let Projection::Custom(custom) = app.world().get::<Projection>(camera).unwrap() else {
+                panic!("expected game camera projection");
             };
+            let crate::camera::projection::GameProjection(projection) = custom.get().unwrap();
             assert_eq!(projection.near, 0.35);
             assert_eq!(projection.far, expected);
             let material = app

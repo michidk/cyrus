@@ -1,4 +1,5 @@
 //! Inspection camera, independent of gameplay pose and input.
+pub(crate) mod projection;
 use bevy::{camera::primitives::Aabb, input::mouse::AccumulatedMouseMotion, prelude::*};
 use cyrus_game::AppState;
 use cyrus_game::player::Player;
@@ -29,17 +30,31 @@ impl Default for FlycamSettings {
 #[derive(Resource, Default)]
 pub struct FrameScene(pub bool);
 
+/// One-shot inspection pose in exported scene coordinates, consumed on first framing.
+#[derive(Resource)]
+pub struct InitialView(pub Transform);
+
 const MOUSE_SENSITIVITY: f32 = 0.0025;
 
 // The scene-bounds query excludes the fullscreen sky.
 #[allow(clippy::type_complexity)]
 fn frame_scene(
+    mut commands: Commands,
+    initial: Option<Res<InitialView>>,
     mut frame: ResMut<FrameScene>,
     meshes: Query<(&Aabb, &GlobalTransform), (With<Mesh3d>, Without<crate::sky::Sky>)>,
     mut player: Query<&mut Transform, With<ViewCamera>>,
     distance: Res<crate::fog::RenderDistance>,
     fidelity: Res<cyrus_game::fidelity::Fidelity>,
 ) {
+    if let Some(initial) = initial {
+        if let Ok(mut camera) = player.single_mut() {
+            *camera = initial.0;
+            frame.0 = false;
+            commands.remove_resource::<InitialView>();
+        }
+        return;
+    }
     let Some([_, far]) = distance.effective(&fidelity) else {
         return;
     };
@@ -147,6 +162,47 @@ fn spawn(mut commands: Commands) {
     commands.spawn((
         ViewCamera,
         Camera3d::default(),
+        Projection::custom(projection::GameProjection::default()),
         Transform::from_xyz(0.0, 60.0, 0.0).looking_at(Vec3::new(100.0, 40.0, 100.0), Vec3::Y),
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captured_view_replaces_framing_once_without_moving_player() {
+        let pose = Transform::from_xyz(1.0, 2.0, 3.0)
+            .with_rotation(Quat::from_rotation_y(std::f32::consts::PI));
+        let mut app = App::new();
+        app.init_resource::<crate::fog::RenderDistance>()
+            .init_resource::<cyrus_game::fidelity::Fidelity>()
+            .insert_resource(FrameScene(true))
+            .insert_resource(InitialView(pose))
+            .add_systems(Update, frame_scene);
+        let camera = app
+            .world_mut()
+            .spawn((ViewCamera, Transform::default()))
+            .id();
+        let player = app.world_mut().spawn((Player, Transform::default())).id();
+        app.update();
+        assert_eq!(*app.world().get::<Transform>(camera).unwrap(), pose);
+        assert_eq!(
+            *app.world().get::<Transform>(player).unwrap(),
+            Transform::default()
+        );
+        assert!(!app.world().resource::<FrameScene>().0);
+        assert!(!app.world().contains_resource::<InitialView>());
+        app.world_mut()
+            .get_mut::<Transform>(camera)
+            .unwrap()
+            .translation
+            .x = 8.0;
+        app.update();
+        assert_eq!(
+            app.world().get::<Transform>(camera).unwrap().translation.x,
+            8.0
+        );
+    }
 }

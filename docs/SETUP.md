@@ -54,6 +54,13 @@ Entry waits for both sidecars and settles against dry terrain and static models.
 Unavailable markers, unsupported terrain, and missing player definitions report a
 player-entry error. Dynamic ground support, locomotion and the original follow
 camera remain unsupported; use the independent debug flycam to inspect the world.
+The game camera uses the original Glide horizontal field of view, including on
+viewport resize. Its inspection position is independent of the original follow
+camera; matching the projection alone does not establish a matched view.
+For repeatable comparisons, `--scene NAME --view=x,y,z,qx,qy,qz,qw` sets the
+initial inspection pose in exported scene coordinates with a unit quaternion.
+The browser accepts the same `scene` and `view` URL parameters. The pose applies
+once, does not move the player, and does not persist into later scene loads.
 
 ## Asset viewer
 

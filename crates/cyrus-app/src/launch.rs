@@ -44,6 +44,9 @@ pub struct GameOptions {
     /// WORLD.INI world ID or map stem to load directly.
     #[arg(long, value_parser = scene)]
     pub scene: Option<String>,
+    /// Inspection camera: scene-space x,y,z and unit quaternion qx,qy,qz,qw.
+    #[arg(long, requires = "scene", value_parser = view)]
+    pub view: Option<bevy::prelude::Transform>,
     /// Bypass the splash while preparing the book menu behind the title.
     #[arg(long)]
     pub skip_startup: bool,
@@ -83,6 +86,24 @@ fn scene(value: &str) -> Result<String, String> {
     Ok(value.to_ascii_uppercase())
 }
 
+fn view(value: &str) -> Result<bevy::prelude::Transform, String> {
+    use bevy::prelude::*;
+    let values = value
+        .split(',')
+        .map(str::parse::<f32>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "view requires seven finite numbers: x,y,z,qx,qy,qz,qw")?;
+    let [x, y, z, qx, qy, qz, qw]: [f32; 7] = values
+        .try_into()
+        .map_err(|_| "view requires seven finite numbers: x,y,z,qx,qy,qz,qw")?;
+    let position = Vec3::new(x, y, z);
+    let rotation = Quat::from_xyzw(qx, qy, qz, qw);
+    if !position.is_finite() || !rotation.is_finite() || !rotation.is_normalized() {
+        return Err("view requires a finite position and a unit quaternion".into());
+    }
+    Ok(Transform::from_translation(position).with_rotation(rotation.normalize()))
+}
+
 /// Parse URL values through the same Clap command as native launch options.
 #[cfg(target_arch = "wasm32")]
 pub fn from_query<T: Parser>() -> anyhow::Result<T> {
@@ -115,6 +136,26 @@ pub fn from_query<T: Parser>() -> anyhow::Result<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inspection_view_requires_a_scene_and_valid_pose() {
+        let options =
+            GameOptions::try_parse_from(["game", "--scene=START", "--view=1,-2,3,0,1,0,0"])
+                .unwrap();
+        let pose = options.view.unwrap();
+        assert_eq!(pose.translation.to_array(), [1.0, -2.0, 3.0]);
+        assert_eq!(pose.rotation.to_array(), [0.0, 1.0, 0.0, 0.0]);
+        assert!(GameOptions::try_parse_from(["game", "--view=1,2,3,0,0,0,1"]).is_err());
+        for invalid in ["1,2,3", "NaN,0,0,0,0,0,1", "0,0,0,0,0,0,0", "0,0,0,0,0,0,2"] {
+            assert!(
+                GameOptions::try_parse_from([
+                    "game",
+                    "--scene=START",
+                    &format!("--view={invalid}")
+                ])
+                .is_err()
+            );
+        }
+    }
     #[test]
     fn launch_values_and_invalid_combinations() {
         let game = GameOptions::try_parse_from([

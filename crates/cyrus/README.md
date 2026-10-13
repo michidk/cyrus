@@ -41,6 +41,7 @@ Shared browser/CLI options use exactly the same names:
 | --- | --- | --- |
 | `--install PATH` | `?install=URL` | Read-only original install, local directory or install-service URL |
 | `--scene START` | `?scene=START` | Load a map stem or WORLD.INI ID directly |
+| `--view=x,y,z,qx,qy,qz,qw` | `?view=x,y,z,qx,qy,qz,qw` | Initial scene-space inspection camera pose; requires `scene` and a unit quaternion |
 | `--skip-startup` | `?skip-startup=true` | Bypass the splash |
 | `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |

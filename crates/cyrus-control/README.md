@@ -15,6 +15,8 @@ Commands: `ping`, `state`, `screenshot {path}`, `teleport {x,y,z}`,
 
 `skip_startup` goes to the book menu. `load_scene` skips presentation or
 leaves the menu and enters a world. `state` includes `Loading`, `Menu`, or `InGame`.
+`state.flycam` includes the scene-space camera position and quaternion rotation
+in `[x,y,z,w]` order for repeatable view comparisons.
 
 `Client` is a blocking helper for tests and tools. `server::listen` owns native
 TCP framing and sends pending requests to the host. `cyrus/src/control.rs` applies

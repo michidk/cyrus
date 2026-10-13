@@ -2,6 +2,10 @@
 
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
 camera, HUD and subtitles.
+The game camera keeps the original horizontal field of view when its viewport
+resizes. **Verified:** preservation's [Glide projection](https://github.com/michidk/redguard-preservation/blob/6520206/docs/engine/projection.md)
+defines its scale. The original follow camera and matched-view pixel parity
+remain unsupported and unverified, respectively.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 

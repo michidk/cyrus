@@ -33,6 +33,7 @@ native exporter is required.
 | --- | --- |
 | `?install=URL` | `--install PATH` |
 | `?scene=START` | `--scene START` |
+| `?view=x,y,z,qx,qy,qz,qw` | `--view=x,y,z,qx,qy,qz,qw` |
 | `?skip-startup=true` | `--skip-startup` |
 | `?water=modern` | `--water modern` |
 | `?fog=modern` | `--fog modern` |
@@ -41,7 +42,9 @@ native exporter is required.
 Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
 WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.
 Boolean `skip-startup` accepts an empty value, `true`/`1`, and `false`/`0`.
-World-picker navigation preserves the install URL and other launch options.
+`view` requires `scene` and supplies a one-shot inspection camera pose in scene
+coordinates with a unit quaternion. It does not move the player.
+World-picker navigation clears the one-shot inspection pose and preserves the install URL and other launch options.
 AI-driven browser tests must always supply the install to the server or in the URL,
 so the user never has to answer the prompt during testing.
 

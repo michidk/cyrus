@@ -122,6 +122,11 @@ fn main() -> anyhow::Result<()> {
     );
 
     let mut app = App::new();
+    if !args.headless
+        && let Some(view) = args.launch.view
+    {
+        app.insert_resource(cyrus_render::camera::InitialView(view));
+    }
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
     ));

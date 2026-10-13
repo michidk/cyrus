@@ -15,11 +15,14 @@ use cyrus_game::fidelity::Mode;
 fn main() {
     #[cfg(target_arch = "wasm32")]
     let options = cyrus_app::launch::from_query::<cyrus_app::launch::GameOptions>()
-        .expect("validated game URL options");
+        .unwrap_or_else(|error| wasm_bindgen::throw_str(&error.to_string()));
     #[cfg(not(target_arch = "wasm32"))]
     let options = cyrus_app::launch::GameOptions::default();
     let scene = options.scene;
     let mut app = App::new();
+    if let Some(view) = options.view {
+        app.insert_resource(cyrus_render::camera::InitialView(view));
+    }
     app.insert_resource(cyrus_game::preferences::Preferences::new(
         preferences::LocalPreferences,
     ));

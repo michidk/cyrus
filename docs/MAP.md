@@ -117,6 +117,7 @@ module where it is defined and regenerate.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
+- `src/camera/projection.rs` — Original Glide horizontal field of view, independent of viewport aspect ratio.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,

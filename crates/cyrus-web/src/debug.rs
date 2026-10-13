@@ -30,6 +30,7 @@ fn update_web_world(
 fn set_scene(window: &web_sys::Window, scene: &str) -> Result<(), wasm_bindgen::JsValue> {
     let params = web_sys::UrlSearchParams::new_with_str(&window.location().search()?)?;
     params.set("scene", scene);
+    params.delete("view");
     window
         .location()
         .set_search(&params.to_string().as_string().unwrap_or_default())

@@ -183,6 +183,7 @@ world playback is incomplete.
 - Won't implement PVO runtime culling at user request. No performance benefit or visible fidelity difference has been demonstrated. Keep PVO parsing and viewer inspection. **Unknown:** whether the original's PVO exclusions change visible output; revisit only if profiling or original-game comparison establishes a need.
 - [x] Worlds, terrain, textures and palettes; dry/water terrain lighting, faithful sky/tilt/sun/scroll inputs, fog/range defaults and water waves.
 - [x] Independent fidelity controls; optional Modern sky/fog/water presentation. Modern lighting currently reuses Faithful results.
+- [x] Match the original world camera's horizontal projection across viewport sizes. **Verified:** original viewport arithmetic and matched BELLTOWR inspection poses in native/browser builds. Original follow-camera behavior and lighting/pixel parity remain open.
 - [ ] Resolve dirty water-edge normal admission/retention; cyrus currently recomputes the grid.
 - [x] Replace fixed Bevy model lighting with installed ambient/directional RGB, authored face brightness, supplied normals and solid-color tint. **Verified:** original-code/GPU arithmetic comparisons, render contracts and native ISLAND/BELLTOWR/START scene switches.
 - [ ] Compare static map-light baking in matched original/native/browser views; recover actor prelighting eligibility and dynamic lighting overrides.
