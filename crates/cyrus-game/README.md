@@ -266,3 +266,11 @@ update and restores locked local position/angle components from `snapshot_spatia
 Slaves bypass restoration. This stage leaves matrix/family refresh separate and
 does not enable automatic scheduling. Rotation-lock writes after spatial
 preparation now remain visible to this stage.
+
+`ScriptStage::OrdinaryMain` checks the ordinary map actor's script-control byte
+once, then runs entry/tasks/main with supplied timing. `DisableScript` suppresses
+later ordinary main stages without clearing tasks or stopping the current
+invocation; `EnableScript` resumes them. Both preserve other control bits.
+Standalone role control initialization remains unsupported. Native-hook dispatch
+is separate and does not use the main-stage suppression bit. This explicit stage
+does not admit actors into automatic updates.

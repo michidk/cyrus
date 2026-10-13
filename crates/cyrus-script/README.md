@@ -58,3 +58,8 @@ path. Neither entry API runs existing tasks or chooses update eligibility.
 and strings, without advancing either continuation or polling tasks. It retains
 native failures so a failed effect is not retried. Hook eligibility remains the
 game scheduler's responsibility.
+
+`invoke_main_stage` combines entry, timed task polling, and main continuation for
+an admitted ordinary update. Its task-bypass input skips polling and the main
+blocking-slot gate, while retaining entry's operand gate. It does not choose
+actor eligibility or recheck game control flags between entry and main.

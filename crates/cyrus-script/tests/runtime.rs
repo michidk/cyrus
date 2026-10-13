@@ -8,6 +8,7 @@ struct Service {
     calls: Vec<String>,
     ready: bool,
     ends: usize,
+    polls: usize,
     property: i32,
 }
 impl Host for Service {
@@ -37,6 +38,7 @@ impl Host for Service {
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
         assert_eq!(task, 9);
+        self.polls += 1;
         Ok(self.ready)
     }
     fn end(&mut self, _: Thread) -> anyhow::Result<()> {
@@ -1020,4 +1022,61 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
             .is_err()
     );
     assert_eq!(host.calls, ["Wait", "Query", "Fail"]);
+}
+
+#[test]
+fn ordinary_task_bypass_preserves_entry_gate_but_runs_main_with_a_blocking_slot() {
+    for bypass in [false, true] {
+        let mut runtime = Runtime::new(
+            program(
+                3,
+                vec![
+                    call("Wait", CallKind::Task),
+                    Operation::Increment {
+                        destination: Place::Local { index: 0 },
+                        delta: 1,
+                    },
+                    Operation::Endint,
+                    assign(Place::Flag { index: 0 }, 7),
+                    Operation::End { target: 3 },
+                ],
+            ),
+            "ordinary task bypass".into(),
+        )
+        .unwrap();
+        let mut host = Service::default();
+        let mut flags = [0];
+        runtime.invoke_entry(&mut host, &mut flags, 10).unwrap();
+        runtime
+            .invoke_main_stage(&mut host, &mut flags, 256, 10, bypass)
+            .unwrap();
+        assert_eq!(
+            runtime.variables(),
+            [0],
+            "entry's blocking gate remains active"
+        );
+        assert_eq!(runtime.program_counter(Thread::Interrupt), Some(1));
+        assert_eq!(flags, [if bypass { 7 } else { 0 }]);
+        assert_eq!(host.polls, usize::from(!bypass));
+        assert_eq!(runtime.active_tasks(), 1);
+        host.ready = true;
+        runtime
+            .invoke_main_stage(&mut host, &mut flags, 256, 10, false)
+            .unwrap();
+        assert_eq!(
+            flags,
+            [7],
+            "completed task releases main in this invocation"
+        );
+        assert_eq!(
+            runtime.variables(),
+            [0],
+            "entry isn't rerun after task completion"
+        );
+        assert_eq!(runtime.active_tasks(), 0);
+        runtime
+            .invoke_main_stage(&mut host, &mut flags, 256, 10, false)
+            .unwrap();
+        assert_eq!(runtime.variables(), [1]);
+    }
 }

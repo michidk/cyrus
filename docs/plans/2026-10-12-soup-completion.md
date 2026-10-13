@@ -37,6 +37,10 @@ updates diagnostics, and advances explicitly attached animation playback.
   player, gremlin, and camera roles. It guards world generations and supports
   Me, Player, Camera, and named receivers. Inspection handlers support attribute
   reads/writes, flag helpers, Wait, WaitOnTasks, and WaitNonMulti.
+  Ordinary map actors also support EnableScript/DisableScript and an explicit
+  ordinary-main stage that retains pending tasks while disabled. Task bypass
+  preserves the entry gate but skips polling and the main blocking-slot gate.
+  Production eligibility, native-hook gating and combat remain separate.
 - The registry host combines PushAnimation, waits, attributes, and flags on one
   logical actor. Native task tokens are shared, including routed receiver tasks.
   The standalone animation adapter reuses that task handler. Explicit animation,

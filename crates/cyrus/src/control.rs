@@ -353,6 +353,7 @@ fn handle(
                     cyrus_control::ScriptStage::PrepareSpatial | cyrus_control::ScriptStage::Snapshot
                     | cyrus_control::ScriptStage::AxisLocks | cyrus_control::ScriptStage::Transform | cyrus_control::ScriptStage::Families => return Ok(world.inspect(index, 1)),
                     cyrus_control::ScriptStage::Animation => ScriptStage::Animation,
+                    cyrus_control::ScriptStage::OrdinaryMain => ScriptStage::OrdinaryMain,
                     cyrus_control::ScriptStage::NativeHook => ScriptStage::NativeHook,
                     cyrus_control::ScriptStage::Entry => ScriptStage::Entry,
                     cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks,

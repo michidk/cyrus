@@ -99,6 +99,7 @@ fn script_page_size() -> usize {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptStage {
+    OrdinaryMain,
     NativeHook,
     PrepareSpatial,
     Snapshot,

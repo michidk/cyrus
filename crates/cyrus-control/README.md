@@ -66,3 +66,8 @@ Player queries use the current `PlayerPose`, not the inspection camera.
 `fallback_position` supplies original Q8 coordinates when no player exists.
 Missing required inputs fail. Attached queries read the last composed pose.
 Unattached linked-position selection remains unsupported in the script host.
+
+The `ordinary_main` stage runs entry/tasks/main for an explicitly admitted
+ordinary map actor and requires `frame_scale`. It honors script-disable and
+task-bypass flags; separate `entry`, `tasks`, and `main` remain direct inspection
+stages. It does not perform hook, combat, movement, or automatic eligibility work.

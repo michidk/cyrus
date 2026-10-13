@@ -304,6 +304,26 @@ impl Runtime {
         }
         self.invoke_body(Thread::Interrupt, host, flags, budget)
     }
+    /// Runs the ordinary entry/main sequence selected by the game wrapper.
+    /// Bypassing tasks preserves the entry gate, but skips polling and the main
+    /// blocking-slot gate, following preservation's SOUP ordinary update rules.
+    pub fn invoke_main_stage(
+        &mut self,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        frame_scale: u32,
+        budget: usize,
+        bypass_tasks: bool,
+    ) -> Result<()> {
+        self.invoke_entry(host, flags, budget)?;
+        if bypass_tasks {
+            self.invoke_continuation(Thread::Main, host, flags, budget)
+        } else {
+            self.invoke_tasks_timed(host, flags, frame_scale)?;
+            self.invoke_body(Thread::Main, host, flags, budget)
+        }
+    }
+
     /// Runs a body without an existing-task pass. Main work waits for unpaused blocking slots.
     pub fn invoke_body(
         &mut self,
@@ -315,6 +335,19 @@ impl Runtime {
         if let Some(error) = &self.state.failure {
             anyhow::bail!("{error}");
         }
+        if thread == Thread::Main && self.has_blocking_task() {
+            return Ok(());
+        }
+        self.invoke_continuation(thread, host, flags, budget)
+    }
+
+    fn invoke_continuation(
+        &mut self,
+        thread: Thread,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        budget: usize,
+    ) -> Result<()> {
         let instruction = self
             .program_counter(thread)
             .with_context(|| format!("{} thread {thread:?}: continuation absent", self.context))?;
@@ -338,9 +371,6 @@ impl Runtime {
         budget: usize,
     ) -> Result<()> {
         let index = thread.index();
-        if thread == Thread::Main && self.has_blocking_task() {
-            return Ok(());
-        }
         let program = Arc::clone(&self.program);
         for _ in 0..budget {
             let cursor = self.state.threads[index].as_ref().unwrap().cursor;

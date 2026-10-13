@@ -49,6 +49,8 @@ impl ScriptActorSource {
 /// Explicit stages preserve separate animation, task and script-body invocations.
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptStage {
+    /// Caller has admitted the ordinary main stage; actor script-control flags still apply.
+    OrdinaryMain,
     NativeHook,
     Animation,
     Entry,
@@ -75,6 +77,8 @@ pub(crate) struct ScriptAnimation {
 /// Standalone role setup and death/removal transitions remain unsupported.
 #[derive(Debug, serde::Serialize)]
 pub struct ActorControlState {
+    /// Runtime script flags, separate from installed attribute bytes.
+    pub script_control: u8,
     pub death_selector: u8,
     pub living_state: u8,
     pub rope_attached: bool,
@@ -215,6 +219,7 @@ impl ScriptWorld {
             let control = match &source {
                 ScriptActorSource::Map(placement) if !matches!(placement.object_type, 2 | 6) => {
                     Some(ActorControlState {
+                        script_control: 0,
                         death_selector: 0,
                         living_state: 0,
                         rope_attached: false,
@@ -675,7 +680,7 @@ impl ScriptWorld {
             self.validate_activation(activation)?;
         }
         let nominal_ticks = inputs.nominal_ticks;
-        if matches!(stage, ScriptStage::Tasks) {
+        if matches!(stage, ScriptStage::Tasks | ScriptStage::OrdinaryMain) {
             anyhow::ensure!(
                 inputs.frame_scale.is_some(),
                 "task stage requires frame_scale"
@@ -705,6 +710,20 @@ impl ScriptWorld {
                 self.world
             );
         }
+        let bypass_tasks = if matches!(stage, ScriptStage::OrdinaryMain) {
+            let control = self.actors[index].control.as_ref().with_context(|| {
+                format!(
+                    "world {} instance {index}: script-control lifecycle unavailable",
+                    self.world
+                )
+            })?;
+            if control.script_control & 1 != 0 {
+                return Ok(());
+            }
+            control.script_control & 4 != 0
+        } else {
+            false
+        };
         let mut host = GameHost {
             index,
             generation: self.generation,
@@ -741,6 +760,13 @@ impl ScriptWorld {
                 .unwrap_or_else(|| "program absent".into())
         })?;
         let result = match stage {
+            ScriptStage::OrdinaryMain => runtime.invoke_main_stage(
+                &mut host,
+                &mut self.flags,
+                inputs.frame_scale.unwrap(),
+                budget,
+                bypass_tasks,
+            ),
             ScriptStage::NativeHook => match native_hook {
                 Some(call) => runtime
                     .invoke_native_hook(&call, &mut host, &mut self.flags)
@@ -1089,6 +1115,21 @@ impl Host for GameHost<'_, '_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        if function.eq_ignore_ascii_case("EnableScript")
+            || function.eq_ignore_ascii_case("DisableScript")
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function}: wrong argument count");
+            let control = self.actors[self.index]
+                .control
+                .as_mut()
+                .with_context(|| format!("{function}: script-control lifecycle unavailable"))?;
+            if function.eq_ignore_ascii_case("EnableScript") {
+                control.script_control &= !1;
+            } else {
+                control.script_control |= 1;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if let Some(sound) = super::sound::command(function, arguments)? {
             self.sounds
                 .as_mut()

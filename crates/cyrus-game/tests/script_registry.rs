@@ -2038,3 +2038,101 @@ fn native_hook_updates_only_its_receiver_without_advancing_the_script() {
     );
     assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
 }
+
+#[test]
+fn disabling_a_script_finishes_its_invocation_and_freezes_later_main_task_passes() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = cache();
+    for (name, param_count, kind) in [
+        ("DisableScript", 0, CallKind::Function),
+        ("EnableScript", 0, CallKind::Function),
+        ("Wait", 1, CallKind::Task),
+    ] {
+        scripts.definition.functions.push(Function {
+            name: name.into(),
+            param_count,
+            kind,
+        });
+    }
+    let control_call = |enabled| Call {
+        function_id: if enabled { 2 } else { 1 },
+        function: if enabled {
+            "EnableScript"
+        } else {
+            "DisableScript"
+        }
+        .into(),
+        kind: CallKind::Function,
+        target: Object::Me,
+        arguments: vec![],
+    };
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.native_hook = Some(control_call(true));
+    actor.program.steps = [
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                function: "Wait".into(),
+                kind: CallKind::Multitask,
+                target: Object::Me,
+                arguments: vec![Value::Integer { value: 100 }],
+            },
+        },
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(control_call(false)),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::Increment {
+            destination: Place::Flag { index: 0 },
+            delta: 1,
+        },
+        Operation::End { target: 2 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 31).unwrap();
+    let id = world.id(0).unwrap();
+    let inputs = ScriptInputs {
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    world
+        .advance(id, ScriptStage::OrdinaryMain, inputs, None, 20)
+        .unwrap();
+    assert_eq!(world.flags(), [13]);
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+    assert_eq!(world.actors()[0].control_state().unwrap().script_control, 1);
+    assert_eq!(world.actors()[1].control_state().unwrap().script_control, 0);
+    for _ in 0..200 {
+        world
+            .advance(id, ScriptStage::OrdinaryMain, inputs, None, 20)
+            .unwrap();
+    }
+    assert_eq!(world.flags(), [13]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    world
+        .advance(id, ScriptStage::NativeHook, inputs, None, 20)
+        .unwrap();
+    assert_eq!(world.actors()[0].control_state().unwrap().script_control, 0);
+    world
+        .advance(id, ScriptStage::OrdinaryMain, inputs, None, 20)
+        .unwrap();
+    assert_eq!(world.flags(), [14]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+}

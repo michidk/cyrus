@@ -129,7 +129,7 @@ of every palette and world still needs original-game comparison.
 | BSI, COL, Glide sky | Textures/palettes, sky plane/tilt/sun, scrolling inputs, fog and terrain waves | Other animated textures and matched filtering/blending/lighting |
 | GXA, splash DLL, FNT | Installed splash/title, menu widgets, HUD artwork and shared text rendering | Remaining gameplay screens, software sky projection and exact splash hardware rendering |
 | SFX, RTX, CD audio | Effects/speech decode, subtitles, shared channels, explicit script sound ownership, native/browser music and preferences | Automatic gameplay triggers, SURFACE.INI remapping, moving emitters and audible parity |
-| SOUP | Portable VM, actor locals/flags/tasks, explicit animation/spatial/wait/routing/sound/activation services and typed native-hook dispatch | Automatic scheduling, remaining receivers/native hook services, synchronization and persistence |
+| SOUP | Portable VM, actor locals/flags/tasks, explicit animation/spatial/wait/routing/sound/activation services, explicit ordinary-main control and typed native-hook dispatch | Automatic scheduling, remaining receivers/native hook services, synchronization and persistence |
 | MENU.INI, KEYS.INI | Installed menu content, keyboard navigation, preferences, rebinding, held player input, New/temporary Load and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie progression unlocks |
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
 | SMK | Native/browser video, first-track audio, installed skip/subtitle rules and streamed browser playback | Original comparison, A/V sync and player-hardware seek/audio checks |
