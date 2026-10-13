@@ -3,7 +3,7 @@
 //! See <https://github.com/michidk/redguard-preservation/blob/449ba2a/docs/engine/terrain-lighting.md>.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(super) struct Vertex {
+pub(crate) struct Vertex {
     /// Projection-scaled camera coordinates, positive depth, in engine units.
     pub camera: [f32; 3],
     /// Encoded channels in 0..=255, before fixed-point setup.
@@ -81,21 +81,24 @@ impl Vertex {
 }
 
 impl Preparation {
-    /// Finite inputs, positive near/far distances and a positive viewport are required.
-    pub(super) fn triangles(
+    /// Test original pre-raster admission; coincident corners still count.
+    pub(crate) fn admits(
         &mut self,
-        vertices: [Vertex; 3],
+        vertices: impl IntoIterator<Item = Vertex>,
         clipping: [f32; 2],
-        viewport: [f32; 2],
-        mut emit: impl FnMut(Triangle),
-    ) {
-        let masks = vertices.map(|v| v.outside(clipping));
-        if masks[0] & masks[1] & masks[2] != 0 {
-            return;
-        }
+    ) -> bool {
         self.polygon.clear();
         self.polygon.extend(vertices);
-        let union = masks[0] | masks[1] | masks[2];
+        let (common, union) = self
+            .polygon
+            .iter()
+            .fold((63, 0), |(common, union), vertex| {
+                let mask = vertex.outside(clipping);
+                (common & mask, union | mask)
+            });
+        if self.polygon.len() < 3 || common != 0 {
+            return false;
+        }
         for plane in 0..6 {
             if union & (1 << plane) == 0 {
                 continue;
@@ -116,8 +119,22 @@ impl Preparation {
             }
             std::mem::swap(&mut self.polygon, &mut self.next);
             if self.polygon.len() < 3 {
-                return;
+                return false;
             }
+        }
+        true
+    }
+
+    /// Finite inputs, positive near/far distances and a positive viewport are required.
+    pub(super) fn triangles(
+        &mut self,
+        vertices: [Vertex; 3],
+        clipping: [f32; 2],
+        viewport: [f32; 2],
+        mut emit: impl FnMut(Triangle),
+    ) {
+        if !self.admits(vertices, clipping) {
+            return;
         }
         let a = project(self.polygon[0], viewport);
         let mut b = project(self.polygon[1], viewport);

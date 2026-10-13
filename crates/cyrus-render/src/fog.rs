@@ -1,4 +1,5 @@
 //! Documented Glide fog and clipping for exported scene materials.
+mod texture;
 
 use crate::camera::ViewCamera;
 use crate::environment::EnvironmentRequest;
@@ -132,6 +133,7 @@ struct RejectedLighting;
 pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
+        texture::register(app);
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");
         load_shader_library!(app, "model_lights.wesl");

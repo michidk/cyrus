@@ -169,6 +169,22 @@ Cloud phases are unsynchronized and visible terrain/sky differences remain.
 Other texture filtering, lighting, menu-to-world transitions and physical-hardware
 pixel parity remain unverified.
 
+Ordinary archive-model texture playback uses preservation's
+[shared frame and admission rules](https://github.com/michidk/redguard-preservation/blob/af411516a872f56afc3b164a384ab782f824a6fe/docs/engine/texture-animation.md).
+**Verified:** renderer tests cover shared deadlines, late admission advancing only
+once, retained hidden frames, authored facing and clipping before raster area.
+Materials share image state by canonical image name while retaining their own
+exported frame handles. The GLTF loader retains all authored frames during its
+initial decode; frame selection does not reload the source asset. World replacement
+clears that world's playback records.
+Only known ordinary ROB draw attributes participate. Script-bound actor admission,
+explicit frame overrides, generated billboards and terrain texture playback remain
+unsupported. **Verified:** original/native/browser ISLAND river captures share the
+camera pose at 640×480; successive native/browser samples change the water-rock
+foam textures. Native/browser builds share their source snapshot. **Unknown:**
+synchronized animation cadence, transition parity and complete pixel parity;
+visible terrain/sky differences remain. This does not complete authored texture playback.
+
 Startup, the book menu, settings, cinematic playback and world-entry loading live in
 [cyrus-startup](../cyrus-startup/README.md).
 

@@ -144,6 +144,9 @@ module where it is defined and regenerate.
 - `src/console_environment.rs` — Original sky-plane and wave console controls, owned by world presentation.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
+- `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
+- `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
+- `src/fog/texture/frames.rs` — Retain authored texture frames during the original GLTF decode.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.

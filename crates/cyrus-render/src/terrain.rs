@@ -4,7 +4,7 @@ mod prepare;
 use bevy::mesh::{MeshVertexAttribute, VertexAttributeValues};
 use bevy::prelude::*;
 use bevy::render::render_resource::VertexFormat;
-pub(super) use prepare::Preparation;
+pub(super) use prepare::{Preparation, Vertex as ClipVertex};
 
 pub(super) const PROJECTED: MeshVertexAttribute =
     MeshVertexAttribute::new("Terrain_Projected", 83001, VertexFormat::Float32x4);
