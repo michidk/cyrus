@@ -36,6 +36,11 @@ artifacts+=("$out/pkg/cyrus-assets-worker.js" "$out/pkg/cyrus-assets-worker_bg.w
 for file in asset-worker.js game-assets.js loader.js install.js local-install.js sw.js loading.css; do
     artifacts+=("$out/$file")
 done
+if [ -d "$out/pkg/snippets" ]; then
+    while IFS= read -r -d '' file; do
+        artifacts+=("$file")
+    done < <(find "$out/pkg/snippets" -type f -print0 | sort -z)
+fi
 python3 dev/scripts/build-provenance.py seal "$provenance" "${artifacts[@]}"
 mv "$provenance" "$out/build-provenance.json"
 # Browser code has no implicit link to installed files or exported caches.

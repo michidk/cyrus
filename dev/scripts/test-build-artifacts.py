@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check archive contents without compiling or reading a game install."""
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -156,12 +157,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 mkdir -p "$out"
+mkdir -p "$out/snippets/$app"
+echo snippet > "$out/snippets/$app/helper.js"
 echo code > "$out/$app.js"
 echo wasm > "$out/${app}_bg.wasm"
 ''')
         bindgen.chmod(0o755)
         subprocess.run(["bash", "dev/scripts/build-web.sh", *apps],
                        cwd=self.root, env=self.env, check=True)
+        record = json.loads((self.root / "target/web/build-provenance.json").read_text())
+        for app in [*apps, "cyrus-assets-worker"]:
+            self.assertIn(f"target/web/pkg/snippets/{app}/helper.js", record["artifacts"])
+        subprocess.run(["python3", "dev/scripts/build-provenance.py", "verify",
+                        "target/web/build-provenance.json"], cwd=self.root, check=True)
         packages = "-p cyrus-assets-worker -p cyrus-web"
         if "cyrus-viewer" in apps:
             packages += " -p cyrus-viewer"

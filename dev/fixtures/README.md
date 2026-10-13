@@ -68,6 +68,9 @@ a hermetic or bit-for-bit reproducible compiler environment. Replay rejects
 missing records, changed source, changed artifacts and a different running binary.
 Native and browser builds must have the same source snapshot as the checkout.
 
+Build records include the generated wasm-bindgen JavaScript snippets loaded by
+the application.
+
 Each browser replay uses a new isolated browser context. Chromium's debugger
 reports the executed JavaScript and compiled WASM bytes from both the page and
 asset worker. The runner compares their hashes with the build record and checks
