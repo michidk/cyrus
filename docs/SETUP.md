@@ -84,8 +84,8 @@ Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
 After the release is published, `Release` deploys GitHub Pages: the landing page
-from `dev/pages/index.html` at the root, and the browser bundle under `play/`
-(`play/viewer.html` for the viewer). The repository's Pages source must be set to "GitHub Actions" once.
+from `dev/pages/index.html` at the root, the game under `game/`, and the viewer
+under `viewer/`. Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
 The site contains application code only; supply a game install with
 `?install=<encoded-install-service-URL>`.
 
@@ -103,9 +103,10 @@ retries the release without another version commit. Alternatively, update the
 version and lockfile locally and push the version commit and tag.
 
 `Release` checks that every workspace package matches the tag and runs the gates
-before building all platforms. Browser release builds use one Cargo job and the
-`wasm-release` profile (thin link-time optimization, one codegen unit) to limit
-hosted-runner memory use; build logs include
+while all platforms build; nothing is published unless both succeed. The macOS
+Intel build runs on an Apple Silicon runner. Browser release builds use two Cargo
+jobs, extra swap, and the `wasm-release` profile (thin link-time optimization,
+one codegen unit) to stay within hosted-runner memory; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
 commits with git-cliff and `cliff.toml`, attaches all packages and `SHA256SUMS`,
 and publishes the release. No release is created when a build fails; successful

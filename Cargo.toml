@@ -50,6 +50,10 @@ strip = true
 inherits = "wasm-release"
 codegen-units = 16
 
+# Backtraces keep file and line; full variable debug info mostly slows linking.
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.test]
 debug = 0
 

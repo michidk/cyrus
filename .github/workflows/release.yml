@@ -63,8 +63,8 @@ jobs:
       - name: Run gates
         run: bash dev/scripts/gates.sh
 
+  # Builds start alongside verify; publishing still requires it.
   native:
-    needs: verify
     name: Native (${{ matrix.target }})
     timeout-minutes: 90
     strategy:
@@ -75,7 +75,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: windows-2025
             target: x86_64-pc-windows-msvc
-          - os: macos-15-intel
+          # Apple Silicon runners build Intel binaries far faster; the smoke runs under Rosetta.
+          - os: macos-15
             target: x86_64-apple-darwin
           - os: macos-15
             target: aarch64-apple-darwin
@@ -125,8 +126,7 @@ jobs:
   web:
     # Keep concurrent compilation and whole-program linking within hosted-runner memory.
     env:
-      CARGO_BUILD_JOBS: 1
-    needs: verify
+      CARGO_BUILD_JOBS: 2
     name: Browser bundles
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -137,6 +137,13 @@ jobs:
           persist-credentials: false
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Add swap for parallel link-time optimization
+        run: |
+          sudo fallocate -l 12G /swapfile-cyrus
+          sudo chmod 600 /swapfile-cyrus
+          sudo mkswap /swapfile-cyrus
+          sudo swapon /swapfile-cyrus
+          free -h
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           targets: wasm32-unknown-unknown
@@ -163,7 +170,7 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: [native, web]
+    needs: [verify, native, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -237,11 +244,15 @@ jobs:
           name: browser
           path: bundle
       - name: Assemble site
-        # Landing page at the root; game and viewer under play/.
+        # Shared engine files stay at the root so one service worker covers game/ and viewer/.
         run: |
-          mkdir site
           tar -xzf bundle/cyrus-browser.tar.gz -C bundle
-          mv bundle/browser site/play
+          mv bundle/browser site
+          mkdir site/game site/viewer
+          sed 's|<head>|<head><base href="../">|' site/index.html > site/game/index.html
+          sed 's|<head>|<head><base href="../">|' site/viewer.html > site/viewer/index.html
+          grep -q '<base href="../">' site/game/index.html site/viewer/index.html
+          rm site/viewer.html
           cp dev/pages/index.html .github/workflows/cyrus-banner.webp site/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
