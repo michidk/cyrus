@@ -280,6 +280,15 @@ attachments. Snapshot, unattached transform refresh, and family refresh are
 separate operations. Spatial preparation rejects ambiguous or cyclic families;
 attachment-sensitive attribute changes remain unsupported after preparation.
 
+`RotateToAxis`, `sRotateToAxis` and `sRotateByAxis` share that task store and local-angle ownership.
+The first integrates shared frame scale toward its target; the second interpolates
+from a retained origin using task elapsed input and snaps at completion.
+`sRotateByAxis` retains its origin and interpolates a relative delta with distinct
+negative-offset rounding before its final snap.
+Their arithmetic follows [preservation PR73](https://github.com/michidk/redguard-preservation/pull/73).
+`sRotateToAxis` rejects duration one and `sRotateByAxis` rejects duration zero
+with contextual division errors instead of crashing.
+
 **Verified:** [preservation PR55](https://github.com/michidk/redguard-preservation/pull/55)
 defines rotation task arithmetic, player distance/facing queries, and local versus
 composed attachment transforms. Actor inspection exposes both poses and the

@@ -42,6 +42,9 @@ enum Task {
     ObjectMovement { target: i32, traveled: i32 },
     ScaledMovement { origin: i32 },
     Rotation { target: i32, accumulator: i32 },
+    AbsoluteRotation { movement: i32, accumulator: i32 },
+    ScaledRotation { origin: i32 },
+    ScaledRelativeRotation { origin: i32 },
     Duration,
     Tasks,
     Blocking,
@@ -263,6 +266,136 @@ impl Task {
                     false
                 }
             }
+            Self::AbsoluteRotation {
+                movement,
+                accumulator,
+            } => {
+                let [axis, target, duration] = arguments else {
+                    anyhow::bail!("RotateToAxis requires three arguments")
+                };
+                let duration = duration.integer()?;
+                if duration == 0 {
+                    return Ok(true);
+                }
+                let target = target.integer()? & 2047;
+                let axis = match axis.integer()? {
+                    0 => 0,
+                    1 => 1,
+                    _ => 2,
+                };
+                let input = spatial
+                    .as_mut()
+                    .context("RotateToAxis requires spatial state")?;
+                let current = i32::from(input.angles[axis]);
+                let difference = (current & 2047) - target;
+                let remaining = if difference < -1024 {
+                    -(difference & 2047)
+                } else if difference > 1024 {
+                    2048 - difference
+                } else {
+                    -difference
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("RotateToAxis requires elapsed input")?;
+                if *movement == 0 && elapsed == 0 {
+                    *movement = remaining << 8;
+                    *accumulator = current << 8;
+                }
+                let mut step = movement
+                    .checked_div(duration)
+                    .context("RotateToAxis fixed-point division overflow")?
+                    .wrapping_mul(input.frame_scale as i32)
+                    >> 8;
+                if step == 0 && input.nominal_ticks != 0 {
+                    step = (input.nominal_ticks as i32).wrapping_shl(8);
+                    if *movement < 0 {
+                        step = step.wrapping_neg();
+                    }
+                }
+                if remaining.abs() <= (step >> 8).abs() {
+                    input.angles[axis] = target as u16;
+                    true
+                } else {
+                    *accumulator = accumulator.wrapping_add(step);
+                    input.angles[axis] = ((*accumulator >> 8) & 2047) as u16;
+                    false
+                }
+            }
+            Self::ScaledRotation { origin } => {
+                let [axis, target, duration] = arguments else {
+                    anyhow::bail!("sRotateToAxis requires three arguments")
+                };
+                let (axis, target, duration) =
+                    (axis.integer()?, target.integer()?, duration.integer()?);
+                let elapsed = invocation
+                    .elapsed
+                    .context("sRotateToAxis requires elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("sRotateToAxis requires spatial state")?;
+                if elapsed == 0 && (0..=2).contains(&axis) {
+                    *origin = i32::from(input.angles[axis as usize]);
+                }
+                let difference = target.wrapping_sub(*origin);
+                let movement = if difference < -1024 {
+                    difference & 2047
+                } else if difference > 1024 {
+                    -(difference & 1023)
+                } else {
+                    difference
+                };
+                let end = duration.wrapping_sub(1);
+                let offset = movement
+                    .wrapping_shl(8)
+                    .checked_div(end)
+                    .context("sRotateToAxis duration causes division by zero or overflow")?
+                    .wrapping_mul(elapsed)
+                    >> 8;
+                let complete = elapsed >= end;
+                if (0..=2).contains(&axis) {
+                    input.angles[axis as usize] = if complete {
+                        (target & 2047) as u16
+                    } else {
+                        (origin.wrapping_add(offset) & 2047) as u16
+                    };
+                }
+                complete
+            }
+            Self::ScaledRelativeRotation { origin } => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("sRotateByAxis requires three arguments")
+                };
+                let (axis, delta, duration) =
+                    (axis.integer()?, delta.integer()?, duration.integer()?);
+                let elapsed = invocation
+                    .elapsed
+                    .context("sRotateByAxis requires elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("sRotateByAxis requires spatial state")?;
+                if elapsed == 0 && (0..=2).contains(&axis) {
+                    *origin = i32::from(input.angles[axis as usize]);
+                }
+                let magnitude = delta
+                    .wrapping_abs()
+                    .wrapping_shl(8)
+                    .checked_div(duration)
+                    .context("sRotateByAxis duration causes division by zero or overflow")?
+                    .wrapping_mul(elapsed)
+                    >> 8;
+                let offset = if delta < 0 {
+                    magnitude.wrapping_neg()
+                } else {
+                    magnitude
+                };
+                let complete = elapsed >= duration.wrapping_sub(1);
+                if (0..=2).contains(&axis) {
+                    input.angles[axis as usize] =
+                        (origin.wrapping_add(if complete { delta } else { offset }) & 2047) as u16;
+                }
+                complete
+            }
             Self::Duration => {
                 let [duration] = arguments else {
                     anyhow::bail!("Wait requires one argument")
@@ -348,6 +481,15 @@ impl NativeTasks {
                 target: 0,
                 accumulator: 0,
             }
+        } else if function.eq_ignore_ascii_case("RotateToAxis") {
+            Task::AbsoluteRotation {
+                movement: 0,
+                accumulator: 0,
+            }
+        } else if function.eq_ignore_ascii_case("sRotateToAxis") {
+            Task::ScaledRotation { origin: 0 }
+        } else if function.eq_ignore_ascii_case("sRotateByAxis") {
+            Task::ScaledRelativeRotation { origin: 0 }
         } else if function.eq_ignore_ascii_case("MoveObjectAxis") {
             Task::ObjectMovement {
                 target: 0,
