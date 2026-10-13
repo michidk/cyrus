@@ -48,6 +48,37 @@ fn player_entry_preserves_selected_frame_and_does_not_start_the_ordinary_idle_de
 }
 
 #[test]
+fn ordinary_default_replacement_retains_its_frame_when_the_next_stage_delays() {
+    let scene = ground_scene(6);
+    let (_, data) = data(serde_json::json!([
+        {"group_index":0,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]},
+        {"group_index":3,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":30},{"opcode":12,"value":2},
+            {"opcode":0,"frame_reference":31},{"opcode":2,"value":0}]}
+    ]));
+    let mut animation =
+        cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0).unwrap();
+    animation.advance(1).unwrap();
+    let mut history = SupportHistory::new(0, 0);
+    assert_eq!(
+        cyrus_game::player::grounded::advance_animation(
+            &scene,
+            1,
+            &mut history,
+            &mut animation,
+            &mut |_| Ok(())
+        )
+        .unwrap(),
+        Some(30)
+    );
+    assert_eq!(animation.default_group(), 3);
+    assert_eq!(animation.current_group(), Some(3));
+    assert_eq!(animation.pending_group(), None);
+    assert_eq!(animation.advance(1).unwrap(), None);
+}
+
+#[test]
 fn installed_player_entry_matches_original_initial_group_and_frame() {
     use cyrus_game::player::placement::initial_animation;
     let root = std::env::var_os("REDGUARD_DIR")

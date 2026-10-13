@@ -48,6 +48,11 @@ reusing its tick input. `set_loop_count` supplies the finite count when a
 PushAnimation task becomes current. Returning to the same default keeps the
 group identity, so a finite count alone does not prove the waiting task completed.
 Type-one groups keep their exit tail when the pending group is the default.
+`select_default_with_sounds` applies a caller-selected ordinary default outside
+shell execution. A changed default immediately replaces the current old default
+before its exit marker and retargets a pending old default through ordinary
+request priority. It retains synchronous sound dispatch and shared nominal ticks,
+following [preservation's default selection rules](https://github.com/michidk/redguard-preservation/blob/d6e59584fb0fb5bc750e1c881cb386d4c9c690cc/docs/engine/animation.md#living-actor-default-selection).
 After an exit marker, a pending non-default can replace them on a later advance,
 with delays checked first. These rules are
 [published in preservation](https://github.com/michidk/redguard-preservation/blob/75cba23/docs/engine/animation.md#forward-type-one-transitions).

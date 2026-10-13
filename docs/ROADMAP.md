@@ -193,7 +193,7 @@ world playback is incomplete.
 ### Animation and scripts
 
 - [x] **Verified:** script schema 4 exports actor-load attribute defaults through preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59), using installed SYSTEM.INI. Installed-map tests and a native headless PALACE check verify the initialized attributes. Model-path message-group assignment and complete actor initialization remain open.
-- [x] Retained animation metadata and source-mapped i32/reconstructed-i16 poses; supplied-tick type-0/type-1 requests, priorities, defaults, exit tails and authored sound markers.
+- [x] Retained animation metadata and source-mapped i32/reconstructed-i16 poses; supplied-tick type-0/type-1 requests, priorities, default replacement, exit tails and authored sound markers. **Verified:** animation transition and grounded-update contracts cover changed current/pending defaults and retained frames.
 - [x] Portable SOUP VM and logical actors; explicit animation, waits, flags, attributes, routed tasks, spatial attachment/rotation and player queries share state with presentation. **Verified:** FLAG2 supplied-tick sequences and PALACE headless spatial contracts.
 - [x] Explicit activation shares receiver ownership, pending prompts and timers with HUD drawing. **Verified:** [activation increment](https://github.com/michidk/cyrus/commit/5358aa0) includes script/headless HUD contracts and installed RTX labels, including text-only entries.
 - [x] Shared clock arithmetic consumes validated installed settings and explicit BIOS samples, retaining startup warmup, smoothing and fractional nominal ticks. **Verified:** clock contracts, installed native/browser schema-6 preparation and headless START loading. This does not schedule actors.

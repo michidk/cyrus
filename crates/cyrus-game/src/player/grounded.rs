@@ -45,8 +45,8 @@ pub fn advance_animation(
             .context("grounded update: player definition unavailable")?
             .ordinary_default_group,
     );
-    animation.set_default_group(default_group);
-    let frame = animation.advance_with_sounds(ticks, sounds)?;
+    let frame = animation.select_default_with_sounds(default_group, ticks, sounds)?;
+    let frame = animation.advance_with_sounds(ticks, sounds)?.or(frame);
     Ok(animation
         .request_with_sounds(default_group, 0, ticks, sounds)?
         .or(frame))

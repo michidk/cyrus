@@ -71,10 +71,34 @@ impl ActorAnimation {
 }
 
 impl ActorAnimation {
-    /// Select the caller-established state default before ordinary advancement.
-    /// This alone does not request, restart or advance any group.
-    pub fn set_default_group(&mut self, group: u16) {
+    /// Apply a caller-selected ordinary default outside shell execution.
+    /// Replaces the old current default before its exit marker and separately
+    /// retargets an old pending default, reusing this update's nominal ticks.
+    /// Follows preservation's engine/animation.md living default selection.
+    pub fn select_default_with_sounds(
+        &mut self,
+        group: u16,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.check_failure()?;
+        let old = self.default;
         self.default = group;
+        if group == old {
+            return Ok(None);
+        }
+        let mut frame = None;
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|(current, sequence)| *current == old && !sequence.exit_reached())
+        {
+            frame = self.force_request_with_sounds(group, 0, ticks, sounds)?;
+        }
+        if self.pending_group() == Some(old) {
+            frame = self.request_with_sounds(group, 0, ticks, sounds)?.or(frame);
+        }
+        Ok(frame)
     }
 
     /// The caller-selected playback default, distinct from the model's attribute default.

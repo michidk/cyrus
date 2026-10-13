@@ -48,6 +48,8 @@ An explicit ordinary grounded update now composes animation advancement/default
 requests, forward support admission, walking translation, support-height assignment,
 ordered wall response, residual separation, and startup reset. It preserves
 separate animation invocations with the same caller-supplied nominal ticks.
+Selecting its sheathed default first applies the shared current/pending replacement
+rules, retaining any frame selected before the ordinary advancement.
 With animation enabled, a pending walking request does not advance startup.
 An active ordinary walking group can continue after input release without
 requesting the group again or replacing its pending idle request, following

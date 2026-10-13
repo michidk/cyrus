@@ -35,6 +35,102 @@ fn model_initialization_preserves_the_selected_frame_and_shared_ticks() {
 }
 
 #[test]
+fn changed_current_default_replaces_immediately_and_preserves_sound_order() {
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":4,"volume_shift":0},{"opcode":0,"frame_reference":70}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":8,"volume_shift":0},{"opcode":0,"frame_reference":80},
+            {"opcode":0,"frame_reference":81},{"opcode":2,"value":1}]}
+    ]));
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    let mut events = Vec::new();
+    let mut sounds = |event| {
+        events.push(event);
+        Ok(())
+    };
+    actor.advance_with_sounds(1, &mut sounds).unwrap();
+    assert_eq!(
+        actor.select_default_with_sounds(8, 1, &mut sounds).unwrap(),
+        Some(80)
+    );
+    assert_eq!(actor.current_group(), Some(8));
+    assert_eq!(actor.default_group(), 8);
+    assert_eq!(
+        actor.select_default_with_sounds(8, 1, &mut sounds).unwrap(),
+        None
+    );
+    assert_eq!(actor.advance_with_sounds(1, &mut sounds).unwrap(), Some(81));
+    assert_eq!(
+        events,
+        [
+            AnimationSound::Play {
+                effect: 4,
+                rate_offset_hz: 0
+            },
+            AnimationSound::Forget,
+            AnimationSound::Play {
+                effect: 8,
+                rate_offset_hz: 0
+            },
+        ]
+    );
+}
+
+#[test]
+fn changed_default_retargets_pending_request_using_ordinary_priority() {
+    let data = asset(json!([
+        {"group_index":1,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":10}]},
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":70}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":80}]},
+        {"group_index":9,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":90}]}
+    ]));
+    for (new_default, pending) in [(8, 8), (1, 7)] {
+        let mut actor =
+            cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+        actor.request(9, 0, 0).unwrap();
+        actor.request(7, 0, 0).unwrap();
+        assert_eq!(
+            actor
+                .select_default_with_sounds(new_default, 0, &mut |_| Ok(()))
+                .unwrap(),
+            None
+        );
+        assert_eq!(actor.current_group(), Some(9));
+        assert_eq!(actor.default_group(), new_default);
+        assert_eq!(actor.pending_group(), Some(pending));
+    }
+}
+
+#[test]
+fn changed_default_does_not_force_an_old_default_past_its_exit_marker() {
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":1,"commands":[
+            {"opcode":0,"frame_reference":70},{"opcode":3,"value":3},
+            {"opcode":2,"value":0},{"opcode":0,"frame_reference":71},{"opcode":1}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":80}]},
+        {"group_index":9,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":90}]}
+    ]));
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 9).unwrap();
+    actor.request(7, 0, 1).unwrap();
+    actor.request(9, 0, 1).unwrap();
+    assert_eq!(actor.advance(1).unwrap(), Some(71));
+    actor
+        .select_default_with_sounds(7, 0, &mut |_| Ok(()))
+        .unwrap();
+    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.pending_group(), Some(9));
+    assert_eq!(
+        actor
+            .select_default_with_sounds(8, 0, &mut |_| Ok(()))
+            .unwrap(),
+        None
+    );
+    assert_eq!(actor.current_group(), Some(7));
+    assert_eq!(actor.pending_group(), Some(9));
+}
+
+#[test]
 fn type_one_finishes_its_exit_tail_before_selecting_the_pending_default() {
     let data = asset(json!([
         {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
