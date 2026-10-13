@@ -19,9 +19,10 @@
     "console": [
       "task = 0",
       "animation = 0",
+      "load 1,0,0",
       "load 1,0,0"
     ],
     "load_wait_ms": 90000
   },
-  "evidence": "Verified camera measured in the original with task and animation systems disabled for a static scene capture. Gameplay timing and animation phases are not compared."
+  "evidence": "Verified camera reproduced from a cold original startup with task_system=no and animation_system=no in the writable SYSTEM.INI. Two console loads are required by this fixture. Static scene/viewpoint comparison only."
 }

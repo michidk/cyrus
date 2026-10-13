@@ -2,13 +2,13 @@
   "version": 1,
   "world": "START",
   "view": [
-    -1627.1500244140625,
-    21.399999618530273,
-    -1603.2498779296875,
-    -0.06600452214479446,
-    0.9253063201904297,
-    0.1899644136428833,
-    0.3215044438838959
+    -1635.300048828125,
+    16.450000762939453,
+    -1606.9998779296875,
+    0,
+    1,
+    0,
+    0
   ],
   "viewport": [
     640,
@@ -23,5 +23,5 @@
     ],
     "load_wait_ms": 60000
   },
-  "evidence": "Verified camera reproduced across two original console loads with task and animation systems disabled. Static scene/viewpoint comparison only."
+  "evidence": "Verified neutral ship-deck camera reproduced on reload and from a cold original startup with task_system=no and animation_system=no in the writable SYSTEM.INI. Static scene/viewpoint comparison only."
 }

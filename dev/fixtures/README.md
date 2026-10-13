@@ -14,8 +14,11 @@ These are scene/viewpoint comparisons. Animation phases and gameplay updates are
 not synchronized. Settling times are host milliseconds, not original simulation
 ticks. **Unknown:** complete original/native/browser gameplay equivalence.
 
-1. Start the original with `just retro` and enter gameplay. Use a separate named
-   instance when another session owns the default container.
+1. Restore the original using the guarded bundle below with `--static-capture`.
+   This sets `[system] task_system=no` and `animation_system=no` in the writable
+   runtime before startup. Keep the install read-only. Start the owned original
+   instance, enter New Game, and inspect the loaded ship deck. Check F12 `oracle`
+   reports task 0 and animation 0, then close the console.
 2. Set `CYRUS_ORIGINAL_CAPTURE` to your executable original-game adapter under
    `magic/`. The adapter contract below keeps executable-specific instrumentation
    outside tracked files. Missing instrumentation fails the replay.
@@ -95,8 +98,10 @@ browser afterward. Unit tests also run in `just gates`.
 ## Starter views
 
 **Verified:** `belltowr.json`, `island.json`, and `start.json` record measured
-original camera poses. Their original-game setup explicitly sets `task = 0` and
-`animation = 0` before loading. Native/browser may advance supported runtime
+original camera poses. Their cold startup uses the writable SYSTEM.INI settings above. Console setup
+also sets `task = 0` and `animation = 0` before loading. ISLAND loads twice; the
+adapter must reopen F12 after each load before sending another command. START
+uses its measured neutral ship-deck pose. Native/browser may advance supported runtime
 updates; the fixtures do not synchronize animation or gameplay. BELLTOWR frames
 the door and table, ISLAND frames terrain and nearby barrels, and START frames
 the ship deck and water. Do not use them to claim animation or script fidelity.
@@ -138,15 +143,15 @@ capture. The runner checks the measured view, image hash and viewport.
 Use the `cyrus-playtest` skill's debugger procedure to measure the original view.
 Keep executable-specific probes and raw measurements under `magic/`, archive the
 research text privately, and record only camera poses/setup in these fixtures.
-Maintainers can retrieve the verified adapter and setup scripts from the private
-[research snapshot](https://github.com/michidk/redguard-decomp/tree/6289acd4acb6ac06a394dcfe7d18e697fbdd3d9d/research/supplements/2026-10-13-stage0-tooling).
-Copy those instruments under `magic/` and follow the snapshot setup instructions.
-The private [restoration procedure](https://github.com/michidk/redguard-decomp/blob/main/research/supplements/2026-10-13-stage0-final-verification/magic/artifacts/2026-10-13-stage0-followups/restore-verified-runtime.md)
-provides a restore command that checks archive and executable hashes, copies the
-install into a fresh writable runtime, and restores the instruments without
-launching them. Keep its updated adapter beside the restore script. It requires
-the recorded debug-enabled emulator binary. **Unknown:** reconstruction of that
-emulator from source and original CD/audio parity.
+Maintainers can retrieve the complete corrected adapter, restore helper and cold
+verification records from the private
+[guarded bundle](https://github.com/michidk/redguard-decomp/tree/0d596e97c624388e0080ea7a1dd9077c82126495/research/supplements/2026-10-13-stage0-owned-preview/cold-fixtures). Copy the restore helper and all five adjacent instruments under `magic/`.
+Use the bundle's restore command with `--static-capture`; its `--snapshot`
+argument points to the earlier tooling snapshot for the Docker/runtime templates.
+The helper checks archive and executable hashes, copies the install into a fresh
+writable runtime, and records the SYSTEM.INI change. It does not launch.
+It requires the recorded debug-enabled emulator binary. **Unknown:** reconstruction
+of that emulator from source and original CD/audio parity.
 
 The adapter must release held keys when resuming and must not write to the linked
 install. Use the original's writable runtime copy. Emulator save states are not

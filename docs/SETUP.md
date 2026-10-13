@@ -516,12 +516,14 @@ before the fixture settling time. `InGame` can precede asynchronous geometry
 loading; it is insufficient for a scene capture. Script and gameplay readiness
 remain separate.
 
-Maintainers restoring the original adapter should use the corrected
-[private restoration procedure](https://github.com/michidk/redguard-decomp/blob/main/research/supplements/2026-10-13-stage0-final-verification/magic/artifacts/2026-10-13-stage0-followups/restore-verified-runtime.md).
-It requires the recorded debugger-enabled emulator, copies the install and
-installed Glide overlay into an isolated writable runtime, and checks hashes.
-Enter gameplay and freeze the original promptly before running fixtures. Check
-fresh measurements and Docker identity after restarting; an interrupted
-adapter's saved dump is not a new observation. **Unknown:** reconstruction of
-that emulator from source and original CD/audio parity. Static captures do not
-verify either.
+Maintainers restoring the original adapter should use the complete
+[guarded bundle](https://github.com/michidk/redguard-decomp/tree/0d596e97c624388e0080ea7a1dd9077c82126495/research/supplements/2026-10-13-stage0-owned-preview/cold-fixtures) and the [fixture workflow](../dev/fixtures/README.md).
+Pass `--static-capture` to the restore helper. It checks archive and executable
+hashes, copies the install and Glide overlay into an isolated writable runtime,
+and disables the documented task/animation SYSTEM.INI switches before startup.
+Enter New Game, inspect the loaded ship deck and F12 `oracle` task 0/animation 0,
+then close the console before fixtures. ISLAND's fixture loads twice; its adapter
+reopens the console between loads. Check fresh measurements and Docker identity
+after restarting; an interrupted adapter's saved dump is not a new observation.
+**Unknown:** reconstruction of the recorded debugger-enabled emulator from source
+and original CD/audio parity. Static captures do not verify either.
