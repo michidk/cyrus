@@ -124,6 +124,14 @@ passing it means the forbidden shapes are absent, not that the change is clean.
 
 ## Reference projects
 
+Use the installed `ghidra-cli` skill for original-executable research. It covers
+function inspection, cross-references, disassembly and decompilation through the
+shared Ghidra bridge. Keep project setup and binary identities in the local
+`magic/METHODOLOGY.md`; keep raw output under the task's `magic/artifacts/` folder
+and archive it privately before handoff. Publish durable engine facts in
+redguard-preservation before implementing them here. Do not restart or mutate a
+shared analysis project merely to inspect it.
+
 `just reference` fetches the reference clones into `magic/reference/` (run it
 again to update).
 
