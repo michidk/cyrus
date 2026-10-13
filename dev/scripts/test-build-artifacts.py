@@ -164,7 +164,7 @@ echo wasm > "$out/${app}_bg.wasm"
             self.assertTrue((self.root / "target/web/viewer.html").is_file())
         apps.append("cyrus-assets-worker")
         self.assertEqual((self.root / "cargo-calls.txt").read_text().splitlines(),
-                         [f"build {packages} --target wasm32-unknown-unknown --profile wasm-release"])
+                         [f"build {packages} --target wasm32-unknown-unknown --profile wasm-dev"])
         for app in apps:
             for suffix in (".js", "_bg.wasm"):
                 self.assertTrue((self.root / f"target/web/pkg/{app}{suffix}").is_file())
@@ -174,6 +174,7 @@ echo wasm > "$out/${app}_bg.wasm"
         workflow = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
         script = workflow.split("      - name: Create release with all packages and publish\n", 1)[1]
         script = script.split("        run: |\n", 1)[1]
+        script = script.split("\n\n", 1)[0]
         script = "\n".join(line[10:] for line in script.splitlines())
         gh = self.root / "bin/gh"
         gh.write_text('''#!/bin/bash
