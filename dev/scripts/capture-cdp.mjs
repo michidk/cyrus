@@ -10,7 +10,7 @@ export async function connectCdp(endpoint) {
     const timer = setTimeout(() => {
       pending.delete(current);
       reject(new Error(`CDP timeout: ${method}`));
-    }, ['Runtime.evaluate', 'Debugger.getScriptSource'].includes(method) ? 300000 : 30000);
+    }, ['Runtime.evaluate', 'Debugger.getScriptSource', 'Page.captureScreenshot'].includes(method) ? 300000 : 30000);
     pending.set(current, { resolve, reject, timer });
     socket.send(JSON.stringify({ id: current, method, params, sessionId: sessionId || undefined }));
   });
