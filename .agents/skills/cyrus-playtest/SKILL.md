@@ -66,7 +66,10 @@ to sample. Host hold duration does not establish a simulated update count.
 Console text can lose characters; send it slowly, handle modifiers explicitly,
 and inspect the echoed command and result before treating it as successful.
 
-For runtime inspection, read [Original-game debugger](references/original-debugger.md).
+Before using the F12 console or inspecting runtime state, read
+[Original-game debugger](references/original-debugger.md). It links the full
+command catalog and covers argument syntax, object selection, cheat values,
+and commands whose behavior differs from their help text.
 
 ## Compare
 
