@@ -30,7 +30,9 @@ leaves the picker open. `?install=local` opens this picker even with a saved URL
 or server default. Local selection remembers only that preference, not the files.
 The picker reports folder scan progress, cancellation and denied access, and shows
 application preparation immediately after accepting a folder. Server connection
-is available under an expandable option.
+is available under an expandable option. Companion files are discovered throughout
+the selected folder, including nested GOG support directories. Files outside that
+folder are inaccessible; select the main installation folder when a companion is missing.
 
 For HTTP sources, startup saves a validated install-service URL under localStorage `cyrus-install`, shared
 with the viewer, and checks the original files at each launch. Missing files reopen

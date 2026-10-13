@@ -81,7 +81,7 @@ export async function chooseInstall() {
   folderInput.multiple = true;
   folderInput.hidden = true;
   const localHelp = document.createElement("p");
-  localHelp.textContent = "Choose the GOG folder containing Redguard, DOSBOX and game.gog. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
+  localHelp.textContent = "Choose your main GOG Redguard folder. Cyrus searches its subfolders for the game and support files. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
   const server = document.createElement("details");
   const summary = document.createElement("summary");
   summary.textContent = "Connect to a game-file server instead";

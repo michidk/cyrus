@@ -179,7 +179,9 @@ Use `?install=local` to force local selection even with a saved URL or server
 default. Local selection saves only the preference `local` in `cyrus-install`.
 The picker reports folder scan progress, cancellation and denied access, and shows
 application preparation immediately after accepting a folder. Server connection
-is available under an expandable option.
+is available under an expandable option. Companion files are discovered throughout
+the selected folder, including nested GOG support directories. Files outside that
+folder are inaccessible; select the main installation folder when a companion is missing.
 
 The picker also accepts an HTTP(S) install-service URL.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and
