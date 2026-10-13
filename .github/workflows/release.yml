@@ -3,17 +3,23 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Dispatch from main with a tag: caches saved on a tag ref are invisible to the next release.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.2.0
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.repository }}-${{ github.ref }}
+  group: release-${{ github.repository }}-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
-  TAG_NAME: ${{ github.ref_name }}
+  TAG_NAME: ${{ inputs.tag || github.ref_name }}
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
@@ -30,12 +36,13 @@ jobs:
     steps:
       - name: Validate release tag
         run: |
-          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo '::error::Select a stable vX.Y.Z release tag.'
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -76,6 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free Linux disk space
         if: runner.os == 'Linux'
@@ -118,7 +126,6 @@ jobs:
     # Keep concurrent compilation and whole-program linking within hosted-runner memory.
     env:
       CARGO_BUILD_JOBS: 1
-      CARGO_PROFILE_WASM_RELEASE_LTO: thin
     needs: verify
     name: Browser bundles
     runs-on: ubuntu-24.04
@@ -126,6 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -136,10 +144,13 @@ jobs:
         with:
           shared-key: artifacts-web
           cache-workspace-crates: true
+      - name: Read wasm-bindgen version
+        id: bindgen
+        run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)" >> "$GITHUB_OUTPUT"
       - name: Install matching wasm-bindgen
-        run: |
-          version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)
-          cargo install wasm-bindgen-cli --version "$version" --locked
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2
+        with:
+          tool: wasm-bindgen@${{ steps.bindgen.outputs.version }}
       - name: Build and package
         run: /usr/bin/time -v bash dev/scripts/build-artifacts.sh web
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -163,6 +174,7 @@ jobs:
       - name: Checkout full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           fetch-depth: 0
           persist-credentials: false
       - name: Generate release changelog

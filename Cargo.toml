@@ -37,12 +37,18 @@ cyrus-text = { path = "crates/cyrus-text" }
 [patch."https://github.com/taboky-dev/bevy_egui.git"]
 bevy_egui = { version = "=0.43.0" }
 
+# Thin LTO fits hosted-runner memory; one codegen unit keeps the shipped download small.
 [profile.wasm-release]
 inherits = "release"
 opt-level = "s"
-lto = true
+lto = "thin"
 codegen-units = 1
 strip = true
+
+# Local browser builds: about 3x faster than wasm-release, with a larger download.
+[profile.wasm-dev]
+inherits = "wasm-release"
+codegen-units = 16
 
 [profile.test]
 debug = 0

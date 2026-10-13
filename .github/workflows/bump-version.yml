@@ -108,4 +108,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         # GITHUB_TOKEN tag pushes do not trigger workflows; dispatch explicitly.
-        run: gh workflow run release.yml --ref "v$VERSION"
+        run: gh workflow run release.yml --ref "$DEFAULT_BRANCH" -f tag="v$VERSION"

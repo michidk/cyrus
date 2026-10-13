@@ -90,18 +90,21 @@ The site contains application code only; supply a game install with
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
 They do not build release archives. Release builds run only for stable `vX.Y.Z`
-tags, either when pushed or selected in a manual `Release` dispatch.
+tags, either when pushed or dispatched from `main` with a `tag` input such as
+`v0.2.0`. Dispatching from `main` saves the build caches where the next release
+can restore them; caches saved by a tag-push run are visible only to that tag.
 
 Run `Bump Version & Tag` on `main` with a version such as `0.2.0` to update the
 shared workspace version and lockfile, commit, and atomically push the commit
-and tag, then explicitly dispatch `Release` for that tag. It uses the built-in
+and tag, then dispatch `Release` from `main` for that tag. It uses the built-in
 workflow token and needs no repository secret. Repeating a matching version/tag
 retries the release without another version commit. Alternatively, update the
 version and lockfile locally and push the version commit and tag.
 
 `Release` checks that every workspace package matches the tag and runs the gates
-before building all platforms. Browser release builds use one Cargo job and thin
-link-time optimization to limit hosted-runner memory use; build logs include
+before building all platforms. Browser release builds use one Cargo job and the
+`wasm-release` profile (thin link-time optimization, one codegen unit) to limit
+hosted-runner memory use; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
 commits with git-cliff and `cliff.toml`, attaches all archives and `SHA256SUMS`,
 and publishes the release. No release is created when a build fails; successful
@@ -122,6 +125,10 @@ support on that platform.
 rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # version from Cargo.lock
 just run-web --install /path/to/Redguard # supplies files automatically to game and viewer
 ```
+
+Local browser builds use the `wasm-dev` profile: about three times faster than
+`wasm-release`, with a larger download. Set `CYRUS_WASM_PROFILE=wasm-release`
+to build what releases ship.
 
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
