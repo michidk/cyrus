@@ -152,7 +152,7 @@ of every palette and world still needs original-game comparison.
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
 | SMK | Native/browser video, first-track audio, installed skip/subtitle rules and streamed browser playback | Original comparison, A/V sync and player-hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Cursor/indexed image inspection and authored-rate ANM playback | Game cursor integration and palette cycling |
-| CHT | Preload parsing | Game runtime use |
+| CHT | Preload parsing and asset-viewer decoded values | Runtime cheat state, startup restore and compatible file writing through `savecheats`; see the cheat checklist below |
 | PVO | Preload parsing and viewer inspection | Runtime culling excluded at user request |
 | Save data | Unsupported | Safe world/player/script/quest persistence |
 
@@ -176,6 +176,22 @@ screen or root access.
 
 Done when a fresh clone with a purchased install builds and runs both games,
 accepts agent control and produces a repeatable comparison through SETUP commands.
+
+### Original console UI and cheats
+
+**Verified:** preservation documents the [13 cheats and activation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
+and [REDGUARD.CHT format](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/CHT.md).
+Cyrus parses CHT during preload and exposes decoded values in the asset viewer.
+The explicit SOUP host also supports the distance override used by `neversaydie`,
+but no cheat input or persisted cheat state drives it. The F1 debug menu and
+TCP/MCP controls do not implement the original F12 console.
+
+- [ ] Implement the original F12 console interface/UI on native and browser builds: opening/closing, text input/editing, command submission and output. Establish its appearance, input focus and gameplay timing from the original; publish missing rules in preservation before implementation.
+- [ ] Implement gameplay cheat-name entry followed by Enter, console toggles, explicit integer assignment and `oracle` output through shared runtime cheat state. Use preservation's names and rules; keep unsupported effects explicit.
+- [ ] Read `REDGUARD.CHT` into runtime state at startup and write compatible files through `savecheats`. Add a CHT writer to `rgpre`, preserving all 64 integer slots in the documented 256-byte format. Support importing the installed file read-only; save native state to `cyrus-config/REDGUARD.CHT`, with browser persistence and CHT file import/export. Define local-versus-installed precedence and reset behavior without writing into the install.
+- [ ] Connect each documented cheat effect to its owning gameplay, script, animation or rendering system as those systems become available in stages 1–4. Wire the existing distance override to `neversaydie`; retain `oddjob`'s documented lack of gameplay effect. The inspection flycam does not implement player flight cheats.
+- [ ] Inventory and implement the original console's non-cheat commands from preservation evidence and original-game observations, including documented sky/water controls. Report unsupported commands explicitly; publish missing command contracts first.
+- [ ] Compare console presentation, input and cheat effects with the original. Verify CHT read/write round trips, arbitrary integer states, restart restoration, reset, malformed files and failed writes on native/browser builds; verify the install remains unchanged.
 
 ### Startup and book menu
 
