@@ -237,6 +237,7 @@ world playback is incomplete.
 - [x] Shared native/browser 16-channel effects, animation cues and explicit script flat starts/selective cleanup with receiver/effect ownership. **Verified:** [sound increment](https://github.com/michidk/cyrus/commit/ea836da) includes receiver/result and headless mixer contracts, queued browser cleanup and old-world expiry.
 - [x] Installed HUD candle, health, compass, items/counts, power-up slots, logbook, prompts and notices; F8/Tab/F7 preferences persist.
 - [ ] Parse SURFACE.INI remapping in preservation and set actor SoundSurface from ground/collision.
+  Preservation parser and engine rules: [PR #65](https://github.com/michidk/redguard-preservation/pull/65); actor SoundSurface integration remains with the SOUP session.
 - [ ] Add positional/ambient starts, StopAllSounds results, shell/code-object ownership, KillMe/Resurrect cleanup, rope thresholds and torch loops; refresh moving-emitter gain/pan.
 - [ ] Feed production activation conditions, health, sword/lockout/player type, heading/world and compass state into the HUD. Connect bitmap/logbook script handlers and player walk-mode/auto-defend behavior.
 - [ ] Verify native/browser HUD layout, candle cadence, prompt/item timing and compass semantics. **Unknown:** compass frame-zero direction and item-zero compass activation.
