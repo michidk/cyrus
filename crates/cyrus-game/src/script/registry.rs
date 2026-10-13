@@ -160,6 +160,7 @@ pub struct ScriptWorld {
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
+    markers: Option<super::markers::Markers>,
 }
 impl ScriptWorld {
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
@@ -317,10 +318,33 @@ impl ScriptWorld {
             task_calls,
             names,
             actor_lists: None,
+            markers: None,
             spatial: None,
             activation: Default::default(),
         })
     }
+    /// Prepare ordinary-world markers from the matching sidecar before script execution.
+    /// Preparation is atomic and cannot replace marker state within a world generation.
+    pub fn prepare_markers(&mut self, data: &Animations) -> Result<()> {
+        data.require_version()?;
+        anyhow::ensure!(
+            data.world == self.world
+                && data.metadata["script_content_id"].as_str() == Some(&self.content_id),
+            "world {} marker/script cache generation mismatch; re-export the world",
+            self.world
+        );
+        anyhow::ensure!(
+            self.markers.is_none(),
+            "world {} markers already prepared",
+            self.world
+        );
+        self.markers = Some(
+            super::markers::Markers::prepare(&data.metadata)
+                .with_context(|| format!("world {} marker preparation", self.world))?,
+        );
+        Ok(())
+    }
+
     /// Normal fresh-world update-list membership, before runtime actor exclusions.
     /// View coordinates use integer map units. Cell and persistent lists retain
     /// reverse creation order; the 18-cell window omits its corners and excludes
@@ -758,6 +782,7 @@ impl ScriptWorld {
             flag_state: &mut self.flag_state,
             sounds,
             spatial: self.spatial.as_mut(),
+            markers: self.markers.as_ref(),
             activation: &mut self.activation,
             inputs,
         };
@@ -981,7 +1006,8 @@ pub(super) fn prepare(
                 scripts.world
             );
         }
-        let world = ScriptWorld::prepare(scripts, actors.generation)?;
+        let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
+        world.prepare_markers(animation_data)?;
         if clock.is_none() {
             commands.insert_resource(crate::clock::SimulationClock::new(scripts.clock)?);
         }
@@ -1002,6 +1028,7 @@ pub(super) fn prepare(
 struct GameHost<'a, 'sound, 'input> {
     activation: &'a mut super::ActivationState,
     spatial: Option<&'a mut super::spatial::SpatialWorld>,
+    markers: Option<&'a super::markers::Markers>,
     inputs: ScriptInputs<'input>,
     index: usize,
     generation: u64,
@@ -1161,6 +1188,23 @@ impl Host for GameHost<'_, '_, '_> {
                 .as_mut()
                 .context("script sound handler absent")?(id, sound)?;
             return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("AtNodeMarker") {
+            let [marker, distance] = arguments else {
+                anyhow::bail!("AtNodeMarker requires two arguments")
+            };
+            let position = self
+                .spatial
+                .as_deref()
+                .context("AtNodeMarker spatial state not prepared")?
+                .actor(self.index)?
+                .local
+                .position;
+            let result = self
+                .markers
+                .context("AtNodeMarker markers not prepared")?
+                .contains(marker.integer()?, position, distance.integer()?)?;
+            return Ok(CallResult::Complete(i32::from(result)));
         }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")

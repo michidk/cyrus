@@ -19,7 +19,19 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
         }
         let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(&path).unwrap()).unwrap();
         let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
-        let world = ScriptWorld::prepare(&scripts, 1)
+        let mut world = ScriptWorld::prepare(&scripts, 1)
+            .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
+        let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
+        metadata["script_content_id"] = scripts.content_id.clone().into();
+        world
+            .prepare_markers(&cyrus_assets::animation::Animations {
+                version: 2,
+                world: scripts.world,
+                metadata,
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+            })
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         for actor in world.actors() {
             if let Some(error) = actor.unavailable() {
@@ -379,4 +391,88 @@ fn installed_island_mechanism_moves_its_master_and_refreshes_attached_poses() {
     );
     assert_eq!(sounds.len(), 1);
     assert_eq!(sounds[0].0, id);
+}
+
+#[test]
+fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP node marker hook)");
+        return;
+    }
+    let path = std::fs::read_dir(root.join("maps"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("HIDEOUT.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
+    let hook_actor = scripts
+        .actors
+        .iter()
+        .find(|(_, actor)| {
+            actor
+                .native_hook
+                .as_ref()
+                .is_some_and(|call| call.function == "AtNodeMarker")
+        })
+        .unwrap()
+        .0;
+    let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
+    metadata["script_content_id"] = scripts.content_id.clone().into();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata,
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_markers(&data).unwrap();
+    world.prepare_spatial().unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == hook_actor)
+        .unwrap();
+    let id = world.id(index).unwrap();
+    let before = world.actors()[index]
+        .runtime()
+        .unwrap()
+        .program_counter(cyrus_script::Thread::Main);
+    let error = world
+        .advance(
+            id,
+            ScriptStage::OrdinaryHook,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            20,
+        )
+        .unwrap_err();
+    let error = format!("{error:#}");
+    assert!(error.contains("actor MARINE"), "{error}");
+    assert!(error.contains("AtNodeMarker"), "{error}");
+    assert!(
+        error.contains("marker 262144: outside ordinary world table"),
+        "{error}"
+    );
+    assert_eq!(
+        world.actors()[index]
+            .runtime()
+            .unwrap()
+            .program_counter(cyrus_script::Thread::Main),
+        before
+    );
+    assert!(world.actors()[index].failure().is_some());
 }

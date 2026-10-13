@@ -292,3 +292,16 @@ slots do not suppress it. `ordinary_main` does no work when the installed task
 system is disabled. Direct inspection stages retain their explicit behavior.
 These gates follow [preservation's ordinary update rules](https://github.com/michidk/redguard-preservation/blob/e4e2aca/docs/engine/SOUP.md#ordinary-update-gates).
 Combat dispatch and complete automatic actor admission remain unsupported.
+
+`AtNodeMarker` reads the receiver's local position and the ordinary marker table
+prepared from matching animation metadata. **Verified:** the distance rounding,
+inclusive threshold and marker presence follow
+[preservation's marker contract](https://github.com/michidk/redguard-preservation/blob/bcc298c/docs/engine/SOUP.md#node-marker-distance).
+Installed-map preparation and original-instruction boundary comparisons cover
+this explicit query. Routed calls retain the receiver's local attached pose.
+Missing/out-of-range markers report contextual errors; distances outside the
+signed integer range and alternate-map marker tables remain unsupported.
+The installed HIDEOUT hook reports an out-of-range marker when explicitly invoked.
+**Verified:** no installed WORLD.INI map assignment selects HIDEOUT.RGM; natural
+execution of that hook remains **Unknown**. This does not enable
+automatic actor updates.

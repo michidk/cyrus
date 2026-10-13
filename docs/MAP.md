@@ -97,6 +97,7 @@ module where it is defined and regenerate.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
+- `src/script/markers.rs` — Ordinary-world marker queries use preservation's SOUP node-marker distance contract.
 - `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
 - `src/script/order.rs` — Fresh-world ordinary actor membership and cached view-window traversal.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.

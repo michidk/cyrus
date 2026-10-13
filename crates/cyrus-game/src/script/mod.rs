@@ -6,6 +6,7 @@ pub use activation::{
 mod animation;
 mod attributes;
 mod flags;
+mod markers;
 mod order;
 mod playback;
 mod presentation;
