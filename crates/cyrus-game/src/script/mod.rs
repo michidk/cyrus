@@ -6,6 +6,7 @@ pub use activation::{
 mod animation;
 mod attributes;
 mod flags;
+mod order;
 mod playback;
 mod presentation;
 mod registry;
@@ -20,8 +21,8 @@ pub use cyrus_script::Thread;
 pub use playback::ScriptedPlayback;
 pub use presentation::{ScriptBinding, ScriptScene};
 pub use registry::{
-    ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs, ScriptStage,
-    ScriptWorld,
+    ActorControlState, ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs,
+    ScriptStage, ScriptWorld,
 };
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs};
 pub use status::ScriptStatus;

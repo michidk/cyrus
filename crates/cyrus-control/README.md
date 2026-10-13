@@ -40,7 +40,8 @@ comparison; it does not synchronize other users of the original random stream.
 
 `scripts {offset, limit}` returns bounded logical actor state. `step_script
 {generation, index, stage, frame_scale, nominal_ticks}` selects `animation`,
-`entry`, `main`, `interrupt`, or `tasks`.
+`native_hook`, `entry`, `main`, `interrupt`, or `tasks`.
+Native hooks dispatch the retained RAHK call without advancing either script continuation.
 `tasks` requires an explicit unsigned `frame_scale` with eight fractional bits.
 For example, 256 supplies scale one; zero is accepted. Main and interrupt body
 steps do not poll existing tasks. These inspection tools do not enable gameplay.
@@ -53,8 +54,9 @@ all steps require explicit `nominal_ticks`, including zero, before execution.
 These tools do not determine production eligibility or pacing.
 
 Spatial inspection uses `step_script` stages `prepare_spatial`, `snapshot`,
-`transform`, and `families`. Preparation is explicit and transactional. Snapshot
-copies the selected actor's local angles; transform refreshes an unattached
+`axis_locks`, `transform`, and `families`. Preparation is explicit and transactional. Snapshot
+copies the selected actor's local position and angles; axis_locks restores currently
+locked axes after script/movement work, except on slaves; transform refreshes an unattached
 matrix; families composes prepared attachments. These operations grant no actor
 eligibility. Once spatial state is prepared, executable stages need both
 `frame_scale` and `nominal_ticks`, including zero.

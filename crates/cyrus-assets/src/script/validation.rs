@@ -2,6 +2,48 @@
 use super::{Call, Definition, Formula, Object, Operation, Place, Program, Value};
 use anyhow::Result;
 impl Program {
+    pub(super) fn validate_native_hook(&self, hook: &Call, definition: &Definition) -> Result<()> {
+        anyhow::ensure!(
+            hook.target == Object::Me && hook.kind == super::CallKind::Function,
+            "native hook must directly call a function on its actor"
+        );
+        self.call(hook, 0)?;
+        let declaration = definition.functions.get(usize::from(hook.function_id));
+        anyhow::ensure!(
+            declaration.is_some_and(|function| {
+                function.name == hook.function
+                    && usize::from(function.param_count) == hook.arguments.len()
+            }),
+            "native hook function {} declaration mismatch for index {}",
+            hook.function,
+            hook.function_id
+        );
+        anyhow::ensure!(
+            hook.arguments.len() <= 8,
+            "native hook exceeds eight parameters"
+        );
+        for argument in &hook.arguments {
+            anyhow::ensure!(
+                !matches!(argument, Value::Call { .. } | Value::Update { .. }),
+                "native hook parameter cannot call or update"
+            );
+            if let Value::Read { place } = argument {
+                match place {
+                    Place::Flag { index } => anyhow::ensure!(
+                        usize::from(*index) < definition.flags.len(),
+                        "native hook global flag {index} absent"
+                    ),
+                    Place::Property { reference, .. } => anyhow::ensure!(
+                        usize::from(*reference) < definition.references.len(),
+                        "native hook reference {reference} absent"
+                    ),
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Checks every installed index and function signature before execution.
     pub fn validate_definition(&self, definition: &Definition) -> Result<()> {
         self.validate()?;

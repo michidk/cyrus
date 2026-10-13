@@ -49,6 +49,7 @@ impl ScriptActorSource {
 /// Explicit stages preserve separate animation, task and script-body invocations.
 #[derive(Debug, Clone, Copy)]
 pub enum ScriptStage {
+    NativeHook,
     Animation,
     Entry,
     Tasks,
@@ -69,14 +70,30 @@ pub(crate) struct ScriptAnimation {
     pub(crate) frame: Option<u32>,
 }
 
+/// Allocated ordinary-map control state, separate from animation playback.
+/// Allocation and combat construction follow preservation's engine/animation.md.
+/// Standalone role setup and death/removal transitions remain unsupported.
+#[derive(Debug, serde::Serialize)]
+pub struct ActorControlState {
+    pub death_selector: u8,
+    pub living_state: u8,
+    pub rope_attached: bool,
+    pub torch_burning: u8,
+    pub weapon_drawn: bool,
+    pub object_update_excluded: bool,
+    pub combat_death_default: Option<i32>,
+}
+
 pub struct ScriptActor {
     pub source: ScriptActorSource,
     /// Signed low word used by namespace lookup; absent for separate map object paths.
     pub runtime_identifier: Option<i16>,
     pub namespace: Option<String>,
+    native_hook: Option<Call>,
     runtime: Option<Runtime>,
     unavailable: Option<String>,
     attributes: Vec<u8>,
+    control: Option<ActorControlState>,
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
@@ -97,6 +114,10 @@ impl ScriptActor {
     /// Prepared attribute bytes, including immediate script writes and backup copies.
     pub fn attributes(&self) -> &[u8] {
         &self.attributes
+    }
+    /// Known ordinary-map allocation state; standalone roles have no established state.
+    pub fn control_state(&self) -> Option<&ActorControlState> {
+        self.control.as_ref()
     }
     pub(super) fn bound_animation_group(&self) -> Option<Option<u16>> {
         self.animation
@@ -131,6 +152,7 @@ pub struct ScriptWorld {
     activation: super::ActivationState,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     names: BTreeMap<i16, usize>,
+    actor_lists: Option<super::order::ActorLists>,
 }
 impl ScriptWorld {
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
@@ -157,65 +179,82 @@ impl ScriptWorld {
             }
         }
         let mut allocations = BTreeMap::<String, usize>::new();
-        let mut allocate =
-            |source: ScriptActorSource, runtime_identifier: Option<i16>, index: usize| {
-                let name = source.name();
-                let context = format!(
-                    "world {} instance {index} actor {name} script",
-                    scripts.world
+        let mut allocate = |source: ScriptActorSource,
+                            runtime_identifier: Option<i16>,
+                            index: usize| {
+            let name = source.name();
+            let context = format!(
+                "world {} instance {index} actor {name} script",
+                scripts.world
+            );
+            let metadata = scripts.actors.get(name);
+            let result = (|| {
+                anyhow::ensure!(
+                    runtime_identifier.is_some(),
+                    "separate map object path unsupported"
                 );
-                let metadata = scripts.actors.get(name);
-                let result = (|| {
-                    anyhow::ensure!(
-                        runtime_identifier.is_some(),
-                        "separate map object path unsupported"
-                    );
-                    let actor = metadata.context("program absent")?;
-                    let allocated = allocations.entry(name.to_owned()).or_default();
-                    let locals = actor
-                        .instance_variables
-                        .get(*allocated)
-                        .context("authored instance allocation exceeded")?
-                        .clone();
-                    *allocated += 1;
-                    Runtime::from_shared(
-                        Arc::clone(&programs[name]),
-                        CodeOrigin(actor.code_origin),
-                        locals,
-                        context.clone(),
-                    )
-                })();
-                let (runtime, unavailable) = match result {
-                    Ok(runtime) => (Some(runtime), None),
-                    Err(error) => (None, Some(format!("{context}: {error:#}"))),
-                };
-                ScriptActor {
-                    source,
-                    runtime_identifier,
-                    namespace: metadata.and_then(|actor| actor.namespace.clone()),
-                    runtime,
-                    unavailable,
-                    tasks: Default::default(),
-                    animation: None,
-                    animation_failure: None,
-                    attributes: (0..256)
-                        .map(|index| {
-                            metadata
-                                .and_then(|actor| {
-                                    let key = scripts
-                                        .definition
-                                        .attributes
-                                        .get(index)
-                                        .filter(|name| !name.is_empty())
-                                        .cloned()
-                                        .unwrap_or_else(|| format!("attr_{index}"));
-                                    actor.attributes.get(&key).copied()
-                                })
-                                .unwrap_or(0)
-                        })
-                        .collect(),
-                }
+                let actor = metadata.context("program absent")?;
+                let allocated = allocations.entry(name.to_owned()).or_default();
+                let locals = actor
+                    .instance_variables
+                    .get(*allocated)
+                    .context("authored instance allocation exceeded")?
+                    .clone();
+                *allocated += 1;
+                Runtime::from_shared(
+                    Arc::clone(&programs[name]),
+                    CodeOrigin(actor.code_origin),
+                    locals,
+                    context.clone(),
+                )
+            })();
+            let (runtime, unavailable) = match result {
+                Ok(runtime) => (Some(runtime), None),
+                Err(error) => (None, Some(format!("{context}: {error:#}"))),
             };
+            let control = match &source {
+                ScriptActorSource::Map(placement) if !matches!(placement.object_type, 2 | 6) => {
+                    Some(ActorControlState {
+                        death_selector: 0,
+                        living_state: 0,
+                        rope_attached: false,
+                        torch_burning: 0,
+                        weapon_drawn: false,
+                        object_update_excluded: false,
+                        combat_death_default: None,
+                    })
+                }
+                _ => None,
+            };
+            ScriptActor {
+                source,
+                control,
+                runtime_identifier,
+                namespace: metadata.and_then(|actor| actor.namespace.clone()),
+                native_hook: metadata.and_then(|actor| actor.native_hook.clone()),
+                runtime,
+                unavailable,
+                tasks: Default::default(),
+                animation: None,
+                animation_failure: None,
+                attributes: (0..256)
+                    .map(|index| {
+                        metadata
+                            .and_then(|actor| {
+                                let key = scripts
+                                    .definition
+                                    .attributes
+                                    .get(index)
+                                    .filter(|name| !name.is_empty())
+                                    .cloned()
+                                    .unwrap_or_else(|| format!("attr_{index}"));
+                                actor.attributes.get(&key).copied()
+                            })
+                            .unwrap_or(0)
+                    })
+                    .collect(),
+            }
+        };
         let mut counter = scripts.actor_pool_capacity.wrapping_add(3);
         let mut actors = Vec::new();
         for (index, placement) in scripts.instances.iter().enumerate() {
@@ -268,10 +307,31 @@ impl ScriptWorld {
             actors,
             task_calls,
             names,
+            actor_lists: None,
             spatial: None,
             activation: Default::default(),
         })
     }
+    /// Normal fresh-world update-list membership, before runtime actor exclusions.
+    /// View coordinates use integer map units. Cell and persistent lists retain
+    /// reverse creation order; the 18-cell window omits its corners and excludes
+    /// attribute-113 actors on its outer border. The selection is retained until
+    /// the starting cell changes, following preservation's `engine/animation.md`.
+    /// Dynamic allocation, removal and cell migration require separate lifecycle support.
+    pub fn ordinary_actors(&mut self, view: [i32; 2]) -> Result<&[ScriptActorId]> {
+        if self.actor_lists.is_none() {
+            self.actor_lists = Some(
+                super::order::ActorLists::new(&self.actors)
+                    .with_context(|| format!("world {} ordinary actor lists", self.world))?,
+            );
+        }
+        self.actor_lists
+            .as_mut()
+            .expect("actor lists prepared")
+            .select(&self.actors, self.generation, view)
+            .with_context(|| format!("world {} ordinary actor list", self.world))
+    }
+
     /// Prepare ordinary map poses and unique attachment families transactionally.
     /// Separate map paths and standalone roles remain unavailable for spatial services.
     pub fn prepare_spatial(&mut self) -> Result<()> {
@@ -296,7 +356,7 @@ impl ScriptWorld {
             .actor(index)
     }
 
-    /// Snapshot local angles at the explicit ordinary actor update boundary.
+    /// Snapshot local position and angles at the explicit ordinary actor update boundary.
     pub fn snapshot_spatial(&mut self, id: ScriptActorId) -> Result<()> {
         let index = self.resolve(id)?;
         self.spatial
@@ -305,6 +365,18 @@ impl ScriptWorld {
             .actor_mut(index)?
             .snapshot();
         Ok(())
+    }
+
+    /// Restore the current attribute-controlled axes after this actor's movement/script work.
+    /// Matrix and family refresh remain separate later stages.
+    pub fn restore_axis_locks(&mut self, id: ScriptActorId) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.spatial
+            .as_mut()
+            .context("spatial state not prepared")?
+            .actor_mut(index)?
+            .restore_axis_locks(&self.actors[index].attributes)
+            .with_context(|| format!("world {} instance {index} axis locks", self.world))
     }
 
     /// Refresh an unattached actor matrix without consuming its angle snapshot.
@@ -366,8 +438,8 @@ impl ScriptWorld {
             .placement()
             .context("animation initialization requires a map actor")?;
         anyhow::ensure!(
-            !matches!(placement.object_type, 2 | 6),
-            "world {} instance {index}: separate map object animation unsupported",
+            placement.object_type == 1,
+            "world {} instance {index}: animation initialization requires map object type 1",
             self.world
         );
         anyhow::ensure!(
@@ -383,12 +455,99 @@ impl ScriptWorld {
         );
         match result {
             Ok((playback, frame)) => {
+                actor
+                    .control
+                    .as_mut()
+                    .expect("type-one map actor has allocation state")
+                    .combat_death_default = (actor.attributes[14] != 0).then_some(0);
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 Ok(())
             }
             Err(error) => {
                 let message = format!(
                     "world {} instance {index} animation initialization: {error:#}",
+                    self.world
+                );
+                actor.animation_failure = Some(message.clone());
+                anyhow::bail!(message)
+            }
+        }
+    }
+
+    /// Select a nonplayer map actor's ordinary default using its owned state.
+    /// Item readiness and shared nominal ticks come from the invoking game stage.
+    /// This is separate from advancement and never grants update eligibility.
+    pub fn select_map_animation_default(
+        &mut self,
+        id: ScriptActorId,
+        item_system_ready: bool,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let actor = &mut self.actors[index];
+        if let Some(error) = actor.failure() {
+            anyhow::bail!("{error}");
+        }
+        let control = actor.control.as_ref().with_context(|| {
+            format!(
+                "world {} instance {index}: ordinary map control state unavailable",
+                self.world
+            )
+        })?;
+        let animation = actor.animation.as_mut().with_context(|| {
+            format!(
+                "world {} instance {index}: animation not prepared",
+                self.world
+            )
+        })?;
+        let group = if control.death_selector == 8 {
+            if let Some(default) = control.combat_death_default {
+                default as u16
+            } else if animation.playback.has_group(123) {
+                123
+            } else {
+                124
+            }
+        } else if control.rope_attached {
+            79
+        } else if control.living_state == 15 {
+            7
+        } else {
+            let (holding, drawing, sheathing) = super::activation::weapon_predicates(
+                control.living_state,
+                Some(super::ActivationAnimation {
+                    group: animation.playback.current_group(),
+                }),
+                control.combat_death_default.is_some(),
+                control.weapon_drawn,
+                actor.attributes[110],
+                item_system_ready,
+                false,
+            );
+            if sheathing {
+                u16::from(actor.attributes[44])
+            } else if drawing || holding {
+                8
+            } else if control.torch_burning != 0 {
+                5
+            } else {
+                u16::from(actor.attributes[44])
+            }
+        };
+        let result = animation
+            .playback
+            .select_default_with_sounds(group, ticks, &mut |sound| {
+                sounds(id, super::ScriptSound::Animation(sound))
+            });
+        match result {
+            Ok(frame) => {
+                animation.frame = frame.or(animation.frame);
+                Ok(())
+            }
+            Err(error) => {
+                let message = format!(
+                    "world {} instance {index} default selection: {error:#}",
                     self.world
                 );
                 actor.animation_failure = Some(message.clone());
@@ -573,6 +732,7 @@ impl ScriptWorld {
                 anyhow::anyhow!(message)
             });
         }
+        let native_hook = host.actors[index].native_hook.clone();
         let actor = &mut host.actors[index];
         let mut runtime = actor.runtime.take().with_context(|| {
             actor
@@ -581,6 +741,12 @@ impl ScriptWorld {
                 .unwrap_or_else(|| "program absent".into())
         })?;
         let result = match stage {
+            ScriptStage::NativeHook => match native_hook {
+                Some(call) => runtime
+                    .invoke_native_hook(&call, &mut host, &mut self.flags)
+                    .map(|_| ()),
+                None => Ok(()),
+            },
             ScriptStage::Entry => runtime.invoke_entry(&mut host, &mut self.flags, budget),
             ScriptStage::Body(thread) => {
                 runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
@@ -658,6 +824,7 @@ impl ScriptWorld {
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
                 "locals": actor.runtime.as_ref().map(|runtime| runtime.variables()),
                 "attributes": actor.attributes,
+                "control": actor.control,
                 "spatial": self.spatial.as_ref().and_then(|spatial| spatial.actor(index).ok()),
                 "animation": actor.animation.as_ref().map(|animation| serde_json::json!({
                     "current_group": animation.playback.current_group(),
@@ -955,13 +1122,17 @@ impl Host for GameHost<'_, '_, '_> {
             && let Some(index) = arguments.first()
         {
             anyhow::ensure!(
-                !matches!(index.integer()?, 25..=28 | 33 | 37..=39),
+                !matches!(index.integer()?, 25..=28 | 33),
                 "{function}: attachment/rotation attribute lifecycle unsupported after spatial preparation"
             );
         }
-        if let Some(value) =
-            super::attributes::call(function, arguments, &mut self.actors[self.index].attributes)?
-        {
+        let actor = &mut self.actors[self.index];
+        if let Some(value) = super::attributes::call(
+            function,
+            arguments,
+            &mut actor.attributes,
+            actor.control.as_mut(),
+        )? {
             return Ok(CallResult::Complete(value));
         }
         anyhow::bail!(

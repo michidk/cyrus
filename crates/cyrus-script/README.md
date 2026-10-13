@@ -53,3 +53,8 @@ continuation. An unpaused blocking task suppresses entry when its physical
 operand identity is at or before that cursor, including foreign task sources.
 `invoke_body(Thread::Interrupt)` remains the separately admitted direct interrupt
 path. Neither entry API runs existing tasks or chooses update eligibility.
+
+`invoke_native_hook` dispatches the validated RAHK call with the actor's locals
+and strings, without advancing either continuation or polling tasks. It retains
+native failures so a failed effect is not retried. Hook eligibility remains the
+game scheduler's responsibility.

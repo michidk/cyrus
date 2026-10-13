@@ -344,14 +344,16 @@ fn handle(
                 match stage {
                     cyrus_control::ScriptStage::PrepareSpatial => world.prepare_spatial()?,
                     cyrus_control::ScriptStage::Snapshot => world.snapshot_spatial(id)?,
+                    cyrus_control::ScriptStage::AxisLocks => world.restore_axis_locks(id)?,
                     cyrus_control::ScriptStage::Transform => world.refresh_transform(id)?,
                     cyrus_control::ScriptStage::Families => world.refresh_families()?,
                     _ => {},
                 }
                 let stage = match stage {
                     cyrus_control::ScriptStage::PrepareSpatial | cyrus_control::ScriptStage::Snapshot
-                    | cyrus_control::ScriptStage::Transform | cyrus_control::ScriptStage::Families => return Ok(world.inspect(index, 1)),
+                    | cyrus_control::ScriptStage::AxisLocks | cyrus_control::ScriptStage::Transform | cyrus_control::ScriptStage::Families => return Ok(world.inspect(index, 1)),
                     cyrus_control::ScriptStage::Animation => ScriptStage::Animation,
+                    cyrus_control::ScriptStage::NativeHook => ScriptStage::NativeHook,
                     cyrus_control::ScriptStage::Entry => ScriptStage::Entry,
                     cyrus_control::ScriptStage::Tasks => ScriptStage::Tasks,
                     cyrus_control::ScriptStage::Main => ScriptStage::Body(Thread::Main),
@@ -505,13 +507,13 @@ mod tests {
         use cyrus_game::script::{ScriptActors, ScriptWorld};
         let mut app = app();
         let mut scripts: Scripts = serde_json::from_value(json!({
-            "version":6,"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":7,"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}
             ],"flags":[],"references":[],"attributes":[]},
             "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
-                "namespace":"ACTOR","instance_variables":[[]],"attributes":{},"hooks":[],
+                "namespace":"ACTOR","instance_variables":[[]],"attributes":{},"native_hook":null,
                 "program":{"version":2,"entry":0,"steps":{
                     "0":{"next":1,"operation":{"type":"call","call":{
                         "function_id":1,"kind":"task","target":{"type":"me"},

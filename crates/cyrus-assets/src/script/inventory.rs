@@ -18,7 +18,7 @@ pub struct Inventory {
 pub struct ActorInventory {
     pub placements: usize,
     pub instances: u16,
-    pub hooks: Vec<u32>,
+    pub native_hook: Option<Call>,
     pub instructions: BTreeMap<String, usize>,
     pub calls: BTreeMap<String, usize>,
     pub operands: BTreeMap<String, usize>,
@@ -48,9 +48,12 @@ pub fn inspect(scripts: &Scripts) -> Inventory {
                 .filter(|i| &i.actor == name)
                 .count(),
             instances: actor.instances,
-            hooks: actor.hooks.clone(),
+            native_hook: actor.native_hook.clone(),
             ..Default::default()
         };
+        if let Some(hook) = &actor.native_hook {
+            entry.call(hook);
+        }
         for step in actor.program.steps.values() {
             let kind = match &step.operation {
                 Operation::Call { call } => {

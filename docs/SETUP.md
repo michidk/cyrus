@@ -396,7 +396,7 @@ Use `bind_script_animation` with that generation, index, and an established
 binds its visible pose and animation sound source. Without a node, preparation
 supports logical inspection and returns sound intents in `captured_sounds` without playback.
 
-`step_script` accepts separate `animation`, `entry`, `tasks`, `main`, and
+`step_script` accepts separate `animation`, `native_hook`, `entry`, `tasks`, `main`, and
 `interrupt` stages. Supply `nominal_ticks` whenever any actor has animation bound, including
 zero. The `tasks` stage additionally needs `frame_scale` with eight fractional
 bits. These are explicit original timing inputs, not milliseconds or frame counts.
@@ -405,8 +405,8 @@ These commands do not infer actor eligibility or start automatic gameplay.
 
 For explicit SOUP spatial inspection, use `step_script` with `prepare_spatial`
 once per world generation, then `families` to compose attached poses. Use
-`snapshot` at an established actor-update boundary and `transform` to refresh an
-unattached actor matrix. Executable stages then require both `frame_scale` and
+`snapshot` at an established actor-update boundary, `axis_locks` after script and
+movement stages, and `transform` to refresh an unattached actor matrix. Executable stages then require both `frame_scale` and
 `nominal_ticks`. Spatial state appears in `scripts`; bound scene nodes consume it
 without advancing scripts. PlayerDistance requires explicit `distance_override`
 and uses `fallback_position` only when no selected player pose exists. These

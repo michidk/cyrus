@@ -18,12 +18,16 @@ automatically execute all eligible actors. `ScriptPlugin` prepares the registry,
 updates diagnostics, and advances explicitly attached animation playback.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
-  initial flags, locals, strings, initialized attributes, hooks, placement model
-  metadata, and decoded programs. The script cache is version 6, programs are
+  initial flags, locals, strings, initialized attributes, native hooks, placement model
+  metadata, and decoded programs. The script cache is version 7, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
-  Model-path message-group assignment and complete initialization remain open.
+  RAHK retains a typed native call, distinct from the VM entry continuation.
+  Explicit native-hook dispatch preserves both continuations and existing tasks.
+  Automatic hook eligibility and remaining native services remain open.
+  Model-path message-group assignment and
+  complete initialization remain open.
   Unsupported decoding remains visible.
 - `cyrus-script` implements values, control flow, main and interrupt continuations,
   the shared actor return continuation, six task slots, operand reevaluation,
@@ -232,9 +236,13 @@ generic scripting framework is needed for this completion plan.
 
 **Verified:** [preservation PR54](https://github.com/michidk/redguard-preservation/pull/54)
 publishes animation operand widths, walk-node reservation cleanup, and the
-distinction between model default and selected playback default. Both
-attribute-44 write paths remain unsupported here until those state owners exist.
-The installed TS_RP wait/animation sequence requires that missing integration.
+distinction between model default and selected playback default. The
+ordinary map allocation state and the separate combat death default are now
+owned by the registry. Live map attribute-44 writes are supported; dead-actor
+reservation cleanup and standalone role writes remain unsupported. Corrected
+write guards and allocation defaults are published on the
+[preservation branch](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-living-default-selection).
+The installed TS_RP sequence still requires automatic default selection and scheduling.
 
 **Unknown:** faithful automatic host pacing, complete actor traversal/admission,
 state-dependent defaults, hook/synchronization release, and progression retention.

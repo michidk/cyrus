@@ -73,7 +73,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 6,
+        version: 7,
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,
@@ -108,7 +108,7 @@ fn cache() -> Scripts {
                 instance_variables: vec![vec![4], vec![9]],
                 program,
                 attributes: BTreeMap::new(),
-                hooks: vec![],
+                native_hook: None,
             },
         )]),
         instances: (0..2)
@@ -132,7 +132,11 @@ fn cache() -> Scripts {
 fn map_animation_initialization_retains_independent_frames_and_rejects_reinitialization() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{ScriptInputs, ScriptStage};
-    let scripts = cache();
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
     let mut data = Animations {
         version: 2,
         world: scripts.world,
@@ -147,6 +151,22 @@ fn map_animation_initialization_retains_independent_frames_and_rejects_reinitial
         models: Default::default(),
         unsupported: Default::default(),
     };
+    for object_type in [0, 2, 3, 4, 5, 6] {
+        let mut unsupported = scripts.clone();
+        unsupported.instances[0].object_type = object_type;
+        unsupported.content_id = unsupported.content_identity().unwrap();
+        data.metadata["script_content_id"] = unsupported.content_id.clone().into();
+        let mut world = ScriptWorld::prepare(&unsupported, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let error = world
+            .initialize_map_animation(id, &data, 1, &mut |_, _| {
+                panic!("unsupported map type dispatched an animation sound")
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("requires map object type 1"));
+        assert_eq!(world.animation_frame(id).unwrap(), None);
+    }
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     let first = world.id(0).unwrap();
     let second = world.id(1).unwrap();
@@ -191,7 +211,11 @@ fn map_animation_initialization_retains_independent_frames_and_rejects_reinitial
 #[test]
 fn animation_initialization_does_not_repeat_a_failed_sound_effect() {
     use cyrus_assets::animation::Animations;
-    let scripts = cache();
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
     let data = Animations {
         version: 2,
         world: scripts.world,
@@ -1425,8 +1449,6 @@ fn unsupported_attribute_access_fails_before_mutation_and_remains_sticky() {
         (1, "SetAttribute", -1, Some(9), "index outside"),
         (1, "SetAttribute", 256, Some(9), "index outside"),
         (3, "GetAttribute", 256, None, "index outside"),
-        (1, "SetAttribute", 44, Some(9), "coupling unsupported"),
-        (2, "SetMyAttr", 44, Some(9), "coupling unsupported"),
     ] {
         let scripts = attribute_cache(vec![
             Operation::Call {
@@ -1589,4 +1611,430 @@ fn ambiguous_attachment_preparation_does_not_install_partial_state() {
             .contains("not prepared")
     );
     assert_eq!(world.flags(), [12]);
+}
+
+fn ordered_world() -> ScriptWorld {
+    let mut data = cache();
+    let placements = [
+        (1, 1, 0, 0),
+        (1, 1, 0, 0),
+        (2, 1, 0, 0),
+        (1, 2, 0, 0),
+        (0, 1, 0, 0),
+        (0, 1, 0, 0),
+        (0, 0, 0, 0),
+        (120, 120, 1, 0),
+        (120, 120, 1, 0),
+        (1, 1, 0, 2),
+        (20, 20, 0, 0),
+        (1, 0, 0, 0),
+        (1, 17, 0, 0),
+        (17, 17, 0, 0),
+    ];
+    let template = data.instances[0].clone();
+    data.instances = placements
+        .into_iter()
+        .enumerate()
+        .map(|(index, (x, z, active, object_type))| Instance {
+            object_id: index as u32,
+            actor: if index == 5 {
+                "BORDER".into()
+            } else {
+                "LOGIC".into()
+            },
+            map_position: [x * 512 * 256, 0, z * 512 * 256],
+            active,
+            object_type,
+            ..template.clone()
+        })
+        .collect();
+    data.definition.functions.push(Function {
+        name: "SetMyAttr".into(),
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    let actor = data.actors.get_mut("LOGIC").unwrap();
+    actor.instances = 14;
+    actor.instance_variables = vec![vec![4]; 14];
+    actor.program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Call {
+                    call: Call {
+                        function_id: 1,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: "SetMyAttr".into(),
+                        arguments: vec![Value::Integer { value: 113 }, Value::Integer { value: 0 }],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    let mut role = actor.clone();
+    role.instances = 1;
+    role.instance_variables = vec![vec![4]];
+    for name in ["CYRUS", "GREMLIN", "CAMERA", "BORDER"] {
+        let mut actor = role.clone();
+        actor.namespace = Some(name.to_ascii_lowercase());
+        if name == "BORDER" {
+            actor.attributes.insert("attr_113".into(), 1);
+        }
+        data.actors.insert(name.into(), actor);
+    }
+    data.content_id = data.content_identity().unwrap();
+    ScriptWorld::prepare(&data, 19).unwrap()
+}
+
+#[test]
+fn ordinary_actor_lists_preserve_cells_borders_and_persistent_creation_order() {
+    let mut world = ordered_world();
+    let ids = world.ordinary_actors([4608, 4608]).unwrap();
+    assert_eq!(
+        ids.iter().map(|id| id.index).collect::<Vec<_>>(),
+        [11, 4, 1, 0, 2, 3, 12, 16, 15, 14, 8, 7]
+    );
+    assert!(ids.iter().all(|id| id.generation == 19));
+    assert!(world.ordinary_actors([-1, 0]).is_err());
+    assert!(world.ordinary_actors([65536, 0]).is_err());
+    assert_eq!(
+        world
+            .ordinary_actors([65535, 65535])
+            .unwrap()
+            .iter()
+            .map(|id| id.index)
+            .collect::<Vec<_>>(),
+        [16, 15, 14, 8, 7]
+    );
+}
+
+#[test]
+fn ordinary_border_selection_changes_only_when_the_view_starting_cell_changes() {
+    let mut world = ordered_world();
+    assert!(
+        !world
+            .ordinary_actors([4608, 4608])
+            .unwrap()
+            .iter()
+            .any(|id| id.index == 5)
+    );
+    world.step(world.id(5).unwrap(), Thread::Main, 20).unwrap();
+    assert_eq!(world.actors()[5].attributes()[113], 0);
+    assert!(
+        !world
+            .ordinary_actors([5119, 4608])
+            .unwrap()
+            .iter()
+            .any(|id| id.index == 5)
+    );
+    world.ordinary_actors([5120, 4608]).unwrap();
+    let ids = world.ordinary_actors([4608, 4608]).unwrap();
+    assert_eq!(
+        ids.iter().map(|id| id.index).collect::<Vec<_>>(),
+        [11, 5, 4, 1, 0, 2, 3, 12, 16, 15, 14, 8, 7]
+    );
+}
+
+#[test]
+fn ordinary_actor_window_uses_the_original_upper_edge_origin() {
+    let mut data = cache();
+    data.instances[0].map_position = [109 * 512 * 256, 0, 110 * 512 * 256];
+    data.instances[1].map_position = [126 * 512 * 256, 0, 126 * 512 * 256];
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    assert_eq!(
+        world
+            .ordinary_actors([65535, 65535])
+            .unwrap()
+            .iter()
+            .map(|id| id.index)
+            .collect::<Vec<_>>(),
+        [0]
+    );
+}
+
+#[test]
+fn living_map_default_writes_do_not_change_the_combat_death_default() {
+    use cyrus_assets::animation::Animations;
+    for combat_attribute in [0, 1] {
+        for (function, name) in [(1, "SetAttribute"), (2, "SetMyAttr")] {
+            let mut scripts = attribute_cache(vec![
+                Operation::Call {
+                    call: attribute_call(function, name, 44, Some(-2)),
+                },
+                Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Call {
+                            call: Box::new(attribute_call(3, "GetAttribute", 44, None)),
+                        },
+                        rest: vec![],
+                    },
+                },
+                Operation::End { target: 0 },
+            ]);
+            scripts.instances[0].object_type = 1;
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .attributes
+                .insert("attr_14".into(), combat_attribute);
+            scripts.content_id = scripts.content_identity().unwrap();
+            let data = Animations {
+                version: 2,
+                world: scripts.world,
+                metadata: serde_json::json!({
+                    "script_content_id": scripts.content_id,
+                    "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+                        "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                            "commands":[{"opcode":0,"frame_reference":10},
+                                {"opcode":2,"value":0}]}]}]
+                }),
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+            };
+            let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+            let id = world.id(0).unwrap();
+            world
+                .initialize_map_animation(id, &data, 1, &mut |_, _| Ok(()))
+                .unwrap();
+            world
+                .advance(
+                    id,
+                    cyrus_game::script::ScriptStage::Body(Thread::Main),
+                    cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    None,
+                    20,
+                )
+                .unwrap();
+            let actor = &world.actors()[0];
+            assert_eq!(actor.attributes()[44], 254);
+            assert_eq!(actor.runtime().unwrap().variables(), [254]);
+            assert_eq!(
+                actor.control_state().unwrap().combat_death_default,
+                if combat_attribute == 0 { None } else { Some(0) }
+            );
+            assert_eq!(world.animation_frame(id).unwrap(), Some(10));
+            assert_eq!(world.actors()[1].attributes()[44], 0);
+        }
+    }
+}
+
+#[test]
+fn standalone_default_writes_require_role_lifecycle_before_mutating() {
+    for (function, name) in [(1, "SetAttribute"), (2, "SetMyAttr")] {
+        let mut write = attribute_call(function, name, 44, Some(7));
+        write.target = Object::Player;
+        let mut scripts = attribute_cache(vec![
+            Operation::ObjectCall { call: write },
+            Operation::End { target: 0 },
+        ]);
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let error = world
+            .step(world.id(0).unwrap(), Thread::Main, 20)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("attribute 44 actor lifecycle unavailable")
+        );
+        let player = world
+            .actors()
+            .iter()
+            .find(|actor| actor.name() == "CYRUS")
+            .unwrap();
+        assert!(player.control_state().is_none());
+        assert_eq!(player.attributes()[44], 0);
+    }
+}
+
+#[test]
+fn map_default_selection_observes_script_writes_and_updates_the_shared_frame() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = attribute_cache(vec![
+        Operation::Call {
+            call: attribute_call(1, "SetAttribute", 44, Some(262)),
+        },
+        Operation::Yield,
+        Operation::Call {
+            call: attribute_call(2, "SetMyAttr", 110, Some(1)),
+        },
+        Operation::End { target: 0 },
+    ]);
+    scripts.instances[0].object_type = 1;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({
+            "script_content_id": scripts.content_id,
+            "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+                "animation_groups": ([0, 6, 8, 91, 129].into_iter().map(|group| serde_json::json!({
+                    "group_index": group, "anim_id": 1, "anim_type": 0,
+                    "commands": [{"opcode": 0, "frame_reference": group * 10},
+                        {"opcode": 2, "value": 0}]
+                })).collect::<Vec<_>>()) }]
+        }),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 1, &mut |_, _| Ok(()))
+        .unwrap();
+    assert_eq!(world.animation_frame(id).unwrap(), Some(0));
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        ..Default::default()
+    };
+    world
+        .advance(id, ScriptStage::Body(Thread::Main), inputs, None, 20)
+        .unwrap();
+    world
+        .select_map_animation_default(id, false, 1, &mut |_, _| Ok(()))
+        .unwrap();
+    assert_eq!(world.animation_frame(id).unwrap(), Some(60));
+    world
+        .advance(id, ScriptStage::Body(Thread::Main), inputs, None, 20)
+        .unwrap();
+    world
+        .select_map_animation_default(id, false, 1, &mut |_, _| Ok(()))
+        .unwrap();
+    assert_eq!(world.animation_frame(id).unwrap(), Some(80));
+    assert_eq!(world.actors()[0].attributes()[44], 6);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat_death_default,
+        None
+    );
+    for (initial_group, items_ready, expected_frame) in [
+        (129, true, 60),
+        (129, false, 60),
+        (91, true, 80),
+        (91, false, 60),
+    ] {
+        let mut selected = ScriptWorld::prepare(&scripts, 1).unwrap();
+        selected.bind_animation(id, &data, initial_group).unwrap();
+        selected
+            .advance(id, ScriptStage::Animation, inputs, None, 20)
+            .unwrap();
+        selected
+            .advance(id, ScriptStage::Body(Thread::Main), inputs, None, 20)
+            .unwrap();
+        selected
+            .select_map_animation_default(id, items_ready, 1, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(selected.animation_frame(id).unwrap(), Some(expected_frame));
+    }
+    let mut replacement = ScriptWorld::prepare(&scripts, 2).unwrap();
+    assert!(
+        replacement
+            .select_map_animation_default(id, false, 1, &mut |_, _| Ok(()))
+            .is_err()
+    );
+}
+
+#[test]
+fn spatial_axis_locks_restore_independent_saved_axes_and_leave_the_matrix_unchanged() {
+    let scripts = cache();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let template = world.spatial(world.id(0).unwrap()).unwrap();
+    for (attribute, position, angles) in [
+        (40, [100, 500, 600], [400, 500, 600]),
+        (41, [400, 200, 600], [400, 500, 600]),
+        (42, [400, 500, 300], [400, 500, 600]),
+        (38, [400, 500, 600], [100, 500, 600]),
+        (37, [400, 500, 600], [400, 200, 600]),
+        (39, [400, 500, 600], [400, 500, 300]),
+    ] {
+        for slave in [0, 1] {
+            let mut pose = template.clone();
+            pose.local.position = [100, 200, 300];
+            pose.local.angles = [100, 200, 300];
+            pose.snapshot();
+            pose.local.position = [400, 500, 600];
+            pose.local.angles = [400, 500, 600];
+            let matrix = pose.local.matrix;
+            let mut attributes = [0; 256];
+            attributes[attribute] = 255;
+            attributes[26] = slave;
+            pose.restore_axis_locks(&attributes).unwrap();
+            assert_eq!(
+                pose.local.position,
+                if slave == 0 {
+                    position
+                } else {
+                    [400, 500, 600]
+                }
+            );
+            assert_eq!(
+                pose.local.angles,
+                if slave == 0 { angles } else { [400, 500, 600] }
+            );
+            assert_eq!(pose.local.matrix, matrix);
+        }
+    }
+    let mut pose = template.clone();
+    assert!(pose.restore_axis_locks(&[0; 255]).is_err());
+}
+
+#[test]
+fn native_hook_updates_only_its_receiver_without_advancing_the_script() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "SetMyAttr".into(),
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
+        function_id: 1,
+        function: "SetMyAttr".into(),
+        kind: CallKind::Function,
+        target: Object::Me,
+        arguments: vec![Value::Integer { value: 6 }, Value::Integer { value: 19 }],
+    });
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 17).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::NativeHook,
+            ScriptInputs::default(),
+            None,
+            0,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].attributes()[6], 19);
+    assert_eq!(world.actors()[1].attributes()[6], 0);
+    assert_eq!(
+        world.actors()[0]
+            .runtime()
+            .unwrap()
+            .program_counter(Thread::Main),
+        Some(0)
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
 }

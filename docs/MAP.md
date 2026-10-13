@@ -98,6 +98,7 @@ module where it is defined and regenerate.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
+- `src/script/order.rs` — Fresh-world ordinary actor membership and cached view-window traversal.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
@@ -123,6 +124,7 @@ module where it is defined and regenerate.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
+- `src/lighting/runtime.rs` — Active authored object lights and quantized distance tables for model shaders.
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.

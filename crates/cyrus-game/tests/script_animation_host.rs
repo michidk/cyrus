@@ -47,7 +47,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         namespace: Some(name.into()),
         instance_variables: vec![vec![]],
         attributes: BTreeMap::new(),
-        hooks: vec![],
+        native_hook: None,
         program: Program {
             version: 2,
             entry: 0,
@@ -69,7 +69,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 6,
+        version: 7,
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,
@@ -1441,5 +1441,59 @@ fn activation_distinguishes_animation_state_from_its_current_group() {
                 admitted.then(|| world.id(1).unwrap())
             );
         }
+    }
+}
+
+#[test]
+fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it() {
+    for (axis, attribute, component) in [(0, 38, 0), (1, 37, 1), (2, 39, 2)] {
+        let mut data = rotating_scripts(axis, 128, 4);
+        data.definition.functions.push(Function {
+            name: "SetMyAttr".into(),
+            kind: CallKind::Function,
+            param_count: 2,
+        });
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        actor.program.steps = std::mem::take(&mut actor.program.steps)
+            .into_iter()
+            .map(|(offset, mut step)| {
+                step.next += 1;
+                (offset + 1, step)
+            })
+            .collect();
+        actor.program.steps.insert(
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Call {
+                    call: Call {
+                        function_id: 4,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: "SetMyAttr".into(),
+                        arguments: vec![
+                            Value::Integer { value: attribute },
+                            Value::Integer { value: 1 },
+                        ],
+                    },
+                },
+            },
+        );
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world.snapshot_spatial(id).unwrap();
+        stage(&mut world, id, BODY);
+        assert_eq!(world.actors()[0].attributes()[attribute as usize], 1);
+        assert_eq!(world.spatial(id).unwrap().local.angles[component], 32);
+        world.restore_axis_locks(id).unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.angles[component], 0);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        world.refresh_transform(id).unwrap();
+        assert_eq!(
+            world.spatial(id).unwrap().local.matrix,
+            cyrus_world::transform::Matrix::IDENTITY
+        );
     }
 }

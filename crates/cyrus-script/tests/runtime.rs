@@ -959,3 +959,65 @@ fn entry_compares_foreign_task_operands_in_shared_code_identity() {
         assert_eq!(runtime.active_tasks(), 1);
     }
 }
+
+#[test]
+fn native_hook_is_independent_of_both_continuations_and_task_polling() {
+    let mut runtime = Runtime::new(
+        program(
+            1,
+            vec![
+                Operation::Yield,
+                call("Wait", CallKind::Task),
+                Operation::Yield,
+                Operation::End { target: 1 },
+            ],
+        ),
+        "hook actor".into(),
+    )
+    .unwrap();
+    let mut host = Service::default();
+    runtime
+        .invoke_body(Thread::Main, &mut host, &mut [], 10)
+        .unwrap();
+    let before = [
+        runtime.program_counter(Thread::Main),
+        runtime.program_counter(Thread::Interrupt),
+    ];
+    let hook = Call {
+        function_id: 0,
+        kind: CallKind::Function,
+        target: Object::Me,
+        function: "Query".into(),
+        arguments: vec![],
+    };
+    assert_eq!(
+        runtime
+            .invoke_native_hook(&hook, &mut host, &mut [])
+            .unwrap(),
+        17
+    );
+    assert_eq!(host.calls, ["Wait", "Query"]);
+    assert_eq!(runtime.active_tasks(), 1);
+    assert_eq!(
+        [
+            runtime.program_counter(Thread::Main),
+            runtime.program_counter(Thread::Interrupt)
+        ],
+        before
+    );
+    let failed = Call {
+        function: "Fail".into(),
+        ..hook
+    };
+    assert!(
+        runtime
+            .invoke_native_hook(&failed, &mut host, &mut [])
+            .is_err()
+    );
+    assert!(
+        runtime
+            .invoke_native_hook(&failed, &mut host, &mut [])
+            .is_err()
+    );
+    assert_eq!(host.calls, ["Wait", "Query", "Fail"]);
+}

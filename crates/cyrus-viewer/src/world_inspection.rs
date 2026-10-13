@@ -107,7 +107,7 @@ pub fn toolbar(
                     state.selected = Some(("mpob_objects", index)); state.fields.clear(); focus = focus_record(object, data, current_distance);
                 }
             }
-            for key in ["raan_entries", "rahk_hooks", "attributes", "raex"] {
+            for key in ["raan_entries", "native_hook", "native_hook_offset", "native_hook_error", "attributes", "raex"] {
                 if !actor[key].is_null() { ui.collapsing(key, |ui| fields(ui, &mut state.fields, &actor[key])); }
             }
             for key in ["mpsz_bounds_primary", "mpsz_bounds_0", "mpsz_bounds_1"] {

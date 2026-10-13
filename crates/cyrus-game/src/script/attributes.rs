@@ -6,6 +6,7 @@ pub(super) fn call(
     name: &str,
     arguments: &[Argument],
     attributes: &mut [u8],
+    control: Option<&mut super::ActorControlState>,
 ) -> Result<Option<i32>> {
     let get = name.eq_ignore_ascii_case("GetAttribute");
     let get_my = name.eq_ignore_ascii_case("GetMyAttr");
@@ -29,11 +30,21 @@ pub(super) fn call(
     if get || get_my {
         return Ok(Some(i32::from(attributes[index])));
     }
-    anyhow::ensure!(
-        index != 44,
-        "{name}: attribute 44 model/default-group coupling unsupported"
-    );
     let value = arguments[1].integer()? as u8;
+    if index == 44 {
+        let control =
+            control.with_context(|| format!("{name}: attribute 44 actor lifecycle unavailable"))?;
+        if set {
+            anyhow::ensure!(
+                control.death_selector != 8,
+                "{name}: dead actor walk-node reservation release unsupported"
+            );
+        } else if control.object_update_excluded
+            && let Some(default) = &mut control.combat_death_default
+        {
+            *default = i32::from(value);
+        }
+    }
     attributes[index] = value;
     if set {
         match index {

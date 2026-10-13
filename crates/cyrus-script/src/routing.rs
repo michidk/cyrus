@@ -1,7 +1,7 @@
 //! Synchronous receiver dispatch preserves foreign task identity and native string context.
 use super::{Host, Route, Runtime, TaskSource};
 use anyhow::{Context, Result};
-use cyrus_assets::script::Call;
+use cyrus_assets::script::{Call, CallKind, Object};
 use std::sync::Arc;
 
 impl Runtime {
@@ -18,6 +18,21 @@ impl Runtime {
             Route::Here => self.receive_inner(call, &program.strings, source, host, flags),
             Route::Complete(value) => Ok((value, false)),
         }
+    }
+    /// Dispatches a validated RAHK call using this actor's locals and strings.
+    /// This does not advance a continuation or poll existing tasks.
+    pub fn invoke_native_hook(
+        &mut self,
+        call: &Call,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+    ) -> Result<i32> {
+        anyhow::ensure!(
+            call.kind == CallKind::Function && call.target == Object::Me,
+            "native hook must directly call a function on its actor"
+        );
+        let program = Arc::clone(&self.program);
+        self.receive(call, &program.strings, None, host, flags)
     }
     /// Invokes a resolved receiving actor without running either of its script bodies.
     /// Initial string arguments retain the calling actor's table; locals use this instance.

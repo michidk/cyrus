@@ -41,9 +41,9 @@ unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
 retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
 program descriptors with names from the installed SOUP386.DEF. The independent
-version-6 `.scripts` sidecar retains the validated SYSTEM.INI clock inputs, the installed actor-pool capacity, actor RASC
+version-7 `.scripts` sidecar retains the validated SYSTEM.INI clock inputs, the installed actor-pool capacity, actor RASC
 origins, definitions, fresh-game flag values, locals, strings,
-initialized attributes, hooks and explicit unsupported records. Placement records retain
+initialized attributes, typed native hooks and explicit unsupported records. Placement records retain
 the original model name and complete model-mode byte for actor initialization.
 The menu cache also carries the clock settings, using the same typed conversion
 and validation as world scripts. Its source stamp invalidates older menu exports.
@@ -113,7 +113,7 @@ exposes compressed and full-precision animation frames through the shared parser
 The static SOUP census visits every WORLD.INI entry separately, including shared
 maps with different palettes, and every decoded actor definition, including
 unplaced standalone actors. It counts instructions, nested native calls, operand
-and reference forms, hooks, and unsupported records. Function declarations remain
+and reference forms, native hooks, and unsupported records. Function declarations remain
 separate from observed call sites. Counts describe authored occurrences, not
 reachability, runtime support, exercised operations, or original-game parity.
 World preparation failures remain in the report and cause a failing exit status.

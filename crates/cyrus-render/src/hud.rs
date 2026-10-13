@@ -886,7 +886,7 @@ mod tests {
             namespace: Some("CYRUS".into()),
             instance_variables: vec![vec![]],
             attributes: BTreeMap::new(),
-            hooks: vec![],
+            native_hook: None,
             program: Program {
                 version: 2,
                 entry: 0,
@@ -931,7 +931,7 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 6,
+            version: 7,
             clock: cyrus_assets::script::ClockSettings {
                 normal_frame_rate: 12,
                 min_frame_rate: 6,

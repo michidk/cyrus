@@ -41,6 +41,8 @@ pub struct ActorSpatial {
     pub local: Pose,
     pub effective: Option<Pose>,
     pub previous_effective_position: Option<[i32; 3]>,
+    /// Local position captured at the ordinary update boundary, in Q8 units.
+    pub previous_local_position: [i32; 3],
     /// Previous local angles after snapshot; propagated deltas after family refresh.
     pub angle_history: [u16; 3],
     pub parent: Option<usize>,
@@ -118,6 +120,7 @@ impl SpatialWorld {
                 local,
                 effective: parent.is_none().then_some(original),
                 previous_effective_position: None,
+                previous_local_position: local.position,
                 angle_history: original.angles,
                 parent,
                 no_slave_rotation: actor.attributes()[33] != 0,
@@ -241,9 +244,33 @@ impl ActorSpatial {
         }
     }
 
-    /// Copy current local angles at the ordinary actor-update boundary.
+    /// Copy local position and angles at the ordinary actor-update boundary.
     pub fn snapshot(&mut self) {
+        self.previous_local_position = self.local.position;
         self.angle_history = self.local.angles;
+    }
+
+    /// Restore locked axes after ordinary script/movement work, before matrix refresh.
+    /// Uses current attribute bytes and the pre-update snapshot; slaves bypass restoration.
+    /// The matrix is unchanged, following preservation's SOUP ordinary axis-lock rules.
+    pub fn restore_axis_locks(&mut self, attributes: &[u8]) -> Result<()> {
+        ensure!(
+            attributes.len() == 256,
+            "axis locks require 256 actor attribute bytes"
+        );
+        if attributes[26] == 0 {
+            for (axis, attribute) in [40, 41, 42].into_iter().enumerate() {
+                if attributes[attribute] != 0 {
+                    self.local.position[axis] = self.previous_local_position[axis];
+                }
+            }
+            for (axis, attribute) in [38, 37, 39].into_iter().enumerate() {
+                if attributes[attribute] != 0 {
+                    self.local.angles[axis] = self.angle_history[axis];
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Refresh an ordinary unattached matrix using the retained angle snapshot.

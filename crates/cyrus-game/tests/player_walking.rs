@@ -1025,13 +1025,13 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
 
 fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
     let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(serde_json::json!({
-        "version":6,"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"world":world,"actor_pool_capacity":10,"content_id":"",
+        "version":7,"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"world":world,"actor_pool_capacity":10,"content_id":"",
         "definition":{"functions":[
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}
         ],"flags":[],"references":[],"attributes":[]},
         "actors":{"CYRUS":{"header_index":0,"code_origin":0,"instances":1,
-            "namespace":"CYRUS","instance_variables":[[]],"attributes":{},"hooks":[],
+            "namespace":"CYRUS","instance_variables":[[]],"attributes":{},"native_hook":null,
             "program":{"version":2,"entry":0,"steps":{
                 "0":{"next":1,"operation":{"type":"call","call":{
                     "function_id":1,"kind":"task","target":{"type":"me"},"function":"PushAnimation",

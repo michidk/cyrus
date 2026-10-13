@@ -279,7 +279,8 @@ pub struct Actor {
     pub program: Program,
     /// Independent actor-load attribute defaults; model-path message groups are assigned later.
     pub attributes: BTreeMap<String, u8>,
-    pub hooks: Vec<u32>,
+    /// Per-update RAHK native call, distinct from the RASC entry continuation.
+    pub native_hook: Option<Call>,
 }
 
 /// Authored MPOB order identifies logical objects independently of mesh availability.
@@ -329,7 +330,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 6,
+            self.version == 7,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
@@ -368,6 +369,12 @@ impl Scripts {
                 "world {} actor {name}: incomplete instance locals",
                 self.world
             );
+            if let Some(hook) = &actor.native_hook {
+                actor
+                    .program
+                    .validate_native_hook(hook, &self.definition)
+                    .with_context(|| format!("world {} actor {name} native hook", self.world))?;
+            }
             actor
                 .program
                 .validate_definition(&self.definition)

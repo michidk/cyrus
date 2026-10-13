@@ -68,7 +68,7 @@ for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 's
   }
   if (name === 'START.scripts') {
     const scripts = JSON.parse(new TextDecoder().decode(files.get(name)));
-    assert.equal(scripts.version, 6);
+    assert.equal(scripts.version, 7);
     assert.deepEqual(scripts.clock, menuClock);
     assert.ok(scripts.content_id.length > 0 && scripts.instances.length > 0);
     const animations = JSON.parse(new TextDecoder().decode(files.get('START.animations')));

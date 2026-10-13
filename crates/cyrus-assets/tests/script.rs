@@ -3,7 +3,7 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 6,
+        version: 7,
         clock: cyrus_assets::script::ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,
@@ -171,6 +171,7 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         eprintln!("skipped: no install (SOUP scripts)");
         return;
     }
+    let definition = rgpre::import::soup_def::load_soup_def(&root).unwrap();
     let mut maps = 0;
     for file in std::fs::read_dir(root.join("maps")).unwrap() {
         let path = file.unwrap().path();
@@ -213,6 +214,18 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
             );
         }
         for (name, actor) in &scripts.actors {
+            let hook = rgpre::import::rgm::script_program::decode_native_hook(
+                &map,
+                actor.header_index,
+                &definition,
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(&actor.native_hook).unwrap(),
+                serde_json::to_value(hook).unwrap(),
+                "{} actor {name} native hook",
+                path.display()
+            );
             let attribute = |index: usize| {
                 let key = scripts
                     .definition
@@ -283,7 +296,13 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
             namespace: None,
             instance_variables: vec![vec![]],
             attributes: BTreeMap::new(),
-            hooks: vec![4, 9],
+            native_hook: Some(Call {
+                function_id: 3,
+                function: "Hook".into(),
+                kind: CallKind::Function,
+                target: Object::Me,
+                arguments: vec![],
+            }),
             program: Program {
                 version: 2,
                 entry: 0,
@@ -343,12 +362,13 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
     let actor = &report.actors["Unplaced"];
     assert_eq!(actor.placements, 0);
     assert_eq!(actor.instances, 1);
-    assert_eq!(actor.hooks, [4, 9]);
+    assert_eq!(actor.native_hook.as_ref().unwrap().function, "Hook");
     assert_eq!(
         actor.calls,
         BTreeMap::from([
             ("1:Function:Outer".into(), 1),
-            ("2:Function:Inner".into(), 1)
+            ("2:Function:Inner".into(), 1),
+            ("3:Function:Hook".into(), 1)
         ])
     );
     assert_eq!(
@@ -357,6 +377,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
             ("object:player".into(), 1),
             ("object:local".into(), 1),
             ("object:camera".into(), 1),
+            ("object:me".into(), 1),
             ("property:3".into(), 1),
         ])
     );
@@ -461,12 +482,93 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 6);
+    assert_eq!(scripts.version, 7);
     for (normal, min, field) in [(-1, 6, "normal_frame_rate"), (12, 0, "min_frame_rate")] {
         let error = format!("{:#}", prepare(normal, min).unwrap_err());
         assert!(
             error.contains("world 17") && error.contains(field),
             "{error}"
+        );
+    }
+}
+
+#[test]
+fn native_hooks_are_validated_and_participate_in_content_identity() {
+    let mut scripts = cache();
+    scripts.actors.insert(
+        "HOOK".into(),
+        Actor {
+            header_index: 0,
+            code_origin: 0,
+            instances: 1,
+            namespace: None,
+            instance_variables: vec![vec![]],
+            attributes: BTreeMap::new(),
+            native_hook: Some(Call {
+                function_id: 0,
+                function: "NullFunction".into(),
+                kind: CallKind::Function,
+                target: Object::Me,
+                arguments: vec![],
+            }),
+            program: Program {
+                version: 2,
+                entry: 0,
+                variables: vec![],
+                strings: vec![],
+                steps: BTreeMap::from([(
+                    0,
+                    Step {
+                        next: 1,
+                        operation: Operation::End { target: 0 },
+                    },
+                )]),
+            },
+        },
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts.validate().unwrap();
+    let mut changed = scripts.clone();
+    changed.actors.get_mut("HOOK").unwrap().native_hook = None;
+    assert!(
+        changed
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
+    for hook in [
+        Call {
+            function_id: 1,
+            function: "Missing".into(),
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments: vec![],
+        },
+        Call {
+            function_id: 0,
+            function: "NullFunction".into(),
+            kind: CallKind::Task,
+            target: Object::Me,
+            arguments: vec![],
+        },
+        Call {
+            function_id: 0,
+            function: "NullFunction".into(),
+            kind: CallKind::Function,
+            target: Object::Player,
+            arguments: vec![],
+        },
+    ] {
+        let mut changed = scripts.clone();
+        changed.actors.get_mut("HOOK").unwrap().native_hook = Some(hook);
+        changed.content_id = changed.content_identity().unwrap();
+        assert!(
+            changed
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("actor HOOK native hook")
         );
     }
 }

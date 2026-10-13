@@ -32,11 +32,20 @@ Menu caches carry the same installed settings for startup initialization.
 The book menu supplies BIOS-boundary invocations and restores its partial
 checkpoint on exit. Automatic world invocations and actor updates remain unconnected.
 
+`ScriptWorld::ordinary_actors` retains fresh-world cell and persistent membership,
+reverse insertion order, and the cached view-centered 18-cell selection. Normal
+selection omits the four corners and filters attribute 113 on the outer border.
+It does not grant execution eligibility or implement dynamic cell migration,
+allocation/removal, or alternate debug processing modes.
+
 World scene roots carry `ScriptScene`. Exported map nodes automatically bind to
 their logical actor by placement index and script name. Bindings expire on world
 replacement, including reloads of the same world. `initialize_map_animation`
-initializes animation-table actors with supplied nominal ticks and retains their
-selected frames in the shared SOUP state. Automatic initialization and scheduling
+initializes type-1 animation-table map actors with supplied nominal ticks and retains their
+selected frames in the shared SOUP state. `select_map_animation_default` applies
+ordinary nonplayer default selection to that same playback and retained frame,
+using owned actor state and explicit item readiness and ticks. Activation and
+default selection share weapon predicates. Automatic initialization and scheduling
 remain pending; scene binding itself does not advance animation or scripts.
 
 Run `cargo test -p cyrus-game`. Installed-definition tests require `redguard/` and
@@ -136,13 +145,17 @@ services. **Verified:** attribute writes retain the low byte; `SetAttribute`
 also maintains reserved collide/weight bytes, while `SetMyAttr` does not. Reads
 observe writes in the same stage and routed operands use receiver locals.
 `GetMyAttr` and `SetMyAttr` return zero outside the attribute table. Other
-out-of-range attribute access and attribute-44 writes remain explicit failures;
-the latter requires model/default-group ownership and cleanup integration.
+out-of-range attribute access remains an explicit failure. Ordinary map actors
+own their allocation control state separately from playback. Live map actors
+support attribute-44 writes without changing the combat death default. Type-1
+animation-table initialization creates that separate default at zero when
+attribute 14 is nonzero. Standalone-role attribute-44 writes and dead-actor
+walk-node cleanup remain unsupported.
 These contracts follow preservation's
-[attribute rules](https://github.com/michidk/redguard-preservation/blob/c5cbfb8/docs/engine/SOUP.md#attribute-reads-and-writes).
+[attribute rules](https://github.com/michidk/redguard-preservation/blob/ca28d9d/docs/engine/SOUP.md#attribute-reads-and-writes).
 `ScriptActor::attributes` exposes the prepared inspection bytes. Complete actor
 initialization and live player attribute state remain pending. Walking and SOUP
-share logical-player playback, while model-default writes remain unsupported.
+share logical-player playback; player-role lifecycle remains unestablished.
 Flag numeric values and latches
 remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
@@ -178,7 +191,7 @@ progression and saves remain unsupported.
 
 `ScriptWorld::bind_animation` attaches animation state to the logical instance
 only after world/content identity checks. The caller supplies an established
-default group. `advance` runs one animation, ordinary entry, task, or body stage;
+default group. `advance` runs one native hook, animation, ordinary entry, task, or body stage;
 these stages remain separate. Once any actor has animation bound, all invocations
 require explicit nominal ticks, including zero. Task stages separately require frame scale. Waits and
 PushAnimation share one native-token map and the VM's six slots, including routed
@@ -247,3 +260,9 @@ Lockout, holdoff, override and selected-player presentation gates retain it.
 `ActivationInputs` may also be installed as a Bevy resource for the HUD and native
 inspection adapter. No production system supplies these complete actor conditions
 yet, so this does not enable automatic interaction or player switching.
+
+`restore_axis_locks` reads current attributes after an explicit ordinary actor
+update and restores locked local position/angle components from `snapshot_spatial`.
+Slaves bypass restoration. This stage leaves matrix/family refresh separate and
+does not enable automatic scheduling. Rotation-lock writes after spatial
+preparation now remain visible to this stage.

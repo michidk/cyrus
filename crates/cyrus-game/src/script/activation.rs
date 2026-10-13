@@ -27,19 +27,25 @@ impl ActivationActor {
     fn on_edge(self) -> bool {
         (10..=19).contains(&self.state)
     }
-    fn weapon_predicates(
-        self,
-        holding_attribute: u8,
-        inputs: &ActivationInputs,
-    ) -> (bool, bool, bool) {
-        let ready = inputs.item_system_ready && !inputs.shell_execution && self.animation.is_some();
-        let group = self.animation.and_then(|animation| animation.group);
-        let drawing = ready && (self.state == 20 || group == Some(91));
-        let sheathing = ready && (self.state == 21 || group == Some(129));
-        let holding = holding_attribute != 0
-            || (ready && self.weapon_assigned && self.weapon_drawn && !sheathing);
-        (holding, drawing, sheathing)
-    }
+}
+
+/// Shared weapon gates for activation and ordinary default selection.
+pub(super) fn weapon_predicates(
+    state: u8,
+    animation: Option<ActivationAnimation>,
+    weapon_assigned: bool,
+    weapon_drawn: bool,
+    holding_attribute: u8,
+    item_system_ready: bool,
+    shell_execution: bool,
+) -> (bool, bool, bool) {
+    let ready = item_system_ready && !shell_execution && animation.is_some();
+    let group = animation.and_then(|animation| animation.group);
+    let drawing = ready && (state == 20 || group == Some(91));
+    let sheathing = ready && (state == 21 || group == Some(129));
+    let holding =
+        holding_attribute != 0 || (ready && weapon_assigned && weapon_drawn && !sheathing);
+    (holding, drawing, sheathing)
 }
 
 /// Explicit inspection inputs. Actor indices belong to the selected player's generation.
@@ -129,8 +135,15 @@ impl ActivationState {
         let player_attributes = selected_player.attributes();
         let actor = inputs.actor(receiver.index)?;
         let player = inputs.player_state(selected_player)?;
-        let (holding, drawing, sheathing) =
-            player.weapon_predicates(player_attributes[110], inputs);
+        let (holding, drawing, sheathing) = weapon_predicates(
+            player.state,
+            player.animation,
+            player.weapon_assigned,
+            player.weapon_drawn,
+            player_attributes[110],
+            inputs.item_system_ready,
+            inputs.shell_execution,
+        );
         if inputs.lockout == 1
             || inputs.dialogue_open
             || actor.on_rope
@@ -201,9 +214,16 @@ impl ActivationState {
             } else {
                 ActivationOverlay::Item {
                     visible: !inputs.render_disabled,
-                    cycle_allowed: !player
-                        .weapon_predicates(selected_player.attributes()[110], inputs)
-                        .0,
+                    cycle_allowed: !weapon_predicates(
+                        player.state,
+                        player.animation,
+                        player.weapon_assigned,
+                        player.weapon_drawn,
+                        selected_player.attributes()[110],
+                        inputs.item_system_ready,
+                        inputs.shell_execution,
+                    )
+                    .0,
                 }
             },
         )

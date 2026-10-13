@@ -5,7 +5,10 @@ use crate::script::{
 };
 use anyhow::{Context, Result};
 use rgpre::import::{
-    rgm::{self, RgmFile, script_program::decode_script_program},
+    rgm::{
+        self, RgmFile,
+        script_program::{decode_native_hook, decode_script_program},
+    },
     soup_def::SoupFunctionKind,
 };
 use std::collections::BTreeMap;
@@ -71,11 +74,11 @@ pub fn prepare_source(
         for (key, value) in attribute_keys.into_iter().zip(initialized) {
             attributes.insert(key, value);
         }
-        let hooks: Vec<u32> = record
-            .get("rahk_hooks")
-            .map(|data| serde_json::from_value(data.clone()))
-            .transpose()?
-            .unwrap_or_default();
+        let native_hook = decode_native_hook(rgm, source.header_index, &definition)
+            .map_err(anyhow::Error::msg)
+            .with_context(|| format!("{context}: native hook"))?
+            .map(|hook| serde_json::from_value(serde_json::to_value(hook)?))
+            .transpose()?;
         let decoded = decode_script_program(&source.bytecode, entry, &definition);
         let steps = match decoded {
             Ok(steps) => serde_json::from_value(serde_json::to_value(steps)?)?,
@@ -125,7 +128,7 @@ pub fn prepare_source(
                         instance_variables: source.instance_variables,
                         program,
                         attributes,
-                        hooks
+                        native_hook
                     }
                 )
                 .is_none(),
@@ -159,7 +162,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 6,
+        version: 7,
         clock,
         actor_pool_capacity: config.actor_pool_capacity,
         world,
