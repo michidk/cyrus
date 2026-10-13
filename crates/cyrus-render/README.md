@@ -107,9 +107,12 @@ from departed worlds do not trigger new GPU uploads.
 
 The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
 that reuses Faithful results. Existing Water and Fog switches remain independent.
-**Unknown:** full pixel parity, texture-filtering and combiner precision, and exact
-water-edge dirty-normal retention. A captured original water update retained two
-older normals that differ from a full recomputation. Cyrus recomputes the grid.
+**Unknown:** full pixel parity and remaining texture-filtering and combiner precision.
+**Verified:** preservation's [dirty-normal admission rules](https://github.com/michidk/redguard-preservation/blob/ebd7d9e/docs/engine/water.md#dirty-normals-and-retained-lighting)
+explain both retained edge normals in the captured original water update.
+The omitted diagonal retains its normal and RGB unless another water vertex
+marks it or the camera's terrain grid rebuilds. Cyrus still recomputes the full
+grid; applying the published rule and comparing rendered water edges remain open.
 
 Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
