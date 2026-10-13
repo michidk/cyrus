@@ -110,6 +110,8 @@ decodes one selected member from its byte range at runtime. Model previews accep
 an optional palette from their world references; absence selects the first known
 palette, while an explicitly empty selection uses embedded colors or grayscale
 indices. Model frame poses come from preservation's shared conversion API. Palette choices have separate cache identities.
+Original filenames containing `#` are accepted by native and browser catalogs.
+HTTP readers encode source path components; generated cache paths remain free of URL syntax.
 Unknown files and decoder failures remain inspectable catalog entries.
 The library retains the most recently used source or archive index, so members
 reuse indexing without retaining all payloads in memory.

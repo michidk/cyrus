@@ -19,7 +19,7 @@ impl Manifest {
     pub fn validate(&self) -> Result<()> {
         let mut paths = std::collections::HashSet::new();
         for file in &self.files {
-            crate::validate_path(&file.path)?;
+            crate::validate_source_path(&file.path)?;
             ensure!(
                 paths.insert(file.path.to_ascii_lowercase()),
                 "duplicate source path {}",
@@ -159,6 +159,37 @@ impl Seek for AssetFile<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn manifest_accepts_literal_hash_and_rejects_unsafe_paths() {
+        let mut manifest = Manifest {
+            files: vec![FileInfo {
+                path: "ENGLISH_wav/#bon.wav".into(),
+                bytes: 2,
+                digest: "a".repeat(64),
+            }],
+        };
+        manifest.validate().unwrap();
+        assert_eq!(
+            manifest.find("english_WAV/#BON.WAV").unwrap().path,
+            "ENGLISH_wav/#bon.wav"
+        );
+        for invalid in [
+            "",
+            "../#bon.wav",
+            "/#bon.wav",
+            "a/../#bon.wav",
+            "a/./#bon.wav",
+            "a//#bon.wav",
+            "a\\#bon.wav",
+            "https://host",
+            "a%2f..",
+            "a?b",
+        ] {
+            manifest.files[0].path = invalid.into();
+            assert!(manifest.validate().is_err(), "{invalid}");
+        }
+    }
+
     struct Bytes {
         manifest: Manifest,
         truncate: bool,

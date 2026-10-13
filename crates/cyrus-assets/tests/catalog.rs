@@ -25,6 +25,45 @@ impl Drop for Scratch {
 }
 
 #[test]
+fn hash_prefixed_original_audio_loads_and_prepares() {
+    let scratch = Scratch::new();
+    let root = scratch.0.join("install");
+    for dir in ["maps", "fxart", "ENGLISH_wav"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(root.join("RGFX.EXE"), []).unwrap();
+    let original = root.join("ENGLISH_wav/#bon.wav");
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 22050,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(&original, spec).unwrap();
+    writer.write_sample(1234_i16).unwrap();
+    writer.finalize().unwrap();
+    let before = std::fs::read(&original).unwrap();
+    let library = Library::open(
+        GameInstall::open(&root).unwrap(),
+        scratch.0.join("cache"),
+        |_, _, _| {},
+    )
+    .unwrap();
+    library.catalog.validate().unwrap();
+    let entry = library
+        .catalog
+        .entries
+        .iter()
+        .find(|entry| entry.path == "ENGLISH_wav/#bon.wav")
+        .unwrap();
+    let output = library.prepare(&entry.id, None).unwrap();
+    let preview: Preview = serde_json::from_slice(&std::fs::read(output).unwrap()).unwrap();
+    preview.validate().unwrap();
+    assert!(matches!(preview.content, Content::Audio { .. }));
+    assert_eq!(std::fs::read(original).unwrap(), before);
+}
+
+#[test]
 fn changed_sources_and_interrupted_cache_are_rebuilt() {
     let scratch = Scratch::new();
     let root = scratch.0.join("install");

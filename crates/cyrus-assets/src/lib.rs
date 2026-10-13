@@ -137,7 +137,7 @@ impl Catalog {
         let mut ids = std::collections::HashSet::new();
         for entry in &self.entries {
             validate_identity(&entry.id)?;
-            validate_path(&entry.path)?;
+            validate_source_path(&entry.path)?;
             ensure!(
                 ids.insert(&entry.id),
                 "duplicate catalog identity {}",
@@ -396,10 +396,11 @@ fn validate_identity(value: &str) -> Result<()> {
     Ok(())
 }
 
-/// Portable paths cannot escape the cache or introduce URL query/scheme syntax.
-pub fn validate_path(path: &str) -> Result<()> {
+/// Relative original-file paths may contain literal `#` characters in filenames.
+/// HTTP adapters must encode each component before constructing a URL.
+pub fn validate_source_path(path: &str) -> Result<()> {
     ensure!(
-        !path.is_empty() && !path.starts_with('/') && !path.contains(['\\', ':', '?', '#', '%']),
+        !path.is_empty() && !path.starts_with('/') && !path.contains(['\\', ':', '?', '%']),
         "invalid asset path {path:?}"
     );
     ensure!(
@@ -407,6 +408,13 @@ pub fn validate_path(path: &str) -> Result<()> {
             .all(|part| !part.is_empty() && part != "." && part != ".."),
         "invalid asset path {path:?}"
     );
+    Ok(())
+}
+
+/// Portable paths cannot escape the cache or introduce URL query/scheme syntax.
+pub fn validate_path(path: &str) -> Result<()> {
+    validate_source_path(path)?;
+    ensure!(!path.contains('#'), "invalid asset path {path:?}");
     Ok(())
 }
 
@@ -422,6 +430,7 @@ mod tests {
             "https://host",
             "x%2f..",
             "x?y",
+            "ENGLISH_wav/#bon.wav",
             "a\\b",
             "a//b",
         ] {

@@ -24,7 +24,7 @@ impl Files {
                 .get(0)
                 .as_string()
                 .context("local file path must be text")?;
-            cyrus_assets::validate_path(&path)?;
+            cyrus_assets::validate_source_path(&path)?;
             let file = entry
                 .get(1)
                 .dyn_into::<web_sys::File>()
