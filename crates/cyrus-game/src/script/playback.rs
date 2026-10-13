@@ -36,10 +36,14 @@ pub(super) fn advance(
     assets: Res<Assets<Animations>>,
     mut ticks: MessageReader<AnimationTick>,
     mut sounds: Option<ResMut<Messages<SoundCue>>>,
-    mut nodes: Query<(Entity, &mut ScriptedPlayback)>,
+    mut nodes: Query<(
+        Entity,
+        &mut ScriptedPlayback,
+        Option<&cyrus_world::sound::SoundSurface>,
+    )>,
     mut diagnostics: ResMut<super::PlaybackDiagnostics>,
 ) {
-    for (entity, playback) in &nodes {
+    for (entity, playback, _) in &nodes {
         if playback.source != request.0 {
             commands
                 .entity(entity)
@@ -47,7 +51,7 @@ pub(super) fn advance(
         }
     }
     for tick in ticks.read() {
-        for (entity, mut playback) in &mut nodes {
+        for (entity, mut playback, surface) in &mut nodes {
             if playback.source != request.0 {
                 continue;
             }
@@ -64,6 +68,7 @@ pub(super) fn advance(
                         sounds.write(SoundCue::Animation {
                             actor: entity,
                             sound,
+                            surface: surface.map(|value| value.0),
                         });
                         Ok(())
                     };

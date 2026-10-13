@@ -60,7 +60,8 @@ impl Plugin for ScriptPlugin {
                 Update,
                 (presentation::bind_scene, presentation::apply)
                     .chain()
-                    .in_set(cyrus_world::animation::AnimationSystems)
+                    .before(cyrus_world::animation::AnimationSystems)
+                    .after(crate::player::runtime::step)
                     .after(registry::prepare)
                     .after(registry::clear_unprepared)
                     .run_if(resource_exists::<cyrus_world::animation::AnimationRequest>),

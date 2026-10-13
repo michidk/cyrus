@@ -283,6 +283,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     for actor in [known, unknown] {
         app.world_mut().write_message(SoundCue::Animation {
             actor,
+            surface: (actor == known).then_some(0),
             sound: AnimationSound::Play {
                 effect: 0,
                 rate_offset_hz: 0,
@@ -300,6 +301,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
     );
     app.world_mut().write_message(SoundCue::Animation {
         actor: known,
+        surface: Some(0),
         sound: AnimationSound::Stop,
     });
     app.update();
@@ -319,6 +321,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
         });
     app.world_mut().write_message(SoundCue::Animation {
         actor: known,
+        surface: Some(0),
         sound: AnimationSound::Play {
             effect: 0,
             rate_offset_hz: 0,

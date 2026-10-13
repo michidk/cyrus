@@ -239,10 +239,13 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
         events,
         [(
             receiver,
-            ScriptSound::Animation(AnimationSound::Play {
-                effect: -17,
-                rate_offset_hz: -64
-            })
+            ScriptSound::Animation {
+                sound: AnimationSound::Play {
+                    effect: -17,
+                    rate_offset_hz: -64
+                },
+                surface: Some(0),
+            }
         )]
     );
     assert_eq!(world.animation_frame(receiver).unwrap(), Some(1));

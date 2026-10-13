@@ -3,6 +3,7 @@ use super::{ScriptActorId, ScriptActors};
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
 use cyrus_world::animation::{AnimationPose, AnimationRequest};
+use cyrus_world::sound::SoundSurface;
 
 /// An explicitly selected scene node observes one actor in one prepared world.
 /// This binding grants neither script nor animation update eligibility.
@@ -85,18 +86,32 @@ pub(super) fn apply(
     actors: Res<ScriptActors>,
     request: Res<AnimationRequest>,
     assets: Res<Assets<Animations>>,
-    nodes: Query<(Entity, &ScriptBinding, Option<&AnimationPose>)>,
+    nodes: Query<(
+        Entity,
+        &ScriptBinding,
+        Option<&AnimationPose>,
+        Option<&SoundSurface>,
+    )>,
 ) {
-    for (entity, binding, pose) in &nodes {
+    for (entity, binding, pose, surface) in &nodes {
         let world = actors.current.as_ref().filter(|world| {
             world.generation() == binding.actor.generation && binding.source == request.0
         });
         let Some(world) = world else {
             commands
                 .entity(entity)
-                .remove::<(ScriptBinding, AnimationPose)>();
+                .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
             continue;
         };
+        match world.actor_surface(binding.actor).ok().map(SoundSurface) {
+            Some(next) if surface != Some(&next) => {
+                commands.entity(entity).insert(next);
+            }
+            None if surface.is_some() => {
+                commands.entity(entity).remove::<SoundSurface>();
+            }
+            _ => {}
+        }
         let Some(data) = assets.get(&binding.source) else {
             continue;
         };
@@ -135,7 +150,7 @@ pub(super) fn apply(
                 );
                 commands
                     .entity(entity)
-                    .remove::<(ScriptBinding, AnimationPose)>();
+                    .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
             }
         }
     }

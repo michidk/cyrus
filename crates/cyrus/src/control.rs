@@ -374,14 +374,14 @@ fn handle(
                 let mut captured_sounds = Vec::new();
                 let mut emit = |actor: ScriptActorId, sound| -> anyhow::Result<()> {
                     use cyrus_game::script::ScriptSound;
-                    let sound = match sound {
-                        ScriptSound::Animation(sound) => sound,
+                    let (sound, surface) = match sound {
+                        ScriptSound::Animation { sound, surface } => (sound, surface),
                         sound => {
                             let event = match &sound {
                                 ScriptSound::Flat { effect, volume, rate_offset_hz } => json!({"type":"flat", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz}),
                                 ScriptSound::StopEffect { effect, owned } => json!({"type":"stop_effect", "effect":effect, "owned":owned}),
                                 ScriptSound::StopOwned => json!({"type":"stop_owned"}),
-                                ScriptSound::Animation(_) => unreachable!(),
+                                ScriptSound::Animation { .. } => unreachable!(),
                             };
                             captured_sounds.push(json!({"actor":actor, "sound":event}));
                             if let Some(sounds) = script_sounds.as_mut() {
@@ -415,6 +415,7 @@ fn handle(
                         .write(cyrus_world::sound::SoundCue::Animation {
                             actor: entity,
                             sound,
+                            surface,
                         });
                     Ok(())
                 };
@@ -775,7 +776,7 @@ mod tests {
         assert_eq!(cues.len(), 1);
         assert!(matches!(cues[0], SoundCue::Animation {
             actor,
-            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }
+            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, surface: Some(0)
         } if actor == entity));
         assert_eq!(
             app.world()
@@ -806,7 +807,7 @@ mod tests {
             .collect();
         assert_eq!(cues.len(), 1);
         assert!(matches!(cues[0], SoundCue::Animation {
-            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }
+            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, surface: Some(0)
         } if actor == entity));
     }
 }

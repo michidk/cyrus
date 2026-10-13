@@ -5,8 +5,11 @@ use cyrus_game::script::{
     ScriptActors, ScriptBinding, ScriptPlugin, ScriptScene, ScriptStage, Thread,
 };
 use cyrus_world::{
-    animation::{AnimationPose, AnimationRequest, AnimationTick},
+    animation::{
+        AnimationPlayback, AnimationPlugin, AnimationPose, AnimationRequest, AnimationTick,
+    },
     lifecycle::PreparedWorld,
+    sound::{SoundCue, SoundSurface},
 };
 use serde_json::json;
 
@@ -18,8 +21,8 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}
         ],"flags":[],"references":[],"attributes":[]},
-        "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
-            "namespace":"ACTOR","instance_variables":[[]],"attributes":{},"native_hook":null,
+        "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":2,
+            "namespace":"ACTOR","instance_variables":[[],[]],"attributes":{},"native_hook":null,
             "program":{"version":2,"entry":0,"steps":{
                 "0":{"next":1,"operation":{"type":"call","call":{
                     "function_id":1,"kind":"task","target":{"type":"me"},
@@ -28,7 +31,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
                 "1":{"next":2,"operation":{"type":"end","target":0}}
             }}
         }},
-        "instances":[{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"model_name":"test","model_mode":2,"map_position":[0,0,0],"angles":[0,0,0]}],
+        "instances":[{"object_id":0,"actor":"ACTOR","object_type":1,"active":0,"model_name":"test","model_mode":2,"map_position":[0,0,0],"angles":[0,0,0]}, {"object_id":1,"actor":"ACTOR","object_type":2,"active":0,"model_name":"test","model_mode":2,"map_position":[0,0,0],"angles":[0,0,0]}],
         "unsupported":{}
     })).unwrap();
     scripts.content_id = scripts.content_identity().unwrap();
@@ -37,9 +40,10 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         "models":{"TEST":{"base_positions":[[0,0,0]],"base_normals":[],"faces":[],"encoding":"animated_i32",
             "positions":[[[0,0,0]],[[0,1,0]]],"normals":[[],[]]}},
         "metadata":{"markers": [], "walk_node_maps": [], "script_content_id":scripts.content_id,
-        "mpob_objects":[{"script_name":"ACTOR","object_type":1,"is_static":2,"model_name":"test"}],"actors":[{
+        "mpob_objects":[{"script_name":"ACTOR","object_type":1,"is_static":2,"model_name":"test"},{"script_name":"ACTOR","object_type":2,"is_static":2,"model_name":"test"}],"actors":[{
             "script_name":"ACTOR",
             "animation_groups":[
+                {"group_index":9,"anim_type":0,"anim_id":1,"commands":[{"opcode":4,"sound_param":200,"volume_shift":0},{"opcode":1}]},
                 {"group_index":1,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
                 {"group_index":7,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":1},{"opcode":2,"value":0},{"opcode":1}]}
             ]
@@ -50,7 +54,8 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .init_asset::<Scripts>()
         .init_asset::<Animations>()
         .add_message::<AnimationTick>()
-        .add_plugins(ScriptPlugin);
+        .add_message::<SoundCue>()
+        .add_plugins((AnimationPlugin, ScriptPlugin));
     let script_handle = app
         .world_mut()
         .resource_mut::<Assets<Scripts>>()
@@ -92,6 +97,13 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
                 .bind_animation(id, data, 1)
                 .unwrap();
         });
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .set_actor_surface(id, 7)
+        .unwrap();
     let root = app
         .world_mut()
         .spawn(ScriptScene::new(animation_handle.clone()))
@@ -112,8 +124,42 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
             },
         ))
         .id();
+    let unknown = app
+        .world_mut()
+        .spawn((Name::new("B_001_ACTOR"), ChildOf(root), SoundSurface(11)))
+        .id();
+    let playback = AnimationPlayback::new(
+        animation_handle.clone(),
+        app.world()
+            .resource::<Assets<Animations>>()
+            .get(&animation_handle)
+            .unwrap(),
+        "ACTOR",
+        9,
+        1,
+    )
+    .unwrap();
+    app.world_mut().entity_mut(node).insert(playback);
+    app.world_mut().write_message(AnimationTick { ticks: 0 });
     app.update();
+    assert!(app.world().get::<ScriptBinding>(unknown).is_some());
+    assert!(
+        app.world().get::<SoundSurface>(unknown).is_none(),
+        "unsupported object state must clear a stale component"
+    );
+    let cues: Vec<_> = app
+        .world_mut()
+        .resource_mut::<Messages<SoundCue>>()
+        .drain()
+        .collect();
+    assert!(cues.iter().any(|cue| matches!(cue, SoundCue::Animation {
+        actor, surface: Some(7), sound: cyrus_world::animation::AnimationSound::Play { effect: 200, .. }
+    } if *actor == node)), "binding and surface projection must precede playback in the same update");
     assert_eq!(app.world().get::<ScriptBinding>(node).unwrap().actor, id);
+    assert_eq!(
+        app.world().get::<SoundSurface>(node),
+        Some(&SoundSurface(7))
+    );
     assert!(app.world().get::<ScriptBinding>(unrelated).is_none());
     assert!(app.world().get::<ScriptBinding>(wrong_actor).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());
@@ -148,6 +194,19 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     assert_eq!(runtime.active_tasks(), 1);
     assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 1);
 
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .set_actor_surface(id, 8)
+        .unwrap();
+    app.update();
+    assert_eq!(
+        app.world().get::<SoundSurface>(node),
+        Some(&SoundSurface(8))
+    );
+
     let model = app
         .world_mut()
         .resource_mut::<Assets<Animations>>()
@@ -158,6 +217,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .unwrap();
     app.update();
     assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<SoundSurface>(node).is_none());
     app.world_mut()
         .resource_mut::<Assets<Animations>>()
         .get_mut(&animation_handle)
@@ -166,11 +226,13 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .insert("TEST".into(), model);
     app.update();
     assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<SoundSurface>(node).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());
 
     app.insert_resource(prepared());
     app.update();
     assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<SoundSurface>(node).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());
     let fresh = app
         .world()
@@ -187,6 +249,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .id();
     app.update();
     assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<SoundSurface>(node).is_none());
     assert!(app.world().get::<ScriptBinding>(late_old_node).is_none());
     let runtime = app
         .world()

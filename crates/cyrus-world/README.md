@@ -22,7 +22,8 @@ two group-zero requests and retains the selected frame. The caller supplies
 nominal ticks and synchronous sound dispatch; this does not grant update eligibility.
 
 World defines `SoundCue` and `SoundSurface`; the audio consumer registers the cue
-queue. Without that consumer, sound-bearing animation remains explicitly
+queue. Animation cues capture the actor surface when the command runs; the
+mixer does not read a later component value. Without that consumer, sound-bearing animation remains explicitly
 unsupported. `AnimationSystems` lets composition preserve same-update ordering.
 
 Terrain and static collision queries live in [cyrus-collision](../cyrus-collision/README.md).

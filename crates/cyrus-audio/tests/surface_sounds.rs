@@ -64,8 +64,10 @@ fn fixture() -> (App, Entity) {
 }
 
 fn play(app: &mut App, actor: Entity, effect: i16) {
+    let surface = app.world().get::<SoundSurface>(actor).map(|value| value.0);
     app.world_mut().write_message(SoundCue::Animation {
         actor,
+        surface,
         sound: AnimationSound::Play {
             effect,
             rate_offset_hz: 0,
@@ -123,6 +125,7 @@ fn remapped_audio_uses_target_pcm_but_cleanup_matches_authored_source() {
     app.world_mut().write_message(SoundCue::Animation {
         actor,
         sound: AnimationSound::Stop,
+        surface: None,
     });
     app.update();
     assert_eq!(playing(&mut app), 0);
@@ -187,4 +190,77 @@ fn known_zero_and_script_flat_sounds_bypass_configured_remaps() {
         1,
         "script source 200 must not become target 1"
     );
+}
+
+#[test]
+fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
+    let (mut app, actor) = fixture();
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Play {
+            effect: 200,
+            rate_offset_hz: 0,
+        },
+        surface: Some(7),
+    });
+    app.world_mut().entity_mut(actor).remove::<SoundSurface>();
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        1,
+        "later missing ground cannot discard a captured wood cue"
+    );
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Forget,
+        surface: None,
+    });
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Stop,
+        surface: None,
+    });
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        1,
+        "Forget clears the animation handle without stopping its channel"
+    );
+    app.world_mut().entity_mut(actor).insert(SoundSurface(7));
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Play {
+            effect: 200,
+            rate_offset_hz: 0,
+        },
+        surface: None,
+    });
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        1,
+        "later known ground must not fill an unknown cue snapshot"
+    );
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Play {
+            effect: 200,
+            rate_offset_hz: 0,
+        },
+        surface: Some(7),
+    });
+    app.world_mut().entity_mut(actor).insert(SoundSurface(0));
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        2,
+        "later zero must not replace a captured wood class"
+    );
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Stop,
+        surface: None,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1, "Stop works with no snapshot");
 }

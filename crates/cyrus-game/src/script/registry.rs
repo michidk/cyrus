@@ -100,6 +100,7 @@ pub struct ScriptActor {
     unavailable: Option<String>,
     attributes: Vec<u8>,
     control: Option<ActorControlState>,
+    surface: Option<u8>,
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
@@ -243,6 +244,12 @@ impl ScriptWorld {
                 _ => None,
             };
             ScriptActor {
+                surface: (control.is_some()
+                    || matches!(
+                        &source,
+                        ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+                    ))
+                .then_some(0),
                 source,
                 control,
                 runtime_identifier,
@@ -412,6 +419,26 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Read stored actor surface state; unsupported object paths have no established value.
+    pub fn actor_surface(&self, id: ScriptActorId) -> Result<u8> {
+        let index = self.resolve(id)?;
+        self.actors[index].surface.with_context(|| {
+            format!(
+                "world {} instance {index} actor {} surface state unavailable",
+                self.world,
+                self.actors[index].name()
+            )
+        })
+    }
+
+    /// Commit the actor driver's stored surface, including assignments before a failed transition.
+    /// SOUP water predicates consume this value without querying terrain again.
+    pub fn set_actor_surface(&mut self, id: ScriptActorId, surface: u8) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.actors[index].surface = Some(surface);
+        Ok(())
+    }
+
     /// Authoritative local and composed pose for this generation's actor.
     pub fn spatial(&self, id: ScriptActorId) -> Result<&super::ActorSpatial> {
         let index = self.resolve(id)?;
@@ -516,7 +543,15 @@ impl ScriptWorld {
             data,
             actor.name(),
             ticks,
-            &mut |sound| sounds(id, super::ScriptSound::Animation(sound)),
+            &mut |sound| {
+                sounds(
+                    id,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface: actor.surface,
+                    },
+                )
+            },
         );
         match result {
             Ok((playback, frame)) => {
@@ -600,10 +635,11 @@ impl ScriptWorld {
                 u16::from(actor.attributes[44])
             }
         };
+        let surface = actor.surface;
         let result = animation
             .playback
             .select_default_with_sounds(group, ticks, &mut |sound| {
-                sounds(id, super::ScriptSound::Animation(sound))
+                sounds(id, super::ScriptSound::Animation { sound, surface })
             });
         match result {
             Ok(frame) => {
@@ -1089,8 +1125,9 @@ impl GameHost<'_, '_, '_, '_> {
             .inputs
             .nominal_ticks
             .context("animation requires nominal_ticks")?;
+        let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
+            Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let animation = self.actors[self.index]
@@ -1165,8 +1202,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 return Ok(CallResult::Complete(value));
             }
         }
+        let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
+            Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let actor = &mut self.actors[self.index];
@@ -1355,8 +1393,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, super::ScriptSound::Animation(sound)),
+            Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let actor = &mut self.actors[self.index];

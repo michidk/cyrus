@@ -378,6 +378,7 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
         };
         let (_, data) = data(serde_json::json!([{
             "group_index":20,"anim_type":0,"anim_id":2,"commands":[
+                {"opcode":4,"sound_param":7,"volume_shift":0},
                 {"opcode":0,"frame_reference":0},{"opcode":1}
             ]
         }]));
@@ -396,13 +397,17 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
             frame_scale: 256,
             nominal_ticks: 0,
         };
+        let mut emitted = Vec::new();
         let step = walk
             .forward(
                 &query,
                 &input,
                 (&mut history, &mut veto),
                 &mut animation,
-                &mut |_| Ok(()),
+                &mut |sound, surface| {
+                    emitted.push((sound, surface));
+                    Ok(())
+                },
             )
             .unwrap();
         assert_eq!(step.is_some(), accepted);
@@ -415,6 +420,21 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
             ]
         );
         assert_eq!(walk.surface, material);
+        let expected = if accepted {
+            vec![(
+                cyrus_world::animation::AnimationSound::Play {
+                    effect: 7,
+                    rate_offset_hz: 0,
+                },
+                6,
+            )]
+        } else {
+            vec![]
+        };
+        assert_eq!(
+            emitted, expected,
+            "walking cue captures the assigned support surface"
+        );
         if !accepted {
             assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
         }
@@ -605,7 +625,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
             &mut input,
             (&mut history, &mut veto),
             &mut animation,
-            &mut |_| Ok(()),
+            &mut |_, _| Ok(()),
         )
         .unwrap();
     assert_eq!(frame, Some(20));
@@ -624,7 +644,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         &mut input,
         (&mut history, &mut veto),
         &mut animation,
-        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
     )
     .unwrap();
     assert_eq!(animation.pending_group(), Some(3));
@@ -644,7 +664,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         &mut input,
         (&mut history, &mut veto),
         &mut animation,
-        &mut |_| Ok(()),
+        &mut |_, _| Ok(()),
     )
     .unwrap();
     assert_eq!(walk.position, [start[0], start[1], start[2] + 512 + 682]);
@@ -714,7 +734,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
                 &mut input,
                 (&mut history, &mut 0),
                 &mut animation,
-                &mut |_| Ok(()),
+                &mut |_, _| Ok(()),
             )
             .unwrap();
         assert_eq!(frame.or(ordinary_frame), Some(20));
@@ -875,7 +895,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         .resource_mut::<Messages<SoundCue>>()
         .drain()
         .collect();
-    assert_eq!(cues.iter().filter(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 7, rate_offset_hz: 0 } } if *actor == player)).count(), 1);
+    assert_eq!(cues.iter().filter(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 7, rate_offset_hz: 0 }, .. } if *actor == player)).count(), 1);
 
     assert_eq!(
         app.world().get::<PlayerPose>(player).unwrap().position,

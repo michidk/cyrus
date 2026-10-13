@@ -637,7 +637,7 @@ fn play_cues(
                         pending.retain(|(pending_owner, _)| *pending_owner != Some(owner));
                         channels.stop_matching(&mut commands, Some(owner), None);
                     }
-                    ScriptSound::Animation(_) => {
+                    ScriptSound::Animation { .. } => {
                         warn!("script animation sound requires a scene binding")
                     }
                 }
@@ -661,19 +661,23 @@ fn play_cues(
                     None,
                 );
             }
-            SoundCue::Animation { actor, sound } => match sound {
+            SoundCue::Animation {
+                actor,
+                sound,
+                surface,
+            } => match sound {
                 AnimationSound::Play {
                     effect: requested,
                     rate_offset_hz,
                 } => {
                     channels.animation.remove(actor);
-                    let Ok((transform, surface, is_player)) = actors.get(*actor) else {
+                    let Ok((transform, _, is_player)) = actors.get(*actor) else {
                         warn!("sound: animation cue for {actor} without a transform");
                         continue;
                     };
                     let index = match surface {
-                        Some(SoundSurface(0)) => u8::try_from(*requested).ok().map(usize::from),
-                        Some(SoundSurface(surface)) => {
+                        Some(0) => u8::try_from(*requested).ok().map(usize::from),
+                        Some(surface) => {
                             let Some(surfaces) = surfaces.as_deref() else {
                                 warn_once!("sound: SURFACE.INI remaps are unavailable");
                                 continue;

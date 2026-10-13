@@ -252,7 +252,7 @@ fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::A
                 &mut input,
                 (&mut history, &mut veto),
                 &mut animation,
-                &mut |_| Ok(()),
+                &mut |_, _| Ok(()),
             )
             .unwrap()
             .unwrap_or(reference);

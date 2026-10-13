@@ -61,7 +61,7 @@ impl GroundedWalk {
         input: &mut GroundedUpdate,
         shared: (&mut SupportHistory, &mut i32),
         animation: &mut cyrus_world::animation::ActorAnimation,
-        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound, u8) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
         let definition = query
@@ -189,6 +189,7 @@ impl GroundedWalk {
 
     /// Probe support, request the walking animation, then translate in original axes.
     /// Caller establishes ordinary sheathed eligibility and supplies actor orientation.
+    /// Sound callbacks receive the stored surface after the forward support query.
     /// A successful zero-distance result still counts as accepted forward movement.
     /// Obstacle response and final support must follow before presenting the position.
     pub fn forward(
@@ -197,7 +198,7 @@ impl GroundedWalk {
         input: &ForwardWalk,
         shared: (&mut SupportHistory, &mut i32),
         animation: &mut cyrus_world::animation::ActorAnimation,
-        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound, u8) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<super::walk::WalkingStep>> {
         let definition = query
             .scene
@@ -216,7 +217,7 @@ impl GroundedWalk {
             definition,
             input.frame_scale,
             input.nominal_ticks,
-            sounds,
+            &mut |sound| sounds(sound, self.surface),
         )?;
         if let Some(step) = &step {
             self.position =

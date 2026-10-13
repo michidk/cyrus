@@ -163,13 +163,15 @@ pub(crate) fn step(
                 "world {} player step: nonfinite rotation",
                 scene.world
             );
-            let mut emit = |sound| {
+            let initial_surface = world.actor_surface(tick.actor)?;
+            let mut emit = |sound, surface| {
                 sounds
                     .as_mut()
                     .context("player animation: sound consumer unavailable")?
                     .write(SoundCue::Animation {
                         actor: entity,
                         sound,
+                        surface: Some(surface),
                     });
                 Ok(())
             };
@@ -181,7 +183,7 @@ pub(crate) fn step(
                 runtime.running = Some(Running {
                     walk: GroundedWalk {
                         position: pose.position,
-                        surface: 0,
+                        surface: world.actor_surface(tick.actor)?,
                         startup: WalkingStartup::new(definition.step_type)
                             .context("player step: unsupported step type")?,
                     },
@@ -190,14 +192,16 @@ pub(crate) fn step(
                 });
             }
             let animation =
-                world.player_animation(tick.actor, data, tick.nominal_ticks, &mut emit)?;
+                world.player_animation(tick.actor, data, tick.nominal_ticks, &mut |sound| {
+                    emit(sound, initial_surface)
+                })?;
             let running = runtime.running.as_mut().unwrap();
             if let Some(frame) = grounded::advance_animation(
                 scene,
                 tick.nominal_ticks,
                 &mut running.history,
                 &mut animation.playback,
-                &mut emit,
+                &mut |sound| emit(sound, running.walk.surface),
             )? {
                 animation.frame = Some(frame);
             }
@@ -259,6 +263,13 @@ pub(crate) fn step(
             ));
             Ok(())
         })();
+        // Surface assignment precedes transition effects, even when those effects fail.
+        if let Some(running) = &runtime.running
+            && let Err(error) = world.set_actor_surface(tick.actor, running.walk.surface)
+        {
+            runtime.error = Some(format!("player surface: {error:#}"));
+            continue;
+        }
         if let Err(error) = result {
             let error = format!("player step: {error:#}");
             log::error!("{error}");

@@ -13,9 +13,10 @@ to `SoundSettings` before `ApplyPreferences`. The Update order is
 `CinematicAudio` marks cinematic playback and pauses CD music. Browser startup
 can inspect `SoundBankHandle` and its asset dependencies for loading failures.
 
-Animation cues use installed SURFACE.INI remaps on native and browser. The actor's
-`SoundSurface` selects the row; known zero bypasses it, and missing ground state
-remains unsupported. Playback validates the remapped effect, while cleanup retains
+Animation cues use installed SURFACE.INI remaps on native and browser. The cue's
+captured surface selects the row; known zero bypasses it, and missing state
+remains unsupported. Later actor changes cannot alter a queued cue. Stop and
+Forget do not require surface state. Playback validates the remapped effect, while cleanup retains
 the authored source ID. Script, combat and speech starts bypass these tables.
 Actor surface updates belong to the ground/SOUP host, not the sound plugin.
 

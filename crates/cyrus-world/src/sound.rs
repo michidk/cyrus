@@ -17,11 +17,14 @@ pub enum SoundCue {
         volume: i32,
         rate_offset_hz: i32,
     },
-    /// An authored animation sound of `actor`, which must carry a `GlobalTransform` and
-    /// a [`SoundSurface`]; without the surface its starts are reported and not played.
+    /// An authored animation sound of `actor`, which must carry a `GlobalTransform`.
+    /// Capture the stored surface when the command runs, before later ground updates.
     Animation {
         actor: Entity,
         sound: crate::animation::AnimationSound,
+        /// None leaves Play unsupported; Stop and Forget do not need a surface.
+        /// Zero bypasses remapping. Other codes select the installed SURFACE.INI row.
+        surface: Option<u8>,
     },
 }
 
@@ -34,7 +37,11 @@ pub struct SoundSurface(pub u8);
 /// their signed authored value; invalid starts allocate no channel.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ScriptSound {
-    Animation(crate::animation::AnimationSound),
+    /// Surface captured by the logical actor host when its animation command runs.
+    Animation {
+        sound: crate::animation::AnimationSound,
+        surface: Option<u8>,
+    },
     Flat {
         effect: i32,
         volume: i32,

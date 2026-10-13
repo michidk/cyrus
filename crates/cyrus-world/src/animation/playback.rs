@@ -43,9 +43,13 @@ pub(super) fn advance(
     assets: Res<Assets<Animations>>,
     mut ticks: MessageReader<AnimationTick>,
     mut sound_cues: Option<ResMut<Messages<SoundCue>>>,
-    mut nodes: Query<(Entity, &mut AnimationPlayback)>,
+    mut nodes: Query<(
+        Entity,
+        &mut AnimationPlayback,
+        Option<&crate::sound::SoundSurface>,
+    )>,
 ) {
-    for (entity, playback) in &nodes {
+    for (entity, playback, _) in &nodes {
         if playback.source != request.0 {
             commands
                 .entity(entity)
@@ -53,7 +57,7 @@ pub(super) fn advance(
         }
     }
     for tick in ticks.read() {
-        for (entity, mut playback) in &mut nodes {
+        for (entity, mut playback, surface) in &mut nodes {
             if playback.source != request.0 {
                 continue;
             }
@@ -65,6 +69,7 @@ pub(super) fn advance(
                     cues.write(SoundCue::Animation {
                         actor: entity,
                         sound,
+                        surface: surface.map(|value| value.0),
                     });
                     Ok(())
                 };

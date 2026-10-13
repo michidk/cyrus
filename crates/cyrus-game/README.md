@@ -76,7 +76,12 @@ Walking retains movement/support state and uses that actor's shared animation an
 selected file frame. It advances animation before selecting static candidates by
 the selected model radius, then updates `PlayerPose`, `Transform`, `AnimationPose`
 and `SoundSurface`. The player receives a `ScriptBinding`, so later SOUP requests
-also update its presentation. Authored cues use `SoundCue`; native inspection
+also update its presentation. Stored surface belongs to the logical actor;
+presentation projects it before explicit animation playback in the same update.
+Animation cues capture the stored value at emission, including support changes
+before walking requests. Failed transitions retain prior surface assignments.
+Unsupported object paths have no surface value and stale bindings clear the
+component. Authored cues use `SoundCue`; native inspection
 recognizes these bindings even on unnamed player entities.
 Multiple messages remain separate updates; zero nominal ticks can still move.
 Stale asset requests and world identities are discarded. Walking errors stop
