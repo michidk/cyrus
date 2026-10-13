@@ -527,3 +527,36 @@ reopens the console between loads. Check fresh measurements and Docker identity
 after restarting; an interrupted adapter's saved dump is not a new observation.
 **Unknown:** reconstruction of the recorded debugger-enabled emulator from source
 and original CD/audio parity. Static captures do not verify either.
+
+After copying the guarded bundle under `magic/`, restore without launching:
+
+```sh
+python3 magic/original-tools/restore-original.py \
+  --snapshot /absolute/path/to/research/supplements/2026-10-13-stage0-tooling \
+  --install /absolute/path/to/Redguard \
+  --emulator /absolute/path/to/recorded/dosbox-x \
+  --runtime /home/vibepod/workspaces/cyrus-original-runtime \
+  --container cyrus-original-runtime --static-capture
+```
+
+Keep all five instruments beside `restore-original.py`. The earlier snapshot
+supplies runtime templates; the guarded bundle supplies the corrected instruments.
+Choose a fresh runtime path and an unowned container name. If the guarded
+runtime image is absent, build its prerequisites:
+
+```sh
+docker build -t cyrus-retro:dev dev/docker/retro
+docker build -t cyrus-stage0-retro:20261013 - < /home/vibepod/workspaces/cyrus-original-runtime/Dockerfile
+```
+
+Run the generated `start-retro.sh` through the managed preview workflow above,
+then supply the adapter:
+
+```sh
+export CYRUS_ORIGINAL_CONTAINER=cyrus-original-runtime
+export CYRUS_ORIGINAL_CAPTURE=/home/vibepod/workspaces/cyrus-original-runtime/magic/instruments/original-capture.py
+just retro --fixture dev/fixtures/island.json island-original-check
+```
+
+After inspecting that original-only result, follow the fixture README to build and
+run native/browser and produce a new full triplet. Existing labels are rejected.
