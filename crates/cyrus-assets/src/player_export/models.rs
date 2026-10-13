@@ -67,6 +67,7 @@ pub(crate) fn prepare(
             ],
             model_name: name.clone(),
             source_id: None,
+            render_attributes: None,
         };
         let (root, buffer) =
             convert_positioned_models_to_gltf(&[model], &[], Some(palette), Some(textures), false)

@@ -6,6 +6,7 @@ pub mod fog;
 pub mod hud;
 pub mod lighting;
 pub mod player_model;
+mod sampling;
 pub mod script_transform;
 mod sky;
 #[cfg(not(target_arch = "wasm32"))]

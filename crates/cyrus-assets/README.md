@@ -15,7 +15,10 @@ Environment caches retain exact static placements and ordered signed map-light
 inputs for world-entry prelighting, plus authored kind-6 object lights separately
 for runtime shading. Object loading follows SYSTEM.INI; active object-light
 scripts remain explicitly unsupported. Model GLBs retain the original bound and
-palette RGB through preservation metadata; old lighting caches require re-export. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
+palette RGB through preservation metadata; old lighting caches require re-export.
+Positioned world nodes retain selected ROB render attributes separately from shared
+mesh geometry; standalone and generated models retain null ROB provenance. Re-export
+worlds for version-1 `rgpre_render` metadata. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
 Native movie preparation retains a read-only file or CD-image location and reads
 only metadata. Its bounded reader closes the CD image when dropped. Browser movie
 preparation loads metadata only; `cyrus_media::MovieStream` consumes compressed

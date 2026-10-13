@@ -177,6 +177,12 @@ fn world_exports_include_declared_terrain_and_textures() {
             let Some(mesh) = node["mesh"].as_u64() else {
                 continue;
             };
+            let render = &node["extras"]["rgpre_render"];
+            assert_eq!(render["version"], 1, "{name}: {}", node["name"]);
+            let attributes = render
+                .get("rob_attributes")
+                .expect("ROB provenance is explicit");
+            assert!(attributes.is_null() || attributes.as_u64().is_some_and(|flags| flags <= 255));
             for primitive in document["meshes"][mesh as usize]["primitives"]
                 .as_array()
                 .unwrap()

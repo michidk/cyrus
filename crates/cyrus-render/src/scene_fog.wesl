@@ -5,12 +5,14 @@ import bevy_pbr::render::{
     view_transformations::position_world_to_clip,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
+    pbr_types::STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT,
 };
 @if(PREMULTIPLY_ALPHA)
 import bevy_pbr::render::pbr_functions::premultiply_alpha;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
 import package::scene_shading::{fog, scene_color};
-import package::model_lights::apply_local_lights;
+import package::model_lights::{apply_local_lights, model};
+import package::sampling::sample_encoded;
 
 struct ModelVertex {
     @builtin(position) position: vec4<f32>,
@@ -63,7 +65,11 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     surface.instance_index = in.instance_index;
     let input = pbr_input_from_standard_material(surface, is_front);
     let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
-    let texture_rgb = select(linear_to_srgb(base.rgb), vec3(1.0), in.retained_solid != 0u);
+    var texture_rgb = linear_to_srgb(base.rgb);
+    if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
+        texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u);
+    }
+    texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
     let color = srgb_to_linear(texture_rgb * (in.color * in.position.w));
     var out: FragmentOutput;
     out.color = vec4(scene_color(color, depth, in.position.xy), base.a);

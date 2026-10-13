@@ -5,11 +5,11 @@ import bevy_pbr::render::{
     view_transformations::position_world_to_clip,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
-    pbr_bindings::{base_color_texture, base_color_sampler},
 };
-import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
+import bevy_render::color_operations::srgb_to_linear;
 import package::scene_shading::{fog, scene_color};
 import package::glide_fog::blend_fog;
+import package::sampling::sample_encoded;
 
 struct TerrainVertex {
     @builtin(position) position: vec4<f32>,
@@ -65,20 +65,6 @@ fn vertex(raw: Vertex,
     return out;
 }
 
-// Software Voodoo 1 filtering uses encoded bytes and four-bit fractions.
-fn terrain_sample(uv: vec2<f32>) -> vec3<f32> {
-    let size = vec2<f32>(textureDimensions(base_color_texture));
-    let texel = uv * size - vec2(0.5);
-    let fraction = floor(fract(texel) * 16.0) / 16.0;
-    let origin = floor(texel) + vec2(0.5);
-    let a = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, origin / size, 0.0).rgb) * 255.0);
-    let b = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(1.0, 0.0)) / size, 0.0).rgb) * 255.0);
-    let c = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(0.0, 1.0)) / size, 0.0).rgb) * 255.0);
-    let d = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(1.0)) / size, 0.0).rgb) * 255.0);
-    let top = a + floor((b - a) * fraction.x);
-    let bottom = c + floor((d - c) * fraction.x);
-    return (top + floor((bottom - top) * fraction.y)) / 255.0;
-}
 
 @if(PREPARED_TERRAIN)
 fn terrain_channel(plane: vec4<i32>, offset: vec2<i32>) -> f32 {
@@ -113,11 +99,11 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // Terrain lighting modulates encoded texture RGB before scene fog.
     var encoded: vec3<f32>;
 @if(!PREPARED_TERRAIN)
-    encoded = terrain_sample(surface.uv) * (in.color * in.position.w);
+    encoded = sample_encoded(surface.uv, false) * (in.color * in.position.w);
 @if(PREPARED_TERRAIN) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
     let light = vec3(terrain_channel(in.red, offset), terrain_channel(in.green, offset), terrain_channel(in.blue, offset));
-    encoded = floor(round(terrain_sample(surface.uv) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
+    encoded = floor(round(sample_encoded(surface.uv, false) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
 }
     var color = srgb_to_linear(encoded);
     if water_weight > 0.0 {

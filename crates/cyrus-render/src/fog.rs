@@ -42,7 +42,7 @@ impl RenderDistance {
 
 type SceneMaterial = ExtendedMaterial<StandardMaterial, ModelExtension>;
 type MaterialCache =
-    HashMap<(AssetId<StandardMaterial>, i32, Option<Entity>), Handle<SceneMaterial>>;
+    HashMap<(AssetId<StandardMaterial>, i32, Option<Entity>, Option<u8>), Handle<SceneMaterial>>;
 type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
@@ -135,6 +135,7 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");
         load_shader_library!(app, "model_lights.wesl");
+        load_shader_library!(app, "sampling.wesl");
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
@@ -178,9 +179,11 @@ fn apply_scene_fog(
         ResMut<Assets<Image>>,
         Query<&MeshMaterial3d<SceneMaterial>>,
         Query<&MeshMaterial3d<TerrainMaterial>>,
+        Query<&bevy::gltf::GltfExtras>,
     ),
 ) {
-    let (mut previous, mut lights, mut images, scene_handles, terrain_handles) = runtime;
+    let (mut previous, mut lights, mut images, scene_handles, terrain_handles, node_extras) =
+        runtime;
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
     else {
@@ -297,6 +300,7 @@ fn apply_scene_fog(
                 })
             });
         let mut radius = 0;
+        let mut attributes = None;
         if !terrain {
             let Some(original) = meshes.get(&mesh.0) else {
                 continue;
@@ -304,6 +308,16 @@ fn apply_scene_fog(
             let prepared = extras
                 .ok_or_else(|| anyhow::anyhow!("missing model lighting metadata"))
                 .and_then(|extras| {
+                    attributes = crate::sampling::attributes(
+                        std::iter::once(entity)
+                            .chain(parents.iter_ancestors(entity))
+                            .filter_map(|ancestor| {
+                                node_extras
+                                    .get(ancestor)
+                                    .ok()
+                                    .map(|extras| extras.value.as_str())
+                            }),
+                    )?;
                     crate::lighting::model_mesh(
                         original,
                         &extras.value,
@@ -334,12 +348,22 @@ fn apply_scene_fog(
             }
         }
         let material = converted
-            .entry((handle.0.id(), radius, instance.map(|(entity, _)| entity)))
+            .entry((
+                handle.0.id(),
+                radius,
+                instance.map(|(entity, _)| entity),
+                attributes,
+            ))
             .or_insert_with(|| {
                 let mut extension = extension.clone();
                 extension.water.y = u8::from(terrain) as f32;
+                let mut base = base.clone();
+                // shortcut: chroma-enabled meshes retain alpha masking until texture-key provenance is recovered.
+                if attributes.is_some_and(|flags| flags & 2 == 0) {
+                    base.alpha_mode = AlphaMode::Opaque;
+                }
                 fog_materials.add(SceneMaterial {
-                    base: base.clone(),
+                    base,
                     extension: ModelExtension {
                         fog: extension,
                         lights: light_texture.clone(),
@@ -357,7 +381,7 @@ fn apply_scene_fog(
                             radius as f32 / 256.0,
                             u8::from(instance.is_some()) as f32,
                             u8::from(!terrain) as f32,
-                            0.0,
+                            attributes.map_or(-1.0, f32::from),
                         ),
                     },
                 })
@@ -448,7 +472,7 @@ mod tests {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
         let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let extras = bevy::gltf::GltfExtras {
-            value: r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
+            value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
         };
         let first = app
             .world_mut()
@@ -488,6 +512,32 @@ mod tests {
                 },
             ))
             .id();
+        let flagged: Vec<_> = [0, 3]
+            .into_iter()
+            .map(|flags| {
+                let root = app
+                    .world_mut()
+                    .spawn(bevy::gltf::GltfExtras {
+                        value: format!(
+                            r#"{{"rgpre_render":{{"version":1,"rob_attributes":{flags}}}}}"#
+                        ),
+                    })
+                    .id();
+                app.world_mut()
+                    .spawn((
+                        MeshMaterial3d(base.clone()),
+                        Mesh3d(mesh.clone()),
+                        ChildOf(root),
+                        bevy::gltf::GltfExtras {
+                            value: extras.value.replace(
+                                r#""rgpre_render":{"version":1,"rob_attributes":null},"#,
+                                "",
+                            ),
+                        },
+                    ))
+                    .id()
+            })
+            .collect();
         let terrain_root = app.world_mut().spawn(Name::new("Terrain")).id();
         let terrain = app
             .world_mut()
@@ -512,7 +562,27 @@ mod tests {
             .0;
         assert_ne!(*placed_handle, handle);
         assert_ne!(*larger_handle, handle);
+        let flag_handles: Vec<_> = flagged
+            .iter()
+            .map(|&entity| {
+                app.world()
+                    .get::<MeshMaterial3d<SceneMaterial>>(entity)
+                    .unwrap()
+                    .0
+                    .clone()
+            })
+            .collect();
+        assert_ne!(flag_handles[0], flag_handles[1]);
         let scene_materials = app.world().resource::<Assets<SceneMaterial>>();
+        for (handle, flags, alpha) in [
+            (&flag_handles[0], 0.0, AlphaMode::Opaque),
+            (&flag_handles[1], 3.0, AlphaMode::Mask(0.4)),
+        ] {
+            let material = scene_materials.get(handle).unwrap();
+            assert_eq!(material.extension.lighting.w, flags);
+            assert_eq!(material.base.alpha_mode, alpha);
+        }
+
         let placement = &scene_materials.get(placed_handle).unwrap().extension;
         assert_eq!(
             placement.placement.w_axis,

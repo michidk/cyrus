@@ -128,6 +128,7 @@ module where it is defined and regenerate.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
 - `src/lighting/runtime.rs` — Active authored object lights and quantized distance tables for model shaders.
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
+- `src/sampling.rs` — Selected ROB sampling attributes from preservation's positioned-model GLTF contract.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`

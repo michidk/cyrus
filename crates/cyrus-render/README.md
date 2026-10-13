@@ -55,7 +55,17 @@ four-bit subtexel fractions and integer interpolation, following preservation
 [terrain filtering](https://github.com/michidk/redguard-preservation/blob/1ded24c/docs/engine/terrain-lighting.md#texture-combination)
 and [software Voodoo filtering](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
 World export still loses palette-zero RGB where that entry is nonblack; terrain
-opacity and model sampling remain separate fidelity gaps.
+opacity remains a fidelity gap.
+
+**Verified:** world nodes retain their selected ROB segment attributes through
+[preservation's export contract](https://github.com/michidk/redguard-preservation/blob/7b050a3/docs/engine/model-lighting.md#export-metadata).
+Models with ROB provenance select point or encoded bilinear sampling from those
+attributes; non-chroma models are opaque. Instances sharing a source material
+retain separate flag settings. Re-export worlds for required version-1
+`rgpre_render` node metadata. Standalone and generated models explicitly retain
+absent ROB provenance and their previous sampling. **Unknown:** their original
+sampling defaults and texture-specific key conversion. Chroma-enabled models
+still use alpha masking, so filtered chroma rejection remains unsupported.
 
 **Verified:** model ambient/directional shading follows preservation's
 [model-lighting rules](https://github.com/michidk/redguard-preservation/blob/feat/model-lighting/docs/engine/model-lighting.md).
