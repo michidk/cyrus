@@ -55,7 +55,7 @@ exit 17
                 (root / "redguard").symlink_to(install, target_is_directory=True)
             shutil.copyfile(SCRIPTS / "gates.sh", scripts / "gates.sh")
             (scripts / "toolchain.sh").write_text("")
-            for name in ("test-build-provenance.py", "capture-provenance.test.mjs",
+            for name in ("test-build-provenance.py", "test-surface-audio.py", "capture-provenance.test.mjs",
                          "browser-provenance.test.mjs", "matched-capture.test.mjs"):
                 (scripts / name).write_text("")
             (scripts / "cargo.sh").write_text('''cargo() {
