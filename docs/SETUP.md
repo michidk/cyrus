@@ -85,7 +85,9 @@ in one Cargo invocation so they share dependency features and compiled libraries
 
 After the release is published, `Release` deploys GitHub Pages: the landing page
 from `dev/pages/index.html` at the root, the game under `game/`, and the viewer
-under `viewer/`. Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
+under `viewer/`. The landing page links directly to the latest Windows x64,
+Linux x64, macOS Apple Silicon and macOS Intel game packages.
+Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
 The site contains application code only. Choose a local GOG game folder in the
 browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
