@@ -57,8 +57,9 @@ without Bevy PBR or tone mapping. Terrain sampling uses encoded palette channels
 four-bit subtexel fractions and integer interpolation, following preservation
 [terrain filtering](https://github.com/michidk/redguard-preservation/blob/1ded24c/docs/engine/terrain-lighting.md#texture-combination)
 and [software Voodoo filtering](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).
-World export still loses palette-zero RGB where that entry is nonblack; terrain
-opacity remains a fidelity gap.
+**Verified:** preservation's [terrain texture export](https://github.com/michidk/redguard-preservation/commit/9ac35c15c66b9a5671320e42951e0a53e05ae39e)
+retains palette-zero RGB and opaque alpha for every terrain frame. Re-export
+older worlds for this correction; shoreline pixel parity remains unverified.
 
 **Verified:** world nodes retain their selected ROB segment attributes through
 [preservation's export contract](https://github.com/michidk/redguard-preservation/blob/7b050a3/docs/engine/model-lighting.md#export-metadata).

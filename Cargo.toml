@@ -20,7 +20,7 @@ toml = "0.9"
 clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
 smk = { version = "0.1", path = "dev/vendor/smk" }
-redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "a4b007242d7a72eea1a54a42d5bd7afe57d0d459" }
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "f8983c99cce5a091b093382418e191b07dbe7e08" }
 cyrus-console = { path = "crates/cyrus-console" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }

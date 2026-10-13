@@ -142,8 +142,29 @@ fn world_texture_frames_match_installed_images_in_order() {
             serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
         let buffer = &bytes[28 + json_len..];
         check_polygons(scene, &world, &document, buffer);
+        let terrain_materials: BTreeSet<_> = document["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|node| node["name"] == "Terrain")
+            .flat_map(|node| {
+                document["meshes"][node["mesh"].as_u64().unwrap() as usize]["primitives"]
+                    .as_array()
+                    .unwrap()
+            })
+            .map(|primitive| primitive["material"].as_u64().unwrap() as usize)
+            .collect();
         let mut seen = BTreeSet::new();
-        for material in document["materials"].as_array().unwrap() {
+        for (material_index, material) in
+            document["materials"].as_array().unwrap().iter().enumerate()
+        {
+            let terrain = terrain_materials.contains(&material_index);
+            if terrain {
+                assert!(
+                    material["alphaMode"].is_null() || material["alphaMode"] == "OPAQUE",
+                    "{scene}: terrain material {material_index} must be opaque"
+                );
+            }
             let Some(animation) = material["extras"].get("rgpre_texture_animation") else {
                 continue;
             };
@@ -183,9 +204,17 @@ fn world_texture_frames_match_installed_images_in_order() {
                     actual.dimensions(),
                     (u32::from(original.width), u32::from(original.height))
                 );
-                let rgba = original
+                let mut rgba = original
                     .decode_frame_rgba(frame, Some(&world.palette))
                     .unwrap();
+                if terrain {
+                    for pixel in rgba.as_chunks_mut::<4>().0 {
+                        if pixel[3] == 0 {
+                            pixel[..3].copy_from_slice(&world.palette.colors[0]);
+                        }
+                        pixel[3] = 255;
+                    }
+                }
                 transparent |= rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] == 0);
                 let flipped: Vec<_> = rgba
                     .chunks_exact(usize::from(original.width) * 4)
