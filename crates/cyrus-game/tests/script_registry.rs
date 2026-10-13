@@ -1649,7 +1649,7 @@ fn ordered_world() -> ScriptWorld {
             } else {
                 "LOGIC".into()
             },
-            map_position: [x * 512 * 256, 0, z * 512 * 256],
+            map_position: [x * 512, 0, z * 512],
             active,
             object_type,
             ..template.clone()
@@ -1754,8 +1754,8 @@ fn ordinary_border_selection_changes_only_when_the_view_starting_cell_changes() 
 #[test]
 fn ordinary_actor_window_uses_the_original_upper_edge_origin() {
     let mut data = cache();
-    data.instances[0].map_position = [109 * 512 * 256, 0, 110 * 512 * 256];
-    data.instances[1].map_position = [126 * 512 * 256, 0, 126 * 512 * 256];
+    data.instances[0].map_position = [109 * 512, 0, 110 * 512];
+    data.instances[1].map_position = [126 * 512, 0, 126 * 512];
     data.content_id = data.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     assert_eq!(

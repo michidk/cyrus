@@ -516,3 +516,29 @@ fn installed_viledog_selects_its_branch_from_the_shared_random_draw() {
     assert_eq!(random.state(), 1103527590);
     assert!(world.actors()[index].failure().is_none());
 }
+
+#[test]
+fn installed_palace_actor_is_selected_at_its_authored_world_position() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP ordinary actor coordinates)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/PALACE.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 3).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let placement = world.actors()[0].placement().unwrap();
+    assert_eq!(placement.actor, "GUARDPL1");
+    assert_eq!(placement.active, 0);
+    let view = [placement.map_position[0], placement.map_position[2]]
+        .map(|coordinate| i32::try_from(coordinate).unwrap());
+    assert!(
+        view.iter()
+            .all(|coordinate| (9216..56319).contains(coordinate))
+    );
+    assert!(world.ordinary_actors(view).unwrap().contains(&id));
+    assert!(!world.ordinary_actors([4608, 4608]).unwrap().contains(&id));
+}

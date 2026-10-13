@@ -314,3 +314,9 @@ original instructions cover the arithmetic documented in
 [preservation's random contract](https://github.com/michidk/redguard-preservation/blob/2390c5f/docs/engine/SOUP.md#random-functions).
 The executable's stored initial state is the default. Complete session seeding,
 consumer order, sky integration and automatic actor scheduling remain unsupported.
+
+Ordinary actor cell assignment uses decoded MPOB coordinates directly, matching
+the unscaled view coordinates passed to `ordinary_actors`. **Verified:** original
+allocation-instruction comparisons and an installed PALACE selection test reject
+a second fixed-point conversion. This corrects explicit list selection; automatic
+actor admission and dynamic cell migration remain incomplete.

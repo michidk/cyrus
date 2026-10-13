@@ -23,10 +23,7 @@ impl ActorLists {
                     if placement.active != 0 {
                         persistent.push(index);
                     } else {
-                        let position = [
-                            placement.map_position[0] >> 8,
-                            placement.map_position[2] >> 8,
-                        ];
+                        let position = [placement.map_position[0], placement.map_position[2]];
                         anyhow::ensure!(
                             position.iter().all(|v| (0..=65535).contains(v)),
                             "instance {index} actor {}: ordinary cell position {position:?} outside supported map",
