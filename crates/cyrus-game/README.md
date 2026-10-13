@@ -274,3 +274,13 @@ invocation; `EnableScript` resumes them. Both preserve other control bits.
 Standalone role control initialization remains unsupported. Native-hook dispatch
 is separate and does not use the main-stage suppression bit. This explicit stage
 does not admit actors into automatic updates.
+
+`MoveByAxis` and `sMoveByAxis` use the same actor-owned native task slots and
+local position as rotation and attachment presentation. The former adds a
+quantized per-invocation step; the latter derives displacement from elapsed
+task time. Their rounding, target initialization and completion rules follow
+[preservation's movement contract](https://github.com/michidk/redguard-preservation/blob/e4e2aca/docs/engine/SOUP.md#relative-axis-movement).
+Movement leaves collision, axis-lock restoration and family refresh to their
+own stages. An installed ISLAND mechanism test supplies its enabling flag,
+runs the authored movement, and checks deferred child-pose refresh. Automatic
+admission and moving-platform passenger response remain unsupported.

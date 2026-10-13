@@ -282,3 +282,101 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
     );
     std::fs::remove_dir_all(output).unwrap();
 }
+
+#[test]
+fn installed_island_mechanism_moves_its_master_and_refreshes_attached_poses() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    use cyrus_script::Thread;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP axis movement)");
+        return;
+    }
+    let path = std::fs::read_dir(root.join("maps"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("ISLAND.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let mut scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
+    // Supply the scenario's enabling flag without replacing its authored program.
+    scripts
+        .definition
+        .flags
+        .iter_mut()
+        .find(|flag| flag.name == "dr_boiler_move")
+        .unwrap()
+        .initial_value = 1;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    let id = world
+        .id(world
+            .actors()
+            .iter()
+            .position(|actor| actor.name() == "DR_EXMB1")
+            .unwrap())
+        .unwrap();
+    let child = (0..world.actors().len())
+        .filter_map(|index| {
+            let candidate = world.id(index).unwrap();
+            (world.spatial(candidate).ok()?.parent == Some(id.index)).then_some(candidate)
+        })
+        .next()
+        .expect("installed mechanism has an attached child");
+    let initial = world.spatial(id).unwrap().local.position;
+    let child_before = world.spatial(child).unwrap().effective.unwrap().position;
+    let inputs = ScriptInputs {
+        frame_scale: Some(256),
+        nominal_ticks: Some(1),
+        ..Default::default()
+    };
+    let mut sounds = Vec::new();
+    let mut emit = |receiver, sound| {
+        sounds.push((receiver, sound));
+        Ok(())
+    };
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            inputs,
+            Some(&mut emit),
+            100,
+        )
+        .unwrap();
+    assert_eq!(
+        world.spatial(id).unwrap().local.position[0],
+        initial[0] - 1792
+    );
+    for _ in 0..18 {
+        world
+            .advance(id, ScriptStage::Tasks, inputs, Some(&mut emit), 100)
+            .unwrap();
+    }
+    assert_eq!(
+        world.spatial(id).unwrap().local.position,
+        [initial[0] - 32768, initial[1], initial[2]]
+    );
+    assert_eq!(
+        world.actors()[id.index].runtime().unwrap().active_tasks(),
+        0
+    );
+    assert_eq!(
+        world.spatial(child).unwrap().effective.unwrap().position,
+        child_before
+    );
+    world.refresh_families().unwrap();
+    assert_eq!(
+        world.spatial(child).unwrap().effective.unwrap().position,
+        [child_before[0] - 32768, child_before[1], child_before[2]]
+    );
+    assert_eq!(sounds.len(), 1);
+    assert_eq!(sounds[0].0, id);
+}

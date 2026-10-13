@@ -46,7 +46,7 @@ updates diagnostics, and advances explicitly attached animation playback.
   The standalone animation adapter reuses that task handler. Explicit animation,
   ordinary entry, task, and body stages still require caller-established timing
   and eligibility. Explicit spatial preparation adds local/composed poses,
-  RotateByAxis tasks, and player queries with supplied global inputs. Linked
+  RotateByAxis, MoveByAxis and sMoveByAxis tasks, and player queries with supplied global inputs. Linked
   position ownership and dynamic attachment changes remain unsupported.
   Admitted walking updates share the logical player's animation and selected
   frame with SOUP, using generation-bound messages and a scene binding. Model

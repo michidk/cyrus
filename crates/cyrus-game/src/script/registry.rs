@@ -1088,13 +1088,14 @@ impl Host for GameHost<'_, '_, '_> {
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
-        let mut rotation = self
+        let mut spatial_call = self
             .spatial
             .as_deref_mut()
             .and_then(|spatial| spatial.actor_mut(self.index).ok())
             .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
             .map(
-                |(spatial, (frame_scale, nominal_ticks))| super::tasks::RotationCall {
+                |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
+                    position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
                     nominal_ticks,
@@ -1106,7 +1107,7 @@ impl Host for GameHost<'_, '_, '_> {
             arguments,
             invocation,
             &mut animation,
-            &mut rotation,
+            &mut spatial_call,
         )? {
             return Ok(result);
         }
@@ -1208,21 +1209,26 @@ impl Host for GameHost<'_, '_, '_> {
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
-        let mut rotation = self
+        let mut spatial_call = self
             .spatial
             .as_deref_mut()
             .and_then(|spatial| spatial.actor_mut(self.index).ok())
             .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
             .map(
-                |(spatial, (frame_scale, nominal_ticks))| super::tasks::RotationCall {
+                |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
+                    position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
                     nominal_ticks,
                 },
             );
-        actor
-            .tasks
-            .poll(token, arguments, invocation, &mut animation, &mut rotation)
+        actor.tasks.poll(
+            token,
+            arguments,
+            invocation,
+            &mut animation,
+            &mut spatial_call,
+        )
     }
     fn cancel(&mut self, token: u64) -> Result<()> {
         self.actors[self.index].tasks.cancel(token)

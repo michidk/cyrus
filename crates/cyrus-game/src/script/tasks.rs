@@ -13,8 +13,9 @@ pub(super) struct AnimationCall<'a, 'sound> {
     pub sounds: Option<&'sound mut dyn FnMut(AnimationSound) -> Result<()>>,
 }
 
-/// Current receiver angles and shared timing inputs for spatial native tasks.
-pub(super) struct RotationCall<'a> {
+/// Current receiver pose and shared timing inputs for spatial native tasks.
+pub(super) struct SpatialCall<'a> {
+    pub position: &'a mut [i32; 3],
     pub angles: &'a mut [u16; 3],
     pub frame_scale: u32,
     pub nominal_ticks: u32,
@@ -22,6 +23,8 @@ pub(super) struct RotationCall<'a> {
 
 #[derive(Clone, Copy)]
 enum Task {
+    Movement { target: i32 },
+    ScaledMovement { origin: i32 },
     Rotation { target: i32, accumulator: i32 },
     Duration,
     Tasks,
@@ -34,9 +37,77 @@ impl Task {
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
-        rotation: &mut Option<RotationCall<'_>>,
+        spatial: &mut Option<SpatialCall<'_>>,
     ) -> Result<bool> {
         Ok(match self {
+            Self::Movement { target } => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("MoveByAxis requires three arguments")
+                };
+                let (axis, delta, duration) =
+                    (axis.integer()?, delta.integer()?, duration.integer()?);
+                if delta == 0 || duration == 0 {
+                    return Ok(true);
+                }
+                let input = spatial
+                    .as_mut()
+                    .context("MoveByAxis requires spatial state and frame_scale")?;
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveByAxis requires explicit elapsed input")?;
+                let step = (delta
+                    .checked_div(duration)
+                    .context("MoveByAxis division overflow")?
+                    >> 8)
+                    .wrapping_mul(input.frame_scale as i32);
+                let coordinate = &mut input.position[match axis {
+                    0 => 0,
+                    1 => 1,
+                    _ => 2,
+                }];
+                if *target == 0 {
+                    *target = coordinate.wrapping_add(delta);
+                }
+                let next = coordinate.wrapping_add(step);
+                if (step < 0 && next <= *target)
+                    || (step > 0 && next >= *target)
+                    || elapsed >= duration.wrapping_sub(1)
+                {
+                    *coordinate = *target;
+                    true
+                } else {
+                    *coordinate = next;
+                    false
+                }
+            }
+            Self::ScaledMovement { origin } => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("sMoveByAxis requires three arguments")
+                };
+                let (axis, delta, duration) =
+                    (axis.integer()?, delta.integer()?, duration.integer()?);
+                let elapsed = invocation
+                    .elapsed
+                    .context("sMoveByAxis requires explicit elapsed input")?;
+                let distance = delta
+                    .wrapping_shl(8)
+                    .checked_div(duration)
+                    .context("sMoveByAxis division by zero or overflow")?
+                    .wrapping_mul(elapsed)
+                    >> 8;
+                let complete = elapsed >= duration.wrapping_sub(1);
+                if (0..=2).contains(&axis) {
+                    let input = spatial
+                        .as_mut()
+                        .context("sMoveByAxis requires spatial state")?;
+                    let coordinate = &mut input.position[axis as usize];
+                    if *origin == 0 && elapsed == 0 {
+                        *origin = *coordinate;
+                    }
+                    *coordinate = origin.wrapping_add(if complete { delta } else { distance });
+                }
+                complete
+            }
             Self::Rotation {
                 target,
                 accumulator,
@@ -48,7 +119,7 @@ impl Task {
                 if delta == 0 || duration == 0 {
                     return Ok(true);
                 }
-                let input = rotation.as_mut().context(
+                let input = spatial.as_mut().context(
                     "RotateByAxis requires spatial state, frame_scale and nominal_ticks",
                 )?;
                 let axis = match axis.integer()? {
@@ -157,13 +228,17 @@ impl NativeTasks {
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
-        rotation: &mut Option<RotationCall<'_>>,
+        spatial: &mut Option<SpatialCall<'_>>,
     ) -> Result<Option<CallResult>> {
         let mut task = if function.eq_ignore_ascii_case("RotateByAxis") {
             Task::Rotation {
                 target: 0,
                 accumulator: 0,
             }
+        } else if function.eq_ignore_ascii_case("MoveByAxis") {
+            Task::Movement { target: 0 }
+        } else if function.eq_ignore_ascii_case("sMoveByAxis") {
+            Task::ScaledMovement { origin: 0 }
         } else if function.eq_ignore_ascii_case("Wait") {
             Task::Duration
         } else if function.eq_ignore_ascii_case("WaitOnTasks") {
@@ -187,7 +262,7 @@ impl NativeTasks {
             .checked_add(1)
             .context("native task identity exhausted")?;
         // Initial completion still allocates a slot and yields until a later task pass.
-        task.complete(arguments, invocation, animation, rotation)?;
+        task.complete(arguments, invocation, animation, spatial)?;
         self.next = next;
         self.tasks.insert(next, task);
         Ok(Some(CallResult::Pending(next)))
@@ -198,13 +273,13 @@ impl NativeTasks {
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
-        rotation: &mut Option<RotationCall<'_>>,
+        spatial: &mut Option<SpatialCall<'_>>,
     ) -> Result<bool> {
         let task = self
             .tasks
             .get_mut(&token)
             .with_context(|| format!("native task {token} absent"))?;
-        let completed = task.complete(arguments, invocation, animation, rotation)?;
+        let completed = task.complete(arguments, invocation, animation, spatial)?;
         if completed {
             self.tasks.remove(&token);
         }

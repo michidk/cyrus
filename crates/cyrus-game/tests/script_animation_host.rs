@@ -633,14 +633,14 @@ fn missing_animation_group_keeps_requesting_fallback_without_completing_task() {
     }
 }
 
-fn rotating_scripts(axis: i32, delta: i32, duration: i32) -> Scripts {
+fn axis_task_scripts(function: &str, axis: i32, delta: i32, duration: i32) -> Scripts {
     let mut data = scripts(vec![
         Operation::Call {
             call: Call {
                 function_id: 3,
                 kind: CallKind::Task,
                 target: Object::Me,
-                function: "RotateByAxis".into(),
+                function: function.into(),
                 arguments: [axis, delta, duration]
                     .map(|value| Value::Integer { value })
                     .to_vec(),
@@ -650,7 +650,7 @@ fn rotating_scripts(axis: i32, delta: i32, duration: i32) -> Scripts {
         Operation::End { target: 0 },
     ]);
     data.definition.functions.push(Function {
-        name: "RotateByAxis".into(),
+        name: function.into(),
         param_count: 3,
         kind: CallKind::Task,
     });
@@ -660,7 +660,7 @@ fn rotating_scripts(axis: i32, delta: i32, duration: i32) -> Scripts {
 
 #[test]
 fn rotation_changes_local_angles_and_completes_before_body_continues() {
-    let data = rotating_scripts(1, 128, 4);
+    let data = axis_task_scripts("RotateByAxis", 1, 128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -679,7 +679,7 @@ fn rotation_changes_local_angles_and_completes_before_body_continues() {
 #[test]
 fn rotation_zero_scale_and_nominal_tick_fallback_remain_distinct() {
     use cyrus_game::script::ScriptInputs;
-    let data = rotating_scripts(-1, -128, 4);
+    let data = axis_task_scripts("RotateByAxis", -1, -128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -704,7 +704,7 @@ fn rotation_zero_scale_and_nominal_tick_fallback_remain_distinct() {
 #[test]
 fn spatial_timing_is_checked_before_script_mutation() {
     use cyrus_game::script::ScriptInputs;
-    let data = rotating_scripts(0, 128, 4);
+    let data = axis_task_scripts("RotateByAxis", 0, 128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();
     world.prepare_spatial().unwrap();
     let id = world.id(0).unwrap();
@@ -721,7 +721,7 @@ fn spatial_timing_is_checked_before_script_mutation() {
 
 #[test]
 fn routed_rotation_keeps_receiver_angles_and_task_slots() {
-    let mut data = rotating_scripts(1, 128, 4);
+    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
     let operation = &mut data
         .actors
         .get_mut("ACTOR")
@@ -754,7 +754,7 @@ fn routed_rotation_keeps_receiver_angles_and_task_slots() {
 fn attached_facing_stays_composed_until_family_refresh() {
     use cyrus_game::script::{PlayerQuery, QueryInputs};
     use cyrus_script::Argument;
-    let mut data = rotating_scripts(1, 128, 4);
+    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
     data.actors
         .get_mut("ACTOR")
         .unwrap()
@@ -805,7 +805,7 @@ fn attached_facing_stays_composed_until_family_refresh() {
 
 #[test]
 fn cancelling_rotation_retains_last_local_angle() {
-    let mut data = rotating_scripts(1, 128, 4);
+    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
     let actor = data.actors.get_mut("ACTOR").unwrap();
     let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation else {
         unreachable!()
@@ -825,7 +825,7 @@ fn cancelling_rotation_retains_last_local_angle() {
 
 #[test]
 fn rotation_reevaluates_delta_without_replacing_saved_target() {
-    let mut data = rotating_scripts(1, 128, 4);
+    let mut data = axis_task_scripts("RotateByAxis", 1, 128, 4);
     data.definition.flags[0].initial_value = 128;
     let actor = data.actors.get_mut("ACTOR").unwrap();
     let Operation::Call { call } = &mut actor.program.steps.get_mut(&0).unwrap().operation else {
@@ -1447,7 +1447,7 @@ fn activation_distinguishes_animation_state_from_its_current_group() {
 #[test]
 fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it() {
     for (axis, attribute, component) in [(0, 38, 0), (1, 37, 1), (2, 39, 2)] {
-        let mut data = rotating_scripts(axis, 128, 4);
+        let mut data = axis_task_scripts("RotateByAxis", axis, 128, 4);
         data.definition.functions.push(Function {
             name: "SetMyAttr".into(),
             kind: CallKind::Function,
@@ -1496,4 +1496,83 @@ fn ordinary_rotation_lock_restores_angle_after_script_task_without_cancelling_it
             cyrus_world::transform::Matrix::IDENTITY
         );
     }
+}
+
+#[test]
+fn axis_movement_preserves_quantization_and_elapsed_position_contracts() {
+    for (function, delta, expected) in [
+        ("MoveByAxis", 2560, [512, 1024, 1536, 2560]),
+        ("MoveByAxis", -2560, [-768, -1536, -2304, -2560]),
+        ("sMoveByAxis", 2560, [0, 640, 1280, 2560]),
+        ("sMoveByAxis", -2560, [0, -640, -1280, -2560]),
+        ("MoveByAxis", 100, [0, 0, 0, 100]),
+        ("MoveByAxis", -100, [-100, -100, -100, -100]),
+    ] {
+        let data = axis_task_scripts(function, 1, delta, 4);
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        for (index, position) in expected.into_iter().enumerate() {
+            stage(&mut world, id, if index == 0 { BODY } else { TASKS });
+            assert_eq!(
+                world.spatial(id).unwrap().local.position,
+                [0, position, 0],
+                "{function} {delta} invocation {index}"
+            );
+        }
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        stage(&mut world, id, BODY);
+        assert_eq!(world.flags(), [9]);
+    }
+}
+
+#[test]
+fn movement_zero_target_is_reinitialized_even_after_initial_completion() {
+    let mut data = axis_task_scripts("MoveByAxis", 0, -256, 1);
+    data.instances[0].map_position[0] = 1;
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    stage(&mut world, id, TASKS);
+    assert_eq!(world.spatial(id).unwrap().local.position, [-256, 0, 0]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn axis_movement_keeps_distinct_invalid_axis_and_zero_duration_rules() {
+    for (function, axis, duration, expected) in [
+        ("MoveByAxis", -1, 4, [0, 0, 512]),
+        ("sMoveByAxis", -1, 4, [0, 0, 0]),
+        ("MoveByAxis", 0, 0, [0, 0, 0]),
+    ] {
+        let data = axis_task_scripts(function, axis, 2560, duration);
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        stage(&mut world, id, BODY);
+        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+    }
+    let data = axis_task_scripts("sMoveByAxis", 0, 2560, 0);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let error = world
+        .advance(
+            id,
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            30,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("sMoveByAxis division by zero"));
+    assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
 }
