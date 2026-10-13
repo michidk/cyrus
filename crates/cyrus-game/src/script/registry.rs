@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+pub mod saved;
 use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
@@ -13,7 +14,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 /// Runtime identity is independent of render nodes and original object-name lookup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScriptActorId {
     pub generation: u64,
     pub index: usize,
@@ -69,6 +70,7 @@ pub struct ScriptInputs<'a> {
     pub player_query: Option<super::QueryInputs>,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ScriptAnimation {
     pub(crate) playback: cyrus_world::animation::ActorAnimation,
     pub(crate) frame: Option<u32>,
@@ -77,7 +79,7 @@ pub(crate) struct ScriptAnimation {
 /// Allocated ordinary-map control state, separate from animation playback.
 /// Allocation and combat construction follow preservation's engine/animation.md.
 /// Standalone role setup and death/removal transitions remain unsupported.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ActorControlState {
     /// Runtime script flags, separate from installed attribute bytes.
     pub script_control: u8,

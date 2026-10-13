@@ -2,7 +2,7 @@
 use super::ScriptActor;
 use anyhow::{Context, Result, ensure};
 use cyrus_world::transform::Matrix;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Current selected-player query input, borrowed from the owning player system.
@@ -25,18 +25,17 @@ pub struct QueryInputs {
 
 /// Original Q8 coordinates and pitch/yaw/roll in wrapped 1/2048 turns.
 /// The stored matrix retains its single-precision update history.
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Pose {
     pub position: [i32; 3],
     pub angles: [u16; 3],
-    #[serde(serialize_with = "serialize_matrix")]
     pub matrix: Matrix,
 }
 
 /// One actor's pose owner within its ScriptWorld generation.
 /// Attached local coordinates are relative to the parent; effective coordinates
 /// remain unavailable until an explicit family refresh establishes them.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActorSpatial {
     pub local: Pose,
     pub effective: Option<Pose>,
@@ -50,12 +49,47 @@ pub struct ActorSpatial {
     rotation_mode: u8,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub(super) struct SpatialWorld {
     actors: Vec<Option<ActorSpatial>>,
     order: Vec<usize>,
 }
 
 impl SpatialWorld {
+    pub(super) fn validate_saved(&self, actors: &[ScriptActor]) -> Result<()> {
+        let expected = Self::prepare(actors)?;
+        ensure!(
+            self.order == expected.order && self.actors.len() == expected.actors.len(),
+            "saved spatial actor order mismatch"
+        );
+        for (index, (saved, original)) in self.actors.iter().zip(&expected.actors).enumerate() {
+            ensure!(
+                saved.is_some() == original.is_some(),
+                "actor {index}: saved spatial membership mismatch"
+            );
+            if let (Some(saved), Some(original)) = (saved, original) {
+                ensure!(
+                    saved.parent == original.parent
+                        && saved.rotation_mode == original.rotation_mode
+                        && saved.no_slave_rotation == original.no_slave_rotation,
+                    "actor {index}: saved attachment mismatch"
+                );
+                for pose in std::iter::once(&saved.local).chain(saved.effective.as_ref()) {
+                    ensure!(
+                        pose.angles.iter().all(|angle| *angle < 2048)
+                            && pose
+                                .matrix
+                                .0
+                                .iter()
+                                .flatten()
+                                .all(|value| value.is_finite()),
+                        "actor {index}: invalid saved pose"
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn prepare(actors: &[ScriptActor]) -> Result<Self> {
         let mut poses = Vec::with_capacity(actors.len());
         let mut masters = BTreeMap::new();
@@ -345,13 +379,6 @@ impl ActorSpatial {
             Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)))
         }
     }
-}
-
-fn serialize_matrix<S: serde::Serializer>(
-    matrix: &Matrix,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    matrix.0.serialize(serializer)
 }
 
 /// Original mixed-precision Euclidean distance, rounded to a signed integer.

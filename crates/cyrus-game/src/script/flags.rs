@@ -15,6 +15,17 @@ pub(super) struct Flags {
     latched: Vec<bool>,
 }
 impl Flags {
+    pub(super) fn latches(&self) -> &[bool] {
+        &self.latched
+    }
+    pub(super) fn restore_latches(&mut self, latched: Vec<bool>) -> Result<()> {
+        anyhow::ensure!(
+            latched.len() == self.kinds.len(),
+            "saved flag latch count mismatch"
+        );
+        self.latched = latched;
+        Ok(())
+    }
     pub fn prepare(definition: &Definition) -> Result<Self> {
         let kinds = definition
             .flags

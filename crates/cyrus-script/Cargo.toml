@@ -7,3 +7,6 @@ edition.workspace = true
 cyrus-assets.workspace = true
 anyhow.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -236,6 +236,59 @@ impl Runtime {
     pub fn state(&self) -> &State {
         &self.state
     }
+    /// Restore actor state against this runtime's validated installed program.
+    /// The owner validates foreign task sources and native tokens before committing a world.
+    pub fn restore(&mut self, state: State) -> Result<()> {
+        anyhow::ensure!(
+            state.variables.len() == self.program.variables.len(),
+            "{}: saved local variable count mismatch",
+            self.context
+        );
+        for cursor in state
+            .threads
+            .iter()
+            .flatten()
+            .map(|thread| thread.cursor)
+            .chain(state.return_to)
+        {
+            anyhow::ensure!(
+                self.program.steps.contains_key(&cursor),
+                "{}: saved continuation {cursor} is absent",
+                self.context
+            );
+        }
+        for task in state.tasks.iter().flatten() {
+            anyhow::ensure!(
+                task.operand == task.source.operand()?,
+                "{}: saved task operand identity mismatch",
+                self.context
+            );
+            if task.source.origin == self.origin {
+                anyhow::ensure!(
+                    matches!(
+                        self.program
+                            .steps
+                            .get(&task.source.instruction)
+                            .map(|step| &step.operation),
+                        Some(Operation::Call { .. } | Operation::ObjectCall { .. })
+                    ),
+                    "{}: saved task instruction is absent",
+                    self.context
+                );
+            }
+        }
+        self.state = state;
+        Ok(())
+    }
+
+    /// Native task identities to validate against the owning actor's restored task table.
+    pub fn task_tokens(&self) -> impl Iterator<Item = (u64, TaskSource)> + '_ {
+        self.state
+            .tasks
+            .iter()
+            .flatten()
+            .map(|task| (task.token, task.source))
+    }
     pub fn variables(&self) -> &[i32] {
         &self.state.variables
     }

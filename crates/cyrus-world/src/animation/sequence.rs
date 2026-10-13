@@ -3,7 +3,7 @@ use super::Animations;
 use anyhow::Context;
 use std::collections::BTreeSet;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 enum Command {
     Frame(u32),
     End,
@@ -35,6 +35,7 @@ pub(super) type SoundDispatcher<'a> =
 
 /// A forward current group. Callers supply activation, whole nominal ticks, and exit eligibility.
 /// Sound commands require actor-side dispatch; reverse playback and other group types are unsupported.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct FrameSequence {
     context: String,
     commands: Vec<Command>,
@@ -52,6 +53,20 @@ pub struct FrameSequence {
 }
 
 impl FrameSequence {
+    pub(super) fn validate_saved(&self, group: &serde_json::Value) -> anyhow::Result<()> {
+        let expected = Self::from_group(self.context.clone(), group, self.loops, 0)?;
+        anyhow::ensure!(
+            self.commands == expected.commands && self.type_one == expected.type_one,
+            "{}: saved animation differs from installed commands",
+            self.context
+        );
+        anyhow::ensure!(
+            self.command <= self.commands.len(),
+            "{}: saved animation cursor is out of bounds",
+            self.context
+        );
+        Ok(())
+    }
     /// Selects an explicitly requested forward group and its finite loop countdown.
     /// This does not run the actor script or choose a default animation.
     pub fn from_asset(

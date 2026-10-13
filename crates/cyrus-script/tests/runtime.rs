@@ -102,6 +102,53 @@ fn runtime(ops: Vec<Operation>) -> Runtime {
 }
 
 #[test]
+fn saved_task_resumes_after_reload_without_repeating_its_start() {
+    let make = || {
+        runtime(vec![
+            assign(Place::Local { index: 0 }, 7),
+            call("Wait", CallKind::Task),
+            assign(Place::Flag { index: 0 }, 23),
+            Operation::End { target: 0 },
+        ])
+    };
+    let mut original = make();
+    let mut host = Service::default();
+    let mut flags = [0];
+    original
+        .invoke(Thread::Main, &mut host, &mut flags, 32)
+        .unwrap();
+    assert_eq!(host.calls, ["Wait"]);
+    let bytes = serde_json::to_vec(original.state()).unwrap();
+    let mut restored = make();
+    restored
+        .restore(serde_json::from_slice(&bytes).unwrap())
+        .unwrap();
+    let mut host = Service {
+        ready: true,
+        ..Default::default()
+    };
+    restored
+        .invoke(Thread::Main, &mut host, &mut flags, 32)
+        .unwrap();
+    assert!(host.calls.is_empty());
+    assert_eq!(host.polls, 1);
+    assert_eq!(restored.variables(), [7]);
+    assert_eq!(flags, [23]);
+    assert_eq!(host.ends, 1);
+}
+
+#[test]
+fn corrupt_saved_continuation_leaves_current_runtime_unchanged() {
+    let mut vm = runtime(vec![Operation::End { target: 0 }]);
+    vm.set_script_return(19);
+    let mut state = serde_json::to_value(vm.state()).unwrap();
+    state["threads"][0]["cursor"] = 999.into();
+    assert!(vm.restore(serde_json::from_value(state).unwrap()).is_err());
+    assert_eq!(vm.script_return(), 19);
+    assert_eq!(vm.program_counter(Thread::Main), Some(0));
+}
+
+#[test]
 fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
     #[derive(Default)]
     struct Ordered {

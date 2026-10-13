@@ -2913,6 +2913,7 @@ dependencies = [
  "anyhow",
  "cyrus-assets",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2992,6 +2993,7 @@ dependencies = [
  "cyrus-assets",
  "log",
  "rustc_apfloat",
+ "serde",
  "serde_json",
 ]
 

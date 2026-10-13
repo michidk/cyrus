@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// One actor's current, pending and explicitly supplied default group.
 /// Only forward type-zero and type-one groups are supported. The caller owns eligibility,
 /// default selection and each advancement's original nominal-tick input.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ActorAnimation {
     context: String,
     groups: BTreeMap<u16, serde_json::Value>,
@@ -17,6 +18,29 @@ pub struct ActorAnimation {
 }
 
 impl ActorAnimation {
+    /// Validate deserialized playback against the matching installed animation definition.
+    pub fn validate_saved(&self, data: &Animations, actor: &str) -> anyhow::Result<()> {
+        let expected = Self::from_asset(data, actor, self.default)?;
+        anyhow::ensure!(
+            self.groups == expected.groups && self.groups.contains_key(&self.default),
+            "{}: saved animation definition mismatch",
+            self.context
+        );
+        if let Some((group, sequence)) = &self.current {
+            sequence.validate_saved(
+                self.groups
+                    .get(group)
+                    .context("saved current group absent")?,
+            )?;
+        }
+        if let Some((group, _)) = self.pending {
+            anyhow::ensure!(
+                self.groups.contains_key(&group),
+                "saved pending group absent"
+            );
+        }
+        Ok(())
+    }
     /// Initializes an animation-table model with the two ordinary group-zero requests
     /// specified by preservation's engine/animation.md. The caller establishes the
     /// model loading path and supplies the shared nominal ticks and sound dispatcher.

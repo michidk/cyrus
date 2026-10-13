@@ -87,7 +87,7 @@ pub enum ActivationOverlay {
 }
 
 /// One activation owner and pending prompt for a logical world generation.
-#[derive(Default, Debug, Serialize)]
+#[derive(Default, Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ActivationState {
     owner: Option<ScriptActorId>,
     prompt: Option<String>,
@@ -95,6 +95,13 @@ pub struct ActivationState {
     prompt_override: u32,
 }
 impl ActivationState {
+    pub(super) fn restore_generation(&mut self, generation: u64, count: usize) -> Result<()> {
+        if let Some(owner) = &mut self.owner {
+            anyhow::ensure!(owner.index < count, "saved activation owner is absent");
+            owner.generation = generation;
+        }
+        Ok(())
+    }
     pub fn owner(&self) -> Option<ScriptActorId> {
         self.owner
     }

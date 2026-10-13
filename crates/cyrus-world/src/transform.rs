@@ -21,7 +21,7 @@ pub fn rotation_sample(index: usize) -> f32 {
 /// Operations use nearest-even extended intermediates, per [preservation PR55].
 ///
 /// [preservation PR55]: https://github.com/michidk/redguard-preservation/pull/55
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Matrix(pub [[f32; 3]; 3]);
 
 impl Matrix {

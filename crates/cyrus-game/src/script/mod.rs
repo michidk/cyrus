@@ -12,6 +12,7 @@ mod order;
 mod playback;
 mod presentation;
 mod registry;
+pub use registry::saved::SavedScripts;
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;

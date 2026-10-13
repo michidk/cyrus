@@ -11,6 +11,30 @@ pub(super) struct ActorLists {
 }
 
 impl ActorLists {
+    pub(super) fn snapshot(&self) -> (Option<[i32; 2]>, Vec<usize>) {
+        (
+            self.first,
+            self.selected.iter().map(|id| id.index).collect(),
+        )
+    }
+    pub(super) fn restore_selection(
+        &mut self,
+        first: Option<[i32; 2]>,
+        indices: Vec<usize>,
+        generation: u64,
+        count: usize,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            indices.iter().all(|index| *index < count),
+            "saved actor selection out of bounds"
+        );
+        self.first = first;
+        self.selected = indices
+            .into_iter()
+            .map(|index| ScriptActorId { generation, index })
+            .collect();
+        Ok(())
+    }
     pub(super) fn new(actors: &[ScriptActor]) -> Result<Self> {
         let mut cells: BTreeMap<_, Vec<_>> = BTreeMap::new();
         let mut persistent = Vec::new();

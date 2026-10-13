@@ -21,7 +21,7 @@ pub(super) struct SpatialCall<'a> {
     pub nominal_ticks: u32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 enum Task {
     Movement { target: i32 },
     ScaledMovement { origin: i32 },
@@ -215,12 +215,24 @@ impl Task {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct NativeTasks {
     next: u64,
     tasks: BTreeMap<u64, Task>,
 }
 impl NativeTasks {
+    pub(super) fn validate_saved(&self, tokens: impl Iterator<Item = u64>) -> Result<()> {
+        let tokens: std::collections::BTreeSet<_> = tokens.collect();
+        anyhow::ensure!(
+            tokens.len() == self.tasks.len()
+                && self
+                    .tasks
+                    .keys()
+                    .all(|token| tokens.contains(token) && *token <= self.next),
+            "saved native task identities do not match script tasks"
+        );
+        Ok(())
+    }
     pub fn call(
         &mut self,
         function: &str,
