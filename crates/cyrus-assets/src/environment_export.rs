@@ -16,17 +16,22 @@ fn value<'a>(ini: &'a str, key: &str, id: u32) -> Option<&'a str> {
         .next_back()
 }
 
-fn prelighting(
+fn model_lights(
     source: &dyn ReadAssets,
     entry: &WorldEntry,
     system: &str,
-) -> anyhow::Result<crate::environment::Prelighting> {
+) -> anyhow::Result<(
+    crate::environment::Prelighting,
+    Vec<crate::environment::LocalLight>,
+)> {
     use crate::environment::{LocalLight, Prelighting, StaticLightingInstance};
     use rgpre::import::{rgm, system_ini::SystemIni};
     let settings = SystemIni::parse(system)?.system;
     let mut result = Prelighting::default();
-    if !settings.lights_load.unwrap_or(true) || !settings.statics_load.unwrap_or(true) {
-        return Ok(result);
+    let bake = settings.lights_load.unwrap_or(true) && settings.statics_load.unwrap_or(true);
+    let objects = settings.objects_load.unwrap_or(true);
+    if !bake && !objects {
+        return Ok((result, Vec::new()));
     }
     let filename = entry
         .map
@@ -36,17 +41,49 @@ fn prelighting(
     let path = crate::preparation::path(source, &format!("maps/{filename}"))?;
     let map = rgm::parse_rgm_file(&source.read(&path)?)
         .with_context(|| format!("world {}: lighting map {path}", entry.index))?;
-    result.lights = map
-        .prelight_lights(entry.index)
-        .into_iter()
-        .map(|light| LocalLight {
-            position: light.position,
-            radius: light.radius,
-            rgb: light.rgb,
-        })
-        .collect();
-    if result.lights.is_empty() {
-        return Ok(result);
+    let mut object_lights = Vec::new();
+    if objects {
+        let scripts = rgm::disassemble_rgm_scripts(&map, None);
+        for light in map.object_lights(entry.index) {
+            let name = light.script_name();
+            let script = scripts
+                .iter()
+                .find(|(actor, _)| actor == &name)
+                .map(|(_, script)| script)
+                .with_context(|| {
+                    format!(
+                        "world {}: light {} missing script {name}",
+                        entry.index, light.id
+                    )
+                })?;
+            anyhow::ensure!(
+                script.script_pc == 0,
+                "world {}: light {} script {name} has an unsupported active lighting program",
+                entry.index,
+                light.id
+            );
+            object_lights.push(LocalLight {
+                position: [light.pos_x, light.pos_y, light.pos_z as i32],
+                radius: light.radius,
+                rgb: [light.red, light.green, light.blue],
+            });
+        }
+    }
+    if bake {
+        result.lights = map
+            .prelight_lights(entry.index)
+            .into_iter()
+            .map(|light| LocalLight {
+                position: light.position,
+                radius: light.radius,
+                rgb: light.rgb,
+            })
+            .collect();
+    }
+    if !settings.statics_load.unwrap_or(true)
+        || (result.lights.is_empty() && object_lights.is_empty())
+    {
+        return Ok((result, object_lights));
     }
     for section in &map.sections {
         if let rgm::RgmSection::Mps(_, records) = section {
@@ -73,7 +110,7 @@ fn prelighting(
             }
         }
     }
-    Ok(result)
+    Ok((result, object_lights))
 }
 
 fn sky_parameter(ini: &str, key: &str, id: u32, default: i32) -> anyhow::Result<i32> {
@@ -337,8 +374,10 @@ pub(crate) fn prepare(
             })
         })
         .transpose()?;
+    let (prelighting, object_lights) = model_lights(source, entry, &system)?;
     let environment = Environment {
-        prelighting: prelighting(source, entry, &system)?,
+        prelighting,
+        object_lights,
         model_lighting,
         terrain_lighting,
         sky,
@@ -358,6 +397,43 @@ pub(crate) fn prepare(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+    #[test]
+    fn installed_object_lights_follow_object_loading_independently_of_map_baking() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+        let install = match GameInstall::open(&root) {
+            Ok(install) => install,
+            Err(error) => {
+                eprintln!("skipped: no install ({error})");
+                return;
+            }
+        };
+        let source = crate::native::Files::scan(&install, false).unwrap();
+        let worlds = rgpre::import::world_ini::WorldIni::parse(
+            &crate::preparation::text(&source, "WORLD.INI").unwrap(),
+        );
+        let entry = worlds
+            .entries
+            .iter()
+            .find(|entry| entry.index == 20)
+            .unwrap();
+        for (settings, baked, runtime, placements) in [
+            ("objects_load=no", true, false, true),
+            ("lights_load=no", false, true, true),
+            ("statics_load=no", false, true, false),
+            ("objects_load=no\nlights_load=no", false, false, false),
+        ] {
+            let (prelight, objects) =
+                model_lights(&source, entry, &format!("[system]\n{settings}")).unwrap();
+            assert_eq!(!prelight.lights.is_empty(), baked, "{settings}");
+            assert_eq!(!objects.is_empty(), runtime, "{settings}");
+            assert_eq!(!prelight.instances.is_empty(), placements, "{settings}");
+        }
+    }
+
     #[test]
     fn scene_clipping_uses_system_values_and_nonzero_world_override() {
         let system = "[other]\nback_plane=9000\n[xngine]\nfront_plane=7\nback_plane=3800";

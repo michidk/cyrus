@@ -273,6 +273,7 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
             sky: None,
@@ -397,6 +398,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                object_lights: Vec::new(),
                 prelighting: Default::default(),
                 model_lighting: Default::default(),
                 sky: None,
@@ -418,6 +420,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                object_lights: Vec::new(),
                 prelighting: Default::default(),
                 model_lighting: Default::default(),
                 sky: None,

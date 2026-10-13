@@ -12,7 +12,9 @@ on native and browser targets. `game::prepare` returns cache-relative bytes from
 a `ReadAssets` source; the browser worker requires no server-side exporter. Export paths are
 caller-supplied; the install is never written. Sidecar filenames are stable; schema checks reject incompatible cache records.
 Environment caches retain exact static placements and ordered signed map-light
-inputs for world-entry prelighting. Model GLBs retain the original bound and
+inputs for world-entry prelighting, plus authored kind-6 object lights separately
+for runtime shading. Object loading follows SYSTEM.INI; active object-light
+scripts remain explicitly unsupported. Model GLBs retain the original bound and
 palette RGB through preservation metadata; old lighting caches require re-export. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
 Native movie preparation retains a read-only file or CD-image location and reads
 only metadata. Its bounded reader closes the CD image when dropped. Browser movie

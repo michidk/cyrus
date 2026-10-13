@@ -10,6 +10,7 @@ import bevy_pbr::render::{
 import bevy_pbr::render::pbr_functions::premultiply_alpha;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
 import package::scene_shading::{fog, scene_color};
+import package::model_lights::apply_local_lights;
 
 struct ModelVertex {
     @builtin(position) position: vec4<f32>,
@@ -31,16 +32,18 @@ fn vertex(raw: Vertex) -> ModelVertex {
     // The original model matrix acts directly on normals, retaining their magnitude.
     out.normal = (transform * vec4(vertex.normal, 0.0)).xyz;
     out.uv = vertex.uv;
-    // shortcut: dynamic registered lights await actor lifecycle integration.
     let weight = max(0.0, -dot(fog.direction.xyz, out.normal));
-    let color = clamp(fog.ambient.xyz + vec3(vertex.uv_b.x) + weight * fog.directional.xyz, vec3(0.0), vec3(255.0));
-    // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.
-    out.color = color * (vertex.uv_b.y / 255.0) * out.position.w;
+    var color = fog.ambient.xyz + vec3(vertex.uv_b.x) + weight * fog.directional.xyz;
+    var tint = vertex.uv_b.y;
     out.retained_solid = 0u;
 @if(VERTEX_COLORS) {
-    out.color = vertex.color.rgb * out.position.w;
+    color = vertex.color.rgb * 255.0;
+    tint = 1.0;
     out.retained_solid = u32(vertex.color.a);
 }
+    color = apply_local_lights(color, vertex.position, vertex.normal, transform);
+    // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.
+    out.color = clamp(color, vec3(0.0), vec3(255.0)) * (tint / 255.0) * out.position.w;
     out.instance_index = raw.instance_index;
     return out;
 }

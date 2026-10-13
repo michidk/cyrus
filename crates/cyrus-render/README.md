@@ -70,8 +70,15 @@ authored matrix/bound selection and nearest-even channel rounding. Palette tint
 precedes rounding and is not applied twice. Map lights accumulate in the original
 spatial-cell order and are not reapplied every frame. Re-export worlds for the
 required environment placement records and version-3 model lighting metadata.
-**Unknown:** actor-specific prelighting eligibility, dynamic registered lights,
-actor lighting overrides and complete original-game pixel parity.
+Authored object lights are selected around the inspection camera and added to
+model RGB each frame, including retained static colors, using preservation's
+[runtime-light rules](https://github.com/michidk/redguard-preservation/blob/e0529f1/docs/engine/model-lighting.md).
+Their signed colors, quantized falloff and original static transforms survive
+native/browser preparation. Re-export environments for the required object-light
+records. Active light scripts are explicitly unsupported during preparation.
+**Unknown:** actor-specific prelighting eligibility, scripted light changes,
+actor lighting overrides and complete original-game pixel parity. The inspection
+camera supplies region selection until the original follow-camera target is implemented.
 
 The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
 that reuses Faithful results. Existing Water and Fog switches remain independent.

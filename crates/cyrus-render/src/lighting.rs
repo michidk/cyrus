@@ -1,6 +1,7 @@
 //! Authored model lighting inputs and quantized terrain normals from preservation.
 
 mod prelight;
+pub(crate) mod runtime;
 
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
@@ -64,7 +65,7 @@ pub(crate) fn model_mesh(
     mesh: &Mesh,
     extras: &str,
     bake: Option<(&Environment, &StaticLightingInstance)>,
-) -> anyhow::Result<Mesh> {
+) -> anyhow::Result<(Mesh, i32)> {
     #[derive(serde::Deserialize)]
     struct Inputs {
         version: u32,
@@ -178,7 +179,7 @@ pub(crate) fn model_mesh(
             })
             .collect::<Vec<_>>(),
     );
-    Ok(private)
+    Ok((private, inputs.radius_fixed))
 }
 
 #[cfg(test)]
@@ -200,6 +201,7 @@ mod tests {
                 directional: [0.0; 3],
                 direction: [0.0; 3],
             },
+            object_lights: Vec::new(),
             prelighting: Prelighting {
                 instances: Default::default(),
                 lights: vec![LocalLight {
@@ -222,7 +224,7 @@ mod tests {
         };
         for (x, expected) in [(0, [199, 100, 50]), (1000, [62, 45, 38])] {
             instance.position[0] = x;
-            let baked = model_mesh(&mesh, extras, Some((&environment, &instance))).unwrap();
+            let (baked, _) = model_mesh(&mesh, extras, Some((&environment, &instance))).unwrap();
             let Some(VertexAttributeValues::Float32x4(colors)) =
                 baked.attribute(Mesh::ATTRIBUTE_COLOR)
             else {
@@ -235,6 +237,7 @@ mod tests {
         assert!(
             model_mesh(&mesh, extras, None)
                 .unwrap()
+                .0
                 .attribute(Mesh::ATTRIBUTE_COLOR)
                 .is_none()
         );
@@ -250,7 +253,7 @@ mod tests {
             bevy::asset::RenderAssetUsages::default(),
         );
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
-        let prepared = model_mesh(
+        let (prepared, _) = model_mesh(
             &mesh,
             r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":[200,100,50],"vertices":[[0,1],[64,1],[255,1]]}}"#,
             None,

@@ -23,6 +23,8 @@ pub struct Environment {
     pub model_lighting: ModelLighting,
     /// Authored static placements and admitted map lights for the world-entry bake.
     pub prelighting: Prelighting,
+    /// Authored kind-6 runtime lights in file order, before active-region selection.
+    pub object_lights: Vec<LocalLight>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -44,7 +46,7 @@ pub struct StaticLightingInstance {
 }
 
 #[derive(Serialize, Deserialize)]
-/// Signed authored MPSL inputs, without conversion to a physical point light.
+/// Signed authored light inputs, without conversion to a physical point light.
 pub struct LocalLight {
     /// Engine world coordinates.
     pub position: [i32; 3],

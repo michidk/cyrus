@@ -40,8 +40,9 @@ impl RenderDistance {
     }
 }
 
-type SceneMaterial = ExtendedMaterial<StandardMaterial, FogExtension>;
-type MaterialCache = HashMap<AssetId<StandardMaterial>, Handle<SceneMaterial>>;
+type SceneMaterial = ExtendedMaterial<StandardMaterial, ModelExtension>;
+type MaterialCache =
+    HashMap<(AssetId<StandardMaterial>, i32, Option<Entity>), Handle<SceneMaterial>>;
 type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
@@ -77,7 +78,19 @@ struct FogExtension {
     direction: Vec4,
 }
 
-impl MaterialExtension for FogExtension {
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+struct ModelExtension {
+    #[uniform(100)]
+    fog: FogExtension,
+    #[texture(101, sample_type = "float", filterable = false)]
+    lights: Handle<Image>,
+    #[uniform(102)]
+    placement: Mat4,
+    #[uniform(102)]
+    lighting: Vec4,
+}
+
+impl MaterialExtension for ModelExtension {
     fn vertex_shader() -> ShaderRef {
         "embedded://cyrus_render/scene_fog.wesl".into()
     }
@@ -94,6 +107,7 @@ impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");
+        load_shader_library!(app, "model_lights.wesl");
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
@@ -113,7 +127,7 @@ fn apply_scene_fog(
     environments: Res<Assets<Environment>>,
     distance: Res<RenderDistance>,
     fidelity: Res<Fidelity>,
-    mut cameras: Query<&mut Projection, With<ViewCamera>>,
+    mut cameras: Query<(&mut Projection, Option<&Transform>), With<ViewCamera>>,
     mut entities: Query<
         (
             Entity,
@@ -131,14 +145,24 @@ fn apply_scene_fog(
     mut converted: Local<MaterialCache>,
     mut terrain_materials: ResMut<Assets<TerrainMaterial>>,
     mut terrain_cache: Local<HashMap<AssetId<StandardMaterial>, Handle<TerrainMaterial>>>,
-    mut previous: Local<Option<(AssetId<Environment>, FogExtension)>>,
+    runtime: (
+        Local<Option<(AssetId<Environment>, FogExtension)>>,
+        Local<crate::lighting::runtime::RuntimeLights>,
+        ResMut<Assets<Image>>,
+    ),
 ) {
+    let (mut previous, mut lights, mut images) = runtime;
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
     else {
         return;
     };
-    for mut projection in &mut cameras {
+    let position = cameras
+        .iter()
+        .find_map(|(_, transform)| transform.map(|t| t.translation))
+        .unwrap_or_default();
+    let light_texture = lights.update(request.0.id(), environment, position, &mut images);
+    for (mut projection, _) in &mut cameras {
         if let Projection::Custom(custom) = &mut *projection
             && let Some(crate::camera::projection::GameProjection(perspective)) = custom.get_mut()
             && (perspective.near != near / 20.0 || perspective.far != far / 20.0)
@@ -168,18 +192,19 @@ fn apply_scene_fog(
             .fog_table
             .map(|values| Vec4::from_array(values.map(|value| value as f32))),
     };
-    if previous
-        .as_ref()
-        .is_none_or(|(source, _)| *source != request.0.id())
+    if request.is_changed()
+        || previous
+            .as_ref()
+            .is_none_or(|(source, _)| *source != request.0.id())
     {
         converted.clear();
         terrain_cache.clear();
     }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
         for (_, material) in fog_materials.iter_mut() {
-            let terrain = material.extension.water.y;
-            material.extension = extension.clone();
-            material.extension.water.y = terrain;
+            let terrain = material.extension.fog.water.y;
+            material.extension.fog = extension.clone();
+            material.extension.fog.water.y = terrain;
         }
     }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
@@ -218,6 +243,18 @@ fn apply_scene_fog(
                 .insert(MeshMaterial3d(material));
             continue;
         }
+        let instance = std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .find_map(|ancestor| {
+                names.get(ancestor).ok().and_then(|name| {
+                    environment
+                        .prelighting
+                        .instances
+                        .get(name.as_str())
+                        .map(|instance| (ancestor, instance))
+                })
+            });
+        let mut radius = 0;
         if !terrain {
             let Some(original) = meshes.get(&mesh.0) else {
                 continue;
@@ -225,25 +262,19 @@ fn apply_scene_fog(
             let prepared = extras
                 .ok_or_else(|| anyhow::anyhow!("missing model lighting metadata"))
                 .and_then(|extras| {
-                    let instance = (!environment.prelighting.lights.is_empty())
-                        .then(|| {
-                            std::iter::once(entity)
-                                .chain(parents.iter_ancestors(entity))
-                                .find_map(|ancestor| {
-                                    names.get(ancestor).ok().and_then(|name| {
-                                        environment.prelighting.instances.get(name.as_str())
-                                    })
-                                })
-                        })
-                        .flatten();
                     crate::lighting::model_mesh(
                         original,
                         &extras.value,
-                        instance.map(|instance| (environment, instance)),
+                        instance
+                            .filter(|_| !environment.prelighting.lights.is_empty())
+                            .map(|(_, instance)| (environment, instance)),
                     )
                 });
             match prepared {
-                Ok(private) => mesh.0 = meshes.add(private),
+                Ok((private, bound)) => {
+                    mesh.0 = meshes.add(private);
+                    radius = bound;
+                }
                 Err(error) => {
                     error!(
                         "world {} mesh {:?}: {error}; re-export the world",
@@ -261,13 +292,32 @@ fn apply_scene_fog(
             }
         }
         let material = converted
-            .entry(handle.0.id())
+            .entry((handle.0.id(), radius, instance.map(|(entity, _)| entity)))
             .or_insert_with(|| {
                 let mut extension = extension.clone();
                 extension.water.y = u8::from(terrain) as f32;
                 fog_materials.add(SceneMaterial {
                     base: base.clone(),
-                    extension,
+                    extension: ModelExtension {
+                        fog: extension,
+                        lights: light_texture.clone(),
+                        placement: instance.map_or(Mat4::IDENTITY, |(_, instance)| {
+                            let m = instance.matrix.map(|value| value as f32 / 268_435_456.0);
+                            Mat4::from_cols(
+                                Vec4::new(m[0], m[3], m[6], 0.0),
+                                Vec4::new(m[1], m[4], m[7], 0.0),
+                                Vec4::new(m[2], m[5], m[8], 0.0),
+                                Vec3::from_array(instance.position.map(|value| value as f32))
+                                    .extend(1.0),
+                            )
+                        }),
+                        lighting: Vec4::new(
+                            radius as f32 / 256.0,
+                            u8::from(instance.is_some()) as f32,
+                            u8::from(!terrain) as f32,
+                            0.0,
+                        ),
+                    },
                 })
             })
             .clone();
@@ -287,7 +337,22 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
-            prelighting: Default::default(),
+            object_lights: vec![cyrus_assets::environment::LocalLight {
+                position: [512, 0, 512],
+                radius: 100,
+                rgb: [255, 0, -255],
+            }],
+            prelighting: cyrus_assets::environment::Prelighting {
+                instances: [(
+                    "static".into(),
+                    cyrus_assets::environment::StaticLightingInstance {
+                        position: [123, 456, 789],
+                        matrix: [268_435_456, 0, 0, 0, 268_435_456, 0, 0, 0, 268_435_456],
+                    },
+                )]
+                .into(),
+                lights: Vec::new(),
+            },
             model_lighting: cyrus_assets::environment::ModelLighting {
                 ambient: [64.0; 3],
                 directional: [255.0; 3],
@@ -317,6 +382,7 @@ mod tests {
             .insert_resource(EnvironmentRequest(environment))
             .insert_resource(materials)
             .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<Image>>()
             .init_resource::<Assets<SceneMaterial>>()
             .init_resource::<Assets<TerrainMaterial>>()
             .init_resource::<Fidelity>()
@@ -329,6 +395,7 @@ mod tests {
             .world_mut()
             .spawn((
                 ViewCamera,
+                Transform::from_xyz(0.0, 0.0, -3276.7998),
                 Projection::custom(crate::camera::projection::GameProjection::default()),
             ))
             .id();
@@ -351,7 +418,33 @@ mod tests {
             .id();
         let second = app
             .world_mut()
-            .spawn((MeshMaterial3d(base.clone()), Mesh3d(mesh.clone()), extras))
+            .spawn((
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                extras.clone(),
+            ))
+            .id();
+        let static_root = app.world_mut().spawn(Name::new("static")).id();
+        let placed = app
+            .world_mut()
+            .spawn((
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                extras.clone(),
+                ChildOf(static_root),
+            ))
+            .id();
+        let larger = app
+            .world_mut()
+            .spawn((
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                bevy::gltf::GltfExtras {
+                    value: extras
+                        .value
+                        .replace("\"radius_fixed\":0", "\"radius_fixed\":256"),
+                },
+            ))
             .id();
         let terrain_root = app.world_mut().spawn(Name::new("Terrain")).id();
         let terrain = app
@@ -365,6 +458,43 @@ mod tests {
             .unwrap()
             .0
             .clone();
+        let placed_handle = &app
+            .world()
+            .get::<MeshMaterial3d<SceneMaterial>>(placed)
+            .unwrap()
+            .0;
+        let larger_handle = &app
+            .world()
+            .get::<MeshMaterial3d<SceneMaterial>>(larger)
+            .unwrap()
+            .0;
+        assert_ne!(*placed_handle, handle);
+        assert_ne!(*larger_handle, handle);
+        let scene_materials = app.world().resource::<Assets<SceneMaterial>>();
+        let placement = &scene_materials.get(placed_handle).unwrap().extension;
+        assert_eq!(
+            placement.placement.w_axis,
+            Vec4::new(123.0, 456.0, 789.0, 1.0)
+        );
+        assert_eq!(placement.lighting.y, 1.0);
+        assert_eq!(
+            scene_materials
+                .get(larger_handle)
+                .unwrap()
+                .extension
+                .lighting
+                .x,
+            1.0
+        );
+        let light_image = placement.lights.clone();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&light_image)
+                .unwrap()
+                .height(),
+            257
+        );
         let terrain_handle = app
             .world()
             .get::<MeshMaterial3d<TerrainMaterial>>(terrain)
@@ -395,12 +525,18 @@ mod tests {
             .resource::<Assets<SceneMaterial>>()
             .get(&handle)
             .unwrap();
-        assert_eq!(material.extension.ambient, Vec4::new(64.0, 64.0, 64.0, 0.0));
         assert_eq!(
-            material.extension.directional,
+            material.extension.fog.ambient,
+            Vec4::new(64.0, 64.0, 64.0, 0.0)
+        );
+        assert_eq!(
+            material.extension.fog.directional,
             Vec4::new(255.0, 255.0, 255.0, 0.0)
         );
-        assert_eq!(material.extension.direction, Vec4::new(0.0, -1.0, 0.0, 0.0));
+        assert_eq!(
+            material.extension.fog.direction,
+            Vec4::new(0.0, -1.0, 0.0, 0.0)
+        );
         let mesh = app.world().get::<Mesh3d>(first).unwrap();
         assert!(
             app.world()
@@ -414,6 +550,34 @@ mod tests {
         assert_eq!(material.base.alpha_mode, AlphaMode::Mask(0.4));
         assert!(material.base.unlit);
         assert_eq!(material.base.cull_mode, None);
+        app.world_mut()
+            .get_mut::<Transform>(camera)
+            .unwrap()
+            .translation
+            .x = -1000.0;
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&light_image)
+                .unwrap()
+                .height(),
+            256
+        );
+        app.world_mut()
+            .get_mut::<Transform>(camera)
+            .unwrap()
+            .translation
+            .x = 0.0;
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Image>>()
+                .get(&light_image)
+                .unwrap()
+                .height(),
+            257
+        );
         for (mode, override_far, expected) in [
             (Mode::Faithful, Some(8000.0), 190.0),
             (Mode::Modern, Some(8000.0), 400.0),
@@ -437,8 +601,8 @@ mod tests {
                 .resource::<Assets<SceneMaterial>>()
                 .get(&handle)
                 .unwrap();
-            assert_eq!(material.extension.clipping.y, expected * 20.0);
-            assert_eq!(material.extension.table, [Vec4::ZERO; 16]);
+            assert_eq!(material.extension.fog.clipping.y, expected * 20.0);
+            assert_eq!(material.extension.fog.table, [Vec4::ZERO; 16]);
             let terrain_material = app
                 .world()
                 .resource::<Assets<TerrainMaterial>>()
@@ -446,7 +610,7 @@ mod tests {
                 .unwrap();
             assert_eq!(
                 terrain_material.extension.fog.clipping,
-                material.extension.clipping
+                material.extension.fog.clipping
             );
             assert_eq!(terrain_material.extension.fog.water.y, 1.0);
         }
