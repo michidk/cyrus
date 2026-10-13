@@ -54,7 +54,36 @@ pub(super) struct View {
     pub clipping: [f32; 2],
 }
 
+/// Camera-centered draw/admission window from preservation's water terrain rules.
+/// Coordinates are raw WLD columns/rows; positive engine Z reverses rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Window {
+    center: [i32; 2],
+    side: usize,
+}
+
+impl Window {
+    pub fn new(camera_local: Vec3, side: usize) -> Self {
+        let engine_x = -camera_local.x * 20.0;
+        let engine_z = camera_local.z * 20.0 + side as f32 * 256.0;
+        Self {
+            center: [
+                (engine_x / 256.0).round_ties_even() as i32,
+                side as i32 - (engine_z / 256.0).round_ties_even() as i32,
+            ],
+            side,
+        }
+    }
+
+    pub fn contains(self, vertex: usize) -> bool {
+        let x = (vertex % self.side) as i32 - self.center[0];
+        let row = (vertex / self.side) as i32 - self.center[1];
+        (-16..=15).contains(&x) && (-15..=16).contains(&row)
+    }
+}
+
 pub(super) struct Grid<'a> {
+    pub window: Window,
     pub local: &'a [[f32; 3]],
     pub camera: &'a [[f32; 3]],
     pub normals: &'a [[f32; 3]],
@@ -107,6 +136,12 @@ pub(super) fn update(
     let mut green = take4i(mesh, GREEN);
     let mut blue = take4i(mesh, BLUE);
     for &triangle in &source.triangles {
+        if !triangle
+            .iter()
+            .all(|&index| grid.window.contains(mapping[index]))
+        {
+            continue;
+        }
         let vertices = triangle.map(|index| {
             let vertex = mapping[index];
             prepare::Vertex {
@@ -150,4 +185,38 @@ pub(super) fn update(
     mesh.insert_attribute(GREEN, green);
     mesh.insert_attribute(BLUE, blue);
     visible
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_window_rounds_ties_even_and_reverses_source_rows() {
+        let camera = |x: f32, z: f32| Vec3::new(-x / 20.0, 0.0, (z - 16384.0) / 20.0);
+        for (x, expected) in [
+            (127.99, 0),
+            (128.0, 0),
+            (128.01, 1),
+            (384.0, 2),
+            (-128.0, 0),
+            (-384.0, -2),
+        ] {
+            assert_eq!(Window::new(camera(x, 8192.0), 64).center, [expected, 32]);
+        }
+        let window = Window::new(camera(8192.0, 8192.0), 64);
+        let admitted: Vec<_> = (0..64 * 64).filter(|&v| window.contains(v)).collect();
+        assert_eq!(admitted.len(), 1024);
+        assert_eq!(admitted[0], 17 * 64 + 16);
+        assert_eq!(*admitted.last().unwrap(), 48 * 64 + 47);
+        let cells = (0..63)
+            .flat_map(|row| (0..63).map(move |x| row * 64 + x))
+            .filter(|&a| {
+                [a, a + 1, a + 64, a + 65]
+                    .into_iter()
+                    .all(|v| window.contains(v))
+            })
+            .count();
+        assert_eq!(cells, 961);
+    }
 }

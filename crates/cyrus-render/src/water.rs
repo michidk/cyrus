@@ -29,6 +29,7 @@ pub(crate) struct WaterPlayback {
     base: Vec<[f32; 3]>,
     terrain: Vec<TerrainMesh>,
     tick: Option<u64>,
+    window: Option<crate::terrain::Window>,
     mode: Mode,
     grid: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
@@ -37,10 +38,10 @@ pub(crate) struct WaterPlayback {
 }
 
 /// Nonzero admission from preservation's water dirty-normal rules, in raw WLD rows.
-fn dirty_normals(water: &Water) -> Vec<bool> {
+fn dirty_normals(water: &Water, window: crate::terrain::Window) -> Vec<bool> {
     let mut dirty = vec![false; water.animated_vertices.len()];
     for (vertex, &animated) in water.animated_vertices.iter().enumerate() {
-        if !animated {
+        if !animated || !window.contains(vertex) {
             continue;
         }
         let x = vertex % water.side;
@@ -78,7 +79,8 @@ fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
     let [amplitude, speed, frequency] = water.parameters;
     let spatial = (x * x + row * row) * frequency as i64;
     let phase = (spatial as u64).wrapping_add(ticks.wrapping_mul((speed as i64) as u64)) & 2047;
-    let sample = (((phase + 512) as f64 * 6.2831852 / 2048.0).sin()) as f32;
+    let angle = ((phase + 512) as f64 * 6.2831852 / 2048.0) as f32;
+    let sample = f64::from(angle).sin() as f32;
     -(sample * amplitude - amplitude * 0.5) / 20.0
 }
 
@@ -214,18 +216,35 @@ pub(crate) fn animate_water(
                 view: None,
             });
         }
-        playback.dirty_normals = water.map_or_else(Vec::new, dirty_normals);
         playback.source = Some(request.0.id());
+    }
+    let window = cameras.single().ok().and_then(|(_, camera)| {
+        let terrain = transforms.get(playback.terrain[0].entity).ok()?;
+        let camera_local = terrain
+            .affine()
+            .inverse()
+            .transform_point3(camera.translation());
+        Some(crate::terrain::Window::new(camera_local, side))
+    });
+    // Camera removal restores the unprojected mesh using its last admission window.
+    let Some(window) = window.or(playback.window) else {
+        return;
+    };
+    let rebuild = playback.window != Some(window);
+    if rebuild {
+        playback.window = Some(window);
+        playback.dirty_normals = water.map_or_else(Vec::new, |w| dirty_normals(w, window));
     }
     let ticks = (time.elapsed_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
     let mode = fidelity.mode(Area::Water);
-    let update_grid = playback.tick.is_none()
+    let update_grid = rebuild
+        || playback.tick.is_none()
         || (water.is_some()
             && (mode != Mode::Faithful || playback.mode != mode || playback.tick != Some(ticks)));
     if update_grid {
         if water.is_some()
             && mode == Mode::Faithful
-            && (playback.tick.is_none() || playback.mode != mode)
+            && (rebuild || playback.tick.is_none() || playback.mode != mode)
         {
             playback.normals = crate::lighting::grid_normals(&playback.base, side);
         }
@@ -233,7 +252,9 @@ pub(crate) fn animate_water(
         playback.mode = mode;
         let mut grid = playback.base.clone();
         for (vertex, position) in grid.iter_mut().enumerate() {
-            if let Some(water) = water.filter(|w| w.animated_vertices[vertex]) {
+            if let Some(water) =
+                water.filter(|w| w.animated_vertices[vertex] && window.contains(vertex))
+            {
                 position[1] += match mode {
                     Mode::Faithful => displacement(water, vertex, ticks),
                     Mode::Modern => {
@@ -246,7 +267,7 @@ pub(crate) fn animate_water(
         if water.is_some() && mode == Mode::Faithful {
             // Every changed face is admitted; unmarked vertex normals retain the base grid's values.
             for (vertex, normal) in normals.into_iter().enumerate() {
-                if playback.dirty_normals[vertex] {
+                if window.contains(vertex) && playback.dirty_normals[vertex] {
                     playback.normals[vertex] = normal;
                 }
             }
@@ -308,6 +329,7 @@ pub(crate) fn animate_water(
                 &mut terrain.source,
                 &terrain.vertices,
                 crate::terrain::Grid {
+                    window,
                     local: grid,
                     camera: &camera_grid,
                     normals,
@@ -394,6 +416,127 @@ mod tests {
         assert!((displacement(&spatial, 3, 0) + 0.6).abs() < 0.00001);
     }
 
+    #[test]
+    fn wave_angle_is_rounded_before_sampling() {
+        let water = Water {
+            parameters: [24.0, 1.0, 0.0],
+            side: 2,
+            animated_vertices: vec![false, false, false, true],
+        };
+        // Published single-precision angle samples, including the extended revolution.
+        for (ticks, expected) in [(777, 1.471631), (1536, 0.6000004), (1901, -0.4800191)] {
+            assert_eq!(displacement(&water, 3, ticks), expected);
+        }
+    }
+
+    #[test]
+    fn moving_window_rebuilds_base_normals_without_waiting_for_a_tick() {
+        let mut app = App::new();
+        let camera = app
+            .world_mut()
+            .spawn((
+                Camera::default(),
+                crate::camera::ViewCamera,
+                GlobalTransform::from_translation(Vec3::new(
+                    -5.0 * CELL_SIZE,
+                    0.0,
+                    -20.0 * CELL_SIZE,
+                )),
+            ))
+            .id();
+        let mut environments = Assets::<Environment>::default();
+        let mut selected = vec![false; 40 * 40];
+        selected[20 * 40 + 20] = true;
+        let environment = environments.add(Environment {
+            object_lights: Vec::new(),
+            prelighting: Default::default(),
+            model_lighting: Default::default(),
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_lighting: None,
+            water: Some(Water {
+                parameters: [24.0, 512.0, 0.0],
+                side: 40,
+                animated_vertices: selected,
+            }),
+        });
+        app.insert_resource(environments)
+            .insert_resource(EnvironmentRequest(environment))
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<WaterPlayback>()
+            .init_resource::<Fidelity>()
+            .init_resource::<Time<Real>>()
+            .add_systems(Update, animate_water);
+        let base: Vec<_> = (0..40 * 40)
+            .map(|i| {
+                [
+                    -(i % 40) as f32 * CELL_SIZE,
+                    0.0,
+                    -(i / 40) as f32 * CELL_SIZE,
+                ]
+            })
+            .collect();
+        let mut mesh = triangle(base);
+        mesh.insert_indices(bevy::mesh::Indices::U32(
+            (0..39)
+                .flat_map(|row| {
+                    (0..39).flat_map(move |x| {
+                        let a = row * 40 + x;
+                        [a, a + 41, a + 1, a + 41, a, a + 40]
+                    })
+                })
+                .collect(),
+        ));
+        let original = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let terrain = app
+            .world_mut()
+            .spawn((
+                Name::new("Terrain"),
+                Mesh3d(original),
+                GlobalTransform::IDENTITY,
+            ))
+            .id();
+        app.update();
+        let animated = app.world().get::<Mesh3d>(terrain).unwrap().0.clone();
+        assert_eq!(positions(&app, &animated)[820][1], -0.6);
+        let normal = |app: &App| {
+            let mesh = app
+                .world()
+                .resource::<Assets<Mesh>>()
+                .get(&animated)
+                .unwrap();
+            let VertexAttributeValues::Float32x3(normals) =
+                mesh.attribute(Mesh::ATTRIBUTE_NORMAL).unwrap()
+            else {
+                panic!("missing normals")
+            };
+            normals[819]
+        };
+        assert_ne!(normal(&app), [0.0, 0.99609375, 0.0]);
+        app.world_mut()
+            .entity_mut(camera)
+            .insert(GlobalTransform::from_translation(Vec3::new(
+                -4.0 * CELL_SIZE,
+                0.0,
+                -20.0 * CELL_SIZE,
+            )));
+        app.update();
+        assert_eq!(positions(&app, &animated)[820][1], 0.0);
+        assert_eq!(normal(&app), [0.0, 0.99609375, 0.0]);
+        app.world_mut()
+            .entity_mut(camera)
+            .insert(GlobalTransform::from_translation(Vec3::new(
+                -5.0 * CELL_SIZE,
+                0.0,
+                -20.0 * CELL_SIZE,
+            )));
+        app.update();
+        assert_eq!(positions(&app, &animated)[820][1], -0.6);
+        assert_ne!(normal(&app), [0.0, 0.99609375, 0.0]);
+    }
+
     fn triangle(positions: Vec<[f32; 3]>) -> Mesh {
         let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
@@ -419,6 +562,11 @@ mod tests {
     #[test]
     fn water_edge_retains_base_lighting_until_another_wave_vertex_admits_it() {
         let mut app = App::new();
+        app.world_mut().spawn((
+            Camera::default(),
+            crate::camera::ViewCamera,
+            GlobalTransform::IDENTITY,
+        ));
         let mut environments = Assets::<Environment>::default();
         let mut water = Water {
             parameters: [24.0, 512.0, 0.0],
@@ -471,7 +619,11 @@ mod tests {
         let original = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let entity = app
             .world_mut()
-            .spawn((Name::new("Terrain"), Mesh3d(original.clone())))
+            .spawn((
+                Name::new("Terrain"),
+                Mesh3d(original.clone()),
+                GlobalTransform::IDENTITY,
+            ))
             .id();
         let sample = |app: &App, vertex| {
             let handle = &app.world().get::<Mesh3d>(entity).unwrap().0;
@@ -541,6 +693,14 @@ mod tests {
     #[test]
     fn terrain_playback_keeps_shared_assets_and_normals_and_restores_on_world_change() {
         let mut app = App::new();
+        let initial_camera = app
+            .world_mut()
+            .spawn((
+                Camera::default(),
+                crate::camera::ViewCamera,
+                GlobalTransform::IDENTITY,
+            ))
+            .id();
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
             object_lights: Vec::new(),
@@ -586,11 +746,19 @@ mod tests {
         let parent = app.world_mut().spawn(Name::new("Terrain")).id();
         let entity = app
             .world_mut()
-            .spawn((Mesh3d(first.clone()), ChildOf(parent)))
+            .spawn((
+                Mesh3d(first.clone()),
+                ChildOf(parent),
+                GlobalTransform::IDENTITY,
+            ))
             .id();
         let other = app
             .world_mut()
-            .spawn((Mesh3d(second.clone()), ChildOf(parent)))
+            .spawn((
+                Mesh3d(second.clone()),
+                ChildOf(parent),
+                GlobalTransform::IDENTITY,
+            ))
             .id();
         // An ordinary model can share a mesh with terrain without receiving waves.
         let model = app.world_mut().spawn(Mesh3d(first.clone())).id();
@@ -723,9 +891,14 @@ mod tests {
         app.world_mut().despawn(other);
         let replacement = app
             .world_mut()
-            .spawn((Mesh3d(first.clone()), ChildOf(parent)))
+            .spawn((
+                Mesh3d(first.clone()),
+                ChildOf(parent),
+                GlobalTransform::IDENTITY,
+            ))
             .id();
-        app.world_mut().spawn((Mesh3d(second), ChildOf(parent)));
+        app.world_mut()
+            .spawn((Mesh3d(second), ChildOf(parent), GlobalTransform::IDENTITY));
         app.update();
         let rebound = app.world().get::<Mesh3d>(replacement).unwrap().0.clone();
         assert_ne!(
@@ -749,6 +922,7 @@ mod tests {
             scale_factor: 1.0,
         });
         let pose = Transform::from_xyz(0.0, 50.0, 50.0).looking_at(Vec3::ZERO, Vec3::Y);
+        app.world_mut().despawn(initial_camera);
         let camera_entity = app
             .world_mut()
             .spawn((

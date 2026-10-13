@@ -56,6 +56,7 @@ therefore does not establish animated or playable world behavior.
 
 | Work | Session |
 | --- | --- |
+| Rendering: finite water window, map lighting, sky/texture animation and transition filtering | Codex, `t3/rendering-stage-one`; `magic/artifacts/2026-10-13-rendering-continuation/`; preserves SOUP/save boundaries |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 
@@ -221,7 +222,8 @@ world playback is incomplete.
 - [x] Independent fidelity controls; optional Modern sky/fog/water presentation. Modern lighting currently reuses Faithful results.
 - [x] Match the original world camera's horizontal projection across viewport sizes. **Verified:** original viewport arithmetic and matched BELLTOWR inspection poses in native/browser builds. Original follow-camera behavior and lighting/pixel parity remain open.
 - [x] Apply [dirty water-edge normal admission/retention](https://github.com/michidk/cyrus/commit/96824363121633c891982215d8beb20f9e332361) to the current terrain grid. **Verified:** [published admission rules](https://github.com/michidk/redguard-preservation/commit/ebd7d9e), renderer tests for retained RGB, ticks, mode switches and environment replacement, and a failing omitted-diagonal negative control. Matched ISLAND ground captures compare original/native/headless browser at 640×480; native/browser shoreline captures share a pose but not wave phase.
-- [ ] Compare rendered water edges and original finite camera-window boundaries. Cyrus retains whole-grid displacement; water phase and complete pixel parity remain open.
+- [x] Apply the [original finite terrain window](https://github.com/michidk/redguard-preservation/commit/0913cd1). **Verified:** original draw/admission ranges, live rounding mode and renderer tests for cell changes, retained normals and wave-angle precision.
+- [x] Compare water edges at a matched ISLAND shoreline pose in original/native/browser at 640×480. **Verified:** controlled zero-speed waves hold phase constant; the camera window follows the [published draw range](https://github.com/michidk/redguard-preservation/commit/0913cd1). **Unknown:** complete pixel parity and default-speed timing; edge texture/color differences remain.
 - [x] Replace fixed Bevy model lighting with installed ambient/directional RGB, authored face brightness, supplied normals and solid-color tint. **Verified:** original-code/GPU arithmetic comparisons, render contracts and native ISLAND/BELLTOWR/START scene switches.
 - [ ] Compare static map-light baking in matched original/native/browser views; recover actor prelighting eligibility and dynamic lighting overrides.
 - [x] Add authored object lights after retained static RGB. **Verified:** original-code/GPU arithmetic, installed export switches, renderer contracts and matched BELLTOWR native/browser views. Scripted changes and complete pixel parity remain open.

@@ -112,14 +112,18 @@ that reuses Faithful results. Existing Water and Fog switches remain independent
 explain both retained edge normals in the captured original water update.
 Faithful water now replaces only admitted vertex normals and derives lighting
 from the retained or replaced values. The omitted diagonal retains its base
-normal and RGB unless another selected water vertex admits it. World changes
-and Modern-to-Faithful switches restore the base normals before admission;
-shared source meshes remain unchanged. The renderer test covers each transition. Matched 640×480 ISLAND ground captures
-compare the original, native and headless browser; shoreline captures compare
-native/browser at one pose without synchronized wave clocks.
-**Unknown:** original finite camera-window boundary behavior and rendered
-water-edge pixel parity. Cyrus still displaces its whole terrain grid; candidate
-face normals are calculated globally before selective vertex replacement.
+normal and RGB unless another selected water vertex admits it. World changes,
+camera-cell changes and Modern-to-Faithful switches restore base normals before
+admission; shared source meshes remain unchanged.
+**Verified:** the [terrain window](https://github.com/michidk/redguard-preservation/blob/0913cd1/docs/engine/water.md#terrain-window)
+uses nearest-even camera-cell rounding, admits the inner 32×32 vertices and
+submits their 31×31 cells. Tests cover row reversal, boundary ties, admission
+changes without clock advancement, and retained lighting. Wave lookup rounds
+the angle to single precision before sampling.
+**Verified:** matched original/native/browser ISLAND shoreline captures at 640×480
+use zero-speed waves to hold phase constant. Edge texture/color differences
+remain; default-speed timing and complete pixel parity are **Unknown**. Candidate face normals are still
+calculated globally before selective vertex replacement.
 
 Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
