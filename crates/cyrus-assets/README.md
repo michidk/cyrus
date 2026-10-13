@@ -166,7 +166,10 @@ The game core depends only on the record; host storage owns file access.
 
 `scene::export_scene_observing` runs the normal exporter with an optional audit
 observer. It retains skipped placement counts and texture fallback reasons through
-preservation's [reporting extension](https://github.com/michidk/redguard-preservation/compare/main...feat/placement-diagnostics-review).
+preservation's [merged reporting extension](https://github.com/michidk/redguard-preservation/commit/9fde2b567605b86d458ec8863558aa2b994f0cb9).
+**Verified:** upstream main includes this isolated reporting contribution. The
+current dependency pin includes the earlier implementation; the linked commit
+identifies the merged contribution, not the dependency pin's ancestry.
 The observer changes neither asset selection nor fallback behavior. The native
 `cyrus --audit-worlds` command combines these records with preload and runtime
 preparation diagnostics. Generated installed-content reports belong under `magic/`.
