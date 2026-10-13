@@ -210,3 +210,5 @@ ink selection and editing rules follow the published [console contract](https://
 The header identifies cyrus instead of displaying original-engine memory totals.
 Exact pixel parity, preference commands and non-cheat diagnostic views remain
 outside current coverage.
+
+The public `ReadyScene` resource identifies the prepared world whose render instance has finished spawning. Capture consumers compare its animation handle with the current `PreparedWorld`; this does not establish script or gameplay readiness.

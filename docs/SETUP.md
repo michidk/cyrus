@@ -485,3 +485,19 @@ launches the native view; `just replay <fixture.json> <new-label>` validates the
 views and writes the triplet under `magic/captures/`. Original instrumentation and
 all copyrighted captures remain local. Legacy JSONL fixtures still work but do
 not establish a matching original camera.
+
+Native `state.scene_ready` and browser `window.__cyrusCapture.ready` report that
+this world's render instance has finished spawning. Replay waits for that signal
+before the fixture settling time. `InGame` can precede asynchronous geometry
+loading; it is insufficient for a scene capture. Script and gameplay readiness
+remain separate.
+
+Maintainers restoring the original adapter should use the corrected
+[private restoration procedure](https://github.com/michidk/redguard-decomp/blob/main/research/supplements/2026-10-13-stage0-final-verification/magic/artifacts/2026-10-13-stage0-followups/restore-verified-runtime.md).
+It requires the recorded debugger-enabled emulator, copies the install and
+installed Glide overlay into an isolated writable runtime, and checks hashes.
+Enter gameplay and freeze the original promptly before running fixtures. Check
+fresh measurements and Docker identity after restarting; an interrupted
+adapter's saved dump is not a new observation. **Unknown:** reconstruction of
+that emulator from source and original CD/audio parity. Static captures do not
+verify either.

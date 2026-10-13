@@ -99,3 +99,5 @@ unique filenames. A skipped placement and an asset failure can describe the same
 request; do not add these categories together as independent defects. Preload
 diagnostics use a null world because the coverage scan does not establish a
 world reference.
+
+Native `state.scene_ready` reports that the current rendered world has finished spawning. `InGame` alone does not establish that its asynchronous scene dependencies have loaded.

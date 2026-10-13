@@ -89,3 +89,5 @@ menu's Cheat files section imports or downloads original-format CHT files.
 Import validates and saves before replacing live state; cancellation, invalid
 files and storage failures preserve the current state. Import also recovers from
 malformed local state. Clear the storage key to restore the installed seed.
+
+Capture observation `window.__cyrusCapture.ready` reports that the current rendered world has finished spawning. The replay waits for it before measuring and capturing the view.

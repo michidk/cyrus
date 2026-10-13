@@ -89,10 +89,11 @@ browser afterward. Unit tests also run in `just gates`.
 ## Starter views
 
 **Verified:** `belltowr.json`, `island.json`, and `start.json` record measured
-original camera poses. They explicitly set `task = 0` and `animation = 0` before
-loading, so these captures compare static scenes. BELLTOWR frames the door and
-table, ISLAND frames terrain and nearby barrels, and START frames the ship deck
-and water. Do not use them to claim animation or script fidelity.
+original camera poses. Their original-game setup explicitly sets `task = 0` and
+`animation = 0` before loading. Native/browser may advance supported runtime
+updates; the fixtures do not synchronize animation or gameplay. BELLTOWR frames
+the door and table, ISLAND frames terrain and nearby barrels, and START frames
+the ship deck and water. Do not use them to claim animation or script fidelity.
 
 ## Headless browser setup
 
@@ -134,10 +135,12 @@ research text privately, and record only camera poses/setup in these fixtures.
 Maintainers can retrieve the verified adapter and setup scripts from the private
 [research snapshot](https://github.com/michidk/redguard-decomp/tree/6289acd4acb6ac06a394dcfe7d18e697fbdd3d9d/research/supplements/2026-10-13-stage0-tooling).
 Copy those instruments under `magic/` and follow the snapshot setup instructions.
-The private [restoration procedure](https://github.com/michidk/redguard-decomp/blob/9aeb4ef601d9a0039ac10ac186a0ad9137c7e29e/research/supplements/2026-10-13-stage0-provenance/magic/artifacts/2026-10-13-stage0-followups/restoration-READY.md)
+The private [restoration procedure](https://github.com/michidk/redguard-decomp/blob/main/research/supplements/2026-10-13-stage0-final-verification/magic/artifacts/2026-10-13-stage0-followups/restore-verified-runtime.md)
 provides a restore command that checks archive and executable hashes, copies the
 install into a fresh writable runtime, and restores the instruments without
-launching them. It requires the recorded debug-enabled emulator binary.
+launching them. Keep its updated adapter beside the restore script. It requires
+the recorded debug-enabled emulator binary. **Unknown:** reconstruction of that
+emulator from source and original CD/audio parity.
 
 The adapter must release held keys when resuming and must not write to the linked
 install. Use the original's writable runtime copy. Emulator save states are not
@@ -150,3 +153,5 @@ then call `compare.sh`. Their two current-view screenshots go under
 `magic/captures/legacy/`; they do not establish a matched original viewpoint.
 Baseline image comparisons still use `CYRUS_COMPARE_TOLERANCE` and local baseline
 images. Test pose rejection with `node --test dev/scripts/matched-capture.test.mjs`.
+
+Replay waits for the current render instance to finish spawning on native and browser before applying the fixture settling time. Entering `InGame` alone can precede asynchronous geometry loading. Failed or unfinished loading does not produce an accepted triplet.

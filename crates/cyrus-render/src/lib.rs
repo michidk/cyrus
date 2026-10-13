@@ -44,8 +44,9 @@ impl Plugin for WorldRenderPlugin {
 struct SceneEntity;
 
 /// Current world whose rendered scene has finished spawning, before actor effects run.
+/// The handle identifies that world's animation cache; presence does not establish gameplay readiness.
 #[derive(Resource)]
-pub(crate) struct ReadyScene(pub Handle<cyrus_assets::animation::Animations>);
+pub struct ReadyScene(pub Handle<cyrus_assets::animation::Animations>);
 
 fn scene_ready(
     mut commands: Commands,

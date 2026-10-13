@@ -184,6 +184,14 @@ fn support_and_unknown_files_are_hidden_and_malformed_images_report_their_source
         .unwrap();
     assert_eq!(report.by_type.len(), 3);
     assert_eq!(report.failed.len(), 3);
+    assert_eq!(
+        report
+            .failed
+            .iter()
+            .map(|(file, _)| file.as_str())
+            .collect::<Vec<_>>(),
+        ["broken.anm", "broken.lbm", "broken.pcx"]
+    );
     assert_eq!(report.parsed, 0);
 }
 

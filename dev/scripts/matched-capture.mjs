@@ -84,7 +84,7 @@ async function browser(f, output, build) {
     await cdp.call('Page.navigate', { url: url.href });
     const observed = await until(async () => {
       const r = await cdp.call('Runtime.evaluate', { expression: 'window.__cyrusCapture', returnByValue: true });
-      return r.result?.value;
+      return r.result?.value?.ready === true && r.result.value;
     }, 'browser world loading');
     assert.equal(observed.world.toUpperCase(), f.world, 'browser world');
     checkView(f.view, observed.view);
@@ -126,7 +126,7 @@ export async function capture(fixture, label, originalOnly = false) {
   if (originalOnly) return directory;
   const state = await until(async () => {
     const state = await command({ type: 'state' });
-    return state.state === 'InGame' && state.scene && state;
+    return state.state === 'InGame' && state.scene_ready === true && state.scene && state;
   }, 'native world loading');
   assert.equal(state.scene.toUpperCase(), f.world, 'launch native with just run-native --fixture <fixture>');
   assert(state.flycam.enabled, 'native inspection camera is not enabled');

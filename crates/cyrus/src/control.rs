@@ -85,6 +85,7 @@ struct Inspection<'w, 's> {
     console: Res<'w, cyrus_console::Console>,
     activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
+    ready_scene: Option<Res<'w, cyrus_render::ReadyScene>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
     script_nodes: Query<'w, 's, (Entity, &'static Name)>,
     binding_nodes: Query<'w, 's, (Entity, &'static cyrus_game::script::ScriptBinding)>,
@@ -122,6 +123,7 @@ fn handle(
         console,
         activation,
         prepared,
+        ready_scene,
         animations,
         script_nodes,
         binding_nodes,
@@ -165,6 +167,9 @@ fn handle(
                 }
             }
             Command::State => {
+                let scene_ready = ready_scene.as_ref().is_some_and(|ready| {
+                    prepared.as_ref().is_some_and(|world| ready.0 == world.animations)
+                });
                 let transform = player.single().ok().map(|t| {
                     let (yaw, pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
                     json!({"position": t.translation.to_array(), "yaw": yaw, "pitch": pitch})
@@ -173,7 +178,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": "cyrus-config/preload-report.json"})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -682,6 +687,30 @@ mod tests {
                 response.result.unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn capture_readiness_requires_the_current_world_to_finish_spawning() {
+        let mut app = script_app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let state = run_commands(&mut app, vec![Command::State]).remove(0);
+        assert_eq!(state["state"], "InGame");
+        assert_eq!(state["scene_ready"], false);
+
+        let current = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations
+            .clone();
+        app.insert_resource(cyrus_render::ReadyScene(current));
+        let state = run_commands(&mut app, vec![Command::State]).remove(0);
+        assert_eq!(state["scene_ready"], true);
+
+        app.world_mut()
+            .resource_mut::<cyrus_world::lifecycle::PreparedWorld>()
+            .animations = default();
+        let state = run_commands(&mut app, vec![Command::State]).remove(0);
+        assert_eq!(state["scene_ready"], false);
     }
 
     #[test]

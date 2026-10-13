@@ -21,6 +21,7 @@ pub enum Progress {
 #[derive(Resource, Debug, Clone, Default, serde::Serialize)]
 pub struct Preloaded {
     pub parsed: usize,
+    /// Install-relative source paths and parser failures; directories and extensions are retained.
     pub failed: Vec<(String, String)>,
     /// Per file type (display name): parsed and failed counts.
     pub by_type: std::collections::BTreeMap<String, TypeCount>,
@@ -63,7 +64,8 @@ pub fn preload(root: &std::path::Path, tx: &Sender<Progress>) {
             Ok(()) => count.parsed += 1,
             Err(e) => {
                 count.failed += 1;
-                failed.push((entry.name.clone(), e));
+                let file = entry.path.strip_prefix(root).unwrap_or(&entry.path);
+                failed.push((file.to_string_lossy().replace('\\', "/"), e));
             }
         }
     }

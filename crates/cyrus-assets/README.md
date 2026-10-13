@@ -160,3 +160,5 @@ preparation diagnostics. Generated installed-content reports belong under `magic
 `CheatSeed` carries read-only installed CHT bytes and SYSTEM.INI startup defaults
 for the browser host. `console` prepares the installed paper, configured FNT and
 per-world palette inks for native and browser presentation.
+
+Native preload failures retain install-relative filenames, including directories and extensions, so audit diagnostics identify the source file without depending on the local install location.

@@ -17,11 +17,18 @@ pub fn register(app: &mut App) {
 
 fn observe(
     request: Res<cyrus_world::lifecycle::SceneRequest>,
+    prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
+    ready_scene: Option<Res<cyrus_render::ReadyScene>>,
     camera: Query<&Transform, With<cyrus_render::camera::ViewCamera>>,
 ) {
     let (Some(window), Ok(camera)) = (web_sys::window(), camera.single()) else {
         return;
     };
+    let ready = ready_scene.as_ref().is_some_and(|ready| {
+        prepared
+            .as_ref()
+            .is_some_and(|world| ready.0 == world.animations)
+    });
     let record = js_sys::Object::new();
     let view = camera
         .translation
@@ -33,6 +40,7 @@ fn observe(
     let result = (|| {
         js_sys::Reflect::set(&record, &"world".into(), &request.0.as_str().into())?;
         js_sys::Reflect::set(&record, &"view".into(), &view)?;
+        js_sys::Reflect::set(&record, &"ready".into(), &ready.into())?;
         js_sys::Reflect::set(&window, &"__cyrusCapture".into(), &record)
     })();
     if let Err(error) = result {
