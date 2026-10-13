@@ -160,6 +160,7 @@ fn world_exports_include_declared_terrain_and_textures() {
         ("PALACE", false),
         ("ISLAND", true),
         ("CATACOMB", false),
+        ("BELLTOWR", false),
     ] {
         let path = output.join(format!("{name}.glb"));
         cyrus_assets::scene::export_scene(&install, name, &path).unwrap();
@@ -181,7 +182,7 @@ fn world_exports_include_declared_terrain_and_textures() {
                 .unwrap()
             {
                 let lighting = &primitive["extras"]["rgpre_lighting"];
-                assert_eq!(lighting["version"], 1, "{name}: {}", node["name"]);
+                assert_eq!(lighting["version"], 3, "{name}: {}", node["name"]);
                 let position = primitive["attributes"]["POSITION"].as_u64().unwrap() as usize;
                 assert_eq!(
                     lighting["vertices"].as_array().unwrap().len() as u64,
@@ -195,6 +196,25 @@ fn world_exports_include_declared_terrain_and_textures() {
         assert_eq!(environment.sky.is_some(), terrain);
         assert_eq!(environment.water.is_some(), terrain);
         assert_eq!(environment.terrain_lighting.is_some(), terrain);
+        for name in environment.prelighting.instances.keys() {
+            assert!(
+                nodes
+                    .iter()
+                    .any(|node| node["name"].as_str() == Some(name.as_str())),
+                "lighting placement missing from exported geometry: {name}"
+            );
+        }
+        if name == "BELLTOWR" {
+            assert!(!environment.prelighting.instances.is_empty());
+            assert!(
+                environment
+                    .prelighting
+                    .lights
+                    .iter()
+                    .any(|light| light.rgb.iter().any(|v| *v < 0))
+            );
+        }
+
         if name == "ISLAND" {
             assert_eq!(environment.model_lighting.ambient, [64.0; 3]);
             assert_eq!(environment.model_lighting.directional, [255.0; 3]);

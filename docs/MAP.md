@@ -121,6 +121,7 @@ module where it is defined and regenerate.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
+- `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
 - `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.

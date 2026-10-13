@@ -60,9 +60,15 @@ animation frames feed the same shader on native and browser builds.
 Re-export worlds and player models for the `rgpre_lighting` primitive metadata
 and required environment model inputs. Invalid mesh lighting metadata hides the
 unsupported mesh and logs the world/mesh context with re-export instructions.
-**Unknown:** local-light admission, static prelighting retention/rounding,
-actor-specific lighting overrides and complete original-game pixel parity.
-The recovered ambient/directional calculation does not establish those behaviors.
+**Verified:** static MPSO instances bake retained RGB when the world has admitted
+map lights, following preservation's [world prelighting rules](https://github.com/michidk/redguard-preservation/blob/ddbe29f/docs/engine/model-lighting.md).
+Private instance meshes retain signed local-light contributions, quantized falloff,
+authored matrix/bound selection and nearest-even channel rounding. Palette tint
+precedes rounding and is not applied twice. Map lights accumulate in the original
+spatial-cell order and are not reapplied every frame. Re-export worlds for the
+required environment placement records and version-3 model lighting metadata.
+**Unknown:** actor-specific prelighting eligibility, dynamic registered lights,
+actor lighting overrides and complete original-game pixel parity.
 
 The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
 that reuses Faithful results. Existing Water and Fog switches remain independent.

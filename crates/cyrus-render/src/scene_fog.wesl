@@ -18,6 +18,7 @@ struct ModelVertex {
     @location(2) uv: vec2<f32>,
     @location(3) color: vec3<f32>,
     @location(4) @interpolate(flat) instance_index: u32,
+    @location(5) @interpolate(flat) retained_solid: u32,
 };
 
 @vertex
@@ -30,11 +31,16 @@ fn vertex(raw: Vertex) -> ModelVertex {
     // The original model matrix acts directly on normals, retaining their magnitude.
     out.normal = (transform * vec4(vertex.normal, 0.0)).xyz;
     out.uv = vertex.uv;
-    // shortcut: local lights and retained instance RGB await recovered admission and retention rules.
+    // shortcut: dynamic registered lights await actor lifecycle integration.
     let weight = max(0.0, -dot(fog.direction.xyz, out.normal));
     let color = clamp(fog.ambient.xyz + vec3(vertex.uv_b.x) + weight * fog.directional.xyz, vec3(0.0), vec3(255.0));
     // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.
     out.color = color * (vertex.uv_b.y / 255.0) * out.position.w;
+    out.retained_solid = 0u;
+@if(VERTEX_COLORS) {
+    out.color = vertex.color.rgb * out.position.w;
+    out.retained_solid = u32(vertex.color.a);
+}
     out.instance_index = raw.instance_index;
     return out;
 }
@@ -54,7 +60,8 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     surface.instance_index = in.instance_index;
     let input = pbr_input_from_standard_material(surface, is_front);
     let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
-    let color = srgb_to_linear(linear_to_srgb(base.rgb) * (in.color * in.position.w));
+    let texture_rgb = select(linear_to_srgb(base.rgb), vec3(1.0), in.retained_solid != 0u);
+    let color = srgb_to_linear(texture_rgb * (in.color * in.position.w));
     var out: FragmentOutput;
     out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
 @if(PREMULTIPLY_ALPHA) {

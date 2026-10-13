@@ -223,7 +223,24 @@ fn apply_scene_fog(
             };
             let prepared = extras
                 .ok_or_else(|| anyhow::anyhow!("missing model lighting metadata"))
-                .and_then(|extras| crate::lighting::model_mesh(original, &extras.value));
+                .and_then(|extras| {
+                    let instance = (!environment.prelighting.lights.is_empty())
+                        .then(|| {
+                            std::iter::once(entity)
+                                .chain(parents.iter_ancestors(entity))
+                                .find_map(|ancestor| {
+                                    names.get(ancestor).ok().and_then(|name| {
+                                        environment.prelighting.instances.get(name.as_str())
+                                    })
+                                })
+                        })
+                        .flatten();
+                    crate::lighting::model_mesh(
+                        original,
+                        &extras.value,
+                        instance.map(|instance| (environment, instance)),
+                    )
+                });
             match prepared {
                 Ok(private) => mesh.0 = meshes.add(private),
                 Err(error) => {
@@ -269,6 +286,7 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
+            prelighting: Default::default(),
             model_lighting: cyrus_assets::environment::ModelLighting {
                 ambient: [64.0; 3],
                 directional: [255.0; 3],
@@ -317,7 +335,7 @@ mod tests {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
         let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let extras = bevy::gltf::GltfExtras {
-            value: r#"{"rgpre_lighting":{"version":1,"vertices":[[0,0],[64,0],[255,1]]}}"#.into(),
+            value: r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
         };
         let first = app
             .world_mut()

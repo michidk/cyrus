@@ -195,3 +195,6 @@ checked again at each launch. Unavailable files reopen the picker. The server's
 `--install PATH` automatically
 supplies the source to both pages; `--install-url URL` supplies a remote default.
 AI-driven tests must always provide one of these sources explicitly.
+
+World light inspection shows signed RGB strengths and authored radii. Light markers
+use the exported scene origin; local lights are not presented as directional vectors.

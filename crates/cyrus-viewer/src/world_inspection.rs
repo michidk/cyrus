@@ -61,7 +61,7 @@ pub fn toolbar(
             ui.checkbox(&mut state.lights, "Lights");
             ui.checkbox(&mut state.objects, "Objects");
         });
-        ui.weak("Lights show decoded positions. Direction/attenuation values remain source fields.");
+        ui.weak("Lights show authored positions and signed RGB strengths.");
         egui::ComboBox::from_id_salt("world-record")
             .selected_text(state.selected.map(|(key, i)| label(key, i, &data[key][i])).unwrap_or_else(|| "Select a placement".into()))
             .show_ui(ui, |ui| {
@@ -76,7 +76,7 @@ pub fn toolbar(
             if ui.button("Focus selected").clicked() {
                 focus = focus_record(record, data, current_distance);
             }
-            if key == "lights" { light_vector(ui, record); }
+            if key == "lights" { ui.monospace(format!("Signed RGB {} · radius {}", record["rgb"], record["radius"])); }
             ui.collapsing("Selected fields", |ui| { fields(ui, &mut state.fields, record); });
         }
         ui.collapsing("Navigation maps", |ui| {
@@ -169,26 +169,23 @@ pub fn toolbar(
     focus
 }
 
-fn light_vector(ui: &mut egui::Ui, record: &Value) {
-    let Some(value) = vector(&record["direction_attenuation"]) else {
-        return;
-    };
-    ui.weak("Direction/attenuation vector · source axes; interpretation depends on light type");
-    for (axis, title) in [(1, "X/Y"), (2, "X/Z")] {
-        ui.label(title);
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(120., 80.), egui::Sense::hover());
-        let direction = egui::vec2(value.x, -value[axis]);
-        ui.painter()
-            .circle_filled(rect.center(), 2., egui::Color32::WHITE);
-        if direction.length() > 0. {
-            ui.painter().arrow(
-                rect.center(),
-                direction.normalized() * 32.,
-                egui::Stroke::new(2., egui::Color32::YELLOW),
-            );
+fn position(record: &Value) -> Option<Vec3> {
+    if let Some(engine) = record.get("engine_position") {
+        let coordinates = engine.as_array()?;
+        if coordinates.len() != 3 {
+            return None;
         }
+        let x = coordinates[0].as_f64()?;
+        let y = coordinates[1].as_f64()?;
+        let z = coordinates[2].as_f64()?;
+        let position = Vec3::new(
+            -((x * 256.0) as f32) / 5120.0,
+            -((y * 256.0) as f32) / 5120.0,
+            -((16_777_215.0 - z * 256.0) as f32) / 5120.0,
+        );
+        return position.is_finite().then_some(position);
     }
-    ui.monospace(format!("[{}, {}, {}]", value.x, value.y, value.z));
+    vector(&record["position"])
 }
 
 // Preservation's animation rules concatenate RAAN frame ranges in entry order.
@@ -219,11 +216,11 @@ fn fields(
 }
 
 fn focus_record(record: &Value, data: &Value, current_distance: f32) -> Option<(Vec3, f32)> {
-    let center = vector(&record["position"])?;
+    let center = position(record)?;
     let nearest = ["markers", "lights", "mpob_objects", "walk_node_maps"]
         .into_iter()
         .flat_map(|key| records(data, key))
-        .filter_map(|record| vector(&record["position"]))
+        .filter_map(position)
         .map(|position| position.distance(center))
         .filter(|distance| distance.is_finite() && *distance > 0.)
         .reduce(f32::min);
@@ -403,7 +400,7 @@ pub fn draw(
             if !enabled {
                 continue;
             }
-            let Some(position) = vector(&record["position"]) else {
+            let Some(position) = position(record) else {
                 continue;
             };
             gizmos.cross(position, size, color);
@@ -432,6 +429,13 @@ pub fn draw(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn authored_light_positions_share_the_exported_scene_origin() {
+        let record = serde_json::json!({"engine_position": [20, -40, 65536]});
+        assert_eq!(position(&record), Some(Vec3::new(-1.0, 2.0, 0.0001953125)));
+        assert!(position(&serde_json::json!({"engine_position": [1, 2]})).is_none());
+    }
+
     #[test]
     fn focus_uses_decoded_neighbors_and_ignores_source_unit_radii() {
         let record = serde_json::json!({"position": [0., 0., 0.], "radius": 500000});

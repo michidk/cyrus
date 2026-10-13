@@ -21,6 +21,37 @@ pub struct Environment {
     pub terrain_lighting: Option<TerrainLighting>,
     /// Ambient and directional model inputs, including worlds without terrain.
     pub model_lighting: ModelLighting,
+    /// Authored static placements and admitted map lights for the world-entry bake.
+    pub prelighting: Prelighting,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+/// Static lighting inputs in original engine coordinates, per preservation's model-lighting rules.
+pub struct Prelighting {
+    /// Exported GLTF node name to original MPSO placement.
+    pub instances: std::collections::BTreeMap<String, StaticLightingInstance>,
+    /// Active map lights admitted for this world by the installed configuration.
+    pub lights: Vec<LocalLight>,
+}
+
+#[derive(Serialize, Deserialize)]
+/// Original placement retained before GLTF transform decomposition.
+pub struct StaticLightingInstance {
+    /// Engine coordinates, without the exported scene-origin offset.
+    pub position: [i32; 3],
+    /// Row-major signed Q4.28 matrix; preserve authored scale.
+    pub matrix: [i32; 9],
+}
+
+#[derive(Serialize, Deserialize)]
+/// Signed authored MPSL inputs, without conversion to a physical point light.
+pub struct LocalLight {
+    /// Engine world coordinates.
+    pub position: [i32; 3],
+    /// Radius in engine units; negative source values remain meaningful.
+    pub radius: i16,
+    /// Signed encoded RGB strengths.
+    pub rgb: [i16; 3],
 }
 
 #[derive(Serialize, Deserialize)]

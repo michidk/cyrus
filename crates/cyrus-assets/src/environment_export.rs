@@ -16,6 +16,66 @@ fn value<'a>(ini: &'a str, key: &str, id: u32) -> Option<&'a str> {
         .next_back()
 }
 
+fn prelighting(
+    source: &dyn ReadAssets,
+    entry: &WorldEntry,
+    system: &str,
+) -> anyhow::Result<crate::environment::Prelighting> {
+    use crate::environment::{LocalLight, Prelighting, StaticLightingInstance};
+    use rgpre::import::{rgm, system_ini::SystemIni};
+    let settings = SystemIni::parse(system)?.system;
+    let mut result = Prelighting::default();
+    if !settings.lights_load.unwrap_or(true) || !settings.statics_load.unwrap_or(true) {
+        return Ok(result);
+    }
+    let filename = entry
+        .map
+        .rsplit(['/', '\\'])
+        .next()
+        .context("empty map filename")?;
+    let path = crate::preparation::path(source, &format!("maps/{filename}"))?;
+    let map = rgm::parse_rgm_file(&source.read(&path)?)
+        .with_context(|| format!("world {}: lighting map {path}", entry.index))?;
+    result.lights = map
+        .prelight_lights(entry.index)
+        .into_iter()
+        .map(|light| LocalLight {
+            position: light.position,
+            radius: light.radius,
+            rgb: light.rgb,
+        })
+        .collect();
+    if result.lights.is_empty() {
+        return Ok(result);
+    }
+    for section in &map.sections {
+        if let rgm::RgmSection::Mps(_, records) = section {
+            for (index, record) in records.iter().enumerate() {
+                let model = record.model_name();
+                if model.is_empty() {
+                    continue;
+                }
+                let name = format!("S{index:03}_{model}");
+                let instance = StaticLightingInstance {
+                    position: [
+                        record.pos_x,
+                        record.pos_y,
+                        i32::try_from(record.pos_z)
+                            .with_context(|| format!("world {}: {name} position Z", entry.index))?,
+                    ],
+                    matrix: record.rotation_matrix,
+                };
+                anyhow::ensure!(
+                    result.instances.insert(name.clone(), instance).is_none(),
+                    "world {}: duplicate static lighting node {name}",
+                    entry.index
+                );
+            }
+        }
+    }
+    Ok(result)
+}
+
 fn sky_parameter(ini: &str, key: &str, id: u32, default: i32) -> anyhow::Result<i32> {
     let parsed = value(ini, key, id)
         .unwrap_or("0")
@@ -278,6 +338,7 @@ pub(crate) fn prepare(
         })
         .transpose()?;
     let environment = Environment {
+        prelighting: prelighting(source, entry, &system)?,
         model_lighting,
         terrain_lighting,
         sky,
