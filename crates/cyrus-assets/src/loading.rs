@@ -108,6 +108,12 @@ pub fn parse_one(path: &std::path::Path, file_type: FileType) -> Result<(), Stri
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     use rgpre::import::*;
     let r: Result<(), String> = match file_type {
+        FileType::Texture => software_texture::parse_texture_bank(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        FileType::Shade | FileType::Haze => software_texture::PaletteLookupTable::parse(&data)
+            .map(drop)
+            .map_err(|e| e.to_string()),
         FileType::Bsi => bsi::parse_bsi_file(&data)
             .map(drop)
             .map_err(|e| e.to_string()),
