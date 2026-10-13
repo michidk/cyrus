@@ -10,6 +10,8 @@ use bevy::prelude::*;
 pub const ENGINE_UNIT_SCALE: f32 = 20.0;
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
+    /// Native host is selecting and preparing an installation in the main window.
+    SelectingInstall,
     #[default]
     Loading,
     Menu,

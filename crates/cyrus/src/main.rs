@@ -46,17 +46,16 @@ fn main() -> anyhow::Result<()> {
         || args.export_all_worlds
         || args.export_startup
     {
-        args.source.locate()?
+        Some(args.source.locate()?)
     } else {
-        let Some(install) = args.source.locate_or_prompt("cyrus")? else {
-            return Ok(());
-        };
-        install
+        None
     };
     if args.list_worlds {
         println!(
             "{}",
-            serde_json::to_string(&cyrus_assets::scene::world_names(&install)?)?
+            serde_json::to_string(&cyrus_assets::scene::world_names(
+                install.as_ref().unwrap()
+            )?)?
         );
         return Ok(());
     }
@@ -65,9 +64,11 @@ fn main() -> anyhow::Result<()> {
     if let Some(scene) = args.launch.scene {
         settings.scene = scene;
     }
-    install.cache_path(&Settings::cache_dir())?;
+    if let Some(install) = &install {
+        install.cache_path(&Settings::cache_dir())?;
+    }
     if args.export_startup || args.export_all_worlds {
-        cyrus_assets::music::export(&install, &Settings::cache_dir())?;
+        cyrus_assets::music::export(install.as_ref().unwrap(), &Settings::cache_dir())?;
     }
     for (area, value) in [
         (cyrus_game::fidelity::Area::Water, args.launch.water),
@@ -87,34 +88,32 @@ fn main() -> anyhow::Result<()> {
     }
     if args.export_scene {
         return cyrus_assets::scene::export_scene(
-            &install,
+            install.as_ref().unwrap(),
             &settings.scene,
             &Settings::cache_dir().join(format!("{}.glb", settings.scene)),
         );
     }
     if args.export_startup {
-        cyrus_assets::startup::export_movies(&install, &Settings::cache_dir())?;
-        cyrus_assets::startup::export_menu(&install, &Settings::cache_dir())?;
-        cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
+        let install = install.as_ref().unwrap();
+        cyrus_assets::startup::export_movies(install, &Settings::cache_dir())?;
+        cyrus_assets::startup::export_menu(install, &Settings::cache_dir())?;
+        cyrus_assets::hud_export::export_hud(install, &Settings::cache_dir())?;
         let menu: cyrus_assets::menu::MenuAsset = serde_json::from_slice(&std::fs::read(
             Settings::cache_dir().join("menu/book.menu"),
         )?)?;
         let name = menu.new_game.world.to_string();
         cyrus_assets::scene::export_scene(
-            &install,
+            install,
             &name,
             &Settings::cache_dir().join(format!("{name}.glb")),
         )?;
-        return cyrus_assets::startup::export_startup(&install, &Settings::cache_dir());
+        return cyrus_assets::startup::export_startup(install, &Settings::cache_dir());
     }
     if args.export_all_worlds {
-        return cyrus_assets::scene::export_all_worlds(&install, &Settings::cache_dir());
-    }
-    if !args.headless && !startup {
-        cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
-    }
-    if startup {
-        cyrus_assets::startup::export_startup(&install, &Settings::cache_dir())?;
+        return cyrus_assets::scene::export_all_worlds(
+            install.as_ref().unwrap(),
+            &Settings::cache_dir(),
+        );
     }
     let control = ControlAddr(
         args.control
@@ -160,9 +159,23 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
-    app.add_systems(Startup, bindings::load);
+    if let Some(install) = install {
+        app.insert_resource(install)
+            .add_systems(Startup, bindings::load);
+    } else {
+        args.source.select(&mut app);
+        app.insert_state(cyrus_game::AppState::SelectingInstall)
+            .insert_resource(cyrus_audio::AudioReadiness { prepare: false })
+            .add_systems(
+                Update,
+                prepare_install.run_if(in_state(cyrus_game::AppState::SelectingInstall)),
+            )
+            .add_systems(
+                OnExit(cyrus_game::AppState::SelectingInstall),
+                bindings::load,
+            );
+    }
     app.insert_resource(control)
-        .insert_resource(install)
         .insert_resource(settings.fidelity.clone())
         .insert_resource(cyrus_world::lifecycle::SceneRequest(settings.scene.clone()))
         .add_plugins((
@@ -177,4 +190,106 @@ fn main() -> anyhow::Result<()> {
         ));
     app.run();
     Ok(())
+}
+
+/// Prepare the first visible assets without blocking the window's event loop.
+fn prepare_install(
+    mut commands: Commands,
+    install: Option<Res<cyrus_assets::install::GameInstall>>,
+    startup: Option<Res<cyrus_startup::StartupPresentation>>,
+    mut pending: Local<Option<bevy::tasks::Task<anyhow::Result<()>>>>,
+    mut attempted: Local<bool>,
+    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut next: ResMut<NextState<cyrus_game::AppState>>,
+) {
+    if let Some(task) = pending.as_mut() {
+        if let Some(result) = bevy::tasks::futures::check_ready(task) {
+            *pending = None;
+            match result {
+                Ok(()) => {
+                    progress.visible = false;
+                    commands.insert_resource(cyrus_audio::AudioReadiness {
+                        prepare: startup.is_none(),
+                    });
+                    next.set(cyrus_game::AppState::Loading);
+                }
+                Err(error) => {
+                    progress.label = format!("Preparing game files: {error:#}");
+                    progress.fraction = Some(0.);
+                }
+            }
+        }
+        return;
+    }
+    let Some(install) = install else {
+        return;
+    };
+    if *attempted {
+        return;
+    }
+    *attempted = true;
+    progress.visible = true;
+    progress.label = "Preparing game files…".into();
+    progress.fraction = None;
+    let install = install.clone();
+    let startup = startup.is_some();
+    *pending = Some(bevy::tasks::IoTaskPool::get().spawn(async move {
+        let cache = Settings::cache_dir();
+        install.cache_path(&cache)?;
+        if startup {
+            cyrus_assets::startup::export_startup(&install, &cache)
+        } else {
+            cyrus_assets::hud_export::export_hud(&install, &cache)
+        }
+    }));
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+
+    #[test]
+    fn preparation_waits_for_selection_and_keeps_failures_in_the_same_window() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+            .insert_state(cyrus_game::AppState::SelectingInstall)
+            .init_resource::<cyrus_app::LoadingProgress>()
+            .add_systems(Update, prepare_install);
+        let window = app.world_mut().spawn(Window::default()).id();
+        for _ in 0..3 {
+            app.update();
+        }
+        assert!(!app.world().resource::<cyrus_app::LoadingProgress>().visible);
+        let root =
+            std::env::temp_dir().join(format!("cyrus-missing-install-{}", std::process::id()));
+        assert!(!root.exists());
+        app.insert_resource(cyrus_assets::install::GameInstall { root });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            app.update();
+            let progress = app.world().resource::<cyrus_app::LoadingProgress>();
+            if progress.fraction == Some(0.) {
+                assert!(
+                    progress.label.contains("cyrus-missing-install"),
+                    "{}",
+                    progress.label
+                );
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "preparation did not report its failure"
+            );
+            std::thread::yield_now();
+        }
+        assert_eq!(
+            *app.world().resource::<State<cyrus_game::AppState>>().get(),
+            cyrus_game::AppState::SelectingInstall
+        );
+        assert!(app.world().get::<Window>(window).is_some());
+        assert_eq!(
+            app.world_mut().query::<&Window>().iter(app.world()).count(),
+            1
+        );
+    }
 }

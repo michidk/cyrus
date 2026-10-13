@@ -202,8 +202,13 @@ paths precede the remembered `cyrus-config/install.json` location and default
 folder discovery. Windowed resolution failures show a path field, Browse and
 Continue; a successful selection saves the resolved root outside the install.
 Invalid remembered locations reopen the picker. Cancel leaves saved state alone.
+Selection and loading use the existing native window without a launcher process.
 Headless, world-listing and export commands retain command-line errors. Browser
-selection remains an install-service URL in shared localStorage `cyrus-install`.
+selection supports a local GOG folder or an install-service URL. Local files stay
+in browser File handles and are never uploaded. The shared localStorage key
+`cyrus-install` stores either the service URL or `local`; local folders must be
+selected again after reload. `?install=local` forces the picker. Choose the outer
+GOG folder containing the game directory, DOSBOX and the disc files.
 
 For agent work, choose the entry point explicitly:
 
@@ -214,7 +219,7 @@ For agent work, choose the entry point explicitly:
   bypasses presentation or leaves the menu to enter a world.
 - Browser `?scene=START` loads a world directly. Its default URL runs startup.
 
-Control `state` reports `Loading`, `Menu`, or `InGame`. Check it before driving
+Control `state` reports `SelectingInstall`, `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
 **Verified:** the original default book menu has no pointer hover/click selection; do not add
 label hit boxes. Mouse/joystick rebinding needs separate device handling and is

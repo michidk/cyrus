@@ -37,9 +37,6 @@ impl AssetLoader for BlobLoader {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
-pub struct NativeSource(pub cyrus_assets::install::GameInstall);
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Resource)]
 pub struct NativeLibrary(pub std::sync::Arc<cyrus_assets::native::Library>);
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource, Default, Clone)]
@@ -60,7 +57,7 @@ pub fn start(
     assets: Res<AssetServer>,
     mut viewer: ResMut<Viewer>,
     mut progress: ResMut<cyrus_app::LoadingProgress>,
-    #[cfg(not(target_arch = "wasm32"))] source: Res<NativeSource>,
+    #[cfg(not(target_arch = "wasm32"))] source: Res<cyrus_assets::install::GameInstall>,
     #[cfg(target_arch = "wasm32")] worker: NonSend<crate::browser::BrowserWorker>,
 ) {
     progress.visible = true;
@@ -72,7 +69,7 @@ pub fn start(
     .into();
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let install = source.0.clone();
+        let install = source.clone();
         let scan = ScanProgress::default();
         commands.insert_resource(scan.clone());
         commands.insert_resource(Preparation(bevy::tasks::IoTaskPool::get().spawn(

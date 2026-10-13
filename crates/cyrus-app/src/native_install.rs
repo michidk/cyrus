@@ -1,15 +1,11 @@
 //! Shared native install selection, remembered location and desktop folder picker.
-use crate::bevy_egui::{EguiContexts, EguiPrimaryContextPass, PrimaryEguiContext, egui};
+use crate::bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use anyhow::Context;
 use bevy::prelude::{
-    App, AppExit, Camera2d, Commands, DefaultPlugins, MessageWriter, PluginGroup, Res, ResMut,
-    Resource, Startup, default,
+    App, AppExit, Commands, IntoScheduleConfigs, MessageWriter, ResMut, Resource, resource_exists,
 };
 use cyrus_assets::install::GameInstall;
-use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 pub(super) const LOCATION: &str = "cyrus-config/install.json";
 
@@ -69,74 +65,29 @@ impl Selection {
     }
 }
 
-#[derive(Resource)]
-struct SelectedInstall(std::sync::mpsc::Sender<GameInstall>);
-
-pub(super) fn prompt(
-    explicit: Option<&Path>,
-    title: &str,
-    error: anyhow::Error,
-) -> anyhow::Result<()> {
+pub(super) fn prompt(app: &mut App, explicit: Option<&Path>, error: anyhow::Error) {
     let path = explicit
         .map(Path::to_path_buf)
         .or_else(|| std::env::var_os(cyrus_assets::install::ENV_VAR).map(PathBuf::from))
         .or_else(|| remembered(Path::new(LOCATION)).ok().flatten());
-    let mut window = crate::window(title);
-    let primary = window.primary_window.as_mut().unwrap();
-    primary.resolution = (800, 460).into();
-    primary.resize_constraints.min_width = 480.;
-    primary.resize_constraints.min_height = 320.;
-    let (sender, receiver) = std::sync::mpsc::channel();
-    let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(window))
-        .add_plugins(crate::EguiPlugin)
-        .insert_resource(crate::bevy_egui::EguiGlobalSettings {
-            auto_create_primary_context: false,
-            ..default()
-        })
-        .insert_resource(SelectedInstall(sender))
-        .insert_resource(Selection {
-            path: path
-                .map(|path| path.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            error: Some(format!("{error:#}")),
-            focus: true,
-            rejected: false,
-        })
-        .add_systems(Startup, |mut commands: Commands| {
-            commands.spawn((Camera2d, PrimaryEguiContext));
-        })
-        .add_systems(EguiPrimaryContextPass, screen);
-    app.run();
-    // Winit permits one event loop per process; continue in a fresh process.
-    if let Ok(install) = receiver.try_recv() {
-        let status = std::process::Command::new(std::env::current_exe()?)
-            .args(retry_args(std::env::args_os().skip(1), &install.root))
-            .status()
-            .context("starting the application with the selected game files")?;
-        anyhow::ensure!(status.success(), "application exited with {status}");
-    }
-    Ok(())
-}
-
-fn retry_args(args: impl IntoIterator<Item = OsString>, root: &Path) -> Vec<OsString> {
-    let mut output = Vec::new();
-    let mut args = args.into_iter();
-    while let Some(arg) = args.next() {
-        if arg == "--install" {
-            args.next();
-        } else if arg != "--" && !arg.as_encoded_bytes().starts_with(b"--install=") {
-            output.push(arg);
-        }
-    }
-    output.extend([OsString::from("--install"), root.as_os_str().to_owned()]);
-    output
+    app.insert_resource(Selection {
+        path: path
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        error: Some(format!("{error:#}")),
+        focus: true,
+        rejected: false,
+    })
+    .add_systems(
+        EguiPrimaryContextPass,
+        screen.run_if(resource_exists::<Selection>),
+    );
 }
 
 fn screen(
     mut contexts: EguiContexts,
     mut selection: ResMut<Selection>,
-    selected: Res<SelectedInstall>,
+    mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
     let Ok(context) = contexts.ctx_mut() else {
@@ -225,11 +176,8 @@ fn screen(
                         if confirm && !selection.path.trim().is_empty() {
                             match selection.confirm(Path::new(LOCATION)) {
                                 Ok(install) => {
-                                    selected
-                                        .0
-                                        .send(install)
-                                        .expect("launcher receives selected install");
-                                    exit.write(AppExit::Success);
+                                    commands.insert_resource(install);
+                                    commands.remove_resource::<Selection>();
                                 }
                                 Err(error) => {
                                     selection.error = Some(format!("{error:#}"));
@@ -338,30 +286,23 @@ mod tests {
     }
 
     #[test]
-    fn retry_preserves_launch_flags_and_replaces_install_arguments() {
-        let args = [
-            "--scene",
-            "START",
-            "--install",
-            "old folder",
-            "--water=modern",
-            "--install=another folder",
-            "--",
-        ];
-        let actual = retry_args(
-            args.into_iter().map(OsString::from),
-            Path::new("chosen folder/Redguard"),
+    fn selecting_an_install_preserves_the_application_window() {
+        use bevy::prelude::{Messages, Window};
+        let scratch = Scratch::new();
+        let root = scratch.install("Redguard");
+        let mut app = App::new();
+        app.add_message::<AppExit>();
+        let window = app.world_mut().spawn(Window::default()).id();
+        crate::launch::InstallArgs {
+            install: Some(root.clone()),
+        }
+        .select(&mut app);
+        assert_eq!(app.world().resource::<GameInstall>().root, root);
+        assert!(app.world().get::<Window>(window).is_some());
+        assert_eq!(
+            app.world_mut().query::<&Window>().iter(app.world()).count(),
+            1
         );
-        let expected: Vec<OsString> = [
-            "--scene",
-            "START",
-            "--water=modern",
-            "--install",
-            "chosen folder/Redguard",
-        ]
-        .into_iter()
-        .map(OsString::from)
-        .collect();
-        assert_eq!(actual, expected);
+        assert!(app.world().resource::<Messages<AppExit>>().is_empty());
     }
 }

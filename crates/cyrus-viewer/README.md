@@ -4,6 +4,11 @@ A separate Bevy and egui application for inspecting your original Redguard
 assets. Buy the game from GOG and point the native viewer at your own install.
 The viewer reads the installation without modifying it.
 
+The browser viewer shares the game's local folder picker. Choose the outer GOG
+folder containing `Redguard`, `DOSBOX`, `game.gog` and `game.ins`; selected files
+stay on your computer. No upload or install server is needed. Use `?install=local`
+to override a saved service URL, and select the folder again on each page load.
+
 ```sh
 cargo run -p cyrus-viewer -- --install /path/to/Redguard
 # REDGUARD_DIR or default local/GOG folders can supply the location.
@@ -16,7 +21,9 @@ The Linux archive uses Ubuntu 24.04 system libraries.
 If no usable install is found, enter its folder in the shared native picker or
 choose Browse, then Continue. The picker accepts outer GOG folders and install
 subfolders. It remembers the resolved location in `cyrus-config/install.json`,
-shared with the game, and asks again when that location stops working. Cancel
+shared with the game, and asks again when that location stops working.
+Continue uses the existing application window and starts catalog loading
+without launching another process. Cancel
 closes the application without changing the saved location. Linux Browse needs
 a desktop file portal or Zenity; entering a path also works without either.
 

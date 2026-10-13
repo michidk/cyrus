@@ -26,13 +26,9 @@ fn main() -> anyhow::Result<()> {
         selection: cyrus_app::launch::ViewerOptions,
     }
     let args = Args::parse();
-    let Some(install) = args.source.locate_or_prompt("cyrus-viewer")? else {
-        return Ok(());
-    };
-    install.cache_path(std::path::Path::new(cyrus_assets::CACHE_DIR))?;
     let mut app = application()?;
-    app.insert_resource(loading::NativeSource(install))
-        .insert_resource(args.selection)
+    args.source.select(&mut app);
+    app.insert_resource(args.selection)
         .add_systems(Update, loading::initial_selection.after(loading::poll));
     app.run();
     Ok(())
@@ -67,7 +63,12 @@ fn application() -> anyhow::Result<App> {
     .init_resource::<ui::Viewer>()
     .init_asset::<loading::Blob>()
     .init_asset_loader::<loading::BlobLoader>()
-    .add_systems(Startup, (preview::setup, loading::start))
+    .add_systems(Startup, preview::setup)
+    .add_systems(
+        Update,
+        loading::start
+            .run_if(install_ready.and_then(bevy::ecs::schedule::common_conditions::run_once)),
+    )
     .add_systems(
         Update,
         (
@@ -82,7 +83,8 @@ fn application() -> anyhow::Result<App> {
             terrain_inspection::draw,
             visibility_inspection::draw,
         )
-            .chain(),
+            .chain()
+            .run_if(install_ready),
     )
     .add_systems(
         cyrus_app::bevy_egui::EguiPrimaryContextPass,
@@ -92,7 +94,21 @@ fn application() -> anyhow::Result<App> {
             terrain_inspection::window,
             world_inspection::draw,
         )
-            .chain(),
+            .chain()
+            .run_if(install_ready),
     );
     Ok(app)
+}
+
+fn install_ready(
+    #[cfg(not(target_arch = "wasm32"))] install: Option<Res<cyrus_assets::install::GameInstall>>,
+) -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        install.is_some()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        true
+    }
 }

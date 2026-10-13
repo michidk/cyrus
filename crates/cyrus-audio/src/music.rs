@@ -140,7 +140,7 @@ fn start_menu_track(
 
 fn start_world_track(
     mut commands: Commands,
-    #[cfg(not(target_arch = "wasm32"))] install: Res<GameInstall>,
+    #[cfg(not(target_arch = "wasm32"))] install: Option<Res<GameInstall>>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     current: Res<CurrentScene>,
     #[cfg(target_arch = "wasm32")] bank: Option<Res<cyrus_assets::sound::MusicSettings>>,
@@ -152,6 +152,10 @@ fn start_world_track(
     if !music_enabled(&settings, &audio) || current.name.is_empty() {
         return;
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    let Some(install) = install else {
+        return;
+    };
     #[cfg(not(target_arch = "wasm32"))]
     let value = match world_track(&install, &current.name) {
         Ok(value) => value,

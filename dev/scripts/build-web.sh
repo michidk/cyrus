@@ -24,7 +24,7 @@ done
 wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" --out-name cyrus-assets-worker \
     target/wasm32-unknown-unknown/$profile/cyrus_assets_worker.wasm
 cp dev/web/asset-worker.js dev/web/game-assets.js "$out/"
-cp dev/web/loader.js dev/web/install.js dev/web/sw.js dev/web/loading.css "$out/"
+cp dev/web/loader.js dev/web/install.js dev/web/local-install.js dev/web/sw.js dev/web/loading.css "$out/"
 # Browser code has no implicit link to installed files or exported caches.
 if [ -L "$out/cyrus-config" ]; then
     rm "$out/cyrus-config"

@@ -5,10 +5,12 @@ Small presentation and launch helpers shared by the game and viewer.
 - `launch::InstallArgs` defines `--install` and `REDGUARD_DIR`; `locate()` shares
   native default-folder discovery and resolution of GOG library/package folders
   and install subdirectories. It checks explicit/environment paths before
-  `cyrus-config/install.json`, then conventional folders. `locate_or_prompt()`
-  opens the shared native path field, folder picker and Continue screen on failure.
-  Continue validates and saves the resolved install root, closes the launcher
-  window, and starts the same executable with its launch options preserved.
+  `cyrus-config/install.json`, then conventional folders. `select()` inserts the
+  install or displays the shared path field, Browse and Continue screen in the
+  application's existing egui context. Continue validates and saves the resolved
+  root, inserts `GameInstall`, and removes the picker. It never opens another
+  application window or starts another process. Hosts wait for the install before
+  preparing assets; the game prepares its initial images in a background task.
   Cancel leaves preferences untouched. Noninteractive callers retain `locate()`
   errors. Linux Browse uses a desktop file portal or Zenity; Windows and macOS
   use native folder dialogs. `GameOptions` and `ViewerOptions` define the

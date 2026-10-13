@@ -86,8 +86,8 @@ in one Cargo invocation so they share dependency features and compiled libraries
 After the release is published, `Release` deploys GitHub Pages: the landing page
 from `dev/pages/index.html` at the root, the game under `game/`, and the viewer
 under `viewer/`. Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
-The site contains application code only; supply a game install with
-`?install=<encoded-install-service-URL>`.
+The site contains application code only. Choose a local GOG game folder in the
+browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
 They do not build release archives. Release builds run only for stable `vX.Y.Z`
@@ -117,8 +117,9 @@ Actions artifacts expire after seven days; GitHub release assets remain availabl
 Linux and macOS packages are `.tar.gz` archives holding only the executable;
 Windows packages are the bare `.exe`. The browser bundle is an archive. Packages contain
 no game files, exported previews, or local state. Native executables still need
-the player's GOG install. Browser bundles ask for an install-service URL, remember it, and validate it on
-each launch. The service supplies read-only original files; a WASM worker prepares game and
+the player's GOG install. Browser bundles accept a local folder or an
+install-service URL. Local files remain on the player's computer; URL sources
+are remembered and validated on each launch. A WASM worker prepares game and
 viewer assets in memory. Downloading an artifact does not establish runtime or fidelity
 support on that platform.
 
@@ -151,7 +152,9 @@ precedence over the remembered native location in `cyrus-config/install.json`;
 conventional discovery follows when there is no saved location. Windowed game
 and viewer launches open a shared install-selection screen when resolution fails.
 Enter a path or choose Browse, then Continue to validate and remember the resolved
-root. Cancel closes the application without changing preferences. A missing or
+root. The picker, loading progress and game or viewer share one window and process.
+Initial game images are prepared in the background so the window remains responsive.
+Cancel closes the application without changing preferences. A missing or
 invalid remembered folder reopens the picker. Headless, world-listing and export
 commands report contextual command-line errors instead of opening a window.
 Linux Browse uses a desktop file portal or Zenity; manual input needs neither.
@@ -165,7 +168,17 @@ selection resolves through the enclosing package. Missing paths and unresolved
 selections remain on the picker with validation details; noninteractive commands
 report an error with `--install PATH` instructions.
 
-The browser asks "Where are the game files?" when no valid source is available.
+The browser offers **Choose local game folder** when no valid source is available.
+Choose the outer GOG folder containing `Redguard`, `DOSBOX`, `game.gog` and
+`game.ins`. Chromium uses read-only directory permission; Firefox and Safari
+use a directory file input. Files are read in the browser worker, never uploaded
+or copied into browser storage. The initial content check reads files in bounded
+chunks and reports progress. Select the folder again after reload, world-picker
+navigation or opening the other application. Cancel leaves the picker open.
+Use `?install=local` to force local selection even with a saved URL or server
+default. Local selection saves only the preference `local` in `cyrus-install`.
+
+The picker also accepts an HTTP(S) install-service URL.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and
 viewer, and checks the manifest and an original file again on every launch. A
 missing install reopens the picker.

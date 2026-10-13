@@ -84,9 +84,14 @@ impl Plugin for SoundPlugin {
 
 fn start_audio(
     readiness: Res<crate::AudioReadiness>,
+    #[cfg(not(target_arch = "wasm32"))] install: Option<Res<GameInstall>>,
     settings: Option<Res<SoundSettings>>,
     #[cfg(target_arch = "wasm32")] bank: Option<Res<crate::sound_bank::SoundBankHandle>>,
 ) -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    if install.is_none() {
+        return false;
+    }
     #[cfg(target_arch = "wasm32")]
     if bank.is_some() {
         return false;

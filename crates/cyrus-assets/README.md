@@ -99,7 +99,8 @@ media are regenerated. Old generations remain recoverable and can be removed
 manually when no client needs them.
 
 Both targets use `runtime::Library` and its read-only `ReadAssets` interface.
-Native adapters read files; the browser worker reads original bytes over HTTP.
+Native adapters read files; the browser worker reads selected local File handles
+or original bytes over HTTP.
 Generated media is returned as bytes. Only native callers write a disk cache.
 Browser presentation registers generated files with Bevy in memory.
 

@@ -33,7 +33,7 @@ case "${1:-}" in
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
         CYRUS_WASM_PROFILE=wasm-release bash dev/scripts/build-web.sh "${apps[@]}"
         mkdir -p "$stage/browser/pkg"
-        cp target/web/index.html target/web/sw.js target/web/loader.js target/web/install.js \
+        cp target/web/index.html target/web/sw.js target/web/loader.js target/web/install.js target/web/local-install.js \
             target/web/loading.css target/web/asset-worker.js target/web/game-assets.js dev/scripts/viewer-server.py "$stage/browser/"
         cp crates/cyrus-web/README.md "$stage/browser/README.md"
         for app in "${apps[@]}"; do
