@@ -2741,7 +2741,7 @@ checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
 name = "cyrus"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2764,7 +2764,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-app"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2778,7 +2778,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-assets"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2797,7 +2797,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-assets-worker"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "blake3",
@@ -2811,7 +2811,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-audio"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2826,7 +2826,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-collision"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2835,7 +2835,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-console"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2844,7 +2844,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-control"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -2852,7 +2852,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-debug"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "bevy",
  "bevy-inspector-egui",
@@ -2865,7 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-game"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2883,7 +2883,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-mcp"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-media"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "smk",
@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-render"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2924,7 +2924,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-script"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "cyrus-assets",
@@ -2933,7 +2933,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-startup"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2954,7 +2954,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-text"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "redguard-preservation",
  "serde",
@@ -2962,7 +2962,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-viewer"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -2979,7 +2979,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-web"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
@@ -3002,7 +3002,7 @@ dependencies = [
 
 [[package]]
 name = "cyrus-world"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bevy",
