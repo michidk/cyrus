@@ -20,6 +20,10 @@ python3 viewer-server.py --directory . --page index.html --port 8080 \
   --install /path/to/Redguard
 ```
 
+Use the folder containing `RGFX.EXE` for `--install`. Open
+<http://localhost:8080>, expand the server option and click **Connect to server**.
+Stop the server with Ctrl+C.
+
 Startup always shows a local folder picker and an expandable install-service URL
 field. All browsers use a directory file input. Choose the main GOG folder
 containing the game, DOSBOX and disc files. Selected files remain local and are
