@@ -194,8 +194,9 @@ with `just run-web --install /absolute/path/to/Redguard` or
 `just run-viewer-web --install /absolute/path/to/Redguard`. When using an existing
 server, pass `?install=<encoded-install-service-URL>` on the application URL.
 Do not ask the user to enter the location or rely on their saved browser selection.
-The shared server default applies to both game and viewer pages. Test the location
-picker only when the task specifically needs to verify that flow.
+The shared server default prefills the picker on both game and viewer pages.
+The picker always appears; automate Connect to server for an unattended launch.
+Test local folder selection when the task specifically needs to verify that flow.
 
 Native game and viewer share the install picker in `cyrus-app`. CLI/environment
 paths precede the remembered `cyrus-config/install.json` location and default

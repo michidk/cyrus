@@ -6,6 +6,10 @@ viewport, and settling time. `just replay <fixture.json> <new-label>` produces
 `magic/captures/<new-label>/`. Existing labels are rejected. No capture, install
 file, emulator state, or debugger instrument belongs in Git.
 
+Inspect the original image for a fully loaded scene. A measured camera pose and
+nonuniform pixels can also occur behind loading artwork; they do not establish
+rendering readiness. Reject that triplet and preserve it under a rejected label.
+
 These are scene/viewpoint comparisons. Animation phases and gameplay updates are
 not synchronized. Settling times are host milliseconds, not original simulation
 ticks. **Unknown:** complete original/native/browser gameplay equivalence.

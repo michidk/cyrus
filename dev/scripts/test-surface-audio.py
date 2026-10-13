@@ -47,6 +47,12 @@ class Comparison(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ambiguous PCM"):
             comparison.compare(self.actual, self.original)
 
+    def test_unstarted_play_commands_are_not_playback_evidence(self):
+        for report in (self.actual, self.original):
+            report["cases"][0]["steps"][0]["events"][0]["started"] = []
+        with self.assertRaisesRegex(ValueError, "no actual playback starts"):
+            comparison.compare(self.actual, self.original)
+
     def test_file_table_is_not_runtime_evidence(self):
         self.original["evidence"]["kind"] = "file-table"
         with self.assertRaisesRegex(ValueError, "independent runtime"):

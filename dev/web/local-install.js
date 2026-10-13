@@ -23,26 +23,23 @@ export function localInstall(entries) {
     if (key.startsWith(root.toLowerCase())) files.set(path.slice(root.length), file);
   }
   function companion(name, candidates) {
-    const found = candidates.map(path => selected.get(path.toLowerCase())).find(Boolean);
+    let found = candidates.map(path => selected.get(path.toLowerCase())).find(Boolean);
+    if (!found) {
+      const basename = name.split('/').at(-1).toLowerCase();
+      const matches = [...selected.values()].filter(({ path }) => path.split('/').at(-1).toLowerCase() === basename);
+      if (matches.length > 1) throw new Error('Multiple copies of ' + basename + ' found. Choose a folder containing only the game and its support files.');
+      found = matches[0];
+    }
     if (!found) return;
     const existing = [...files.keys()].find(path => path.toLowerCase() === name.toLowerCase());
     if (existing && files.get(existing) !== found.file) throw new Error('Conflicting game file: ' + name);
     if (existing) files.delete(existing);
     files.set(name, found.file);
   }
-  for (const name of ['game.gog', 'game.ins']) companion('disc/' + name, [parent + name]);
+  for (const name of ['game.gog', 'game.ins']) companion('disc/' + name, [root + name, parent + name]);
   companion('splash/3DfxSpl2.dll', [root + '3dfxspl2.dll', parent + 'dosbox/3dfxspl2.dll']);
   companion('splash/glide2x_emu.ovl', [root + 'glide2x_emu.ovl', parent + 'dosbox/glide2x_emu.ovl']);
-  if (!files.has('splash/3DfxSpl2.dll')) throw new Error('Missing 3DfxSpl2.dll. Choose the outer GOG folder that also contains DOSBOX.');
-  if (!files.has('disc/game.gog') || !files.has('disc/game.ins')) throw new Error('Missing game.gog or game.ins. Choose the outer GOG folder that contains the disc files.');
+  if (!files.has('splash/3DfxSpl2.dll')) throw new Error('3DfxSpl2.dll was not found anywhere in the selected folder. Select the main GOG Redguard folder, including its DOSBOX or support folders.');
+  if (!files.has('disc/game.gog') || !files.has('disc/game.ins')) throw new Error('Missing game.gog or game.ins in the selected folder. Select the main GOG Redguard folder containing the disc files.');
   return { files };
-}
-
-export async function directoryEntries(directory, prefix = '') {
-  const entries = [];
-  for await (const [name, handle] of directory.entries()) {
-    if (handle.kind === 'directory') entries.push(...await directoryEntries(handle, prefix + name + '/'));
-    else entries.push([prefix + name, await handle.getFile()]);
-  }
-  return entries;
 }

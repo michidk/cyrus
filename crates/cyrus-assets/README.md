@@ -79,6 +79,18 @@ remains the base-color texture. The viewer catalog version invalidates older
 model previews; re-export manually prepared worlds. Runtime texture playback
 and its render-admission rules remain unsupported.
 
+**Verified:** the pinned [polygon export](https://github.com/michidk/redguard-preservation/commit/a4b007242d7a72eea1a54a42d5bd7afe57d0d459)
+retains authored polygon corners, source face identity, face normals and model
+bounds independently of raster triangulation and lighting normals. Installed
+START, ISLAND and BELLTOWR checks compare these records with parsed models.
+Re-export worlds and model previews for this metadata; it does not enable
+runtime texture animation.
+
+**Verified:** preservation's [terrain texture export](https://github.com/michidk/redguard-preservation/commit/9ac35c15c66b9a5671320e42951e0a53e05ae39e)
+keeps all terrain frames opaque and preserves palette-index-zero RGB. Model
+textures retain their chroma transparency. Re-export existing worlds for this
+correction; the viewer catalog version invalidates older previews.
+
 ## Asset viewer
 
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.

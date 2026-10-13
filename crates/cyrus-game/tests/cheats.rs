@@ -145,12 +145,7 @@ fn console_and_gameplay_have_distinct_raw_toggle_rules() {
     assert_eq!(cheats.state().unwrap().value("neversaydie"), Some(u32::MAX));
     assert!(cheats.distance_override().unwrap());
     let before = cheats.inspect();
-    for invalid in [
-        "oddjob =",
-        "oddjob = 4294967296",
-        "oddjob = unknown",
-        "oddjob 2",
-    ] {
+    for invalid in ["oddjob =", "oddjob = unknown", "oddjob 2"] {
         assert!(submit(app.world_mut(), invalid, Source::Interactive).is_err());
         assert_eq!(app.world().resource::<Cheats>().inspect(), before);
     }
@@ -433,4 +428,201 @@ fn keyboard_events_open_close_and_capture_player_keys() {
     app.world_mut().resource_mut::<Console>().blocked = false;
     app.update();
     assert!(!app.world().resource::<Console>().open);
+}
+
+#[test]
+fn console_reads_live_flags_and_rejects_stale_world_definitions() {
+    use bevy::prelude::*;
+    use cyrus_assets::script::*;
+    use cyrus_console::{Source, submit};
+    use cyrus_game::script::{ScriptActors, ScriptWorld, Thread};
+    use cyrus_world::lifecycle::PreparedWorld;
+
+    let mut app = console_app();
+    let mut scripts = Scripts {
+        version: 9,
+        clock: ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: true,
+            use_smooth_divisor: true,
+        },
+        updates: UpdateSettings {
+            task_system: true,
+            animation_system: true,
+            disable_slaves: false,
+            disable_master_slaves: false,
+        },
+        player_distance_override: false,
+        actor_pool_capacity: 10,
+        content_id: String::new(),
+        world: 7,
+        definition: Definition {
+            functions: vec![Function {
+                name: "NullFunction".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            }],
+            flags: vec![
+                Flag {
+                    name: "Counter".into(),
+                    flag_type: "NUMBER".into(),
+                    initial_value: 3,
+                },
+                Flag {
+                    name: "counter".into(),
+                    flag_type: "NUMBER".into(),
+                    initial_value: 12,
+                },
+            ],
+            references: vec![],
+            attributes: vec![],
+        },
+        actors: std::collections::BTreeMap::from([(
+            "CYRUS".into(),
+            Actor {
+                header_index: 0,
+                code_origin: 0,
+                instances: 1,
+                namespace: Some("player".into()),
+                instance_variables: vec![vec![]],
+                attributes: Default::default(),
+                native_hook: None,
+                program: Program {
+                    version: 2,
+                    entry: 0,
+                    variables: vec![],
+                    strings: vec![],
+                    steps: std::collections::BTreeMap::from([
+                        (
+                            0,
+                            Step {
+                                next: 1,
+                                operation: Operation::Assign {
+                                    destination: Place::Flag { index: 1 },
+                                    formula: Formula {
+                                        first: Value::Integer { value: -9 },
+                                        rest: vec![],
+                                    },
+                                },
+                            },
+                        ),
+                        (
+                            1,
+                            Step {
+                                next: 2,
+                                operation: Operation::End { target: 0 },
+                            },
+                        ),
+                    ]),
+                },
+            },
+        )]),
+        instances: vec![],
+        unsupported: Default::default(),
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut actors = ScriptActors::default();
+    actors.current = Some(ScriptWorld::prepare(&scripts, 1).unwrap());
+    let mut assets = Assets::<Scripts>::default();
+    let handle = assets.add(scripts);
+    app.insert_resource(actors)
+        .insert_resource(assets)
+        .insert_resource(PreparedWorld {
+            requested_name: "test".into(),
+            world: Some(7),
+            scripts: handle.clone(),
+            animations: Handle::default(),
+            player_path: "test.player".into(),
+            scene_path: "test.glb".into(),
+            environment_path: "test.environment".into(),
+        });
+    submit(
+        app.world_mut(),
+        "neversaydie = COUNTER",
+        Source::Interactive,
+    )
+    .unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("neversaydie"),
+        Some(12)
+    );
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        world.step(world.id(0).unwrap(), Thread::Main, 8).unwrap();
+    }
+    submit(
+        app.world_mut(),
+        "neversaydie = counter",
+        Source::Programmatic,
+    )
+    .unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("neversaydie"),
+        Some((-9i32) as u32)
+    );
+    let lines = submit(
+        app.world_mut(),
+        "neversaydie = missing",
+        Source::Interactive,
+    )
+    .unwrap();
+    assert_eq!(lines, ["Unknown console value \"missing\"; using 1."]);
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("neversaydie"),
+        Some(1)
+    );
+    // Reading values never mutates them.
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .flags(),
+        &[3, -9]
+    );
+    app.world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .get_mut(&handle)
+        .unwrap()
+        .content_id = "stale".into();
+    let before = app.world().resource::<Cheats>().inspect();
+    let error = submit(
+        app.world_mut(),
+        "neversaydie = counter",
+        Source::Interactive,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("do not match"), "{error:#}");
+    assert_eq!(app.world().resource::<Cheats>().inspect(), before);
+    // Numeric input needs no script metadata, even while another world is loading.
+    submit(
+        app.world_mut(),
+        "neversaydie = 4294967297tail",
+        Source::Interactive,
+    )
+    .unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("neversaydie"),
+        Some(1)
+    );
 }

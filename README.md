@@ -43,12 +43,6 @@ location, or the default local/GOG folders. A `redguard` symlink in the working
 directory works too. If no usable install is found, a window lets you enter a
 folder or browse for it. Continue remembers the resolved location for both the
 game and viewer; a missing saved folder reopens the picker.
-In the browser, choose the outer GOG folder containing `Redguard`, `DOSBOX` and
-`game.gog`. Files stay on your computer; no upload or file server is needed.
-Select the folder again after each page load. Use `?install=local` to reopen the
-picker if a server URL was previously selected.
-`just run-web --install /path/to/Redguard` and install-service URLs remain
-available for serving files to the game and viewer.
 
 Use `just run --scene START` to open a world directly. The
 [setup guide](docs/SETUP.md) covers the browser build, the original game runner,
@@ -56,6 +50,25 @@ and all available commands.
 
 The game install remains read-only. cyrus stores settings, caches, and
 screenshots in the gitignored `cyrus-config/` directory.
+
+## Web version
+
+Open the browser build and click **Choose game folder**. Select your main GOG
+folder, such as `D:\Games\GOG Galaxy\Redguard`, containing both `DOSBOX` and
+the inner `Redguard` folder. Files stay on your computer. Select the folder again
+after reloading; the picker always appears.
+
+Alternatively, extract a browser release and run its bundled Python server:
+
+```sh
+python3 viewer-server.py --directory . --page index.html --port 8080 --install "/path/to/Redguard"
+```
+
+Here, `--install` points to the inner folder containing `RGFX.EXE`.
+Open <http://localhost:8080>, expand **Connect to a game-file server instead**,
+then click **Connect to server** using the prefilled address. The server reads
+your install without changing it. Stop it with Ctrl+C.
+See [browser setup](crates/cyrus-web/README.md) for building from source.
 
 ## Asset viewer
 

@@ -1,11 +1,12 @@
 //! Supported numeric literals from preservation's developer-console contract.
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 
 /// Parse a decimal, hexadecimal, percent-prefixed or packed four-byte value.
 /// Returns raw 32-bit bits, including for negative decimal values. Percent input
 /// yields zero; packed values use little-endian byte order.
-/// Short quoted input and symbolic lookup are unsupported. Callers normalize case.
-pub fn number(value: &str) -> Result<u32> {
+/// Conversion stops at the first non-digit and wraps at 32 bits. Short quoted
+/// input is unsupported. Callers normalize case and supply live symbol lookup.
+pub fn number(value: &str, symbol: impl FnOnce(&str) -> Result<u32>) -> Result<u32> {
     ensure!(!value.is_empty(), "missing console value");
     ensure!(value.is_ascii(), "console value requires ASCII bytes");
     if value.starts_with('%') {
@@ -19,16 +20,22 @@ pub fn number(value: &str) -> Result<u32> {
         return Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
     }
     if let Some(hex) = value.strip_prefix("0x") {
-        return u32::from_str_radix(hex, 16).context("invalid hexadecimal console value");
+        return Ok(digits(hex, 16));
     }
-    if value.starts_with('-') {
-        return value
-            .parse::<i32>()
-            .map(|v| v as u32)
-            .context("invalid signed console value");
+    if let Some(decimal) = value.strip_prefix('-') {
+        return Ok(digits(decimal, 10).wrapping_neg());
     }
-    if value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return value.parse().context("console value exceeds 32 bits");
+    if value.as_bytes()[0].is_ascii_digit() {
+        return Ok(digits(value, 10));
     }
-    bail!("unsupported console value {value:?}; symbolic lookup is unavailable")
+    symbol(value)
+}
+
+fn digits(value: &str, radix: u32) -> u32 {
+    value
+        .chars()
+        .map_while(|byte| byte.to_digit(radix))
+        .fold(0u32, |value, digit| {
+            value.wrapping_mul(radix).wrapping_add(digit)
+        })
 }

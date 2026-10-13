@@ -680,6 +680,96 @@ fn axis_task_scripts(function: &str, axis: i32, delta: i32, duration: i32) -> Sc
 }
 
 #[test]
+fn absolute_rotation_matches_original_angle_sequences_and_completion() {
+    let cases: &[(&str, u32, i32, i32, &[u16])] = &[
+        ("RotateToAxis", 0, 512, 4, &[128, 256, 384, 512]),
+        ("RotateToAxis", 0, 1536, 4, &[1920, 1792, 1664, 1536]),
+        ("RotateToAxis", 2040, 8, 4, &[2044, 0, 4, 8]),
+        ("RotateToAxis", 512, 512, 4, &[512]),
+        ("RotateToAxis", 0, 512, 0, &[0]),
+        ("sRotateToAxis", 0, 512, 4, &[0, 170, 341, 512]),
+        ("sRotateToAxis", 0, 1536, 4, &[0, 1877, 1706, 1536]),
+        ("sRotateToAxis", 0, 1500, 4, &[0, 1889, 1730, 1500]),
+        ("sRotateToAxis", 2040, 8, 4, &[2040, 2045, 2, 8]),
+        ("sRotateByAxis", 0, 512, 4, &[0, 128, 256, 512]),
+        ("sRotateByAxis", 0, -512, 4, &[0, 1920, 1792, 1536]),
+        ("sRotateByAxis", 2040, 16, 4, &[2040, 2044, 0, 8]),
+        ("sRotateByAxis", 0, -1, 4, &[0, 0, 0, 2047]),
+        ("sRotateByAxis", 1026, 512, 1, &[1538]),
+    ];
+    for &(function, initial, target, duration, expected) in cases {
+        let mut data = axis_task_scripts(function, 1, target, duration);
+        data.instances[0].angles[1] = initial;
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        for (index, &angle) in expected.iter().enumerate() {
+            stage(&mut world, id, if index == 0 { BODY } else { TASKS });
+            assert_eq!(
+                world.spatial(id).unwrap().local.angles,
+                [0, angle, 0],
+                "{function}, initial {initial}, target {target}, invocation {index}"
+            );
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                usize::from(index == 0 || index + 1 < expected.len())
+            );
+        }
+        if expected.len() == 1 {
+            stage(&mut world, id, TASKS);
+            assert_eq!(world.spatial(id).unwrap().local.angles[1], expected[0]);
+            assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        }
+        stage(&mut world, id, BODY);
+        assert_eq!(world.flags(), [9]);
+    }
+}
+
+#[test]
+fn absolute_rotation_nominal_fallback_preserves_direction_and_scaled_duration_fault_is_contextual()
+{
+    use cyrus_game::script::ScriptInputs;
+    let data = axis_task_scripts("RotateToAxis", 1, 1536, 4);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let zero = ScriptInputs {
+        nominal_ticks: Some(0),
+        frame_scale: Some(0),
+        ..Default::default()
+    };
+    world.advance(id, BODY, zero, None, None, 30).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
+    world
+        .advance(
+            id,
+            TASKS,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..zero
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.angles, [0, 2047, 0]);
+    for (function, duration) in [("sRotateToAxis", 1), ("sRotateByAxis", 0)] {
+        let data = axis_task_scripts(function, 1, 512, duration);
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let error = world.advance(id, BODY, zero, None, None, 30).unwrap_err();
+        assert!(
+            format!("{error:#}").contains(&format!("{function} duration causes division by zero"))
+        );
+        assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
+        assert_eq!(world.flags(), [0]);
+    }
+}
+
+#[test]
 fn rotation_changes_local_angles_and_completes_before_body_continues() {
     let data = axis_task_scripts("RotateByAxis", 1, 128, 4);
     let mut world = ScriptWorld::prepare(&data, 1).unwrap();

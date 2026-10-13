@@ -85,7 +85,9 @@ in one Cargo invocation so they share dependency features and compiled libraries
 
 After the release is published, `Release` deploys GitHub Pages: the landing page
 from `dev/pages/index.html` at the root, the game under `game/`, and the viewer
-under `viewer/`. Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
+under `viewer/`. The landing page links directly to the latest Windows x64,
+Linux x64, macOS Apple Silicon and macOS Intel game packages.
+Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
 The site contains application code only. Choose a local GOG game folder in the
 browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
@@ -168,26 +170,24 @@ selection resolves through the enclosing package. Missing paths and unresolved
 selections remain on the picker with validation details; noninteractive commands
 report an error with `--install PATH` instructions.
 
-The browser offers **Choose local game folder** when no valid source is available.
-Choose the outer GOG folder containing `Redguard`, `DOSBOX`, `game.gog` and
-`game.ins`. Chromium uses read-only directory permission; Firefox and Safari
-use a directory file input. Files are read in the browser worker, never uploaded
-or copied into browser storage. The initial content check reads files in bounded
-chunks and reports progress. Select the folder again after reload, world-picker
-navigation or opening the other application. Cancel leaves the picker open.
-Use `?install=local` to force local selection even with a saved URL or server
-default. Local selection saves only the preference `local` in `cyrus-install`.
+The browser always opens the install picker. Choose the main GOG folder containing
+`Redguard`, `DOSBOX`, `game.gog` and `game.ins`. All browsers use a directory
+file input. Files are read locally in the worker, never uploaded or copied into
+browser storage. The initial content check reads bounded chunks and reports
+progress. Select the folder again after reload or navigation. Cancel leaves the
+picker open; validation failures allow another selection. Companion files are
+discovered throughout the selected folder, including nested GOG support folders.
+Files outside the selected folder are inaccessible.
 
-The picker also accepts an HTTP(S) install-service URL.
-It saves the validated URL under localStorage `cyrus-install`, shared by game and
-viewer, and checks the manifest and an original file again on every launch. A
-missing install reopens the picker.
-URL `install` overrides the server default, which overrides the saved location.
-A server may receive `--install-url URL` to supply a remote default.
+The expandable server option remembers validated URLs in localStorage
+`cyrus-install`, shared with the viewer. URL `install`, the server default and
+the saved location prefill that field in order, without starting a connection.
+`?install=local` leaves it empty. Click Connect to server to validate and load
+the source. Local selection stores only the preference `local`, not file access.
 
-For unattended tests, always pass `--install /absolute/path/to/Redguard` to the
-web server or `?install=<encoded-service-URL>` to an existing preview. Do not
-make the user fill in the picker for an agent's test.
+For unattended tests, supply `--install /absolute/path/to/Redguard` to the server
+or `?install=<encoded-service-URL>`, then automate Connect to server. Do not ask
+the user to fill in the picker for an agent's test.
 
 `viewer-server.py` serves both applications. Its `--install` flag provides the
 read-only original files and shared browser default. The WASM worker prepares
@@ -456,7 +456,10 @@ command dispatcher and reports retained output through `state.console`.
 Assignments use `name = value`, with decimal, negative decimal, hexadecimal,
 percent-prefixed or packed four-byte values. **Verified:** the original percent
 syntax returns zero; quoted input packs the first four following bytes after
-lowercasing. Short quoted input and symbolic lookup remain unsupported.
+lowercasing. Decimal and hexadecimal conversion consume the numeric prefix and
+wrap at 32 bits. Assignments can also read a named SOUP flag's current value.
+Unknown names report a diagnostic and use one; unavailable or stale world
+metadata blocks symbolic assignments. Short quoted input remains unsupported.
 
 Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can

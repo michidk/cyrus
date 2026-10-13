@@ -20,20 +20,26 @@ python3 viewer-server.py --directory . --page index.html --port 8080 \
   --install /path/to/Redguard
 ```
 
-Without a supplied or remembered URL, startup offers a local folder picker and
-an install-service URL field. Choose the outer GOG folder containing `Redguard`,
-`DOSBOX`, `game.gog` and `game.ins`. The browser reads selected files locally;
-it does not upload them or require a file server. Chromium uses a read-only
-directory permission; other browsers use a directory file input. Select the
-folder again after reloading or navigating between game and viewer. Cancelling
-leaves the picker open. `?install=local` opens this picker even with a saved URL
-or server default. Local selection remembers only that preference, not the files.
+Use the folder containing `RGFX.EXE` for `--install`. Open
+<http://localhost:8080>, expand the server option and click **Connect to server**.
+Stop the server with Ctrl+C.
 
-For HTTP sources, startup saves a validated install-service URL under localStorage `cyrus-install`, shared
-with the viewer, and checks the original files at each launch. Missing files reopen
-the picker. URL `install` overrides
-the server default, which overrides the saved URL. Server `--install-url URL`
-provides a remote default. Cross-origin services require CORS and byte-range support.
+Startup always shows a local folder picker and an expandable install-service URL
+field. All browsers use a directory file input. Choose the main GOG folder
+containing the game, DOSBOX and disc files. Selected files remain local and are
+never uploaded. The browser grants access only to that folder and its descendants.
+Select the folder again after reload or navigation between game and viewer.
+
+The picker reports cancellation, validation failures and application preparation.
+Companion files are discovered throughout the selected folder, including nested
+GOG support directories. Local selection remembers only the preference `local`,
+not the files.
+
+URL `install`, the server default and the saved URL prefill the server field in
+that order; none starts loading automatically. `?install=local` leaves it empty.
+Click Connect to server to validate and load that source. A validated URL is saved
+in localStorage `cyrus-install`, shared with the viewer. Cross-origin services
+require CORS and byte-range support.
 A static original-file host with a manifest supports both game and viewer; no
 native exporter is required.
 

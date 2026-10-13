@@ -4,6 +4,92 @@ use cyrus_assets::{install::GameInstall, source::ReadAssets};
 use rgpre::import::bsi::{BsiFile, parse_bsi_file};
 use std::collections::{BTreeSet, HashMap};
 
+fn check_polygons(
+    scene: &str,
+    world: &cyrus_assets::runtime::geometry::WorldGeometry,
+    document: &serde_json::Value,
+    buffer: &[u8],
+) {
+    let mut checked = BTreeSet::new();
+    let mut count = 0;
+    for node in document["nodes"].as_array().unwrap() {
+        let Some(mesh) = node["mesh"].as_u64() else {
+            continue;
+        };
+        if !checked.insert(mesh) {
+            continue;
+        }
+        let name = node["name"].as_str().unwrap();
+        let primitives = document["meshes"][mesh as usize]["primitives"]
+            .as_array()
+            .unwrap();
+        if name == "Terrain" {
+            assert!(
+                primitives
+                    .iter()
+                    .all(|p| p["extras"].get("rgpre_admission").is_none())
+            );
+            continue;
+        }
+        let model = &world
+            .models
+            .iter()
+            .find(|m| m.model_name == name)
+            .unwrap()
+            .model;
+        let mut faces = BTreeSet::new();
+        for primitive in primitives {
+            let admission = &primitive["extras"]["rgpre_admission"];
+            assert_eq!(admission["version"], 1, "{scene} {name}");
+            assert_eq!(admission["radius_fixed"], model.header.radius);
+            let accessor = &document["accessors"]
+                [primitive["attributes"]["POSITION"].as_u64().unwrap() as usize];
+            let view = &document["bufferViews"][accessor["bufferView"].as_u64().unwrap() as usize];
+            let base = view["byteOffset"].as_u64().unwrap_or(0) as usize
+                + accessor["byteOffset"].as_u64().unwrap_or(0) as usize;
+            let stride = view["byteStride"].as_u64().unwrap_or(12) as usize;
+            for polygon in admission["polygons"].as_array().unwrap() {
+                let face = polygon["source_face"].as_u64().unwrap() as usize;
+                assert!(faces.insert(face), "{scene} {name}: repeated face {face}");
+                let original = &model.face_data[face];
+                let normal = &model.face_normals[face];
+                assert_eq!(
+                    polygon["normal"],
+                    serde_json::json!([-normal.x, -normal.y, normal.z])
+                );
+                let vertices = polygon["vertices"].as_array().unwrap();
+                assert_eq!(vertices.len(), original.face_vertices.len());
+                for (index, corner) in vertices.iter().zip(&original.face_vertices) {
+                    let index = index.as_u64().unwrap();
+                    assert!(index < accessor["count"].as_u64().unwrap());
+                    let offset = base + index as usize * stride;
+                    let actual: [f32; 3] = std::array::from_fn(|axis| {
+                        let start = offset + axis * 4;
+                        f32::from_le_bytes(buffer[start..start + 4].try_into().unwrap())
+                    });
+                    let vertex = &model.vertex_coords[corner.vertex_index as usize];
+                    assert_eq!(
+                        actual,
+                        [-vertex.x / 20.0, -vertex.y / 20.0, vertex.z / 20.0],
+                        "{scene} {name} face {face}"
+                    );
+                }
+                count += 1;
+            }
+        }
+        assert_eq!(
+            faces.len(),
+            model
+                .face_data
+                .iter()
+                .filter(|face| face.face_vertices.len() >= 3)
+                .count()
+        );
+    }
+    assert!(count > 0);
+    eprintln!("{scene}: verified {count} authored polygon records");
+}
+
 #[test]
 fn world_texture_frames_match_installed_images_in_order() {
     let root = std::env::var_os("REDGUARD_DIR")
@@ -55,8 +141,30 @@ fn world_texture_frames_match_installed_images_in_order() {
         let document: serde_json::Value =
             serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
         let buffer = &bytes[28 + json_len..];
+        check_polygons(scene, &world, &document, buffer);
+        let terrain_materials: BTreeSet<_> = document["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|node| node["name"] == "Terrain")
+            .flat_map(|node| {
+                document["meshes"][node["mesh"].as_u64().unwrap() as usize]["primitives"]
+                    .as_array()
+                    .unwrap()
+            })
+            .map(|primitive| primitive["material"].as_u64().unwrap() as usize)
+            .collect();
         let mut seen = BTreeSet::new();
-        for material in document["materials"].as_array().unwrap() {
+        for (material_index, material) in
+            document["materials"].as_array().unwrap().iter().enumerate()
+        {
+            let terrain = terrain_materials.contains(&material_index);
+            if terrain {
+                assert!(
+                    material["alphaMode"].is_null() || material["alphaMode"] == "OPAQUE",
+                    "{scene}: terrain material {material_index} must be opaque"
+                );
+            }
             let Some(animation) = material["extras"].get("rgpre_texture_animation") else {
                 continue;
             };
@@ -96,9 +204,17 @@ fn world_texture_frames_match_installed_images_in_order() {
                     actual.dimensions(),
                     (u32::from(original.width), u32::from(original.height))
                 );
-                let rgba = original
+                let mut rgba = original
                     .decode_frame_rgba(frame, Some(&world.palette))
                     .unwrap();
+                if terrain {
+                    for pixel in rgba.as_chunks_mut::<4>().0 {
+                        if pixel[3] == 0 {
+                            pixel[..3].copy_from_slice(&world.palette.colors[0]);
+                        }
+                        pixel[3] = 255;
+                    }
+                }
                 transparent |= rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] == 0);
                 let flipped: Vec<_> = rgba
                     .chunks_exact(usize::from(original.width) * 4)

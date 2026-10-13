@@ -183,6 +183,88 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
 }
 
 #[test]
+fn installed_caverns_fish_starts_rotation_multitask_and_retains_concurrent_movement() {
+    use cyrus_game::script::ScriptStage;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP absolute rotation multitask)");
+        return;
+    }
+    let path = std::fs::read_dir(root.join("maps"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("CAVERNS.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 4).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| {
+            actor.name() == "CV_FISH"
+                && actor
+                    .placement()
+                    .is_some_and(|placement| placement.angles[1] & 2047 == 1026)
+        })
+        .unwrap();
+    let id = world.id(index).unwrap();
+    let inputs = cyrus_game::script::ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    for (stage, expected) in [
+        (ScriptStage::Body(cyrus_script::Thread::Main), 1036),
+        (ScriptStage::Tasks, 1046),
+        (ScriptStage::Tasks, 1056),
+    ] {
+        world.advance(id, stage, inputs, None, None, 30).unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], expected);
+        assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 2);
+        assert!(world.actors()[index].failure().is_none());
+    }
+    let placement = world.actors()[index].placement().unwrap();
+    let view = [
+        placement.map_position[0] as i32,
+        placement.map_position[2] as i32,
+    ];
+    let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
+    metadata["script_content_id"] = scripts.content_id.clone().into();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata,
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_markers(&data).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(0);
+    for expected in [1036, 1046, 1056] {
+        world
+            .update_ordinary(&data, view, inputs, &mut random, &mut |_, _| Ok(()), 30)
+            .unwrap();
+        let id = world.id(index).unwrap();
+        assert!(
+            world.actors()[index].failure().is_none(),
+            "{:?}",
+            world.actors()[index].failure()
+        );
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], expected);
+        assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 2);
+    }
+}
+
+#[test]
 fn installed_catacomb_duplicate_roots_select_first_source_list_match() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
     if !root.join("RGFX.EXE").exists() {

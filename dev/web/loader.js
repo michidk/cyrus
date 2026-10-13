@@ -109,6 +109,7 @@ try {
   }
 } catch (error) {
   label.textContent = "Failed: " + error.message;
+  fill.classList.remove("indeterminate");
   fill.style.background = "#c66";
   console.error(error);
 }

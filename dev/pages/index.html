@@ -12,7 +12,7 @@
     --parchment: #f0e4cf; --parchment-light: #f5ead8; --parchment-dark: #e4d4b8;
     --burgundy: #4a1a2a; --burgundy-dark: #361320; --gold: #b8860b; --gold-light: #d4a537;
     --gold-muted: #9a7430; --gold-pale: #e0c888; --red: #8b1a1a; --red-light: #a62c2c;
-    --text: #2d2118; --text-muted: #7a6854; --border: #c4b08a;
+    --text: #2d2118; --text-muted: #6b5846; --border: #c4b08a;
   }
   * { box-sizing: border-box; }
   body {
@@ -31,13 +31,42 @@
   h2 { font-size: 1.4rem; margin: 44px 0 10px; color: var(--red); font-weight: 600; }
   .tagline { font-size: 1.35rem; margin: 0 0 6px; }
   .sub { color: var(--text-muted); margin: 0; }
-  .note { margin: 28px 0 0; padding: 14px 18px; background: var(--parchment-dark); border-left: 3px solid var(--gold-muted); }
-  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 0; }
-  .actions a { padding: 10px 20px; border: 1px solid var(--border); border-radius: 3px; background: var(--parchment-light);
-    color: var(--burgundy); text-decoration: none; font: 600 .95rem 'Cinzel', serif; letter-spacing: .03em; }
-  .actions a.primary { background: var(--burgundy); border-color: var(--gold-muted); color: var(--gold-pale); }
-  .actions a:hover, .actions a:focus-visible { border-color: var(--gold); color: var(--red); }
-  .actions a.primary:hover, .actions a.primary:focus-visible { background: var(--burgundy-dark); color: var(--gold-light); }
+  .note { margin: 24px 0 32px; padding-left: 16px; border-left: 3px solid var(--gold-muted); }
+  .downloads { padding: 28px; background: var(--burgundy); color: var(--parchment-light); border-top: 3px solid var(--gold-muted); }
+  .downloads h2 { margin: 0 0 6px; color: var(--gold-pale); }
+  .downloads p { margin: 0; }
+  .download-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 24px 0 20px; }
+  .download-link { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-height: 112px;
+    padding: 16px; border: 1px solid var(--gold-pale); border-radius: 3px; background: var(--parchment-light);
+    color: var(--burgundy); text-decoration: none; line-height: 1.3; }
+  .download-link strong { font: 600 1.05rem 'Cinzel', serif; }
+  .download-link span { font-size: 1rem; }
+  .download-link small { font-size: .9rem; color: var(--text-muted); }
+  .download-link:hover { background: var(--gold-pale); color: var(--burgundy-dark); }
+  .downloads .release-link { color: var(--gold-pale); text-underline-offset: 4px; }
+  .downloads .release-link:hover { color: white; }
+  .browser { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 24px;
+    padding: 28px 0; border-bottom: 1px solid var(--border); }
+  .browser h2 { margin: 0 0 6px; }
+  .browser p { margin: 0; max-width: 42ch; }
+  .browser-actions { display: flex; flex-direction: column; gap: 12px; }
+  .button { display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 10px 20px;
+    border: 1px solid var(--burgundy); border-radius: 3px; color: var(--burgundy); background: var(--parchment-light);
+    font-weight: 600; text-decoration: none; }
+  .button:hover { background: var(--parchment-dark); color: var(--burgundy-dark); }
+  a:focus-visible { outline: 3px solid var(--red); outline-offset: 4px; }
+  .downloads a:focus-visible { outline-color: var(--gold-light); }
+  @media (max-width: 720px) {
+    .download-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .browser { grid-template-columns: 1fr; gap: 20px; }
+    .browser-actions { flex-direction: row; flex-wrap: wrap; }
+    .browser-actions .button { flex: 1 1 180px; }
+  }
+  @media (max-width: 400px) {
+    .downloads { padding: 20px 16px; }
+    .download-grid { gap: 10px; }
+    .download-link { padding: 12px; }
+  }
   ul { padding-left: 1.2em; margin: 0; }
   li { margin: 4px 0; }
   a { color: var(--red); }
@@ -51,19 +80,42 @@
 <main>
   <h1>cyrus</h1>
   <p class="tagline">A faithful rebuild of <em>The Elder Scrolls Adventures: Redguard</em> (1998) in Rust and Bevy.</p>
-  <p class="sub">Bring your own copy: cyrus ships no game data and reads your GOG install at runtime.</p>
+  <p class="sub">Bring your own copy of <a href="https://www.gog.com/en/game/the_elder_scrolls_adventures_redguard">Redguard from GOG</a>.
+  cyrus reads your install and includes no game files.</p>
 
-  <div class="actions">
-    <a class="primary" href="https://github.com/michidk/cyrus/releases/latest">Download</a>
-    <a href="game/">Play in the browser</a>
-    <a href="viewer/">Asset viewer</a>
-    <a href="https://github.com/michidk/cyrus">Source on GitHub</a>
-    <a href="https://www.gog.com/en/game/the_elder_scrolls_adventures_redguard">Buy Redguard on GOG</a>
-  </div>
+  <p class="note">Early development. Worlds, menus, and movies are available to explore; full gameplay is not yet supported.</p>
 
-  <p class="note">cyrus is early in development. Startup presentation and world viewing work, but the game is not yet playable.
-  The browser version asks for a URL serving your own Redguard install; see the
-  <a href="https://github.com/michidk/cyrus/blob/main/docs/SETUP.md">setup guide</a>.</p>
+  <section class="downloads" aria-labelledby="download-heading">
+    <h2 id="download-heading">Download cyrus</h2>
+    <p>Get the latest release for your computer.</p>
+    <div class="download-grid">
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-x86_64-pc-windows-msvc.exe" aria-label="Download cyrus for Windows, x64, EXE">
+        <strong>Windows</strong><span>x64</span><small>.exe</small>
+      </a>
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-aarch64-apple-darwin.tar.gz" aria-label="Download cyrus for macOS, Apple Silicon, tar.gz">
+        <strong>macOS</strong><span>Apple Silicon</span><small>.tar.gz</small>
+      </a>
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-x86_64-apple-darwin.tar.gz" aria-label="Download cyrus for macOS, Intel, tar.gz">
+        <strong>macOS</strong><span>Intel</span><small>.tar.gz</small>
+      </a>
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-x86_64-unknown-linux-gnu.tar.gz" aria-label="Download cyrus for Linux, x64, tar.gz">
+        <strong>Linux</strong><span>x64</span><small>.tar.gz</small>
+      </a>
+    </div>
+    <a class="release-link" href="https://github.com/michidk/cyrus/releases/latest">Release notes &amp; all downloads</a>
+  </section>
+
+  <section class="browser" aria-labelledby="browser-heading">
+    <div>
+      <h2 id="browser-heading">Try it in your browser</h2>
+      <p>Open cyrus or explore individual game assets. Choose your local GOG folder to get started.
+      See the <a href="https://github.com/michidk/cyrus/blob/main/docs/SETUP.md">setup guide</a> for help.</p>
+    </div>
+    <div class="browser-actions">
+      <a class="button" href="game/">Open cyrus</a>
+      <a class="button" href="viewer/">Open asset viewer</a>
+    </div>
+  </section>
 
   <h2>What works today</h2>
   <ul>
@@ -78,10 +130,12 @@
   Modern controls and graphics remain opt-in.</p>
   <p>File formats and engine documentation come from
   <a href="https://github.com/michidk/redguard-preservation">redguard-preservation</a>.
-  <a href="https://github.com/RGUnity/redguard-unity">RGUnity</a> inspired cyrus and provided foundational research.</p>
+  <a href="https://github.com/RGUnity/redguard-unity">RGUnity</a> is another project rebuilding Redguard, using the Unity engine.
+  It inspired cyrus, and its contributors' research helped us understand how the original game works.</p>
 
   <h2>Get involved</h2>
-  <p>Read the <a href="https://github.com/michidk/cyrus/blob/main/docs/ROADMAP.md">roadmap</a>,
+  <p>Browse the <a href="https://github.com/michidk/cyrus">source on GitHub</a>,
+  read the <a href="https://github.com/michidk/cyrus/blob/main/docs/ROADMAP.md">roadmap</a>,
   the <a href="https://github.com/michidk/cyrus/blob/main/CONTRIBUTING.md">contributing guide</a>,
   or join the <a href="https://discord.com/invite/xjCCyqbxkp">Discord</a> (<code>rg-unity-devtalk</code>).</p>
 

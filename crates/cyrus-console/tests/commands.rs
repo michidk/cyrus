@@ -8,14 +8,44 @@ fn numeric_literals_preserve_raw_values_and_original_binary_quirk() {
         ("-1", u32::MAX),
         ("0x80000000", 0x80000000), // publish-check: allow; 32-bit console literal.
         ("%1011", 0),
+        ("4294967296", 0),
+        ("4294967297tail", 1),
+        ("-4294967297tail", u32::MAX),
+        ("-", 0),
+        ("--1", 0),
+        ("12garbage", 12),
+        ("0x", 0),
+        ("0xgarbage", 0),
+        ("0x1g", 1),
+        ("0x100000001", 1), // publish-check: allow; wrapping console literal.
         ("\"abcd\"", 0x6463_6261),
         ("\"abcdef", 0x6463_6261),
     ] {
-        assert_eq!(cyrus_console::number(input).unwrap(), expected);
+        assert_eq!(
+            cyrus_console::number(input, |_| panic!("literal resolved as symbol")).unwrap(),
+            expected
+        );
     }
-    for input in ["", "4294967296", "\"ab", "unknown"] {
-        assert!(cyrus_console::number(input).is_err());
+    for input in ["", "\"ab", "é"] {
+        assert!(
+            cyrus_console::number(input, |_| panic!("invalid literal resolved as symbol")).is_err()
+        );
     }
+}
+
+#[test]
+fn numeric_symbols_are_resolved_by_the_command_owner() {
+    for input in ["counter", "+1"] {
+        assert_eq!(
+            cyrus_console::number(input, |name| {
+                assert_eq!(name, input);
+                Ok(42)
+            })
+            .unwrap(),
+            42
+        );
+    }
+    assert!(cyrus_console::number("counter", |_| anyhow::bail!("world unavailable")).is_err());
 }
 
 #[derive(Resource, Default)]
