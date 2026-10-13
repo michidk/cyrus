@@ -57,3 +57,12 @@ starting a game window.
 [cyrus-startup](../cyrus-startup/README.md) supplies splash, title, the book menu,
 settings, cinematic playback and world-entry loading. Hosts add it alongside
 cyrus-render and cyrus-audio.
+
+Native cheat state loads after install selection. `cyrus-config/REDGUARD.CHT`
+takes precedence over the installed `REDGUARD.CHT`; if both are absent, values
+start at zero. A malformed or unreadable local file blocks cheat changes without
+falling back to the install. TCP/MCP `cheat` supports toggles, raw values, `oracle`
+and `savecheats`. Saving writes only the local file and preserves unnamed slots.
+To reset, remove the local file; installed state is imported again if present.
+For an explicit all-off local state, set the named values to zero and save.
+Browser persistence and the original console UI are not implemented.

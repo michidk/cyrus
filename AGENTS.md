@@ -251,6 +251,15 @@ WAV files and installed world assignments.
 menu input is suspended during playback. A new key press uses the installed
 forward skip points, then returns to the same selected entry.
 
+Native `state.cheats` reports CHT load readiness, raw values and supported effects.
+TCP/MCP `cheat {name, value?}` toggles or assigns state; `oracle` lists it and
+`savecheats` writes `cyrus-config/REDGUARD.CHT`. Local state precedes the installed
+read-only CHT file; malformed state blocks edits and saves. **Verified:** runtime
+`neversaydie` supplies the documented PlayerDistance override to explicit script
+steps unless the caller supplies `distance_override`; `oddjob` has no gameplay
+effect. Other cheat effects, gameplay typing, F12 console UI and browser cheat
+persistence remain unsupported.
+
 Book turns and camera moves suspend navigation. Readiness becomes true after the
 final settling update. Quit plays the authored close before exiting. Menu motion
 uses original MENU.ROB frames and preservation camera/depth rules; labels and

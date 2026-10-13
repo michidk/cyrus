@@ -77,7 +77,7 @@ Re-export worlds before using explicit player model poses.
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`), pinned to the [sound-remap integration](https://github.com/michidk/redguard-preservation/commit/4223de1dbee9bbc04bd45d1b9381565acae29746), owns parsing and recovered
+Preservation (`rgpre`), pinned to the [sound-remap and CHT integration](https://github.com/michidk/redguard-preservation/commit/5826a304e1aa1a08b4b57e074ce21587c4f60380), owns parsing and recovered
 engine rules. This crate owns install validation, catalog identities, portable
 preview descriptions, generated
 files. `cyrus-media` owns PCM conversion and the portable movie decoder wrappers.
@@ -137,3 +137,8 @@ the asset census does not infer them from function names.
 Placed-object frame lookup uses the instance metadata retained by preservation,
 following [the frame-source rules](https://github.com/michidk/redguard-preservation/blob/6488b6e/docs/engine/animation.md#placed-object-frame-sources).
 This lookup does not establish automatic actor or animation eligibility.
+
+`cheats` retains all CHT slots and names in a portable record. Its `parsers`
+adapter delegates binary decoding and encoding to preservation's
+[CHT writer](https://github.com/michidk/redguard-preservation/compare/main...feat/cht-writing).
+The game core depends only on the record; host storage owns file access.

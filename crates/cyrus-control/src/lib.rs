@@ -14,6 +14,12 @@ pub const DEFAULT_ADDR: &str = "127.0.0.1:7117";
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
     Ping,
+    /// Apply a cheat toggle or raw value; oracle lists state and savecheats writes CHT.
+    Cheat {
+        name: String,
+        #[serde(default)]
+        value: Option<u32>,
+    },
     /// App state, scene name, player transform, fidelity settings, frame counter.
     State,
     /// Capture the primary window to `path` (PNG). The file appears a frame or two later.
@@ -83,7 +89,7 @@ pub enum Command {
         /// Required for animation-bound actors; whole original nominal ticks, including zero.
         #[serde(default)]
         nominal_ticks: Option<u32>,
-        /// Explicit inspection override for PlayerDistance; absence remains unsupported.
+        /// Explicit inspection override for PlayerDistance; otherwise use runtime cheat state.
         #[serde(default)]
         distance_override: Option<bool>,
         /// Original Q8 fallback coordinates used only without a selected player.

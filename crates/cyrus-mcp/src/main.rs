@@ -33,6 +33,15 @@ struct TeleportParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+struct CheatParams {
+    name: String,
+    #[schemars(
+        description = "Raw state value; omit to toggle, list with oracle, or persist with savecheats"
+    )]
+    value: Option<u32>,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct InputParams {
     #[schemars(description = "Bevy KeyCode name, e.g. KeyW, ArrowUp, Space, Escape")]
     key: String,
@@ -111,7 +120,9 @@ struct ScriptStepParams {
         description = "Required when any actor has animation bound; original whole nominal ticks, including zero."
     )]
     nominal_ticks: Option<u32>,
-    #[schemars(description = "Explicit PlayerDistance override state; omit when unknown.")]
+    #[schemars(
+        description = "Explicit PlayerDistance override; omit to use runtime neversaydie state."
+    )]
     distance_override: Option<bool>,
     #[schemars(
         description = "Q8 fallback coordinates for PlayerDistance without a selected player."
@@ -144,6 +155,16 @@ impl Cyrus {
     )]
     fn state(&self) -> Result<CallToolResult, McpError> {
         text(call(Command::State)?)
+    }
+
+    #[tool(
+        description = "Set or toggle a cheat, list with oracle, or write REDGUARD.CHT with savecheats. Reports unsupported gameplay effects."
+    )]
+    fn cheat(&self, Parameters(p): Parameters<CheatParams>) -> Result<CallToolResult, McpError> {
+        text(call(Command::Cheat {
+            name: p.name,
+            value: p.value,
+        })?)
     }
 
     #[tool(description = "Capture the game window as PNG and return the image.")]

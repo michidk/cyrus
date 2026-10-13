@@ -24,7 +24,7 @@ def rpc(o):
 rpc({"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}})
 p.stdin.write(json.dumps({"jsonrpc":"2.0","method":"notifications/initialized"}) + "\n"); p.stdin.flush()
 tools = {t["name"] for t in rpc({"jsonrpc":"2.0","id":1,"method":"tools/list"})["result"]["tools"]}
-assert {"ping","state","screenshot","teleport","input","set_fidelity","skip_startup","load_scene","quit"} <= tools, tools
+assert {"ping","state","screenshot","teleport","input","set_fidelity","skip_startup","load_scene","cheat","quit"} <= tools, tools
 def call(n, a={}):
     r = rpc({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":n,"arguments":a}})
     assert "error" not in r, (n, r)
@@ -35,6 +35,14 @@ while initial["state"] != "InGame" and time.monotonic() < deadline:
     time.sleep(0.25)
     initial = call("state")
 assert initial["state"] == "InGame", initial
+assert initial["cheats"]["ready"], initial["cheats"]
+original_cheats = call("cheat", {"name":"oracle"})["cheats"]
+oddjob = next(e["value"] for e in original_cheats["entries"] if e["name"] == "oddjob")
+changed = call("cheat", {"name":"oddjob", "value":7})
+assert changed["effect"] == "no_effect", changed
+assert next(e["value"] for e in changed["cheats"]["entries"] if e["name"] == "oddjob") == 7
+call("cheat", {"name":"oddjob", "value":oddjob})
+assert call("cheat", {"name":"oracle"})["cheats"] == original_cheats
 call("load_scene", {"name":"START"})
 assert initial["flycam"]["position"] is None, "headless host created a camera"
 call("set_fidelity", {"area":"player_controller","mode":"modern"})
@@ -49,7 +57,7 @@ assert not final["player_input"]["forward"], final
 assert initial["player"]["position"] == final["player"]["position"], "input enabled unsupported movement"
 assert call("set_fidelity", {"area":"camera","mode":"modern"})["camera"] == "modern"
 call("quit")
-print("smoke-mcp: headless state/input/fidelity/quit passed")
+print("smoke-mcp: headless state/input/fidelity/cheats/quit passed")
 PY
 wait $game || true
 grep -q panicked "$log" && { echo "game panicked:"; grep -A3 panicked "$log"; exit 1; }

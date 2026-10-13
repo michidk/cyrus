@@ -55,7 +55,13 @@ eligibility. Once spatial state is prepared, executable stages need both
 `frame_scale` and `nominal_ticks`, including zero.
 
 Player queries use the current `PlayerPose`, not the inspection camera.
-`distance_override` must explicitly establish the PlayerDistance override flag;
+`distance_override` optionally overrides runtime `neversaydie` state;
 `fallback_position` supplies original Q8 coordinates when no player exists.
 Missing required inputs fail. Attached queries read the last composed pose.
 Unattached linked-position selection remains unsupported in the script host.
+
+`cheat {name, value?}` applies a named toggle or explicit unsigned integer value.
+Without a value, `oracle` lists state and `savecheats` writes the complete CHT file.
+`state.cheats` reports readiness, load errors, raw values and each effect's support.
+Unsupported effects retain their values but do not change gameplay. This is an
+inspection interface; the original F12 console and gameplay typing remain pending.

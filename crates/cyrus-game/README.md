@@ -328,3 +328,17 @@ from authored placement, before attachment transforms. The installed VILEDOG hoo
 runs through this path. Navigation availability is prepared from the matching
 animation sidecar; nonempty-map routing and steering remain unsupported. This
 implements the original empty-map behavior, not automatic actor admission.
+
+## Cheats
+
+`Cheats` owns the current named cheat values and unnamed persistence slots.
+The host supplies a `CheatStore` that decodes and encodes through the asset adapter
+and preservation. Failed loads stay errors and cannot be overwritten by commands.
+Changes remain in memory until `savecheats`; failed saves retain runtime state.
+`oracle` lists values and effect support. `oddjob` retains its documented no-op,
+while other unfinished gameplay effects are reported as unsupported.
+
+**Verified:** preservation's [cheat rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
+define the `neversaydie` PlayerDistance override. Native explicit script steps use
+the shared value unless an inspection override is supplied. Automatic gameplay,
+hidden keyboard entry and the original F12 console remain unsupported.

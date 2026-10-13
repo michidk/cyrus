@@ -1,4 +1,5 @@
 //! Gameplay state, fidelity and player rules, independent of presentation.
+pub mod cheats;
 pub mod clock;
 pub mod fidelity;
 pub mod player;
@@ -22,6 +23,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<preferences::Preferences>()
             .init_resource::<random::EngineRandom>()
+            .init_resource::<cheats::Cheats>()
             .init_state::<AppState>()
             .init_resource::<fidelity::Fidelity>()
             .add_plugins((player::PlayerPlugin, script::ScriptPlugin));

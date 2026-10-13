@@ -18,6 +18,7 @@ module where it is defined and regenerate.
 - `src/animation.rs` — Validated animation cache records and source-frame lookup.
 - `src/animation_export.rs` — Shared animation preparation through rgpre; no binary format parsing lives here.
 - `src/audio.rs` — Native installed audio readers and PCM conversion.
+- `src/cheats.rs` — Portable cheat state; preservation owns CHT names and binary encoding.
 - `src/collision.rs` — Portable authored collision inputs; units and ordering follow preservation's player rules.
 - `src/decode.rs` — In-memory presentation of preservation parser results, shared by both targets.
 - `src/disc.rs` — CD cue-sheet interpretation shared by both runtime targets.
@@ -80,6 +81,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-game` — Gameplay state, fidelity and player rules, independent of presentation.
 
+- `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
 - `src/clock.rs` — Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/player.rs` — Player state, input and deterministic controller rules.
@@ -190,8 +192,10 @@ module where it is defined and regenerate.
 ## `cyrus` — Native install, persistence and control adapters with game/presentation assembly.
 
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
+- `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
+- `src/storage.rs` — Native byte storage shared by local preferences and cheat persistence.

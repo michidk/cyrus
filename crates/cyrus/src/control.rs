@@ -80,6 +80,7 @@ struct Inspection<'w, 's> {
     scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
+    cheats: ResMut<'w, cyrus_game::cheats::Cheats>,
     activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
@@ -115,6 +116,7 @@ fn handle(
         scripts,
         mut script_actors,
         mut random,
+        mut cheats,
         activation,
         prepared,
         animations,
@@ -142,6 +144,9 @@ fn handle(
         let id = request.id;
         let result = match request.cmd {
             Command::Ping => Ok(json!("pong")),
+            Command::Cheat { name, value } => cheats.execute(&name, value)
+                .map(|effect| json!({"effect":effect,"cheats":cheats.inspect()}))
+                .map_err(|error| format!("{error:#}")),
             Command::State => {
                 let transform = player.single().ok().map(|t| {
                     let (yaw, pitch, _) = t.rotation.to_euler(EulerRot::YXZ);
@@ -151,7 +156,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": "cyrus-config/preload-report.json"})
                 });
                 Ok(
-                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "cheats": cheats.inspect(), "scripts": scripts.as_deref(), "scene": current.name, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -427,7 +432,7 @@ fn handle(
                     activation: activation.as_deref(),
                     nominal_ticks, frame_scale,
                     player_query: Some(cyrus_game::script::QueryInputs {
-                        player, distance_override, fallback_position, linked_position: None,
+                        player, distance_override: distance_override.or_else(|| cheats.distance_override().ok()), fallback_position, linked_position: None,
                     }),
                 };
                 world.advance(id, stage, inputs, Some(&mut emit), Some(&mut random), 100_000)?;
@@ -470,6 +475,7 @@ mod tests {
         .init_resource::<Assets<cyrus_assets::animation::Animations>>()
         .init_resource::<Fidelity>()
         .init_resource::<cyrus_game::random::EngineRandom>()
+        .init_resource::<cyrus_game::cheats::Cheats>()
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
         .init_resource::<cyrus_game::player::input::PlayerInput>()
@@ -610,6 +616,69 @@ mod tests {
                 response.result.unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn cheat_command_supplies_player_distance_state_to_script_steps() {
+        use cyrus_game::cheats::{CheatStore, Cheats};
+        struct Memory;
+        impl CheatStore for Memory {
+            fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
+                Ok(cyrus_assets::cheats::empty())
+            }
+            fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
+                Ok(())
+            }
+        }
+        let mut app = app();
+        let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(json!({
+            "version":8,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},
+            "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
+            "actor_pool_capacity":10,"content_id":"","world":17,
+            "definition":{"functions":[
+                {"name":"NullFunction","param_count":0,"kind":"function"},
+                {"name":"PlayerDistance","param_count":0,"kind":"function"}
+            ],"flags":[],"references":[],"attributes":[]},
+            "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
+                "namespace":"ACTOR","instance_variables":[[0]],"attributes":{},"native_hook":null,
+                "program":{"version":2,"entry":0,"variables":[0],"steps":{
+                    "0":{"next":1,"operation":{"type":"assign","destination":{"type":"local","index":0},
+                        "formula":{"first":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":"PlayerDistance","arguments":[]}},"rest":[]}}},
+                    "1":{"next":2,"operation":{"type":"end","target":0}}
+                }}
+            }},
+            "instances":[{"object_id":0,"actor":"ACTOR","object_type":0,"active":0,"model_name":"","model_mode":0,"map_position":[0,0,0],"angles":[0,0,0]}],"unsupported":{}
+        })).unwrap();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut actors = cyrus_game::script::ScriptActors::default();
+        actors.current = Some(cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap());
+        app.insert_resource(actors)
+            .insert_resource(Cheats::new(Memory));
+        let step = |stage| Command::StepScript {
+            generation: 1,
+            index: 0,
+            stage,
+            frame_scale: Some(256),
+            nominal_ticks: Some(0),
+            distance_override: None,
+            fallback_position: None,
+        };
+        let responses = run_commands(
+            &mut app,
+            vec![
+                Command::Cheat {
+                    name: "neversaydie".into(),
+                    value: Some(7),
+                },
+                step(cyrus_control::ScriptStage::PrepareSpatial),
+                step(cyrus_control::ScriptStage::Main),
+                Command::State,
+            ],
+        );
+        assert_eq!(responses[0]["effect"], "player_distance");
+        assert_eq!(responses[2]["actors"][0]["locals"], json!([9_999_999]));
+        assert_eq!(responses[3]["cheats"]["ready"], true);
+        assert_eq!(responses[3]["cheats"]["entries"][10]["value"], 7);
     }
 
     fn bind_and_step(node: Option<&str>) -> Vec<Command> {

@@ -5,8 +5,10 @@ mod settings;
 use crate::control::ControlAddr;
 use crate::settings::Settings;
 mod bindings;
+mod cheats;
 mod debug;
 mod preferences;
+mod storage;
 use bevy::prelude::*;
 use clap::Parser;
 use cyrus_game::GamePlugin;
@@ -161,7 +163,7 @@ fn main() -> anyhow::Result<()> {
     }
     if let Some(install) = install {
         app.insert_resource(install)
-            .add_systems(Startup, bindings::load);
+            .add_systems(Startup, (bindings::load, cheats::load));
     } else {
         args.source.select(&mut app);
         app.insert_state(cyrus_game::AppState::SelectingInstall)
@@ -172,7 +174,7 @@ fn main() -> anyhow::Result<()> {
             )
             .add_systems(
                 OnExit(cyrus_game::AppState::SelectingInstall),
-                bindings::load,
+                (bindings::load, cheats::load),
             );
     }
     app.insert_resource(control)

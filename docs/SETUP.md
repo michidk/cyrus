@@ -437,6 +437,20 @@ once per world generation, then `families` to compose attached poses. Use
 `snapshot` at an established actor-update boundary, `axis_locks` after script and
 movement stages, and `transform` to refresh an unattached actor matrix. Executable stages then require both `frame_scale` and
 `nominal_ticks`. Spatial state appears in `scripts`; bound scene nodes consume it
-without advancing scripts. PlayerDistance requires explicit `distance_override`
+without advancing scripts. PlayerDistance uses runtime `neversaydie` state unless `distance_override` is supplied
 and uses `fallback_position` only when no selected player pose exists. These
 inspection inputs do not establish production scheduling or gameplay readiness.
+
+### Cheat state inspection
+
+Native TCP/MCP `cheat {name, value?}` toggles a named state or assigns a raw
+unsigned integer. Use `oracle` to inspect values and support status and
+`savecheats` to write `cyrus-config/REDGUARD.CHT`. Startup reads that local file
+first, then the installed CHT file, then empty state. Malformed files remain
+errors without being overwritten. The install stays read-only.
+
+**Verified:** `neversaydie` supplies the documented distance override during
+explicit script steps, unless `distance_override` is supplied by the caller.
+`oddjob` retains its documented lack of gameplay effect. Other effects report
+unsupported. Browser persistence, gameplay cheat typing and the F12 console UI
+remain pending; these inspection commands do not enable automatic gameplay.
