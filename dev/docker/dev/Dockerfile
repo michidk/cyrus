@@ -3,7 +3,7 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        xvfb x11vnc novnc websockify mesa-vulkan-drivers vulkan-tools \
+        xvfb x11vnc novnc websockify xdotool mesa-vulkan-drivers vulkan-tools \
         libasound2t64 libudev1 libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libx11-6 libxcursor1 libxi6 libxrandr2 \
         ca-certificates zenity \
     && rm -rf /var/lib/apt/lists/*

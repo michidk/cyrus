@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "world": "START",
+  "view": [
+    -1627.1500244140625,
+    21.399999618530273,
+    -1603.2498779296875,
+    -0.06600452214479446,
+    0.9253063201904297,
+    0.1899644136428833,
+    0.3215044438838959
+  ],
+  "viewport": [
+    640,
+    480
+  ],
+  "settle_ms": 2000,
+  "original": {
+    "console": [
+      "task = 0",
+      "animation = 0",
+      "load 0,0,0"
+    ],
+    "load_wait_ms": 60000
+  },
+  "evidence": "Verified camera reproduced across two original console loads with task and animation systems disabled. Static scene/viewpoint comparison only."
+}

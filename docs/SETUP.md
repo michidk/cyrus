@@ -454,3 +454,20 @@ explicit script steps, unless `distance_override` is supplied by the caller.
 `oddjob` retains its documented lack of gameplay effect. Other effects report
 unsupported. Browser persistence, gameplay cheat typing and the F12 console UI
 remain pending; these inspection commands do not enable automatic gameplay.
+
+## World audit and matched captures
+
+`cargo run -p cyrus -- --audit-worlds` scans every installed WORLD.INI entry
+without opening a window. Its text and stable JSON reports live under
+`magic/artifacts/world-audit/`. They reuse parser coverage, normal scene export,
+and script preparation. Reports distinguish skipped placements, referenced asset
+failures, script decoding/preparation, and observed runtime failures. Uninitialized
+animations are counted explicitly; an unexercised operation is not verified.
+See [cyrus](../crates/cyrus/README.md) for the report's scope and exit behavior.
+
+[Replay fixtures](../dev/fixtures/README.md) define matching original/native/browser
+worlds, viewpoints and capture timing. `just run-native --fixture <fixture.json>`
+launches the native view; `just replay <fixture.json> <new-label>` validates the
+views and writes the triplet under `magic/captures/`. Original instrumentation and
+all copyrighted captures remain local. Legacy JSONL fixtures still work but do
+not establish a matching original camera.

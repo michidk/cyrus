@@ -26,11 +26,26 @@ pub fn export_scene_reporting(
     out: &Path,
     progress: &dyn Fn(usize, usize, &str),
 ) -> anyhow::Result<()> {
+    export_scene_observing(install, name, out, progress, &|_| {})
+}
+
+/// The normal export pipeline with a read-only observer for retained fallback diagnostics.
+pub fn export_scene_observing(
+    install: &GameInstall,
+    name: &str,
+    out: &Path,
+    progress: &dyn Fn(usize, usize, &str),
+    diagnostic: &dyn Fn(crate::source::PreparationDiagnostic),
+) -> anyhow::Result<()> {
     struct Reporting<'a> {
         files: crate::native::Files,
         progress: &'a dyn Fn(usize, usize, &str),
+        diagnostic: &'a dyn Fn(crate::source::PreparationDiagnostic),
     }
     impl crate::source::ReadAssets for Reporting<'_> {
+        fn diagnostic(&self, value: crate::source::PreparationDiagnostic) {
+            (self.diagnostic)(value);
+        }
         fn manifest(&self) -> &crate::source::Manifest {
             self.files.manifest()
         }
@@ -44,6 +59,7 @@ pub fn export_scene_reporting(
     let source = Reporting {
         files: crate::native::Files::scan(install, false)?,
         progress,
+        diagnostic,
     };
     let filename = Path::new(
         out.file_name()
@@ -96,7 +112,8 @@ pub fn world_names(install: &GameInstall) -> anyhow::Result<Vec<String>> {
     Ok(names)
 }
 
-fn read_worlds(install: &GameInstall) -> anyhow::Result<WorldIni> {
+/// Enumerate installed world identities, including shared maps with distinct palettes.
+pub fn read_worlds(install: &GameInstall) -> anyhow::Result<WorldIni> {
     let path = world_ini::find_world_ini(&install.root)
         .ok_or_else(|| anyhow::anyhow!("missing WORLD.INI"))?;
     Ok(WorldIni::parse(&std::fs::read_to_string(path)?))

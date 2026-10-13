@@ -176,6 +176,7 @@ module where it is defined and regenerate.
 
 - `src/assets.rs` — Cache asset reads await original-file preparation in the browser worker.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
+- `src/capture.rs` — Opt-in, read-only world/camera observation for matched browser captures.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
 
@@ -191,6 +192,7 @@ module where it is defined and regenerate.
 
 ## `cyrus` — Native install, persistence and control adapters with game/presentation assembly.
 
+- `src/audit.rs` — Headless WORLD.INI audit through the normal preload, export and script preparation paths.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and

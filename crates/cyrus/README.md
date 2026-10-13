@@ -66,3 +66,28 @@ and `savecheats`. Saving writes only the local file and preserves unnamed slots.
 To reset, remove the local file; installed state is imported again if present.
 For an explicit all-off local state, set the named values to zero and save.
 Browser persistence and the original console UI are not implemented.
+
+`cargo run -p cyrus -- --audit-worlds` runs without a window and writes
+`magic/artifacts/world-audit/report.json` and `report.txt`. It enumerates numeric
+WORLD.INI identities, including palette variants, and reuses preload, scene export
+and the normal script preparation systems. Each diagnostic retains its world,
+source file, field, reason and affected count. JSON schema version 1 uses sorted
+worlds and diagnostics, without timestamps or timings, for diffs between runs.
+Exports used by the audit remain in that artifact directory.
+
+The report describes loading observations. It does not supply invented actor
+eligibility or animation ticks, or execute speculative native calls. It separately
+counts actors whose animations were not initialized. No observed failure does not
+establish support for an unexercised operation. A world export failure is retained,
+the remaining worlds are attempted, and the command exits unsuccessfully after
+writing both reports.
+
+For matched original/native/browser viewpoints, use
+`just run-native --fixture dev/fixtures/<world>.json` and the
+[fixture workflow](../../dev/fixtures/README.md). Captures stay under `magic/`.
+The audit's script inventory is a static census. Runtime unsupported counts are
+observed preparation/execution failures whose existing error says `unsupported`;
+script decode failures and runtime failures have separate counts.
+Placement counts include repeated missing rope links. Asset counts count failing
+source references, not unique filenames. Preload diagnostics use a null world
+because the coverage scan does not establish a world reference.

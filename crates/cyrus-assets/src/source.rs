@@ -40,10 +40,23 @@ impl Manifest {
     }
 }
 
+/// A failure retained by asset preparation without changing its fallback behavior.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PreparationDiagnostic {
+    pub category: String,
+    pub file: String,
+    pub field: String,
+    pub reason: String,
+    /// Number of affected placements or asset references.
+    pub count: usize,
+}
+
 /// Reads only files listed in the supplied manifest. Ranges are half-open byte ranges.
 /// Implementations must reject truncated responses and keep the original files read-only.
 pub trait ReadAssets {
     fn manifest(&self) -> &Manifest;
+    /// Optional audit observer. Files and fields describe original inputs.
+    fn diagnostic(&self, _diagnostic: PreparationDiagnostic) {}
     /// Optional progress for a selected resource, outside initial catalog loading.
     fn progress(&self, _done: usize, _total: usize, _label: &str) {}
     fn read_range(&self, path: &str, start: u64, length: usize) -> Result<Vec<u8>>;

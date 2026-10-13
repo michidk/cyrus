@@ -1,4 +1,5 @@
 //! Native install, persistence and control adapters with game/presentation assembly.
+mod audit;
 mod control;
 mod scene;
 mod settings;
@@ -23,6 +24,9 @@ struct Args {
     /// No window, no renderer: preload, scene export and the control server only.
     #[arg(long)]
     headless: bool,
+    /// Audit every installed WORLD.INI entry without a window; reports go under magic/artifacts/world-audit.
+    #[arg(long)]
+    audit_worlds: bool,
     /// Export the selected scene and exit.
     #[arg(long, requires = "scene")]
     export_scene: bool,
@@ -42,7 +46,8 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let install = if args.headless
+    let install = if args.audit_worlds
+        || args.headless
         || args.list_worlds
         || args.export_scene
         || args.export_all_worlds
@@ -52,6 +57,9 @@ fn main() -> anyhow::Result<()> {
     } else {
         None
     };
+    if args.audit_worlds {
+        return audit::run(install.as_ref().unwrap());
+    }
     if args.list_worlds {
         println!(
             "{}",

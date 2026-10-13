@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Replays a fixture against the running game over the control port, then takes
-# the side-by-side capture with compare.sh. A fixture is JSON lines under
-# dev/fixtures/: control commands (`{"type":"load_scene","name":"START"}`,
-# `{"type":"input","key":"KeyW","action":"tap"}`, teleport, set_fidelity) and
-# `{"sleep": 0.5}`. The same fixture rerun gives the same frame, so a capture is
-# evidence another agent can reproduce, not a one-off screenshot.
-# Usage: replay.sh <fixture.jsonl> <label>   (both games running: just run-native / just retro)
+# JSON fixtures produce matched original/native/browser scene captures.
+# Legacy JSONL fixtures replay native control commands and host sleeps, then
+# capture both running games without establishing a matched original viewpoint.
+# Usage: replay.sh <fixture.json|fixture.jsonl> <label>
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-fixture=${1:?usage: replay.sh <fixture.jsonl> <label>}
-label=${2:?usage: replay.sh <fixture.jsonl> <label>}
+fixture=${1:?usage: replay.sh <fixture.json|fixture.jsonl> <label>}
+label=${2:?usage: replay.sh <fixture.json|fixture.jsonl> <label>}
+if [[ "$fixture" == *.json ]]; then
+    exec node dev/scripts/matched-capture.mjs "$fixture" "$label"
+fi
 addr=${CYRUS_CONTROL_ADDR:-127.0.0.1:7117}
 
 python3 -I - "$addr" "$fixture" <<'PY'

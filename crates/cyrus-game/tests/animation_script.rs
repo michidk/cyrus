@@ -237,3 +237,50 @@ fn an_animation_task_keeps_waiting_while_its_current_group_is_delayed() {
     assert_eq!(script.waiting_for_group(), Some(10));
     assert_eq!(script.program_counter(), 28);
 }
+
+#[test]
+fn removed_playback_keeps_its_failure_for_audit_consumers() {
+    use bevy::prelude::*;
+    use cyrus_game::script::{PlaybackDiagnostics, ScriptPlugin, ScriptedPlayback};
+    use cyrus_world::animation::{AnimationPlugin, AnimationRequest, AnimationTick};
+    let mut data = asset();
+    data.metadata["animation_scripts"]["ACTOR"]["steps"]["0"]["operation"]["call"]["function"] =
+        "Sound".into();
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        bevy::asset::AssetPlugin::default(),
+        AnimationPlugin,
+        ScriptPlugin,
+    ));
+    let source = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(data);
+    let playback = ScriptedPlayback::new(
+        source.clone(),
+        app.world()
+            .resource::<Assets<Animations>>()
+            .get(&source)
+            .unwrap(),
+        "ACTOR",
+        1,
+    )
+    .unwrap();
+    let entity = app.world_mut().spawn(playback).id();
+    app.insert_resource(AnimationRequest(source));
+    app.world_mut().write_message(AnimationTick { ticks: 0 });
+    app.update();
+    assert!(app.world().get::<ScriptedPlayback>(entity).is_none());
+    let records = &app.world().resource::<PlaybackDiagnostics>().0;
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].world, 17);
+    assert_eq!(records[0].actor, "ACTOR");
+    assert_eq!(records[0].stage, "script");
+    assert_eq!(
+        records[0].reason,
+        "world 17 actor ACTOR script instruction 0 thread Main: task Sound unsupported"
+    );
+    app.update();
+    assert_eq!(app.world().resource::<PlaybackDiagnostics>().0.len(), 1);
+}

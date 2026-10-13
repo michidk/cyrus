@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "world": "ISLAND",
+  "view": [
+    -2039.9000244140625,
+    42.0,
+    -1228.2498779296875,
+    -0.05173133686184883,
+    0.9358125925064087,
+    0.31233829259872437,
+    0.1549948900938034
+  ],
+  "viewport": [
+    640,
+    480
+  ],
+  "settle_ms": 2000,
+  "original": {
+    "console": [
+      "task = 0",
+      "animation = 0",
+      "load 1,0,0"
+    ],
+    "load_wait_ms": 90000
+  },
+  "evidence": "Verified camera measured in the original with task and animation systems disabled for a static scene capture. Gameplay timing and animation phases are not compared."
+}

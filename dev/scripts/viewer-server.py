@@ -176,13 +176,14 @@ def main():
     parser.add_argument("--directory", type=Path, default=Path("target/web"))
     parser.add_argument("--page", choices=["index.html", "viewer.html"], default="viewer.html")
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--bind", default="127.0.0.1", help="HTTP listen address")
     args = parser.parse_args()
     install = locate_install(args.install) if not args.install_url else None
     paths, manifest = original_files(install) if install else ({}, b'{"files":[]}')
     handler = partial(Handler, directory=str(args.directory), originals=paths, manifest=manifest,
                       install=install, page=args.page, install_url=args.install_url or ("./original/" if install else None))
     print(f"Serving {len(paths)} original files; install selection shared by game and viewer", flush=True)
-    Server(("127.0.0.1", args.port), handler).serve_forever()
+    Server((args.bind, args.port), handler).serve_forever()
 
 
 if __name__ == "__main__":

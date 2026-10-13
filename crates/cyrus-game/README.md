@@ -329,6 +329,14 @@ runs through this path. Navigation availability is prepared from the matching
 animation sidecar; nonempty-map routing and steering remain unsupported. This
 implements the original empty-map behavior, not automatic actor admission.
 
+`script::PlaybackDiagnostics` retains explicitly attached playback failures after
+the failed component is removed. Records identify the world, actor, failing stage
+and reason. Consumers may drain them. Recording neither retries the failed effect
+nor advances scripts or animations. Logical actor preparation and sticky runtime
+failures remain available through `ScriptActors` and `ScriptStatus`.
+`ScriptActor::animation_failure` and `animation_initialized` expose retained
+animation status separately from SOUP failures through read-only accessors.
+
 ## Cheats
 
 `Cheats` owns the current named cheat values and unnamed persistence slots.

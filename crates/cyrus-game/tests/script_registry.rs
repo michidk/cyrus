@@ -252,6 +252,14 @@ fn animation_initialization_does_not_repeat_a_failed_sound_effect() {
     }
     assert_eq!(calls, 1);
     assert!(world.actors()[0].failure().is_some());
+    assert!(
+        world.actors()[0]
+            .animation_failure()
+            .unwrap()
+            .contains("sound unavailable")
+    );
+    assert!(!world.actors()[0].animation_initialized());
+    assert!(world.actors()[0].runtime().unwrap().failure().is_none());
     assert_eq!(world.animation_frame(id).unwrap(), None);
 }
 

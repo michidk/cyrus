@@ -53,6 +53,7 @@ pub(crate) fn scene(
         out,
         output,
     )?;
+    crate::runtime::geometry::report_textures(source, &world.textures);
     source.progress(3, 6, "Environment");
     crate::environment_export::prepare(source, entry, world.terrain.as_deref(), out, output)?;
     source.progress(4, 6, "Player inputs");

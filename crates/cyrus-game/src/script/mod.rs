@@ -27,12 +27,13 @@ pub use registry::{
     ScriptStage, ScriptWorld,
 };
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs};
-pub use status::ScriptStatus;
+pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
 
 pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScriptStatus>()
+            .init_resource::<PlaybackDiagnostics>()
             .init_resource::<ScriptActors>()
             .add_systems(
                 Update,

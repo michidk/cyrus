@@ -3,6 +3,9 @@
 # Needs the extracted GOG app directory at magic/gog/extracted/app (see docs/SETUP.md).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+if [ "${1:-}" = --fixture ]; then
+    exec node dev/scripts/matched-capture.mjs "${2:?fixture required}" "${3:?capture label required}" --original-only
+fi
 src=magic/gog/extracted/app
 run=magic/retro-run
 [ -d "$src/Redguard" ] || { echo "extract the GOG installer to $src first" >&2; exit 1; }

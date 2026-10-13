@@ -3,6 +3,8 @@
 #[cfg(target_arch = "wasm32")]
 mod assets;
 mod bindings;
+#[cfg(target_arch = "wasm32")]
+mod capture;
 mod debug;
 mod preferences;
 
@@ -91,6 +93,8 @@ fn main() {
             .after(cyrus_game::player::data::PlayerSceneLoading)
             .before(cyrus_game::player::input::InputSample),
     );
+    #[cfg(target_arch = "wasm32")]
+    capture::register(&mut app);
     app.run();
     let _ = Area::ALL;
 }

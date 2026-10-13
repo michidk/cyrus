@@ -74,3 +74,9 @@ instead of leaving an unexplained black screen.
 [cyrus-startup](../cyrus-startup/README.md) supplies splash, title, the book menu,
 settings, cinematic playback and world-entry loading. Hosts add it alongside
 cyrus-render and cyrus-audio.
+
+Matched captures use `?capture=true` with `scene` and `view`. This enables the
+read-only `window.__cyrusCapture` observation after world entry, containing the
+requested world and live scene-space camera pose. It does not change simulation
+or camera behavior. See [tracked fixtures](../../dev/fixtures/README.md) for the
+original/native/browser replay workflow and local artifact rules.

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "world": "BELLTOWR",
+  "view": [
+    -93.55000305175781,
+    5.949999809265137,
+    -3168.89990234375,
+    -6.588154792552814e-05,
+    0.9997646808624268,
+    0.00306724919937551,
+    0.021473977714776993
+  ],
+  "viewport": [
+    640,
+    480
+  ],
+  "settle_ms": 2000,
+  "original": {
+    "console": [
+      "task = 0",
+      "animation = 0",
+      "load 20,0,0"
+    ],
+    "load_wait_ms": 30000
+  },
+  "evidence": "Verified camera measured in the original. Static capture setup disables task and animation systems; gameplay timing is not compared."
+}

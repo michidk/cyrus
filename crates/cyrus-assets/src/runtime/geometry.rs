@@ -120,11 +120,29 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
         }
     }
     let map = map_path(source, &entry.map)?;
-    let (rgm, models, lights) = rgm::parse_rgm_with_models_for_stem(
+    let (rgm, models, lights, diagnostics) = rgm::parse_rgm_with_models_report(
         &source.read(&map)?,
         &registry,
         Path::new(&map).file_stem().and_then(|stem| stem.to_str()),
     )?;
+    for diagnostic in diagnostics {
+        if !diagnostic.model.is_empty() {
+            source.diagnostic(crate::source::PreparationDiagnostic {
+                category: "referenced_asset".into(),
+                file: diagnostic.model.clone(),
+                field: format!("referenced_by.{map}.{}", diagnostic.field),
+                reason: diagnostic.reason.clone(),
+                count: 1,
+            });
+        }
+        source.diagnostic(crate::source::PreparationDiagnostic {
+            category: "skipped_placement".into(),
+            file: map.clone(),
+            field: diagnostic.field,
+            reason: diagnostic.reason,
+            count: diagnostic.count,
+        });
+    }
     let terrain = entry
         .world
         .as_ref()
@@ -152,6 +170,7 @@ pub fn world(source: &dyn ReadAssets, name: &str) -> Result<WorldGeometry> {
             false,
         )?
     };
+    report_textures(source, &cache);
     Ok(WorldGeometry {
         entry,
         rgm,
@@ -248,4 +267,17 @@ pub fn visibility_cells(tree: &rgpre::import::pvo::PvoFile) -> Result<Vec<crate:
         }
     }
     Ok(cells)
+}
+
+/// Preserve the texture cache's existing missing-image fallback diagnostics.
+pub(crate) fn report_textures(source: &dyn ReadAssets, cache: &TextureCache) {
+    for (&(texture, image), reason) in cache.missing_requests() {
+        source.diagnostic(crate::source::PreparationDiagnostic {
+            category: "referenced_asset".into(),
+            file: format!("TEXBSI.{texture:03}"),
+            field: format!("images[{image}]"),
+            reason: reason.clone(),
+            count: 1,
+        });
+    }
 }

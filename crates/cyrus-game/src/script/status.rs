@@ -5,6 +5,20 @@ use cyrus_world::lifecycle::PreparedWorld;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+/// Failures retained after an explicitly attached playback component is removed.
+/// Consumers may drain these records; recording does not retry or advance playback.
+#[derive(Resource, Default)]
+pub struct PlaybackDiagnostics(pub Vec<PlaybackDiagnostic>);
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaybackDiagnostic {
+    pub world: u32,
+    pub actor: String,
+    /// Animation advancement, script advancement, or frame resolution.
+    pub stage: String,
+    pub reason: String,
+}
+
 #[derive(Resource, Default, Debug, Serialize)]
 #[serde(tag = "state")]
 pub enum ScriptStatus {

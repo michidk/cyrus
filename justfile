@@ -39,8 +39,8 @@ run-native *ARGS:
     dev/scripts/run-game.sh {{ARGS}}
 
 # the original game in dev/docker/retro, VibePod preview "cyrus-retro"
-retro:
-    dev/scripts/run-retro.sh
+retro *ARGS:
+    dev/scripts/run-retro.sh {{ARGS}}
 
 # stop the previews and the native container
 stop:
@@ -69,11 +69,11 @@ smoke-mcp:
     dev/scripts/smoke-mcp.sh
 
 
-# same scene from cyrus and the original into cyrus-config/compare/<label>-{cyrus,original}.png
+# current views from cyrus and the original into magic/captures/legacy/
 compare LABEL:
     dev/scripts/compare.sh {{LABEL}}
 
-# replay a dev/fixtures/*.jsonl fixture over the control port, then compare (checks the baseline if one exists)
+# matched JSON triplets, or legacy JSONL control replay and comparison
 replay FIXTURE LABEL:
     dev/scripts/replay.sh {{FIXTURE}} {{LABEL}}
 

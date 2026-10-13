@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Side-by-side capture: one screenshot from cyrus (control port) and one from the
-# original in the retro container (screen grab), both into cyrus-config/compare/.
+# original in the retro container (screen grab), both into magic/captures/legacy/.
 # Usage: compare.sh <label>   Both games must already be running (just run-native / just retro).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 label=${1:?usage: compare.sh <label>}
-out=cyrus-config/compare
+[[ "$label" =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'invalid capture label' >&2; exit 2; }
+out=magic/captures/legacy
+for file in "$out/$label-cyrus.png" "$out/$label-original.png"; do
+    [ ! -e "$file" ] || { echo "capture already exists: $file" >&2; exit 2; }
+done
 mkdir -p "$out"
 addr=${CYRUS_CONTROL_ADDR:-127.0.0.1:7117}
 

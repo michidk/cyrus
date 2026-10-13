@@ -37,6 +37,7 @@ pub(super) fn advance(
     mut ticks: MessageReader<AnimationTick>,
     mut sounds: Option<ResMut<Messages<SoundCue>>>,
     mut nodes: Query<(Entity, &mut ScriptedPlayback)>,
+    mut diagnostics: ResMut<super::PlaybackDiagnostics>,
 ) {
     for (entity, playback) in &nodes {
         if playback.source != request.0 {
@@ -56,6 +57,7 @@ pub(super) fn advance(
             let ScriptedPlayback {
                 animation, script, ..
             } = &mut *playback;
+            let mut stage = "animation";
             let result = (|| {
                 if let Some(sounds) = &mut sounds {
                     let mut emit = |sound| {
@@ -69,6 +71,7 @@ pub(super) fn advance(
                     let frame = animation
                         .request_with_sounds(animation.default_group(), 0, tick.ticks, &mut emit)?
                         .or(frame);
+                    stage = "script";
                     Ok(script
                         .advance_with_sounds(animation, tick.ticks, &mut emit)?
                         .or(frame))
@@ -77,10 +80,12 @@ pub(super) fn advance(
                     let frame = animation
                         .request(animation.default_group(), 0, tick.ticks)?
                         .or(frame);
+                    stage = "script";
                     Ok(script.advance(animation, tick.ticks)?.or(frame))
                 }
             })();
             let result: anyhow::Result<_> = result.and_then(|reference: Option<u32>| {
+                stage = "frame_resolution";
                 reference
                     .map(|reference| data.resolve_frame(&playback.actor, reference))
                     .transpose()
@@ -95,6 +100,12 @@ pub(super) fn advance(
                 Ok(None) => {}
                 Err(error) => {
                     log::error!("world {} actor {}: {error:#}", data.world, playback.actor);
+                    diagnostics.0.push(super::PlaybackDiagnostic {
+                        world: data.world,
+                        actor: playback.actor.clone(),
+                        stage: stage.into(),
+                        reason: format!("{error:#}"),
+                    });
                     commands.entity(entity).remove::<ScriptedPlayback>();
                 }
             }

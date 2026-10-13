@@ -132,14 +132,20 @@ impl ScriptActor {
     }
     /// Sticky script or animation failure; failed effects are never retried.
     pub fn failure(&self) -> Option<&str> {
-        self.animation_failure
-            .as_deref()
-            .or_else(|| {
-                self.animation
-                    .as_ref()
-                    .and_then(|animation| animation.playback.failure())
-            })
+        self.animation_failure()
             .or_else(|| self.runtime.as_ref().and_then(Runtime::failure))
+    }
+    /// Retained animation construction or advancement failure, separate from SOUP errors.
+    pub fn animation_failure(&self) -> Option<&str> {
+        self.animation_failure.as_deref().or_else(|| {
+            self.animation
+                .as_ref()
+                .and_then(|animation| animation.playback.failure())
+        })
+    }
+    /// Whether a caller has initialized or explicitly bound animation playback.
+    pub fn animation_initialized(&self) -> bool {
+        self.animation.is_some()
     }
     pub fn unavailable(&self) -> Option<&str> {
         self.unavailable.as_deref()
