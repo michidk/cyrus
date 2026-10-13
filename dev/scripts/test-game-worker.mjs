@@ -53,14 +53,23 @@ const manifest = JSON.stringify({ files: [...originals].sort().map(([name, filen
 const game = new GameLibrary('https://example.test/original/', manifest, () => {});
 const worlds = JSON.parse(game.worlds());
 assert.ok(worlds.includes('START') && worlds.includes('ISLAND'));
+let menuClock;
 for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 'sounds/bank.sounds', 'START.scripts']) {
   console.log('Preparing ' + name);
   const result = game.prepare(name);
   const files = new Map(result.files);
   assert.ok(files.has(name), 'missing generated asset ' + name);
+  if (name === 'menu/book.menu') {
+    menuClock = JSON.parse(new TextDecoder().decode(files.get(name))).clock;
+    assert.deepEqual(menuClock, {
+      normal_frame_rate: 12, min_frame_rate: 6, max_frame_rate: 300,
+      use_smooth_fps: true, use_smooth_divisor: true,
+    });
+  }
   if (name === 'START.scripts') {
     const scripts = JSON.parse(new TextDecoder().decode(files.get(name)));
     assert.equal(scripts.version, 6);
+    assert.deepEqual(scripts.clock, menuClock);
     assert.ok(scripts.content_id.length > 0 && scripts.instances.length > 0);
     const animations = JSON.parse(new TextDecoder().decode(files.get('START.animations')));
     assert.equal(animations.version, 2);

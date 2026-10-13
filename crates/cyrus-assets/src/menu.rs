@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {
+    /// Installed shared game-clock settings, available before entering a world.
+    pub clock: crate::script::ClockSettings,
     /// Installed WORLD.INI destination and marker, read through preservation.
     pub new_game: NewGameEntry,
     pub pages: BTreeMap<u8, MenuPage>,
@@ -101,6 +103,7 @@ pub struct MenuPicture {
 
 impl MenuAsset {
     pub fn validate(&self) -> anyhow::Result<()> {
+        self.clock.validate()?;
         ensure!(
             self.palette.len() == 256 && self.key_names.len() == 140,
             "menu: invalid palette/key-name count"

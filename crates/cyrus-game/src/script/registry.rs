@@ -1,6 +1,6 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use anyhow::{Context, Result};
-use bevy::prelude::{Assets, DetectChanges, Handle, Res, ResMut, Resource};
+use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
     animation::Animations,
     script::{Call, CallKind, Instance, Operation, Scripts},
@@ -720,6 +720,8 @@ pub(super) fn prepare(
     assets: Res<Assets<Scripts>>,
     animations: Res<Assets<Animations>>,
     mut actors: ResMut<ScriptActors>,
+    clock: Option<Res<crate::clock::SimulationClock>>,
+    mut commands: Commands,
 ) {
     if prepared.is_changed() {
         actors.current = None;
@@ -754,7 +756,18 @@ pub(super) fn prepare(
             "world {} animation/script cache generation mismatch; re-export the world",
             scripts.world
         );
-        ScriptWorld::prepare(scripts, actors.generation)
+        if let Some(clock) = &clock {
+            anyhow::ensure!(
+                clock.settings() == scripts.clock,
+                "world {} clock settings differ from the active game's installed settings",
+                scripts.world
+            );
+        }
+        let world = ScriptWorld::prepare(scripts, actors.generation)?;
+        if clock.is_none() {
+            commands.insert_resource(crate::clock::SimulationClock::new(scripts.clock)?);
+        }
+        Ok(world)
     })();
     match result {
         Ok(world) => actors.current = Some(world),

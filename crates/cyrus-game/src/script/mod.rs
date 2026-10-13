@@ -47,6 +47,13 @@ impl Plugin for ScriptPlugin {
             )
             .add_systems(
                 Update,
+                crate::clock::enter_world
+                    .after(registry::prepare)
+                    .after(registry::clear_unprepared)
+                    .before(crate::player::runtime::step),
+            )
+            .add_systems(
+                Update,
                 (presentation::bind_scene, presentation::apply)
                     .chain()
                     .in_set(cyrus_world::animation::AnimationSystems)

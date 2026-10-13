@@ -339,11 +339,13 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
     use bevy::{asset::AssetApp, prelude::*};
     use cyrus_assets::animation::Animations;
     use cyrus_game::script::{ScriptActors, ScriptPlugin, ScriptStatus};
+    use cyrus_game::{AppState, clock::SimulationClock};
     use cyrus_world::lifecycle::PreparedWorld;
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()))
         .init_asset::<Scripts>()
         .init_asset::<Animations>()
+        .insert_resource(State::new(AppState::InGame))
         .add_plugins(ScriptPlugin);
     let data = cache();
     let content_id = data.content_id.clone();
@@ -392,6 +394,24 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
         .unwrap()
         .id(0)
         .unwrap();
+    {
+        let mut clock = app.world_mut().resource_mut::<SimulationClock>();
+        for _ in 0..12 {
+            clock.advance(0);
+        }
+        assert_eq!(clock.advance(18).frame_scale, 236);
+    }
+    app.insert_resource(State::new(AppState::Menu));
+    app.update();
+    app.insert_resource(State::new(AppState::InGame));
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .resource_mut::<SimulationClock>()
+            .advance(18)
+            .frame_scale,
+        236
+    );
     app.world_mut().remove_resource::<PreparedWorld>();
     app.update();
     assert!(app.world().resource::<ScriptActors>().current.is_none());
@@ -401,6 +421,13 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
     ));
     app.insert_resource(prepared());
     app.update();
+    {
+        let mut clock = app.world_mut().resource_mut::<SimulationClock>();
+        for _ in 0..12 {
+            assert_eq!(clock.advance(18).frame_scale, 256);
+        }
+        assert_eq!(clock.advance(18).frame_scale, 236);
+    }
     {
         let mut actors = app.world_mut().resource_mut::<ScriptActors>();
         let world = actors.current.as_mut().unwrap();

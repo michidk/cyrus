@@ -12,6 +12,12 @@ asks the browser host to close its tab. Native hosts also add `LoadingPlugin`;
 without startup presentation it retains direct/headless parser-coverage preload.
 Preparation results remain cyrus-assets types.
 
+The menu initializes the shared game clock from `MenuAsset.clock` when absent.
+Book motion and menu clock invocations follow changes in the host's BIOS-tick
+sample. Menu exit restores the partial timing checkpoint while retaining menu
+changes to smoothing, the measurement remainder, warmup and the last exposed step.
+World timing remains game-owned; this does not enable automatic actor updates.
+
 Startup copies title readiness and committed menu preferences, including subtitles,
 into cyrus-audio before `ApplyPreferences`. Preferences still persist before they
 apply. Keep `ApplyPreferences -> AnimationSystems -> PlayCues`; rendering hosts

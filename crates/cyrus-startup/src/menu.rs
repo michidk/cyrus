@@ -11,6 +11,7 @@ use cyrus_assets::menu::MenuAsset;
 pub use cyrus_assets::menu::MenuItem;
 use cyrus_assets::preferences::MenuPreferences;
 use cyrus_game::AppState;
+use cyrus_game::clock::{ClockCheckpoint, SimulationClock, bios_tick};
 use cyrus_world::sound::SoundCue;
 use serde::Serialize;
 use std::{collections::BTreeMap, hash::BuildHasher};
@@ -30,6 +31,11 @@ pub struct MovieStatus {
 
 #[derive(Message)]
 pub(super) struct MovieRequest(pub usize);
+
+struct MenuTiming {
+    checkpoint: ClockCheckpoint,
+    last_tick: u32,
+}
 
 /// Current installed menu selection and explicitly unsupported activation.
 #[derive(Resource, Default, Serialize)]
@@ -59,7 +65,7 @@ pub struct MenuState {
     #[serde(skip)]
     pub(super) motion: Option<BookMotion>,
     #[serde(skip)]
-    motion_seconds: f32,
+    timing: Option<MenuTiming>,
     #[serde(skip)]
     closing: bool,
     #[serde(skip)]
@@ -143,9 +149,9 @@ fn setup(
 }
 
 pub(super) fn drive(
-    assets: Res<AssetServer>,
-    definitions: Res<Assets<MenuAsset>>,
-    input: (Res<Time>, Res<ButtonInput<KeyCode>>),
+    assets: (Res<AssetServer>, Res<Assets<MenuAsset>>),
+    clock: Option<ResMut<SimulationClock>>,
+    input: (Res<Time>, Res<ButtonInput<KeyCode>>, Res<Time<Real>>),
     mut menu: ResMut<MenuState>,
     rendering: (
         ResMut<Assets<Image>>,
@@ -163,6 +169,7 @@ pub(super) fn drive(
         ResMut<NextState<AppState>>,
     ),
 ) {
+    let (assets, definitions) = assets;
     let (mut images, mut sprite) = rendering;
     let (mut preferences_state, mut bindings, mut commands, mut next) = runtime;
     if let Some(bevy::asset::LoadState::Failed(error)) = assets.get_load_state(menu.asset.id()) {
@@ -177,6 +184,35 @@ pub(super) fn drive(
     let Some(book) = definitions.get(&menu.asset) else {
         return;
     };
+    let Some(mut clock) = clock else {
+        match SimulationClock::new(book.clock) {
+            Ok(clock) => commands.insert_resource(clock),
+            Err(error) => {
+                let text = format!("Menu clock unavailable: {error:#}");
+                if menu.unavailable.as_ref() != Some(&text) {
+                    notice(&mut commands, &assets, text.clone());
+                    menu.unavailable = Some(text);
+                }
+                menu.ready = false;
+            }
+        }
+        return;
+    };
+    if clock.settings() != book.clock {
+        menu.ready = false;
+        let text = "Menu clock settings differ from the active game's installed settings.";
+        if menu.unavailable.as_deref() != Some(text) {
+            notice(&mut commands, &assets, text.into());
+            menu.unavailable = Some(text.into());
+        }
+        return;
+    }
+    let sample = bios_tick(input.2.elapsed());
+    let timing = menu.timing.get_or_insert_with(|| MenuTiming {
+        checkpoint: clock.checkpoint(),
+        last_tick: sample,
+    });
+    let menu_tick = timing.last_tick != sample;
     if menu.preferences.is_none() {
         menu.preferences = Some(match preferences_state.menu.clone() {
             Ok(Some(preferences)) => preferences,
@@ -208,18 +244,19 @@ pub(super) fn drive(
     }
     let mut moving = menu.motion.as_ref().is_some_and(BookMotion::busy);
     if moving {
-        // Authored updates use the same 30 Hz presentation cadence as startup.
-        menu.motion_seconds += input.0.delta_secs();
-        if menu.motion_seconds >= 1.0 / 30.0 {
-            menu.motion_seconds %= 1.0 / 30.0;
+        if menu_tick {
             menu.motion.as_mut().unwrap().tick(|effect| {
                 output.2.write(flat_sound(effect));
             });
             menu.dirty = true;
         }
-    } else if menu.closing {
+    } else if menu.closing && menu_tick {
         output.0.write(AppExit::Success);
         return;
+    }
+    if menu_tick {
+        clock.advance(sample);
+        menu.timing.as_mut().unwrap().last_tick = sample;
     }
     let keys = &input.1;
     let previous = (menu.page, menu.selected, menu.capturing, menu.blink_on);
@@ -307,7 +344,6 @@ pub(super) fn drive(
                         {
                             menu.motion.as_mut().unwrap().close();
                             menu.closing = true;
-                            menu.motion_seconds = 0.0;
                         }
                     }
                     // shortcut: Load starts fresh until the save-slot system is implemented.
@@ -428,7 +464,6 @@ impl MenuState {
                 self.unavailable = Some(error);
                 return;
             }
-            self.motion_seconds = 0.0;
             self.selections.insert(self.page, self.selected);
         }
         self.page = page;
@@ -473,13 +508,60 @@ fn notice(commands: &mut Commands, assets: &AssetServer, text: String) {
         },
     ));
 }
-fn cleanup(mut commands: Commands) {
+fn cleanup(
+    mut commands: Commands,
+    mut menu: ResMut<MenuState>,
+    clock: Option<ResMut<SimulationClock>>,
+    time: Res<Time<Real>>,
+) {
+    if let Some(mut clock) = clock
+        && let Some(timing) = menu.timing.take()
+    {
+        clock.restore(timing.checkpoint, bios_tick(time.elapsed()));
+    }
     commands.remove_resource::<MenuState>();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_exit_restores_saved_clock_without_resetting_menu_warmup_or_last_step() {
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 24,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        let checkpoint = clock.checkpoint();
+        let menu_step = clock.advance(18);
+        let mut time = Time::<Real>::default();
+        time.advance_by(std::time::Duration::from_secs(10));
+        let sample = bios_tick(time.elapsed());
+        let mut app = App::new();
+        app.insert_resource(clock)
+            .insert_resource(time)
+            .insert_resource(MenuState {
+                timing: Some(MenuTiming {
+                    checkpoint,
+                    last_tick: 18,
+                }),
+                ..default()
+            })
+            .add_systems(Update, cleanup);
+        app.update();
+        assert!(!app.world().contains_resource::<MenuState>());
+        let mut clock = app.world_mut().resource_mut::<SimulationClock>();
+        assert_eq!(clock.step(), menu_step);
+        for _ in 0..11 {
+            assert_eq!(clock.advance(sample).nominal_ticks, 1);
+        }
+        assert_eq!(clock.advance(sample).frame_scale, 512);
+    }
+
     #[test]
     fn navigation_wraps_and_skips_data_defined_disabled_entries() {
         let mut menu = MenuState {

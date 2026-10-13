@@ -90,10 +90,14 @@ pub(crate) fn prepare_menu(
     )
     .map_err(anyhow::Error::msg)?;
     let system_bytes = read("SYSTEM.INI")?;
-    let preferences = rgpre::import::menu_settings::MenuSettings::parse(
-        std::str::from_utf8(&system_bytes).context("menu: SYSTEM.INI is not UTF-8")?,
-    )
-    .map_err(anyhow::Error::msg)?;
+    let system_text =
+        std::str::from_utf8(&system_bytes).context("menu: SYSTEM.INI is not UTF-8")?;
+    let system = rgpre::import::system_ini::SystemIni::parse(system_text)
+        .context("menu: SYSTEM.INI clock settings")?;
+    let clock = crate::script::ClockSettings::from_system(&system.system)
+        .context("menu: SYSTEM.INI clock settings")?;
+    let preferences = rgpre::import::menu_settings::MenuSettings::parse(system_text)
+        .map_err(anyhow::Error::msg)?;
     let defaults = MenuPreferences {
         values: [
             (504, i32::from(preferences.subtitles)),
@@ -166,7 +170,7 @@ pub(crate) fn prepare_menu(
     let directory = Path::new("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        12u32,
+        13u32,
         &ini_bytes,
         (&world_bytes, &flash_bytes, &loading_font_bytes),
         &keys_bytes,
@@ -272,6 +276,7 @@ pub(crate) fn prepare_menu(
         }
     }
     let book = MenuAsset {
+        clock,
         new_game: crate::menu::NewGameEntry {
             world: new_game.world,
             marker: new_game.marker,

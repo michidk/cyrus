@@ -43,6 +43,8 @@ version-6 `.scripts` sidecar retains the validated SYSTEM.INI clock inputs, the 
 origins, definitions, fresh-game flag values, locals, strings,
 initialized attributes, hooks and explicit unsupported records. Placement records retain
 the original model name and complete model-mode byte for actor initialization.
+The menu cache also carries the clock settings, using the same typed conversion
+and validation as world scripts. Its source stamp invalidates older menu exports.
 Actor-load defaults come from preservation [PR #59](https://github.com/michidk/redguard-preservation/pull/59)
 and installed SYSTEM.INI; model-path message-group assignment remains separate. Its content identity rejects
 changed metadata. Animation metadata retains the same script identity; preparation

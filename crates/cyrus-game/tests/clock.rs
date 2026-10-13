@@ -1,5 +1,15 @@
 use cyrus_assets::script::ClockSettings;
-use cyrus_game::clock::{ClockStep, SimulationClock};
+use cyrus_game::clock::{ClockStep, SimulationClock, bios_tick};
+
+#[test]
+fn host_duration_uses_bios_tick_boundaries() {
+    use std::time::Duration;
+    assert_eq!(bios_tick(Duration::ZERO), 0);
+    assert_eq!(bios_tick(Duration::from_millis(54)), 0);
+    assert_eq!(bios_tick(Duration::from_millis(55)), 1);
+    assert_eq!(bios_tick(Duration::from_secs(1)), 18);
+    assert_eq!(bios_tick(Duration::from_secs(60)), 1092);
+}
 
 fn settings(smoothing: bool) -> ClockSettings {
     ClockSettings {
@@ -100,4 +110,93 @@ fn backward_clock_sample_clamps_the_accumulated_remainder() {
     clock.advance(18);
     assert_eq!(clock.advance(0).frame_scale, 236);
     assert_eq!(clock.advance(18).frame_scale, 1536);
+}
+
+#[test]
+fn menu_restore_retains_measurement_remainder_but_restores_frame_count() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    for _ in 0..12 {
+        clock.advance(0);
+    }
+    let checkpoint = clock.checkpoint();
+    clock.advance(17);
+    clock.restore(checkpoint, 100);
+    assert_eq!(
+        clock.advance(101),
+        ClockStep {
+            frame_scale: 236,
+            nominal_ticks: 0,
+            fine_ticks: 7,
+        }
+    );
+}
+
+#[test]
+fn menu_restore_keeps_smoothed_fps_and_consumed_warmup() {
+    let mut clock = SimulationClock::new(settings(true)).unwrap();
+    assert_eq!(clock.step().nominal_ticks, 0);
+    let checkpoint = clock.checkpoint();
+    for _ in 0..12 {
+        clock.advance(18);
+    }
+    let menu_step = clock.step();
+    assert_eq!(menu_step.nominal_ticks, 1);
+    clock.restore(checkpoint, 100);
+    assert_eq!(clock.step(), menu_step);
+    assert_eq!(
+        clock.advance(100),
+        ClockStep {
+            frame_scale: 277,
+            nominal_ticks: 1,
+            fine_ticks: 8,
+        }
+    );
+}
+
+#[test]
+fn menu_restore_rolls_back_both_fractional_accumulators() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    for _ in 0..12 {
+        clock.advance(0);
+    }
+    clock.advance(18);
+    let checkpoint = clock.checkpoint();
+    clock.advance(19);
+    clock.restore(checkpoint, 100);
+    assert_eq!(
+        clock.advance(100),
+        ClockStep {
+            frame_scale: 236,
+            nominal_ticks: 1,
+            fine_ticks: 7,
+        }
+    );
+}
+
+#[test]
+fn world_entry_warmup_retains_measurement_and_fractional_carry() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    for _ in 0..12 {
+        clock.advance(0);
+    }
+    clock.advance(18);
+    clock.restart_warmup();
+    for _ in 0..12 {
+        assert_eq!(
+            clock.advance(18),
+            ClockStep {
+                frame_scale: 256,
+                nominal_ticks: 1,
+                fine_ticks: 8,
+            }
+        );
+    }
+    assert_eq!(
+        clock.advance(18),
+        ClockStep {
+            frame_scale: 236,
+            nominal_ticks: 1,
+            fine_ticks: 8,
+        }
+    );
 }

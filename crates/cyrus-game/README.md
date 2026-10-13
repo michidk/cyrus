@@ -23,7 +23,14 @@ production simulation clock remain unsupported. See
 `SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
 validated installed clock settings and caller-supplied BIOS samples. Its twelve-update
 warmup, fractional carry, smoothing and suspension rebasing are independent of
-rendering. It does not yet schedule automatic actor updates.
+rendering. Partial checkpoints retain menu changes to smoothing, measurement
+remainder and warmup, and leave the last exposed step intact. World preparation
+creates the clock only when absent and rejects settings that differ from the
+active game. Entering a new world generation restarts warmup without resetting
+measurement or fractions; a menu round trip within that generation does not.
+Menu caches carry the same installed settings for startup initialization.
+The book menu supplies BIOS-boundary invocations and restores its partial
+checkpoint on exit. Automatic world invocations and actor updates remain unconnected.
 
 World scene roots carry `ScriptScene`. Exported map nodes automatically bind to
 their logical actor by placement index and script name. Bindings expire on world

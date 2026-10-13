@@ -64,6 +64,24 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     }
     let menu: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+    assert_eq!(
+        menu["clock"],
+        serde_json::json!({
+            "normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,
+            "use_smooth_fps":true,"use_smooth_divisor":true,
+        })
+    );
+    let mut invalid = menu.clone();
+    invalid["clock"]["min_frame_rate"] = 0.into();
+    assert!(
+        serde_json::from_value::<cyrus_assets::menu::MenuAsset>(invalid)
+            .unwrap()
+            .validate()
+            .is_err()
+    );
+    let mut old = menu.clone();
+    old.as_object_mut().unwrap().remove("clock");
+    assert!(serde_json::from_value::<cyrus_assets::menu::MenuAsset>(old).is_err());
     assert_eq!(menu["new_game"]["world"], 1);
     assert_eq!(menu["new_game"]["marker"], 3);
     assert_eq!(menu["new_game"]["loading"].as_array().unwrap().len(), 6);
@@ -149,6 +167,17 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
             .all(|e| e["item"]["visible"] == true)
     );
     assert_eq!(forced["waiting_message"], "PLEASE PRESS A ");
+    let system = std::fs::read_to_string(temp.join("SYSTEM.INI")).unwrap();
+    assert!(system.contains("normal_frame_rate=12"));
+    std::fs::write(
+        temp.join("SYSTEM.INI"),
+        system.replace("normal_frame_rate=12", "normal_frame_rate=24"),
+    )
+    .unwrap();
+    export_menu(&edited, &cache).unwrap();
+    let changed: cyrus_assets::menu::MenuAsset =
+        serde_json::from_slice(&std::fs::read(cache.join("menu/book.menu")).unwrap()).unwrap();
+    assert_eq!(changed.clock.normal_frame_rate, 24);
     std::fs::remove_file(cache.join("menu/book.menu")).unwrap();
     export_menu(&edited, &cache).unwrap();
     assert!(cache.join("menu/book.menu").is_file());

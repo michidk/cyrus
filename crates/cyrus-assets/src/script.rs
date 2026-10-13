@@ -19,6 +19,29 @@ pub struct ClockSettings {
 }
 
 impl ClockSettings {
+    /// Prepare shared startup and world timing from installed typed settings.
+    #[cfg(feature = "parsers")]
+    pub fn from_system(system: &rgpre::import::system_ini::SystemSettings) -> anyhow::Result<Self> {
+        let rate = |name: &str, value: Option<i32>| -> anyhow::Result<u32> {
+            let value = value.with_context(|| format!("SYSTEM.INI [system] {name} missing"))?;
+            u32::try_from(value).with_context(|| format!("SYSTEM.INI [system] {name} is negative"))
+        };
+        let normal = rate("normal_frame_rate", system.normal_frame_rate)?;
+        let settings = ClockSettings {
+            normal_frame_rate: if normal == 0 { 12 } else { normal },
+            min_frame_rate: rate("min_frame_rate", system.min_frame_rate)?,
+            max_frame_rate: rate("max_frame_rate", system.max_frame_rate)?,
+            use_smooth_fps: system
+                .use_smooth_fps
+                .context("SYSTEM.INI [system] use_smooth_fps missing")?,
+            use_smooth_divisor: system
+                .use_smooth_divisor
+                .context("SYSTEM.INI [system] use_smooth_divisor missing")?,
+        };
+        settings.validate()?;
+        Ok(settings)
+    }
+
     /// Reject invalid divisors and rates whose original signed numerator overflows.
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
