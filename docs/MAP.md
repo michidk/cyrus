@@ -78,6 +78,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-game` — Gameplay state, fidelity and player rules, independent of presentation.
 
+- `src/clock.rs` — Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.

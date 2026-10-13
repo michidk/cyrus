@@ -196,6 +196,7 @@ world playback is incomplete.
 - [x] Retained animation metadata and source-mapped i32/reconstructed-i16 poses; supplied-tick type-0/type-1 requests, priorities, defaults, exit tails and authored sound markers.
 - [x] Portable SOUP VM and logical actors; explicit animation, waits, flags, attributes, routed tasks, spatial attachment/rotation and player queries share state with presentation. **Verified:** FLAG2 supplied-tick sequences and PALACE headless spatial contracts.
 - [x] Explicit activation shares receiver ownership, pending prompts and timers with HUD drawing. **Verified:** [activation increment](https://github.com/michidk/cyrus/commit/5358aa0) includes script/headless HUD contracts and installed RTX labels, including text-only entries.
+- [x] Shared clock arithmetic consumes validated installed settings and explicit BIOS samples, retaining startup warmup, smoothing and fractional nominal ticks. **Verified:** clock contracts, installed native/browser schema-6 preparation and headless START loading. This does not schedule actors.
 - [ ] Establish production invocation policy, eligible actors/callers and timing. Do not substitute a guessed fixed rate for original behavior.
 - [ ] Finish state-dependent defaults, remaining group types, cancellation/event commands and model replacement for all actors.
 - [ ] Complete object routing, variable references, scriptless receivers, allocation/recycling and model-coupled attributes; run all required scripts automatically through the [SOUP checklist](plans/2026-10-12-soup-completion.md).

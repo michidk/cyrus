@@ -1,6 +1,7 @@
 //! Shared SOUP preparation through preservation's typed decoder and installed definitions.
 use crate::script::{
-    Actor, CallKind, Definition, Flag, Function, Instance, Operation, Program, Scripts, Step,
+    Actor, CallKind, ClockSettings, Definition, Flag, Function, Instance, Operation, Program,
+    Scripts, Step,
 };
 use anyhow::{Context, Result};
 use rgpre::import::{
@@ -10,6 +11,27 @@ use rgpre::import::{
 use std::collections::BTreeMap;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 use std::path::Path;
+
+fn clock_settings(system: &rgpre::import::system_ini::SystemSettings) -> Result<ClockSettings> {
+    let rate = |name: &str, value: Option<i32>| -> Result<u32> {
+        let value = value.with_context(|| format!("SYSTEM.INI [system] {name} missing"))?;
+        u32::try_from(value).with_context(|| format!("SYSTEM.INI [system] {name} is negative"))
+    };
+    let normal = rate("normal_frame_rate", system.normal_frame_rate)?;
+    let settings = ClockSettings {
+        normal_frame_rate: if normal == 0 { 12 } else { normal },
+        min_frame_rate: rate("min_frame_rate", system.min_frame_rate)?,
+        max_frame_rate: rate("max_frame_rate", system.max_frame_rate)?,
+        use_smooth_fps: system
+            .use_smooth_fps
+            .context("SYSTEM.INI [system] use_smooth_fps missing")?,
+        use_smooth_divisor: system
+            .use_smooth_divisor
+            .context("SYSTEM.INI [system] use_smooth_divisor missing")?,
+    };
+    settings.validate()?;
+    Ok(settings)
+}
 
 /// Exports actor programs independently of mesh availability; unsupported actors remain visible.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
@@ -24,12 +46,14 @@ pub fn prepare_source(
     source: &dyn crate::source::ReadAssets,
     world: u32,
 ) -> Result<Scripts> {
-    let config = rgpre::import::soup_ini::SoupConfig::parse(&crate::preparation::text(
-        source,
-        "SYSTEM.INI",
-    )?)
-    .map_err(anyhow::Error::msg)
-    .with_context(|| format!("world {world} script settings"))?;
+    let system_text = crate::preparation::text(source, "SYSTEM.INI")?;
+    let config = rgpre::import::soup_ini::SoupConfig::parse(&system_text)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| format!("world {world} script settings"))?;
+    let system = rgpre::import::system_ini::SystemIni::parse(&system_text)
+        .with_context(|| format!("world {world} SYSTEM.INI clock settings"))?;
+    let clock =
+        clock_settings(&system.system).with_context(|| format!("world {world} script clock"))?;
     let definition = crate::preparation::soup(source)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
     let mut actors = BTreeMap::new();
@@ -156,7 +180,8 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 5,
+        version: 6,
+        clock,
         actor_pool_capacity: config.actor_pool_capacity,
         world,
         content_id: String::new(),

@@ -5,6 +5,39 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Validated installed `[system]` inputs for the shared FPS-derived game clock.
+/// Rates are in nominal frames per BIOS measurement window. A stored normal rate
+/// of zero is resolved to twelve during preparation, following preservation's
+/// `docs/engine/player.md#fps-derived-frame-scale`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClockSettings {
+    pub normal_frame_rate: u32,
+    pub min_frame_rate: u32,
+    pub max_frame_rate: u32,
+    pub use_smooth_fps: bool,
+    pub use_smooth_divisor: bool,
+}
+
+impl ClockSettings {
+    /// Reject invalid divisors and rates whose original signed numerator overflows.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (1..=i32::MAX as u32 / 256).contains(&self.normal_frame_rate),
+            "SYSTEM.INI [system] normal_frame_rate {} is unsupported",
+            self.normal_frame_rate
+        );
+        anyhow::ensure!(
+            self.min_frame_rate > 0
+                && self.min_frame_rate <= self.max_frame_rate
+                && self.max_frame_rate <= i32::MAX as u32,
+            "SYSTEM.INI [system] invalid min_frame_rate {} / max_frame_rate {}",
+            self.min_frame_rate,
+            self.max_frame_rate
+        );
+        Ok(())
+    }
+}
+
 /// Versioned actor-local instructions and initial state, independent of a renderer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Program {
@@ -245,6 +278,7 @@ pub struct Instance {
 #[derive(bevy::prelude::Asset, bevy::prelude::TypePath, Debug, Clone, Serialize, Deserialize)]
 pub struct Scripts {
     pub version: u32,
+    pub clock: ClockSettings,
     /// Installed reusable actor-pool capacity, including the engine's minimum of ten.
     pub actor_pool_capacity: u32,
     pub content_id: String,
@@ -260,6 +294,7 @@ impl Scripts {
     pub fn content_identity(&self) -> anyhow::Result<String> {
         let bytes = serde_json::to_vec(&(
             self.version,
+            &self.clock,
             self.actor_pool_capacity,
             self.world,
             &self.definition,
@@ -271,11 +306,14 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 5,
+            self.version == 6,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
         );
+        self.clock
+            .validate()
+            .with_context(|| format!("world {} script clock", self.world))?;
         anyhow::ensure!(
             (10..=i32::MAX as u32).contains(&self.actor_pool_capacity),
             "world {}: invalid script actor pool capacity {}",

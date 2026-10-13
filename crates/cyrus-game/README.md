@@ -20,6 +20,11 @@ explicit deterministic APIs. Automatic locomotion, animation eligibility and a
 production simulation clock remain unsupported. See
 [SETUP](../../docs/SETUP.md) and [ROADMAP](../../docs/ROADMAP.md).
 
+`SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
+validated installed clock settings and caller-supplied BIOS samples. Its twelve-update
+warmup, fractional carry, smoothing and suspension rebasing are independent of
+rendering. It does not yet schedule automatic actor updates.
+
 World scene roots carry `ScriptScene`. Exported map nodes automatically bind to
 their logical actor by placement index and script name. Bindings expire on world
 replacement, including reloads of the same world. `initialize_map_animation`

@@ -3,7 +3,14 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 5,
+        version: 6,
+        clock: cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: true,
+            use_smooth_divisor: true,
+        },
         actor_pool_capacity: 32,
         world: 7,
         content_id: String::new(),
@@ -357,4 +364,109 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
     assert_eq!(actor.operands["value:update"], 1);
     assert_eq!(actor.instructions["assign"], 1);
     assert_eq!(actor.unsupported, ["unknown form"]);
+}
+
+#[test]
+fn clock_inputs_are_validated_and_part_of_script_identity() {
+    let mut scripts = cache();
+    scripts.clock.normal_frame_rate += 1;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
+    for (normal, min, max) in [
+        (0, 6, 300),
+        (12, 0, 300),
+        (12, 301, 300),
+        (u32::MAX, 6, 300),
+    ] {
+        let mut invalid = cache();
+        invalid.clock.normal_frame_rate = normal;
+        invalid.clock.min_frame_rate = min;
+        invalid.clock.max_frame_rate = max;
+        invalid.content_id = invalid.content_identity().unwrap();
+        assert!(format!("{:#}", invalid.validate().unwrap_err()).contains("SYSTEM.INI"));
+    }
+    let mut old = cache();
+    old.version = 5;
+    assert!(
+        old.validate()
+            .unwrap_err()
+            .to_string()
+            .contains("re-export")
+    );
+}
+
+#[cfg(feature = "parsers")]
+#[test]
+fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
+    use cyrus_assets::source::{FileInfo, Manifest, ReadAssets};
+    struct Source {
+        manifest: Manifest,
+        system: Vec<u8>,
+    }
+    impl ReadAssets for Source {
+        fn manifest(&self) -> &Manifest {
+            &self.manifest
+        }
+        fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+            let bytes = match path {
+                "SYSTEM.INI" => self.system.as_slice(),
+                "soup386/SOUP386.DEF" => &[],
+                _ => anyhow::bail!("unexpected source {path}"),
+            };
+            let start = usize::try_from(start)?;
+            Ok(bytes
+                .get(start..start + length)
+                .ok_or_else(|| anyhow::anyhow!("{path}: truncated"))?
+                .to_vec())
+        }
+    }
+    let prepare = |normal: i32, min: i32| {
+        let system = format!("[system]\nmax_active_objects=10\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\n").into_bytes();
+        let source = Source {
+            manifest: Manifest {
+                files: vec![
+                    FileInfo {
+                        path: "SYSTEM.INI".into(),
+                        bytes: system.len() as u64,
+                        digest: "0".repeat(64),
+                    },
+                    FileInfo {
+                        path: "soup386/SOUP386.DEF".into(),
+                        bytes: 0,
+                        digest: "0".repeat(64),
+                    },
+                ],
+            },
+            system,
+        };
+        cyrus_assets::script_export::prepare_source(
+            &rgpre::import::rgm::RgmFile { sections: vec![] },
+            &source,
+            17,
+        )
+    };
+    let scripts = prepare(0, 6).unwrap();
+    assert_eq!(
+        scripts.clock,
+        ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: true,
+            use_smooth_divisor: false,
+        }
+    );
+    assert_eq!(scripts.version, 6);
+    for (normal, min, field) in [(-1, 6, "normal_frame_rate"), (12, 0, "min_frame_rate")] {
+        let error = format!("{:#}", prepare(normal, min).unwrap_err());
+        assert!(
+            error.contains("world 17") && error.contains(field),
+            "{error}"
+        );
+    }
 }

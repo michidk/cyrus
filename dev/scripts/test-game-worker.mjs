@@ -60,7 +60,7 @@ for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 's
   assert.ok(files.has(name), 'missing generated asset ' + name);
   if (name === 'START.scripts') {
     const scripts = JSON.parse(new TextDecoder().decode(files.get(name)));
-    assert.equal(scripts.version, 5);
+    assert.equal(scripts.version, 6);
     assert.ok(scripts.content_id.length > 0 && scripts.instances.length > 0);
     const animations = JSON.parse(new TextDecoder().decode(files.get('START.animations')));
     assert.equal(animations.version, 2);

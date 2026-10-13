@@ -19,7 +19,7 @@ updates diagnostics, and advances explicitly attached animation playback.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, hooks, placement model
-  metadata, and decoded programs. The script cache is version 5, programs are
+  metadata, and decoded programs. The script cache is version 6, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).

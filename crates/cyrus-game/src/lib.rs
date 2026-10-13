@@ -1,4 +1,5 @@
 //! Gameplay state, fidelity and player rules, independent of presentation.
+pub mod clock;
 pub mod fidelity;
 pub mod player;
 pub mod preferences;

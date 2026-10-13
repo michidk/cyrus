@@ -69,7 +69,14 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 5,
+        version: 6,
+        clock: cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 12,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: true,
+            use_smooth_divisor: true,
+        },
         actor_pool_capacity: 10,
         content_id: String::new(),
         world: 17,
