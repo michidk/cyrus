@@ -375,8 +375,9 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F1 and use **Flycam (leave player in place)** to switch between inspection
-and the player pose. Flycam starts enabled. WASD moves it, right mouse looks,
+Press F1 and use **Flycam** to switch between inspection
+and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
+an inspection pose. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
 Changing fidelity does not toggle flycam. Turning it off preserves the player
 position. Initial placement uses the installed player marker; locomotion and

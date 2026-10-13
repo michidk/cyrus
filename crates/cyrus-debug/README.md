@@ -2,7 +2,7 @@
 
 The F1 debug menu shared by the native and browser game. It changes
 runtime fidelity individually or all at once, an independent flycam toggle and
-speed, loads an exported world from a dropdown, and launches a separate
+speed, loads an installed world from a dropdown, and launches a separate
 `bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
 Resources to edit reflected resources, and Assets to inspect loaded assets.
 The inspector stays open independently of the F1 menu and has its own close button.
@@ -22,6 +22,7 @@ Types without registered Bevy reflection cannot be edited by the inspector.
 Hosts populate `WorldPicker` and consume its pending selection; this crate does
 not read the install or browser DOM.
 
+Flycam starts disabled unless an explicit inspection view is supplied.
 Flycam leaves the player in place. Turning it off returns the camera to the
 player pose; it does not change the fidelity settings.
 
