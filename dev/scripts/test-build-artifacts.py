@@ -124,8 +124,14 @@ done
 
     def test_real_web_builder_compiles_and_exports_all_requested_apps(self):
         source = Path(__file__).parent
-        for name in ("build-web.sh", "toolchain.sh"):
+        for name in ("build-web.sh", "toolchain.sh", "build-provenance.py"):
             shutil.copy2(source / name, self.root / "dev/scripts" / name)
+        subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "init", "--quiet"],
+                       cwd=self.root, check=True)
+        subprocess.run(["git", "-c", "core.hooksPath=/dev/null",
+                        "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                        "commit", "--quiet",
+                        "--allow-empty", "-m", "fixture"], cwd=self.root, check=True)
         apps = ["cyrus-web"]
         if (source.parent.parent / "crates/cyrus-viewer/Cargo.toml").exists():
             apps.append("cyrus-viewer")
