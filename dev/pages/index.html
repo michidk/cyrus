@@ -6,28 +6,48 @@
 <title>cyrus · Redguard rebuilt in Rust</title>
 <meta name="description" content="A faithful rebuild of The Elder Scrolls Adventures: Redguard (1998) in Rust and Bevy. Bring your own GOG install.">
 <style>
-  :root { --ink: #ece3cf; --dim: #b3a78e; --bg: #15120e; --panel: #1f1a14; --line: #3a3126; --accent: #d9a441; }
+  /* Palette and type match the redguard-preservation docs theme. */
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+  :root {
+    --parchment: #f0e4cf; --parchment-light: #f5ead8; --parchment-dark: #e4d4b8;
+    --burgundy: #4a1a2a; --burgundy-dark: #361320; --gold: #b8860b; --gold-light: #d4a537;
+    --gold-muted: #9a7430; --gold-pale: #e0c888; --red: #8b1a1a; --red-light: #a62c2c;
+    --text: #2d2118; --text-muted: #7a6854; --border: #c4b08a;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Georgia, "Times New Roman", serif; }
+  body {
+    margin: 0; color: var(--text); font: 1.2rem/1.6 'Crimson Pro', Georgia, 'Palatino Linotype', serif;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(217, 200, 165, .25) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(184, 134, 11, .06) 0%, transparent 40%),
+      var(--parchment);
+  }
+  ::selection { background: var(--gold-pale); color: var(--burgundy-dark); }
+  header { background: var(--burgundy); border-bottom: 3px solid var(--gold-muted); }
+  .banner { display: block; width: 100%; max-width: 1200px; height: auto; margin: 0 auto; }
   main { max-width: 860px; margin: 0 auto; padding: 0 20px 64px; }
-  .banner { display: block; width: 100%; height: auto; border-bottom: 1px solid var(--line); }
-  h1 { font-size: clamp(2.6rem, 8vw, 4rem); letter-spacing: .04em; margin: 40px 0 4px; }
-  h2 { font-size: 1.25rem; margin: 44px 0 10px; color: var(--accent); font-weight: normal; letter-spacing: .06em; text-transform: uppercase; }
-  .tagline { font-size: 1.25rem; margin: 0 0 6px; }
-  .sub { color: var(--dim); margin: 0; }
-  .note { margin: 28px 0 0; padding: 14px 18px; background: var(--panel); border-left: 3px solid var(--accent); }
+  h1, h2 { font-family: 'Cinzel', 'Palatino Linotype', 'Book Antiqua', serif; }
+  h1 { font-size: clamp(2.6rem, 8vw, 4rem); letter-spacing: .06em; margin: 40px 0 4px; color: var(--burgundy); }
+  h2 { font-size: 1.4rem; margin: 44px 0 10px; color: var(--red); font-weight: 600; }
+  .tagline { font-size: 1.35rem; margin: 0 0 6px; }
+  .sub { color: var(--text-muted); margin: 0; }
+  .note { margin: 28px 0 0; padding: 14px 18px; background: var(--parchment-dark); border-left: 3px solid var(--gold-muted); }
   .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 0; }
-  .actions a { padding: 11px 20px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); text-decoration: none; font-family: system-ui, sans-serif; font-size: .95rem; }
-  .actions a.primary { background: var(--accent); border-color: var(--accent); color: #1b140a; font-weight: 600; }
-  .actions a:hover, .actions a:focus-visible { border-color: var(--accent); }
+  .actions a { padding: 10px 20px; border: 1px solid var(--border); border-radius: 3px; background: var(--parchment-light);
+    color: var(--burgundy); text-decoration: none; font: 600 .95rem 'Cinzel', serif; letter-spacing: .03em; }
+  .actions a.primary { background: var(--burgundy); border-color: var(--gold-muted); color: var(--gold-pale); }
+  .actions a:hover, .actions a:focus-visible { border-color: var(--gold); color: var(--red); }
+  .actions a.primary:hover, .actions a.primary:focus-visible { background: var(--burgundy-dark); color: var(--gold-light); }
   ul { padding-left: 1.2em; margin: 0; }
   li { margin: 4px 0; }
-  a { color: var(--accent); }
-  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--dim); font-size: .9rem; }
+  a { color: var(--red); }
+  a:hover { color: var(--red-light); }
+  code { background: var(--parchment-dark); padding: .1em .25em; color: var(--red-light); }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 1rem; }
 </style>
 </head>
 <body>
-<img class="banner" src="cyrus-banner.webp" width="1200" height="400" alt="A green dragon watches an airship cross Redguard's island landscape">
+<header><img class="banner" src="cyrus-banner.webp" width="1200" height="400" alt="A green dragon watches an airship cross Redguard's island landscape"></header>
 <main>
   <h1>cyrus</h1>
   <p class="tagline">A faithful rebuild of <em>The Elder Scrolls Adventures: Redguard</em> (1998) in Rust and Bevy.</p>
