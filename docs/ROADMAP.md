@@ -56,6 +56,7 @@ therefore does not establish animated or playable world behavior.
 
 | Work | Session |
 | --- | --- |
+| Stage 0 audit triage, capture provenance and gate automation | Codex, tooling follow-ups; `magic/artifacts/2026-10-13-stage0-followups/` |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 

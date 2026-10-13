@@ -88,6 +88,10 @@ For matched original/native/browser viewpoints, use
 The audit's script inventory is a static census. Runtime unsupported counts are
 observed preparation/execution failures whose existing error says `unsupported`;
 script decode failures and runtime failures have separate counts.
-Placement counts include repeated missing rope links. Asset counts count failing
-source references, not unique filenames. Preload diagnostics use a null world
-because the coverage scan does not establish a world reference.
+Placement counts include repeated missing rope links. Asset counts count failed
+loader requests, including actor-name fallbacks for empty authored model fields.
+They do not establish that an authored asset is missing, and are not counts of
+unique filenames. A skipped placement and an asset failure can describe the same
+request; do not add these categories together as independent defects. Preload
+diagnostics use a null world because the coverage scan does not establish a
+world reference.

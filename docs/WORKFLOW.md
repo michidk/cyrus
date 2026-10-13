@@ -34,6 +34,12 @@ that bind everyone are in `AGENTS.md`.
   uses the system toolchain and runs the same gates plus a wasm32 check.
   `Release` packages native and browser builds only for version tags;
   see `SETUP.md` for triggers, platforms, and package contents.
+- Shell build scripts wait for cargo-hauler to return the final Cargo output and
+  exit status. They do not request automatic early detachment. `just gates`
+  exports the resolved workspace `redguard` link for crate-local tests when
+  `REDGUARD_DIR` is unset; an explicit value takes precedence. Run
+  `python3 dev/scripts/test-cargo-wrapper.py` to check this orchestration without
+  compiling or needing an install.
 - `git pull` before starting and while working. Commit completed, verified
   work directly to `main` and push; no feature branches or pull requests
   unless asked. Other agents work in the same checkout: stage only the files

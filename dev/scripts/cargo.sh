@@ -9,7 +9,12 @@ cargo() {
         export RUST_MIN_STACK
     fi
     if [ -z "${CARGO_HAULER_INSIDE:-}" ] && command -v hauler >/dev/null 2>&1; then
-        CARGO_HAULER_MAX_CONCURRENT=3 hauler exec --host script -- cargo "$@"
+        # Scripts need the final exit status and output, not an early detached ticket.
+        (
+            set -o pipefail
+            CARGO_HAULER_MAX_CONCURRENT=3 CARGO_HAULER_SHIM_BACKGROUND=0 \
+                hauler exec --host shim -- cargo "$@" | cat
+        )
     else
         command cargo "$@"
     fi
