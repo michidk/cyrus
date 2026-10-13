@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 exclude = ["dev/vendor/smk"]
 # cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
-default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
+default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-console", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
 [workspace.package]
 version = "0.1.4"
@@ -21,6 +21,7 @@ clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
 smk = { version = "0.1", path = "dev/vendor/smk" }
 redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "d0eec6c98e6917f942e643204fc155f53b34b649" }
+cyrus-console = { path = "crates/cyrus-console" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }
 cyrus-collision = { path = "crates/cyrus-collision" }

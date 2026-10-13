@@ -5,7 +5,8 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use cyrus_assets::console::ConsoleArtwork;
-use cyrus_game::{AppState, console::Console};
+use cyrus_console::Console;
+use cyrus_game::AppState;
 
 #[derive(Default, TypePath)]
 struct Loader;

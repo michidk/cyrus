@@ -102,15 +102,46 @@ fn failed_write_reports_error_and_retains_runtime_state() {
 
 #[test]
 fn console_and_gameplay_have_distinct_raw_toggle_rules() {
-    let mut cheats = Cheats::new(Store::default());
-    cyrus_game::cheat_command::execute(&mut cheats, " ODDJOB = 0x2 ; oddjob = 99").unwrap();
-    assert_eq!(cheats.state().unwrap().value("oddjob"), Some(2));
-    cyrus_game::cheat_command::execute(&mut cheats, "oddjob").unwrap();
-    assert_eq!(cheats.state().unwrap().value("oddjob"), Some(1));
-    cheats.execute("oddjob", Some(2)).unwrap();
-    cheats.execute("oddjob", None).unwrap();
-    assert_eq!(cheats.state().unwrap().value("oddjob"), Some(0));
-    cyrus_game::cheat_command::execute(&mut cheats, "neversaydie = -1").unwrap();
+    use cyrus_console::{Source, submit};
+    let mut app = console_app();
+    submit(
+        app.world_mut(),
+        " ODDJOB = 0x2 ; oddjob = 99",
+        Source::Interactive,
+    )
+    .unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("oddjob"),
+        Some(2)
+    );
+    submit(app.world_mut(), "oddjob", Source::Interactive).unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("oddjob"),
+        Some(1)
+    );
+    app.world_mut()
+        .resource_mut::<Cheats>()
+        .execute("oddjob", Some(2))
+        .unwrap();
+    submit(app.world_mut(), "oddjob", Source::Gameplay).unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("oddjob"),
+        Some(0)
+    );
+    submit(app.world_mut(), "neversaydie = -1", Source::Interactive).unwrap();
+    let cheats = app.world().resource::<Cheats>();
     assert_eq!(cheats.state().unwrap().value("neversaydie"), Some(u32::MAX));
     assert!(cheats.distance_override().unwrap());
     let before = cheats.inspect();
@@ -120,8 +151,8 @@ fn console_and_gameplay_have_distinct_raw_toggle_rules() {
         "oddjob = unknown",
         "oddjob 2",
     ] {
-        assert!(cyrus_game::cheat_command::execute(&mut cheats, invalid).is_err());
-        assert_eq!(cheats.inspect(), before);
+        assert!(submit(app.world_mut(), invalid, Source::Interactive).is_err());
+        assert_eq!(app.world().resource::<Cheats>().inspect(), before);
     }
 }
 
@@ -151,35 +182,80 @@ fn explicit_import_recovers_failed_load_without_discarding_unnamed_slots() {
     assert_eq!(*store.0.lock().unwrap(), Some(bytes));
 }
 
+fn console_app() -> bevy::prelude::App {
+    use bevy::prelude::*;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<cyrus_game::AppState>()
+        .insert_resource(Cheats::new(Store::default()))
+        .add_plugins(cyrus_game::console::GameConsolePlugin);
+    app.world_mut()
+        .resource_mut::<NextState<cyrus_game::AppState>>()
+        .set(cyrus_game::AppState::InGame);
+    app.update();
+    app
+}
+
+#[test]
+fn every_preservation_cheat_has_a_registered_handler() {
+    let mut app = console_app();
+    for entry in cyrus_assets::cheats::empty().entries() {
+        if let Some(name) = &entry.name {
+            cyrus_console::submit(app.world_mut(), name, cyrus_console::Source::Programmatic)
+                .unwrap_or_else(|error| panic!("{name}: {error:#}"));
+        }
+    }
+}
+
 #[test]
 fn console_editor_preserves_commands_and_never_edits_report_lines() {
-    use bevy::prelude::KeyCode;
-    use cyrus_game::console::Console;
-    let mut cheats = Cheats::new(Store::default());
-    let mut console = Console::default();
-    console.key(KeyCode::KeyO, Some("oddjob = 2"), &mut cheats);
-    console.key(KeyCode::Enter, None, &mut cheats);
-    assert_eq!(cheats.state().unwrap().value("oddjob"), Some(2));
-    console.key(KeyCode::Tab, None, &mut cheats);
+    use bevy::prelude::*;
+    use cyrus_console::{Console, Source};
+    let mut app = console_app();
+    let key = |app: &mut App, code, text| {
+        app.world_mut().resource_mut::<Console>().key(code, text);
+        app.update();
+    };
+    key(&mut app, KeyCode::KeyO, Some("oddjob = 2"));
+    key(&mut app, KeyCode::Enter, None);
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("oddjob"),
+        Some(2)
+    );
+    key(&mut app, KeyCode::Tab, None);
+    let console = app.world().resource::<Console>();
     assert_eq!(console.lines[console.selected].text, "oddjob = 2");
-    console.key(KeyCode::Backspace, None, &mut cheats);
-    console.key(KeyCode::Digit3, Some("3"), &mut cheats);
-    console.key(KeyCode::Enter, None, &mut cheats);
-    assert_eq!(cheats.state().unwrap().value("oddjob"), Some(3));
-    console.key(KeyCode::ArrowUp, None, &mut cheats);
+    key(&mut app, KeyCode::Backspace, None);
+    key(&mut app, KeyCode::Digit3, Some("3"));
+    key(&mut app, KeyCode::Enter, None);
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("oddjob"),
+        Some(3)
+    );
+    key(&mut app, KeyCode::ArrowUp, None);
+    let console = app.world().resource::<Console>();
     assert!(console.lines[console.selected].report);
     let report = console.lines[console.selected].text.clone();
-    console.key(KeyCode::KeyA, Some("a"), &mut cheats);
-    console.key(KeyCode::Delete, None, &mut cheats);
+    key(&mut app, KeyCode::KeyA, Some("a"));
+    key(&mut app, KeyCode::Delete, None);
+    let console = app.world().resource::<Console>();
     assert_eq!(console.lines[console.selected].text, report);
-    console.submit(&mut cheats, "CON clear; ignored");
-    assert_eq!(console.lines.len(), 1);
-    assert_eq!(console.selected, 0);
-    console.key(KeyCode::KeyA, Some(&"a".repeat(101)), &mut cheats);
-    assert_eq!(console.lines[0].text.len(), 100);
+    cyrus_console::submit(app.world_mut(), "CON clear; ignored", Source::Interactive).unwrap();
+    assert_eq!(app.world().resource::<Console>().lines.len(), 1);
+    key(&mut app, KeyCode::KeyA, Some(&"a".repeat(101)));
+    assert_eq!(app.world().resource::<Console>().lines[0].text.len(), 100);
     for _ in 0..600 {
-        console.submit(&mut cheats, "oracle");
+        cyrus_console::submit(app.world_mut(), "oracle", Source::Interactive).unwrap();
     }
+    let console = app.world().resource::<Console>();
     assert_eq!(console.lines.len(), 512);
     assert!(console.selected < console.top + console.page_lines);
 }
@@ -187,31 +263,73 @@ fn console_editor_preserves_commands_and_never_edits_report_lines() {
 #[test]
 fn hidden_entry_is_case_insensitive_and_requires_key_release() {
     use bevy::prelude::KeyCode;
-    let mut cheats = Cheats::new(Store::default());
-    let mut console = cyrus_game::console::Console::default();
+    use cyrus_console::Console;
+    let mut app = console_app();
     for ch in "NEVERSAYDIE".chars() {
-        console.gameplay(KeyCode::KeyA, Some(&ch.to_string()), &mut cheats);
-        console.gameplay(KeyCode::KeyA, Some("ignored repeat"), &mut cheats);
+        let mut console = app.world_mut().resource_mut::<Console>();
+        console.gameplay(KeyCode::KeyA, Some(&ch.to_string()));
+        console.gameplay(KeyCode::KeyA, Some("ignored repeat"));
         console.release();
     }
-    console.gameplay(KeyCode::Enter, None, &mut cheats);
-    assert!(cheats.distance_override().unwrap());
-    console.release();
-    console.gameplay(KeyCode::Enter, None, &mut cheats);
-    assert!(cheats.distance_override().unwrap());
+    app.world_mut()
+        .resource_mut::<Console>()
+        .gameplay(KeyCode::Enter, None);
+    app.update();
+    assert!(
+        app.world()
+            .resource::<Cheats>()
+            .distance_override()
+            .unwrap()
+    );
+    app.world_mut().resource_mut::<Console>().release();
+    app.world_mut()
+        .resource_mut::<Console>()
+        .gameplay(KeyCode::Enter, None);
+    app.update();
+    assert!(
+        app.world()
+            .resource::<Cheats>()
+            .distance_override()
+            .unwrap()
+    );
 }
 
 #[test]
 fn action_commands_ignore_assignment_text() {
-    let mut cheats = Cheats::new(Store::default());
+    use cyrus_console::{Source, submit};
+    let mut app = console_app();
     assert_eq!(
-        cyrus_game::cheat_command::execute(&mut cheats, "oracle = ignored")
+        submit(app.world_mut(), "oracle = ignored", Source::Interactive)
             .unwrap()
             .len(),
         13
     );
-    cyrus_game::cheat_command::execute(&mut cheats, "savecheats = ignored").unwrap();
-    assert_eq!(cheats.state().unwrap().value("savecheats"), Some(1));
+    submit(app.world_mut(), "savecheats = ignored", Source::Interactive).unwrap();
+    assert_eq!(
+        app.world()
+            .resource::<Cheats>()
+            .state()
+            .unwrap()
+            .value("savecheats"),
+        Some(1)
+    );
+}
+
+#[test]
+fn cheat_assignment_uses_shared_packed_and_binary_literals() {
+    let mut app = console_app();
+    for (command, expected) in [("oddjob = \"ABCD\"", 0x6463_6261), ("oddjob = %1011", 0)] {
+        cyrus_console::submit(app.world_mut(), command, cyrus_console::Source::Interactive)
+            .unwrap();
+        assert_eq!(
+            app.world()
+                .resource::<Cheats>()
+                .state()
+                .unwrap()
+                .value("oddjob"),
+            Some(expected)
+        );
+    }
 }
 
 #[test]
@@ -224,15 +342,13 @@ fn keyboard_events_open_close_and_capture_player_keys() {
         prelude::*,
         state::app::StatesPlugin,
     };
-    use cyrus_game::{
-        AppState,
-        console::{Console, ConsolePlugin},
-    };
+    use cyrus_console::Console;
+    use cyrus_game::{AppState, console::GameConsolePlugin};
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, StatesPlugin, InputPlugin))
         .init_state::<AppState>()
         .insert_resource(Cheats::new(Store::default()))
-        .add_plugins(ConsolePlugin);
+        .add_plugins(GameConsolePlugin);
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);

@@ -226,7 +226,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     assets: Res<'w, Assets<Animations>>,
     sample: Option<Res<'w, ClockSample>>,
     cheats: Option<Res<'w, crate::cheats::Cheats>>,
-    console: Option<Res<'w, crate::console::Console>>,
+    console: Option<Res<'w, cyrus_console::Console>>,
     state: Option<Res<'w, State<crate::AppState>>>,
 }
 

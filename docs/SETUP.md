@@ -441,7 +441,7 @@ without advancing scripts. PlayerDistance uses runtime `neversaydie` state unles
 and uses `fallback_position` only when no selected player pose exists. These
 inspection inputs do not establish production scheduling or gameplay readiness.
 
-### Cheat state inspection
+### Cheats and console
 
 Native TCP/MCP `cheat {name, value?}` toggles a named state or assigns a raw
 unsigned integer. Use `oracle` to inspect values and support status and
@@ -449,11 +449,25 @@ unsigned integer. Use `oracle` to inspect values and support status and
 first, then the installed CHT file, then empty state. Malformed files remain
 errors without being overwritten. The install stays read-only.
 
+F12 opens the console in a world; F12 or Escape closes it. Gameplay also accepts
+a cheat name followed by Enter. TCP/MCP `console {open?, line?}` uses the same
+command dispatcher and reports retained output through `state.console`.
+`commands` lists registered non-cheat commands and aliases; `oracle` lists cheats.
+Assignments use `name = value`, with decimal, negative decimal, hexadecimal,
+percent-prefixed or packed four-byte values. **Verified:** the original percent
+syntax returns zero; quoted input packs the first four following bytes after
+lowercasing. Short quoted input and symbolic lookup remain unsupported.
+
+Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
+imports and exports CHT using the shared codec. A valid explicit import can
+recover malformed local state; failed imports and saves retain existing state.
+
 **Verified:** `neversaydie` supplies the documented distance override during
-explicit script steps, unless `distance_override` is supplied by the caller.
-`oddjob` retains its documented lack of gameplay effect. Other effects report
-unsupported. Browser persistence, gameplay cheat typing and the F12 console UI
-remain pending; these inspection commands do not enable automatic gameplay.
+automatic world updates and explicit script steps, unless `distance_override`
+is supplied by the caller. Other gameplay effects report unsupported.
+**Unknown:** the original gameplay effect of `oddjob`; its raw state still
+supports toggling, assignment and persistence. These commands do not enable
+unsupported gameplay systems.
 
 ## World audit and matched captures
 

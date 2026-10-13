@@ -126,7 +126,7 @@ pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Res<PlayerBindings>,
     suppressed: Res<InputSuppressed>,
-    console: Option<Res<crate::console::Console>>,
+    console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<Fidelity>,
     mut input: ResMut<PlayerInput>,
 ) {

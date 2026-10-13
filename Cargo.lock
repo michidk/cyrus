@@ -2749,6 +2749,7 @@ dependencies = [
  "cyrus-app",
  "cyrus-assets",
  "cyrus-audio",
+ "cyrus-console",
  "cyrus-control",
  "cyrus-debug",
  "cyrus-game",
@@ -2833,6 +2834,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrus-console"
+version = "0.1.4"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "serde",
+]
+
+[[package]]
 name = "cyrus-control"
 version = "0.1.4"
 dependencies = [
@@ -2848,6 +2858,7 @@ dependencies = [
  "bevy-inspector-egui",
  "bevy_egui",
  "cyrus-app",
+ "cyrus-console",
  "cyrus-game",
  "cyrus-render",
 ]
@@ -2860,6 +2871,7 @@ dependencies = [
  "bevy",
  "cyrus-assets",
  "cyrus-collision",
+ "cyrus-console",
  "cyrus-script",
  "cyrus-world",
  "log",
@@ -2900,6 +2912,7 @@ dependencies = [
  "cyrus-assets",
  "cyrus-audio",
  "cyrus-collision",
+ "cyrus-console",
  "cyrus-game",
  "cyrus-text",
  "cyrus-world",

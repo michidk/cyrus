@@ -1,8 +1,12 @@
 # cyrus-game
 
 Portable gameplay state, fidelity policy, player input and deterministic controller
-rules. Depends on `cyrus-world`, `cyrus-collision` and `cyrus-assets`; it does not load an install,
+rules. Depends on `cyrus-world`, `cyrus-collision`, `cyrus-console` and `cyrus-assets`; it does not load an install,
 open sockets, spawn a camera, or play audio.
+
+`GameConsolePlugin` registers cheat handlers with `cyrus-console` and controls
+input availability from `AppState`. The console crate owns editing and command
+dispatch; game handlers own cheat state and call host-provided storage.
 
 `GamePlugin` installs app state, fidelity, `PlayerPlugin` and `ScriptPlugin`. The host supplies
 Bevy's asset/input/state infrastructure and `Preferences` with a concrete

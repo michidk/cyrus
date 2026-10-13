@@ -8,6 +8,7 @@ edition.workspace = true
 doctest = false
 
 [dependencies]
+cyrus-console.workspace = true
 cyrus-app = { path = "../cyrus-app" }
 cyrus-render.workspace = true
 bevy = { workspace = true, features = ["default"] }

@@ -128,7 +128,7 @@ settling reports unsupported water/terrain-edge support and retains the marker.
 | HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser restart persistence |
 | Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
 | Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
-| Cheats and console | Browser persistence/import/export, original keyboard/console presentation and remaining gameplay effects |
+| Cheats and console | Original non-cheat commands, console preferences/presentation fidelity and remaining gameplay effects |
 | Asset viewer | Other-platform runtime and browser media checks; native inspection controls pass, without a Faithful rendering claim. Game and viewer share asset code; the installed WASM worker prepares game assets |
 | Releases | Clean-machine play/save/resume and other-platform runtime checks |
 
@@ -153,7 +153,7 @@ of every palette and world still needs original-game comparison.
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
 | SMK | Native/browser video, first-track audio, installed skip/subtitle rules and streamed browser playback | Original comparison, A/V sync and player-hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Cursor/indexed image inspection and authored-rate ANM playback | Game cursor integration and palette cycling |
-| CHT | Preload/viewer parsing; shared cheat state, native startup restore and `savecheats` writing through TCP/MCP | Gameplay keyboard entry, console UI, browser persistence and remaining effects; see the cheat checklist below |
+| CHT | Preload/viewer parsing; native/browser runtime restore/save, import/export, keyboard/console commands and `neversaydie` | Remaining gameplay effects and console fidelity; see the cheat checklist below |
 | PVO | Preload parsing and viewer inspection | Runtime culling excluded at user request |
 | Save data | Unsupported | Safe world/player/script/quest persistence |
 
@@ -189,6 +189,7 @@ use runtime `neversaydie` state; inspection callers may override it.
 Other gameplay effects report unsupported, including the unknown `oddjob` effect.
 F12 opens the shared native/browser editor; browser CHT import/export lives in F1.
 
+- [x] Extract `cyrus-console` with subsystem command registration, editor/input, dispatch and retained reports. Native TCP and keyboard entry share dispatch. Independent-consumer, command/cheat tests and WebAssembly checking verify the boundary. Decimal, hexadecimal, percent-prefixed and packed four-byte values share one parser; symbolic lookup and short quoted input remain unsupported.
 - [x] Shared cheat state, native CHT restore/save and TCP/MCP commands, including explicit SOUP `neversaydie` integration. Native storage shares byte read/replacement code with preferences. Verification is recorded in the implementation commit.
 - [x] Native/browser F12 console with installed paper/font, world-palette inks, text editing, retained output and command submission. **Verified:** presentation rules are [published in preservation](https://github.com/michidk/redguard-preservation/compare/main...feat/console-presentation). Pixel parity remains part of the comparison item below.
 - [x] Implement gameplay cheat-name entry followed by Enter, console toggles, explicit integer assignment and `oracle` output through shared runtime cheat state. Use preservation's names and rules; keep unsupported effects explicit.

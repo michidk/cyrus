@@ -3086,9 +3086,9 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         snapshot(&app)["actors"][0]["locals"],
         serde_json::json!([7])
     );
-    app.init_resource::<cyrus_game::console::Console>();
+    app.init_resource::<cyrus_console::Console>();
     app.world_mut()
-        .resource_mut::<cyrus_game::console::Console>()
+        .resource_mut::<cyrus_console::Console>()
         .open = true;
     let before_console = snapshot(&app);
     let before_clock = app
@@ -3109,7 +3109,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         );
     }
     app.world_mut()
-        .resource_mut::<cyrus_game::console::Console>()
+        .resource_mut::<cyrus_console::Console>()
         .open = false;
     app.update();
     assert_eq!(

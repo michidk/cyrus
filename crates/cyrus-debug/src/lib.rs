@@ -39,7 +39,7 @@ impl Plugin for DebugMenuPlugin {
             .init_resource::<cyrus_game::cheats::CheatTransfer>()
             .configure_sets(
                 PreUpdate,
-                cyrus_game::console::ConsoleInput
+                cyrus_console::ConsoleInput
                     .after(toggle_menu)
                     .before(EguiPreUpdateSet::ProcessInput),
             )
@@ -86,7 +86,7 @@ fn setup_debug_camera(mut commands: Commands) {
 fn toggle_menu(
     keys: Res<ButtonInput<KeyCode>>,
     mut menu: ResMut<DebugMenu>,
-    mut console: Option<ResMut<cyrus_game::console::Console>>,
+    mut console: Option<ResMut<cyrus_console::Console>>,
     mut egui: ResMut<EguiGlobalSettings>,
 ) {
     if keys.just_pressed(KeyCode::F1) && !console.as_ref().is_some_and(|console| console.open) {

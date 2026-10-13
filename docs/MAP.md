@@ -74,6 +74,12 @@ module where it is defined and regenerate.
 - `src/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
 - `src/ground.rs` — Ground support in original map coordinates, per preservation's engine/player.md.
 
+## `cyrus-console` — Console editing and command dispatch independent of gameplay, rendering and storage.
+
+- `src/editor.rs` — Shared console editor and hidden gameplay entry from preservation's console rules.
+- `src/input.rs` — Keyboard focus and hidden-name capture, dispatching each Enter before the next event.
+- `src/number.rs` — Supported numeric literals from preservation's developer-console contract.
+
 ## `cyrus-control` — Control protocol: one JSON object per line over TCP.
 
 - `src/server.rs` — Native line-delimited transport; the host applies requests in frame order.
@@ -82,10 +88,10 @@ module where it is defined and regenerate.
 
 ## `cyrus-game` — Gameplay state, fidelity and player rules, independent of presentation.
 
-- `src/cheat_command.rs` — Console cheat syntax and numeric literals from preservation's console contract.
+- `src/cheat_command.rs` — Cheat assignment and reports; cyrus-console owns input and numeric parsing.
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
 - `src/clock.rs` — Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
-- `src/console.rs` — Shared console editor and hidden gameplay entry from preservation's console rules.
+- `src/console.rs` — Game-owned console availability and cheat command handlers.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.

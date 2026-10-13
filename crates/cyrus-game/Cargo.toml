@@ -4,6 +4,7 @@ description = "Portable player rules, input and fidelity policy."
 version.workspace = true
 edition.workspace = true
 [dependencies]
+cyrus-console.workspace = true
 log.workspace = true
 bevy = { workspace = true, features = ["bevy_asset", "bevy_state", "keyboard"] }
 cyrus-assets.workspace = true

@@ -54,7 +54,7 @@ impl Plugin for ControlPlugin {
                 (release_taps, handle)
                     .chain()
                     .after(bevy::input::InputSystems)
-                    .before(cyrus_game::console::ConsoleInput),
+                    .before(cyrus_console::ConsoleInput),
             );
     }
 }
@@ -82,7 +82,7 @@ struct Inspection<'w, 's> {
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
     cheats: ResMut<'w, cyrus_game::cheats::Cheats>,
-    console: ResMut<'w, cyrus_game::console::Console>,
+    console: Res<'w, cyrus_console::Console>,
     activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
@@ -119,7 +119,7 @@ fn handle(
         mut script_actors,
         mut random,
         mut cheats,
-        mut console,
+        console,
         activation,
         prepared,
         animations,
@@ -154,9 +154,14 @@ fn handle(
                 if *state.get() != cyrus_game::AppState::InGame {
                     Err("console requires an active world".into())
                 } else {
-                    if let Some(open) = open { console.open = open; }
-                    if let Some(line) = line { console.submit(&mut cheats, &line); }
-                    Ok(json!({"console": *console, "cheats": cheats.inspect()}))
+                    commands.queue(move |world: &mut World| {
+                        if let Some(open) = open { world.resource_mut::<cyrus_console::Console>().open = open; }
+                        if let Some(line) = line { let _ = cyrus_console::submit(world, &line, cyrus_console::Source::Interactive); }
+                        let result = json!({"console": world.resource::<cyrus_console::Console>(), "cheats": world.resource::<cyrus_game::cheats::Cheats>().inspect()});
+                        let _ = reply.send(Response::ok(id, result));
+                    });
+                    // Later requests must observe this command after its world mutation.
+                    break;
                 }
             }
             Command::State => {
@@ -491,7 +496,7 @@ mod tests {
         .init_resource::<Fidelity>()
         .init_resource::<cyrus_game::random::EngineRandom>()
         .init_resource::<cyrus_game::cheats::Cheats>()
-        .init_resource::<cyrus_game::console::Console>()
+        .add_plugins(cyrus_game::console::GameConsolePlugin)
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
         .init_resource::<cyrus_game::player::input::PlayerInput>()
@@ -500,6 +505,51 @@ mod tests {
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);
         app
+    }
+
+    #[test]
+    fn console_reply_contains_dispatched_output_and_validation_errors() {
+        let mut app = app();
+        app.insert_state(cyrus_game::AppState::InGame);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        for (id, line, expected) in [(1, "commands", "console [con]"), (2, "é", "ASCII")] {
+            let (reply, result) = channel();
+            tx.send(Pending {
+                request: Request {
+                    id,
+                    cmd: Command::Console {
+                        open: Some(true),
+                        line: Some(line.into()),
+                    },
+                },
+                reply: reply.clone(),
+            })
+            .unwrap();
+            tx.send(Pending {
+                request: Request {
+                    id: id + 100,
+                    cmd: Command::State,
+                },
+                reply,
+            })
+            .unwrap();
+            app.update();
+            let response = result.try_recv().unwrap();
+            assert!(response.ok);
+            assert!(serde_json::to_string(&response).unwrap().contains(expected));
+            assert!(result.try_recv().is_err());
+            app.update();
+            let state = result.try_recv().unwrap().result.unwrap();
+            assert_eq!(state["console"]["open"], true);
+            assert!(
+                state["console"]["lines"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|line| { line["text"].as_str().unwrap().contains(expected) })
+            );
+        }
     }
 
     #[test]

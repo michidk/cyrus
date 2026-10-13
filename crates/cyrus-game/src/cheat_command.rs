@@ -1,30 +1,23 @@
-//! Console cheat syntax and numeric literals from preservation's console contract.
+//! Cheat assignment and reports; cyrus-console owns input and numeric parsing.
 use crate::cheats::{CheatEffect, Cheats};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result};
+use cyrus_console::number;
 
-/// Dispatch one command. A semicolon terminates input, rather than chaining commands.
+/// Execute normalized cheat arguments; the shared console owns command dispatch.
 /// Symbolic equates and SOUP flag expressions remain explicitly unsupported.
-pub fn execute(cheats: &mut Cheats, line: &str) -> Result<Vec<String>> {
-    let line = line
-        .split([';', '\n', '\r'])
-        .next()
-        .unwrap_or_default()
-        .trim()
-        .to_ascii_lowercase();
-    if line.is_empty() {
-        return Ok(Vec::new());
-    }
-    let (name, value) = if let Some((name, value)) = line.split_once('=') {
-        (
-            name.trim(),
-            if matches!(name.trim(), "oracle" | "savecheats") {
-                None
-            } else {
-                Some(number(value.trim())?)
-            },
-        )
+pub(crate) fn execute(cheats: &mut Cheats, name: &str, args: &str) -> Result<Vec<String>> {
+    let value = if args.is_empty() {
+        None
     } else {
-        (line.as_str(), None)
+        let value = args
+            .strip_prefix('=')
+            .context("usage: name [= value]")?
+            .trim();
+        if matches!(name, "oracle" | "savecheats") {
+            None
+        } else {
+            Some(number(value)?)
+        }
     };
     let effect = cheats.console(name, value)?;
     match effect {
@@ -58,21 +51,4 @@ pub fn execute(cheats: &mut Cheats, line: &str) -> Result<Vec<String>> {
             Ok(output)
         }
     }
-}
-
-fn number(value: &str) -> Result<u32> {
-    ensure!(!value.is_empty(), "missing cheat value");
-    if let Some(hex) = value.strip_prefix("0x") {
-        return u32::from_str_radix(hex, 16).context("invalid hexadecimal cheat value");
-    }
-    if value.starts_with('-') {
-        return value
-            .parse::<i32>()
-            .map(|v| v as u32)
-            .context("invalid signed cheat value");
-    }
-    if value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return value.parse().context("cheat value exceeds 32 bits");
-    }
-    bail!("unsupported cheat value {value:?}; use a decimal or hexadecimal integer")
 }

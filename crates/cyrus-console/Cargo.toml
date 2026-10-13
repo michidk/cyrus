@@ -1,0 +1,10 @@
+[package]
+name = "cyrus-console"
+description = "Portable console editor and subsystem command dispatch."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["keyboard"] }
+anyhow.workspace = true
+serde.workspace = true

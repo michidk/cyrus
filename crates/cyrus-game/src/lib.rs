@@ -1,5 +1,5 @@
 //! Gameplay state, fidelity and player rules, independent of presentation.
-pub mod cheat_command;
+mod cheat_command;
 pub mod cheats;
 pub mod clock;
 pub mod console;
@@ -32,7 +32,7 @@ impl Plugin for GamePlugin {
             .add_plugins((
                 player::PlayerPlugin,
                 script::ScriptPlugin,
-                console::ConsolePlugin,
+                console::GameConsolePlugin,
             ));
     }
 }
