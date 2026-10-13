@@ -58,6 +58,7 @@ Loading the correct map does not establish complete animated or playable world b
 | Work | Session |
 | --- | --- |
 | Stage 0 audit triage, capture provenance and gate automation | Codex, tooling follow-ups; `magic/artifacts/2026-10-13-stage0-followups/` |
+| Rendering: authored texture animation and remaining sky/filtering evidence | Codex, `t3/rendering-stage-one`; `magic/artifacts/2026-10-13-texture-animation/`; protected SOUP/save files excluded |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 
@@ -233,6 +234,7 @@ world playback is incomplete.
 - [x] Prepare terrain clipping, projected snapping and fixed color interpolation before integer texture modulation. **Verified:** original clipping/setup arithmetic comparisons, a failing subpixel-bias negative control, renderer contracts and improved matched ISLAND native/browser terrain regions. Fog updates exclude retained materials without live entities; the native ISLAND/BELLTOWR round trip passes, with substantial scene-loading delays still present.
 - [x] Preserve selected ROB attributes on world nodes and select encoded point/bilinear model filtering. **Verified:** archive fallback/cache and shared-mesh metadata tests, material flag separation, and improved matched BELLTOWR native/browser regions. Standalone/generated model defaults and filtered chroma rejection remain unsupported.
 - [ ] Compare remaining terrain sampling precision and sky/sun filtering/alpha after menu/world transitions. **Verified:** cloud-filter arithmetic has isolated GPU checks. Filtered model chroma rejection, complete pixel parity and menu transition comparisons remain open.
+- [x] Recover [authored texture frame selection](https://github.com/michidk/redguard-preservation/commit/5ab06cf). **Verified:** frame requests share image state, advance once at the BIOS deadline and retain explicit selections. Rendering admission controls advancement; runtime playback remains open.
 - [ ] Compare sky scrolling, plane crossing, fog/clipping and water across original/native/browser views; implement other authored texture animation.
 
 ### Animation and scripts
