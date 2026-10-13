@@ -396,8 +396,8 @@ fn handle(
                 let mut captured_sounds = Vec::new();
                 let mut emit = |actor: ScriptActorId, sound| -> anyhow::Result<()> {
                     use cyrus_game::script::ScriptSound;
-                    let (sound, surface) = match sound {
-                        ScriptSound::Animation { sound, surface } => (sound, surface),
+                    let (sound, surface, position) = match sound {
+                        ScriptSound::Animation { sound, surface, position } => (sound, surface, position),
                         sound => {
                             let event = match &sound {
                                 ScriptSound::Flat { effect, volume, rate_offset_hz } => json!({"type":"flat", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz}),
@@ -439,6 +439,7 @@ fn handle(
                             actor: entity,
                             sound,
                             surface,
+                            position,
                         });
                     Ok(())
                 };
@@ -870,7 +871,7 @@ mod tests {
         assert_eq!(cues.len(), 1);
         assert!(matches!(cues[0], SoundCue::Animation {
             actor,
-            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, surface: Some(0)
+            sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, position: None, surface: Some(0)
         } if actor == entity));
         assert_eq!(
             app.world()
@@ -901,7 +902,7 @@ mod tests {
             .collect();
         assert_eq!(cues.len(), 1);
         assert!(matches!(cues[0], SoundCue::Animation {
-            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, surface: Some(0)
+            actor, sound: AnimationSound::Play { effect: -17, rate_offset_hz: -64 }, position: None, surface: Some(0)
         } if actor == entity));
     }
 }

@@ -225,6 +225,7 @@ fn play(
         AnimationSound::Forget => json!({"kind": "forget"}),
     };
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound,
         surface: Some(surface),

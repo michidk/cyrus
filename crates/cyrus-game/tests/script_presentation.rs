@@ -153,7 +153,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .drain()
         .collect();
     assert!(cues.iter().any(|cue| matches!(cue, SoundCue::Animation {
-        actor, surface: Some(7), sound: cyrus_world::animation::AnimationSound::Play { effect: 200, .. }
+        actor, position: None, surface: Some(7), sound: cyrus_world::animation::AnimationSound::Play { effect: 200, .. }
     } if *actor == node)), "binding and surface projection must precede playback in the same update");
     assert_eq!(app.world().get::<ScriptBinding>(node).unwrap().actor, id);
     assert_eq!(

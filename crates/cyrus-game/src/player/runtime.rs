@@ -169,6 +169,7 @@ pub(crate) fn step(
                     .as_mut()
                     .context("player animation: sound consumer unavailable")?
                     .write(SoundCue::Animation {
+                        position: None,
                         actor: entity,
                         sound,
                         surface: Some(surface),

@@ -15,8 +15,9 @@
 //! Native builds read the install; the browser plays the exported bank.
 //!
 //! Script `Sound` supports positional starts without animation surface remapping.
-//! AmbientSound, AmbientRTX, rope, torch and combat starts remain unsupported.
-//! The decoder supports live gain updates; ambient task polling is not yet connected.
+//! AmbientSound has a synchronous shared-channel adapter; automatic maintenance
+//! reset ownership remains unsupported. AmbientRTX, rope, torch and combat starts
+//! remain unsupported. The decoder supports live gain updates.
 //! Animation sounds play only for actors
 //! whose [`SoundSurface`] is known, remapped through the installed SURFACE.INI tables.
 
@@ -36,6 +37,14 @@ pub use cyrus_world::sound::SoundCue;
 pub use cyrus_world::sound::SoundSurface;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
+mod samples;
+mod script;
+use samples::{Reservation, SampleSlots};
+#[cfg(target_arch = "wasm32")]
+use script::PendingSounds;
+pub use script::ScriptSounds;
+use script::{execute_ordinary, play_audio};
 
 pub struct SoundPlugin;
 
@@ -60,7 +69,10 @@ impl Plugin for SoundPlugin {
             .init_resource::<SoundEffects>()
             .init_resource::<Speech>()
             .init_resource::<Channels>()
-            .add_systems(Update, (play_requests, play_cues).chain().in_set(PlayCues));
+            .insert_resource(cyrus_game::script::OrdinarySoundExecutor(execute_ordinary))
+            .add_systems(Update, play_audio.in_set(PlayCues));
+        #[cfg(target_arch = "wasm32")]
+        app.init_resource::<PendingSounds>();
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(
             Update,
@@ -246,10 +258,11 @@ fn finish_speech(
 /// stolen. The start index is 0 at boot; animation and speech starts set it to 6.
 #[derive(Resource, Default)]
 pub(crate) struct Channels {
-    slots: [Option<Channel>; 16],
+    samples: SampleSlots,
+    playing: HashMap<u64, Channel>,
     start: usize,
     /// The last sound each animated actor started, for its EndAnimation.
-    animation: HashMap<Entity, Entity>,
+    animation: HashMap<Entity, u8>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -260,8 +273,8 @@ enum Owner {
 
 struct Channel {
     sound: Entity,
-    owner: Option<Owner>,
-    effect: Option<i32>,
+    reservation: Reservation,
+    gains: Option<PannedGains>,
 }
 
 /// One start: volume 0..=127 before the master volume, Miles pan (`None` = centre).
@@ -329,39 +342,7 @@ impl Channels {
             return;
         };
         let (settings, listener) = listener;
-        let Some(distance) = settings.sound_distance else {
-            warn!(
-                "script Sound effect {}: SYSTEM.INI sound_distance unavailable",
-                cue.effect
-            );
-            return;
-        };
-        let camera = listener.0.translation();
-        let camera_q8 = [
-            (f64::from(camera.x) * -5120.0).floor() as i32,
-            (f64::from(camera.y) * -5120.0).floor() as i32,
-            (f64::from(camera.z) * 5120.0 + 16_777_215.0).floor() as i32,
-        ];
-        let difference =
-            std::array::from_fn(|axis| cue.position[axis].wrapping_sub(camera_q8[axis]));
-        let mix = (|| -> Result<(u8, u8), String> {
-            let length = cyrus_game::script::rounded_distance(difference)
-                .map_err(|error| error.to_string())?;
-            let volume = distance_volume_q8(distance, i64::from(length), cue.volume)?;
-            let forward = listener.0.forward();
-            let yaw = heading(
-                (f64::from(forward.x) * -65536.0).round() as i64,
-                (f64::from(forward.z) * 65536.0).round() as i64,
-            );
-            Ok((
-                volume,
-                pan(
-                    heading(i64::from(difference[0]), i64::from(difference[2])),
-                    yaw,
-                ),
-            ))
-        })();
-        let (volume, pan) = match mix {
+        let (volume, pan) = match positional_q8(cue.position, settings, listener, cue.volume) {
             Ok(mix) => mix,
             Err(error) => {
                 warn!("script Sound effect {}: {error}", cue.effect);
@@ -383,64 +364,135 @@ impl Channels {
             },
         );
     }
-    fn reclaim(&mut self, alive: &Query<(), With<PlayingSound>>) {
-        for slot in &mut self.slots {
-            if slot
-                .as_ref()
-                .is_some_and(|channel| !alive.contains(channel.sound))
-            {
-                *slot = None;
-            }
-        }
-    }
-
-    /// Starts `start` on the first idle channel at or above its start index; a silent
-    /// start still occupies its channel. Returns the playing entity.
-    fn start(
+    fn ambient(
         &mut self,
         commands: &mut Commands,
         mixer: &mut Mixer,
-        start: Start,
-    ) -> Option<Entity> {
-        let slot = (start.start_index..16).find(|&i| self.slots[i].is_none())?;
-        let gain = output_gain(start.volume, mixer.master);
+        effects: &SoundEffects,
+        request: cyrus_world::sound::AmbientSoundRequest,
+        volume: u8,
+        pan: u8,
+    ) -> Result<cyrus_world::sound::AmbientSoundUpdate, String> {
+        if volume == 0 || request.object_update_excluded {
+            if let Some(slot) = request.channel {
+                self.stop_slot(commands, slot);
+            }
+            return Ok(cyrus_world::sound::AmbientSoundUpdate {
+                channel: request.channel,
+                active: false,
+            });
+        }
+        let mut channel = request.channel;
+        if self.samples.status(channel) == 2 {
+            channel = usize::try_from(request.effect)
+                .ok()
+                .and_then(|index| effects.0.get(index)?.as_ref())
+                .and_then(|effect| {
+                    self.start(
+                        commands,
+                        mixer,
+                        Start {
+                            owner: Some(Owner::Script {
+                                generation: request.generation,
+                                index: request.actor_index,
+                            }),
+                            effect: Some(request.effect),
+                            audio: effect.audio.clone(),
+                            looping: effect.looping,
+                            volume,
+                            pan: Some(pan),
+                            speed: playback_speed(effect.sample_rate, request.rate_offset_hz),
+                            start_index: self.start,
+                        },
+                    )
+                });
+        }
+        if let Some(slot) = channel {
+            self.update_slot(slot, volume, mixer.master, pan)?;
+        }
+        Ok(cyrus_world::sound::AmbientSoundUpdate {
+            channel,
+            active: true,
+        })
+    }
+
+    fn reclaim(&mut self, alive: &Query<(), With<PlayingSound>>) {
+        let samples = &mut self.samples;
+        self.playing.retain(|_, channel| {
+            if alive.contains(channel.sound) {
+                true
+            } else {
+                samples.finish(channel.reservation);
+                false
+            }
+        });
+    }
+
+    /// Starts `start` on the first idle channel at or above its start index; a silent
+    /// start still occupies its channel. Returns the reusable sample slot.
+    fn start(&mut self, commands: &mut Commands, mixer: &mut Mixer, start: Start) -> Option<u8> {
+        let master = mixer.master;
+        let gain = output_gain(start.volume, master);
+        let panned_source = match start.pan {
+            Some(pan) => Some((
+                mixer.panned.as_deref_mut()?,
+                mixer.sources?.get(&start.audio)?,
+                pan,
+            )),
+            None => mixer
+                .panned
+                .as_deref_mut()
+                .zip(mixer.sources.and_then(|sources| sources.get(&start.audio)))
+                .map(|(panned, source)| (panned, source, 64)),
+        };
+        let reservation = match self
+            .samples
+            .start(start.start_index, start.owner, start.effect)
+        {
+            Ok(reservation) => reservation?,
+            Err(error) => {
+                error!("sound: {error}");
+                return None;
+            }
+        };
         let playback = if start.looping {
             PlaybackSettings::LOOP
         } else {
             PlaybackSettings::DESPAWN
         }
         .with_speed(start.speed);
-        let sound = match start.pan {
-            None => commands
-                .spawn((
-                    PlayingSound,
-                    AudioPlayer(start.audio),
-                    playback.with_volume(Volume::Linear(gain)),
-                ))
-                .id(),
-            Some(pan) => {
-                let (Some(panned), Some(source)) = (
-                    mixer.panned.as_mut(),
-                    mixer.sources.and_then(|s| s.get(&start.audio)),
-                ) else {
-                    return None;
-                };
-                let gains = PannedGains::new(start.volume, mixer.master, pan);
+        let (sound, gains) = match panned_source {
+            None => (
+                commands
+                    .spawn((
+                        PlayingSound,
+                        AudioPlayer(start.audio),
+                        playback.with_volume(Volume::Linear(gain)),
+                    ))
+                    .id(),
+                None,
+            ),
+            Some((panned, source, pan)) => {
+                let gains = PannedGains::new(start.volume, master, pan);
                 let audio = panned.add(Panned {
                     source: source.clone(),
                     gains: gains.clone(),
                 });
-                commands
-                    .spawn((PlayingSound, AudioPlayer(audio), playback, gains))
-                    .id()
+                let sound = commands
+                    .spawn((PlayingSound, AudioPlayer(audio), playback, gains.clone()))
+                    .id();
+                (sound, Some(gains))
             }
         };
-        self.slots[slot] = Some(Channel {
-            sound,
-            owner: start.owner,
-            effect: start.effect,
-        });
-        Some(sound)
+        self.playing.insert(
+            reservation.token,
+            Channel {
+                sound,
+                reservation,
+                gains,
+            },
+        );
+        Some(reservation.slot)
     }
 
     /// The original's `FlatSound`: `(effect, volume offset, rate offset in Hz)` at pan 64
@@ -475,30 +527,83 @@ impl Channels {
         );
     }
 
+    fn retire(&mut self, commands: &mut Commands, reservations: Vec<Reservation>) {
+        for reservation in reservations {
+            if let Some(channel) = self.playing.remove(&reservation.token) {
+                commands.entity(channel.sound).try_despawn();
+            }
+        }
+    }
+
     fn stop_matching(
         &mut self,
         commands: &mut Commands,
         owner: Option<Owner>,
         effect: Option<i32>,
     ) {
-        for slot in &mut self.slots {
-            if slot.as_ref().is_some_and(|channel| {
-                owner.is_none_or(|owner| channel.owner == Some(owner))
-                    && effect.is_none_or(|effect| channel.effect == Some(effect))
-            }) {
-                let channel = slot.take().unwrap();
-                self.animation.retain(|_, sound| *sound != channel.sound);
-                commands.entity(channel.sound).try_despawn();
-            }
-        }
+        let stopped = self.samples.stop_matching(owner, effect);
+        self.retire(commands, stopped);
     }
 
     fn stop_all(&mut self, commands: &mut Commands) {
-        for channel in self.slots.iter_mut().filter_map(Option::take) {
-            commands.entity(channel.sound).try_despawn();
-        }
-        self.animation.clear();
+        self.stop_matching(commands, None, None);
     }
+
+    fn update_slot(&self, slot: u8, volume: u8, master: i32, pan: u8) -> Result<(), String> {
+        let reservation = self
+            .samples
+            .current(slot)
+            .ok_or_else(|| format!("ambient sample slot {slot}: no current sample"))?;
+        let channel = self
+            .playing
+            .get(&reservation.token)
+            .ok_or_else(|| format!("ambient sample slot {slot}: playback transport unavailable"))?;
+        let gains = channel.gains.as_ref().ok_or_else(|| {
+            format!("ambient sample slot {slot}: positional gain control unavailable")
+        })?;
+        gains.set(volume, master, pan);
+        Ok(())
+    }
+
+    fn stop_slot(&mut self, commands: &mut Commands, slot: u8) {
+        if let Some(reservation) = self.samples.stop(slot) {
+            self.retire(commands, vec![reservation]);
+        }
+    }
+}
+
+/// Positional script and ambient calls share original signed Q8 differences.
+fn positional_q8(
+    position: [i32; 3],
+    settings: &SoundSettings,
+    listener: &crate::AudioListener,
+    volume_offset: i32,
+) -> Result<(u8, u8), String> {
+    let distance = settings
+        .sound_distance
+        .ok_or("SYSTEM.INI sound_distance unavailable")?;
+    let camera = listener.0.translation();
+    let camera_q8 = [
+        (f64::from(camera.x) * -5120.0).floor() as i32,
+        (f64::from(camera.y) * -5120.0).floor() as i32,
+        (f64::from(camera.z) * 5120.0 + 16_777_215.0).floor() as i32,
+    ];
+    let difference = std::array::from_fn(|axis| position[axis].wrapping_sub(camera_q8[axis]));
+    let length =
+        cyrus_game::script::rounded_distance(difference).map_err(|error| error.to_string())?;
+    let volume = distance_volume_q8(distance, i64::from(length), volume_offset)?;
+    let forward = listener.0.forward();
+    let yaw = heading(
+        (f64::from(forward.x) * -65536.0).round() as i64,
+        (f64::from(forward.z) * 65536.0).round() as i64,
+    );
+    Ok((
+        volume,
+        pan(
+            heading(i64::from(difference[0]), i64::from(difference[2])),
+            yaw,
+        ),
+    ))
 }
 
 /// Playback speed uses a wrapping 32-bit sum before the signed 512..=44000 Hz clamp.
@@ -622,291 +727,6 @@ fn play_requests(
                 channels.start = 6;
             }
             SoundRequest::StopAll => channels.stop_all(&mut commands),
-        }
-    }
-}
-
-/// Plays [`SoundCue`]s from game code through the same channels as control requests.
-#[allow(clippy::too_many_arguments)]
-fn play_cues(
-    mut commands: Commands,
-    mut cues: MessageReader<SoundCue>,
-    script_actors: Option<Res<cyrus_game::script::ScriptActors>>,
-    effects: Res<SoundEffects>,
-    settings: Option<Res<SoundSettings>>,
-    listener: Option<Res<crate::AudioListener>>,
-    surfaces: Option<Res<SurfaceSounds>>,
-    actors: Query<(
-        &GlobalTransform,
-        Option<&SoundSurface>,
-        Has<cyrus_game::player::Player>,
-    )>,
-    bindings: Query<&cyrus_game::script::ScriptBinding>,
-    alive: Query<(), With<PlayingSound>>,
-    sources: Option<Res<Assets<AudioSource>>>,
-    mut panned: Option<ResMut<Assets<Panned>>>,
-    mut channels: ResMut<Channels>,
-    #[cfg(target_arch = "wasm32")] mut pending: Local<Vec<PendingCue>>,
-    #[cfg(target_arch = "wasm32")] bank_loading: Option<Res<crate::sound_bank::SoundBankHandle>>,
-) {
-    channels.reclaim(&alive);
-    let mut mixer = Mixer {
-        master: settings.as_ref().map_or(256, |s| s.master_volume),
-        sources: sources.as_deref(),
-        panned: panned.as_deref_mut(),
-    };
-    let current_owner = |owner: Owner| match owner {
-        Owner::Entity(_) => true,
-        Owner::Script { generation, .. } => script_actors.as_ref().is_none_or(|actors| {
-            actors
-                .current
-                .as_ref()
-                .is_some_and(|world| world.generation() == generation)
-        }),
-    };
-    for slot in &mut channels.slots {
-        if slot
-            .as_ref()
-            .and_then(|channel| channel.owner)
-            .is_some_and(|owner| !current_owner(owner))
-        {
-            commands.entity(slot.take().unwrap().sound).try_despawn();
-        }
-    }
-    #[cfg(target_arch = "wasm32")]
-    pending.retain(|cue| cue.owner().is_none_or(current_owner));
-    // Preserve authored cue order while the browser bank is loading.
-    #[cfg(target_arch = "wasm32")]
-    if bank_loading.is_none() {
-        for cue in pending.drain(..) {
-            match cue {
-                PendingCue::Flat(owner, flat) => {
-                    channels.start_flat(&mut commands, &mut mixer, &effects, flat, owner)
-                }
-                PendingCue::Positional(owner, cue) => {
-                    if let (Some(settings), Some(listener)) =
-                        (settings.as_deref(), listener.as_deref())
-                    {
-                        channels.start_positional(
-                            &mut commands,
-                            &mut mixer,
-                            &effects,
-                            cue,
-                            owner,
-                            (settings, listener),
-                        );
-                    } else {
-                        warn!(
-                            "queued script Sound effect {}: listener/settings unavailable",
-                            cue.effect
-                        );
-                    }
-                }
-            }
-        }
-    }
-    // A despawned actor's remembered sound is forgotten, not stopped.
-    channels
-        .animation
-        .retain(|actor, _| actors.contains(*actor));
-    for cue in cues.read() {
-        match cue {
-            SoundCue::Script {
-                generation,
-                index,
-                sound,
-            } => {
-                let owner = Owner::Script {
-                    generation: *generation,
-                    index: *index,
-                };
-                if !current_owner(owner) {
-                    continue;
-                }
-                match sound {
-                    ScriptSound::Positional {
-                        effect,
-                        volume,
-                        rate_offset_hz,
-                        position,
-                    } => {
-                        let cue = PositionalCue {
-                            effect: *effect,
-                            volume: *volume,
-                            rate_offset_hz: *rate_offset_hz,
-                            position: *position,
-                        };
-                        #[cfg(target_arch = "wasm32")]
-                        if bank_loading.is_some() {
-                            pending.push(PendingCue::Positional(owner, cue));
-                            continue;
-                        }
-                        if let (Some(settings), Some(listener)) =
-                            (settings.as_deref(), listener.as_deref())
-                        {
-                            channels.start_positional(
-                                &mut commands,
-                                &mut mixer,
-                                &effects,
-                                cue,
-                                owner,
-                                (settings, listener),
-                            );
-                        } else {
-                            warn!("script Sound effect {effect}: listener/settings unavailable");
-                        }
-                    }
-                    ScriptSound::Flat {
-                        effect,
-                        volume,
-                        rate_offset_hz,
-                    } => {
-                        if let Ok(effect) = usize::try_from(*effect) {
-                            #[cfg(target_arch = "wasm32")]
-                            if bank_loading.is_some() {
-                                pending.push(PendingCue::Flat(
-                                    Some(owner),
-                                    (effect, *volume, *rate_offset_hz),
-                                ));
-                                continue;
-                            }
-                            channels.start_flat(
-                                &mut commands,
-                                &mut mixer,
-                                &effects,
-                                (effect, *volume, *rate_offset_hz),
-                                Some(owner),
-                            );
-                        }
-                    }
-                    ScriptSound::StopEffect { effect, owned } => {
-                        #[cfg(target_arch = "wasm32")]
-                        pending.retain(|cue| {
-                            cue.effect() != Some(*effect) || (*owned && cue.owner() != Some(owner))
-                        });
-                        channels.stop_matching(
-                            &mut commands,
-                            owned.then_some(owner),
-                            Some(*effect),
-                        );
-                    }
-                    ScriptSound::StopOwned => {
-                        #[cfg(target_arch = "wasm32")]
-                        pending.retain(|cue| cue.owner() != Some(owner));
-                        channels.stop_matching(&mut commands, Some(owner), None);
-                    }
-                    ScriptSound::Animation { .. } => {
-                        warn!("script animation sound requires a scene binding")
-                    }
-                }
-            }
-            SoundCue::Flat {
-                effect,
-                volume,
-                rate_offset_hz,
-            } => {
-                // Browser cues wait for the exported bank instead of being lost.
-                #[cfg(target_arch = "wasm32")]
-                if bank_loading.is_some() {
-                    pending.push(PendingCue::Flat(None, (*effect, *volume, *rate_offset_hz)));
-                    continue;
-                }
-                channels.start_flat(
-                    &mut commands,
-                    &mut mixer,
-                    &effects,
-                    (*effect, *volume, *rate_offset_hz),
-                    None,
-                );
-            }
-            SoundCue::Animation {
-                actor,
-                sound,
-                surface,
-            } => match sound {
-                AnimationSound::Play {
-                    effect: requested,
-                    rate_offset_hz,
-                } => {
-                    channels.animation.remove(actor);
-                    let Ok((transform, _, is_player)) = actors.get(*actor) else {
-                        warn!("sound: animation cue for {actor} without a transform");
-                        continue;
-                    };
-                    let index = match surface {
-                        Some(0) => u8::try_from(*requested).ok().map(usize::from),
-                        Some(surface) => {
-                            let Some(surfaces) = surfaces.as_deref() else {
-                                warn_once!("sound: SURFACE.INI remaps are unavailable");
-                                continue;
-                            };
-                            surfaces.animation_sound(*surface, *requested)
-                        }
-                        None => {
-                            warn_once!(
-                                "sound: animation sound for an actor without a known surface is unsupported"
-                            );
-                            continue;
-                        }
-                    };
-                    let Some((index, effect)) =
-                        index.and_then(|i| Some((i, effects.0.get(i)?.as_ref()?)))
-                    else {
-                        continue;
-                    };
-                    let (Some(distance), Some(listener)) = (
-                        settings.as_ref().and_then(|s| s.sound_distance),
-                        listener.as_deref(),
-                    ) else {
-                        continue;
-                    };
-                    let (volume, pan) =
-                        match positional(transform.translation(), &listener.0, distance, 0) {
-                            Ok(mix) => mix,
-                            Err(e) => {
-                                warn!("sound: effect {index}: {e}");
-                                continue;
-                            }
-                        };
-                    let started = channels.start(
-                        &mut commands,
-                        &mut mixer,
-                        Start {
-                            owner: Some(bindings.get(*actor).ok().map_or(
-                                Owner::Entity(*actor),
-                                |binding| Owner::Script {
-                                    generation: binding.actor.generation,
-                                    index: binding.actor.index,
-                                },
-                            )),
-                            effect: Some(i32::from(*requested)),
-                            audio: effect.audio.clone(),
-                            looping: effect.looping,
-                            volume,
-                            pan: Some(pan),
-                            speed: playback_speed(effect.sample_rate, *rate_offset_hz),
-                            start_index: if is_player { 0 } else { 6 },
-                        },
-                    );
-                    channels.start = 6;
-                    if let Some(sound) = started {
-                        channels.animation.insert(*actor, sound);
-                    }
-                }
-                AnimationSound::Stop => {
-                    if let Some(sound) = channels.animation.remove(actor) {
-                        for slot in &mut channels.slots {
-                            if slot.as_ref().is_some_and(|channel| channel.sound == sound) {
-                                *slot = None;
-                            }
-                        }
-                        commands.entity(sound).try_despawn();
-                    }
-                }
-                AnimationSound::Forget => {
-                    channels.animation.remove(actor);
-                }
-            },
         }
     }
 }
@@ -1182,3 +1002,123 @@ impl bevy::audio::Source for PannedDecoder {
 pub struct ApplyPreferences;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayCues;
+
+#[cfg(test)]
+mod ambient_tests {
+    use super::*;
+    use bevy::ecs::world::CommandQueue;
+
+    #[test]
+    fn ambient_updates_gains_restarts_finished_slots_and_stops_excluded_emitters() {
+        let world = World::new();
+        let mut queue = CommandQueue::default();
+        let mut sources = Assets::<AudioSource>::default();
+        let audio = sources.add(AudioSource {
+            bytes: Vec::<u8>::new().into(),
+        });
+        let effects = SoundEffects(vec![Some(Effect {
+            audio,
+            looping: false,
+            base_volume: 64,
+            sample_rate: 11025,
+        })]);
+        let mut panned = Assets::<Panned>::default();
+        let mut channels = Channels::default();
+        let mut request = cyrus_world::sound::AmbientSoundRequest {
+            generation: 1,
+            actor_index: 2,
+            channel: None,
+            effect: 0,
+            volume: 0,
+            rate_offset_hz: 0,
+            position: [0; 3],
+            object_update_excluded: false,
+        };
+        let mut invoke = |channels: &mut Channels, request, volume, pan| {
+            let mut commands = Commands::new(&mut queue, &world);
+            let mut mixer = Mixer {
+                master: 256,
+                sources: Some(&sources),
+                panned: Some(&mut panned),
+            };
+            channels
+                .ambient(&mut commands, &mut mixer, &effects, request, volume, pan)
+                .unwrap()
+        };
+        let first = invoke(&mut channels, request, 127, 64);
+        assert_eq!(first.channel, Some(0));
+        assert!(first.active);
+        request.channel = first.channel;
+        let reservation = channels.samples.current(0).unwrap();
+        let gains = channels.playing[&reservation.token]
+            .gains
+            .as_ref()
+            .unwrap()
+            .clone();
+        let second = invoke(&mut channels, request, 32, 127);
+        assert_eq!(second.channel, Some(0));
+        assert_eq!(channels.playing.len(), 1);
+        assert_eq!(
+            gains.snapshot(),
+            pan_gains(127).map(|side| side * output_gain(32, 256))
+        );
+        channels.samples.finish(reservation);
+        channels.playing.remove(&reservation.token);
+        let restarted = invoke(&mut channels, request, 64, 64);
+        assert_eq!(restarted.channel, Some(0));
+        assert_ne!(channels.samples.current(0).unwrap(), reservation);
+        request.object_update_excluded = true;
+        let stopped = invoke(&mut channels, request, 127, 64);
+        assert!(!stopped.active);
+        assert_eq!(stopped.channel, Some(0));
+        assert_eq!(channels.samples.status(Some(0)), 2);
+        assert!(channels.playing.is_empty());
+    }
+
+    #[test]
+    fn ambient_allocation_failure_stays_active_and_zero_volume_completes() {
+        let world = World::new();
+        let mut queue = CommandQueue::default();
+        let mut commands = Commands::new(&mut queue, &world);
+        let mut mixer = Mixer {
+            master: 256,
+            sources: None,
+            panned: None,
+        };
+        let mut channels = Channels::default();
+        let request = cyrus_world::sound::AmbientSoundRequest {
+            generation: 1,
+            actor_index: 2,
+            channel: None,
+            effect: -1,
+            volume: 0,
+            rate_offset_hz: 0,
+            position: [0; 3],
+            object_update_excluded: false,
+        };
+        let active = channels
+            .ambient(
+                &mut commands,
+                &mut mixer,
+                &SoundEffects::default(),
+                request,
+                64,
+                64,
+            )
+            .unwrap();
+        assert_eq!(active.channel, None);
+        assert!(active.active);
+        let stopped = channels
+            .ambient(
+                &mut commands,
+                &mut mixer,
+                &SoundEffects::default(),
+                request,
+                0,
+                64,
+            )
+            .unwrap();
+        assert!(!stopped.active);
+        assert_eq!(stopped.channel, None);
+    }
+}

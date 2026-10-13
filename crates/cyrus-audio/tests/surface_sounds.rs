@@ -66,6 +66,7 @@ fn fixture() -> (App, Entity) {
 fn play(app: &mut App, actor: Entity, effect: i16) {
     let surface = app.world().get::<SoundSurface>(actor).map(|value| value.0);
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         surface,
         sound: AnimationSound::Play {
@@ -123,6 +124,7 @@ fn remapped_audio_uses_target_pcm_but_cleanup_matches_authored_source() {
     }
     play(&mut app, actor, 200);
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Stop,
         surface: None,
@@ -196,6 +198,7 @@ fn known_zero_and_script_flat_sounds_bypass_configured_remaps() {
 fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
     let (mut app, actor) = fixture();
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Play {
             effect: 200,
@@ -211,11 +214,13 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
         "later missing ground cannot discard a captured wood cue"
     );
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Forget,
         surface: None,
     });
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Stop,
         surface: None,
@@ -228,6 +233,7 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
     );
     app.world_mut().entity_mut(actor).insert(SoundSurface(7));
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Play {
             effect: 200,
@@ -242,6 +248,7 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
         "later known ground must not fill an unknown cue snapshot"
     );
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Play {
             effect: 200,
@@ -257,10 +264,236 @@ fn queued_animation_keeps_emission_surface_and_cleanup_needs_no_surface() {
         "later zero must not replace a captured wood class"
     );
     app.world_mut().write_message(SoundCue::Animation {
+        position: None,
         actor,
         sound: AnimationSound::Stop,
         surface: None,
     });
     app.update();
     assert_eq!(playing(&mut app), 1, "Stop works with no snapshot");
+}
+
+#[test]
+fn animation_end_stops_the_current_occupant_of_its_reused_sample_slot() {
+    let (mut app, actor) = fixture();
+    app.world_mut().write_message(SoundCue::Animation {
+        position: None,
+        actor,
+        sound: AnimationSound::Play {
+            effect: 200,
+            rate_offset_hz: 0,
+        },
+        surface: Some(7),
+    });
+    app.update();
+    let finished = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut().despawn(finished);
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+    app.world_mut().write_message(SoundCue::Animation {
+        position: None,
+        actor,
+        sound: AnimationSound::Stop,
+        surface: None,
+    });
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        0,
+        "the remembered slot names its current occupant"
+    );
+}
+
+#[test]
+fn all_sample_stop_preserves_the_animation_handle_until_end_animation() {
+    let (mut app, actor) = fixture();
+    app.world_mut().write_message(SoundCue::Animation {
+        position: None,
+        actor,
+        sound: AnimationSound::Play {
+            effect: 200,
+            rate_offset_hz: 0,
+        },
+        surface: Some(7),
+    });
+    app.update();
+    app.world_mut()
+        .write_message(cyrus_audio::sound::SoundRequest::StopAll);
+    app.update();
+    assert_eq!(playing(&mut app), 0);
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+    app.world_mut().write_message(SoundCue::Animation {
+        position: None,
+        actor,
+        sound: AnimationSound::Stop,
+        surface: None,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 0);
+}
+
+#[test]
+fn synchronous_ambient_and_immediate_commands_share_reusable_slots_and_live_gain_control() {
+    use cyrus_audio::sound::ScriptSounds;
+    use cyrus_world::sound::AmbientSoundRequest;
+
+    fn interleave(mut sounds: ScriptSounds) {
+        sounds.with_driver(Some(17), |driver, emit| {
+            let request = AmbientSoundRequest {
+                generation: 17,
+                actor_index: 7,
+                channel: None,
+                effect: 0,
+                volume: 0,
+                rate_offset_hz: 0,
+                position: [0, 0, 16_777_215],
+                object_update_excluded: false,
+            };
+            let first = driver.update(request).unwrap();
+            assert_eq!(first.channel, Some(0));
+            assert!(first.active);
+            emit(SoundCue::Script {
+                generation: 17,
+                index: 8,
+                sound: ScriptSound::Flat {
+                    effect: 1,
+                    volume: 0,
+                    rate_offset_hz: 0,
+                },
+            })
+            .unwrap();
+            emit(SoundCue::Script {
+                generation: 17,
+                index: 7,
+                sound: ScriptSound::StopOwned,
+            })
+            .unwrap();
+            emit(SoundCue::Script {
+                generation: 17,
+                index: 8,
+                sound: ScriptSound::Flat {
+                    effect: 1,
+                    volume: 0,
+                    rate_offset_hz: 0,
+                },
+            })
+            .unwrap();
+            // The remembered slot now holds the immediate FlatSound. Ambient
+            // updates that current sample instead of restarting its old effect.
+            let updated = driver
+                .update(AmbientSoundRequest {
+                    channel: first.channel,
+                    volume: -64,
+                    ..request
+                })
+                .unwrap();
+            assert_eq!(updated.channel, Some(0));
+            assert!(updated.active);
+            assert!(
+                driver
+                    .update(AmbientSoundRequest {
+                        generation: 18,
+                        ..request
+                    })
+                    .is_err()
+            );
+            let ended = driver
+                .update(AmbientSoundRequest {
+                    channel: Some(1),
+                    object_update_excluded: true,
+                    ..request
+                })
+                .unwrap();
+            assert_eq!(ended.channel, Some(1));
+            assert!(!ended.active);
+        });
+    }
+    let (mut app, _) = fixture();
+    app.world_mut().run_system_cached(interleave).unwrap();
+    assert_eq!(playing(&mut app), 1);
+    let player = app
+        .world_mut()
+        .query::<&AudioPlayer<Panned>>()
+        .single(app.world())
+        .unwrap();
+    let audio = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&player.0)
+        .unwrap();
+    let mut decoder = audio.decoder();
+    assert_eq!(decoder.sample_rate().get(), 22050);
+    assert_eq!(decoder.next(), Some(0.25));
+    assert_eq!(decoder.next(), Some(0.25));
+}
+
+#[test]
+fn ordinary_and_animation_audio_drains_do_not_replay_the_same_cue() {
+    fn early_audio(world: &mut World) {
+        let execute = world
+            .resource::<cyrus_game::script::OrdinarySoundExecutor>()
+            .0;
+        execute(world);
+    }
+    let (mut app, _) = fixture();
+    app.init_resource::<cyrus_game::script::ScriptActors>()
+        .init_resource::<cyrus_game::random::EngineRandom>()
+        .init_asset::<cyrus_assets::animation::Animations>()
+        .add_systems(Update, early_audio.before(cyrus_audio::PlayCues));
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+}
+
+#[test]
+fn animation_uses_emission_position_even_after_the_scene_transform_changes() {
+    let (mut app, actor) = fixture();
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(GlobalTransform::from_translation(Vec3::splat(1_000_000.0)));
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        sound: AnimationSound::Play {
+            effect: 0,
+            rate_offset_hz: 0,
+        },
+        surface: Some(0),
+        position: Some([0, 0, 16_777_215]),
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+    let player = app
+        .world_mut()
+        .query::<&AudioPlayer<Panned>>()
+        .single(app.world())
+        .unwrap();
+    let audio = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&player.0)
+        .unwrap();
+    let mut decoder = audio.decoder();
+    assert_eq!(decoder.next(), Some(0.5));
+    assert_eq!(decoder.next(), Some(0.5));
 }

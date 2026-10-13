@@ -25,6 +25,9 @@ pub enum SoundCue {
         /// None leaves Play unsupported; Stop and Forget do not need a surface.
         /// Zero bypasses remapping. Other codes select the installed SURFACE.INI row.
         surface: Option<u8>,
+        /// Logical emitter position captured at command emission, in signed Q8
+        /// coordinates. None retains the presentation-only transform lookup.
+        position: Option<[i32; 3]>,
     },
 }
 
@@ -57,10 +60,11 @@ pub struct AmbientSoundUpdate {
 }
 
 /// Synchronous sample status, positional mixing and channel ownership service.
+/// Borrowed only during one scheduler invocation; it need not cross threads.
 /// Implementations follow preservation's engine/sound.md: zero volume or object
 /// exclusion stops the remembered channel; status two restarts it; otherwise its
 /// volume and pan are updated. Script effects bypass animation surface remapping.
-pub trait AmbientSoundDriver: std::fmt::Debug + Send + Sync {
+pub trait AmbientSoundDriver: std::fmt::Debug {
     fn update(&self, request: AmbientSoundRequest) -> Result<AmbientSoundUpdate, String>;
 }
 
@@ -72,6 +76,9 @@ pub enum ScriptSound {
     Animation {
         sound: crate::animation::AnimationSound,
         surface: Option<u8>,
+        /// Logical emitter position captured at command emission, in signed Q8
+        /// coordinates. None retains the presentation-only transform lookup.
+        position: Option<[i32; 3]>,
     },
     /// Positional start using the receiver's original Q8 emitter coordinates.
     /// Script Sound bypasses SURFACE.INI, retaining its authored effect on every surface.

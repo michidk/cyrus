@@ -230,15 +230,66 @@ pub(crate) struct OrdinaryAssets<'w> {
     state: Option<Res<'w, State<crate::AppState>>>,
 }
 
-pub(crate) fn step(
-    prepared: OrdinaryAssets,
-    mut actors: ResMut<ScriptActors>,
-    clock: Option<Res<SimulationClock>>,
-    mut random: ResMut<crate::random::EngineRandom>,
-    mut sounds: Option<ResMut<Messages<SoundCue>>>,
-    bindings: Query<(Entity, &super::super::ScriptBinding)>,
-    players: Query<&crate::player::placement::PlayerPose, With<crate::player::Player>>,
+/// Optional host execution adapter. The game retains ordinary stage ownership;
+/// the host lends synchronous services for the duration of this invocation.
+#[derive(Resource)]
+pub struct OrdinarySoundExecutor(pub fn(&mut World));
+
+/// Scheduler inputs borrowed for one ordinary invocation. Presentation hosts may
+/// lend an audio driver without retaining game state or introducing another VM.
+#[derive(SystemParam)]
+pub struct OrdinaryContext<'w, 's> {
+    prepared: OrdinaryAssets<'w>,
+    actors: ResMut<'w, ScriptActors>,
+    clock: Option<Res<'w, SimulationClock>>,
+    random: ResMut<'w, crate::random::EngineRandom>,
+    bindings: Query<'w, 's, (Entity, &'static super::super::ScriptBinding)>,
+    players:
+        Query<'w, 's, &'static crate::player::placement::PlayerPose, With<crate::player::Player>>,
+}
+
+impl OrdinaryContext<'_, '_> {
+    /// Current logical world identity, used to reject expired audio ownership.
+    pub fn generation(&self) -> Option<u64> {
+        self.actors.current.as_ref().map(ScriptWorld::generation)
+    }
+}
+
+pub(crate) fn step(world: &mut World) {
+    if let Some(executor) = world.get_resource::<OrdinarySoundExecutor>() {
+        let execute = executor.0;
+        execute(world);
+    } else if let Err(error) = world.run_system_cached(queued_step) {
+        world.resource_mut::<ScriptActors>().error = Some(format!("ordinary scheduler: {error}"));
+    }
+}
+
+fn queued_step(context: OrdinaryContext, mut sounds: Option<ResMut<Messages<SoundCue>>>) {
+    run_ordinary(context, None, None, &mut |cue| {
+        let sounds = sounds
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("ordinary sound consumer unavailable"))?;
+        sounds.write(cue);
+        Ok(())
+    });
+}
+
+/// Run the game-owned ordinary stages with synchronous audio feedback. Missing
+/// reset state remains unsupported; a host must not substitute a guessed flag.
+pub fn run_ordinary(
+    context: OrdinaryContext,
+    ambient_sound: Option<&dyn cyrus_world::sound::AmbientSoundDriver>,
+    sound_reset: Option<bool>,
+    emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) {
+    let OrdinaryContext {
+        prepared,
+        mut actors,
+        clock,
+        mut random,
+        bindings,
+        players,
+    } = context;
     let OrdinaryAssets {
         view,
         request,
@@ -312,15 +363,18 @@ pub(crate) fn step(
             nominal_ticks: Some(timing.nominal_ticks),
             frame_scale: Some(timing.frame_scale),
             player_query,
+            ambient_sound,
+            sound_reset,
             ..default()
         },
         &mut random,
         &mut |actor, sound| {
-            let sounds = sounds
-                .as_mut()
-                .ok_or_else(|| anyhow::anyhow!("ordinary sound consumer unavailable"))?;
-            match sound {
-                super::super::ScriptSound::Animation { sound, surface } => {
+            let cue = match sound {
+                super::super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                } => {
                     let mut nodes = bindings.iter().filter(|(_, binding)| {
                         binding.actor == actor && binding.source == request.0
                     });
@@ -331,21 +385,20 @@ pub(crate) fn step(
                         nodes.next().is_none(),
                         "animation sound scene binding ambiguous"
                     );
-                    sounds.write(SoundCue::Animation {
+                    SoundCue::Animation {
                         actor: entity,
                         sound,
                         surface,
-                    });
+                        position,
+                    }
                 }
-                sound => {
-                    sounds.write(SoundCue::Script {
-                        generation: actor.generation,
-                        index: actor.index,
-                        sound,
-                    });
-                }
-            }
-            Ok(())
+                sound => SoundCue::Script {
+                    generation: actor.generation,
+                    index: actor.index,
+                    sound,
+                },
+            };
+            emit(cue)
         },
         100_000,
     );

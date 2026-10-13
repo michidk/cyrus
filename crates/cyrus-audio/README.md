@@ -5,7 +5,7 @@ Native/browser effects, speech and CD music playback. `SoundPlugin` and
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
 in presentation. This crate has no rendering or startup dependency.
 
-Positional playback entities carry `PannedGains`, shared with their active
+Loaded sample playback entities carry `PannedGains`, shared with their active
 decoder. A volume/pan update affects subsequent stereo frames without restarting
 the sample. One-shots retain their start gains unless explicitly updated.
 
@@ -13,16 +13,29 @@ Hosts supply an optional `AudioListener` in Bevy world space. Positional starts
 require that listener. `AudioReadiness { prepare }` defaults to true; startup
 holds it false until the title appears. Startup copies committed menu preferences
 to `SoundSettings` before `ApplyPreferences`. The Update order is
-`ApplyPreferences` → world `AnimationSystems` → `PlayCues`.
+`ApplyPreferences` → world `AnimationSystems` → `PlayCues`. Ordinary updates
+also drain earlier cues before lending `ScriptSounds`; both drains retain the
+same message cursor, so commands are consumed once. Immediate ordinary script
+commands and ambient polling use one live sixteen-slot channel pool. Backend
+completion identifies an individual start; animation and ambient handles identify
+a reusable slot and control its current occupant.
 `CinematicAudio` marks cinematic playback and pauses CD music. Browser startup
 can inspect `SoundBankHandle` and its asset dependencies for loading failures.
 
 Animation cues use installed SURFACE.INI remaps on native and browser. The cue's
 captured surface selects the row; known zero bypasses it, and missing state
-remains unsupported. Later actor changes cannot alter a queued cue. Stop and
+remains unsupported. Logical SOUP cues also capture their own local signed Q8 position, without the
+linked or attached substitutions used by script Sound. Later actor changes
+cannot alter either snapshot. Presentation-only cues may omit the position and
+use their scene transform. Stop and
 Forget do not require surface state. Playback validates the remapped effect, while cleanup retains
 the authored source ID. Script, combat and speech starts bypass these tables.
 Actor surface updates belong to the ground/SOUP host, not the sound plugin.
+
+`ScriptSounds::with_driver` lends synchronous `AmbientSoundDriver` feedback and
+immediate cue dispatch for one logical-world update. The caller owns timing and
+reset inputs. Missing automatic reset/menu/dialogue/navigation ownership remains
+unsupported; the adapter does not assume a clear periodic-reset flag.
 
 Headless hosts omit Bevy's audio backend and retain requests/control state.
 Channel ownership, actor cleanup, world expiry and browser queued starts use the

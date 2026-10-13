@@ -583,6 +583,7 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.validate_animation_binding(id, data)?;
+        let position = animation_sound_position(self.spatial.as_ref(), index);
         let actor = &mut self.actors[index];
         let placement = actor
             .placement()
@@ -607,6 +608,7 @@ impl ScriptWorld {
                     super::ScriptSound::Animation {
                         sound,
                         surface: actor.surface,
+                        position,
                     },
                 )
             },
@@ -693,11 +695,19 @@ impl ScriptWorld {
                 u16::from(actor.attributes[44])
             }
         };
+        let position = animation_sound_position(self.spatial.as_ref(), index);
         let surface = actor.surface;
         let result = animation
             .playback
             .select_default_with_sounds(group, ticks, &mut |sound| {
-                sounds(id, super::ScriptSound::Animation { sound, surface })
+                sounds(
+                    id,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                )
             });
         match result {
             Ok(frame) => {
@@ -1091,6 +1101,23 @@ pub struct ScriptActors {
     requested: Option<Handle<Scripts>>,
     pub(super) error: Option<String>,
 }
+/// Animation commands capture the receiver's own local Q8 position.
+/// Unlike script Sound, they do not substitute linked or attached positions.
+fn animation_sound_position(
+    spatial: Option<&super::spatial::SpatialWorld>,
+    index: usize,
+) -> Option<[i32; 3]> {
+    Some(spatial?.actor(index).ok()?.local.position)
+}
+
+impl ScriptActors {
+    /// Record a host failure without replacing the first failure in this world.
+    /// World preparation clears it alongside the logical registry.
+    pub fn report_runtime_error(&mut self, error: String) {
+        self.error.get_or_insert(error);
+    }
+}
+
 pub(super) fn prepare(
     prepared: Res<PreparedWorld>,
     assets: Res<Assets<Scripts>>,
@@ -1208,9 +1235,17 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .inputs
             .nominal_ticks
             .context("animation requires nominal_ticks")?;
+        let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
+            Some(sounds) => sounds(
+                id,
+                super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let animation = self.actors[self.index]
@@ -1286,9 +1321,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
         }
         let ambient = self.ambient_call();
+        let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
+            Some(sounds) => sounds(
+                id,
+                super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let actor = &mut self.actors[self.index];
@@ -1536,9 +1579,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             index: self.index,
         };
         let ambient = self.ambient_call();
+        let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
+            Some(sounds) => sounds(
+                id,
+                super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
         let actor = &mut self.actors[self.index];

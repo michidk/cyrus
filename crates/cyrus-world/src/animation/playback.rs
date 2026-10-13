@@ -67,6 +67,7 @@ pub(super) fn advance(
             let result = if let Some(cues) = &mut sound_cues {
                 let mut emit = |sound| {
                     cues.write(SoundCue::Animation {
+                        position: None,
                         actor: entity,
                         sound,
                         surface: surface.map(|value| value.0),

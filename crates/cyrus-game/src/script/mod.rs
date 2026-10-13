@@ -12,7 +12,9 @@ mod order;
 mod playback;
 mod presentation;
 mod registry;
-pub use registry::ordinary::{OrdinaryUpdates, ScriptView};
+pub use registry::ordinary::{
+    OrdinaryContext, OrdinarySoundExecutor, OrdinaryUpdates, ScriptView, run_ordinary,
+};
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;

@@ -65,6 +65,8 @@ module where it is defined and regenerate.
 
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
+- `src/sound/samples.rs` — Synchronous sample-slot allocation; playback transport cannot own allocation order.
+- `src/sound/script.rs` — Scoped script feedback and queued native/browser cue consumption share Channels.
 - `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
 
 ## `cyrus-collision` — Terrain and authored static geometry queries.

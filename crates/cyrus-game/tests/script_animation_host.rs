@@ -241,6 +241,7 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
         [(
             receiver,
             ScriptSound::Animation {
+                position: None,
                 sound: AnimationSound::Play {
                     effect: -17,
                     rate_offset_hz: -64

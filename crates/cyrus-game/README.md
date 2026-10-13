@@ -252,9 +252,12 @@ animation surface remapping. Ambient sound, shell/code-object owners,
 `AmbientSound` native slots can use an explicitly supplied synchronous
 `AmbientSoundDriver` and sample-reset input. Each slot retains its own channel
 handle; elapsed zero and sample resets discard the handle, while `TaskStop`
-only removes the task. The production mixer adapter remains unfinished, so
-ordinary gameplay does not yet provide this service. The task-interface test
-verifies slot lifecycle, not audible ambient playback.
+only removes the task. Audio hosts lend the production mixer through
+`OrdinarySoundExecutor` while `run_ordinary` retains game-owned stage order and
+logical actor state. Immediate cues and ambient polling share live channels.
+Automatic sample-reset inputs still require menu/dialogue/lockout and navigation
+owners; absent inputs remain unsupported. Explicit driver tests verify slot and
+gain behavior, not audible or automatic all-world ambient parity.
 
 **Verified:** ordinary entry suppresses execution when an unpaused blocking task's
 physical operand identity is at or before the saved entry cursor. Direct
