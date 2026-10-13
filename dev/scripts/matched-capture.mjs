@@ -138,7 +138,7 @@ export async function capture(fixture, label, originalOnly = false) {
   await until(() => {
     if (!existsSync(nativeImage)) return false;
     return readFileSync(nativeImage).subarray(-12).equals(Buffer.from('0000000049454e44ae426082', 'hex'));
-  }, 'complete native screenshot', 30000);
+  }, 'complete native screenshot');
   const web = await browser(f, path.join(directory, 'browser.png'), webBuild);
   assert.deepEqual(nativeProvenance(), nativeBuild, 'native build or container changed during capture');
   for (const name of ['original', 'native', 'browser']) {
