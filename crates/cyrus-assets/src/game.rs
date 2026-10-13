@@ -70,7 +70,18 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
     let mut files = BTreeMap::new();
     let output: &mut dyn Output = &mut files;
     match path.split('/').next().unwrap_or_default() {
-        "console" => crate::console::prepare(source, output)?,
+        "console" => {
+            let installed = source
+                .manifest()
+                .find("REDGUARD.CPF")
+                .map(|file| source.read(&file.path))
+                .transpose()?;
+            output.publish(
+                Path::new("console/startup.json"),
+                &serde_json::to_vec(&installed)?,
+            )?;
+            crate::console::prepare(source, output)?;
+        }
         "cheats" => output.publish(
             Path::new("cheats/startup.json"),
             &serde_json::to_vec(&crate::cheats::prepare(source)?)?,

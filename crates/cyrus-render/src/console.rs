@@ -100,25 +100,28 @@ fn draw(
     } else {
         Visibility::Hidden
     };
-    if !visible {
-        return;
-    }
     let Some(artwork) = assets.get(&artwork.0) else {
         return;
     };
     let Ok(mut page) = page.single_mut() else {
         return;
     };
-    let Some(inks) = scene.world.and_then(|world| artwork.inks.get(&world)) else {
+    let Some(palette) = scene.world.and_then(|world| artwork.palettes.get(&world)) else {
         return;
     };
+    if console.palette != Some(palette.gui) {
+        console.palette = Some(palette.gui);
+    }
+    if !visible {
+        return;
+    }
     if !console.is_changed()
         && !scene.is_changed()
         && page.image != bevy::image::TRANSPARENT_IMAGE_HANDLE
     {
         return;
     }
-    let image = raster(artwork, console.bypass_change_detection(), *inks);
+    let image = raster(artwork, console.bypass_change_detection(), palette);
     if page.image != bevy::image::TRANSPARENT_IMAGE_HANDLE
         && let Some(mut existing) = images.get_mut(&page.image)
     {
@@ -131,21 +134,55 @@ fn draw(
 fn raster(
     artwork: &ConsoleArtwork,
     console: &mut Console,
-    [editing, report]: [[u8; 3]; 2],
+    palette: &cyrus_assets::console::ConsolePalette,
 ) -> Image {
     let width = usize::from(artwork.width);
     let height = usize::from(artwork.height);
-    let mut pixels = artwork.paper.clone();
+    let ink = |index: u32| {
+        palette
+            .gui
+            .get(index as usize)
+            .map(|entry| palette.colors[usize::from(*entry)])
+    };
+    let editing = ink(console.preferences.colors[0]).unwrap_or(palette.colors[0]);
+    let report = ink(console.preferences.colors[1]).unwrap_or(palette.colors[0]);
+    let mut pixels = if console.preferences.paper_disabled == 0 {
+        artwork.paper.clone()
+    } else {
+        let color = palette.colors[usize::from(console.preferences.background)];
+        [color[0], color[1], color[2], 255].repeat(width * height)
+    };
     let line_height = i32::from(artwork.font.line_height);
     let body_y = 8 + line_height * 4;
     console.page_lines = (height.saturating_sub(body_y as usize) / line_height as usize).max(1);
     let mut text = |line: &str, x: i32, y: i32, colour: [u8; 3]| {
-        artwork.font.draw(line, [x, y], |x, y, _| {
-            if x >= 0 && y >= 0 && (x as usize) < width && (y as usize) < height {
-                let at = (y as usize * width + x as usize) * 4;
-                pixels[at..at + 4].copy_from_slice(&[colour[0], colour[1], colour[2], 255]);
+        let mut pen = x;
+        for ch in line.bytes() {
+            let character = [ch];
+            let character = std::str::from_utf8(&character).unwrap_or("?");
+            for shadow in [true, false] {
+                if shadow && console.preferences.shadow == 0 {
+                    continue;
+                }
+                let offset = if shadow { 2 } else { 0 };
+                artwork
+                    .font
+                    .draw(character, [pen + offset, y + offset], |x, y, _| {
+                        if x >= 0 && y >= 0 && (x as usize) < width && (y as usize) < height {
+                            let at = (y as usize * width + x as usize) * 4;
+                            if shadow {
+                                for channel in &mut pixels[at..at + 3] {
+                                    *channel = (u16::from(*channel) * (255 - 199) / 255) as u8;
+                                }
+                            } else {
+                                pixels[at..at + 4]
+                                    .copy_from_slice(&[colour[0], colour[1], colour[2], 255]);
+                            }
+                        }
+                    });
             }
-        });
+            pen += artwork.font.advance(ch);
+        }
     };
     text("RedGuard Development Console", 8, 8, editing);
     text(
@@ -168,7 +205,7 @@ fn raster(
             format!("> {}", line.text)
         };
         text(&value, 8, y, if line.report { report } else { editing });
-        if console.top + row == console.selected {
+        if console.top + row == console.selected && console.cursor_visible() {
             let prefix = if line.report { " " } else { "> " };
             let x = 8
                 + artwork.font.width(prefix)
@@ -177,7 +214,8 @@ fn raster(
                         .text
                         .floor_char_boundary(console.cursor.min(line.text.len()))],
                 );
-            text("|", x, y, editing);
+            text("|", x, y - 4, report);
+            text("|", x, y + 4, report);
         }
     }
     let separator = (body_y - line_height) as usize;
@@ -207,6 +245,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn preference_changes_draw_gui_ink_shadow_and_solid_background_pixels() {
+        let artwork = ConsoleArtwork {
+            width: 64,
+            height: 64,
+            paper: vec![255; 64 * 64 * 4],
+            font: cyrus_text::Font {
+                start: 32,
+                line_height: 9,
+                glyphs: vec![
+                    cyrus_text::Glyph {
+                        enabled: true,
+                        width: 1,
+                        height: 1,
+                        offset: [0, 0],
+                        pixels: vec![1]
+                    };
+                    96
+                ],
+                palette: Vec::new(),
+            },
+            palettes: default(),
+        };
+        let mut palette = cyrus_assets::console::ConsolePalette {
+            colors: vec![[0; 3]; 256],
+            gui: [0; 16],
+        };
+        palette.gui[1] = 5;
+        palette.colors[5] = [90, 80, 70];
+        palette.colors[2] = [42, 43, 44];
+        let mut console = Console::default();
+        console.preferences.colors[0] = 1;
+        console.preferences.shadow = 1;
+        let page = raster(&artwork, &mut console, &palette);
+        let pixels = page.data.unwrap();
+        let at = |x: usize, y: usize| (y * 64 + x) * 4;
+        assert_eq!(&pixels[at(8, 8)..at(8, 8) + 4], &[90, 80, 70, 255]);
+        assert_eq!(&pixels[at(10, 10)..at(10, 10) + 4], &[56, 56, 56, 255]);
+        assert_eq!(&pixels[..4], &[255; 4]);
+        console.preferences.paper_disabled = 1;
+        console.preferences.background = 2;
+        let pixels = raster(&artwork, &mut console, &palette).data.unwrap();
+        assert_eq!(&pixels[..4], &[42, 43, 44, 255]);
+    }
+
+    #[test]
     fn console_owns_its_texture_without_replacing_the_shared_default() {
         let mut app = App::new();
         let mut images = Assets::<Image>::default();
@@ -226,7 +309,14 @@ mod tests {
                 line_height: 9,
                 ..default()
             },
-            inks: [(0, [[0; 3], [0, 168, 0]])].into(),
+            palettes: [(
+                0,
+                cyrus_assets::console::ConsolePalette {
+                    colors: vec![[0, 168, 0]; 256],
+                    gui: [0; 16],
+                },
+            )]
+            .into(),
         });
         app.insert_resource(images)
             .insert_resource(artwork)

@@ -101,3 +101,9 @@ diagnostics use a null world because the coverage scan does not establish a
 world reference.
 
 Native `state.scene_ready` reports that the current rendered world has finished spawning. `InGame` alone does not establish that its asynchronous scene dependencies have loaded.
+
+Console preferences restore from `cyrus-config/REDGUARD.CPF`, then the installed
+file when local state is absent. `console save` writes only the local CPF;
+`console write` exports retained output to `cyrus-config/CONSOLE.LOG`. Malformed
+preferences remain visible in `state.console.preference_error` and block edits
+and saves. `console show` reports settings and any load error.

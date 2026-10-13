@@ -1058,6 +1058,28 @@ impl ScriptWorld {
     pub fn flags(&self) -> &[i32] {
         &self.flags
     }
+    /// Read the global flag's latch without applying its native set/reset operation.
+    pub fn global_flag_is_set(&self, index: usize) -> Result<bool> {
+        anyhow::ensure!(
+            index < self.flags.len(),
+            "world {}: global flag {index} absent",
+            self.world
+        );
+        Ok(self.flag_state.is_set(index))
+    }
+    /// Assign a raw value and optionally mark the latch, as the console does.
+    /// A false `mark_set` preserves the latch; it does not clear it.
+    pub fn assign_global_flag(&mut self, index: usize, value: i32, mark_set: bool) -> Result<()> {
+        let slot = self
+            .flags
+            .get_mut(index)
+            .with_context(|| format!("world {}: global flag {index} absent", self.world))?;
+        *slot = value;
+        if mark_set {
+            self.flag_state.mark_set(index);
+        }
+        Ok(())
+    }
     pub fn actors(&self) -> &[ScriptActor] {
         &self.actors
     }

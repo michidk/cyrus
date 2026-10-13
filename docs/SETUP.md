@@ -452,7 +452,7 @@ errors without being overwritten. The install stays read-only.
 F12 opens the console in a world; F12 or Escape closes it. Gameplay also accepts
 a cheat name followed by Enter. TCP/MCP `console {open?, line?}` uses the same
 command dispatcher and reports retained output through `state.console`.
-`commands` lists registered non-cheat commands and aliases; `oracle` lists cheats.
+`commands` lists the original non-cheat commands and aliases, marking unavailable handlers; `oracle` lists cheats.
 Assignments use `name = value`, with decimal, negative decimal, hexadecimal,
 percent-prefixed or packed four-byte values. **Verified:** the original percent
 syntax returns zero; quoted input packs the first four following bytes after
@@ -460,6 +460,27 @@ lowercasing. Decimal and hexadecimal conversion consume the numeric prefix and
 wrap at 32 bits. Assignments can also read a named SOUP flag's current value.
 Unknown names report a diagnostic and use one; unavailable or stale world
 metadata blocks symbolic assignments. Short quoted input remains unsupported.
+
+Console preferences load from native `cyrus-config/REDGUARD.CPF` or browser
+localStorage `cyrus-console`, with the read-only installed CPF as fallback when
+local state is absent. `console save` persists preferences; `console write`
+writes native `cyrus-config/CONSOLE.LOG` or downloads it in the browser.
+`console show` reports preferences and load errors. Malformed CPF blocks preference
+edits and saving. **Verified:** the original loader clamps hex line counts below
+one and does not enable shadows from a saved nonzero shadow value.
+
+`console font`, `shadow`, `paper` and `col0` through `col3` change appearance;
+`col3` requires paper off and the current world palette. `console hex,number`
+and `console limit,number` retain diagnostic preferences; raw memory dumps and
+on-screen diagnostic logging remain unsupported. The font selector uses the
+installed GUI font's original linked copies. `show world` reports supported
+environment settings. `fxskyscale`, `fxskylevel`, `fxwaveamp`, `fxwavespeed` and
+`fxwavefreq` accept signed numbers or live flag names and retain edits for the
+session, including world revisits. `get` and `set` report no matching console
+variables, as the original Glide variable table is empty. `getflag pattern` reads live SOUP values/types/latches;
+`setflag pattern,value[,status]` assigns values and optionally marks their latch.
+Status zero remains unsupported because its original metadata XOR changes the
+flag type; rejection leaves every flag unchanged. Other catalog entries report unavailable owners.
 
 Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can

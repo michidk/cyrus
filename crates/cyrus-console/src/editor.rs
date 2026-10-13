@@ -11,7 +11,22 @@ pub struct Line {
 
 #[derive(Resource, Serialize)]
 pub struct Console {
+    pub preferences: crate::Preferences,
+    pub preference_error: Option<String>,
+    #[serde(skip)]
+    pub(crate) store: Option<Box<dyn crate::Store>>,
+    /// GUI indices for the current world, supplied by presentation.
+    #[serde(skip)]
+    pub palette: Option<[u8; 16]>,
     pub open: bool,
+    #[serde(skip)]
+    blink_tick: u32,
+    #[serde(skip)]
+    blink_remainder: u32,
+    #[serde(skip)]
+    blink_phase: bool,
+    #[serde(skip)]
+    pub(crate) cursor_forced: bool,
     #[serde(skip)]
     pub enabled: bool,
     #[serde(skip)]
@@ -34,7 +49,15 @@ pub struct Console {
 impl Default for Console {
     fn default() -> Self {
         Self {
+            preferences: default(),
+            preference_error: None,
+            store: None,
+            palette: None,
             open: false,
+            blink_tick: 0,
+            blink_remainder: 0,
+            blink_phase: false,
+            cursor_forced: false,
             enabled: true,
             pending: default(),
             blocked: false,
@@ -59,6 +82,43 @@ impl Default for Console {
     }
 }
 impl Console {
+    /// Restore once from host storage; malformed documents remain visible errors.
+    pub fn with_store(store: impl crate::Store) -> Self {
+        let mut console = Self::default();
+        match store.load() {
+            Ok(Some(mut preferences)) => {
+                if preferences.colors.iter().any(|index| *index >= 16) {
+                    console.preference_error =
+                        Some("REDGUARD.CPF: unsupported GUI color index".into());
+                }
+                preferences.hex_lines = preferences.hex_lines.max(1);
+                // A nonzero saved shadow retains the existing state, initially disabled.
+                preferences.shadow = 0;
+                console.preferences = preferences;
+            }
+            Ok(None) => {}
+            Err(error) => console.preference_error = Some(format!("REDGUARD.CPF: {error:#}")),
+        }
+        if let Some(error) = console.preference_error.clone() {
+            console.report(error);
+        }
+        console.store = Some(Box::new(store));
+        console
+    }
+
+    /// Advance the normal console clock with the host's monotonic BIOS-tick sample.
+    pub fn tick(&mut self, tick: u32) {
+        let elapsed = tick.wrapping_sub(self.blink_tick) as i32;
+        self.blink_tick = tick;
+        self.blink_remainder = (i64::from(self.blink_remainder) + i64::from(elapsed)).max(0) as u32;
+        if self.blink_remainder >= 18 {
+            self.blink_remainder %= 18;
+            self.blink_phase = !self.blink_phase;
+        }
+    }
+    pub fn cursor_visible(&self) -> bool {
+        self.cursor_forced || self.blink_phase
+    }
     fn append(&mut self, line: Line) {
         self.lines.push(line);
         if self.lines.len() > 512 {
@@ -120,6 +180,7 @@ impl Console {
         self.pending.push_back((text.into(), Source::Interactive));
     }
     pub fn key(&mut self, key: KeyCode, text: Option<&str>) {
+        self.cursor_forced = true;
         let editable = !self.lines[self.selected].report;
         match key {
             KeyCode::F12 | KeyCode::Escape => self.open = false,

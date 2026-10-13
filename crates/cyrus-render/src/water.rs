@@ -37,6 +37,13 @@ pub(crate) struct WaterPlayback {
     rgb: Vec<[f32; 3]>,
 }
 
+impl WaterPlayback {
+    /// Rebuild from original meshes after console edits, including bounds and zero-amplitude changes.
+    pub(crate) fn invalidate(&mut self) {
+        self.source = None;
+    }
+}
+
 /// Nonzero admission from preservation's water dirty-normal rules, in raw WLD rows.
 fn dirty_normals(water: &Water, window: crate::terrain::Window) -> Vec<bool> {
     let mut dirty = vec![false; water.animated_vertices.len()];

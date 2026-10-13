@@ -6,6 +6,7 @@ mod bindings;
 #[cfg(target_arch = "wasm32")]
 mod capture;
 mod cheats;
+mod console;
 mod debug;
 mod preferences;
 mod storage;
@@ -36,6 +37,7 @@ fn main() {
     cyrus_app::register_cache(&mut app).expect("cache source");
 
     app.insert_resource(cheats::initial());
+    app.insert_resource(console::initial());
     app.add_plugins(
         DefaultPlugins
             .set(cyrus_app::window("cyrus"))

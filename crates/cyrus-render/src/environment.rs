@@ -27,13 +27,19 @@ struct ActiveEnvironment {
 pub struct EnvironmentPlugin;
 impl Plugin for EnvironmentPlugin {
     fn build(&self, app: &mut App) {
+        crate::console_environment::register(app);
         app.add_plugins((crate::sky::SkyPlugin, crate::fog::FogPlugin))
             .init_asset::<Environment>()
             .init_asset_loader::<EnvironmentLoader>()
             .init_resource::<EnvironmentRequest>()
             .init_resource::<ActiveEnvironment>()
             .init_resource::<crate::water::WaterPlayback>()
-            .add_systems(Update, apply_sky)
+            .add_systems(
+                Update,
+                (apply_sky, crate::console_environment::apply)
+                    .chain()
+                    .after(crate::scene_presentation),
+            )
             .add_systems(
                 PostUpdate,
                 crate::water::animate_water

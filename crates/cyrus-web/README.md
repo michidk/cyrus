@@ -97,3 +97,9 @@ files and storage failures preserve the current state. Import also recovers from
 malformed local state. Clear the storage key to restore the installed seed.
 
 Capture observation `window.__cyrusCapture.ready` reports that the current rendered world has finished spawning. The replay waits for it before measuring and capturing the view.
+
+Console preferences use localStorage `cyrus-console`, retaining CPF bytes through
+rgpre. The optional installed CPF supplies defaults only when local state is
+absent. `console save` persists current preferences; `console write` downloads
+`CONSOLE.LOG`. Malformed stored CPF data blocks edits and saves and is reported
+by `console show`.

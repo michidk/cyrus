@@ -596,6 +596,34 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
             .flags(),
         &[3, -9]
     );
+    let rows = submit(app.world_mut(), "gf count*ignored", Source::Interactive).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows[0].contains("-9 set=false"));
+    submit(app.world_mut(), "sf count*,25,1", Source::Interactive).unwrap();
+    {
+        let actors = app
+            .world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap();
+        assert_eq!(actors.flags(), &[25, 25]);
+        assert!(actors.global_flag_is_set(0).unwrap());
+        assert!(actors.global_flag_is_set(1).unwrap());
+    }
+    assert!(submit(app.world_mut(), "setflag *,99,0", Source::Programmatic).is_err());
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .flags(),
+        &[25, 25]
+    );
+    submit(app.world_mut(), "setflag count*,3", Source::Programmatic).unwrap();
+    let rows = submit(app.world_mut(), "getflag count*", Source::Programmatic).unwrap();
+    assert!(rows.iter().all(|row| row.contains("3 set=true")));
     app.world_mut()
         .resource_mut::<Assets<Scripts>>()
         .get_mut(&handle)

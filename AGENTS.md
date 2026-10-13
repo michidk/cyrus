@@ -263,6 +263,11 @@ in a world; F12/Escape closes it. Gameplay accepts typed cheat names then Enter.
 Browser `savecheats` uses localStorage `cyrus-cheats`; F1 Cheat files imports and
 exports CHT. Startup SYSTEM.INI defaults replace task, animation and nodemarker.
 TCP/MCP `console {open?, line?}` and `state.console` expose the shared editor.
+`console save` persists CPF preferences outside the install; `console write` exports
+retained output. Native CPF uses `cyrus-config/REDGUARD.CPF`; browser CPF uses
+localStorage `cyrus-console`. Malformed local CPF blocks preference edits and saves.
+The original command catalog lists unavailable handlers explicitly. `show world`
+and sky-plane/wave controls operate on the current environment and retain session edits.
 
 Book turns and camera moves suspend navigation. Readiness becomes true after the
 final settling update. Quit plays the authored close before exiting. Menu motion

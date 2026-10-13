@@ -1,7 +1,10 @@
 //! Game-owned console availability and cheat command handlers.
-use crate::script::ScriptActors;
+use crate::script::{ScriptActors, ScriptWorld};
 use anyhow::{Context, ensure};
-use bevy::prelude::{App, Assets, In, IntoScheduleConfigs, Plugin, PreUpdate, Res, ResMut, State};
+use bevy::prelude::{
+    App, Assets, DetectChangesMut, In, IntoScheduleConfigs, Plugin, PreUpdate, Real, Res, ResMut,
+    State, Time, World,
+};
 use cyrus_assets::script::Scripts;
 use cyrus_console::{Command, Console, ConsoleApp, ConsoleInput, Invocation, Source};
 use cyrus_world::lifecycle::PreparedWorld;
@@ -10,7 +13,38 @@ pub struct GameConsolePlugin;
 impl Plugin for GameConsolePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(cyrus_console::ConsolePlugin)
-            .add_systems(PreUpdate, availability.before(ConsoleInput));
+            .add_systems(PreUpdate, availability.before(ConsoleInput))
+            .console_symbols(symbol);
+        for (name, alias, usage) in [
+            ("get", "g", "get pattern"),
+            ("set", "s", "set pattern,value[,value...]"),
+        ] {
+            app.console_command(
+                Command {
+                    name: name.into(),
+                    alias: Some(alias.into()),
+                    usage: usage.into(),
+                    cheat: false,
+                },
+                variables,
+            );
+        }
+        for (name, alias) in [("getflag", "gf"), ("setflag", "sf")] {
+            app.console_command(
+                Command {
+                    name: name.into(),
+                    alias: Some(alias.into()),
+                    usage: if name == "getflag" {
+                        "getflag pattern"
+                    } else {
+                        "setflag pattern,value[,nonzero status]"
+                    }
+                    .into(),
+                    cheat: false,
+                },
+                flags,
+            );
+        }
         // Handler names follow preservation's engine/cheats.md; no CHT parser in the game core.
         for name in [
             "oracle",
@@ -39,7 +73,20 @@ impl Plugin for GameConsolePlugin {
         }
     }
 }
-fn availability(state: Res<State<crate::AppState>>, mut console: ResMut<Console>) {
+fn availability(
+    state: Res<State<crate::AppState>>,
+    time: Option<Res<Time<Real>>>,
+    mut console: ResMut<Console>,
+) {
+    if let Some(time) = time {
+        let visible = console.cursor_visible();
+        console
+            .bypass_change_detection()
+            .tick(crate::clock::bios_tick(time.elapsed()));
+        if console.cursor_visible() != visible {
+            console.set_changed();
+        }
+    }
     let enabled = *state.get() == crate::AppState::InGame;
     if console.enabled != enabled {
         console.enabled = enabled;
@@ -59,33 +106,192 @@ fn cheat(
         Ok(Vec::new())
     } else {
         crate::cheat_command::execute(&mut cheats, &command.name, &command.args, |name| {
-            let world = actors
-                .as_ref()
-                .and_then(|actors| actors.current.as_ref())
-                .context("console symbol lookup requires a loaded script world")?;
-            let definition = prepared
-                .as_ref()
-                .and_then(|prepared| scripts.as_ref()?.get(&prepared.scripts))
-                .context("console symbol lookup requires loaded script definitions")?;
-            ensure!(
-                definition.world == world.world && definition.content_id == world.content_id,
-                "world {}: console symbol definitions do not match the active script world",
-                world.world
-            );
-            ensure!(
-                definition.definition.flags.len() == world.flags().len(),
-                "world {}: console flag names and values differ in length",
-                world.world
-            );
-            // Preservation's console rules: temporary equates and console variables are empty here.
-            Ok(definition
-                .definition
-                .flags
-                .iter()
-                .zip(world.flags())
-                .rev()
-                .find(|(flag, _)| flag.name.eq_ignore_ascii_case(name))
-                .map(|(_, value)| *value as u32))
+            lookup(
+                name,
+                actors.as_deref(),
+                prepared.as_deref(),
+                scripts.as_deref(),
+            )
         })
+    }
+}
+
+fn symbol(
+    In(name): In<String>,
+    actors: Option<Res<ScriptActors>>,
+    prepared: Option<Res<PreparedWorld>>,
+    scripts: Option<Res<Assets<Scripts>>>,
+) -> anyhow::Result<Option<u32>> {
+    lookup(
+        &name,
+        actors.as_deref(),
+        prepared.as_deref(),
+        scripts.as_deref(),
+    )
+}
+fn lookup(
+    name: &str,
+    actors: Option<&ScriptActors>,
+    prepared: Option<&PreparedWorld>,
+    scripts: Option<&Assets<Scripts>>,
+) -> anyhow::Result<Option<u32>> {
+    let world = actors
+        .and_then(|actors| actors.current.as_ref())
+        .context("console symbol lookup requires a loaded script world")?;
+    let definition = definition(world, prepared, scripts)?;
+    // Preservation's console rules: temporary equates and console variables are empty here.
+    Ok(definition
+        .definition
+        .flags
+        .iter()
+        .zip(world.flags())
+        .rev()
+        .find(|(flag, _)| flag.name.eq_ignore_ascii_case(name))
+        .map(|(_, value)| *value as u32))
+}
+
+fn variables(In(command): In<Invocation>) -> anyhow::Result<Vec<String>> {
+    let pattern = command.args.split(',').next().unwrap_or_default().trim();
+    ensure!(
+        !pattern.is_empty(),
+        "{} requires a variable pattern",
+        command.name
+    );
+    if command.name == "set" {
+        ensure!(
+            command
+                .args
+                .split_once(',')
+                .is_some_and(|(_, value)| !value.trim().is_empty()),
+            "usage: set pattern,value[,value...]"
+        );
+    }
+    Ok(vec![format!("No console variables match {pattern:?}.")])
+}
+
+fn definition<'a>(
+    world: &ScriptWorld,
+    prepared: Option<&PreparedWorld>,
+    scripts: Option<&'a Assets<Scripts>>,
+) -> anyhow::Result<&'a Scripts> {
+    let definition = prepared
+        .and_then(|prepared| scripts?.get(&prepared.scripts))
+        .context("console symbol lookup requires loaded script definitions")?;
+    ensure!(
+        definition.world == world.world && definition.content_id == world.content_id,
+        "world {}: console symbol definitions do not match the active script world",
+        world.world
+    );
+    ensure!(
+        definition.definition.flags.len() == world.flags().len(),
+        "world {}: console flag names and values differ in length",
+        world.world
+    );
+    Ok(definition)
+}
+
+fn flag_matches(name: &str, pattern: &str) -> bool {
+    if pattern.is_empty() || pattern.starts_with('*') {
+        return true;
+    }
+    if name.is_empty() {
+        return false;
+    }
+    let mut pattern = pattern.bytes();
+    for byte in name.bytes() {
+        match pattern.next() {
+            Some(b'*') => return true,
+            Some(b'?') => {}
+            Some(expected) if byte.eq_ignore_ascii_case(&expected) => {}
+            _ => return false,
+        }
+    }
+    matches!(pattern.find(|byte| *byte != b'?'), None | Some(b'*'))
+}
+
+fn flags(In(command): In<Invocation>, world: &mut World) -> anyhow::Result<Vec<String>> {
+    let parts: Vec<_> = command.args.split(',').map(str::trim).collect();
+    ensure!(
+        !parts[0].is_empty(),
+        "{} requires a flag pattern",
+        command.name
+    );
+    let mut output = Vec::new();
+    let assignment = if command.name == "setflag" {
+        ensure!(
+            (2..=3).contains(&parts.len()),
+            "usage: setflag pattern,value[,status]"
+        );
+        let value = cyrus_console::value(world, parts[1], &mut output)? as i32;
+        let mark = if parts.len() == 3 {
+            let status = cyrus_console::value(world, parts[2], &mut output)?;
+            ensure!(
+                status != 0,
+                "setflag status zero is unsupported: the original XOR changes flag type metadata; no values changed"
+            );
+            true
+        } else {
+            false
+        };
+        Some((value, mark))
+    } else {
+        ensure!(parts.len() == 1, "usage: getflag pattern");
+        None
+    };
+    let actors = world
+        .get_resource::<ScriptActors>()
+        .and_then(|actors| actors.current.as_ref())
+        .context("console flag commands require a loaded script world")?;
+    let definition = definition(
+        actors,
+        world.get_resource::<PreparedWorld>(),
+        world.get_resource::<Assets<Scripts>>(),
+    )?;
+    let matches: Vec<_> = definition
+        .definition
+        .flags
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, flag)| flag_matches(&flag.name, parts[0]))
+        .map(|(index, flag)| (index, flag.name.clone(), flag.flag_type.clone()))
+        .collect();
+    let mut actors = world.resource_mut::<ScriptActors>();
+    let actors = actors
+        .current
+        .as_mut()
+        .expect("validated current script world");
+    for (index, name, kind) in &matches {
+        if let Some((value, mark)) = assignment {
+            actors.assign_global_flag(*index, value, mark)?;
+        }
+        output.push(format!(
+            "{name} {kind} {} set={}",
+            actors.flags()[*index],
+            actors.global_flag_is_set(*index)?
+        ));
+    }
+    if matches.is_empty() {
+        output.push(format!("No SOUP flags match {:?}.", parts[0]));
+    }
+    Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn original_name_patterns_stop_at_star_and_allow_trailing_question_marks() {
+        for (name, pattern, expected) in [
+            ("Counter", "counter", true),
+            ("Counter", "count", false),
+            ("Counter", "count*ignored", true),
+            ("Counter", "c?unter??", true),
+            ("Counter", "*suffix", true),
+            ("Counter", "counte?x", false),
+            ("", "?", false),
+            ("Counter", "", true),
+        ] {
+            assert_eq!(super::flag_matches(name, pattern), expected);
+        }
     }
 }

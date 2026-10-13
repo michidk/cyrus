@@ -8,7 +8,13 @@ pub struct ConsoleArtwork {
     pub height: u16,
     pub paper: Vec<u8>,
     pub font: cyrus_text::Font,
-    pub inks: std::collections::BTreeMap<u32, [[u8; 3]; 2]>,
+    pub palettes: std::collections::BTreeMap<u32, ConsolePalette>,
+}
+/// World palette and the sixteen GUI matches defined by preservation's console rules.
+#[derive(Serialize, Deserialize)]
+pub struct ConsolePalette {
+    pub colors: Vec<[u8; 3]>,
+    pub gui: [u8; 16],
 }
 impl ConsoleArtwork {
     pub fn validate(&self) -> anyhow::Result<()> {
@@ -21,6 +27,12 @@ impl ConsoleArtwork {
         anyhow::ensure!(
             self.font.line_height > 0,
             "console font has zero line height"
+        );
+        anyhow::ensure!(
+            self.palettes
+                .values()
+                .all(|palette| palette.colors.len() == 256),
+            "console world palette must contain 256 colors"
         );
         Ok(())
     }
@@ -52,7 +64,7 @@ pub(crate) fn prepare(
             .context("SYSTEM/PAPER.GXA has no frames")?;
     let worlds =
         rgpre::import::world_ini::WorldIni::parse(&crate::preparation::text(source, "WORLD.INI")?);
-    let mut inks = std::collections::BTreeMap::new();
+    let mut palettes = std::collections::BTreeMap::new();
     for world in worlds.entries {
         let name = world
             .palette
@@ -64,9 +76,18 @@ pub(crate) fn prepare(
             .find_map(|directory| source.manifest().find(&format!("{directory}/{name}")))
             .with_context(|| format!("world {}: missing palette {}", world.index, world.palette))?;
         let palette = rgpre::import::palette::Palette::parse(&source.read(&path.path)?)?;
-        inks.insert(
+        palettes.insert(
             world.index,
-            [palette.colors[0], report_ink(&palette.colors)],
+            ConsolePalette {
+                colors: palette.colors.to_vec(),
+                gui: std::array::from_fn(|index| {
+                    if index == 0 {
+                        0
+                    } else {
+                        gui_ink(&palette.colors, GUI_COLORS[index])
+                    }
+                }),
+            },
         );
     }
     let artwork = ConsoleArtwork {
@@ -74,7 +95,7 @@ pub(crate) fn prepare(
         height: paper.height,
         paper: paper.rgba,
         font,
-        inks,
+        palettes,
     };
     artwork.validate()?;
     output.publish(
@@ -97,8 +118,7 @@ pub fn export(
 
 /// GUI palette matching follows preservation's console presentation contract.
 #[cfg(feature = "parsers")]
-fn report_ink(palette: &[[u8; 3]; 256]) -> [u8; 3] {
-    let target = [0i32, 42, 0];
+fn gui_ink(palette: &[[u8; 3]; 256], target: [i32; 3]) -> u8 {
     let weights = [19661, 38666, 7209];
     let candidates: Vec<_> = palette
         .iter()
@@ -107,7 +127,7 @@ fn report_ink(palette: &[[u8; 3]; 256]) -> [u8; 3] {
         .map(|(index, rgb)| (index, rgb.map(|value| i32::from(value >> 2))))
         .collect();
     if let Some((index, _)) = candidates.iter().find(|(_, rgb)| *rgb == target) {
-        return palette[*index];
+        return *index as u8;
     }
     let differences = |rgb: [i32; 3]| {
         std::array::from_fn::<_, 3, _>(|i| {
@@ -150,5 +170,26 @@ fn report_ink(palette: &[[u8; 3]; 256]) -> [u8; 3] {
                 .map(|(index, _)| *index)
         })
         .unwrap_or(0);
-    palette[index]
+    index as u8
 }
+
+/// Six-bit RGB targets; GUI index zero bypasses matching and uses palette entry zero.
+#[cfg(feature = "parsers")]
+const GUI_COLORS: [[i32; 3]; 16] = [
+    [0, 0, 0],
+    [62, 62, 62],
+    [42, 42, 42],
+    [32, 32, 32],
+    [22, 22, 22],
+    [12, 12, 12],
+    [32, 51, 63],
+    [19, 33, 44],
+    [10, 17, 26],
+    [53, 3, 23],
+    [49, 0, 0],
+    [60, 0, 0],
+    [0, 30, 0],
+    [0, 42, 0],
+    [0, 0, 0],
+    [24, 0, 28],
+];

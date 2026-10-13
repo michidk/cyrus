@@ -47,6 +47,7 @@ pub(crate) fn load(install: Option<Res<GameInstall>>, mut commands: Commands) {
     {
         error!("console artwork unavailable: {error:#}");
     }
+    commands.insert_resource(crate::console::initial(&install));
     let cheats = Cheats::new(LocalCheats {
         install: install.clone(),
         directory: crate::settings::CONFIG_DIR.into(),

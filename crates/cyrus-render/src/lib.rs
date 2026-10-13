@@ -2,6 +2,7 @@
 pub mod animation;
 pub mod camera;
 pub mod console;
+mod console_environment;
 pub mod environment;
 pub mod fog;
 pub mod hud;

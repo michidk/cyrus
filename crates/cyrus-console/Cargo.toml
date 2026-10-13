@@ -4,7 +4,11 @@ description = "Portable console editor and subsystem command dispatch."
 version.workspace = true
 edition.workspace = true
 
+[features]
+cpf = ["dep:redguard-preservation"]
+
 [dependencies]
+redguard-preservation = { workspace = true, optional = true }
 bevy = { workspace = true, features = ["keyboard"] }
 anyhow.workspace = true
 serde.workspace = true

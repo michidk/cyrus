@@ -10,7 +10,10 @@ dispatch; game handlers own cheat state and call host-provided storage.
 Cheat assignments resolve named SOUP flags against the active world's live values.
 Missing or mismatched script metadata blocks symbolic assignments without changing
 cheats. Unknown names in a loaded definition report a diagnostic and use one,
-following preservation's console rules.
+following preservation's console rules. `getflag` reads matching live values,
+types and latch status. `setflag` assigns values and can mark the latch; omitted
+status preserves it. The original zero-status metadata XOR remains unsupported
+and is rejected before any flag changes.
 
 `GamePlugin` installs app state, fidelity, `PlayerPlugin` and `ScriptPlugin`. The host supplies
 Bevy's asset/input/state infrastructure and `Preferences` with a concrete

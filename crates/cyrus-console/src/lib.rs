@@ -1,7 +1,10 @@
 //! Console editing and command dispatch independent of gameplay, rendering and storage.
+mod catalog;
 mod editor;
 mod input;
 mod number;
+mod preferences;
+pub use preferences::{Preferences, Store};
 
 use anyhow::{Result, bail};
 use bevy::{ecs::system::SystemId, input::InputSystems, prelude::*};
@@ -39,8 +42,16 @@ struct Registered {
 #[derive(Resource, Default)]
 struct Registry(Vec<Registered>);
 
+#[derive(Resource)]
+struct Symbols(SystemId<In<String>, Result<Option<u32>>>);
+
 /// Register handlers as ordinary Bevy systems; ownership remains with their plugins.
 pub trait ConsoleApp {
+    /// Install the game-owned live-symbol lookup used by all numeric commands.
+    fn console_symbols<M>(
+        &mut self,
+        handler: impl IntoSystem<In<String>, Result<Option<u32>>, M> + 'static,
+    ) -> &mut Self;
     fn console_command<M>(
         &mut self,
         command: Command,
@@ -48,6 +59,13 @@ pub trait ConsoleApp {
     ) -> &mut Self;
 }
 impl ConsoleApp for App {
+    fn console_symbols<M>(
+        &mut self,
+        handler: impl IntoSystem<In<String>, Result<Option<u32>>, M> + 'static,
+    ) -> &mut Self {
+        let handler = self.world_mut().register_system(handler);
+        self.insert_resource(Symbols(handler))
+    }
     fn console_command<M>(
         &mut self,
         command: Command,
@@ -73,6 +91,26 @@ impl ConsoleApp for App {
             .push(Registered { command, handler });
         self
     }
+}
+
+/// Read a number using the active host's live symbols; unknown names diagnose and yield one.
+pub fn value(world: &mut World, token: &str, diagnostics: &mut Vec<String>) -> Result<u32> {
+    number(token, |name| {
+        let handler = world
+            .get_resource::<Symbols>()
+            .ok_or_else(|| anyhow::anyhow!("console symbol lookup is unavailable"))?
+            .0;
+        match world
+            .run_system_with(handler, name.to_owned())
+            .map_err(|error| anyhow::anyhow!("console symbol lookup: {error}"))??
+        {
+            Some(value) => Ok(value),
+            None => {
+                diagnostics.push(format!("unknown console symbol {name:?}; using 1"));
+                Ok(1)
+            }
+        }
+    })
 }
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,40 +142,46 @@ impl Plugin for ConsolePlugin {
                 Command {
                     name: "console".into(),
                     alias: Some("con".into()),
-                    usage: "console clear".into(),
+                    usage: "console clear / write / save / show / font / shadow / paper / col0..3 / hex,number / limit,number".into(),
                     cheat: false,
                 },
-                options,
+                preferences::command,
             );
     }
 }
 
 fn list(_: In<Invocation>, registry: Res<Registry>) -> Result<Vec<String>> {
-    Ok(registry
-        .0
+    let mut lines = catalog::ORIGINAL
         .iter()
-        .filter(|entry| !entry.command.cheat)
-        .map(|entry| {
-            let command = &entry.command;
-            format!(
-                "{} [{}]  {}",
-                command.name,
-                command.alias.as_deref().unwrap_or(""),
-                command.usage
-            )
+        .map(|(name, alias)| {
+            if let Some(entry) = registry.0.iter().find(|entry| entry.command.name == *name) {
+                format!("{name} [{alias}]  {}", entry.command.usage)
+            } else {
+                format!("{name} [{alias}]  unsupported")
+            }
         })
-        .collect())
+        .collect::<Vec<_>>();
+    lines.extend(
+        registry
+            .0
+            .iter()
+            .filter(|entry| {
+                !entry.command.cheat
+                    && !catalog::ORIGINAL
+                        .iter()
+                        .any(|(name, _)| *name == entry.command.name)
+            })
+            .map(|entry| {
+                format!(
+                    "{} [{}]  {}",
+                    entry.command.name,
+                    entry.command.alias.as_deref().unwrap_or(""),
+                    entry.command.usage
+                )
+            }),
+    );
+    Ok(lines)
 }
-fn options(In(command): In<Invocation>, mut console: ResMut<Console>) -> Result<Vec<String>> {
-    match command.args.as_str() {
-        "clear" => {
-            console.clear();
-            Ok(Vec::new())
-        }
-        _ => bail!("usage: console clear"),
-    }
-}
-
 /// Execute a submission immediately, retaining interactive input and diagnostics.
 /// Programmatic input accepts canonical names only. Hidden input accepts exact cheat names only.
 pub fn submit(world: &mut World, line: &str, source: Source) -> Result<Vec<String>> {
@@ -178,6 +222,13 @@ pub fn submit(world: &mut World, line: &str, source: Source) -> Result<Vec<Strin
             if source == Source::Gameplay {
                 return Ok(Vec::new());
             }
+            if let Some((canonical, _)) = catalog::ORIGINAL.iter().find(|(canonical, alias)| {
+                *canonical == name || (source == Source::Interactive && *alias == name)
+            }) {
+                bail!(
+                    "console command {canonical} is unsupported: its owning subsystem is not implemented"
+                );
+            }
             bail!("unknown console command {name:?}");
         };
         let handler = entry.handler;
@@ -200,7 +251,12 @@ pub fn submit(world: &mut World, line: &str, source: Source) -> Result<Vec<Strin
     result
 }
 fn dispatch(world: &mut World) {
-    while let Some((line, source)) = world.resource_mut::<Console>().pending.pop_front() {
+    while let Some((line, source)) = world
+        .resource_mut::<Console>()
+        .bypass_change_detection()
+        .pending
+        .pop_front()
+    {
         let _ = submit(world, &line, source);
     }
 }

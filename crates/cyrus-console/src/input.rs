@@ -20,6 +20,9 @@ pub(crate) fn capture(world: &mut World, mut cursor: Local<MessageCursor<Keyboar
             console.reset_input();
             return;
         }
+        if console.cursor_forced {
+            console.cursor_forced = false;
+        }
         console.open
     };
     for event in events {

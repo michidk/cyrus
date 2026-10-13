@@ -78,9 +78,11 @@ module where it is defined and regenerate.
 
 ## `cyrus-console` — Console editing and command dispatch independent of gameplay, rendering and storage.
 
+- `src/catalog.rs` — Original command names and aliases from preservation's developer-console reference.
 - `src/editor.rs` — Shared console editor and hidden gameplay entry from preservation's console rules.
 - `src/input.rs` — Keyboard focus and hidden-name capture, dispatching each Enter before the next event.
 - `src/number.rs` — Supported numeric literals from preservation's developer-console contract.
+- `src/preferences.rs` — Console preferences and host persistence; CPF encoding belongs to preservation.
 
 ## `cyrus-control` — Control protocol: one JSON object per line over TCP.
 
@@ -139,6 +141,7 @@ module where it is defined and regenerate.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
 - `src/camera/projection.rs` — Original Glide horizontal field of view, independent of viewport aspect ratio.
 - `src/console.rs` — Installed paper and bitmap-font presentation for the shared console editor.
+- `src/console_environment.rs` — Original sky-plane and wave console controls, owned by world presentation.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
@@ -191,6 +194,7 @@ module where it is defined and regenerate.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/capture.rs` — Opt-in, read-only world/camera observation for matched browser captures.
 - `src/cheats.rs` — Browser CHT storage uses the same codec and startup rules as the native host.
+- `src/console.rs` — Browser console preferences retain CPF bytes in local storage; logs download as text.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
 - `src/storage.rs` — Shared browser document storage for preferences, cheats and future save records.
@@ -210,6 +214,7 @@ module where it is defined and regenerate.
 - `src/audit.rs` — Headless WORLD.INI audit through the normal preload, export and script preparation paths.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
 - `src/cheats.rs` — Native CHT restore and save outside the read-only installation.
+- `src/console.rs` — Native console preferences and logs use local storage outside the install.
 - `src/control.rs` — TCP control server (see `cyrus-control`). A thread accepts connections and
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.

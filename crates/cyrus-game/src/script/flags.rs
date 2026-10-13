@@ -15,6 +15,13 @@ pub(super) struct Flags {
     latched: Vec<bool>,
 }
 impl Flags {
+    pub(super) fn is_set(&self, index: usize) -> bool {
+        self.latched[index]
+    }
+    pub(super) fn mark_set(&mut self, index: usize) {
+        self.latched[index] = true;
+    }
+
     pub fn prepare(definition: &Definition) -> Result<Self> {
         let kinds = definition
             .flags

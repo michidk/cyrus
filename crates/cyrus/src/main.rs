@@ -7,6 +7,7 @@ use crate::control::ControlAddr;
 use crate::settings::Settings;
 mod bindings;
 mod cheats;
+mod console;
 mod debug;
 mod preferences;
 mod storage;

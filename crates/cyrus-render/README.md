@@ -217,9 +217,16 @@ Automatic actor eligibility and production interaction scheduling remain unsuppo
 
 The F12 console renders installed `SYSTEM/PAPER.GXA` and the configured bitmap
 font through the shared game editor. **Verified:** presentation inputs, palette
-ink selection and editing rules follow the published [console contract](https://github.com/michidk/redguard-preservation/compare/main...feat/console-presentation).
+ink selection and editing rules follow the published [console contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/console.md).
 The header identifies cyrus instead of displaying original-engine memory totals.
-Exact pixel parity, preference commands and non-cheat diagnostic views remain
-outside current coverage.
+Exact pixel parity and unimplemented diagnostic views remain outside current coverage.
 
 The public `ReadyScene` resource identifies the prepared world whose render instance has finished spawning. Capture consumers compare its animation handle with the current `PreparedWorld`; this does not establish script or gameplay readiness.
+
+Console rendering consumes CPF paper, GUI color and shadow settings and the
+shared cursor clock. `show world`, `fxskyscale`, `fxskylevel`, `fxwaveamp`,
+`fxwavespeed` and `fxwavefreq` use the current environment. Edits are retained
+for world revisits within the session, outside the read-only install. Wave
+changes rebuild the private terrain meshes and bounds. Other environment/light
+editor commands remain explicitly unsupported. Re-export older console artwork
+caches to provide the complete world palette and GUI color mapping.
