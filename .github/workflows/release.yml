@@ -116,8 +116,8 @@ jobs:
         with:
           name: native-${{ matrix.target }}
           path: |
-            target/artifacts/cyrus-${{ matrix.target }}.tar.gz
-            target/artifacts/cyrus-viewer-${{ matrix.target }}.tar.gz
+            target/artifacts/cyrus-${{ matrix.target }}*
+            target/artifacts/cyrus-viewer-${{ matrix.target }}*
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -223,16 +223,29 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ env.TAG_NAME }}
+          persist-credentials: false
+          sparse-checkout: |
+            dev/pages
+            .github/workflows/cyrus-banner.webp
+          sparse-checkout-cone-mode: false
       - name: Download browser bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: browser
           path: bundle
-      - name: Unpack site
-        run: tar -xzf bundle/cyrus-browser.tar.gz -C bundle
+      - name: Assemble site
+        # Landing page at the root; game and viewer under play/.
+        run: |
+          mkdir site
+          tar -xzf bundle/cyrus-browser.tar.gz -C bundle
+          mv bundle/browser site/play
+          cp dev/pages/index.html .github/workflows/cyrus-banner.webp site/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: bundle/browser
+          path: site
       - name: Deploy
         id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

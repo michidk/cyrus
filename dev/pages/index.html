@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cyrus · Redguard rebuilt in Rust</title>
+<meta name="description" content="A faithful rebuild of The Elder Scrolls Adventures: Redguard (1998) in Rust and Bevy. Bring your own GOG install.">
+<style>
+  :root { --ink: #ece3cf; --dim: #b3a78e; --bg: #15120e; --panel: #1f1a14; --line: #3a3126; --accent: #d9a441; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Georgia, "Times New Roman", serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 0 20px 64px; }
+  .banner { display: block; width: 100%; height: auto; border-bottom: 1px solid var(--line); }
+  h1 { font-size: clamp(2.6rem, 8vw, 4rem); letter-spacing: .04em; margin: 40px 0 4px; }
+  h2 { font-size: 1.25rem; margin: 44px 0 10px; color: var(--accent); font-weight: normal; letter-spacing: .06em; text-transform: uppercase; }
+  .tagline { font-size: 1.25rem; margin: 0 0 6px; }
+  .sub { color: var(--dim); margin: 0; }
+  .note { margin: 28px 0 0; padding: 14px 18px; background: var(--panel); border-left: 3px solid var(--accent); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 0; }
+  .actions a { padding: 11px 20px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); text-decoration: none; font-family: system-ui, sans-serif; font-size: .95rem; }
+  .actions a.primary { background: var(--accent); border-color: var(--accent); color: #1b140a; font-weight: 600; }
+  .actions a:hover, .actions a:focus-visible { border-color: var(--accent); }
+  ul { padding-left: 1.2em; margin: 0; }
+  li { margin: 4px 0; }
+  a { color: var(--accent); }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--dim); font-size: .9rem; }
+</style>
+</head>
+<body>
+<img class="banner" src="cyrus-banner.webp" width="1200" height="400" alt="A green dragon watches an airship cross Redguard's island landscape">
+<main>
+  <h1>cyrus</h1>
+  <p class="tagline">A faithful rebuild of <em>The Elder Scrolls Adventures: Redguard</em> (1998) in Rust and Bevy.</p>
+  <p class="sub">Bring your own copy: cyrus ships no game data and reads your GOG install at runtime.</p>
+
+  <div class="actions">
+    <a class="primary" href="https://github.com/michidk/cyrus/releases/latest">Download</a>
+    <a href="play/">Play in the browser</a>
+    <a href="play/viewer.html">Asset viewer</a>
+    <a href="https://github.com/michidk/cyrus">Source on GitHub</a>
+    <a href="https://www.gog.com/en/game/the_elder_scrolls_adventures_redguard">Buy Redguard on GOG</a>
+  </div>
+
+  <p class="note">cyrus is early in development. Startup presentation and world viewing work, but the game is not yet playable.
+  The browser version asks for a URL serving your own Redguard install; see the
+  <a href="https://github.com/michidk/cyrus/blob/main/docs/SETUP.md">setup guide</a>.</p>
+
+  <h2>What works today</h2>
+  <ul>
+    <li>The installed splash and title, then the data-driven book menu.</li>
+    <li>Unlocked movies, persistent settings, and New Game into the starting world.</li>
+    <li>Redguard worlds loaded from a local GOG install in the native or browser viewer, with a free camera.</li>
+  </ul>
+
+  <h2>Faithful by default</h2>
+  <p>Faithful mode reproduces what the player experiences: visuals, audio, controls, camera, script and animation timing, and outcomes.
+  Technical limits are not part of that goal; cyrus loads faster and runs at higher frame rates without changing game behaviour.
+  Modern controls and graphics remain opt-in.</p>
+  <p>File formats and engine documentation come from
+  <a href="https://github.com/michidk/redguard-preservation">redguard-preservation</a>.
+  <a href="https://github.com/RGUnity/redguard-unity">RGUnity</a> inspired cyrus and provided foundational research.</p>
+
+  <h2>Get involved</h2>
+  <p>Read the <a href="https://github.com/michidk/cyrus/blob/main/docs/ROADMAP.md">roadmap</a>,
+  the <a href="https://github.com/michidk/cyrus/blob/main/CONTRIBUTING.md">contributing guide</a>,
+  or join the <a href="https://discord.com/invite/xjCCyqbxkp">Discord</a> (<code>rg-unity-devtalk</code>).</p>
+
+  <footer>
+    cyrus is written by LLM coding agents (Codex and Claude Code), directed and reviewed by the maintainer against the original game.
+    Not affiliated with Bethesda Softworks.
+  </footer>
+</main>
+</body>
+</html>

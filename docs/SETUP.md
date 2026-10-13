@@ -83,8 +83,9 @@ are present in the checked-out revision. Both applications are built from this w
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
-After the release is published, `Release` deploys the browser bundle to GitHub
-Pages. The repository's Pages source must be set to "GitHub Actions" once.
+After the release is published, `Release` deploys GitHub Pages: the landing page
+from `dev/pages/index.html` at the root, and the browser bundle under `play/`
+(`play/viewer.html` for the viewer). The repository's Pages source must be set to "GitHub Actions" once.
 The site contains application code only; supply a game install with
 `?install=<encoded-install-service-URL>`.
 
@@ -106,13 +107,14 @@ before building all platforms. Browser release builds use one Cargo job and the
 `wasm-release` profile (thin link-time optimization, one codegen unit) to limit
 hosted-runner memory use; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
-commits with git-cliff and `cliff.toml`, attaches all archives and `SHA256SUMS`,
+commits with git-cliff and `cliff.toml`, attaches all packages and `SHA256SUMS`,
 and publishes the release. No release is created when a build fails; successful
 packages remain available as Actions artifacts. Rerun failed jobs in Actions to
 finish. Reruns leave an already published release unchanged.
 Actions artifacts expire after seven days; GitHub release assets remain available.
 
-Archives contain application code and crate usage instructions. They contain
+Linux and macOS packages are `.tar.gz` archives holding only the executable;
+Windows packages are the bare `.exe`. The browser bundle is an archive. Packages contain
 no game files, exported previews, or local state. Native executables still need
 the player's GOG install. Browser bundles ask for an install-service URL, remember it, and validate it on
 each launch. The service supplies read-only original files; a WASM worker prepares game and
