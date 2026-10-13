@@ -1809,3 +1809,245 @@ fn ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_pla
     assert_eq!(requests.len(), 5);
     assert_eq!((requests[4].effect, requests[4].channel), (2, None));
 }
+
+fn lockout_data(value: i32, activate: bool) -> Scripts {
+    let mut data = scripts(vec![Operation::End { target: 0 }]);
+    data.definition.functions.extend([
+        Function {
+            name: "LockoutPlayer".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        },
+        Function {
+            name: "Activate".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        },
+    ]);
+    let mut player = data.actors["OTHER"].clone();
+    player.namespace = Some("CYRUS".into());
+    player.code_origin = 200;
+    player.attributes.insert("attr_117".into(), 7);
+    data.actors.insert("CYRUS".into(), player);
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_117".into(), 8);
+    data.actors
+        .get_mut("OTHER")
+        .unwrap()
+        .attributes
+        .insert("attr_117".into(), 9);
+    let native_call = |function_id, function: &str, value| Call {
+        function_id,
+        function: function.into(),
+        kind: CallKind::Function,
+        target: Object::Me,
+        arguments: vec![Value::Integer { value }],
+    };
+    let mut operations = vec![Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(native_call(3, "LockoutPlayer", value)),
+            },
+            rest: vec![],
+        },
+    }];
+    if activate {
+        operations.push(Operation::Call {
+            call: native_call(4, "Activate", i32::from_le_bytes(*b"#OPN")),
+        });
+    }
+    operations.push(Operation::End { target: 0 });
+    data.actors.get_mut("ACTOR").unwrap().program.steps = operations
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    let mut excluded = data.instances[1].clone();
+    excluded.object_id = 2;
+    excluded.object_type = 2;
+    data.instances.push(excluded);
+    data.content_id = data.content_identity().unwrap();
+    data
+}
+
+fn lockout_world(value: i32, activate: bool) -> ScriptWorld {
+    ScriptWorld::prepare(&lockout_data(value, activate), 7).unwrap()
+}
+
+#[test]
+fn lockout_player_retains_low_word_and_cleans_only_registered_actors() {
+    for (value, retained, exact_one) in [
+        (1, 1, true),
+        (65537, 1, true),
+        (-65535, 1, true),
+        (0, 0, false),
+        (2, 2, false),
+        (257, 257, false),
+        (-1, 65535, false),
+    ] {
+        let mut world = lockout_world(value, false);
+        assert_eq!(world.globals().lockout(), None);
+        world
+            .globals_mut()
+            .remember_choice("Remembered topic".into());
+        let id = world.id(0).unwrap();
+        stage(&mut world, id, BODY);
+        assert_eq!(world.flags(), [0]);
+        assert_eq!(world.globals().lockout(), Some(retained));
+        assert_eq!(world.globals().highlighted_choice(), Some(""));
+        let actors = world.inspect(0, 4)["actors"].as_array().unwrap().clone();
+        assert_eq!(actors[3]["attributes"][117], if exact_one { 1 } else { 0 });
+        assert_eq!(actors[0]["attributes"][117], if exact_one { 8 } else { 0 });
+        assert_eq!(actors[1]["attributes"][117], if exact_one { 9 } else { 0 });
+        assert_eq!(
+            actors[2]["attributes"][117], 9,
+            "separate object path remains outside actor registry"
+        );
+    }
+}
+
+#[test]
+fn lockout_call_changes_activation_and_overlay_in_the_same_invocation() {
+    use cyrus_game::script::ActivationOverlay;
+    for (value, caller_lockout, expected_prompt) in [(1, 0, None), (2, 1, Some("Open"))] {
+        let mut world = lockout_world(value, true);
+        let (_, mut inputs) = activation_world("Activate");
+        inputs.player = world.id(3).unwrap();
+        inputs.actors.insert(3, inputs.actors[&2]);
+        inputs.lockout = caller_lockout;
+        inputs.use_held = false;
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    activation: Some(&inputs),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .unwrap();
+        assert_eq!(world.activation().prompt(), expected_prompt);
+        assert_eq!(
+            world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+            if value == 1 {
+                ActivationOverlay::Hidden
+            } else {
+                ActivationOverlay::Prompt("Open".into())
+            }
+        );
+    }
+}
+
+#[test]
+fn lockout_clears_prompt_override_only_outside_exact_one() {
+    use cyrus_game::script::ActivationOverlay;
+    for value in [1, 2, 65536] {
+        let mut data = lockout_data(value, false);
+        let actor = data.actors.get_mut("ACTOR").unwrap();
+        let lockout = actor.program.steps[&0].operation.clone();
+        actor.program.entry = 2;
+        actor.program.steps = BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::Call {
+                        call: Call {
+                            function_id: 4,
+                            function: "Activate".into(),
+                            kind: CallKind::Function,
+                            target: Object::Me,
+                            arguments: vec![Value::Integer {
+                                value: i32::from_le_bytes(*b"#OPN"),
+                            }],
+                        },
+                    },
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+            (
+                2,
+                Step {
+                    next: 3,
+                    operation: lockout,
+                },
+            ),
+            (
+                3,
+                Step {
+                    next: 4,
+                    operation: Operation::End { target: 2 },
+                },
+            ),
+        ]);
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let (_, mut inputs) = activation_world("Activate");
+        inputs.player = world.id(3).unwrap();
+        inputs.actors.insert(3, inputs.actors[&2]);
+        inputs.use_held = false;
+        let id = world.id(0).unwrap();
+        let invoke = |world: &mut ScriptWorld, stage| {
+            world
+                .advance(
+                    id,
+                    stage,
+                    cyrus_game::script::ScriptInputs {
+                        activation: Some(&inputs),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    30,
+                )
+                .unwrap()
+        };
+        invoke(&mut world, ScriptStage::Body(Thread::Interrupt));
+        assert_eq!(
+            world.activation_overlay(&inputs, 0, true, 24).unwrap(),
+            ActivationOverlay::Prompt("Open".into())
+        );
+        invoke(&mut world, ScriptStage::Body(Thread::Interrupt));
+        assert_eq!(world.inspect(0, 0)["activation"]["prompt_override"], 24);
+        invoke(&mut world, BODY);
+        assert_eq!(
+            world.activation().prompt(),
+            Some("Open"),
+            "lockout clears the timer, not pending prompt text"
+        );
+        assert_eq!(
+            world.inspect(0, 0)["activation"]["prompt_override"],
+            if value == 1 { 24 } else { 0 }
+        );
+        assert_eq!(
+            world.activation_overlay(&inputs, 0, false, 24).unwrap(),
+            if value == 1 {
+                ActivationOverlay::Hidden
+            } else {
+                ActivationOverlay::Prompt("Open".into())
+            }
+        );
+    }
+}

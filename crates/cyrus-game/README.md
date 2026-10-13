@@ -252,6 +252,17 @@ animation surface remapping. Ambient sound, shell/code-object owners,
 `KillMe` and the script
 `StopAllSounds` result remain unsupported.
 
+`LockoutPlayer` retains its argument's low word in `GameplayGlobals`, clears
+remembered topic-choice text and returns zero. Exact one sets the selected
+player's attribute 117; other values clear it on the player and registered
+actors and clear the activation prompt-override timer. Activation and overlay
+updates consume that value immediately. Unknown initial lockout remains absent;
+explicit inspection inputs supply the fallback before a native call establishes
+it. The host retains gameplay globals while replacing logical world registries.
+**Verified:** setter semantics follow [preservation's HUD rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md).
+Topic-menu execution, production HUD inputs and death/session reset ownership
+remain incomplete.
+
 `AmbientSound` native slots can use an explicitly supplied synchronous
 `AmbientSoundDriver` and sample-reset input. Each slot retains its own channel
 handle; elapsed zero and sample resets discard the handle, while `TaskStop`

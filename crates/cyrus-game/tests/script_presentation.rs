@@ -229,8 +229,25 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     assert!(app.world().get::<SoundSurface>(node).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());
 
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .current
+        .as_mut()
+        .unwrap()
+        .globals_mut()
+        .remember_choice("Remembered topic".into());
     app.insert_resource(prepared());
     app.update();
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .globals()
+            .highlighted_choice(),
+        Some("Remembered topic")
+    );
     assert!(app.world().get::<ScriptBinding>(node).is_none());
     assert!(app.world().get::<SoundSurface>(node).is_none());
     assert!(app.world().get::<AnimationPose>(node).is_none());

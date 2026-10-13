@@ -86,6 +86,34 @@ pub enum ActivationOverlay {
     Item { visible: bool, cycle_allowed: bool },
 }
 
+/// Gameplay globals established by native calls. Unknown startup values remain None.
+/// The host retains these globals while replacing the logical world registry.
+#[derive(Default, Debug, Serialize)]
+pub struct GameplayGlobals {
+    lockout: Option<u16>,
+    highlighted_choice: Option<String>,
+}
+impl GameplayGlobals {
+    /// Last retained LockoutPlayer low word, or unknown before an established call.
+    pub fn lockout(&self) -> Option<u16> {
+        self.lockout
+    }
+    /// Saved topic-menu selection text, distinct from the HUD activation prompt.
+    pub fn highlighted_choice(&self) -> Option<&str> {
+        self.highlighted_choice.as_deref()
+    }
+    /// The topic-menu owner supplies the text selected from its installed entries.
+    pub fn remember_choice(&mut self, text: String) {
+        self.highlighted_choice = Some(text);
+    }
+    pub(super) fn lockout_player(&mut self, value: i32) -> u16 {
+        let value = value as u16;
+        self.lockout = Some(value);
+        self.highlighted_choice = Some(String::new());
+        value
+    }
+}
+
 /// One activation owner and pending prompt for a logical world generation.
 #[derive(Default, Debug, Serialize)]
 pub struct ActivationState {
@@ -102,6 +130,10 @@ impl ActivationState {
         self.prompt.as_deref()
     }
 
+    pub(super) fn clear_prompt_override(&mut self) {
+        self.prompt_override = 0;
+    }
+
     pub(super) fn call(
         &mut self,
         receiver: ScriptActorId,
@@ -109,7 +141,7 @@ impl ActivationState {
         arguments: &[Argument],
         inputs: Option<&ActivationInputs>,
         receiver_attributes: &[u8],
-        selected_player: Option<&super::ScriptActor>,
+        selected_player: Option<(&super::ScriptActor, u16)>,
     ) -> Result<Option<i32>> {
         if name.eq_ignore_ascii_case("Deactivate") {
             anyhow::ensure!(arguments.is_empty(), "Deactivate: wrong argument count");
@@ -131,7 +163,8 @@ impl ActivationState {
         );
         let label = std::str::from_utf8(&bytes)?;
         let inputs = inputs.context("activation inputs unavailable")?;
-        let selected_player = selected_player.context("activation selected player absent")?;
+        let (selected_player, lockout) =
+            selected_player.context("activation selected player absent")?;
         let player_attributes = selected_player.attributes();
         let actor = inputs.actor(receiver.index)?;
         let player = inputs.player_state(selected_player)?;
@@ -144,7 +177,7 @@ impl ActivationState {
             inputs.item_system_ready,
             inputs.shell_execution,
         );
-        if inputs.lockout == 1
+        if lockout == 1
             || inputs.dialogue_open
             || actor.on_rope
             || actor.on_edge()
@@ -179,12 +212,13 @@ impl ActivationState {
         ticks: u32,
         cycle_held: bool,
         override_ticks: u32,
+        lockout: Option<u16>,
     ) -> Result<ActivationOverlay> {
         let player = inputs.player_state(selected_player)?;
         if self.prompt.is_none() {
             self.prompt_override = 0;
         }
-        if inputs.lockout == 1 {
+        if lockout.unwrap_or(inputs.lockout) == 1 {
             return Ok(ActivationOverlay::Hidden);
         }
         if self.holdoff != 0 {

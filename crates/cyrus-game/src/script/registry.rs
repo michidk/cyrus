@@ -174,6 +174,7 @@ pub struct ScriptWorld {
     actors: Vec<ScriptActor>,
     spatial: Option<super::spatial::SpatialWorld>,
     activation: super::ActivationState,
+    globals: super::GameplayGlobals,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
@@ -353,6 +354,7 @@ impl ScriptWorld {
             ordinary_prepared: false,
             spatial: None,
             activation: Default::default(),
+            globals: Default::default(),
         })
     }
     /// Prepare ordinary-world markers from the matching sidecar before script execution.
@@ -927,6 +929,7 @@ impl ScriptWorld {
             walk_map_count: self.walk_map_count,
             map_updates: &mut self.map_updates,
             activation: &mut self.activation,
+            globals: &mut self.globals,
             inputs,
         };
         if matches!(stage, ScriptStage::Animation) {
@@ -978,6 +981,15 @@ impl ScriptWorld {
         host.actors[index].runtime = Some(runtime);
         result
     }
+    /// Gameplay-global state shared by native calls and activation presentation.
+    pub fn globals(&self) -> &super::GameplayGlobals {
+        &self.globals
+    }
+    /// Borrow the topic-selection owner state without changing actor identity.
+    pub fn globals_mut(&mut self) -> &mut super::GameplayGlobals {
+        &mut self.globals
+    }
+
     /// Shared ownership and pending text; fresh world preparation resets both.
     pub fn activation(&self) -> &super::ActivationState {
         &self.activation
@@ -1011,6 +1023,7 @@ impl ScriptWorld {
             ticks,
             cycle_held,
             override_ticks,
+            self.globals.lockout(),
         )
     }
 
@@ -1034,7 +1047,7 @@ impl ScriptWorld {
     pub fn inspect(&self, offset: usize, limit: usize) -> serde_json::Value {
         serde_json::json!({
             "world": self.world, "generation": self.generation, "content_id": self.content_id, "total": self.actors.len(),
-            "activation": self.activation,
+            "activation": self.activation, "globals": self.globals,
             "actors": self.actors.iter().enumerate().skip(offset).take(limit.min(64)).map(|(index, actor)| serde_json::json!({
                 "id": ScriptActorId { generation: self.generation, index }, "name": actor.name(),
                 "source": actor.source.label(), "runtime_identifier": actor.runtime_identifier,
@@ -1121,6 +1134,7 @@ pub struct ScriptActors {
     pub current: Option<ScriptWorld>,
     generation: u64,
     requested: Option<Handle<Scripts>>,
+    globals: super::GameplayGlobals,
     pub(super) error: Option<String>,
 }
 /// Animation commands capture the receiver's own local Q8 position.
@@ -1133,6 +1147,11 @@ fn animation_sound_position(
 }
 
 impl ScriptActors {
+    fn release_world(&mut self) {
+        if let Some(world) = self.current.take() {
+            self.globals = world.globals;
+        }
+    }
     /// Record a host failure without replacing the first failure in this world.
     /// World preparation clears it alongside the logical registry.
     pub fn report_runtime_error(&mut self, error: String) {
@@ -1149,7 +1168,7 @@ pub(super) fn prepare(
     mut commands: Commands,
 ) {
     if prepared.is_changed() {
-        actors.current = None;
+        actors.release_world();
         actors.error = None;
         actors.requested = Some(prepared.scripts.clone());
         let Some(generation) = actors.generation.checked_add(1) else {
@@ -1197,7 +1216,10 @@ pub(super) fn prepare(
         Ok(world)
     })();
     match result {
-        Ok(world) => actors.current = Some(world),
+        Ok(mut world) => {
+            world.globals = std::mem::take(&mut actors.globals);
+            actors.current = Some(world);
+        }
         Err(error) => {
             actors.error = Some(format!(
                 "world {} script preparation: {error:#}",
@@ -1211,6 +1233,7 @@ pub(super) fn prepare(
 struct GameHost<'a, 'sound, 'input, 'random> {
     map_updates: &'a mut Vec<usize>,
     activation: &'a mut super::ActivationState,
+    globals: &'a mut super::GameplayGlobals,
     spatial: Option<&'a mut super::spatial::SpatialWorld>,
     markers: Option<&'a super::markers::Markers>,
     walk_map_count: Option<usize>,
@@ -1326,11 +1349,44 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
-        if kind == CallKind::Function {
-            let selected_player = self
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("LockoutPlayer") {
+            let [value] = arguments else {
+                anyhow::bail!("LockoutPlayer requires one argument")
+            };
+            let value = value.integer()?;
+            let player = self
                 .inputs
                 .activation
-                .map(|inputs| &self.actors[inputs.player.index]);
+                .map(|inputs| inputs.player.index)
+                .or_else(|| {
+                    self.actors
+                        .iter()
+                        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+                })
+                .context("LockoutPlayer selected player unavailable")?;
+            let lockout = self.globals.lockout_player(value);
+            if lockout == 1 {
+                self.actors[player].attributes[117] = 1;
+            } else {
+                self.actors[player].attributes[117] = 0;
+                for actor in self
+                    .actors
+                    .iter_mut()
+                    .filter(|actor| actor.runtime_identifier.is_some())
+                {
+                    actor.attributes[117] = 0;
+                }
+                self.activation.clear_prompt_override();
+            }
+            return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function {
+            let selected_player = self.inputs.activation.map(|inputs| {
+                (
+                    &self.actors[inputs.player.index],
+                    self.globals.lockout().unwrap_or(inputs.lockout),
+                )
+            });
             if let Some(value) = self.activation.call(
                 id,
                 function,
@@ -1715,7 +1771,7 @@ pub(super) fn clear_unprepared(
     if prepared.is_some() {
         return;
     }
-    actors.current = None;
+    actors.release_world();
     actors.requested = None;
     actors.error = None;
     *status = super::ScriptStatus::NotRequested;
