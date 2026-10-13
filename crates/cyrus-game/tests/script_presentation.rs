@@ -36,7 +36,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         "version":2,"world":17,"sections":{},"unsupported":{},
         "models":{"TEST":{"base_positions":[[0,0,0]],"base_normals":[],"faces":[],"encoding":"animated_i32",
             "positions":[[[0,0,0]],[[0,1,0]]],"normals":[[],[]]}},
-        "metadata":{"markers": [], "script_content_id":scripts.content_id,
+        "metadata":{"markers": [], "walk_node_maps": [], "script_content_id":scripts.content_id,
         "mpob_objects":[{"script_name":"ACTOR","object_type":1,"is_static":2,"model_name":"test"}],"actors":[{
             "script_name":"ACTOR",
             "animation_groups":[

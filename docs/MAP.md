@@ -100,6 +100,7 @@ module where it is defined and regenerate.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/markers.rs` — Ordinary-world marker queries use preservation's SOUP node-marker distance contract.
 - `src/script/mod.rs` — Game-owned SOUP hosts; stages remain explicit until production timing is established.
+- `src/script/navigation.rs` — Empty-map Wander follows preservation's SOUP navigation and distance contracts.
 - `src/script/order.rs` — Fresh-world ordinary actor membership and cached view-window traversal.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.

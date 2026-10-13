@@ -161,6 +161,7 @@ pub struct ScriptWorld {
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
+    walk_map_count: Option<usize>,
 }
 impl ScriptWorld {
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
@@ -319,6 +320,7 @@ impl ScriptWorld {
             names,
             actor_lists: None,
             markers: None,
+            walk_map_count: None,
             spatial: None,
             activation: Default::default(),
         })
@@ -341,6 +343,30 @@ impl ScriptWorld {
         self.markers = Some(
             super::markers::Markers::prepare(&data.metadata)
                 .with_context(|| format!("world {} marker preparation", self.world))?,
+        );
+        Ok(())
+    }
+
+    /// Load navigation availability from the matching animation sidecar.
+    /// Nonempty maps remain explicit unsupported movement; an absent table is an error.
+    pub fn prepare_navigation(&mut self, data: &Animations) -> Result<()> {
+        data.require_version()?;
+        anyhow::ensure!(
+            data.world == self.world
+                && data.metadata["script_content_id"].as_str() == Some(&self.content_id),
+            "world {} navigation/script cache generation mismatch; re-export the world",
+            self.world
+        );
+        anyhow::ensure!(
+            self.walk_map_count.is_none(),
+            "world {} navigation already prepared",
+            self.world
+        );
+        self.walk_map_count = Some(
+            data.metadata["walk_node_maps"]
+                .as_array()
+                .with_context(|| format!("world {} walk_node_maps absent or invalid", self.world))?
+                .len(),
         );
         Ok(())
     }
@@ -788,6 +814,7 @@ impl ScriptWorld {
             random,
             spatial: self.spatial.as_mut(),
             markers: self.markers.as_ref(),
+            walk_map_count: self.walk_map_count,
             activation: &mut self.activation,
             inputs,
         };
@@ -1013,6 +1040,7 @@ pub(super) fn prepare(
         }
         let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
         world.prepare_markers(animation_data)?;
+        world.prepare_navigation(animation_data)?;
         if clock.is_none() {
             commands.insert_resource(crate::clock::SimulationClock::new(scripts.clock)?);
         }
@@ -1034,6 +1062,7 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     activation: &'a mut super::ActivationState,
     spatial: Option<&'a mut super::spatial::SpatialWorld>,
     markers: Option<&'a super::markers::Markers>,
+    walk_map_count: Option<usize>,
     inputs: ScriptInputs<'input>,
     index: usize,
     generation: u64,
@@ -1210,6 +1239,42 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("script sound handler absent")?(id, sound)?;
             return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("Wander") {
+            let [radius, tolerance] = arguments else {
+                anyhow::bail!("Wander requires two arguments")
+            };
+            let radius = radius.integer()?;
+            let _tolerance = tolerance.integer()?;
+            anyhow::ensure!(
+                self.walk_map_count
+                    .context("Wander navigation not prepared")?
+                    == 0,
+                "Wander movement through walk-node maps unsupported"
+            );
+            let home = self.actors[self.index]
+                .placement()
+                .context("Wander home unavailable for standalone actor")?
+                .map_position;
+            let [x, y, z] = home.map(i32::try_from);
+            let home = [x?, y?, z?];
+            let frame_scale = self
+                .inputs
+                .frame_scale
+                .context("Wander requires frame_scale")?;
+            let spatial = self
+                .spatial
+                .as_deref_mut()
+                .context("Wander spatial state not prepared")?
+                .actor_mut(self.index)?;
+            let random = self
+                .random
+                .as_deref_mut()
+                .context("Wander shared engine random stream unavailable")?;
+            let result =
+                super::navigation::wander_without_maps(home, radius, frame_scale, spatial, random)?;
+            self.actors[self.index].attributes[94] = 1;
+            return Ok(CallResult::Complete(result));
         }
         if function.eq_ignore_ascii_case("AtNodeMarker") {
             let [marker, distance] = arguments else {

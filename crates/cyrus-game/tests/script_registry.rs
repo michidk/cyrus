@@ -386,7 +386,7 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
         .add(Animations {
             version: 2,
             world: 7,
-            metadata: serde_json::json!({"actors": [], "markers": [], "script_content_id": content_id}),
+            metadata: serde_json::json!({"actors": [], "markers": [], "walk_node_maps": [], "script_content_id": content_id}),
             sections: BTreeMap::new(),
             models: BTreeMap::new(),
             unsupported: BTreeMap::new(),
@@ -2674,4 +2674,158 @@ fn rnd_script_masks_before_reducing_and_consumes_one_draw() {
         .unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().variables(), [2]);
     assert_eq!(random.state(), 1103527590);
+}
+
+fn wander_world(radius: i32, movement: i32, maps: serde_json::Value) -> ScriptWorld {
+    use cyrus_assets::animation::Animations;
+    let mut scripts = cache();
+    scripts.definition.functions.extend([
+        Function {
+            name: "MoveByAxis".into(),
+            param_count: 3,
+            kind: CallKind::Task,
+        },
+        Function {
+            name: "Wander".into(),
+            param_count: 2,
+            kind: CallKind::Function,
+        },
+    ]);
+    scripts.instances[0].map_position = [1000, 2, 2000];
+    let mut operations = Vec::new();
+    for (axis, delta) in [(0, movement), (1, 256)] {
+        operations.push(wait(
+            1,
+            "MoveByAxis",
+            CallKind::Multitask,
+            vec![
+                Value::Integer { value: axis },
+                Value::Integer { value: delta },
+                Value::Integer { value: 1 },
+            ],
+        ));
+    }
+    operations.push(Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id: 2,
+                    function: "Wander".into(),
+                    kind: CallKind::Function,
+                    target: Object::Me,
+                    arguments: vec![
+                        Value::Integer { value: radius },
+                        Value::Integer { value: 32768 },
+                    ],
+                }),
+            },
+            rest: vec![],
+        },
+    });
+    operations.push(Operation::End { target: 0 });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = operations
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id, "walk_node_maps": maps}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    world.prepare_spatial().unwrap();
+    world
+}
+
+#[test]
+fn empty_map_wander_consumes_original_draws_and_restores_excess_displacement() {
+    use cyrus_game::{
+        random::EngineRandom,
+        script::{ScriptInputs, ScriptStage},
+    };
+    for (radius, movement, scale, state, restore) in [
+        (4, 0, 256, 2524885223, false),
+        (5, 0, 256, 3295386429, false),
+        (1204, 0, 256, 2524885223, false),
+        (1204, 8448, 256, 2524885223, true),
+        (1204, 8192, 256, 2524885223, false),
+        (1204, 256, 0, 2524885223, true),
+    ] {
+        let mut world = wander_world(radius * 256, movement, serde_json::json!([]));
+        let id = world.id(0).unwrap();
+        let mut random = EngineRandom::default();
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    frame_scale: Some(scale),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                Some(&mut random),
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.flags(), [movement]);
+        assert_eq!(random.state(), state, "radius {radius}");
+        assert_eq!(world.actors()[0].attributes()[94], 1);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            if restore {
+                [256000, 512, 512000]
+            } else {
+                [256000 + movement, 768, 512000]
+            }
+        );
+    }
+}
+
+#[test]
+fn wander_rejects_nonempty_maps_and_zero_radius_without_consuming_random() {
+    use cyrus_game::{
+        random::EngineRandom,
+        script::{ScriptInputs, ScriptStage},
+    };
+    for (maps, radius, expected) in [
+        (serde_json::json!([{}]), 1024, "walk-node maps unsupported"),
+        (serde_json::json!([]), 255, "positive map-unit radius"),
+    ] {
+        let mut world = wander_world(radius, 0, maps);
+        let id = world.id(0).unwrap();
+        let mut random = EngineRandom::default();
+        let error = world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                Some(&mut random),
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+        assert_eq!(random.state(), 1);
+        assert!(world.actors()[0].failure().is_some());
+    }
 }

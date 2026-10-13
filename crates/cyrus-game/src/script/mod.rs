@@ -7,6 +7,7 @@ mod animation;
 mod attributes;
 mod flags;
 mod markers;
+mod navigation;
 mod order;
 mod playback;
 mod presentation;

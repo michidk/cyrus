@@ -542,3 +542,59 @@ fn installed_palace_actor_is_selected_at_its_authored_world_position() {
     assert!(world.ordinary_actors(view).unwrap().contains(&id));
     assert!(!world.ordinary_actors([4608, 4608]).unwrap().contains(&id));
 }
+
+#[test]
+fn installed_viledog_wander_hook_consumes_random_without_walk_maps() {
+    use cyrus_game::{
+        random::EngineRandom,
+        script::{ScriptInputs, ScriptStage},
+    };
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP Wander hook)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/VILE.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 14).unwrap();
+    let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
+    metadata["script_content_id"] = scripts.content_id.clone().into();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata,
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    world.prepare_spatial().unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "VILEDOG")
+        .unwrap();
+    let id = world.id(index).unwrap();
+    let before = world.spatial(id).unwrap().local.position;
+    let mut random = EngineRandom::default();
+    world
+        .advance(
+            id,
+            ScriptStage::NativeHook,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            Some(&mut random),
+            100,
+        )
+        .unwrap();
+    assert_eq!(random.state(), 2524885223);
+    assert_eq!(world.actors()[index].attributes()[94], 1);
+    assert_eq!(world.spatial(id).unwrap().local.position, before);
+    assert!(world.actors()[index].failure().is_none());
+}

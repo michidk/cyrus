@@ -320,3 +320,11 @@ the unscaled view coordinates passed to `ordinary_actors`. **Verified:** origina
 allocation-instruction comparisons and an installed PALACE selection test reject
 a second fixed-point conversion. This corrects explicit list selection; automatic
 actor admission and dynamic cell migration remain incomplete.
+
+**Verified:** explicit `Wander` hooks in worlds without walk-node maps consume
+shared random draws, retry candidate selection with the original distance rounding,
+and restore excessive displacement from the ordinary-update snapshot. Home comes
+from authored placement, before attachment transforms. The installed VILEDOG hook
+runs through this path. Navigation availability is prepared from the matching
+animation sidecar; nonempty-map routing and steering remain unsupported. This
+implements the original empty-map behavior, not automatic actor admission.
