@@ -38,9 +38,10 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 
 **Verified:** SOUP is not complete from an implementation standpoint. The portable
 VM, asset preparation and explicit game hosts exist and have native/WASM checks.
-Normal New Game world entry prepares actors and render bindings, but does not
-supply the automatic ordinary script/animation updates. Loading the correct map
-therefore does not establish animated or playable world behavior.
+Normal world entry prepares actors and render bindings. Camera-centered ordinary
+updates run the supported script/animation stages; unsupported collision, combat,
+and native services stop the affected actor with a contextual diagnostic.
+Loading the correct map does not establish complete animated or playable world behavior.
 
 | Requirement | Current state |
 | --- | --- |
@@ -146,7 +147,7 @@ of every palette and world still needs original-game comparison.
 | BSI, COL, Glide sky | Textures/palettes, sky plane/tilt/sun, scrolling inputs, fog and terrain waves | Other animated textures and matched filtering/blending/lighting |
 | GXA, splash DLL, FNT | Installed splash/title, menu widgets, HUD artwork and shared text rendering | Remaining gameplay screens, software sky projection and exact splash hardware rendering |
 | SFX, RTX, CD audio | Effects/speech decode, subtitles, shared channels, explicit script sound ownership, native/browser music, preferences and animation surface remaps | Automatic gameplay triggers, nonplayer ground updates, moving emitters and audible parity |
-| SOUP | Portable VM, actor locals/flags/tasks, explicit animation/spatial/wait/routing/sound/activation services, explicit ordinary-main control, shared script random stream and typed native-hook dispatch | Automatic scheduling, remaining receivers/native hook services, synchronization and persistence |
+| SOUP | Portable VM, actor locals/flags/tasks, supported automatic ordinary traversal, explicit animation/spatial/wait/routing/sound/activation services, shared clock/random stream and typed native-hook dispatch | Remaining automatic actor stages, receivers/native services, ambient mixer feedback, synchronization and persistence |
 | MENU.INI, KEYS.INI | Installed menu content, keyboard navigation, preferences, rebinding, held player input, New/temporary Load and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie progression unlocks |
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
 | SMK | Native/browser video, first-track audio, installed skip/subtitle rules and streamed browser playback | Original comparison, A/V sync and player-hardware seek/audio checks |
@@ -241,12 +242,13 @@ world playback is incomplete.
 - [x] Portable SOUP VM and logical actors; explicit animation, waits, flags, attributes, routed tasks, spatial attachment/rotation and player queries share state with presentation. **Verified:** FLAG2 supplied-tick sequences and PALACE headless spatial contracts.
 - [x] Explicit activation shares receiver ownership, pending prompts and timers with HUD drawing. **Verified:** [activation increment](https://github.com/michidk/cyrus/commit/5358aa0) includes script/headless HUD contracts and installed RTX labels, including text-only entries.
 - [x] Shared clock arithmetic consumes validated installed settings and explicit BIOS samples, retaining startup warmup, smoothing and fractional nominal ticks. Menu entry/exit and world replacement preserve the documented shared clock state. **Verified:** clock contracts, installed native/browser schema-6 preparation and headless START loading. This does not schedule actors.
-- [x] The current schema 8 retains typed RAHK native calls separately from script continuations; explicit dispatch preserves cursors and tasks. Fresh-world actor ordering, map defaults and axis-lock restoration have supplied-stage contracts. **Verified:** all installed maps decode, native PALACE stage/error checks and installed WASM worker preparation pass. Automatic eligibility and remaining hook services are not implemented.
+- [x] The script schema retains typed RAHK native calls separately from script continuations; explicit dispatch preserves cursors and tasks. Fresh-world actor ordering, map defaults and axis-lock restoration have supplied-stage contracts. **Verified:** all installed maps decode, native PALACE stage/error checks and installed WASM worker preparation pass. Automatic eligibility and remaining hook services are not implemented.
 - [x] Ordinary `AtNodeMarker` queries share receiver-local spatial state and matching world marker metadata. **Verified:** installed-map preparation, routed attached queries and original-instruction distance/error comparisons. Explicit HIDEOUT invocation reports its out-of-range marker; that map is not selected by installed WORLD.INI.
 - [x] Explicit ordinary stages honor EnableScript/DisableScript, task bypass, installed task/animation switches and unpaused-task hook admission. **Verified:** [script-control contracts](https://github.com/michidk/cyrus/commit/3419b23), [schema-8 update switches](https://github.com/michidk/cyrus/commit/4509128), original-instruction comparisons, installed worker exports and native PALACE checks. These gates do not supply automatic callers.
+- [x] Normal world updates automatically traverse supported ordinary actors with the shared clock, defaults, hooks, tasks and family transforms. **Verified:** normal-update contracts and native menu New Game into START move all 15 sharks without debug stepping. Seven crew/pirate actors still stop at unsupported collision, BOAT1 at AmbientSound, and five WATERSND objects lack their separate object path. Full world animation acceptance remains open.
 - [x] Relative `MoveByAxis` and `sMoveByAxis` tasks update actor-owned local positions with deferred family refresh. **Verified:** [movement increment](https://github.com/michidk/cyrus/commit/73e983a), installed ISLAND mechanism and original rounding/completion comparisons.
 - [x] `Rnd` and `QuickRnd` use one game-owned stream retained across world replacement. **Verified:** [random increment](https://github.com/michidk/cyrus/commit/d5a77cb), original result/state comparisons and native VILEDOG draws across world changes. Full consumer order and sky integration remain open.
-- [x] Ordinary actor cells use decoded map coordinates and retain authored traversal order. **Verified:** [coordinate fix](https://github.com/michidk/cyrus/commit/3c467ce), installed PALACE selection and a deliberately wrong original-instruction comparison. Dynamic cell migration remains open.
+- [x] Ordinary actor cells use decoded map coordinates and retain authored traversal order. **Verified:** [coordinate fix](https://github.com/michidk/cyrus/commit/3c467ce), installed PALACE selection and a deliberately wrong original-instruction comparison. Deferred MoveObjectAxis cell relocation retains registration order and invalidates distant cached traversal; dynamic allocation remains open.
 - [ ] Establish production invocation policy, eligible actors/callers and timing. Do not substitute a guessed fixed rate for original behavior.
 - [ ] Finish state-dependent defaults, remaining group types, cancellation/event commands and model replacement for all actors.
 - [ ] Complete object routing, variable references, scriptless receivers, allocation/recycling and model-coupled attributes; run all required scripts automatically through the [SOUP checklist](plans/2026-10-12-soup-completion.md).

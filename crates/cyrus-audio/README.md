@@ -5,6 +5,10 @@ Native/browser effects, speech and CD music playback. `SoundPlugin` and
 Logical cues stay in `cyrus-world`; subtitles and cinematic presentation stay
 in presentation. This crate has no rendering or startup dependency.
 
+Positional playback entities carry `PannedGains`, shared with their active
+decoder. A volume/pan update affects subsequent stereo frames without restarting
+the sample. One-shots retain their start gains unless explicitly updated.
+
 Hosts supply an optional `AudioListener` in Bevy world space. Positional starts
 require that listener. `AudioReadiness { prepare }` defaults to true; startup
 holds it false until the title appears. Startup copies committed menu preferences

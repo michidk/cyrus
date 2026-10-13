@@ -19,11 +19,27 @@ pub(super) struct SpatialCall<'a> {
     pub angles: &'a mut [u16; 3],
     pub frame_scale: u32,
     pub nominal_ticks: u32,
+    pub matrix: cyrus_world::transform::Matrix,
+    pub slave: bool,
+    pub actor_index: usize,
+    pub map_updates: &'a mut Vec<usize>,
+}
+
+/// Explicit playback service and receiver state for one native ambient invocation.
+pub(super) struct AmbientCall<'a> {
+    pub driver: Option<&'a dyn cyrus_world::sound::AmbientSoundDriver>,
+    pub reset: Option<bool>,
+    pub position: Option<[i32; 3]>,
+    pub excluded: Option<bool>,
+    pub generation: u64,
+    pub actor_index: usize,
 }
 
 #[derive(Clone, Copy)]
 enum Task {
+    Ambient { channel: Option<u8> },
     Movement { target: i32 },
+    ObjectMovement { target: i32, traveled: i32 },
     ScaledMovement { origin: i32 },
     Rotation { target: i32, accumulator: i32 },
     Duration,
@@ -38,8 +54,99 @@ impl Task {
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
+        ambient: Option<&AmbientCall<'_>>,
     ) -> Result<bool> {
         Ok(match self {
+            Self::Ambient { channel } => {
+                let [effect, volume, rate] = arguments else {
+                    anyhow::bail!("AmbientSound requires three arguments")
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("AmbientSound requires elapsed input")?;
+                let input = ambient.context("AmbientSound playback service unavailable")?;
+                let reset = input
+                    .reset
+                    .context("AmbientSound sample-reset input unavailable")?;
+                let driver = input
+                    .driver
+                    .context("AmbientSound playback service unavailable")?;
+                let position = input
+                    .position
+                    .context("AmbientSound receiver pose unavailable")?;
+                let excluded = input
+                    .excluded
+                    .context("AmbientSound receiver exclusion state unavailable")?;
+                if elapsed == 0 || reset {
+                    *channel = None;
+                }
+                let updated = driver
+                    .update(cyrus_world::sound::AmbientSoundRequest {
+                        generation: input.generation,
+                        actor_index: input.actor_index,
+                        channel: *channel,
+                        effect: effect.integer()?,
+                        volume: volume.integer()?,
+                        rate_offset_hz: rate.integer()?,
+                        position,
+                        object_update_excluded: excluded,
+                    })
+                    .map_err(anyhow::Error::msg)?;
+                anyhow::ensure!(
+                    updated.channel.is_none_or(|slot| slot < 16),
+                    "AmbientSound playback returned an invalid sample slot"
+                );
+                *channel = updated.channel;
+                !updated.active
+            }
+            Self::ObjectMovement { target, traveled } => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("MoveObjectAxis requires three arguments")
+                };
+                let (axis, delta, duration) =
+                    (axis.integer()?, delta.integer()?, duration.integer()?);
+                if delta == 0 || duration == 0 {
+                    return Ok(true);
+                }
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveObjectAxis requires explicit elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("MoveObjectAxis requires receiver pose and frame_scale")?;
+                if elapsed == 0 {
+                    *target = delta;
+                    *traveled = 0;
+                }
+                let step = (delta
+                    .checked_div(duration)
+                    .context("MoveObjectAxis division overflow")?
+                    >> 8)
+                    .wrapping_mul(input.frame_scale as i32);
+                *traveled = traveled.wrapping_add(step);
+                if (step < 0 && *traveled <= *target) || (step > 0 && *traveled >= *target) {
+                    return Ok(true);
+                }
+                if axis == 2 && !input.slave && input.angles[0] == 0 && input.angles[2] == 0 {
+                    *input.position = cyrus_world::transform::translate_forward(
+                        *input.position,
+                        input.angles[1],
+                        step,
+                    )?;
+                } else {
+                    let mut displacement = [0; 3];
+                    if (0..=2).contains(&axis) {
+                        displacement[axis as usize] = step;
+                    }
+                    let transformed = input.matrix.transform(displacement)?;
+                    *input.position =
+                        std::array::from_fn(|i| input.position[i].wrapping_add(transformed[i]));
+                }
+                if !input.map_updates.contains(&input.actor_index) {
+                    input.map_updates.push(input.actor_index);
+                }
+                elapsed >= duration.wrapping_sub(1)
+            }
             Self::Movement { target } => {
                 let [axis, delta, duration] = arguments else {
                     anyhow::bail!("MoveByAxis requires three arguments")
@@ -223,17 +330,28 @@ pub(super) struct NativeTasks {
 impl NativeTasks {
     pub fn call(
         &mut self,
-        function: &str,
-        kind: CallKind,
+        (function, kind): (&str, CallKind),
         arguments: &[Argument],
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
+        ambient: Option<&AmbientCall<'_>>,
     ) -> Result<Option<CallResult>> {
-        let mut task = if function.eq_ignore_ascii_case("RotateByAxis") {
+        let mut task = if function.eq_ignore_ascii_case("AmbientSound") {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "AmbientSound requires multitask encoding"
+            );
+            Task::Ambient { channel: None }
+        } else if function.eq_ignore_ascii_case("RotateByAxis") {
             Task::Rotation {
                 target: 0,
                 accumulator: 0,
+            }
+        } else if function.eq_ignore_ascii_case("MoveObjectAxis") {
+            Task::ObjectMovement {
+                target: 0,
+                traveled: 0,
             }
         } else if function.eq_ignore_ascii_case("MoveByAxis") {
             Task::Movement { target: 0 }
@@ -262,7 +380,7 @@ impl NativeTasks {
             .checked_add(1)
             .context("native task identity exhausted")?;
         // Initial completion still allocates a slot and yields until a later task pass.
-        task.complete(arguments, invocation, animation, spatial)?;
+        task.complete(arguments, invocation, animation, spatial, ambient)?;
         self.next = next;
         self.tasks.insert(next, task);
         Ok(Some(CallResult::Pending(next)))
@@ -274,12 +392,13 @@ impl NativeTasks {
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
+        ambient: Option<&AmbientCall<'_>>,
     ) -> Result<bool> {
         let task = self
             .tasks
             .get_mut(&token)
             .with_context(|| format!("native task {token} absent"))?;
-        let completed = task.complete(arguments, invocation, animation, spatial)?;
+        let completed = task.complete(arguments, invocation, animation, spatial, ambient)?;
         if completed {
             self.tasks.remove(&token);
         }

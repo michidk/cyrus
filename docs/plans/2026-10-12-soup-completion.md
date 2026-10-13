@@ -20,11 +20,14 @@ satisfy this requirement. Repeat the same acceptance across installed worlds.
 **Verified:** the implementation is a portable execution core with explicit game
 hosts and inspection tools. Normal world loading prepares scripts but does not
 automatically execute all eligible actors. `ScriptPlugin` prepares the registry,
-updates diagnostics, and advances explicitly attached animation playback.
+updates diagnostics, and advances explicitly attached animation playback. With a
+matching camera view, ordinary traversal now runs supported stages automatically.
+**Verified:** installed ISLAND FLAG2 advances through normal Bevy updates. START's
+collision/combat/intro services and complete all-world acceptance remain open.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
-  metadata, and decoded programs. The script cache is version 8, programs are
+  metadata, and decoded programs. The script cache is version 9, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
@@ -55,8 +58,9 @@ updates diagnostics, and advances explicitly attached animation playback.
   The standalone animation adapter reuses that task handler. Explicit animation,
   ordinary entry, task, and body stages still require caller-established timing
   and eligibility. Explicit spatial preparation adds local/composed poses,
-  RotateByAxis, MoveByAxis and sMoveByAxis tasks, ordinary AtNodeMarker queries, and player queries with supplied global inputs. Linked
-  position ownership and dynamic attachment changes remain unsupported.
+  RotateByAxis, MoveByAxis and sMoveByAxis tasks, ordinary AtNodeMarker queries, and player queries with supplied global inputs.
+  Fresh linked-position state is receiver-owned; dynamic linked records and
+  attachment changes remain unsupported.
   Admitted walking updates share the logical player's animation and selected
   frame with SOUP, using generation-bound messages and a scene binding. Model
   defaults and complete actor initialization remain separate unfinished work.

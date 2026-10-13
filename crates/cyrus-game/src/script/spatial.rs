@@ -46,6 +46,8 @@ pub struct ActorSpatial {
     /// Previous local angles after snapshot; propagated deltas after family refresh.
     pub angle_history: [u16; 3],
     pub parent: Option<usize>,
+    /// Fresh allocation has no linked-position record; dynamic creation is unsupported.
+    pub(super) linked_position: Option<[i32; 3]>,
     no_slave_rotation: bool,
     rotation_mode: u8,
 }
@@ -123,6 +125,7 @@ impl SpatialWorld {
                 previous_local_position: local.position,
                 angle_history: original.angles,
                 parent,
+                linked_position: None,
                 no_slave_rotation: actor.attributes()[33] != 0,
                 rotation_mode: actor.attributes()[28],
             }));
@@ -355,7 +358,7 @@ fn serialize_matrix<S: serde::Serializer>(
 }
 
 /// Original mixed-precision Euclidean distance, rounded to a signed integer.
-pub(super) fn rounded_distance(differences: [i32; 3]) -> Result<i32> {
+pub fn rounded_distance(differences: [i32; 3]) -> Result<i32> {
     // Stored f32 differences are integers; their squared sum fits u64 exactly.
     let squared: u64 = differences
         .into_iter()

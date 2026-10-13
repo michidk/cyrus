@@ -38,6 +38,8 @@ pub fn prepare_source(
         .with_context(|| format!("world {world} script clock"))?;
     let updates = UpdateSettings::from_system(&system)
         .with_context(|| format!("world {world} script update settings"))?;
+    let player_distance_override = player_distance_override(source)
+        .with_context(|| format!("world {world} REDGUARD.CHT script query settings"))?;
     let definition = crate::preparation::soup(source)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
     let mut actors = BTreeMap::new();
@@ -164,7 +166,8 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 8,
+        version: 9,
+        player_distance_override,
         clock,
         updates,
         actor_pool_capacity: config.actor_pool_capacity,
@@ -208,4 +211,25 @@ pub fn export(scripts: &Scripts, out: &Path) -> Result<()> {
     crate::native::publish(&path, &serde_json::to_vec(scripts)?)
         .with_context(|| format!("commit {}", path.display()))?;
     Ok(())
+}
+
+fn player_distance_override(source: &dyn crate::source::ReadAssets) -> Result<bool> {
+    let Some(file) = source.manifest().find("REDGUARD.CHT") else {
+        return Ok(false);
+    };
+    let cheats = rgpre::import::cht::parse_cht_file(&source.read(&file.path)?)?;
+    let mut distance_override = false;
+    for cheat in cheats.entries {
+        match cheat.name {
+            Some("neversaydie") => distance_override = cheat.is_on(),
+            Some("savecheats") => {}
+            _ => anyhow::ensure!(
+                !cheat.is_on(),
+                "cheat {} in slot {} unsupported by script preparation",
+                cheat.name.unwrap_or("unnamed"),
+                cheat.index
+            ),
+        }
+    }
+    Ok(distance_override)
 }

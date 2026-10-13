@@ -1,4 +1,4 @@
-//! Game-owned SOUP hosts; stages remain explicit until production timing is established.
+//! Game-owned SOUP hosts and supported camera-centered ordinary actor updates.
 mod activation;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
@@ -12,6 +12,7 @@ mod order;
 mod playback;
 mod presentation;
 mod registry;
+pub use registry::ordinary::{OrdinaryUpdates, ScriptView};
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;
@@ -26,7 +27,7 @@ pub use registry::{
     ActorControlState, ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs,
     ScriptStage, ScriptWorld,
 };
-pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs};
+pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
 
 pub struct ScriptPlugin;
@@ -34,6 +35,7 @@ impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScriptStatus>()
             .init_resource::<PlaybackDiagnostics>()
+            .init_resource::<crate::random::EngineRandom>()
             .init_resource::<ScriptActors>()
             .add_systems(
                 Update,
@@ -55,6 +57,21 @@ impl Plugin for ScriptPlugin {
                     .after(registry::prepare)
                     .after(registry::clear_unprepared)
                     .before(crate::player::runtime::step),
+            )
+            .add_systems(
+                Update,
+                registry::ordinary::sample_clock
+                    .after(crate::clock::enter_world)
+                    .before(crate::player::input::InputSample)
+                    .before(OrdinaryUpdates),
+            )
+            .add_systems(
+                Update,
+                registry::ordinary::step
+                    .in_set(OrdinaryUpdates)
+                    .after(crate::clock::enter_world)
+                    .after(presentation::bind_scene)
+                    .before(presentation::apply),
             )
             .add_systems(
                 Update,

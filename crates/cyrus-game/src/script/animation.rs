@@ -121,12 +121,12 @@ impl Host for AnimationHost<'_, '_> {
         );
         self.tasks
             .call(
-                function,
-                kind,
+                (function, kind),
                 arguments,
                 invocation,
                 &mut self.input,
                 &mut None,
+                None,
             )?
             .context("animation task absent")
     }
@@ -137,8 +137,14 @@ impl Host for AnimationHost<'_, '_> {
         invocation: cyrus_script::Invocation,
         _: &mut [i32],
     ) -> anyhow::Result<bool> {
-        self.tasks
-            .poll(token, arguments, invocation, &mut self.input, &mut None)
+        self.tasks.poll(
+            token,
+            arguments,
+            invocation,
+            &mut self.input,
+            &mut None,
+            None,
+        )
     }
     fn cancel(&mut self, token: u64) -> anyhow::Result<()> {
         self.tasks.cancel(token)

@@ -69,7 +69,8 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 8,
+        version: 9,
+        player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
             animation_system: true,
@@ -1615,4 +1616,105 @@ fn axis_movement_keeps_distinct_invalid_axis_and_zero_duration_rules() {
         .unwrap_err();
     assert!(format!("{error:#}").contains("sMoveByAxis division by zero"));
     assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
+}
+
+#[test]
+fn ambient_slots_retain_separate_handles_reset_explicitly_and_cancel_without_playback() {
+    use cyrus_game::script::ScriptInputs;
+    use cyrus_world::sound::{AmbientSoundDriver, AmbientSoundRequest, AmbientSoundUpdate};
+    use std::sync::Mutex;
+    #[derive(Debug, Default)]
+    struct Driver(Mutex<Vec<AmbientSoundRequest>>);
+    impl AmbientSoundDriver for Driver {
+        fn update(&self, request: AmbientSoundRequest) -> Result<AmbientSoundUpdate, String> {
+            self.0.lock().unwrap().push(request);
+            Ok(AmbientSoundUpdate {
+                channel: Some(if request.effect == 1 { 4 } else { 7 }),
+                active: true,
+            })
+        }
+    }
+    let ambient = |effect| Operation::Call {
+        call: Call {
+            function_id: 3,
+            kind: CallKind::Multitask,
+            target: Object::Me,
+            function: "AmbientSound".into(),
+            arguments: vec![
+                Value::Integer { value: effect },
+                Value::Integer { value: -40 },
+                Value::Integer { value: 2000 },
+            ],
+        },
+    };
+    let mut data = scripts(vec![
+        ambient(1),
+        ambient(2),
+        call(2, CallKind::Task, Object::Me),
+        Operation::TaskStop { label: 0 },
+        flag(),
+        Operation::End { target: 5 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "AmbientSound".into(),
+        param_count: 3,
+        kind: CallKind::Multitask,
+    });
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 18).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let driver = Driver::default();
+    let inputs = ScriptInputs {
+        ambient_sound: Some(&driver),
+        sound_reset: Some(false),
+        frame_scale: Some(256),
+        nominal_ticks: Some(0),
+        ..Default::default()
+    };
+    world
+        .advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 30)
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 3);
+    world
+        .advance(id, ScriptStage::Tasks, inputs, None, None, 30)
+        .unwrap();
+    let requests = driver.0.lock().unwrap().clone();
+    assert_eq!(
+        requests
+            .iter()
+            .map(|request| request.channel)
+            .collect::<Vec<_>>(),
+        [None, None, Some(4), Some(7)]
+    );
+    assert!(requests.iter().all(|request| request.generation == 18
+        && request.actor_index == 0
+        && request.volume == -40
+        && request.rate_offset_hz == 2000
+        && !request.object_update_excluded));
+    world
+        .advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 30)
+        .unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(
+        driver.0.lock().unwrap().len(),
+        4,
+        "TaskStop issues no playback update"
+    );
+    world
+        .advance(
+            id,
+            ScriptStage::Tasks,
+            ScriptInputs {
+                sound_reset: Some(true),
+                ..inputs
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    let requests = driver.0.lock().unwrap();
+    assert_eq!(requests.len(), 5);
+    assert_eq!((requests[4].effect, requests[4].channel), (2, None));
 }

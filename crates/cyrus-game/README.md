@@ -16,8 +16,8 @@ set `InputSuppressed` before `InputSample`; player transforms remain independent
 of camera transforms.
 
 Ground-turn, walking startup, wall response and forward support admission are
-explicit deterministic APIs. Automatic locomotion, animation eligibility and a
-production simulation clock remain unsupported. See
+explicit deterministic APIs. Automatic player locomotion and complete actor eligibility remain unsupported.
+Supported ordinary map actors use the shared simulation clock. See
 [SETUP](../../docs/SETUP.md) and [ROADMAP](../../docs/ROADMAP.md).
 
 `SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
@@ -30,13 +30,14 @@ active game. Entering a new world generation restarts warmup without resetting
 measurement or fractions; a menu round trip within that generation does not.
 Menu caches carry the same installed settings for startup initialization.
 The book menu supplies BIOS-boundary invocations and restores its partial
-checkpoint on exit. Automatic world invocations and actor updates remain unconnected.
+checkpoint on exit. Supported ordinary world updates use the same clock; automatic player updates
+remain unconnected.
 
 `ScriptWorld::ordinary_actors` retains fresh-world cell and persistent membership,
 reverse insertion order, and the cached view-centered 18-cell selection. Normal
 selection omits the four corners and filters attribute 113 on the outer border.
-It does not grant execution eligibility or implement dynamic cell migration,
-allocation/removal, or alternate debug processing modes.
+Deferred movement registrations update cell membership before selection.
+Allocation/removal and alternate debug processing modes remain unsupported.
 
 World scene roots carry `ScriptScene`. Exported map nodes automatically bind to
 their logical actor by placement index and script name. Bindings expire on world
@@ -45,8 +46,8 @@ initializes type-1 animation-table map actors with supplied nominal ticks and re
 selected frames in the shared SOUP state. `select_map_animation_default` applies
 ordinary nonplayer default selection to that same playback and retained frame,
 using owned actor state and explicit item readiness and ticks. Activation and
-default selection share weapon predicates. Automatic initialization and scheduling
-remain pending; scene binding itself does not advance animation or scripts.
+default selection share weapon predicates. Normal world updates initialize and schedule supported ordinary actors;
+scene binding itself does not advance animation or scripts.
 
 Run `cargo test -p cyrus-game`. Installed-definition tests require `redguard/` and
 report when they skip. `dev/scripts/check-core-boundaries.sh` checks the production
@@ -124,7 +125,26 @@ It retains the selected file frame for presentation, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 This explicit entry API does not choose a production clock or enable locomotion.
 
-`script::ScriptPlugin` reports script cache preparation and advances explicitly
+`script::ScriptPlugin` samples the shared nominal clock once per InGame update.
+With a matching `ScriptView`, it initializes placed animation-table actors and
+flushes deferred movement before traversing the authored camera-centered actor
+list. `ScriptView` retains original Q8 camera coordinates for relocation and
+regional selection. Supported updates select the
+default animation, advance playback, run ordinary hook/main stages, and restore
+locks and families. Failures stop the affected actor and remain inspectable.
+Collision and combat stages and remaining native services are explicitly
+unsupported. **Verified:** an installed ISLAND FLAG2 changes frames through the
+normal Bevy Update schedule; this does not establish START or all-world acceptance.
+Menu updates suspend traversal and exclude paused host time from clock measurement.
+Headless assemblies without a view do not traverse actors automatically.
+
+`HideMe` and `ShowMe` retain receiver visibility without disabling its scripts or
+animation. Rendering observes that flag and refreshes static model transforms.
+**Verified:** logical return/continuation and mixed static-presentation tests follow
+[preservation's visibility rules](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-runtime-contracts).
+Standalone player visibility lifecycle remains unsupported.
+
+`script::ScriptPlugin` also reports script cache preparation and advances explicitly
 attached `ScriptedPlayback` with supplied `AnimationTick` messages. Its
 `AnimationScript` is a PushAnimation host for the shared `cyrus-script::Runtime`,
 not another interpreter. Animation request/count/wait, same-stage continuation,
@@ -170,7 +190,9 @@ completion applies on a later task pass, including duration zero and one. Functi
 waits remain unsupported because their timing context is not established.
 Prepared spatial hosts also support `RotateByAxis`, `PlayerDistance`, and
 `PlayerFacing` with the explicit inputs and limits described below. Remaining
-native services are explicit failures. End notifications with synchronization
+native services are explicit failures. `IsInDeepWater` reads the receiver's stored
+surface state, with fresh map/player allocation values and grounded assignments
+shared through `ScriptWorld`. It does not issue a separate support query. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.
 
 **Verified:** fresh inspection prepares standalone CYRUS, GREMLIN and CAMERA
@@ -214,17 +236,25 @@ uses the unique scene binding; without a binding, inspection captures the intent
 with the logical receiver identity, including actors without scene bindings.
 Control captures these commands and submits them to the sound consumer when present.
 Their zero results follow the [preservation sound contract](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-sound-results).
-Positional/ambient sound, shell/code-object owners, `KillMe` and the script
+Positional `Sound` uses the receiver's prepared Q8 position and bypasses
+animation surface remapping. Ambient sound, shell/code-object owners,
+`KillMe` and the script
 `StopAllSounds` result remain unsupported.
+
+`AmbientSound` native slots can use an explicitly supplied synchronous
+`AmbientSoundDriver` and sample-reset input. Each slot retains its own channel
+handle; elapsed zero and sample resets discard the handle, while `TaskStop`
+only removes the task. The production mixer adapter remains unfinished, so
+ordinary gameplay does not yet provide this service. The task-interface test
+verifies slot lifecycle, not audible ambient playback.
 
 **Verified:** ordinary entry suppresses execution when an unpaused blocking task's
 physical operand identity is at or before the saved entry cursor. Direct
 interrupts bypass that entry gate, following preservation's SOUP contract.
 **Verified:** [preservation PR54](https://github.com/michidk/redguard-preservation/pull/54)
 establishes signed group comparison, finite-count writes only before animation
-task startup, and distinct model/playback default state. Attribute-44 writes
-remain unsupported because model state, actor-mode eligibility and navigation
-reservation ownership are not integrated. The inspection default is not a
+task startup, and distinct model/playback default state. Standalone-role attribute-44 writes and dead-actor navigation cleanup
+remain unsupported because their lifecycle owners are not integrated. The inspection default is not a
 replacement for original state-dependent selection.
 
 `ScriptWorld::prepare_spatial` prepares ordinary map poses and unique attachment
@@ -240,10 +270,14 @@ attachment-sensitive attribute changes remain unsupported after preparation.
 defines rotation task arithmetic, player distance/facing queries, and local versus
 composed attachment transforms. Actor inspection exposes both poses and the
 previous-angle/delta fields. Attached queries retain the previously composed pose
-until refresh. Override, fallback and linked-position inputs are explicit; the
-script host still rejects unattached linked-position queries until their state
-owner is integrated. This does not establish automatic actor scheduling or the
-complete lever interaction.
+until refresh. Override and fallback inputs remain explicit. The script world
+owns each fresh receiver's absent linked-position record, following
+[preservation PR66](https://github.com/michidk/redguard-preservation/pull/66).
+Automatic traversal supplies the selected player pose and the live native
+`neversaydie` distance override. Hosts without initialized cheat storage use
+the installed override from the version 9 script cache.
+Dynamic linked-position creation remains unsupported until its state
+owner is integrated. Complete lever interaction acceptance remains open.
 
 `Activate`, `TorchActivate` and `Deactivate` share one `ScriptWorld` owner,
 pending prompt and timer state, following
@@ -318,13 +352,13 @@ inventing a result. **Verified:** sequential result/state comparisons against
 original instructions cover the arithmetic documented in
 [preservation's random contract](https://github.com/michidk/redguard-preservation/blob/2390c5f/docs/engine/SOUP.md#random-functions).
 The executable's stored initial state is the default. Complete session seeding,
-consumer order, sky integration and automatic actor scheduling remain unsupported.
+consumer order and sky integration remain unsupported.
 
 Ordinary actor cell assignment uses decoded MPOB coordinates directly, matching
 the unscaled view coordinates passed to `ordinary_actors`. **Verified:** original
 allocation-instruction comparisons and an installed PALACE selection test reject
-a second fixed-point conversion. This corrects explicit list selection; automatic
-actor admission and dynamic cell migration remain incomplete.
+a second fixed-point conversion. Deferred MoveObjectAxis registrations relocate
+actors before regional selection; complete actor admission remains unfinished.
 
 **Verified:** explicit `Wander` hooks in worlds without walk-node maps consume
 shared random draws, retry candidate selection with the original distance rounding,
@@ -352,6 +386,7 @@ Changes remain in memory until `savecheats`; failed saves retain runtime state.
 while other unfinished gameplay effects are reported as unsupported.
 
 **Verified:** preservation's [cheat rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
-define the `neversaydie` PlayerDistance override. Native explicit script steps use
-the shared value unless an inspection override is supplied. Automatic gameplay,
-hidden keyboard entry and the original F12 console remain unsupported.
+define the `neversaydie` PlayerDistance override. Native automatic world updates
+and explicit script steps use the shared value; explicit steps may supply an
+inspection override. Full automatic gameplay, hidden keyboard entry and the
+original F12 console remain unsupported.

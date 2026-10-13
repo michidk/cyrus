@@ -2,8 +2,8 @@
 use super::Player;
 use anyhow::Context;
 use bevy::prelude::{
-    AssetId, Assets, Commands, Component, Entity, Local, Query, Res, Resource, Transform, Vec3,
-    With,
+    AssetId, Assets, Commands, Component, Entity, Local, Query, Res, Resource, SystemSet,
+    Transform, Vec3, With,
 };
 use cyrus_world::animation::{ActorAnimation, AnimationRequest, AnimationSound, Animations};
 use serde::Deserialize;
@@ -22,6 +22,10 @@ pub struct PlayerPose {
     pub position: [i64; 3],
     pub heading: u16,
 }
+
+/// Marker placement must finish before presentation supplies an ordinary actor view.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlayerPlacement;
 
 /// Apply startup settling against the prepared static world and dry terrain.
 /// Caller must account for dynamic/transient support separately before enabling gameplay.

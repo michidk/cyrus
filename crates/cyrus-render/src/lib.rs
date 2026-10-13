@@ -29,11 +29,37 @@ impl Plugin for WorldRenderPlugin {
         .add_systems(
             Update,
             scene_presentation.after(cyrus_world::lifecycle::WorldChange),
+        )
+        .add_systems(
+            Update,
+            scene_ready
+                .after(scene_presentation)
+                .before(camera::script_view),
         );
     }
 }
 #[derive(Component)]
 struct SceneEntity;
+
+/// Current world whose rendered scene has finished spawning, before actor effects run.
+#[derive(Resource)]
+pub(crate) struct ReadyScene(pub Handle<cyrus_assets::animation::Animations>);
+
+fn scene_ready(
+    mut commands: Commands,
+    prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
+    spawner: Res<bevy::world_serialization::WorldInstanceSpawner>,
+    roots: Query<&bevy::world_serialization::WorldInstance, With<SceneEntity>>,
+) {
+    if let Some(prepared) = prepared
+        && let Ok(instance) = roots.single()
+        && spawner.instance_is_ready(**instance)
+    {
+        commands.insert_resource(ReadyScene(prepared.animations.clone()));
+    } else {
+        commands.remove_resource::<ReadyScene>();
+    }
+}
 fn scene_presentation(
     mut commands: Commands,
     assets: Res<AssetServer>,

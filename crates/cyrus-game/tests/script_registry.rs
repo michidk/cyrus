@@ -73,7 +73,8 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 8,
+        version: 9,
+        player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
             animation_system: true,
@@ -2835,5 +2836,726 @@ fn wander_rejects_nonempty_maps_and_zero_radius_without_consuming_random() {
         assert!(format!("{error:#}").contains(expected), "{error:#}");
         assert_eq!(random.state(), 1);
         assert!(world.actors()[0].failure().is_some());
+    }
+}
+
+#[test]
+fn visibility_calls_return_zero_without_disabling_the_receivers_script() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (function, hidden) in [("HideMe", true), ("ShowMe", false), ("isDead", false)] {
+        let mut scripts = random_scripts(function, vec![], Object::Me);
+        scripts.definition.functions[1].param_count = 0;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        for _ in 0..2 {
+            world
+                .advance(
+                    id,
+                    ScriptStage::OrdinaryMain,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+            let control = world.actors()[0].control_state().unwrap();
+            assert_eq!(control.hidden, hidden);
+            assert!(!control.object_update_excluded);
+            assert_eq!(control.script_control, 0);
+            assert!(!world.actors()[1].control_state().unwrap().hidden);
+        }
+    }
+}
+
+#[test]
+fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
+    use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::{
+        AppState,
+        script::{ScriptActors, ScriptPlugin, ScriptView},
+    };
+    use cyrus_world::{
+        animation::{AnimationRequest, AnimationTick},
+        lifecycle::PreparedWorld,
+    };
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.active = 1;
+    }
+    scripts.definition.functions.push(Function {
+        name: "PlayerFacing".into(),
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&1)
+        .unwrap()
+        .operation = Operation::Assign {
+        destination: Place::Flag { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id: 1,
+                    function: "PlayerFacing".into(),
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    arguments: vec![Value::Integer { value: 0 }, Value::Integer { value: 0 }],
+                }),
+            },
+            rest: vec![],
+        },
+    };
+    scripts.definition.functions.push(Function {
+        name: "PlayerDistance".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts.definition.flags.push(Flag {
+        name: "Distance".into(),
+        flag_type: "NUMBER".into(),
+        initial_value: -1,
+    });
+    let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+    program.steps.insert(
+        3,
+        Step {
+            next: 4,
+            operation: Operation::End { target: 0 },
+        },
+    );
+    program.steps.insert(
+        2,
+        Step {
+            next: 3,
+            operation: Operation::Assign {
+                destination: Place::Flag { index: 1 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 2,
+                            function: "PlayerDistance".into(),
+                            target: Object::Me,
+                            kind: CallKind::Function,
+                            arguments: vec![],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+        },
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({
+            "script_content_id": scripts.content_id, "markers": [], "walk_node_maps": [],
+            "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":10},
+                        {"opcode":0,"frame_reference":11}, {"opcode":0,"frame_reference":12},
+                        {"opcode":0,"frame_reference":13}, {"opcode":2,"value":0}]}]}]
+        }),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin, AssetPlugin::default()))
+        .init_state::<AppState>()
+        .init_asset::<Scripts>()
+        .init_asset::<Animations>()
+        .add_message::<AnimationTick>()
+        .add_plugins(ScriptPlugin);
+    let scripts = app
+        .world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .add(scripts);
+    let animations = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(data);
+    app.insert_resource(PreparedWorld {
+        requested_name: "TEST".into(),
+        world: Some(7),
+        scripts,
+        animations: animations.clone(),
+        player_path: "test.player".into(),
+        scene_path: "test.glb".into(),
+        environment_path: "test.environment".into(),
+    });
+    app.insert_resource(AnimationRequest(animations.clone()));
+    app.insert_resource(ScriptView {
+        source: animations,
+        position: [256000, 0, 256000],
+    });
+    let player = app
+        .world_mut()
+        .spawn((
+            cyrus_game::player::Player,
+            cyrus_game::player::placement::PlayerPose {
+                position: [256, 512, 768],
+                heading: 0,
+            },
+        ))
+        .id();
+    app.world_mut()
+        .spawn(cyrus_game::player::placement::PlayerPose {
+            position: [999, 999, 999],
+            heading: 1024,
+        });
+    app.update();
+    let snapshot = |app: &App| {
+        let actors = app.world().resource::<ScriptActors>();
+        actors
+            .current
+            .as_ref()
+            .unwrap_or_else(|| {
+                panic!(
+                    "script preparation failed: {:?}",
+                    app.world().resource::<cyrus_game::script::ScriptStatus>()
+                )
+            })
+            .inspect(0, 2)
+    };
+    assert_eq!(
+        snapshot(&app)["actors"][0]["animation"],
+        serde_json::Value::Null
+    );
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    let first = snapshot(&app);
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .flags(),
+        [1, 1536]
+    );
+    app.world_mut()
+        .get_mut::<cyrus_game::player::placement::PlayerPose>(player)
+        .unwrap()
+        .heading = 1024;
+    assert_eq!(first["actors"][0]["failure"], serde_json::Value::Null);
+    assert_eq!(first["actors"][0]["locals"], serde_json::json!([5]));
+    assert!(first["actors"][0]["animation"]["frame"].is_number());
+    app.update();
+    let next = snapshot(&app);
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .flags(),
+        [0, 1536]
+    );
+    assert_eq!(next["actors"][0]["locals"], serde_json::json!([6]));
+    assert_ne!(
+        next["actors"][0]["animation"]["frame"],
+        first["actors"][0]["animation"]["frame"]
+    );
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    app.update();
+    app.update();
+    assert_eq!(snapshot(&app), next);
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    assert_eq!(
+        snapshot(&app)["actors"][0]["locals"],
+        serde_json::json!([7])
+    );
+    let prepared = app.world().resource::<PreparedWorld>();
+    let replacement = PreparedWorld {
+        requested_name: prepared.requested_name.clone(),
+        world: prepared.world,
+        scripts: prepared.scripts.clone(),
+        animations: prepared.animations.clone(),
+        player_path: prepared.player_path.clone(),
+        scene_path: prepared.scene_path.clone(),
+        environment_path: prepared.environment_path.clone(),
+    };
+    let mut changed_scripts = app
+        .world()
+        .resource::<Assets<Scripts>>()
+        .get(&replacement.scripts)
+        .unwrap()
+        .clone();
+    changed_scripts.player_distance_override = true;
+    changed_scripts.content_id = changed_scripts.content_identity().unwrap();
+    let mut changed_animations = Animations {
+        version: 2,
+        world: changed_scripts.world,
+        metadata: app
+            .world()
+            .resource::<Assets<Animations>>()
+            .get(&replacement.animations)
+            .unwrap()
+            .metadata
+            .clone(),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    changed_animations.metadata["script_content_id"] = changed_scripts.content_id.clone().into();
+    let mut replacement = replacement;
+    replacement.scripts = app
+        .world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .add(changed_scripts);
+    replacement.animations = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(changed_animations);
+    app.insert_resource(AnimationRequest(replacement.animations.clone()));
+    app.insert_resource(ScriptView {
+        source: replacement.animations.clone(),
+        position: [256000, 0, 256000],
+    });
+    app.insert_resource(replacement);
+    app.update();
+    let replaced = snapshot(&app);
+    assert_ne!(replaced["generation"], first["generation"]);
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .flags(),
+        [0, 9_999_999]
+    );
+    assert_eq!(replaced["actors"][0]["locals"], serde_json::json!([5]));
+    struct EmptyCheatStore;
+    impl cyrus_game::cheats::CheatStore for EmptyCheatStore {
+        fn load(&self) -> anyhow::Result<cyrus_assets::cheats::CheatFile> {
+            Ok(cyrus_assets::cheats::empty())
+        }
+        fn save(&self, _: &cyrus_assets::cheats::CheatFile) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    app.insert_resource(cyrus_game::cheats::Cheats::new(EmptyCheatStore));
+    for (value, expected) in [(0, 1536), (1, 9_999_999), (0, 1536)] {
+        app.world_mut()
+            .resource_mut::<cyrus_game::cheats::Cheats>()
+            .execute("neversaydie", Some(value))
+            .unwrap();
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<ScriptActors>()
+                .current
+                .as_ref()
+                .unwrap()
+                .flags()[1],
+            expected
+        );
+    }
+}
+
+#[test]
+fn placed_distance_queries_use_receiver_owned_initial_link_state() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs, ScriptInputs, ScriptStage};
+    let mut scripts = cache();
+    scripts.instances[1].map_position = [10, 0, 0];
+    scripts.definition.functions.push(Function {
+        name: "PlayerDistance".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Assign {
+        destination: Place::Local { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id: 1,
+                    function: "PlayerDistance".into(),
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    arguments: vec![],
+                }),
+            },
+            rest: vec![],
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    for (index, expected) in [(0, 256), (1, 2304)] {
+        world
+            .advance(
+                world.id(index).unwrap(),
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    player_query: Some(QueryInputs {
+                        player: Some(PlayerQuery {
+                            position: [256, 0, 0],
+                            heading: 0,
+                        }),
+                        distance_override: Some(false),
+                        fallback_position: None,
+                        linked_position: None,
+                    }),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.flags(), [expected]);
+    }
+}
+
+#[test]
+fn deep_water_query_reads_receivers_stored_surface_without_a_support_query() {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "IsInDeepWater".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Assign {
+        destination: Place::Local { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id: 1,
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    function: "IsInDeepWater".into(),
+                    arguments: vec![],
+                }),
+            },
+            rest: vec![],
+        },
+    };
+    scripts.content_id = scripts.content_identity().unwrap();
+    for surface in 0..=u8::MAX {
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let first = world.id(0).unwrap();
+        let second = world.id(1).unwrap();
+        world.set_actor_surface(first, surface).unwrap();
+        world.step(first, Thread::Main, 20).unwrap();
+        assert_eq!(world.flags(), [i32::from(surface == 2 || surface == 4)]);
+        world.step(second, Thread::Main, 20).unwrap();
+        assert_eq!(
+            world.flags(),
+            [0],
+            "another actor retains its allocation surface"
+        );
+        assert!(
+            world
+                .set_actor_surface(
+                    cyrus_game::script::ScriptActorId {
+                        generation: 2,
+                        index: 0
+                    },
+                    surface
+                )
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn fresh_player_deep_water_query_has_zero_surface_before_grounded_updates() {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "IsInDeepWater".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let mut actor = scripts.actors.remove("LOGIC").unwrap();
+    actor.instances = 1;
+    actor.instance_variables.truncate(1);
+    actor.namespace = Some("cyrus".into());
+    actor.program.steps.get_mut(&0).unwrap().operation = Operation::Assign {
+        destination: Place::Local { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id: 1,
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    function: "IsInDeepWater".into(),
+                    arguments: vec![],
+                }),
+            },
+            rest: vec![],
+        },
+    };
+    scripts.actors.insert("CYRUS".into(), actor);
+    scripts.instances.clear();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let player = world.id(0).unwrap();
+    world.step(player, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [0]);
+    assert!(world.actors()[0].failure().is_none());
+}
+
+#[test]
+fn object_axis_task_moves_in_receiver_orientation_and_does_not_snap_at_target() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (axis, angles, delta, expected) in [
+        (0, [0, 0, 0], 512, [256, 0, 0]),
+        (1, [0, 0, 0], -512, [0, -256, 0]),
+        (2, [0, 512, 0], 512, [-256, 0, 0]),
+        (2, [512, 0, 0], 512, [0, 256, 0]),
+        (0, [0, 0, 512], 512, [0, -256, 0]),
+        (9, [0, 0, 0], 512, [0, 0, 0]),
+    ] {
+        let mut scripts = cache();
+        scripts.definition.functions.push(Function {
+            name: "MoveObjectAxis".into(),
+            param_count: 3,
+            kind: CallKind::Task,
+        });
+        scripts.instances[0].angles = angles;
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = wait(
+            1,
+            "MoveObjectAxis",
+            CallKind::Task,
+            vec![
+                Value::Integer { value: axis },
+                Value::Integer { value: delta },
+                Value::Integer { value: 2 },
+            ],
+        );
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        world
+            .advance(
+                id,
+                ScriptStage::Tasks,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        assert_eq!(
+            world.spatial(world.id(1).unwrap()).unwrap().local.position,
+            [0; 3]
+        );
+    }
+}
+
+#[test]
+fn deferred_movement_relocates_cells_and_retains_nearby_cached_order() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (excluded, distant_view) in [(false, false), (false, true), (true, false), (true, true)] {
+        let mut scripts = cache();
+        scripts.instances[0].map_position = [1024, 0, 512];
+        scripts.instances[1].map_position = [512, 0, 512];
+        scripts.definition.functions.push(Function {
+            name: "MoveObjectAxis".into(),
+            param_count: 3,
+            kind: CallKind::Task,
+        });
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = wait(
+            1,
+            "MoveObjectAxis",
+            CallKind::Task,
+            vec![
+                Value::Integer { value: 0 },
+                Value::Integer { value: -262144 },
+                Value::Integer { value: 2 },
+            ],
+        );
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let original = world.ordinary_actors([0, 0]).unwrap().to_vec();
+        assert_eq!(
+            original.iter().map(|id| id.index).collect::<Vec<_>>(),
+            [1, 0]
+        );
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [131072, 0, 131072]
+        );
+        let view = if distant_view {
+            [6000 * 256, 0, 0]
+        } else {
+            [0; 3]
+        };
+        world.flush_map_updates(view, excluded).unwrap();
+        let cached: Vec<_> = world
+            .ordinary_actors([0, 0])
+            .unwrap()
+            .iter()
+            .map(|id| id.index)
+            .collect();
+        assert_eq!(
+            cached,
+            if distant_view && !excluded {
+                vec![0, 1]
+            } else {
+                vec![1, 0]
+            }
+        );
+        // The excluded pass consumes its registration; a later admitted pass cannot replay it.
+        world.flush_map_updates([0; 3], false).unwrap();
+        world.ordinary_actors([6000, 6000]).unwrap();
+        let rebuilt: Vec<_> = world
+            .ordinary_actors([0, 0])
+            .unwrap()
+            .iter()
+            .map(|id| id.index)
+            .collect();
+        assert_eq!(rebuilt, if excluded { vec![1, 0] } else { vec![0, 1] });
+    }
+}
+
+#[test]
+fn positional_sound_uses_the_routed_receivers_pose_and_returns_zero() {
+    use cyrus_game::script::{ScriptSound, ScriptStage};
+    let mut scripts = random_scripts(
+        "Sound",
+        vec![
+            Value::Integer { value: 7 },
+            Value::Integer { value: -40 },
+            Value::Integer { value: 2000 },
+        ],
+        Object::Named { string: 0 },
+    );
+    scripts.definition.functions.last_mut().unwrap().param_count = 3;
+    scripts.instances[0].map_position = [3, 4, 5];
+    scripts.instances[1].map_position = [10, 20, 30];
+    scripts.content_id = scripts.content_identity().unwrap();
+    for surface in [0, 1, 6, 7, 12, 255] {
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        world.refresh_families().unwrap();
+        let caller = world.id(1).unwrap();
+        let receiver = world.id(0).unwrap();
+        world.set_actor_surface(receiver, surface).unwrap();
+        let mut cues = Vec::new();
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                Some(&mut |actor, sound| {
+                    cues.push((actor, sound));
+                    Ok(())
+                }),
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(
+            cues,
+            [(
+                receiver,
+                ScriptSound::Positional {
+                    effect: 7,
+                    volume: -40,
+                    rate_offset_hz: 2000,
+                    position: [768, 1024, 1280],
+                }
+            )]
+        );
+        assert_eq!(world.actors()[1].runtime().unwrap().variables(), [0]);
     }
 }

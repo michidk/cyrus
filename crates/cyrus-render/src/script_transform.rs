@@ -7,11 +7,64 @@ pub struct ScriptTransformPlugin;
 impl Plugin for ScriptTransformPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
+            Update,
+            visibility.after(cyrus_game::script::OrdinaryUpdates),
+        );
+        app.add_systems(
             PostUpdate,
             apply
                 .after(TransformSystems::Propagate)
                 .before(VisibilitySystems::CheckVisibility),
         );
+    }
+}
+
+#[derive(Component)]
+struct AppliedScriptVisibility(Visibility);
+
+// Visibility ownership must expire with the logical actor binding.
+#[allow(clippy::type_complexity)]
+fn visibility(
+    mut commands: Commands,
+    actors: Option<Res<ScriptActors>>,
+    mut nodes: Query<
+        (
+            Entity,
+            Option<&ScriptBinding>,
+            Option<&AppliedScriptVisibility>,
+            &mut Visibility,
+        ),
+        Or<(With<ScriptBinding>, With<AppliedScriptVisibility>)>,
+    >,
+) {
+    for (entity, binding, applied, mut visibility) in &mut nodes {
+        let control = binding.and_then(|binding| {
+            let world = actors.as_ref()?.current.as_ref()?;
+            if binding.actor.generation != world.generation() {
+                return None;
+            }
+            world.actors().get(binding.actor.index)?.control_state()
+        });
+        let Some(control) = control else {
+            if let Some(applied) = applied {
+                *visibility = applied.0;
+                commands.entity(entity).remove::<AppliedScriptVisibility>();
+            }
+            continue;
+        };
+        if applied.is_none() {
+            commands
+                .entity(entity)
+                .insert(AppliedScriptVisibility(*visibility));
+        }
+        let next = if control.hidden {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+        if *visibility != next {
+            *visibility = next;
+        }
     }
 }
 

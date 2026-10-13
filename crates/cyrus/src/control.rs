@@ -379,6 +379,7 @@ fn handle(
                         sound => {
                             let event = match &sound {
                                 ScriptSound::Flat { effect, volume, rate_offset_hz } => json!({"type":"flat", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz}),
+                                ScriptSound::Positional { effect, volume, rate_offset_hz, position } => json!({"type":"positional", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz, "position":position}),
                                 ScriptSound::StopEffect { effect, owned } => json!({"type":"stop_effect", "effect":effect, "owned":owned}),
                                 ScriptSound::StopOwned => json!({"type":"stop_owned"}),
                                 ScriptSound::Animation { .. } => unreachable!(),
@@ -435,6 +436,7 @@ fn handle(
                     player_query: Some(cyrus_game::script::QueryInputs {
                         player, distance_override: distance_override.or_else(|| cheats.distance_override().ok()), fallback_position, linked_position: None,
                     }),
+                    ..Default::default()
                 };
                 world.advance(id, stage, inputs, Some(&mut emit), Some(&mut random), 100_000)?;
                 let mut result = world.inspect(index, 1);
@@ -548,7 +550,7 @@ mod tests {
         use cyrus_game::script::{ScriptActors, ScriptWorld};
         let mut app = app();
         let mut scripts: Scripts = serde_json::from_value(json!({
-            "version":8,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":9,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}
@@ -633,7 +635,7 @@ mod tests {
         }
         let mut app = app();
         let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(json!({
-            "version":8,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},
+            "version":9,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},
             "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
             "actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[

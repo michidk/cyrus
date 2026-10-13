@@ -931,7 +931,8 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 8,
+            version: 9,
+            player_distance_override: false,
             updates: cyrus_assets::script::UpdateSettings {
                 task_system: true,
                 animation_system: true,

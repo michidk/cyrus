@@ -7,6 +7,83 @@ use cyrus_world::transform::Matrix;
 use serde_json::json;
 
 #[test]
+fn script_visibility_hides_and_restores_the_bound_static_model() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (function, expected) in [
+        ("HideMe", Visibility::Hidden),
+        ("ShowMe", Visibility::Inherited),
+    ] {
+        let mut scripts: Scripts = serde_json::from_value(json!({
+            "version":9,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},
+            "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
+            "actor_pool_capacity":10,"content_id":"","world":17,
+            "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"},{"name":function,"param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
+            "actors":{"STATIC":{"header_index":0,"code_origin":0,"instances":1,"instance_variables":[[]],"attributes":{},
+                "program":{"version":2,"entry":0,"steps":{
+                    "0":{"next":1,"operation":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":function,"arguments":[]}}},
+                    "1":{"next":2,"operation":{"type":"end","target":0}}
+                }}}},
+            "instances":[{"object_id":0,"actor":"STATIC","object_type":1,"active":0,"model_name":"test","model_mode":0,"map_position":[40,-60,80],"angles":[0,0,0]}],"unsupported":{}
+        })).unwrap();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        let mut actors = ScriptActors::default();
+        actors.current = Some(world);
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, TransformPlugin, ScriptTransformPlugin));
+        app.insert_resource(actors);
+        let authored = if expected == Visibility::Hidden {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        let node = app
+            .world_mut()
+            .spawn((
+                Transform::default(),
+                if expected == Visibility::Hidden {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                },
+                ScriptBinding {
+                    actor: id,
+                    source: Handle::<Animations>::default(),
+                },
+            ))
+            .id();
+        app.update();
+        assert_eq!(*app.world().get::<Visibility>(node).unwrap(), expected);
+        assert_eq!(
+            app.world()
+                .get::<GlobalTransform>(node)
+                .unwrap()
+                .translation(),
+            Vec3::new(-2.0, 3.0, -3272.7998)
+        );
+        app.world_mut().entity_mut(node).remove::<ScriptBinding>();
+        app.update();
+        assert_eq!(*app.world().get::<Visibility>(node).unwrap(), authored);
+    }
+}
+
+#[test]
 fn scene_conversion_preserves_nonorthogonal_matrix_and_integer_position_shift() {
     let pose = Pose {
         position: [511, -1, 256],
@@ -27,7 +104,7 @@ fn scene_conversion_preserves_nonorthogonal_matrix_and_integer_position_shift() 
 #[test]
 fn binding_updates_descendants_and_removal_restores_authored_transforms() {
     let mut scripts: Scripts = serde_json::from_value(json!({
-        "version":8,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+        "version":9,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
         "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
         "actors":{},
         "instances":[{"object_id":0,"actor":"STATIC","object_type":0,"active":0,"model_name":"","model_mode":0,"map_position":[40,-60,80],"angles":[0,0,0]}],

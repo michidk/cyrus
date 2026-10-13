@@ -18,6 +18,38 @@ use cyrus_audio::sound::pan_gains;
 use rgpre::import::sfx::parse_sfx_file;
 use std::path::Path;
 
+#[test]
+fn playing_decoder_applies_gain_updates_without_restarting_or_splitting_a_frame() {
+    use cyrus_audio::sound::{Panned, PannedGains};
+    use rgpre::import::sfx::AudioType;
+
+    for (audio_type, pcm) in [
+        (AudioType::Mono8, vec![192; 4]),
+        (AudioType::Stereo8, vec![192; 8]),
+    ] {
+        let gains = PannedGains::new(127, 256, 0);
+        let source = Panned {
+            source: AudioSource {
+                bytes: pcm_wav(audio_type, 11025, &pcm).unwrap().into(),
+            },
+            gains: gains.clone(),
+        };
+        let mut decoder = source.decoder();
+        assert!(decoder.next().unwrap() > 0.0);
+        gains.set(127, 256, 127);
+        assert_eq!(decoder.next(), Some(0.0));
+        assert_eq!(decoder.next(), Some(0.0));
+        assert!(decoder.next().unwrap() > 0.0);
+        gains.set(0, 256, 64);
+        assert_eq!(decoder.next(), Some(0.0));
+        assert_eq!(decoder.next(), Some(0.0));
+        gains.set(127, 256, 0);
+        assert!(decoder.next().unwrap() > 0.0);
+        assert_eq!(decoder.next(), Some(0.0));
+        assert_eq!(decoder.next(), None);
+    }
+}
+
 /// Decodes `source` with Bevy's own decoder: (sample rate, channels, sample count).
 fn decode(source: AudioSource) -> (u32, u16, usize) {
     let decoder = source.decoder();
@@ -123,6 +155,9 @@ fn distance_volume_matches_the_original_curve() {
     assert_eq!(distance_volume(64, 0.0, -40), Ok(87));
     assert_eq!(distance_volume(64, 1000.0, 100), Ok(127));
     assert_eq!(distance_volume(64, 2400.0, 100), Ok(0), "beyond the radius");
+    assert_eq!(distance_volume(64, 0.0, i32::MAX), Ok(0));
+    assert_eq!(distance_volume(64, 0.0, i32::MAX - 127), Ok(127));
+    assert_eq!(distance_volume(64, 0.0, i32::MIN), Ok(0));
     assert!(
         distance_volume(3, 0.0, 0).is_err(),
         "the original divides by zero"
@@ -489,4 +524,79 @@ fn headless_sound_preparation_waits_for_host_readiness() {
             .0
             .is_empty()
     );
+}
+
+#[test]
+fn positional_script_starts_include_silent_channels_and_owned_cleanup() {
+    use bevy::prelude::*;
+    use cyrus_audio::{
+        AudioListener,
+        sound::{Effect, Panned, PlayingSound, SoundEffects, SoundPlugin},
+    };
+    use cyrus_world::sound::{ScriptSound, SoundCue};
+    use rgpre::import::sfx::AudioType;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default(), SoundPlugin))
+        .init_asset::<AudioSource>()
+        .init_asset::<Panned>();
+    app.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
+    app.insert_resource(AudioListener(GlobalTransform::default()));
+    let audio = app
+        .world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .add(AudioSource {
+            bytes: pcm_wav(AudioType::Mono8, 11025, &[192; 8]).unwrap().into(),
+        });
+    app.insert_resource(SoundEffects(vec![Some(Effect {
+        audio,
+        looping: true,
+        base_volume: 64,
+        sample_rate: 11025,
+    })]));
+    for (index, volume) in [(0, 0), (1, i32::MAX)] {
+        app.world_mut().write_message(SoundCue::Script {
+            generation: 17,
+            index,
+            sound: ScriptSound::Positional {
+                effect: 0,
+                volume,
+                rate_offset_hz: 0,
+                position: [0, 0, 16_777_215],
+            },
+        });
+    }
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .query_filtered::<Entity, With<PlayingSound>>()
+            .iter(app.world())
+            .count(),
+        2
+    );
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 0,
+        sound: ScriptSound::StopOwned,
+    });
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .query_filtered::<Entity, With<PlayingSound>>()
+            .iter(app.world())
+            .count(),
+        1
+    );
+    let handle = app
+        .world_mut()
+        .query::<&bevy::audio::AudioPlayer<Panned>>()
+        .single(app.world())
+        .unwrap()
+        .0
+        .clone();
+    let source = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&handle)
+        .unwrap();
+    assert!(source.decoder().all(|sample| sample == 0.0));
 }

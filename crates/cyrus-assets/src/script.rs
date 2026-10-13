@@ -339,6 +339,8 @@ pub struct Scripts {
     pub version: u32,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
+    /// Initial `neversaydie` cheat state, loaded from optional REDGUARD.CHT.
+    pub player_distance_override: bool,
     /// Installed reusable actor-pool capacity, including the engine's minimum of ten.
     pub actor_pool_capacity: u32,
     pub content_id: String,
@@ -356,6 +358,7 @@ impl Scripts {
             self.version,
             &self.clock,
             &self.updates,
+            self.player_distance_override,
             self.actor_pool_capacity,
             self.world,
             &self.definition,
@@ -367,7 +370,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 8,
+            self.version == 9,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

@@ -1,4 +1,5 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+pub(super) mod ordinary;
 use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
@@ -67,6 +68,9 @@ pub struct ScriptInputs<'a> {
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
+    pub ambient_sound: Option<&'a dyn cyrus_world::sound::AmbientSoundDriver>,
+    /// Explicit shared sample-reset flag from the owning engine update.
+    pub sound_reset: Option<bool>,
 }
 
 pub(crate) struct ScriptAnimation {
@@ -87,6 +91,8 @@ pub struct ActorControlState {
     pub torch_burning: u8,
     pub weapon_drawn: bool,
     pub object_update_excluded: bool,
+    /// Presentation hidden state; this does not exclude script or animation updates.
+    pub hidden: bool,
     pub combat_death_default: Option<i32>,
 }
 
@@ -104,6 +110,7 @@ pub struct ScriptActor {
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
+    update_failure: Option<String>,
 }
 impl ScriptActor {
     pub fn name(&self) -> &str {
@@ -133,7 +140,9 @@ impl ScriptActor {
     }
     /// Sticky script or animation failure; failed effects are never retried.
     pub fn failure(&self) -> Option<&str> {
-        self.animation_failure()
+        self.update_failure
+            .as_deref()
+            .or_else(|| self.animation_failure())
             .or_else(|| self.runtime.as_ref().and_then(Runtime::failure))
     }
     /// Retained animation construction or advancement failure, separate from SOUP errors.
@@ -153,7 +162,7 @@ impl ScriptActor {
     }
 }
 
-/// Explicit inspection state. Preparation does not grant ordinary update eligibility.
+/// Logical world state shared by inspection and camera-centered ordinary updates.
 pub struct ScriptWorld {
     pub world: u32,
     pub content_id: String,
@@ -161,6 +170,7 @@ pub struct ScriptWorld {
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
     updates: cyrus_assets::script::UpdateSettings,
+    player_distance_override: bool,
     actors: Vec<ScriptActor>,
     spatial: Option<super::spatial::SpatialWorld>,
     activation: super::ActivationState,
@@ -169,6 +179,8 @@ pub struct ScriptWorld {
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
     walk_map_count: Option<usize>,
+    ordinary_prepared: bool,
+    map_updates: Vec<usize>,
 }
 impl ScriptWorld {
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
@@ -238,6 +250,7 @@ impl ScriptWorld {
                         torch_burning: 0,
                         weapon_drawn: false,
                         object_update_excluded: false,
+                        hidden: false,
                         combat_death_default: None,
                     })
                 }
@@ -260,6 +273,7 @@ impl ScriptWorld {
                 tasks: Default::default(),
                 animation: None,
                 animation_failure: None,
+                update_failure: None,
                 attributes: (0..256)
                     .map(|index| {
                         metadata
@@ -316,7 +330,9 @@ impl ScriptWorld {
             }
         }
         Ok(Self {
+            map_updates: Vec::new(),
             updates: scripts.updates,
+            player_distance_override: scripts.player_distance_override,
             world: scripts.world,
             content_id: scripts.content_id.clone(),
             generation,
@@ -334,6 +350,7 @@ impl ScriptWorld {
             actor_lists: None,
             markers: None,
             walk_map_count: None,
+            ordinary_prepared: false,
             spatial: None,
             activation: Default::default(),
         })
@@ -381,6 +398,47 @@ impl ScriptWorld {
                 .with_context(|| format!("world {} walk_node_maps absent or invalid", self.world))?
                 .len(),
         );
+        Ok(())
+    }
+
+    /// Consume movement registrations before regional selection, in first-registration order.
+    /// View coordinates use Q8 units. The caller supplies the original VM map-exclusion state.
+    /// Excluded passes consume registrations without changing cell membership.
+    pub fn flush_map_updates(&mut self, view: [i32; 3], excluded: bool) -> Result<()> {
+        if self.map_updates.is_empty() {
+            return Ok(());
+        }
+        if self.actor_lists.is_none() {
+            self.actor_lists = Some(super::order::ActorLists::new(&self.actors)?);
+        }
+        let pending = std::mem::take(&mut self.map_updates);
+        if excluded {
+            return Ok(());
+        }
+        let spatial = self
+            .spatial
+            .as_ref()
+            .context("deferred movement spatial state unavailable")?;
+        let lists = self.actor_lists.as_mut().expect("actor lists prepared");
+        for index in pending {
+            let actor = &self.actors[index];
+            if actor
+                .placement()
+                .is_none_or(|placement| placement.active != 0)
+            {
+                continue;
+            }
+            let pose = spatial.actor(index)?;
+            lists
+                .relocate(index, pose.local.position, pose.linked_position, view)
+                .with_context(|| {
+                    format!(
+                        "world {} instance {index} actor {} deferred relocation",
+                        self.world,
+                        actor.name()
+                    )
+                })?;
+        }
         Ok(())
     }
 
@@ -857,6 +915,7 @@ impl ScriptWorld {
             spatial: self.spatial.as_mut(),
             markers: self.markers.as_ref(),
             walk_map_count: self.walk_map_count,
+            map_updates: &mut self.map_updates,
             activation: &mut self.activation,
             inputs,
         };
@@ -974,7 +1033,7 @@ impl ScriptWorld {
                 "interrupt": actor.runtime.as_ref().and_then(|runtime| runtime.program_counter(Thread::Interrupt)),
                 "locals": actor.runtime.as_ref().map(|runtime| runtime.variables()),
                 "attributes": actor.attributes,
-                "control": actor.control,
+                "control": actor.control, "surface": actor.surface,
                 "spatial": self.spatial.as_ref().and_then(|spatial| spatial.actor(index).ok()),
                 "animation": actor.animation.as_ref().map(|animation| serde_json::json!({
                     "current_group": animation.playback.current_group(),
@@ -1101,6 +1160,7 @@ pub(super) fn prepare(
 }
 
 struct GameHost<'a, 'sound, 'input, 'random> {
+    map_updates: &'a mut Vec<usize>,
     activation: &'a mut super::ActivationState,
     spatial: Option<&'a mut super::spatial::SpatialWorld>,
     markers: Option<&'a super::markers::Markers>,
@@ -1115,7 +1175,30 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
-impl GameHost<'_, '_, '_, '_> {
+impl<'input> GameHost<'_, '_, 'input, '_> {
+    fn ambient_call(&self) -> super::tasks::AmbientCall<'input> {
+        let actor = &self.actors[self.index];
+        let position = self.spatial.as_deref().and_then(|world| {
+            let spatial = world.actor(self.index).ok()?;
+            if spatial.parent.is_some() {
+                Some(spatial.effective?.position)
+            } else {
+                Some(spatial.linked_position.unwrap_or(spatial.local.position))
+            }
+        });
+        super::tasks::AmbientCall {
+            driver: self.inputs.ambient_sound,
+            reset: self.inputs.sound_reset,
+            position,
+            excluded: actor
+                .control
+                .as_ref()
+                .map(|control| control.object_update_excluded),
+            generation: self.generation,
+            actor_index: self.index,
+        }
+    }
+
     fn advance_animation(&mut self) -> Result<()> {
         let id = ScriptActorId {
             generation: self.generation,
@@ -1202,6 +1285,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 return Ok(CallResult::Complete(value));
             }
         }
+        let ambient = self.ambient_call();
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
             Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
@@ -1226,6 +1310,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
             .map(
                 |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
+                    matrix: spatial.local.matrix,
+                    slave: actor.attributes[26] != 0,
+                    actor_index: self.index,
+                    map_updates: self.map_updates,
                     position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
@@ -1233,12 +1321,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 },
             );
         if let Some(result) = actor.tasks.call(
-            function,
-            kind,
+            (function, kind),
             arguments,
             invocation,
             &mut animation,
             &mut spatial_call,
+            Some(&ambient),
         )? {
             return Ok(result);
         }
@@ -1247,6 +1335,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        if function.eq_ignore_ascii_case("HideMe") || function.eq_ignore_ascii_case("ShowMe") {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let control = self.actors[self.index].control.as_mut().with_context(|| {
+                format!("{function}: receiver visibility lifecycle unavailable")
+            })?;
+            control.hidden = function.eq_ignore_ascii_case("HideMe");
+            return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("isDead") {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let control = self.actors[self.index]
+                .control
+                .as_ref()
+                .with_context(|| format!("{function}: receiver death lifecycle unavailable"))?;
+            return Ok(CallResult::Complete(i32::from(control.death_selector == 8)));
+        }
         if function.eq_ignore_ascii_case("Rnd") || function.eq_ignore_ascii_case("QuickRnd") {
             let [operand] = arguments else {
                 anyhow::bail!("{function} requires one argument")
@@ -1276,6 +1380,36 @@ impl Host for GameHost<'_, '_, '_, '_> {
             } else {
                 control.script_control |= 1;
             }
+            return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("Sound") {
+            let [effect, volume, rate] = arguments else {
+                anyhow::bail!("Sound requires three arguments")
+            };
+            let spatial = self
+                .spatial
+                .as_deref()
+                .context("Sound receiver pose unavailable")?
+                .actor(self.index)?;
+            let position = if spatial.parent.is_some() {
+                spatial
+                    .effective
+                    .context("Sound attached receiver pose unavailable")?
+                    .position
+            } else {
+                spatial.linked_position.unwrap_or(spatial.local.position)
+            };
+            self.sounds
+                .as_mut()
+                .context("script sound handler absent")?(
+                id,
+                super::ScriptSound::Positional {
+                    effect: effect.integer()?,
+                    volume: volume.integer()?,
+                    rate_offset_hz: rate.integer()?,
+                    position,
+                },
+            )?;
             return Ok(CallResult::Complete(0));
         }
         if let Some(sound) = super::sound::command(function, arguments)? {
@@ -1337,10 +1471,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .contains(marker.integer()?, position, distance.integer()?)?;
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        if function.eq_ignore_ascii_case("IsInDeepWater") {
+            anyhow::ensure!(arguments.is_empty(), "IsInDeepWater requires no arguments");
+            let surface = self.actors[self.index]
+                .surface
+                .context("IsInDeepWater actor surface state unavailable")?;
+            return Ok(CallResult::Complete(i32::from(matches!(surface, 2 | 4))));
+        }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
         {
-            let inputs = self
+            let mut inputs = self
                 .inputs
                 .player_query
                 .context("player query inputs unavailable")?;
@@ -1349,6 +1490,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_deref()
                 .context("spatial state not prepared")?
                 .actor(self.index)?;
+            inputs.linked_position = Some(spatial.linked_position);
             return Ok(CallResult::Complete(
                 spatial
                     .query(function, arguments, inputs)?
@@ -1393,6 +1535,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        let ambient = self.ambient_call();
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
             Some(sounds) => sounds(id, super::ScriptSound::Animation { sound, surface }),
@@ -1417,6 +1560,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
             .map(
                 |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
+                    matrix: spatial.local.matrix,
+                    slave: actor.attributes[26] != 0,
+                    actor_index: self.index,
+                    map_updates: self.map_updates,
                     position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
@@ -1429,6 +1576,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             invocation,
             &mut animation,
             &mut spatial_call,
+            Some(&ambient),
         )
     }
     fn cancel(&mut self, token: u64) -> Result<()> {

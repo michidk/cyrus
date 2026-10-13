@@ -3,7 +3,8 @@ use cyrus_assets::script::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 8,
+        version: 9,
+        player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
             animation_system: true,
@@ -434,6 +435,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
     struct Source {
         manifest: Manifest,
         system: Vec<u8>,
+        cheats: Option<Vec<u8>>,
     }
     impl ReadAssets for Source {
         fn manifest(&self) -> &Manifest {
@@ -443,6 +445,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             let bytes = match path {
                 "SYSTEM.INI" => self.system.as_slice(),
                 "soup386/SOUP386.DEF" => &[],
+                "REDGUARD.CHT" => self.cheats.as_deref().unwrap(),
                 _ => anyhow::bail!("unexpected source {path}"),
             };
             let start = usize::try_from(start)?;
@@ -452,9 +455,9 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
                 .to_vec())
         }
     }
-    let prepare = |normal: i32, min: i32| {
+    let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
         let system = format!("[system]\nmax_active_objects=10\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n").into_bytes();
-        let source = Source {
+        let mut source = Source {
             manifest: Manifest {
                 files: vec![
                     FileInfo {
@@ -470,14 +473,22 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
                 ],
             },
             system,
+            cheats,
         };
+        if let Some(cheats) = &source.cheats {
+            source.manifest.files.push(FileInfo {
+                path: "REDGUARD.CHT".into(),
+                bytes: cheats.len() as u64,
+                digest: "0".repeat(64),
+            });
+        }
         cyrus_assets::script_export::prepare_source(
             &rgpre::import::rgm::RgmFile { sections: vec![] },
             &source,
             17,
         )
     };
-    let scripts = prepare(0, 6).unwrap();
+    let scripts = prepare(0, 6, None).unwrap();
     assert_eq!(
         scripts.clock,
         ClockSettings {
@@ -488,7 +499,19 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 8);
+    assert_eq!(scripts.version, 9);
+    assert!(!scripts.player_distance_override);
+    let mut cheats = vec![0; 256];
+    cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
+    cheats[24..28].copy_from_slice(&1u32.to_le_bytes());
+    let overridden = prepare(0, 6, Some(cheats.clone())).unwrap();
+    assert!(overridden.player_distance_override);
+    assert_ne!(overridden.content_id, scripts.content_id);
+    cheats[28..32].copy_from_slice(&1u32.to_le_bytes());
+    let error = prepare(0, 6, Some(cheats)).unwrap_err();
+    assert!(format!("{error:#}").contains("world 17 REDGUARD.CHT"));
+    assert!(format!("{error:#}").contains("drevil"));
+    assert!(prepare(0, 6, Some(vec![0; 255])).is_err());
     assert_eq!(
         scripts.updates,
         UpdateSettings {
@@ -499,7 +522,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     );
     for (normal, min, field) in [(-1, 6, "normal_frame_rate"), (12, 0, "min_frame_rate")] {
-        let error = format!("{:#}", prepare(normal, min).unwrap_err());
+        let error = format!("{:#}", prepare(normal, min, None).unwrap_err());
         assert!(
             error.contains("world 17") && error.contains(field),
             "{error}"

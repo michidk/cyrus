@@ -2,6 +2,109 @@
 use cyrus_game::script::{ScriptActorSource, ScriptWorld};
 
 #[test]
+fn installed_island_flags_advance_through_ordinary_updates() {
+    use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
+    use cyrus_assets::animation::Animations;
+    use cyrus_assets::script::Scripts;
+    use cyrus_game::{
+        AppState,
+        script::{ScriptActors, ScriptPlugin, ScriptView},
+    };
+    use cyrus_world::{
+        animation::{AnimationRequest, AnimationTick},
+        lifecycle::PreparedWorld,
+    };
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP automatic island flags)");
+        return;
+    }
+    let path = std::fs::read_dir(root.join("maps"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("ISLAND.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
+    let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
+    metadata["script_content_id"] = scripts.content_id.clone().into();
+    let data = Animations {
+        version: 2,
+        world: scripts.world,
+        metadata,
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_markers(&data).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "FLAG2")
+        .unwrap();
+    let placement = world.actors()[index].placement().unwrap();
+    let view = [
+        placement.map_position[0] as i32,
+        placement.map_position[2] as i32,
+    ];
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, StatesPlugin, AssetPlugin::default()))
+        .init_state::<AppState>()
+        .init_asset::<Scripts>()
+        .init_asset::<Animations>()
+        .add_message::<AnimationTick>()
+        .add_plugins(ScriptPlugin);
+    let scripts = app
+        .world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .add(scripts);
+    let animations = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(data);
+    app.insert_resource(PreparedWorld {
+        requested_name: "ISLAND".into(),
+        world: Some(0),
+        scripts,
+        animations: animations.clone(),
+        player_path: "test.player".into(),
+        scene_path: "test.glb".into(),
+        environment_path: "test.environment".into(),
+    });
+    app.insert_resource(AnimationRequest(animations.clone()));
+    app.insert_resource(ScriptView {
+        source: animations,
+        position: [view[0] * 256, 0, view[1] * 256],
+    });
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    let mut frames = Vec::new();
+    for _ in 0..24 {
+        app.update();
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors.current.as_ref().unwrap();
+        assert!(
+            world.actors()[index].failure().is_none(),
+            "{:?}",
+            world.actors()[index].failure()
+        );
+        frames.push(world.animation_frame(world.id(index).unwrap()).unwrap());
+    }
+    assert!(
+        frames.windows(2).any(|frames| frames[0] != frames[1]),
+        "installed FLAG2 remained frozen: {frames:?}"
+    );
+}
+
+#[test]
 fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
     if !root.join("RGFX.EXE").exists() {
@@ -226,6 +329,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
             nominal_ticks: Some(1),
             frame_scale: Some(256),
             player_query: Some(query),
+            ..Default::default()
         };
         for (id, stage) in [
             (player, ScriptStage::Animation),

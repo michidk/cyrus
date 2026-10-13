@@ -142,18 +142,64 @@ impl Plugin for CameraPlugin {
             .add_systems(Update, suppress.before(InputSample))
             .add_systems(
                 Update,
+                script_view
+                    .after(follow_player)
+                    .before(cyrus_game::script::OrdinaryUpdates)
+                    .run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(
+                Update,
                 (
                     frame_scene.run_if(|f: Res<FrameScene>, camera: Res<FlycamSettings>| {
                         f.0 && camera.enabled
                     }),
                     flycam_controller.run_if(|f: Res<FlycamSettings>| f.enabled),
-                    follow_player.run_if(|f: Res<FlycamSettings>| !f.enabled),
+                    follow_player
+                        .after(cyrus_game::player::placement::PlayerPlacement)
+                        .run_if(|f: Res<FlycamSettings>| !f.enabled),
                 )
                     .chain()
                     .run_if(in_state(AppState::InGame)),
             );
     }
 }
+pub(crate) fn script_view(
+    mut commands: Commands,
+    request: Option<Res<cyrus_world::animation::AnimationRequest>>,
+    frame: Res<FrameScene>,
+    ready: Option<Res<crate::ReadyScene>>,
+    flycam: Res<FlycamSettings>,
+    camera: Query<&Transform, With<ViewCamera>>,
+    placed_player: Query<
+        (),
+        (
+            With<Player>,
+            With<cyrus_game::player::placement::PlayerPose>,
+        ),
+    >,
+) {
+    let (Some(request), Ok(camera)) = (request, camera.single()) else {
+        commands.remove_resource::<cyrus_game::script::ScriptView>();
+        return;
+    };
+    if ready.is_none_or(|ready| ready.0 != request.0)
+        || (flycam.enabled && frame.0)
+        || (!flycam.enabled && placed_player.single().is_err())
+    {
+        commands.remove_resource::<cyrus_game::script::ScriptView>();
+        return;
+    }
+    let position = camera.translation;
+    commands.insert_resource(cyrus_game::script::ScriptView {
+        source: request.0.clone(),
+        position: [
+            (-f64::from(position.x) * 20.0 * 256.0).floor() as i32,
+            (-f64::from(position.y) * 20.0 * 256.0).floor() as i32,
+            ((f64::from(position.z) * 20.0 + 65535.99609375) * 256.0).floor() as i32,
+        ],
+    });
+}
+
 fn suppress(flycam: Res<FlycamSettings>, mut suppressed: ResMut<InputSuppressed>) {
     suppressed.0 = flycam.enabled;
 }
@@ -176,6 +222,54 @@ fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ordinary_view_uses_camera_and_waits_for_scene_framing() {
+        use cyrus_game::script::ScriptView;
+        use cyrus_world::animation::AnimationRequest;
+        let mut app = App::new();
+        let source = Handle::default();
+        app.insert_resource(AnimationRequest(source.clone()))
+            .insert_resource(crate::ReadyScene(source.clone()))
+            .insert_resource(FrameScene(true))
+            .insert_resource(FlycamSettings {
+                enabled: true,
+                speed: 150.0,
+            })
+            .add_systems(Update, script_view);
+        app.world_mut()
+            .spawn((ViewCamera, Transform::from_xyz(-50.0, 0.0, -3000.0)));
+        app.world_mut()
+            .spawn((Player, Transform::from_xyz(-500.0, 0.0, -2000.0)));
+        app.update();
+        assert!(!app.world().contains_resource::<ScriptView>());
+        app.world_mut().resource_mut::<FrameScene>().0 = false;
+        app.world_mut().remove_resource::<crate::ReadyScene>();
+        app.update();
+        assert!(!app.world().contains_resource::<ScriptView>());
+        app.insert_resource(crate::ReadyScene(source.clone()));
+        app.update();
+        let view = app.world().resource::<ScriptView>();
+        assert_eq!(view.source, source);
+        assert_eq!([view.position[0] >> 8, view.position[2] >> 8], [1000, 5535]);
+        app.world_mut().resource_mut::<FlycamSettings>().enabled = false;
+        app.world_mut().resource_mut::<FrameScene>().0 = true;
+        app.update();
+        assert!(!app.world().contains_resource::<ScriptView>());
+        app.world_mut().spawn((
+            Player,
+            cyrus_game::player::placement::PlayerPose {
+                position: [0; 3],
+                heading: 0,
+            },
+        ));
+        app.update();
+        let view = app.world().resource::<ScriptView>();
+        assert_eq!([view.position[0] >> 8, view.position[2] >> 8], [1000, 5535]);
+        app.world_mut().remove_resource::<AnimationRequest>();
+        app.update();
+        assert!(!app.world().contains_resource::<ScriptView>());
+    }
 
     #[test]
     fn captured_view_replaces_framing_once_without_moving_player() {

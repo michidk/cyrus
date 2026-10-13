@@ -102,6 +102,29 @@ impl Matrix {
     }
 }
 
+/// Translate an upright actor forward in Q8 coordinates using the original table.
+/// The coordinate is stored as f32 before addition, the sum as f32 before truncation.
+/// Per preservation's player heading-based translation and SOUP MoveObjectAxis rules.
+pub fn translate_forward(position: [i32; 3], heading: u16, distance: i32) -> Result<[i32; 3]> {
+    let index = usize::from(heading.wrapping_neg() & 2047);
+    let mut result = position;
+    for (axis, sample) in [(0, index), (2, index + 512)] {
+        let coordinate: Single = Single::from_i128(i128::from(position[axis])).value;
+        let coordinate: X87DoubleExtended = coordinate.convert(&mut false).value;
+        let distance = X87DoubleExtended::from_i128(i128::from(distance)).value;
+        let sum = stored(((distance * extended(rotation_sample(sample))).value + coordinate).value);
+        let sum = Single::from_bits(u128::from(sum.to_bits()));
+        let integer = sum.to_i128_r(32, Round::TowardZero, &mut false);
+        ensure!(
+            !integer.status.contains(Status::INVALID_OP),
+            "forward translation axis {axis}: coordinate {} cannot convert to i32",
+            position[axis]
+        );
+        result[axis] = integer.value as i32;
+    }
+    Ok(result)
+}
+
 fn extended(value: f32) -> X87DoubleExtended {
     Single::from_bits(u128::from(value.to_bits()))
         .convert(&mut false)

@@ -13,6 +13,9 @@ Depends on game/world/assets; none of those crates depends on presentation.
 `CameraPlugin` and `AnimationRenderPlugin`. Native and browser hosts submit the
 same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
 Script-driven actor poses retain the same scene origin as exported world placements and markers.
+The framed inspection camera supplies `ScriptView` before ordinary actor updates.
+Script visibility flags hide or restore bound scene nodes independently of actor
+update eligibility. Static transforms continue to use the logical actor matrix.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
 

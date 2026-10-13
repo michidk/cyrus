@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 pub(super) struct ActorLists {
     cells: BTreeMap<[i32; 2], Vec<usize>>,
     persistent: Vec<usize>,
+    membership: BTreeMap<usize, [i32; 2]>,
     first: Option<[i32; 2]>,
     selected: Vec<ScriptActorId>,
 }
@@ -14,6 +15,7 @@ impl ActorLists {
     pub(super) fn new(actors: &[ScriptActor]) -> Result<Self> {
         let mut cells: BTreeMap<_, Vec<_>> = BTreeMap::new();
         let mut persistent = Vec::new();
+        let mut membership = BTreeMap::new();
         for (index, actor) in actors.iter().enumerate().rev() {
             match &actor.source {
                 ScriptActorSource::Map(placement) => {
@@ -29,10 +31,9 @@ impl ActorLists {
                             "instance {index} actor {}: ordinary cell position {position:?} outside supported map",
                             actor.name()
                         );
-                        cells
-                            .entry(position.map(|v| v as i32 / 512))
-                            .or_default()
-                            .push(index);
+                        let cell = position.map(|v| (v / 512) as i32);
+                        membership.insert(index, cell);
+                        cells.entry(cell).or_default().push(index);
                     }
                 }
                 _ => persistent.push(index),
@@ -41,9 +42,42 @@ impl ActorLists {
         Ok(Self {
             cells,
             persistent,
+            membership,
             first: None,
             selected: Vec::new(),
         })
+    }
+
+    /// Deferred relocation retains cached traversal until a distant cell change invalidates it.
+    pub(super) fn relocate(
+        &mut self,
+        index: usize,
+        local_position: [i32; 3],
+        linked_position: Option<[i32; 3]>,
+        view: [i32; 3],
+    ) -> Result<()> {
+        let Some(previous) = self.membership.get(&index).copied() else {
+            return Ok(());
+        };
+        let position = linked_position.unwrap_or(local_position);
+        let cell = [position[0], position[2]].map(|v| ((v >> 8) & 65535) / 512);
+        if cell == previous {
+            return Ok(());
+        }
+        let distance = super::spatial::rounded_distance([
+            view[0].wrapping_sub(local_position[0]),
+            0,
+            view[2].wrapping_sub(local_position[2]),
+        ])?;
+        if let Some(actors) = self.cells.get_mut(&previous) {
+            actors.retain(|&actor| actor != index);
+        }
+        self.cells.entry(cell).or_default().insert(0, index);
+        self.membership.insert(index, cell);
+        if distance >> 8 > 3584 {
+            self.first = None;
+        }
+        Ok(())
     }
 
     pub(super) fn select(

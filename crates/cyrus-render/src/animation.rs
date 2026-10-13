@@ -186,6 +186,14 @@ pub(crate) fn apply_poses(
         let Ok((name, pose)) = nodes.get(parent.parent()) else {
             continue;
         };
+        // rgpre emits vertex mappings only for models with multiple frames.
+        if pose.frame == 0
+            && animation
+                .and_then(|animation| animation.models.get(&pose.model))
+                .is_some_and(|model| model.positions.len() == 1)
+        {
+            continue;
+        }
         if rejected.is_some_and(|rejected| {
             rejected.source == request.0.id()
                 && rejected.model == pose.model

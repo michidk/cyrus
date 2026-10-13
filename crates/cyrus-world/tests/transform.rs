@@ -1,5 +1,30 @@
 //! Public original-matrix contracts, independent of rendering and host FPU mode.
-use cyrus_world::transform::{Matrix, rotation_sample};
+use cyrus_world::transform::{Matrix, rotation_sample, translate_forward};
+
+#[test]
+fn upright_translation_truncates_diagonal_motion_and_preserves_height() {
+    assert_eq!(
+        translate_forward([0, 513, 0], 256, 3).unwrap(),
+        [-2, 513, 2]
+    );
+    assert_eq!(
+        translate_forward([0, -513, 0], 256, -3).unwrap(),
+        [2, -513, -2]
+    );
+    assert_eq!(
+        translate_forward([0, 513, 0], 2304, 3).unwrap(),
+        [-2, 513, 2]
+    );
+}
+
+#[test]
+fn upright_translation_stores_coordinates_and_sum_at_single_precision() {
+    assert_eq!(
+        translate_forward([16_777_217, 7, 16_777_216], 0, 1).unwrap(),
+        [16_777_216, 7, 16_777_216]
+    );
+    assert!(translate_forward([0, 0, i32::MAX], 0, 1).is_err());
+}
 
 #[test]
 fn identity_preserves_exact_q8_coordinates_and_rounds_input_storage() {

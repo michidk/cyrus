@@ -14,9 +14,10 @@
 //! Triggers arrive as [`SoundCue`] (game code) or [`SoundRequest`] (control).
 //! Native builds read the install; the browser plays the exported bank.
 //!
-//! Unsupported until their callers exist: script (`Sound`, `AmbientSound`,
-//! `AmbientRTX`), rope, torch and combat starts, volume refresh while
-//! playing. Animation sounds play only for actors
+//! Script `Sound` supports positional starts without animation surface remapping.
+//! AmbientSound, AmbientRTX, rope, torch and combat starts remain unsupported.
+//! The decoder supports live gain updates; ambient task polling is not yet connected.
+//! Animation sounds play only for actors
 //! whose [`SoundSurface`] is known, remapped through the installed SURFACE.INI tables.
 
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
@@ -34,6 +35,7 @@ use cyrus_world::sound::ScriptSound;
 pub use cyrus_world::sound::SoundCue;
 pub use cyrus_world::sound::SoundSurface;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 pub struct SoundPlugin;
 
@@ -281,7 +283,106 @@ struct Mixer<'a> {
     panned: Option<&'a mut Assets<Panned>>,
 }
 
+#[derive(Clone, Copy)]
+struct PositionalCue {
+    effect: i32,
+    volume: i32,
+    rate_offset_hz: i32,
+    position: [i32; 3],
+}
+
+#[cfg(target_arch = "wasm32")]
+enum PendingCue {
+    Flat(Option<Owner>, (usize, i32, i32)),
+    Positional(Owner, PositionalCue),
+}
+#[cfg(target_arch = "wasm32")]
+impl PendingCue {
+    fn owner(&self) -> Option<Owner> {
+        match self {
+            Self::Flat(owner, _) => *owner,
+            Self::Positional(owner, _) => Some(*owner),
+        }
+    }
+    fn effect(&self) -> Option<i32> {
+        match self {
+            Self::Flat(_, (effect, _, _)) => i32::try_from(*effect).ok(),
+            Self::Positional(_, cue) => Some(cue.effect),
+        }
+    }
+}
+
 impl Channels {
+    fn start_positional(
+        &mut self,
+        commands: &mut Commands,
+        mixer: &mut Mixer,
+        effects: &SoundEffects,
+        cue: PositionalCue,
+        owner: Owner,
+        listener: (&SoundSettings, &crate::AudioListener),
+    ) {
+        let Some(effect) = usize::try_from(cue.effect)
+            .ok()
+            .and_then(|index| effects.0.get(index)?.as_ref())
+        else {
+            return;
+        };
+        let (settings, listener) = listener;
+        let Some(distance) = settings.sound_distance else {
+            warn!(
+                "script Sound effect {}: SYSTEM.INI sound_distance unavailable",
+                cue.effect
+            );
+            return;
+        };
+        let camera = listener.0.translation();
+        let camera_q8 = [
+            (f64::from(camera.x) * -5120.0).floor() as i32,
+            (f64::from(camera.y) * -5120.0).floor() as i32,
+            (f64::from(camera.z) * 5120.0 + 16_777_215.0).floor() as i32,
+        ];
+        let difference =
+            std::array::from_fn(|axis| cue.position[axis].wrapping_sub(camera_q8[axis]));
+        let mix = (|| -> Result<(u8, u8), String> {
+            let length = cyrus_game::script::rounded_distance(difference)
+                .map_err(|error| error.to_string())?;
+            let volume = distance_volume_q8(distance, i64::from(length), cue.volume)?;
+            let forward = listener.0.forward();
+            let yaw = heading(
+                (f64::from(forward.x) * -65536.0).round() as i64,
+                (f64::from(forward.z) * 65536.0).round() as i64,
+            );
+            Ok((
+                volume,
+                pan(
+                    heading(i64::from(difference[0]), i64::from(difference[2])),
+                    yaw,
+                ),
+            ))
+        })();
+        let (volume, pan) = match mix {
+            Ok(mix) => mix,
+            Err(error) => {
+                warn!("script Sound effect {}: {error}", cue.effect);
+                return;
+            }
+        };
+        self.start(
+            commands,
+            mixer,
+            Start {
+                owner: Some(owner),
+                effect: Some(cue.effect),
+                audio: effect.audio.clone(),
+                looping: effect.looping,
+                volume,
+                pan: Some(pan),
+                speed: playback_speed(effect.sample_rate, cue.rate_offset_hz),
+                start_index: self.start,
+            },
+        );
+    }
     fn reclaim(&mut self, alive: &Query<(), With<PlayingSound>>) {
         for slot in &mut self.slots {
             if slot
@@ -324,13 +425,13 @@ impl Channels {
                 ) else {
                     return None;
                 };
-                let [left, right] = pan_gains(pan);
+                let gains = PannedGains::new(start.volume, mixer.master, pan);
                 let audio = panned.add(Panned {
                     source: source.clone(),
-                    gains: [left * gain, right * gain],
+                    gains: gains.clone(),
                 });
                 commands
-                    .spawn((PlayingSound, AudioPlayer(audio), playback))
+                    .spawn((PlayingSound, AudioPlayer(audio), playback, gains))
                     .id()
             }
         };
@@ -545,7 +646,7 @@ fn play_cues(
     sources: Option<Res<Assets<AudioSource>>>,
     mut panned: Option<ResMut<Assets<Panned>>>,
     mut channels: ResMut<Channels>,
-    #[cfg(target_arch = "wasm32")] mut pending: Local<Vec<(Option<Owner>, (usize, i32, i32))>>,
+    #[cfg(target_arch = "wasm32")] mut pending: Local<Vec<PendingCue>>,
     #[cfg(target_arch = "wasm32")] bank_loading: Option<Res<crate::sound_bank::SoundBankHandle>>,
 ) {
     channels.reclaim(&alive);
@@ -573,12 +674,35 @@ fn play_cues(
         }
     }
     #[cfg(target_arch = "wasm32")]
-    pending.retain(|(owner, _)| owner.is_none_or(current_owner));
-    // Cues held while the bank loaded play once it has; a failed or disabled bank drops them.
+    pending.retain(|cue| cue.owner().is_none_or(current_owner));
+    // Preserve authored cue order while the browser bank is loading.
     #[cfg(target_arch = "wasm32")]
     if bank_loading.is_none() {
-        for (owner, flat) in pending.drain(..) {
-            channels.start_flat(&mut commands, &mut mixer, &effects, flat, owner);
+        for cue in pending.drain(..) {
+            match cue {
+                PendingCue::Flat(owner, flat) => {
+                    channels.start_flat(&mut commands, &mut mixer, &effects, flat, owner)
+                }
+                PendingCue::Positional(owner, cue) => {
+                    if let (Some(settings), Some(listener)) =
+                        (settings.as_deref(), listener.as_deref())
+                    {
+                        channels.start_positional(
+                            &mut commands,
+                            &mut mixer,
+                            &effects,
+                            cue,
+                            owner,
+                            (settings, listener),
+                        );
+                    } else {
+                        warn!(
+                            "queued script Sound effect {}: listener/settings unavailable",
+                            cue.effect
+                        );
+                    }
+                }
+            }
         }
     }
     // A despawned actor's remembered sound is forgotten, not stopped.
@@ -600,6 +724,38 @@ fn play_cues(
                     continue;
                 }
                 match sound {
+                    ScriptSound::Positional {
+                        effect,
+                        volume,
+                        rate_offset_hz,
+                        position,
+                    } => {
+                        let cue = PositionalCue {
+                            effect: *effect,
+                            volume: *volume,
+                            rate_offset_hz: *rate_offset_hz,
+                            position: *position,
+                        };
+                        #[cfg(target_arch = "wasm32")]
+                        if bank_loading.is_some() {
+                            pending.push(PendingCue::Positional(owner, cue));
+                            continue;
+                        }
+                        if let (Some(settings), Some(listener)) =
+                            (settings.as_deref(), listener.as_deref())
+                        {
+                            channels.start_positional(
+                                &mut commands,
+                                &mut mixer,
+                                &effects,
+                                cue,
+                                owner,
+                                (settings, listener),
+                            );
+                        } else {
+                            warn!("script Sound effect {effect}: listener/settings unavailable");
+                        }
+                    }
                     ScriptSound::Flat {
                         effect,
                         volume,
@@ -608,7 +764,10 @@ fn play_cues(
                         if let Ok(effect) = usize::try_from(*effect) {
                             #[cfg(target_arch = "wasm32")]
                             if bank_loading.is_some() {
-                                pending.push((Some(owner), (effect, *volume, *rate_offset_hz)));
+                                pending.push(PendingCue::Flat(
+                                    Some(owner),
+                                    (effect, *volume, *rate_offset_hz),
+                                ));
                                 continue;
                             }
                             channels.start_flat(
@@ -622,9 +781,8 @@ fn play_cues(
                     }
                     ScriptSound::StopEffect { effect, owned } => {
                         #[cfg(target_arch = "wasm32")]
-                        pending.retain(|(pending_owner, (index, _, _))| {
-                            i32::try_from(*index).ok() != Some(*effect)
-                                || (*owned && *pending_owner != Some(owner))
+                        pending.retain(|cue| {
+                            cue.effect() != Some(*effect) || (*owned && cue.owner() != Some(owner))
                         });
                         channels.stop_matching(
                             &mut commands,
@@ -634,7 +792,7 @@ fn play_cues(
                     }
                     ScriptSound::StopOwned => {
                         #[cfg(target_arch = "wasm32")]
-                        pending.retain(|(pending_owner, _)| *pending_owner != Some(owner));
+                        pending.retain(|cue| cue.owner() != Some(owner));
                         channels.stop_matching(&mut commands, Some(owner), None);
                     }
                     ScriptSound::Animation { .. } => {
@@ -650,7 +808,7 @@ fn play_cues(
                 // Browser cues wait for the exported bank instead of being lost.
                 #[cfg(target_arch = "wasm32")]
                 if bank_loading.is_some() {
-                    pending.push((None, (*effect, *volume, *rate_offset_hz)));
+                    pending.push(PendingCue::Flat(None, (*effect, *volume, *rate_offset_hz)));
                     continue;
                 }
                 channels.start_flat(
@@ -820,6 +978,14 @@ fn finish_bank(
 /// with a per-call `offset` (preservation `docs/engine/sound.md`). Values of
 /// `sound_distance` up to 3 make the original divide by zero and are rejected.
 pub fn distance_volume(sound_distance: i32, world_units: f32, offset: i32) -> Result<u8, String> {
+    distance_volume_q8(
+        sound_distance,
+        (f64::from(world_units) * 256.0).round() as i64,
+        offset,
+    )
+}
+
+fn distance_volume_q8(sound_distance: i32, distance: i64, offset: i32) -> Result<u8, String> {
     let radius = i64::from(sound_distance) * 36;
     let steps = radius / 128;
     if steps <= 0 {
@@ -829,12 +995,14 @@ pub fn distance_volume(sound_distance: i32, world_units: f32, offset: i32) -> Re
     }
     let divisor = 65536 / steps;
     // Engine positions carry 8 fractional bits; the distance is rounded, then floored to whole units.
-    let distance = (f64::from(world_units) * 256.0).round() as i64 >> 8;
+    let distance = distance >> 8;
     if distance > radius {
         return Ok(0);
     }
     let attenuation = ((distance * divisor) >> 16).clamp(0, 127);
-    Ok((127 - attenuation + i64::from(offset)).clamp(0, 127) as u8)
+    Ok((127 - attenuation as i32)
+        .wrapping_add(offset)
+        .clamp(0, 127) as u8)
 }
 
 /// Engine volume for a Sound page slider value: `trunc(slider × 12.8)`, exact as `slider × 64 / 5`.
@@ -911,11 +1079,40 @@ pub fn pan(angle: i32, yaw: i32) -> u8 {
     (64 + p) as u8
 }
 
-/// An effect with fixed left/right gains, decoded to stereo.
+/// Shared mixer gains. Updates affect subsequent decoded stereo frames without restarting.
+#[derive(Component, Clone)]
+pub struct PannedGains(Arc<Mutex<[f32; 2]>>);
+
+impl PannedGains {
+    /// Construct gains from engine volume, master volume and Miles pan units.
+    pub fn new(volume: u8, master: i32, pan: u8) -> Self {
+        let gain = output_gain(volume, master);
+        Self(Arc::new(Mutex::new(pan_gains(pan).map(|side| side * gain))))
+    }
+
+    /// Apply the engine's volume-set operation to a playing sample.
+    pub fn set(&self, volume: u8, master: i32, pan: u8) {
+        let gain = output_gain(volume, master);
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+            pan_gains(pan).map(|side| side * gain);
+    }
+
+    fn snapshot(&self) -> [f32; 2] {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+/// An effect with shared left/right gains, decoded to stereo.
 #[derive(Asset, TypePath, Clone)]
 pub struct Panned {
     pub source: AudioSource,
-    pub gains: [f32; 2],
+    pub gains: PannedGains,
 }
 
 impl bevy::audio::Decodable for Panned {
@@ -923,7 +1120,8 @@ impl bevy::audio::Decodable for Panned {
     fn decoder(&self) -> PannedDecoder {
         PannedDecoder {
             inner: bevy::audio::Decodable::decoder(&self.source),
-            gains: self.gains,
+            gains: self.gains.clone(),
+            frame_gains: [0.0; 2],
             right: None,
             channel: 0,
         }
@@ -932,7 +1130,8 @@ impl bevy::audio::Decodable for Panned {
 
 pub struct PannedDecoder {
     inner: <AudioSource as bevy::audio::Decodable>::Decoder,
-    gains: [f32; 2],
+    gains: PannedGains,
+    frame_gains: [f32; 2],
     right: Option<f32>,
     channel: u16,
 }
@@ -946,11 +1145,15 @@ impl Iterator for PannedDecoder {
                 return Some(right);
             }
             let sample = self.inner.next()?;
-            self.right = Some(sample * self.gains[1]);
-            return Some(sample * self.gains[0]);
+            let gains = self.gains.snapshot();
+            self.right = Some(sample * gains[1]);
+            return Some(sample * gains[0]);
         }
         let sample = self.inner.next()?;
-        let gain = self.gains[usize::from(self.channel % 2)];
+        if self.channel.is_multiple_of(2) {
+            self.frame_gains = self.gains.snapshot();
+        }
+        let gain = self.frame_gains[usize::from(self.channel % 2)];
         self.channel = (self.channel + 1) % self.inner.channels().get();
         Some(sample * gain)
     }
