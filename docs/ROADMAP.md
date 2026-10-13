@@ -236,6 +236,7 @@ world playback is incomplete.
 - [x] Preserve selected ROB attributes on world nodes and select encoded point/bilinear model filtering. **Verified:** archive fallback/cache and shared-mesh metadata tests, material flag separation, and improved matched BELLTOWR native/browser regions. Standalone/generated model defaults and filtered chroma rejection remain unsupported.
 - [ ] Compare remaining terrain sampling precision and sky/sun filtering/alpha after menu/world transitions. **Verified:** cloud-filter arithmetic has isolated GPU checks. Filtered model chroma rejection, complete pixel parity and menu transition comparisons remain open.
 - [x] Recover [authored texture frame selection](https://github.com/michidk/redguard-preservation/commit/5ab06cf). **Verified:** frame requests share image state, advance once at the BIOS deadline and retain explicit selections. Rendering admission controls advancement; runtime playback remains open.
+- [x] Retain [authored texture frames in exported GLBs](https://github.com/michidk/redguard-preservation/commit/d0eec6c98e6917f942e643204fc155f53b34b649). **Verified:** installed START, ISLAND and BELLTOWR export checks compare frame order, delay, palette, row orientation and transparency against TEXBSI data. Runtime playback remains open.
 - [ ] Compare sky scrolling, plane crossing, fog/clipping and water across original/native/browser views; implement other authored texture animation.
 
 ### Animation and scripts

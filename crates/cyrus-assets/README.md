@@ -72,6 +72,13 @@ units for collision candidate selection. Missing standalone player models report
 contextual export errors.
 Re-export worlds before using explicit player model poses.
 
+**Verified:** the pinned preservation [texture export](https://github.com/michidk/redguard-preservation/commit/d0eec6c98e6917f942e643204fc155f53b34b649)
+retains every authored TEXBSI frame in world and model GLBs, with shared image
+identity, frame order and the installed delay in material extras. Frame zero
+remains the base-color texture. The viewer catalog version invalidates older
+model previews; re-export manually prepared worlds. Runtime texture playback
+and its render-admission rules remain unsupported.
+
 ## Asset viewer
 
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
