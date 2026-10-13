@@ -183,6 +183,69 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
 }
 
 #[test]
+fn installed_catacomb_duplicate_roots_select_first_source_list_match() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP duplicate family roots)");
+        return;
+    }
+    let path = std::fs::read_dir(root.join("maps"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("CATACOMB.RGM")
+        })
+        .unwrap();
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 2).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let selected = world
+        .actors()
+        .iter()
+        .position(|actor| {
+            actor.name() == "CTRING2"
+                && actor
+                    .placement()
+                    .is_some_and(|placement| placement.model_name.eq_ignore_ascii_case("CC#83.3D"))
+        })
+        .unwrap();
+    let unselected = world
+        .actors()
+        .iter()
+        .position(|actor| {
+            actor.name() == "CTRING2"
+                && actor
+                    .placement()
+                    .is_some_and(|placement| placement.model_name.eq_ignore_ascii_case("CC#75.3D"))
+        })
+        .unwrap();
+    assert_eq!(
+        world.spatial(world.id(selected).unwrap()).unwrap().parent,
+        None
+    );
+    assert_eq!(
+        world.spatial(world.id(unselected).unwrap()).unwrap().parent,
+        None
+    );
+    let mut slaves = 0;
+    for (index, actor) in world.actors().iter().enumerate() {
+        if actor.attributes()[26] == 3 {
+            assert_eq!(
+                world.spatial(world.id(index).unwrap()).unwrap().parent,
+                Some(selected)
+            );
+            slaves += 1;
+        }
+    }
+    assert_eq!(slaves, 6);
+    world.refresh_families().unwrap();
+}
+
+#[test]
 fn installed_palace_nested_family_reconstructs_authored_poses() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
     if !root.join("RGFX.EXE").exists() {

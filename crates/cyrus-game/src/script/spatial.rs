@@ -75,11 +75,29 @@ impl SpatialWorld {
                 Ok(Pose { position, angles, matrix: Matrix::orientation(angles) })
             }).transpose()?;
             if pose.is_some() && actor.attributes()[25] != 0 {
-                ensure!(
-                    masters.insert(actor.attributes()[25], index).is_none(),
-                    "attachment group {}: duplicate masters require original traversal ordering",
-                    actor.attributes()[25]
-                );
+                if let Some(&previous) = masters.get(&actor.attributes()[25]) {
+                    let previous_actor: &ScriptActor = &actors[previous];
+                    let same_list = match (previous_actor.placement(), actor.placement()) {
+                        (Some(a), Some(b)) => {
+                            (a.active != 0 && b.active != 0)
+                                || (a.active == 0
+                                    && b.active == 0
+                                    && [a.map_position[0] / 512, a.map_position[2] / 512]
+                                        == [b.map_position[0] / 512, b.map_position[2] / 512])
+                        }
+                        _ => false,
+                    };
+                    ensure!(
+                        same_list
+                            && previous_actor.attributes()[26] == 0
+                            && actor.attributes()[26] == 0,
+                        "attachment group {}: duplicate masters across source lists or child families require original traversal ordering",
+                        actor.attributes()[25]
+                    );
+                }
+                // Fresh actors prepend to their source list. The later allocation
+                // is its first matching root; an unselected duplicate stays unattached.
+                masters.insert(actor.attributes()[25], index);
             }
             poses.push(pose);
         }

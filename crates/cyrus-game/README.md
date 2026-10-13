@@ -257,7 +257,13 @@ task startup, and distinct model/playback default state. Standalone-role attribu
 remain unsupported because their lifecycle owners are not integrated. The inspection default is not a
 replacement for original state-dependent selection.
 
-`ScriptWorld::prepare_spatial` prepares ordinary map poses and unique attachment
+Fresh duplicate root masters on the same source list select the later allocation,
+which is first in the prepended list. Unselected roots retain their independent
+poses. **Verified:** installed CATACOMB group 3 attaches its slaves to CC#83
+instead of rejecting the world. Cross-list duplicates and repeated child-master
+groups remain unsupported until their original initialization traversal is available.
+
+`ScriptWorld::prepare_spatial` prepares ordinary map poses and supported attachment
 families. Separate map-object paths and standalone role poses remain unavailable.
 `ScriptInputs` supplies nominal ticks, frame scale, and current query inputs to
 explicit invocations. `RotateByAxis` shares the native task store with waits and

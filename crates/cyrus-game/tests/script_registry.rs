@@ -1610,6 +1610,7 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
 #[test]
 fn ambiguous_attachment_preparation_does_not_install_partial_state() {
     let mut data = cache();
+    data.instances[1].active = 1;
     data.actors
         .get_mut("LOGIC")
         .unwrap()
