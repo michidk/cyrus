@@ -13,6 +13,12 @@ to `SoundSettings` before `ApplyPreferences`. The Update order is
 `CinematicAudio` marks cinematic playback and pauses CD music. Browser startup
 can inspect `SoundBankHandle` and its asset dependencies for loading failures.
 
+Animation cues use installed SURFACE.INI remaps on native and browser. The actor's
+`SoundSurface` selects the row; known zero bypasses it, and missing ground state
+remains unsupported. Playback validates the remapped effect, while cleanup retains
+the authored source ID. Script, combat and speech starts bypass these tables.
+Actor surface updates belong to the ground/SOUP host, not the sound plugin.
+
 Headless hosts omit Bevy's audio backend and retain requests/control state.
 Channel ownership, actor cleanup, world expiry and browser queued starts use the
 same rules as windowed playback. Installed audio facts and units are documented

@@ -16,8 +16,8 @@
 //!
 //! Unsupported until their callers exist: script (`Sound`, `AmbientSound`,
 //! `AmbientRTX`), rope, torch and combat starts, volume refresh while
-//! playing, and SURFACE.INI remapping: animation sounds play only for actors
-//! whose [`SoundSurface`] is known to be 0 (no SURFACE.INI parser yet).
+//! playing. Animation sounds play only for actors
+//! whose [`SoundSurface`] is known, remapped through the installed SURFACE.INI tables.
 
 use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings, Volume};
 use bevy::prelude::*;
@@ -100,6 +100,7 @@ fn start_audio(
 }
 
 pub use cyrus_assets::sound::SoundSettings;
+use cyrus_assets::sound::SurfaceSounds;
 /// Effects of `MAIN.SFX` in file order. `None` marks an effect whose PCM
 /// cannot be played; it keeps later indices aligned with the file.
 #[derive(Resource, Default)]
@@ -158,6 +159,12 @@ fn load_effects(
         Err(e) => warn!("sound: {e:#}; using SYSTEM.INI volumes"),
     }
     commands.insert_resource(settings.clone());
+    match cyrus_assets::audio::read_surface_sounds(&install) {
+        Ok(surfaces) => {
+            commands.insert_resource(surfaces);
+        }
+        Err(error) => error!("sound: {error:#}; surface-remapped animation cues unavailable"),
+    }
     let Some(mut audio) = audio else {
         info!("sound: no audio plugin, nothing loaded");
         return;
@@ -527,6 +534,7 @@ fn play_cues(
     effects: Res<SoundEffects>,
     settings: Option<Res<SoundSettings>>,
     listener: Option<Res<crate::AudioListener>>,
+    surfaces: Option<Res<SurfaceSounds>>,
     actors: Query<(
         &GlobalTransform,
         Option<&SoundSurface>,
@@ -659,24 +667,18 @@ fn play_cues(
                     rate_offset_hz,
                 } => {
                     channels.animation.remove(actor);
-                    let Some((index, effect)) = usize::try_from(*requested)
-                        .ok()
-                        .and_then(|i| Some((i, effects.0.get(i)?.as_ref()?)))
-                    else {
-                        continue;
-                    };
                     let Ok((transform, surface, is_player)) = actors.get(*actor) else {
                         warn!("sound: animation cue for {actor} without a transform");
                         continue;
                     };
-                    // The original remaps by the actor's surface; only a known surface 0 needs no table.
-                    match surface {
-                        Some(SoundSurface(0)) => {}
+                    let index = match surface {
+                        Some(SoundSurface(0)) => u8::try_from(*requested).ok().map(usize::from),
                         Some(SoundSurface(surface)) => {
-                            warn_once!(
-                                "sound: SURFACE.INI remap for surface {surface} is unsupported; animation sounds on it are not played"
-                            );
-                            continue;
+                            let Some(surfaces) = surfaces.as_deref() else {
+                                warn_once!("sound: SURFACE.INI remaps are unavailable");
+                                continue;
+                            };
+                            surfaces.animation_sound(*surface, *requested)
                         }
                         None => {
                             warn_once!(
@@ -684,7 +686,12 @@ fn play_cues(
                             );
                             continue;
                         }
-                    }
+                    };
+                    let Some((index, effect)) =
+                        index.and_then(|i| Some((i, effects.0.get(i)?.as_ref()?)))
+                    else {
+                        continue;
+                    };
                     let (Some(distance), Some(listener)) = (
                         settings.as_ref().and_then(|s| s.sound_distance),
                         listener.as_deref(),
@@ -785,6 +792,7 @@ fn finish_bank(
         settings.apply_menu(preferences);
     }
     commands.insert_resource(settings);
+    commands.insert_resource(bank.surface_sounds.clone());
     if !bank.enabled {
         return;
     }

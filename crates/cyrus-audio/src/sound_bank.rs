@@ -34,7 +34,10 @@ impl AssetLoader for SoundBankLoader {
     ) -> Result<SoundBank, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        let data: cyrus_assets::sound::SoundBank = serde_json::from_slice(&bytes)?;
+        let data: cyrus_assets::sound::SoundBank = anyhow::Context::context(
+            serde_json::from_slice(&bytes),
+            "sounds/bank.sounds: invalid sound metadata; re-export sound assets",
+        )?;
         let audio = (0..data.effects.len())
             .map(|i| context.load(format!("cache://sounds/{i:03}.wav")))
             .collect();

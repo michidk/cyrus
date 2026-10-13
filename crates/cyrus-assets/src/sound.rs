@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Asset, TypePath, Deserialize, Serialize)]
 pub struct SoundBank {
     pub effects: Vec<SoundEffect>,
+    /// Required SURFACE.INI rows; older banks must be re-exported.
+    pub surface_sounds: SurfaceSounds,
     /// Installed CD settings and per-world track selection; old caches require re-export.
     #[serde(default)]
     pub music: Option<MusicSettings>,
@@ -14,6 +16,68 @@ pub struct SoundBank {
     pub master_volume: i32,
     /// `[system] sound_distance`; `None` when absent.
     pub sound_distance: Option<i32>,
+}
+
+/// Validated SURFACE.INI animation remaps, indexed by surface class then source sound.
+/// Twelve independent rows contain 256 unsigned 16-bit effect-bank IDs each.
+#[derive(Resource, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "Vec<Vec<u16>>", into = "Vec<Vec<u16>>")]
+pub struct SurfaceSounds(Vec<Vec<u16>>);
+
+impl TryFrom<Vec<Vec<u16>>> for SurfaceSounds {
+    type Error = String;
+
+    fn try_from(rows: Vec<Vec<u16>>) -> Result<Self, Self::Error> {
+        if rows.len() != 12 {
+            return Err(
+                "sounds/bank.sounds surface_sounds: expected 12 rows; re-export sound assets"
+                    .into(),
+            );
+        }
+        for (surface, row) in rows.iter().enumerate() {
+            if row.len() != 256 {
+                return Err(format!(
+                    "sounds/bank.sounds surface_sounds[{surface}]: expected 256 entries; re-export sound assets"
+                ));
+            }
+        }
+        Ok(Self(rows))
+    }
+}
+
+impl From<SurfaceSounds> for Vec<Vec<u16>> {
+    fn from(value: SurfaceSounds) -> Self {
+        value.0
+    }
+}
+
+impl SurfaceSounds {
+    /// Decode installed text through preservation, retaining the raw unknown row.
+    #[cfg(feature = "parsers")]
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let ini = rgpre::import::surface_ini::SurfaceIni::parse(text)?;
+        let rows = (0..12)
+            .map(|surface| {
+                ini.sound_table(surface)
+                    .map(|row| row.to_vec())
+                    .ok_or_else(|| format!("SURFACE.INI: missing parsed surface row {surface}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::try_from(rows)
+    }
+
+    /// Resolve a signed animation operand; surface zero bypasses its configured row.
+    /// Invalid classes or sources return None. Callers still validate the resolved
+    /// effect against the loaded bank. Script, combat and speech sounds bypass this API.
+    pub fn animation_sound(&self, surface: u8, source: i16) -> Option<usize> {
+        let source = usize::from(u8::try_from(source).ok()?);
+        let row = self.0.get(usize::from(surface))?;
+        Some(if surface == 0 {
+            source
+        } else {
+            usize::from(row[source])
+        })
+    }
 }
 
 /// Installed Red Book configuration for browser playback, using WORLD.INI IDs.

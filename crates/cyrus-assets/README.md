@@ -19,6 +19,9 @@ palette RGB through preservation metadata; old lighting caches require re-export
 Positioned world nodes retain selected ROB render attributes separately from shared
 mesh geometry; standalone and generated models retain null ROB provenance. Re-export
 worlds for version-1 `rgpre_render` metadata. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
+Sound banks require validated SURFACE.INI rows from preservation PR #65. Shared
+preparation exports them for the browser, and native audio reads the same parser.
+Older sound-bank metadata must be re-exported; malformed row sizes are rejected.
 Native movie preparation retains a read-only file or CD-image location and reads
 only metadata. Its bounded reader closes the CD image when dropped. Browser movie
 preparation loads metadata only; `cyrus_media::MovieStream` consumes compressed
@@ -74,7 +77,7 @@ Re-export worlds before using explicit player model poses.
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`), pinned to the [byte-range revision](https://github.com/michidk/redguard-preservation/compare/main...feat/cd-member-ranges), owns parsing and recovered
+Preservation (`rgpre`), pinned to the [sound-remap integration](https://github.com/michidk/redguard-preservation/commit/4223de1dbee9bbc04bd45d1b9381565acae29746), owns parsing and recovered
 engine rules. This crate owns install validation, catalog identities, portable
 preview descriptions, generated
 files. `cyrus-media` owns PCM conversion and the portable movie decoder wrappers.

@@ -28,6 +28,7 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
         "fonts",
         "SYSTEM.INI",
         "KEYS.INI",
+        "surface.ini",
         "system",
         "sound",
     ] {
@@ -58,6 +59,15 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let sounds: serde_json::Value =
         serde_json::from_slice(&std::fs::read(cache.join("sounds/bank.sounds")).unwrap()).unwrap();
     assert_eq!(sounds["effects"].as_array().unwrap().len(), 118);
+    let bank: cyrus_assets::sound::SoundBank = serde_json::from_value(sounds.clone()).unwrap();
+    assert_eq!(
+        bank.surface_sounds,
+        cyrus_assets::audio::read_surface_sounds(&install).unwrap()
+    );
+    assert_eq!(bank.surface_sounds.animation_sound(7, 4), Some(89));
+    let mut old_bank = sounds.clone();
+    old_bank.as_object_mut().unwrap().remove("surface_sounds");
+    assert!(serde_json::from_value::<cyrus_assets::sound::SoundBank>(old_bank).is_err());
     for effect in [13, 18, 64, 65, 66, 67, 68] {
         assert_eq!(sounds["effects"][effect]["base_volume"], 100);
         assert!(cache.join(format!("sounds/{effect:03}.wav")).is_file());

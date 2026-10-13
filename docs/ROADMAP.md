@@ -59,7 +59,6 @@ therefore does not establish animated or playable world behavior.
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 | Tooling: per-world audit report and matched original/native/browser captures | Codex, World Audit and Matched Captures, `t3/stage0-audit-captures` |
-| SURFACE.INI parsing and docs in redguard-preservation (cyrus SoundSurface waits for SOUP) | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping`; preservation repository |
 
 The SOUP assignment includes remaining animation and script scheduling. Sound and HUD sessions have ended; their open items, startup fidelity follow-up and the rest of stages 3–6 are unassigned.
 
@@ -145,7 +144,7 @@ of every palette and world still needs original-game comparison.
 | 3D, 3DC, ROB | Static models, retained frames, supplied-tick poses/groups and authored book motion | Production animation, remaining encodings/group types and all-actor model replacement |
 | BSI, COL, Glide sky | Textures/palettes, sky plane/tilt/sun, scrolling inputs, fog and terrain waves | Other animated textures and matched filtering/blending/lighting |
 | GXA, splash DLL, FNT | Installed splash/title, menu widgets, HUD artwork and shared text rendering | Remaining gameplay screens, software sky projection and exact splash hardware rendering |
-| SFX, RTX, CD audio | Effects/speech decode, subtitles, shared channels, explicit script sound ownership, native/browser music and preferences | Automatic gameplay triggers, SURFACE.INI remapping, moving emitters and audible parity |
+| SFX, RTX, CD audio | Effects/speech decode, subtitles, shared channels, explicit script sound ownership, native/browser music, preferences and animation surface remaps | Automatic gameplay triggers, script-actor surface assignment, moving emitters and audible parity |
 | SOUP | Portable VM, actor locals/flags/tasks, explicit animation/spatial/wait/routing/sound/activation services, explicit ordinary-main control, shared script random stream and typed native-hook dispatch | Automatic scheduling, remaining receivers/native hook services, synchronization and persistence |
 | MENU.INI, KEYS.INI | Installed menu content, keyboard navigation, preferences, rebinding, held player input, New/temporary Load and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie progression unlocks |
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
@@ -253,7 +252,7 @@ world playback is incomplete.
 - [x] Shared native/browser 16-channel effects, animation cues and explicit script flat starts/selective cleanup with receiver/effect ownership. **Verified:** [sound increment](https://github.com/michidk/cyrus/commit/ea836da) includes receiver/result and headless mixer contracts, queued browser cleanup and old-world expiry.
 - [x] Installed HUD candle, health, compass, items/counts, power-up slots, logbook, prompts and notices; F8/Tab/F7 preferences persist.
 - [ ] Parse SURFACE.INI remapping in preservation and set actor SoundSurface from ground/collision.
-  Preservation parser and engine rules: [PR #65](https://github.com/michidk/redguard-preservation/pull/65); actor SoundSurface integration remains with the SOUP session.
+  Preservation parser and engine rules: [PR #65](https://github.com/michidk/redguard-preservation/pull/65); native/browser animation playback consumes the installed remaps. Actor SoundSurface integration remains with the SOUP session.
 - [ ] Add positional/ambient starts, StopAllSounds results, shell/code-object ownership, KillMe/Resurrect cleanup, rope thresholds and torch loops; refresh moving-emitter gain/pan.
 - [ ] Feed production activation conditions, health, sword/lockout/player type, heading/world and compass state into the HUD. Connect bitmap/logbook script handlers and player walk-mode/auto-defend behavior.
 - [ ] Verify native/browser HUD layout, candle cadence, prompt/item timing and compass semantics. **Unknown:** compass frame-zero direction and item-zero compass activation.

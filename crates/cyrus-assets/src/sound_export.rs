@@ -54,6 +54,11 @@ pub(crate) fn prepare(
         &out.join("bank.sounds"),
         &serde_json::to_vec(&SoundBank {
             effects,
+            surface_sounds: crate::sound::SurfaceSounds::parse(&crate::preparation::text(
+                source,
+                "SURFACE.INI",
+            )?)
+            .map_err(anyhow::Error::msg)?,
             music: Some(crate::music::settings_source(source)?),
             enabled: settings.effects,
             master_volume: settings.master_volume,

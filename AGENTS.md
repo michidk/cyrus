@@ -226,6 +226,10 @@ label hit boxes. Mouse/joystick rebinding needs separate device handling and is
 currently unsupported. Book turns, cover crossings and successful direction/key
 capture feedback dispatch installed effects through the shared native/browser
 sound path, using preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
+Animation sounds use installed SURFACE.INI remaps on native/browser when the actor
+has a known SoundSurface. Known zero bypasses remapping; missing state remains
+unsupported. Ground and SOUP hosts own surface assignment. Sound cleanup retains
+the authored effect ID, and old browser sound banks require re-export.
 Skipping startup retains required preparation behind the title and does not enable gameplay.
 Menu New/Load wait behind installed destination artwork and a red percentage bar
 for world preparation and asset dependencies. Bottom-right red labels report startup

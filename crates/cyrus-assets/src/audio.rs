@@ -2,6 +2,13 @@
 use crate::{install::GameInstall, sound::SoundSettings};
 use log::warn;
 use rgpre::import::sfx::AudioType;
+
+/// Load the same validated remaps used by browser preparation, without writing the install.
+pub fn read_surface_sounds(install: &GameInstall) -> anyhow::Result<crate::sound::SurfaceSounds> {
+    let source = crate::native::Files::scan(install, false)?;
+    crate::sound::SurfaceSounds::parse(&crate::preparation::text(&source, "SURFACE.INI")?)
+        .map_err(anyhow::Error::msg)
+}
 #[cfg(not(target_arch = "wasm32"))]
 pub fn sfx_path(install: &GameInstall) -> std::path::PathBuf {
     install.root.join("sound").join("MAIN.SFX")
