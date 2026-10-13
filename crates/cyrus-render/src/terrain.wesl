@@ -5,6 +5,7 @@ import bevy_pbr::render::{
     view_transformations::position_world_to_clip,
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
+    pbr_bindings::{base_color_texture, base_color_sampler},
 };
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
 import package::scene_shading::{fog, scene_color};
@@ -38,6 +39,21 @@ fn vertex(raw: Vertex) -> TerrainVertex {
     return out;
 }
 
+// Software Voodoo 1 filtering uses encoded bytes and four-bit fractions.
+fn terrain_sample(uv: vec2<f32>) -> vec3<f32> {
+    let size = vec2<f32>(textureDimensions(base_color_texture));
+    let texel = uv * size - vec2(0.5);
+    let fraction = floor(fract(texel) * 16.0) / 16.0;
+    let origin = floor(texel) + vec2(0.5);
+    let a = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, origin / size, 0.0).rgb) * 255.0);
+    let b = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(1.0, 0.0)) / size, 0.0).rgb) * 255.0);
+    let c = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(0.0, 1.0)) / size, 0.0).rgb) * 255.0);
+    let d = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(1.0)) / size, 0.0).rgb) * 255.0);
+    let top = a + floor((b - a) * fraction.x);
+    let bottom = c + floor((d - c) * fraction.x);
+    return (top + floor((bottom - top) * fraction.y)) / 255.0;
+}
+
 @fragment
 fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     let depth = -(view.view_from_world * in.world_position).z * 20.0;
@@ -59,7 +75,7 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     var input = pbr_input_from_standard_material(surface, is_front);
     let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
     // Terrain lighting modulates encoded texture RGB before scene fog.
-    var color = srgb_to_linear(linear_to_srgb(base.rgb) * (in.color * in.position.w));
+    var color = srgb_to_linear(terrain_sample(surface.uv) * (in.color * in.position.w));
     if water_weight > 0.0 {
         let normal = normalize(input.N + vec3(ripple.x, 0.0, ripple.y) * (0.12 * water_weight));
         let to_camera = normalize(view.world_position - in.world_position.xyz);

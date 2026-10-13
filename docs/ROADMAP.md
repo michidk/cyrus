@@ -188,7 +188,7 @@ world playback is incomplete.
 - [x] Replace fixed Bevy model lighting with installed ambient/directional RGB, authored face brightness, supplied normals and solid-color tint. **Verified:** original-code/GPU arithmetic comparisons, render contracts and native ISLAND/BELLTOWR/START scene switches.
 - [ ] Compare static map-light baking in matched original/native/browser views; recover actor prelighting eligibility and dynamic lighting overrides.
 - [x] Add authored object lights after retained static RGB. **Verified:** original-code/GPU arithmetic, installed export switches, renderer contracts and matched BELLTOWR native/browser views. Scripted changes and complete pixel parity remain open.
-- [ ] Compare terrain filtering/combiner precision and sky/sun filtering/alpha after menu/world transitions. **Verified:** cloud-filter arithmetic has isolated GPU checks; integrated comparisons remain open.
+- [ ] Compare terrain filtering/combiner precision and sky/sun filtering/alpha after menu/world transitions. **Verified:** cloud-filter arithmetic has isolated GPU checks; encoded terrain bilinear filtering improves matched ISLAND native/browser image regions. Terrain combiner precision, model filtering and transition comparisons remain open.
 - [ ] Compare sky scrolling, plane crossing, fog/clipping and water across original/native/browser views; implement other authored texture animation.
 
 ### Animation and scripts
