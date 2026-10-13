@@ -801,8 +801,7 @@ fn camera_input(ui: &mut egui::Ui, ctx: &egui::Context, viewer: &mut Viewer, tim
     viewer.viewport = rect;
     viewer.pixels_per_point = ctx.pixels_per_point();
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
-    if viewer.mesh_inspection.picking
-        && response.clicked()
+    if response.clicked()
         && let Some(p) = response.interact_pointer_pos()
     {
         viewer.mesh_inspection.pending_pick = Some(Vec2::new(p.x, p.y) * ctx.pixels_per_point());
@@ -1625,6 +1624,37 @@ fn loading_bar(ui: &mut egui::Ui, fraction: Option<f32>, label: &str) {
 mod tests {
     use super::*;
     #[test]
+    fn viewport_click_picks_without_enabling_uv_layout() {
+        let mut viewer = Viewer::default();
+        let ctx = egui::Context::default();
+        let pos = egui::pos2(100., 100.);
+        for pressed in [None, Some(true), Some(false)] {
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(400., 300.),
+                )),
+                ..default()
+            };
+            input.events.push(egui::Event::PointerMoved(pos));
+            if let Some(pressed) = pressed {
+                input.events.push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: default(),
+                });
+            }
+            let mut output = ctx.run_ui(input, |ui| {
+                camera_input(ui, &ctx, &mut viewer, &Time::default());
+            });
+            output.textures_delta.clear();
+        }
+        assert_eq!(viewer.mesh_inspection.pending_pick, Some(Vec2::splat(100.)));
+        assert!(!viewer.mesh_inspection.uv);
+    }
+
+    #[test]
     fn changing_assets_clears_inspection_and_track_selection() {
         let entry = serde_json::from_value(serde_json::json!({
             "id": "next", "name": "next.wld", "path": "maps/next.wld",
@@ -1637,12 +1667,12 @@ mod tests {
             ..default()
         };
         viewer.terrain_inspection.open = true;
-        viewer.mesh_inspection.picking = true;
+        viewer.mesh_inspection.uv = true;
         viewer.begin_selection(0, &entry, false);
         assert_eq!(viewer.selected_cell, None);
         assert_eq!(viewer.movie_audio_track, Some(0));
         assert!(!viewer.terrain_inspection.open);
-        assert!(!viewer.mesh_inspection.picking);
+        assert!(!viewer.mesh_inspection.uv);
     }
     #[test]
     fn large_json_keeps_complete_data_without_laying_out_every_line() {

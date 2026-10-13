@@ -1,5 +1,8 @@
 //! Mesh diagnostics use the same transformed geometry that the viewer displays.
-use crate::{preview::ViewCamera, ui::Viewer};
+use crate::{
+    preview::{SurfaceStyle, ViewCamera},
+    ui::Viewer,
+};
 use bevy::{
     mesh::{PrimitiveTopology, VertexAttributeValues},
     prelude::*,
@@ -12,7 +15,6 @@ pub struct State {
     pub bounds: bool,
     pub subobjects: bool,
     pub stride: usize,
-    pub picking: bool,
     pub uv: bool,
     pub normal_length: f32,
     pub pending_pick: Option<Vec2>,
@@ -26,7 +28,6 @@ impl Default for State {
             bounds: false,
             subobjects: false,
             stride: 8,
-            picking: false,
             uv: false,
             normal_length: 0.01,
             pending_pick: None,
@@ -52,20 +53,19 @@ pub fn controls(ui: &mut egui::Ui, state: &mut State, metadata: Option<&serde_js
         }) {
             ui.checkbox(&mut state.subobjects, "Authored subobjects");
         }
-        ui.checkbox(&mut state.picking, "Pick faces");
         ui.checkbox(&mut state.uv, "UV layout");
-        if state.vertex_normals || state.face_normals {
+    });
+    if state.vertex_normals || state.face_normals {
+        ui.horizontal_wrapped(|ui| {
             ui.add(egui::Slider::new(&mut state.stride, 1..=128).text("Normal spacing"));
             ui.add(
                 egui::Slider::new(&mut state.normal_length, 0.001..=0.1)
                     .logarithmic(true)
                     .text("Normal length / view"),
             );
-        }
-    });
-    if state.picking {
-        ui.weak("Click a face to inspect its rendered triangle and texture coordinates.");
+        });
     }
+    ui.weak("Click a face to inspect its rendered triangle and texture coordinates.");
     if let Some(selected) = &state.selected {
         ui.label(format!(
             "Selected triangle {} · vertices {:?}",
@@ -254,57 +254,83 @@ fn hit(origin: Vec3, direction: Vec3, [a, b, c]: [Vec3; 3]) -> Option<f32> {
     let distance = ac.dot(q) / determinant;
     (distance >= 0.).then_some(distance)
 }
-/// Show normalized UV coordinates from the selected mesh without inventing texture dimensions.
+type UvMesh<'a> = (
+    &'a Mesh3d,
+    &'a InheritedVisibility,
+    Option<&'a SurfaceStyle>,
+    Option<&'a MeshMaterial3d<StandardMaterial>>,
+    Option<&'a bevy::gltf::GltfMaterialName>,
+);
+
+/// Show the selected mesh's UVs over its original material texture.
 pub fn uv_window(
     mut contexts: cyrus_app::bevy_egui::EguiContexts,
     viewer: Res<Viewer>,
-    sources: Query<(Entity, &Mesh3d, &InheritedVisibility)>,
+    sources: Query<UvMesh<'_>>,
     meshes: Res<Assets<Mesh>>,
+    materials: Res<Assets<StandardMaterial>>,
+    images: Res<Assets<Image>>,
 ) -> Result {
     if !viewer.mesh_inspection.uv {
         return Ok(());
     }
+    let selected = viewer.mesh_inspection.selected.as_ref();
+    let source = selected
+        .and_then(|s| sources.get(s.entity).ok())
+        .filter(|s| s.1.get());
+    let material = source.and_then(|(_, _, style, handle, _)| {
+        style
+            .map(|s| &s.original)
+            .or_else(|| handle.and_then(|h| materials.get(&h.0)))
+    });
+    let texture = material.and_then(|m| m.base_color_texture.as_ref());
+    let image = texture.and_then(|h| images.get(h));
+    let texture_id = texture
+        .filter(|_| image.is_some())
+        .map(|h| contexts.add_image(cyrus_app::bevy_egui::EguiTextureHandle::Weak(h.id())));
     let ctx = contexts.ctx_mut()?;
     egui::Window::new("UV layout")
         .default_size([420., 420.])
         .show(ctx, |ui| {
-            ui.label("Normalized texture coordinates. Pick a face to isolate its material mesh.");
-            let Some(selected) = viewer.mesh_inspection.selected.as_ref() else {
+            let Some((selected, (handle, _, _, _, name))) = selected.zip(source) else {
                 ui.label("Pick a face in the scene to show its mesh UVs.");
                 return;
             };
-            let (rect, _) = ui.allocate_exact_size(
-                ui.available_size().max(egui::vec2(100., 100.)),
-                egui::Sense::hover(),
-            );
-            let mut triangles = Vec::new();
-            for (entity, handle, visible) in &sources {
-                if selected.entity != entity {
-                    continue;
-                }
-                if !visible.get() {
-                    continue;
-                }
-                let Some(mesh) = meshes.get(handle) else {
-                    continue;
-                };
-                if mesh.primitive_topology() != PrimitiveTopology::TriangleList {
-                    continue;
-                }
-                let Some(VertexAttributeValues::Float32x2(uvs)) =
-                    mesh.attribute(Mesh::ATTRIBUTE_UV_0)
-                else {
-                    continue;
-                };
-                let ids: Vec<usize> = mesh
-                    .indices()
-                    .map_or_else(|| (0..uvs.len()).collect(), |i| i.iter().collect());
-                for ids in ids.as_chunks::<3>().0 {
-                    if let [Some(a), Some(b), Some(c)] = ids.map(|i| uvs.get(i).copied()) {
-                        triangles.push([a, b, c]);
-                    }
-                }
+            if let Some(name) = name {
+                ui.label(&name.0);
+            } else if texture.is_some() {
+                ui.label("Embedded texture · source name unavailable");
             }
+            if let Some(image) = image {
+                ui.label(format!("{} × {} pixels", image.width(), image.height()));
+            } else if texture.is_some() {
+                ui.label("Loading texture…");
+            } else {
+                ui.label("This material has no texture.");
+            }
+            let Some(mesh) = meshes.get(handle) else {
+                ui.label("Mesh unavailable.");
+                return;
+            };
+            let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+            else {
+                ui.label("This mesh has no texture coordinates.");
+                return;
+            };
+            let ids: Vec<usize> = mesh
+                .indices()
+                .map_or_else(|| (0..uvs.len()).collect(), |i| i.iter().collect());
+            let triangles: Vec<_> = ids
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .filter_map(|ids| {
+                    let [Some(a), Some(b), Some(c)] = ids.map(|i| uvs.get(i).copied()) else {
+                        return None;
+                    };
+                    Some([a, b, c])
+                })
+                .collect();
             let (min, max) = triangles
                 .iter()
                 .flatten()
@@ -312,6 +338,24 @@ pub fn uv_window(
                     (min.min(Vec2::from(*p)), max.max(Vec2::from(*p)))
                 });
             let extent = (max - min).max(Vec2::splat(0.001));
+            let pixels = image.map_or(Vec2::ONE, |i| {
+                Vec2::new(i.width() as f32, i.height() as f32)
+            });
+            let dimensions = pixels * extent;
+            let available = ui.available_size().max(egui::vec2(100., 100.));
+            let scale = (available.x / dimensions.x).min(available.y / dimensions.y);
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(dimensions.x * scale, dimensions.y * scale),
+                egui::Sense::hover(),
+            );
+            if let Some(texture_id) = texture_id {
+                ui.painter().image(
+                    texture_id,
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(min.x, min.y), egui::pos2(max.x, max.y)),
+                    egui::Color32::WHITE,
+                );
+            }
             let project = |p: [f32; 2]| {
                 let p = (Vec2::from(p) - min) / extent;
                 rect.min + egui::vec2(p.x * rect.width(), p.y * rect.height())

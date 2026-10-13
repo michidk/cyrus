@@ -83,6 +83,12 @@ axis, using preservation's terrain UV rotations.
 
 Models offer rendered vertex and triangle normals, mesh bounds, authored subobject
 spheres, a UV layout for the picked mesh and face picking. Normal spacing limits overlay density.
+Face picking is always enabled; toggle UV layout to see the picked mesh's UVs
+over its sampled texture, with the TEXBSI filename, image name and pixel dimensions.
+The texture remains visible when the scene uses solid or wireframe shading.
+Normal spacing and length controls appear on a separate row beneath the checkboxes.
+The exporter falls back to authored face normals when vertex normals cannot be
+normalized, including the near-zero values in the installed CRAK `.3D` models.
 Picking reports the rendered triangle and normalized UVs. Authored polygon records,
 normal tables, frame data and subobject face membership remain in JSON.
 

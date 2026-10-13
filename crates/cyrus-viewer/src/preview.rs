@@ -449,7 +449,7 @@ pub struct Edges;
 pub struct EdgesPrepared;
 #[derive(Component)]
 pub struct SurfaceStyle {
-    original: StandardMaterial,
+    pub original: StandardMaterial,
     mode: Shading,
 }
 fn shaded_material(original: &StandardMaterial, mode: Shading) -> StandardMaterial {

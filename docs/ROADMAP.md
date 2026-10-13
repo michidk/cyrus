@@ -95,7 +95,9 @@ preferences and show notices.
 Asset inspection now includes automatic WLD heightmaps, texture-rotation maps and
 direction arrows, model normals/bounds/face picking/UVs, world record diagrams,
 PVO scene/object inspection, authored movie-track selection and expanded decoded
-JSON. **Verified:** integrated workspace gates pass with the install and no skipped
+JSON. Face picking is always active; UV inspection overlays the sampled texture
+and identifies its TEXBSI bank and image. Normal settings occupy a separate row.
+**Verified:** integrated workspace gates pass with the install and no skipped
 install tests; optimized browser/native builds and the isolated core consumer pass.
 Native checks cover WLD maps/arrows, model picking/UVs, sky palettes and movie
 controls. Browser checks cover restricted TEXBSI palettes, BSI JSON and the
