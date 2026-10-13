@@ -89,20 +89,18 @@ done
     def test_native_platforms_and_optional_viewer(self):
         linux = "x86_64-unknown-linux-gnu"
         self.build("native", linux)
-        self.assertEqual(self.members(f"cyrus-{linux}.tar.gz"),
-                         {"cyrus/cyrus", "cyrus/README.md"})
+        self.assertEqual(self.members(f"cyrus-{linux}.tar.gz"), {"cyrus"})
         with tarfile.open(self.root / f"target/artifacts/cyrus-{linux}.tar.gz") as package:
-            self.assertTrue(package.getmember("cyrus/cyrus").mode & 0o111)
+            self.assertTrue(package.getmember("cyrus").mode & 0o111)
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{linux}.tar.gz").exists())
         (self.root / "crates/cyrus-viewer/Cargo.toml").touch()
         windows = "x86_64-pc-windows-msvc"
         self.build("native", windows)
         for app in ("cyrus", "cyrus-viewer"):
-            self.assertEqual(self.members(f"{app}-{windows}.tar.gz"),
-                             {f"{app}/{app}.exe", f"{app}/README.md"})
+            self.assertTrue((self.root / f"target/artifacts/{app}-{windows}.exe").is_file())
         (self.root / "crates/cyrus-viewer/Cargo.toml").unlink()
         self.build("native", windows)
-        self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.tar.gz").exists())
+        self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.exe").exists())
 
     def test_browser_excludes_install_cache_and_stale_outputs(self):
         expected = {"browser/index.html", "browser/sw.js", "browser/README.md",

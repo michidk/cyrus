@@ -10,7 +10,7 @@ trap 'rm -rf "$stage"' EXIT
 case "${1:-}" in
     native)
         platform="${2:?Rust target required}"
-        rm -f "target/artifacts/cyrus-viewer-$platform.tar.gz"
+        rm -f "target/artifacts/cyrus-viewer-$platform".{tar.gz,exe}
         apps=(cyrus)
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
         packages=()
@@ -18,11 +18,14 @@ case "${1:-}" in
         cargo build --locked --release --target "$platform" "${packages[@]}"
         suffix=""
         if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
+        # Windows gets the bare executable; Unix archives keep the executable bit.
         for app in "${apps[@]}"; do
-            mkdir -p "$stage/$app"
-            cp "target/$platform/release/$app$suffix" "$stage/$app/"
-            cp "crates/$app/README.md" "$stage/$app/README.md"
-            tar -czf "target/artifacts/$app-$platform.tar.gz" -C "$stage" "$app"
+            binary="target/$platform/release/$app$suffix"
+            if [[ -n "$suffix" ]]; then
+                cp "$binary" "target/artifacts/$app-$platform$suffix"
+            else
+                tar -czf "target/artifacts/$app-$platform.tar.gz" -C "$(dirname "$binary")" "$app"
+            fi
         done
         ;;
     web)
