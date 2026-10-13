@@ -196,12 +196,12 @@ asset member; without it, older ID-only selections scan archive indexes.
 `file` and `palette` require `asset`. Native selection waits for the catalog and
 uses the same model palette rules as browser selection.
 
-Without a supplied source, browser startup asks "Where are the game files?".
-The validated URL is shared with the game in localStorage `cyrus-install` and
-checked again at each launch. Unavailable files reopen the picker. The server's
-`--install PATH` automatically
-supplies the source to both pages; `--install-url URL` supplies a remote default.
-AI-driven tests must always provide one of these sources explicitly.
+Browser startup always shows the shared install picker. Local folders use the
+browser's directory file input. URL parameters, server defaults and the saved
+URL only prefill the expandable server option; Connect to server validates and
+loads that source. The validated URL is shared with the game in localStorage
+`cyrus-install`. AI-driven tests supply a source explicitly and automate Connect
+to server.
 
 World light inspection shows signed RGB strengths and authored radii. Light markers
 use the exported scene origin; local lights are not presented as directional vectors.

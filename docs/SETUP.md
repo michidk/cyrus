@@ -168,31 +168,24 @@ selection resolves through the enclosing package. Missing paths and unresolved
 selections remain on the picker with validation details; noninteractive commands
 report an error with `--install PATH` instructions.
 
-The browser offers **Choose local game folder** when no valid source is available.
-Choose the outer GOG folder containing `Redguard`, `DOSBOX`, `game.gog` and
-`game.ins`. Chromium uses read-only directory permission; Firefox and Safari
-use a directory file input. Files are read in the browser worker, never uploaded
-or copied into browser storage. The initial content check reads files in bounded
-chunks and reports progress. Select the folder again after reload, world-picker
-navigation or opening the other application. Cancel leaves the picker open.
-Use `?install=local` to force local selection even with a saved URL or server
-default. Local selection saves only the preference `local` in `cyrus-install`.
-The picker reports folder scan progress, cancellation and denied access, and shows
-application preparation immediately after accepting a folder. Server connection
-is available under an expandable option. Companion files are discovered throughout
-the selected folder, including nested GOG support directories. Files outside that
-folder are inaccessible; select the main installation folder when a companion is missing.
+The browser always opens the install picker. Choose the main GOG folder containing
+`Redguard`, `DOSBOX`, `game.gog` and `game.ins`. All browsers use a directory
+file input. Files are read locally in the worker, never uploaded or copied into
+browser storage. The initial content check reads bounded chunks and reports
+progress. Select the folder again after reload or navigation. Cancel leaves the
+picker open; validation failures allow another selection. Companion files are
+discovered throughout the selected folder, including nested GOG support folders.
+Files outside the selected folder are inaccessible.
 
-The picker also accepts an HTTP(S) install-service URL.
-It saves the validated URL under localStorage `cyrus-install`, shared by game and
-viewer, and checks the manifest and an original file again on every launch. A
-missing install reopens the picker.
-URL `install` overrides the server default, which overrides the saved location.
-A server may receive `--install-url URL` to supply a remote default.
+The expandable server option remembers validated URLs in localStorage
+`cyrus-install`, shared with the viewer. URL `install`, the server default and
+the saved location prefill that field in order, without starting a connection.
+`?install=local` leaves it empty. Click Connect to server to validate and load
+the source. Local selection stores only the preference `local`, not file access.
 
-For unattended tests, always pass `--install /absolute/path/to/Redguard` to the
-web server or `?install=<encoded-service-URL>` to an existing preview. Do not
-make the user fill in the picker for an agent's test.
+For unattended tests, supply `--install /absolute/path/to/Redguard` to the server
+or `?install=<encoded-service-URL>`, then automate Connect to server. Do not ask
+the user to fill in the picker for an agent's test.
 
 `viewer-server.py` serves both applications. Its `--install` flag provides the
 read-only original files and shared browser default. The WASM worker prepares

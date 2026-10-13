@@ -43,20 +43,3 @@ export function localInstall(entries) {
   if (!files.has('disc/game.gog') || !files.has('disc/game.ins')) throw new Error('Missing game.gog or game.ins in the selected folder. Select the main GOG Redguard folder containing the disc files.');
   return { files };
 }
-
-export async function directoryEntries(directory, prefix = '', progress = () => {}) {
-  const entries = [];
-  async function walk(directory, prefix) {
-    for await (const [name, handle] of directory.entries()) {
-      const path = prefix + name;
-      progress(entries.length, path);
-      if (handle.kind === 'directory') await walk(handle, path + '/');
-      else {
-        entries.push([path, await handle.getFile()]);
-        progress(entries.length, path);
-      }
-    }
-  }
-  await walk(directory, prefix);
-  return entries;
-}

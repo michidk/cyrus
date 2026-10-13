@@ -1,4 +1,4 @@
-import { localInstall, directoryEntries } from './local-install.js';
+import { localInstall } from './local-install.js';
 
 // All browser applications share the selected read-only installation source.
 const STORAGE_KEY = "cyrus-install";
@@ -46,7 +46,6 @@ export async function chooseInstall() {
   } catch { /* Static hosting has no server defaults. */ }
   const local = params.get("install") === "local" || (!params.has("install") && saved === "local");
   const candidate = local ? null : params.has("install") ? params.get("install") : defaults.install || saved;
-  let message = "";
   async function accept(value) {
     const source = await validateInstall(value);
     for (const [name, content] of [["cyrus-assets", source.url]]) {
@@ -61,10 +60,6 @@ export async function chooseInstall() {
     }
     try { localStorage.setItem(STORAGE_KEY, source.url); } catch { /* Selection still works without persistence. */ }
     return source;
-  }
-  if (candidate) {
-    try { return await accept(candidate); }
-    catch (error) { message = error.message; }
   }
   const loading = document.getElementById("loading");
   loading.classList.add("selecting-install");
@@ -85,7 +80,6 @@ export async function chooseInstall() {
   const server = document.createElement("details");
   const summary = document.createElement("summary");
   summary.textContent = "Connect to a game-file server instead";
-  server.open = Boolean(message);
   server.append(summary);
   const label = document.createElement("label");
   label.textContent = "Game-file server address";
@@ -103,7 +97,6 @@ export async function chooseInstall() {
   status.setAttribute("role", "status");
   const error = document.createElement("p");
   error.setAttribute("role", "alert");
-  error.textContent = message;
   const submit = document.createElement("button");
   submit.textContent = "Connect to server";
   server.append(label, input, help, submit);
@@ -145,18 +138,10 @@ export async function chooseInstall() {
         ? "Folder access was denied. Choose the folder again and allow read access."
         : failure.message;
     }
-    folder.addEventListener("click", async () => {
-      busy(true, "Choose your GOG folder in the browser dialog and allow read access.");
-      if (!globalThis.showDirectoryPicker) { folderInput.value = ""; folderInput.click(); return; }
-      try {
-        const directory = await showDirectoryPicker({ mode: "read" });
-        status.textContent = "Checking " + directory.name + "…";
-        acceptLocal(await directoryEntries(directory, "", (count, path) => {
-          status.textContent = "Checking folder: " + count + " files found. " + path;
-        }));
-      } catch (failure) {
-        failed(failure);
-      }
+    folder.addEventListener("click", () => {
+      busy(true, "Choose your main GOG Redguard folder in the browser dialog.");
+      folderInput.value = "";
+      folderInput.click();
     });
     folderInput.addEventListener("cancel", () => failed({ name: "AbortError" }));
     folderInput.addEventListener("change", async () => {
