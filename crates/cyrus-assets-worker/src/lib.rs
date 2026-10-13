@@ -1,4 +1,4 @@
-//! Worker-only WASM bridge. HTTP supplies original bytes; shared Rust parsers decode them.
+//! Worker-only WASM bridge. Local files or HTTP supply bytes to shared Rust parsers.
 #![cfg(target_arch = "wasm32")]
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::{
@@ -7,13 +7,37 @@ use cyrus_assets::{
 };
 use wasm_bindgen::prelude::*;
 
-struct HttpFiles {
-    base: String,
+mod local;
+
+enum Source {
+    Http(String),
+    Local(local::Files),
+}
+struct BrowserFiles {
+    source: Source,
     manifest: Manifest,
     progress: js_sys::Function,
     reporting: bool,
 }
-impl ReadAssets for HttpFiles {
+impl BrowserFiles {
+    fn new(source: JsValue, manifest: &str, progress: js_sys::Function) -> Result<Self> {
+        let (source, manifest) = if let Some(base) = source.as_string() {
+            (Source::Http(base), serde_json::from_str(manifest)?)
+        } else {
+            let files = local::Files::new(source, &progress)?;
+            let manifest = files.manifest();
+            (Source::Local(files), manifest)
+        };
+        manifest.validate()?;
+        Ok(Self {
+            source,
+            manifest,
+            progress,
+            reporting: true,
+        })
+    }
+}
+impl ReadAssets for BrowserFiles {
     fn manifest(&self) -> &Manifest {
         &self.manifest
     }
@@ -40,6 +64,15 @@ impl ReadAssets for HttpFiles {
         if length == 0 {
             return Ok(Vec::new());
         }
+        let base = match &self.source {
+            Source::Local(files) => {
+                self.progress(0, length, &format!("Reading {path}"));
+                let bytes = files.read_range(&file.path, start, length)?;
+                self.progress(length, length, &format!("Reading {path}"));
+                return Ok(bytes);
+            }
+            Source::Http(base) => base,
+        };
         let encoded = file
             .path
             .split('/')
@@ -52,11 +85,7 @@ impl ReadAssets for HttpFiles {
         for offset in (0..length).step_by(CHUNK) {
             let start = start + offset as u64;
             let length = (length - offset).min(CHUNK);
-            let mut url = format!(
-                "{}/{encoded}?v={}",
-                self.base.trim_end_matches('/'),
-                file.digest
-            );
+            let mut url = format!("{}/{encoded}?v={}", base.trim_end_matches('/'), file.digest);
             let partial = start != 0 || length as u64 != file.bytes;
             let end = start + length as u64 - 1;
             if partial {
@@ -120,26 +149,22 @@ fn bridge_error(error: impl std::fmt::Display) -> JsValue {
 /// Game preparation bypasses the viewer catalog and keeps only the current movie's metadata.
 #[wasm_bindgen]
 pub struct GameLibrary {
-    source: HttpFiles,
+    source: BrowserFiles,
     movie: Option<(usize, cyrus_assets::movie::original::OriginalMovie)>,
 }
 #[wasm_bindgen]
 impl GameLibrary {
+    /// Accepts an HTTP base URL plus manifest JSON, or a Map of relative paths to
+    /// read-only browser Files (manifest is ignored). Must run inside a worker.
     #[wasm_bindgen(constructor)]
     pub fn new(
-        base: String,
+        source: JsValue,
         manifest: &str,
         progress: js_sys::Function,
     ) -> std::result::Result<GameLibrary, JsValue> {
-        let manifest: Manifest = serde_json::from_str(manifest).map_err(bridge_error)?;
-        manifest.validate().map_err(bridge_error)?;
         Ok(Self {
-            source: HttpFiles {
-                base,
-                manifest,
-                progress,
-                reporting: true,
-            },
+            source: BrowserFiles::new(source, manifest, progress)
+                .map_err(|error| bridge_error(format!("{error:#}")))?,
             movie: None,
         })
     }
@@ -242,33 +267,29 @@ fn generated_files(files: std::collections::BTreeMap<String, Vec<u8>>) -> js_sys
 
 #[wasm_bindgen]
 pub struct AssetLibrary {
-    library: Library<HttpFiles>,
+    library: Library<BrowserFiles>,
 }
 #[wasm_bindgen]
 impl AssetLibrary {
+    /// Accepts the same URL/manifest or local File map as GameLibrary.
+    /// Local content fingerprints are computed with bounded reads in this worker.
     #[wasm_bindgen(constructor)]
     pub fn new(
-        base: String,
+        source: JsValue,
         manifest: &str,
         progress: js_sys::Function,
     ) -> std::result::Result<AssetLibrary, JsValue> {
-        let manifest: Manifest = serde_json::from_str(manifest).map_err(bridge_error)?;
-        let mut library = Library::open(
-            HttpFiles {
-                base,
-                manifest,
-                progress: progress.clone(),
-                reporting: false,
-            },
-            |done, total, name| {
-                let _ = progress.call3(
-                    &JsValue::NULL,
-                    &JsValue::from_f64(done as f64),
-                    &JsValue::from_f64(total as f64),
-                    &JsValue::from_str(name),
-                );
-            },
-        )
+        let mut source = BrowserFiles::new(source, manifest, progress.clone())
+            .map_err(|error| bridge_error(format!("{error:#}")))?;
+        source.reporting = false;
+        let mut library = Library::open(source, |done, total, name| {
+            let _ = progress.call3(
+                &JsValue::NULL,
+                &JsValue::from_f64(done as f64),
+                &JsValue::from_f64(total as f64),
+                &JsValue::from_str(name),
+            );
+        })
         .map_err(|error| bridge_error(format!("{error:#}")))?;
         library.source.reporting = true;
         Ok(Self { library })

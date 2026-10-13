@@ -17,7 +17,8 @@ installed starting world in a worker and enter after its dependencies are ready.
 
 Windowed launches show the shared install picker when their explicit, remembered,
 or discovered game-files location is unusable. Continue validates and remembers
-the location in `cyrus-config/install.json`, shared with the viewer. Headless,
+the location in `cyrus-config/install.json`, shared with the viewer. Selection,
+background preparation and gameplay use the same window and process. Headless,
 world-listing and export commands keep contextual command-line errors.
 
 Flags: `--export-startup` exports startup, menu, starting world, movies and HUD

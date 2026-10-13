@@ -64,7 +64,7 @@ echo private > cyrus-config/cache/private.glb
 ln -sfn "$PWD/cyrus-config" target/web/cyrus-config
 echo page > target/web/index.html
 echo service > target/web/sw.js
-for file in loader.js install.js loading.css game-assets.js asset-worker.js pkg/cyrus-assets-worker.js pkg/cyrus-assets-worker_bg.wasm; do echo code > "target/web/$file"; done
+for file in loader.js install.js local-install.js loading.css game-assets.js asset-worker.js pkg/cyrus-assets-worker.js pkg/cyrus-assets-worker_bg.wasm; do echo code > "target/web/$file"; done
 echo code > "target/web/pkg/$app.js"
 echo wasm > "target/web/pkg/${app}_bg.wasm"
 echo private > target/web/pkg/other.wasm
@@ -89,24 +89,22 @@ done
     def test_native_platforms_and_optional_viewer(self):
         linux = "x86_64-unknown-linux-gnu"
         self.build("native", linux)
-        self.assertEqual(self.members(f"cyrus-{linux}.tar.gz"),
-                         {"cyrus/cyrus", "cyrus/README.md"})
+        self.assertEqual(self.members(f"cyrus-{linux}.tar.gz"), {"cyrus"})
         with tarfile.open(self.root / f"target/artifacts/cyrus-{linux}.tar.gz") as package:
-            self.assertTrue(package.getmember("cyrus/cyrus").mode & 0o111)
+            self.assertTrue(package.getmember("cyrus").mode & 0o111)
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{linux}.tar.gz").exists())
         (self.root / "crates/cyrus-viewer/Cargo.toml").touch()
         windows = "x86_64-pc-windows-msvc"
         self.build("native", windows)
         for app in ("cyrus", "cyrus-viewer"):
-            self.assertEqual(self.members(f"{app}-{windows}.tar.gz"),
-                             {f"{app}/{app}.exe", f"{app}/README.md"})
+            self.assertTrue((self.root / f"target/artifacts/{app}-{windows}.exe").is_file())
         (self.root / "crates/cyrus-viewer/Cargo.toml").unlink()
         self.build("native", windows)
-        self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.tar.gz").exists())
+        self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.exe").exists())
 
     def test_browser_excludes_install_cache_and_stale_outputs(self):
         expected = {"browser/index.html", "browser/sw.js", "browser/README.md",
-                    "browser/loader.js", "browser/install.js", "browser/loading.css",
+                    "browser/loader.js", "browser/install.js", "browser/local-install.js", "browser/loading.css",
                     "browser/viewer-server.py", "browser/asset-worker.js", "browser/game-assets.js",
                     "browser/pkg/cyrus-assets-worker.js", "browser/pkg/cyrus-assets-worker_bg.wasm",
                     "browser/pkg/cyrus-web.js", "browser/pkg/cyrus-web_bg.wasm",
@@ -138,7 +136,7 @@ done
             (web / "sw.js").write_text("service worker")
         web = self.root / "dev/web"
         web.mkdir()
-        for name in ("loader.js", "install.js", "sw.js", "loading.css", "asset-worker.js", "game-assets.js"):
+        for name in ("loader.js", "install.js", "local-install.js", "sw.js", "loading.css", "asset-worker.js", "game-assets.js"):
             (web / name).write_text(name)
         bindgen = self.root / "bin/wasm-bindgen"
         bindgen.write_text('''#!/bin/bash
@@ -164,7 +162,7 @@ echo wasm > "$out/${app}_bg.wasm"
             self.assertTrue((self.root / "target/web/viewer.html").is_file())
         apps.append("cyrus-assets-worker")
         self.assertEqual((self.root / "cargo-calls.txt").read_text().splitlines(),
-                         [f"build {packages} --target wasm32-unknown-unknown --profile wasm-release"])
+                         [f"build {packages} --target wasm32-unknown-unknown --profile wasm-dev"])
         for app in apps:
             for suffix in (".js", "_bg.wasm"):
                 self.assertTrue((self.root / f"target/web/pkg/{app}{suffix}").is_file())
@@ -174,6 +172,7 @@ echo wasm > "$out/${app}_bg.wasm"
         workflow = (Path(__file__).parents[2] / ".github/workflows/release.yml").read_text()
         script = workflow.split("      - name: Create release with all packages and publish\n", 1)[1]
         script = script.split("        run: |\n", 1)[1]
+        script = script.split("\n\n", 1)[0]
         script = "\n".join(line[10:] for line in script.splitlines())
         gh = self.root / "bin/gh"
         gh.write_text('''#!/bin/bash

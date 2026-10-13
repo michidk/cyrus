@@ -10,7 +10,6 @@ pub fn register_cache(app: &mut App) -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     let path = {
         let path = std::path::absolute(cyrus_assets::CACHE_DIR)?;
-        std::fs::create_dir_all(&path)?;
         path.to_str()
             .ok_or_else(|| anyhow::anyhow!("cache path is not UTF-8"))?
             .to_owned()

@@ -10,7 +10,7 @@ trap 'rm -rf "$stage"' EXIT
 case "${1:-}" in
     native)
         platform="${2:?Rust target required}"
-        rm -f "target/artifacts/cyrus-viewer-$platform.tar.gz"
+        rm -f "target/artifacts/cyrus-viewer-$platform".{tar.gz,exe}
         apps=(cyrus)
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
         packages=()
@@ -18,19 +18,22 @@ case "${1:-}" in
         cargo build --locked --release --target "$platform" "${packages[@]}"
         suffix=""
         if [[ "$platform" = *-windows-* ]]; then suffix=.exe; fi
+        # Windows gets the bare executable; Unix archives keep the executable bit.
         for app in "${apps[@]}"; do
-            mkdir -p "$stage/$app"
-            cp "target/$platform/release/$app$suffix" "$stage/$app/"
-            cp "crates/$app/README.md" "$stage/$app/README.md"
-            tar -czf "target/artifacts/$app-$platform.tar.gz" -C "$stage" "$app"
+            binary="target/$platform/release/$app$suffix"
+            if [[ -n "$suffix" ]]; then
+                cp "$binary" "target/artifacts/$app-$platform$suffix"
+            else
+                tar -czf "target/artifacts/$app-$platform.tar.gz" -C "$(dirname "$binary")" "$app"
+            fi
         done
         ;;
     web)
         apps=(cyrus-web)
         if [[ -f crates/cyrus-viewer/Cargo.toml ]]; then apps+=(cyrus-viewer); fi
-        bash dev/scripts/build-web.sh "${apps[@]}"
+        CYRUS_WASM_PROFILE=wasm-release bash dev/scripts/build-web.sh "${apps[@]}"
         mkdir -p "$stage/browser/pkg"
-        cp target/web/index.html target/web/sw.js target/web/loader.js target/web/install.js \
+        cp target/web/index.html target/web/sw.js target/web/loader.js target/web/install.js target/web/local-install.js \
             target/web/loading.css target/web/asset-worker.js target/web/game-assets.js dev/scripts/viewer-server.py "$stage/browser/"
         cp crates/cyrus-web/README.md "$stage/browser/README.md"
         for app in "${apps[@]}"; do

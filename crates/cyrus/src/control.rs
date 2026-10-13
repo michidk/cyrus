@@ -209,6 +209,9 @@ fn handle(
                     .map_err(|error| error.to_string()),
                 None => Err("sky renderer is unavailable".into()),
             },
+            Command::LoadScene { .. } if *state.get() == cyrus_game::AppState::SelectingInstall => {
+                Err("select and prepare the game files before loading a scene".into())
+            }
             Command::LoadScene { name } => {
                 scene_request.0 = name.clone();
                 if *state.get() != cyrus_game::AppState::InGame {
@@ -475,6 +478,32 @@ mod tests {
         .insert_resource(ControlAddr("127.0.0.1:0".into()))
         .add_plugins(ControlPlugin);
         app
+    }
+
+    #[test]
+    fn scene_requests_cannot_bypass_install_selection() {
+        let mut app = app();
+        app.insert_state(cyrus_game::AppState::SelectingInstall);
+        let (tx, rx) = channel();
+        app.insert_resource(Inbox(Mutex::new(rx)));
+        let (reply, result) = channel();
+        tx.send(Pending {
+            request: Request {
+                id: 1,
+                cmd: Command::LoadScene {
+                    name: "START".into(),
+                },
+            },
+            reply,
+        })
+        .unwrap();
+        app.update();
+        assert!(!result.try_recv().unwrap().ok);
+        assert_eq!(
+            *app.world().resource::<State<cyrus_game::AppState>>().get(),
+            cyrus_game::AppState::SelectingInstall
+        );
+        assert!(app.world().resource::<SceneRequest>().0.is_empty());
     }
 
     #[test]

@@ -61,9 +61,10 @@ try {
       throw new Error("file and palette require asset");
     }
     const source = await chooseInstall();
+    globalThis.cyrusInstallSource = source.files || source.url;
     if (engine === "cyrus-web") {
       const { openGameAssets } = await import('./game-assets.js');
-      globalThis.cyrusGameAssets = await openGameAssets(source.url, { progress(done, total, name) {
+      globalThis.cyrusGameAssets = await openGameAssets(globalThis.cyrusInstallSource, { progress(done, total, name) {
         if (!label.isConnected) return;
         label.textContent = name;
         fill.classList.toggle('indeterminate', !total);

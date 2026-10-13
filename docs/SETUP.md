@@ -83,36 +83,43 @@ are present in the checked-out revision. Both applications are built from this w
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
-After the release is published, `Release` deploys the browser bundle to GitHub
-Pages. The repository's Pages source must be set to "GitHub Actions" once.
-The site contains application code only; supply a game install with
-`?install=<encoded-install-service-URL>`.
+After the release is published, `Release` deploys GitHub Pages: the landing page
+from `dev/pages/index.html` at the root, the game under `game/`, and the viewer
+under `viewer/`. Both pages share the engine files and service worker at the root. The repository's Pages source must be set to "GitHub Actions" once.
+The site contains application code only. Choose a local GOG game folder in the
+browser, or supply a service with `?install=<encoded-install-service-URL>`.
 
 Pushes and pull requests run tests, lint, and browser compatibility checks.
 They do not build release archives. Release builds run only for stable `vX.Y.Z`
-tags, either when pushed or selected in a manual `Release` dispatch.
+tags, either when pushed or dispatched from `main` with a `tag` input such as
+`v0.2.0`. Dispatching from `main` saves the build caches where the next release
+can restore them; caches saved by a tag-push run are visible only to that tag.
 
 Run `Bump Version & Tag` on `main` with a version such as `0.2.0` to update the
 shared workspace version and lockfile, commit, and atomically push the commit
-and tag, then explicitly dispatch `Release` for that tag. It uses the built-in
+and tag, then dispatch `Release` from `main` for that tag. It uses the built-in
 workflow token and needs no repository secret. Repeating a matching version/tag
 retries the release without another version commit. Alternatively, update the
 version and lockfile locally and push the version commit and tag.
 
 `Release` checks that every workspace package matches the tag and runs the gates
-before building all platforms. Browser release builds use one Cargo job and thin
-link-time optimization to limit hosted-runner memory use; build logs include
+while all platforms build; nothing is published unless both succeed. The macOS
+Intel build runs on an Apple Silicon runner. Browser release builds use two Cargo
+jobs, extra swap, and the `wasm-release` profile (thin link-time optimization,
+one codegen unit) to stay within hosted-runner memory; build logs include
 resource usage. After every build succeeds, it generates notes from conventional
-commits with git-cliff and `cliff.toml`, attaches all archives and `SHA256SUMS`,
+commits with git-cliff and `cliff.toml`, attaches all packages and `SHA256SUMS`,
 and publishes the release. No release is created when a build fails; successful
 packages remain available as Actions artifacts. Rerun failed jobs in Actions to
 finish. Reruns leave an already published release unchanged.
 Actions artifacts expire after seven days; GitHub release assets remain available.
 
-Archives contain application code and crate usage instructions. They contain
+Linux and macOS packages are `.tar.gz` archives holding only the executable;
+Windows packages are the bare `.exe`. The browser bundle is an archive. Packages contain
 no game files, exported previews, or local state. Native executables still need
-the player's GOG install. Browser bundles ask for an install-service URL, remember it, and validate it on
-each launch. The service supplies read-only original files; a WASM worker prepares game and
+the player's GOG install. Browser bundles accept a local folder or an
+install-service URL. Local files remain on the player's computer; URL sources
+are remembered and validated on each launch. A WASM worker prepares game and
 viewer assets in memory. Downloading an artifact does not establish runtime or fidelity
 support on that platform.
 
@@ -122,6 +129,10 @@ support on that platform.
 rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # version from Cargo.lock
 just run-web --install /path/to/Redguard # supplies files automatically to game and viewer
 ```
+
+Local browser builds use the `wasm-dev` profile: about three times faster than
+`wasm-release`, with a larger download. Set `CYRUS_WASM_PROFILE=wasm-release`
+to build what releases ship.
 
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
@@ -141,7 +152,9 @@ precedence over the remembered native location in `cyrus-config/install.json`;
 conventional discovery follows when there is no saved location. Windowed game
 and viewer launches open a shared install-selection screen when resolution fails.
 Enter a path or choose Browse, then Continue to validate and remember the resolved
-root. Cancel closes the application without changing preferences. A missing or
+root. The picker, loading progress and game or viewer share one window and process.
+Initial game images are prepared in the background so the window remains responsive.
+Cancel closes the application without changing preferences. A missing or
 invalid remembered folder reopens the picker. Headless, world-listing and export
 commands report contextual command-line errors instead of opening a window.
 Linux Browse uses a desktop file portal or Zenity; manual input needs neither.
@@ -155,7 +168,17 @@ selection resolves through the enclosing package. Missing paths and unresolved
 selections remain on the picker with validation details; noninteractive commands
 report an error with `--install PATH` instructions.
 
-The browser asks "Where are the game files?" when no valid source is available.
+The browser offers **Choose local game folder** when no valid source is available.
+Choose the outer GOG folder containing `Redguard`, `DOSBOX`, `game.gog` and
+`game.ins`. Chromium uses read-only directory permission; Firefox and Safari
+use a directory file input. Files are read in the browser worker, never uploaded
+or copied into browser storage. The initial content check reads files in bounded
+chunks and reports progress. Select the folder again after reload, world-picker
+navigation or opening the other application. Cancel leaves the picker open.
+Use `?install=local` to force local selection even with a saved URL or server
+default. Local selection saves only the preference `local` in `cyrus-install`.
+
+The picker also accepts an HTTP(S) install-service URL.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and
 viewer, and checks the manifest and an original file again on every launch. A
 missing install reopens the picker.
@@ -365,8 +388,9 @@ command schedule set to `@startup` in the VibePod control panel that runs
 
 ### Player input and inspection camera
 
-Press F1 and use **Flycam (leave player in place)** to switch between inspection
-and the player pose. Flycam starts enabled. WASD moves it, right mouse looks,
+Press F1 and use **Flycam** to switch between inspection
+and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
+an inspection pose. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
 Changing fidelity does not toggle flycam. Turning it off preserves the player
 position. Initial placement uses the installed player marker; locomotion and

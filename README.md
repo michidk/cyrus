@@ -43,9 +43,12 @@ location, or the default local/GOG folders. A `redguard` symlink in the working
 directory works too. If no usable install is found, a window lets you enter a
 folder or browse for it. Continue remembers the resolved location for both the
 game and viewer; a missing saved folder reopens the picker.
-For the browser, `just run-web --install /path/to/Redguard` supplies the files to
-both game and viewer automatically. Otherwise, select an install-service URL at
-startup; the browser remembers it and asks again if it becomes unavailable.
+In the browser, choose the outer GOG folder containing `Redguard`, `DOSBOX` and
+`game.gog`. Files stay on your computer; no upload or file server is needed.
+Select the folder again after each page load. Use `?install=local` to reopen the
+picker if a server URL was previously selected.
+`just run-web --install /path/to/Redguard` and install-service URLs remain
+available for serving files to the game and viewer.
 
 Use `just run --scene START` to open a world directly. The
 [setup guide](docs/SETUP.md) covers the browser build, the original game runner,

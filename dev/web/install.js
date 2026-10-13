@@ -1,4 +1,6 @@
-// All browser applications share the selected read-only installation URL.
+import { localInstall, directoryEntries } from './local-install.js';
+
+// All browser applications share the selected read-only installation source.
 const STORAGE_KEY = "cyrus-install";
 
 export function directoryURL(value, base) {
@@ -42,7 +44,8 @@ export async function chooseInstall() {
     const response = await fetch("./launch.json", { cache: "no-store" });
     if (response.ok) defaults = await response.json();
   } catch { /* Static hosting has no server defaults. */ }
-  const candidate = params.has("install") ? params.get("install") : defaults.install || saved;
+  const local = params.get("install") === "local" || (!params.has("install") && saved === "local");
+  const candidate = local ? null : params.has("install") ? params.get("install") : defaults.install || saved;
   let message = "";
   async function accept(value) {
     const source = await validateInstall(value);
@@ -65,8 +68,19 @@ export async function chooseInstall() {
   }
   const form = document.createElement("form");
   form.id = "install-picker";
+  const folder = document.createElement("button");
+  folder.type = "button";
+  folder.textContent = "Choose game folder on your computer";
+  const folderInput = document.createElement("input");
+  folderInput.type = "file";
+  folderInput.id = "install-folder";
+  folderInput.webkitdirectory = true;
+  folderInput.multiple = true;
+  folderInput.hidden = true;
+  const localHelp = document.createElement("p");
+  localHelp.textContent = "Choose the GOG folder containing Redguard, DOSBOX and game.gog. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
   const label = document.createElement("label");
-  label.textContent = "Where are the game files?";
+  label.textContent = "Or connect to a game-file server";
   const input = document.createElement("input");
   input.type = "url";
   input.required = true;
@@ -75,20 +89,48 @@ export async function chooseInstall() {
   input.value = candidate ? directoryValue(candidate) : "";
   label.htmlFor = input.id;
   const help = document.createElement("p");
-  help.textContent = "Enter the URL serving your own Redguard installation.";
+  help.textContent = "Use this option if you already run the included Cyrus server for your game files. Enter that server's address, not a game download link. Otherwise, choose a folder on your computer above.";
   const error = document.createElement("p");
   error.setAttribute("role", "alert");
   error.textContent = message;
   const submit = document.createElement("button");
-  submit.textContent = "Use game files";
-  form.append(label, input, help, error, submit);
+  submit.textContent = "Connect to server";
+  form.append(folder, folderInput, localHelp, label, input, help, error, submit);
   document.getElementById("loading").append(form);
-  document.getElementById("label").textContent = "Select your Redguard installation";
-  input.focus();
+  document.getElementById("label").textContent = "Choose your Redguard game files";
+  folder.focus();
   return new Promise(resolve => {
+    function acceptLocal(entries) {
+      const source = localInstall(entries);
+      const url = new URL(location.href);
+      url.searchParams.set("install", "local");
+      history.replaceState(null, "", url.href);
+      try { localStorage.setItem(STORAGE_KEY, "local"); } catch { /* Selection works without storage. */ }
+      document.querySelector('meta[name="cyrus-assets"]')?.remove();
+      form.remove();
+      resolve(source);
+    }
+    function busy(value) { folder.disabled = submit.disabled = input.disabled = value; }
+    folder.addEventListener("click", async () => {
+      if (!globalThis.showDirectoryPicker) { folderInput.click(); return; }
+      busy(true);
+      error.textContent = "";
+      try {
+        const directory = await showDirectoryPicker({ mode: "read" });
+        error.textContent = "Checking selected folder…";
+        acceptLocal(await directoryEntries(directory));
+      } catch (failure) {
+        if (failure.name !== "AbortError") error.textContent = failure.message;
+      } finally { busy(false); }
+    });
+    folderInput.addEventListener("change", () => {
+      if (!folderInput.files.length) return;
+      try { acceptLocal([...folderInput.files].map(file => [file.webkitRelativePath, file])); }
+      catch (failure) { error.textContent = failure.message; folderInput.value = ""; }
+    });
     form.addEventListener("submit", async event => {
       event.preventDefault();
-      submit.disabled = true;
+      busy(true);
       error.textContent = "Checking game files…";
       try {
         const source = await accept(input.value);
@@ -99,7 +141,7 @@ export async function chooseInstall() {
         resolve(source);
       } catch (failure) {
         error.textContent = failure.message;
-        submit.disabled = false;
+        busy(false);
       }
     });
   });

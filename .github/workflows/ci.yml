@@ -73,6 +73,11 @@ jobs:
       - name: Check artifact packaging
         run: python3 dev/scripts/test-build-artifacts.py
 
+      - name: Check browser file selection and asset transport
+        run: |
+          node dev/scripts/test-local-install.mjs
+          node dev/scripts/test-game-assets.mjs
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check --color always
 

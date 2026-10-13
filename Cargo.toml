@@ -6,7 +6,7 @@ exclude = ["dev/vendor/smk"]
 default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 repository = "https://github.com/michidk/cyrus"
 
@@ -37,12 +37,22 @@ cyrus-text = { path = "crates/cyrus-text" }
 [patch."https://github.com/taboky-dev/bevy_egui.git"]
 bevy_egui = { version = "=0.43.0" }
 
+# Thin LTO fits hosted-runner memory; one codegen unit keeps the shipped download small.
 [profile.wasm-release]
 inherits = "release"
 opt-level = "s"
-lto = true
+lto = "thin"
 codegen-units = 1
 strip = true
+
+# Local browser builds: about 3x faster than wasm-release, with a larger download.
+[profile.wasm-dev]
+inherits = "wasm-release"
+codegen-units = 16
+
+# Backtraces keep file and line; full variable debug info mostly slows linking.
+[profile.dev]
+debug = "line-tables-only"
 
 [profile.test]
 debug = 0

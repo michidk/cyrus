@@ -20,8 +20,16 @@ python3 viewer-server.py --directory . --page index.html --port 8080 \
   --install /path/to/Redguard
 ```
 
-Without a supplied or remembered URL, startup asks "Where are the game files?".
-It saves a validated install-service URL under localStorage `cyrus-install`, shared
+Without a supplied or remembered URL, startup offers a local folder picker and
+an install-service URL field. Choose the outer GOG folder containing `Redguard`,
+`DOSBOX`, `game.gog` and `game.ins`. The browser reads selected files locally;
+it does not upload them or require a file server. Chromium uses a read-only
+directory permission; other browsers use a directory file input. Select the
+folder again after reloading or navigating between game and viewer. Cancelling
+leaves the picker open. `?install=local` opens this picker even with a saved URL
+or server default. Local selection remembers only that preference, not the files.
+
+For HTTP sources, startup saves a validated install-service URL under localStorage `cyrus-install`, shared
 with the viewer, and checks the original files at each launch. Missing files reopen
 the picker. URL `install` overrides
 the server default, which overrides the saved URL. Server `--install-url URL`

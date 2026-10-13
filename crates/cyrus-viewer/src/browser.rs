@@ -30,13 +30,16 @@ struct Media {
 }
 pub struct BrowserWorker {
     worker: web_sys::Worker,
-    source: String,
+    source: JsValue,
     _message: Closure<dyn FnMut(web_sys::MessageEvent)>,
     _error: Closure<dyn FnMut(web_sys::ErrorEvent)>,
 }
 impl BrowserWorker {
     pub fn open(&self) -> Result<()> {
-        self.send("open", "source", &self.source)
+        let message = js_sys::Object::new();
+        js_sys::Reflect::set(&message, &"kind".into(), &"open".into()).map_err(js_error)?;
+        js_sys::Reflect::set(&message, &"source".into(), &self.source).map_err(js_error)?;
+        self.worker.post_message(&message).map_err(js_error)
     }
     pub fn select(&self, entry: &cyrus_assets::Entry, palette: Option<&str>) -> Result<()> {
         if matches!(entry.source, cyrus_assets::Source::Archive) {
@@ -170,7 +173,12 @@ pub fn install(app: &mut App) -> Result<()> {
         }
     });
     worker.set_onerror(Some(error.as_ref().unchecked_ref()));
-    let source = cyrus_app::browser_source("cyrus-assets")?;
+    let source =
+        js_sys::Reflect::get(&js_sys::global(), &"cyrusInstallSource".into()).map_err(js_error)?;
+    anyhow::ensure!(
+        !source.is_undefined(),
+        "select a game installation before starting the viewer"
+    );
     app.insert_resource(inbox);
     app.world_mut().insert_non_send(BrowserWorker {
         worker,

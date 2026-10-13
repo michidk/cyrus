@@ -9,7 +9,9 @@ module where it is defined and regenerate.
 - `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
 - `src/native_install.rs` — Shared native install selection, remembered location and desktop folder picker.
 
-## `cyrus-assets-worker` — Worker-only WASM bridge. HTTP supplies original bytes; shared Rust parsers decode them.
+## `cyrus-assets-worker` — Worker-only WASM bridge. Local files or HTTP supply bytes to shared Rust parsers.
+
+- `src/local.rs` — Read-only browser File handles with bounded reads and content fingerprints.
 
 ## `cyrus-assets` — Renderer-independent asset catalog and portable preview contracts.
 
@@ -168,7 +170,7 @@ module where it is defined and regenerate.
 - `src/visibility_inspection.rs` — Selected PVO cells highlight the statically mapped placed objects.
 - `src/world_inspection.rs` — RGM inspection of authored placements, navigation and actor command records.
 
-## `cyrus-web` — Browser game host using the selected install service for prepared assets.
+## `cyrus-web` — Browser game host using the selected local folder or service for prepared assets.
 
 - `src/assets.rs` — Cache asset reads await original-file preparation in the browser worker.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.

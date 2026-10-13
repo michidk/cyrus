@@ -18,9 +18,8 @@ pub struct FlycamSettings {
 
 impl Default for FlycamSettings {
     fn default() -> Self {
-        // Inspection starts enabled while gameplay locomotion is unsupported.
         Self {
-            enabled: true,
+            enabled: false,
             speed: 150.0,
         }
     }
@@ -158,7 +157,14 @@ impl Plugin for CameraPlugin {
 fn suppress(flycam: Res<FlycamSettings>, mut suppressed: ResMut<InputSuppressed>) {
     suppressed.0 = flycam.enabled;
 }
-fn spawn(mut commands: Commands) {
+fn spawn(
+    mut commands: Commands,
+    initial: Option<Res<InitialView>>,
+    mut flycam: ResMut<FlycamSettings>,
+) {
+    if initial.is_some() {
+        flycam.enabled = true;
+    }
     commands.spawn((
         ViewCamera,
         Camera3d::default(),

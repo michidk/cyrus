@@ -10,8 +10,9 @@ crate-type = ["cdylib", "rlib"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 cyrus-assets = { path = "../cyrus-assets", features = ["parsers"] }
 anyhow.workspace = true
+blake3.workspace = true
 serde_json.workspace = true
 wasm-bindgen = "0.2"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["XmlHttpRequest", "XmlHttpRequestResponseType"] }
+web-sys = { version = "0.3", features = ["Blob", "File", "FileReaderSync", "XmlHttpRequest", "XmlHttpRequestResponseType"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }

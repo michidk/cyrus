@@ -2,20 +2,12 @@
 use bevy::prelude::*;
 use cyrus_debug::WorldPicker;
 #[cfg(not(target_arch = "wasm32"))]
-fn initialize_native_worlds(mut picker: ResMut<WorldPicker>) {
-    picker.options = std::fs::read_dir(crate::settings::Settings::cache_dir())
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            (path.extension().and_then(|extension| extension.to_str()) == Some("glb"))
-                .then(|| path.file_stem()?.to_str().map(str::to_owned))
-                .flatten()
-        })
-        .collect();
-    picker.options.sort();
-    picker.options.dedup();
+fn initialize_native_worlds(
+    install: Res<cyrus_assets::install::GameInstall>,
+    mut picker: ResMut<WorldPicker>,
+) -> Result {
+    picker.options = cyrus_assets::scene::world_names(&install)?;
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -36,4 +28,36 @@ fn update_native_world(
 pub fn register(app: &mut App) {
     app.add_systems(Startup, initialize_native_worlds)
         .add_systems(Update, update_native_world);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installed_worlds_are_available_without_exporting_them() {
+        let Ok(install) = cyrus_assets::install::GameInstall::locate(None) else {
+            eprintln!("skipped: no install (debug world picker)");
+            return;
+        };
+        let mut app = App::new();
+        app.insert_resource(install)
+            .init_resource::<WorldPicker>()
+            .init_resource::<cyrus_world::lifecycle::CurrentScene>()
+            .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()));
+        register(&mut app);
+        app.update();
+        let picker = app.world().resource::<WorldPicker>();
+        for name in ["0", "ISLAND", "START", "BELLTOWR"] {
+            assert!(picker.options.iter().any(|option| option == name), "{name}");
+        }
+        app.world_mut().resource_mut::<WorldPicker>().pending = Some("START".into());
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_world::lifecycle::SceneRequest>()
+                .0,
+            "START"
+        );
+    }
 }

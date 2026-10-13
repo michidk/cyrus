@@ -19,15 +19,12 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
         .init_resource::<ButtonInput<MouseButton>>()
         .init_resource::<AccumulatedMouseMotion>()
         .insert_resource(PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 29]).unwrap())
-        .insert_resource(FlycamSettings {
-            enabled: false,
-            ..default()
-        })
         .add_plugins((PlayerPlugin, cyrus_render::camera::CameraPlugin));
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::InGame);
     app.update();
+    assert!(!app.world().resource::<FlycamSettings>().enabled);
     let entity = app
         .world_mut()
         .query_filtered::<Entity, With<Player>>()
@@ -63,4 +60,35 @@ fn flycam_moves_only_the_camera_and_returns_to_the_player() {
     app.update();
     assert_eq!(*app.world().get::<Transform>(camera).unwrap(), before);
     assert_eq!(*app.world().get::<Transform>(entity).unwrap(), before);
+}
+
+#[test]
+fn explicit_inspection_pose_enables_flycam() {
+    use cyrus_render::camera::{FrameScene, InitialView};
+
+    let pose = Transform::from_xyz(3.0, 7.0, 11.0);
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<ButtonInput<MouseButton>>()
+        .init_resource::<AccumulatedMouseMotion>()
+        .insert_resource(InitialView(pose))
+        .insert_resource(FrameScene(true))
+        .add_plugins(cyrus_render::camera::CameraPlugin);
+    app.world_mut().spawn((Player, Transform::IDENTITY));
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    app.update();
+    assert!(app.world().resource::<FlycamSettings>().enabled);
+    assert!(!app.world().contains_resource::<InitialView>());
+    let camera = app
+        .world_mut()
+        .query_filtered::<&Transform, With<ViewCamera>>()
+        .single(app.world())
+        .unwrap();
+    assert_eq!(*camera, pose);
 }

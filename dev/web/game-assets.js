@@ -1,4 +1,4 @@
-// Prepare game assets in the shared WASM worker; originals remain read-only HTTP files.
+// Prepare game assets in the shared WASM worker from read-only local files or HTTP.
 export async function openGameAssets(source, { createWorker = () => new Worker('./asset-worker.js', { type: 'module' }), progress = () => {} } = {}) {
   const worker = createWorker();
   const files = new Map(), pending = new Map(), requests = new Map();

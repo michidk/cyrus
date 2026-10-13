@@ -1,4 +1,4 @@
-//! Browser game host using the selected install service for prepared assets.
+//! Browser game host using the selected local folder or service for prepared assets.
 
 #[cfg(target_arch = "wasm32")]
 mod assets;

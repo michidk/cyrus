@@ -22,17 +22,15 @@ impl InstallArgs {
             std::path::Path::new(crate::native_install::LOCATION),
         )
     }
-    /// Shows the shared native picker on failure, then continues in a fresh process.
-    /// Returns None when the picker closes; headless callers should use locate instead.
-    pub fn locate_or_prompt(
-        &self,
-        title: &str,
-    ) -> anyhow::Result<Option<cyrus_assets::install::GameInstall>> {
+    /// Inserts the resolved install, or shows the picker in the application's egui context.
+    /// Call after installing the shared EguiPlugin. Cancel exits this application.
+    pub fn select(&self, app: &mut bevy::prelude::App) {
         match self.locate() {
-            Ok(install) => Ok(Some(install)),
+            Ok(install) => {
+                app.insert_resource(install);
+            }
             Err(error) => {
-                crate::native_install::prompt(self.install.as_deref(), title, error)?;
-                Ok(None)
+                crate::native_install::prompt(app, self.install.as_deref(), error);
             }
         }
     }

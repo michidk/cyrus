@@ -32,7 +32,14 @@ pub struct SubtitlePlugin;
 
 impl Plugin for SubtitlePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, load_font).add_systems(
+        app.add_systems(
+            Update,
+            load_font.run_if(
+                resource_exists::<GameInstall>
+                    .and_then(bevy::ecs::schedule::common_conditions::run_once),
+            ),
+        )
+        .add_systems(
             Update,
             (start_lines, show_lines)
                 .chain()

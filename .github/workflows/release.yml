@@ -3,17 +3,23 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Dispatch from main with a tag: caches saved on a tag ref are invisible to the next release.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.2.0
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.repository }}-${{ github.ref }}
+  group: release-${{ github.repository }}-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
-  TAG_NAME: ${{ github.ref_name }}
+  TAG_NAME: ${{ inputs.tag || github.ref_name }}
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   RUSTUP_MAX_RETRIES: 10
@@ -30,12 +36,13 @@ jobs:
     steps:
       - name: Validate release tag
         run: |
-          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+          if [[ ! "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo '::error::Select a stable vX.Y.Z release tag.'
             exit 1
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -56,8 +63,8 @@ jobs:
       - name: Run gates
         run: bash dev/scripts/gates.sh
 
+  # Builds start alongside verify; publishing still requires it.
   native:
-    needs: verify
     name: Native (${{ matrix.target }})
     timeout-minutes: 90
     strategy:
@@ -68,7 +75,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: windows-2025
             target: x86_64-pc-windows-msvc
-          - os: macos-15-intel
+          # Apple Silicon runners build Intel binaries far faster; the smoke runs under Rosetta.
+          - os: macos-15
             target: x86_64-apple-darwin
           - os: macos-15
             target: aarch64-apple-darwin
@@ -76,6 +84,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free Linux disk space
         if: runner.os == 'Linux'
@@ -108,8 +117,8 @@ jobs:
         with:
           name: native-${{ matrix.target }}
           path: |
-            target/artifacts/cyrus-${{ matrix.target }}.tar.gz
-            target/artifacts/cyrus-viewer-${{ matrix.target }}.tar.gz
+            target/artifacts/cyrus-${{ matrix.target }}*
+            target/artifacts/cyrus-viewer-${{ matrix.target }}*
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -117,18 +126,24 @@ jobs:
   web:
     # Keep concurrent compilation and whole-program linking within hosted-runner memory.
     env:
-      CARGO_BUILD_JOBS: 1
-      CARGO_PROFILE_WASM_RELEASE_LTO: thin
-    needs: verify
+      CARGO_BUILD_JOBS: 2
     name: Browser bundles
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           persist-credentials: false
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - name: Add swap for parallel link-time optimization
+        run: |
+          sudo fallocate -l 12G /swapfile-cyrus
+          sudo chmod 600 /swapfile-cyrus
+          sudo mkswap /swapfile-cyrus
+          sudo swapon /swapfile-cyrus
+          free -h
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           targets: wasm32-unknown-unknown
@@ -136,10 +151,13 @@ jobs:
         with:
           shared-key: artifacts-web
           cache-workspace-crates: true
+      - name: Read wasm-bindgen version
+        id: bindgen
+        run: echo "version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)" >> "$GITHUB_OUTPUT"
       - name: Install matching wasm-bindgen
-        run: |
-          version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, ""); print $3 }' Cargo.lock)
-          cargo install wasm-bindgen-cli --version "$version" --locked
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2
+        with:
+          tool: wasm-bindgen@${{ steps.bindgen.outputs.version }}
       - name: Build and package
         run: /usr/bin/time -v bash dev/scripts/build-artifacts.sh web
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -152,7 +170,7 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: [native, web]
+    needs: [verify, native, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -163,6 +181,7 @@ jobs:
       - name: Checkout full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: refs/tags/${{ env.TAG_NAME }}
           fetch-depth: 0
           persist-credentials: false
       - name: Generate release changelog
@@ -211,16 +230,33 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ env.TAG_NAME }}
+          persist-credentials: false
+          sparse-checkout: |
+            dev/pages
+            .github/workflows/cyrus-banner.webp
+          sparse-checkout-cone-mode: false
       - name: Download browser bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: browser
           path: bundle
-      - name: Unpack site
-        run: tar -xzf bundle/cyrus-browser.tar.gz -C bundle
+      - name: Assemble site
+        # Shared engine files stay at the root so one service worker covers game/ and viewer/.
+        run: |
+          tar -xzf bundle/cyrus-browser.tar.gz -C bundle
+          mv bundle/browser site
+          mkdir site/game site/viewer
+          sed 's|<head>|<head><base href="../">|' site/index.html > site/game/index.html
+          sed 's|<head>|<head><base href="../">|' site/viewer.html > site/viewer/index.html
+          grep -q '<base href="../">' site/game/index.html site/viewer/index.html
+          rm site/viewer.html
+          cp dev/pages/index.html .github/workflows/cyrus-banner.webp site/
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: bundle/browser
+          path: site
       - name: Deploy
         id: deploy
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

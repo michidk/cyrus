@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cyrus · Redguard rebuilt in Rust</title>
+<meta name="description" content="A faithful rebuild of The Elder Scrolls Adventures: Redguard (1998) in Rust and Bevy. Bring your own GOG install.">
+<style>
+  /* Palette and type match the redguard-preservation docs theme. */
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+  :root {
+    --parchment: #f0e4cf; --parchment-light: #f5ead8; --parchment-dark: #e4d4b8;
+    --burgundy: #4a1a2a; --burgundy-dark: #361320; --gold: #b8860b; --gold-light: #d4a537;
+    --gold-muted: #9a7430; --gold-pale: #e0c888; --red: #8b1a1a; --red-light: #a62c2c;
+    --text: #2d2118; --text-muted: #7a6854; --border: #c4b08a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--text); font: 1.2rem/1.6 'Crimson Pro', Georgia, 'Palatino Linotype', serif;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(217, 200, 165, .25) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(184, 134, 11, .06) 0%, transparent 40%),
+      var(--parchment);
+  }
+  ::selection { background: var(--gold-pale); color: var(--burgundy-dark); }
+  header { background: var(--burgundy); border-bottom: 3px solid var(--gold-muted); }
+  .banner { display: block; width: 100%; max-width: 1200px; height: auto; margin: 0 auto; }
+  main { max-width: 860px; margin: 0 auto; padding: 0 20px 64px; }
+  h1, h2 { font-family: 'Cinzel', 'Palatino Linotype', 'Book Antiqua', serif; }
+  h1 { font-size: clamp(2.6rem, 8vw, 4rem); letter-spacing: .06em; margin: 40px 0 4px; color: var(--burgundy); }
+  h2 { font-size: 1.4rem; margin: 44px 0 10px; color: var(--red); font-weight: 600; }
+  .tagline { font-size: 1.35rem; margin: 0 0 6px; }
+  .sub { color: var(--text-muted); margin: 0; }
+  .note { margin: 28px 0 0; padding: 14px 18px; background: var(--parchment-dark); border-left: 3px solid var(--gold-muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 0; }
+  .actions a { padding: 10px 20px; border: 1px solid var(--border); border-radius: 3px; background: var(--parchment-light);
+    color: var(--burgundy); text-decoration: none; font: 600 .95rem 'Cinzel', serif; letter-spacing: .03em; }
+  .actions a.primary { background: var(--burgundy); border-color: var(--gold-muted); color: var(--gold-pale); }
+  .actions a:hover, .actions a:focus-visible { border-color: var(--gold); color: var(--red); }
+  .actions a.primary:hover, .actions a.primary:focus-visible { background: var(--burgundy-dark); color: var(--gold-light); }
+  ul { padding-left: 1.2em; margin: 0; }
+  li { margin: 4px 0; }
+  a { color: var(--red); }
+  a:hover { color: var(--red-light); }
+  code { background: var(--parchment-dark); padding: .1em .25em; color: var(--red-light); }
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 1rem; }
+</style>
+</head>
+<body>
+<header><img class="banner" src="cyrus-banner.webp" width="1200" height="400" alt="A green dragon watches an airship cross Redguard's island landscape"></header>
+<main>
+  <h1>cyrus</h1>
+  <p class="tagline">A faithful rebuild of <em>The Elder Scrolls Adventures: Redguard</em> (1998) in Rust and Bevy.</p>
+  <p class="sub">Bring your own copy: cyrus ships no game data and reads your GOG install at runtime.</p>
+
+  <div class="actions">
+    <a class="primary" href="https://github.com/michidk/cyrus/releases/latest">Download</a>
+    <a href="game/">Play in the browser</a>
+    <a href="viewer/">Asset viewer</a>
+    <a href="https://github.com/michidk/cyrus">Source on GitHub</a>
+    <a href="https://www.gog.com/en/game/the_elder_scrolls_adventures_redguard">Buy Redguard on GOG</a>
+  </div>
+
+  <p class="note">cyrus is early in development. Startup presentation and world viewing work, but the game is not yet playable.
+  The browser version asks for a URL serving your own Redguard install; see the
+  <a href="https://github.com/michidk/cyrus/blob/main/docs/SETUP.md">setup guide</a>.</p>
+
+  <h2>What works today</h2>
+  <ul>
+    <li>The installed splash and title, then the data-driven book menu.</li>
+    <li>Unlocked movies, persistent settings, and New Game into the starting world.</li>
+    <li>Redguard worlds loaded from a local GOG install in the native or browser viewer, with a free camera.</li>
+  </ul>
+
+  <h2>Faithful by default</h2>
+  <p>Faithful mode reproduces what the player experiences: visuals, audio, controls, camera, script and animation timing, and outcomes.
+  Technical limits are not part of that goal; cyrus loads faster and runs at higher frame rates without changing game behaviour.
+  Modern controls and graphics remain opt-in.</p>
+  <p>File formats and engine documentation come from
+  <a href="https://github.com/michidk/redguard-preservation">redguard-preservation</a>.
+  <a href="https://github.com/RGUnity/redguard-unity">RGUnity</a> inspired cyrus and provided foundational research.</p>
+
+  <h2>Get involved</h2>
+  <p>Read the <a href="https://github.com/michidk/cyrus/blob/main/docs/ROADMAP.md">roadmap</a>,
+  the <a href="https://github.com/michidk/cyrus/blob/main/CONTRIBUTING.md">contributing guide</a>,
+  or join the <a href="https://discord.com/invite/xjCCyqbxkp">Discord</a> (<code>rg-unity-devtalk</code>).</p>
+
+  <footer>
+    cyrus is written by LLM coding agents (Codex and Claude Code), directed and reviewed by the maintainer against the original game.
+    Not affiliated with Bethesda Softworks.
+  </footer>
+</main>
+</body>
+</html>
