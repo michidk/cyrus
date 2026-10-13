@@ -24,7 +24,7 @@ and implementation docs, rather than repeated status histories here.
 
 ## Next work
 
-- Establish production actor eligibility and invocation timing, then connect automatic animation and SOUP execution. Supplied-tick inspection is already supported.
+- Connect New Game world entry to automatic eligible actor updates, using the shared clock and authored script/animation order. START must visibly advance without inspection commands; repeat across all installed worlds. Supplied-tick inspection is already supported.
 - Finish terrain/model lighting, water-edge normal retention and sky/sun filtering comparisons.
 - Connect automatic sound triggers, surface remapping and moving emitters.
 - Feed production player/script state into the HUD and verify native/browser presentation.
@@ -33,6 +33,24 @@ and implementation docs, rather than repeated status histories here.
 The [SOUP completion checklist](plans/2026-10-12-soup-completion.md) owns detailed
 script service, scheduling and persistence dependencies. Crate ownership is in
 [MAP.md](MAP.md); launch and cache requirements are in [SETUP.md](SETUP.md).
+
+### SOUP completion status
+
+**Verified:** SOUP is not complete from an implementation standpoint. The portable
+VM, asset preparation and explicit game hosts exist and have native/WASM checks.
+Normal New Game world entry prepares actors and render bindings, but does not
+supply the automatic ordinary script/animation updates. Loading the correct map
+therefore does not establish animated or playable world behavior.
+
+| Requirement | Current state |
+| --- | --- |
+| Build the existing native and browser cores | Verified on committed SOUP increments; compilation is not gameplay acceptance |
+| Load installed worlds and retain scripts/models | Implemented; all 29 WORLD.INI entries have export coverage |
+| Run script/animation stages explicitly | Implemented for the documented supported services |
+| Start eligible world animations and scripts automatically | Incomplete; first acceptance is New Game into START without debug stepping |
+| Execute every required native service and actor lifecycle | Incomplete: navigation, remaining receivers/properties, synchronization and gameplay services |
+| Preserve progression through revisits and saves | Not implemented |
+| Complete original/native/browser playthrough | Not verified |
 
 ### Active assignments
 
@@ -44,7 +62,7 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 | Sound | Implement Game Sound Effects |
 | HUD | Implement the Game Overlay UI |
 
-Remaining animation scheduling, startup fidelity follow-up and stages 3–6 are unassigned.
+The SOUP assignment includes remaining animation and script scheduling. Startup fidelity follow-up and stages 3–6 are unassigned.
 
 ### Crate boundaries
 
@@ -194,17 +212,21 @@ world playback is incomplete.
 
 ### Animation and scripts
 
-- [x] **Verified:** script schema 4 exports actor-load attribute defaults through preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59), using installed SYSTEM.INI. Installed-map tests and a native headless PALACE check verify the initialized attributes. Model-path message-group assignment and complete actor initialization remain open.
+- [x] **Verified:** actor-load preparation exports attribute defaults through preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59), using installed SYSTEM.INI. Installed-map tests and a native headless PALACE check verify the initialized attributes. Model-path message-group assignment and complete actor initialization remain open.
 - [x] Retained animation metadata and source-mapped i32/reconstructed-i16 poses; supplied-tick type-0/type-1 requests, priorities, default replacement, exit tails and authored sound markers. **Verified:** animation transition and grounded-update contracts cover changed current/pending defaults and retained frames.
 - [x] Portable SOUP VM and logical actors; explicit animation, waits, flags, attributes, routed tasks, spatial attachment/rotation and player queries share state with presentation. **Verified:** FLAG2 supplied-tick sequences and PALACE headless spatial contracts.
 - [x] Explicit activation shares receiver ownership, pending prompts and timers with HUD drawing. **Verified:** [activation increment](https://github.com/michidk/cyrus/commit/5358aa0) includes script/headless HUD contracts and installed RTX labels, including text-only entries.
-- [x] Shared clock arithmetic consumes validated installed settings and explicit BIOS samples, retaining startup warmup, smoothing and fractional nominal ticks. **Verified:** clock contracts, installed native/browser schema-6 preparation and headless START loading. This does not schedule actors.
-- [x] Schema 7 retains typed RAHK native calls separately from script continuations; explicit dispatch preserves cursors and tasks. Fresh-world actor ordering, map defaults and axis-lock restoration have supplied-stage contracts. **Verified:** all installed maps decode, native PALACE stage/error checks and installed WASM worker preparation pass. Automatic eligibility and remaining hook services are not implemented.
+- [x] Shared clock arithmetic consumes validated installed settings and explicit BIOS samples, retaining startup warmup, smoothing and fractional nominal ticks. Menu entry/exit and world replacement preserve the documented shared clock state. **Verified:** clock contracts, installed native/browser schema-6 preparation and headless START loading. This does not schedule actors.
+- [x] The current schema 8 retains typed RAHK native calls separately from script continuations; explicit dispatch preserves cursors and tasks. Fresh-world actor ordering, map defaults and axis-lock restoration have supplied-stage contracts. **Verified:** all installed maps decode, native PALACE stage/error checks and installed WASM worker preparation pass. Automatic eligibility and remaining hook services are not implemented.
 - [x] Ordinary `AtNodeMarker` queries share receiver-local spatial state and matching world marker metadata. **Verified:** installed-map preparation, routed attached queries and original-instruction distance/error comparisons. Explicit HIDEOUT invocation reports its out-of-range marker; that map is not selected by installed WORLD.INI.
+- [x] Explicit ordinary stages honor EnableScript/DisableScript, task bypass, installed task/animation switches and unpaused-task hook admission. **Verified:** [script-control contracts](https://github.com/michidk/cyrus/commit/3419b23), [schema-8 update switches](https://github.com/michidk/cyrus/commit/4509128), original-instruction comparisons, installed worker exports and native PALACE checks. These gates do not supply automatic callers.
+- [x] Relative `MoveByAxis` and `sMoveByAxis` tasks update actor-owned local positions with deferred family refresh. **Verified:** [movement increment](https://github.com/michidk/cyrus/commit/73e983a), installed ISLAND mechanism and original rounding/completion comparisons.
+- [x] `Rnd` and `QuickRnd` use one game-owned stream retained across world replacement. **Verified:** [random increment](https://github.com/michidk/cyrus/commit/d5a77cb), original result/state comparisons and native VILEDOG draws across world changes. Full consumer order and sky integration remain open.
+- [x] Ordinary actor cells use decoded map coordinates and retain authored traversal order. **Verified:** [coordinate fix](https://github.com/michidk/cyrus/commit/3c467ce), installed PALACE selection and a deliberately wrong original-instruction comparison. Dynamic cell migration remains open.
 - [ ] Establish production invocation policy, eligible actors/callers and timing. Do not substitute a guessed fixed rate for original behavior.
 - [ ] Finish state-dependent defaults, remaining group types, cancellation/event commands and model replacement for all actors.
 - [ ] Complete object routing, variable references, scriptless receivers, allocation/recycling and model-coupled attributes; run all required scripts automatically through the [SOUP checklist](plans/2026-10-12-soup-completion.md).
-- [ ] Implement required object groups, movement, lights, visibility, NPC navigation/perception, hooks and synchronization with animation, speech and sound.
+- [ ] Implement Wander and populated walk-map routing/steering, remaining object groups, movement, lights, visibility, NPC perception, hooks and synchronization with animation, speech and sound. Empty-map Wander is not a substitute for navigation or automatic scheduling.
 - [ ] Handle script-requested world loads and cleanup; verify actor removal and world replacement with active runtime state.
 
 ### Sound and HUD
@@ -286,6 +308,8 @@ Later. Requires full-game fidelity; packaging infrastructure already exists.
 - [ ] Measure loading, frame pacing and bounded memory across repeated transitions; fix observed bottlenecks.
 - [x] Audit tagged native packages. **Verified:** all eight archives from the [tagged release run](https://github.com/michidk/cyrus/actions/runs/38272630723) contain only the executable and README. Linux game/viewer help runs in a clean runtime container; the packaged game reaches the menu and enters New Game with a read-only install. Windows and both macOS build/package/help jobs passed on their runners.
 - [x] Complete browser packaging and tagged publication. **Verified:** [v0.1.1](https://github.com/michidk/cyrus/releases/tag/v0.1.1) is published with all eight native archives, the browser archive and `SHA256SUMS`. The [release pipeline](https://github.com/michidk/cyrus/actions/runs/38314713622) passed every job; all nine archive checksums match GitHub upload digests.
+- [x] Add release-triggered GitHub Pages deployment of the packaged browser build. **Verified:** [workflow implementation](https://github.com/michidk/cyrus/commit/ecd885f). Deployment success remains separate from workflow presence.
+- [ ] Fix the artifact-packaging test to stop its extracted release shell block before later workflow jobs, and verify the Pages deployment. **Verified:** the new Pages job exposes this [CI failure](https://github.com/michidk/cyrus/actions/runs/38356786059); local `python3 dev/scripts/test-build-artifacts.py` reproduces it. This is not a SOUP compiler failure.
 - [ ] Publish setup, controls and known limitations; verify install, play, save and resume on a clean machine.
 
 Follow [METHOD.md](METHOD.md) for evidence and fidelity, [WORKFLOW.md](WORKFLOW.md)

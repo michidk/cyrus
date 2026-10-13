@@ -12,6 +12,11 @@ subsequent increments is recorded in the roadmap; unchecked items remain open.
 
 ## Current implementation
 
+The first automatic runtime acceptance is New Game into START: eligible actors
+must advance their authored scripts and rendered animation without `step_script`
+or manually bound playback. Correct world loading and a passing build do not
+satisfy this requirement. Repeat the same acceptance across installed worlds.
+
 **Verified:** the implementation is a portable execution core with explicit game
 hosts and inspection tools. Normal world loading prepares scripts but does not
 automatically execute all eligible actors. `ScriptPlugin` prepares the registry,
