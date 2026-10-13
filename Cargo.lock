@@ -2753,6 +2753,7 @@ dependencies = [
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-startup",
  "cyrus-world",
  "serde",
  "serde_json",
@@ -2893,21 +2894,16 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "bevy",
- "cyrus-app",
  "cyrus-assets",
  "cyrus-audio",
  "cyrus-collision",
  "cyrus-game",
- "cyrus-media",
  "cyrus-text",
  "cyrus-world",
- "image",
- "js-sys",
  "redguard-preservation",
  "serde",
  "serde_json",
  "toml 0.9.12+spec-1.1.0",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -2917,6 +2913,27 @@ dependencies = [
  "anyhow",
  "cyrus-assets",
  "serde",
+]
+
+[[package]]
+name = "cyrus-startup"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "cyrus-app",
+ "cyrus-assets",
+ "cyrus-audio",
+ "cyrus-game",
+ "cyrus-media",
+ "cyrus-text",
+ "cyrus-world",
+ "image",
+ "js-sys",
+ "redguard-preservation",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -2957,6 +2974,7 @@ dependencies = [
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-startup",
  "cyrus-world",
  "getrandom 0.3.4",
  "js-sys",

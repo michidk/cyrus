@@ -16,6 +16,7 @@ cyrus-app = { path = "../cyrus-app" }
 cyrus-assets = { workspace = true, features = ["native"] }
 cyrus-world.workspace = true
 cyrus-render.workspace = true
+cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default"] }
 cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true

@@ -149,9 +149,9 @@ fn main() -> anyhow::Result<()> {
         ));
         debug::register(&mut app);
         if startup {
-            app.add_plugins(cyrus_render::startup::StartupPlugin);
+            app.add_plugins(cyrus_startup::StartupPlugin);
             if args.launch.skip_startup {
-                app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash());
+                app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
             }
         }
     }
@@ -162,7 +162,7 @@ fn main() -> anyhow::Result<()> {
         .insert_resource(cyrus_world::lifecycle::SceneRequest(settings.scene.clone()))
         .add_plugins((
             GamePlugin,
-            cyrus_render::loading::LoadingPlugin,
+            cyrus_startup::LoadingPlugin,
             cyrus_app::LoadingOverlayPlugin,
             scene::ScenePlugin,
             control::ControlPlugin,

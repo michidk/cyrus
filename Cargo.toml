@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 exclude = ["dev/vendor/smk"]
 # cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
-default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-media", "crates/cyrus-audio"]
+default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
 [workspace.package]
 version = "0.1.1"
@@ -27,6 +27,7 @@ cyrus-collision = { path = "crates/cyrus-collision" }
 cyrus-render = { path = "crates/cyrus-render" }
 cyrus-media = { path = "crates/cyrus-media" }
 cyrus-audio = { path = "crates/cyrus-audio" }
+cyrus-startup = { path = "crates/cyrus-startup" }
 cyrus-assets = { path = "crates/cyrus-assets" }
 cyrus-script = { path = "crates/cyrus-script" }
 cyrus-game = { path = "crates/cyrus-game" }

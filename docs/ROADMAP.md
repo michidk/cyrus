@@ -38,7 +38,6 @@ script service, scheduling and persistence dependencies. Crate ownership is in
 
 | Work | Session |
 | --- | --- |
-| Startup/menu comparison and startup crate extraction after audio | Codex, `t3/compare-menu-presentation`; `magic/artifacts/2026-10-12-menu-comparison/` |
 | SOUP execution and script integration | Codex, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Model lighting and world appearance comparisons | Codex, `t3/match-original-visuals`; `magic/artifacts/2026-10-12-local-lighting/` |
 | Sky | Fix Faithful Mode Skybox, `sky-domain-research` |
@@ -52,7 +51,7 @@ Remaining animation scheduling, startup fidelity follow-up and stages 3–6 are 
 - [x] Keep shared font metrics, wrapping and rasterization in `cyrus-text`; screen-specific text placement remains with presentation and FNT parsing with preservation.
 - [x] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. **Verified:** installed streamed frame/PCM contracts, native headless START, installed WASM worker exports, metadata parity and isolated core/browser builds.
 - [x] Extract `cyrus-audio`: effects, speech playback, music and browser sound-bank playback. Presentation supplies listener, startup readiness and cinematic pause state. **Verified:** installed decoder/channel/cleanup contracts, preference/animation/cue ordering, native menu/control/CD state, headless START, WASM and isolated core checks; full gates passed with zero install skips.
-- [ ] Extract `cyrus-startup` after audio boundaries are established: splash, title, book menu, settings, cinematic presentation and world-entry loading, with one presentation facade.
+- [x] Extract `cyrus-startup`: splash, title, book menu, settings, cinematic presentation and world-entry loading, with one presentation facade and native preparation boundary. **Verified:** installed startup/movie/preferences contracts, full gates with zero install skips, native menu/movie/world-entry/Quit, integrated optimized browser and installed WASM worker; presentation schedules and cache formats preserved. Fidelity comparison remains open.
 - [x] Extract `cyrus-collision` with terrain, model and static-world query contracts; keep player admission and response in gameplay and serialized inputs in assets.
 - [ ] Revisit `cyrus-animation` after production scheduling and actor ownership settle; retain explicit requests/ticks in the core and mesh presentation outside it.
 

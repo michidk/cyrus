@@ -8,11 +8,12 @@ use cyrus_game::AppState;
 use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Mutex};
 
+/// Prepares native menu/HUD assets, or scans the install for direct/headless hosts.
 pub struct LoadingPlugin;
 
 /// Required menu/HUD export has completed for this native session.
 #[derive(Resource)]
-pub struct MenuPrepared;
+pub(crate) struct MenuPrepared;
 
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
@@ -31,7 +32,7 @@ struct Channel(Arc<Mutex<Receiver<Progress>>>);
 fn start(
     mut commands: Commands,
     install: Res<GameInstall>,
-    mut startup: Option<ResMut<crate::startup::StartupPresentation>>,
+    mut startup: Option<ResMut<crate::StartupPresentation>>,
     existing: Option<Res<Channel>>,
     preloaded: Option<Res<Preloaded>>,
     menu_prepared: Option<Res<MenuPrepared>>,
@@ -87,7 +88,7 @@ fn start(
 fn poll(
     mut commands: Commands,
     channel: Option<Res<Channel>>,
-    mut startup: Option<ResMut<crate::startup::StartupPresentation>>,
+    mut startup: Option<ResMut<crate::StartupPresentation>>,
     mut progress: ResMut<cyrus_app::LoadingProgress>,
     mut next: ResMut<NextState<AppState>>,
 ) {
@@ -139,7 +140,7 @@ fn teardown(mut commands: Commands, mut progress: ResMut<cyrus_app::LoadingProgr
     commands.remove_resource::<Channel>();
 }
 
-pub use cyrus_assets::loading::{Preloaded, Progress, TypeCount, preload};
+use cyrus_assets::loading::{Preloaded, Progress, preload};
 
 fn write_report(report: &Preloaded) -> std::io::Result<()> {
     std::fs::create_dir_all("cyrus-config")?;

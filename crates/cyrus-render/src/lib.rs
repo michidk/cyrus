@@ -1,16 +1,13 @@
-//! Shared native/browser graphics, camera, menu, HUD and cinematic presentation.
+//! Shared native/browser graphics, camera, HUD and subtitles.
 pub mod animation;
 pub mod camera;
 pub mod environment;
 pub mod fog;
 pub mod hud;
 pub mod lighting;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod loading;
 pub mod player_model;
 pub mod script_transform;
 mod sky;
-pub mod startup;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod subtitles;
 mod water;

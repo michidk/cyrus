@@ -1,4 +1,4 @@
-//! Startup images rendered from the install's authored splash and title assets.
+//! Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 mod book_motion;
 mod loading;
 mod menu;
@@ -8,10 +8,14 @@ mod movie;
 mod movie_native;
 #[cfg(target_arch = "wasm32")]
 mod movie_stream;
+#[cfg(not(target_arch = "wasm32"))]
+mod preparation;
 mod settings;
 use bevy::{asset::LoadState, prelude::*};
 use cyrus_game::AppState;
 pub use menu::MenuState;
+#[cfg(not(target_arch = "wasm32"))]
+pub use preparation::LoadingPlugin;
 
 /// Plays installed startup images through the installed book menu, before gameplay.
 pub struct StartupPlugin;

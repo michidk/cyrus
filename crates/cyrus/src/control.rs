@@ -105,8 +105,8 @@ fn handle(
         ResMut<NextState<cyrus_game::AppState>>,
     ),
     (mut startup, menu): (
-        Option<ResMut<cyrus_render::startup::StartupPresentation>>,
-        Option<Res<cyrus_render::startup::MenuState>>,
+        Option<ResMut<cyrus_startup::StartupPresentation>>,
+        Option<Res<cyrus_startup::MenuState>>,
     ),
     Inspection {
         preloaded,

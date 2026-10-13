@@ -111,7 +111,9 @@ rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli   # v
 just run-web --install /path/to/Redguard # supplies files automatically to game and viewer
 ```
 
-Without a `scene` query, the page runs startup through the book menu.
+Without a `scene` query, the page runs startup through the book menu. Native and
+browser hosts compose this presentation through `cyrus-startup`; scene graphics
+and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
 Native `--scene`, `--skip-startup`, `--water`, `--fog`, and `--sky` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to

@@ -34,7 +34,9 @@ fn poll(
     mut startup: ResMut<StartupPresentation>,
     input: (Res<ButtonInput<KeyCode>>, ResMut<NextState<AppState>>),
     entry: WorldEntry,
-    #[cfg(not(target_arch = "wasm32"))] menu_prepared: Option<Res<crate::loading::MenuPrepared>>,
+    #[cfg(not(target_arch = "wasm32"))] menu_prepared: Option<
+        Res<crate::preparation::MenuPrepared>,
+    >,
     #[cfg(target_arch = "wasm32")] sound_bank: Option<Res<cyrus_audio::SoundBankHandle>>,
     #[cfg(target_arch = "wasm32")] sound_settings: Option<Res<cyrus_audio::sound::SoundSettings>>,
     rendering: (
@@ -125,7 +127,9 @@ fn poll(
                         .load::<cyrus_game::player::data::PlayerScene>(prepared.player_path.clone())
                         .untyped(),
                     assets
-                        .load::<crate::environment::Environment>(prepared.environment_path.clone())
+                        .load::<cyrus_assets::environment::Environment>(
+                            prepared.environment_path.clone(),
+                        )
                         .untyped(),
                     assets.load::<Gltf>(prepared.scene_path.clone()).untyped(),
                     assets

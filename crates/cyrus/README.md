@@ -51,3 +51,7 @@ Native-only flags include headless/control and export commands. `--export-scene
 --scene NAME` prepares one world and exits; `--list-worlds` prints accepted names
 as JSON. The browser install service uses these existing asset paths without
 starting a game window.
+
+[cyrus-startup](../cyrus-startup/README.md) supplies splash, title, the book menu,
+settings, cinematic playback and world-entry loading. Hosts add it alongside
+cyrus-render and cyrus-audio.

@@ -59,3 +59,7 @@ Browser audio activates on keyboard input or pointer release. Movies, menu effec
 CD music share native playback rules; `--export-startup` exports the required CD tracks
 and installed assignments. Runtime exceptions and graphics context loss display an error
 instead of leaving an unexplained black screen.
+
+[cyrus-startup](../cyrus-startup/README.md) supplies splash, title, the book menu,
+settings, cinematic playback and world-entry loading. Hosts add it alongside
+cyrus-render and cyrus-audio.

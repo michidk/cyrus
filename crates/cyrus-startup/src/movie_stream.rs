@@ -5,7 +5,7 @@ use cyrus_media::MovieStream;
 use std::collections::VecDeque;
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(module = "/src/startup/movie_stream.js")]
+#[wasm_bindgen(module = "/src/movie_stream.js")]
 extern "C" {
     #[wasm_bindgen(catch, js_name = openMovie)]
     fn open_movie(

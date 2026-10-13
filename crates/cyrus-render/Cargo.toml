@@ -1,12 +1,11 @@
 [package]
 name = "cyrus-render"
-description = "Shared scene, camera, menu, HUD and cinematic presentation."
+description = "Shared scene, camera, HUD and subtitle presentation."
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 cyrus-audio.workspace = true
-cyrus-app = { path = "../cyrus-app" }
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-game.workspace = true
@@ -15,17 +14,10 @@ cyrus-text.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# Smacker cutscenes; LGPL-2.1 (chosen by the maintainer).
-cyrus-media.workspace = true
-image = { version = "0.25", default-features = false, features = ["png"] }
 
-# Native presentation adapters consume installed media.
+# Native subtitles consume installed movie definitions.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cyrus-assets = { workspace = true, features = ["native"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2"
-js-sys = "0.3"
 
 [dev-dependencies]
 cyrus-collision.workspace = true

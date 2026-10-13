@@ -38,14 +38,13 @@ impl Plugin for ScenePlugin {
                 OnEnter(AppState::Loading),
                 (clear_attempt, load_requested)
                     .chain()
-                    .run_if(resource_exists::<cyrus_render::startup::StartGame>),
+                    .run_if(resource_exists::<cyrus_startup::StartGame>),
             )
             .add_systems(Update, finish.before(WorldChange))
             .add_systems(
                 Update,
                 load_requested.before(WorldChange).after(finish).run_if(
-                    in_state(AppState::InGame)
-                        .or_else(resource_exists::<cyrus_render::startup::StartGame>),
+                    in_state(AppState::InGame).or_else(resource_exists::<cyrus_startup::StartGame>),
                 ),
             );
     }
@@ -62,7 +61,7 @@ fn load_requested(
     current: Res<CurrentScene>,
     pending: Option<Res<Preparation>>,
     last: Option<Res<LastAttempt>>,
-    game: Option<Res<cyrus_render::startup::StartGame>>,
+    game: Option<Res<cyrus_startup::StartGame>>,
 ) {
     let name = request.0.to_ascii_uppercase();
     if pending.is_some()

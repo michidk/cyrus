@@ -113,7 +113,7 @@ module where it is defined and regenerate.
 - `src/packets.rs` — Sequential packets retain only the current compressed block.
 - `src/stream.rs` — Incremental movie packets retain the existing Smacker codec and validate exported metadata.
 
-## `cyrus-render` — Shared native/browser graphics, camera, menu, HUD and cinematic presentation.
+## `cyrus-render` — Shared native/browser graphics, camera, HUD and subtitles.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
@@ -122,19 +122,9 @@ module where it is defined and regenerate.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
-- `src/loading.rs` — Startup preload: scan the install and parse every known file with the
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
-- `src/startup/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
-- `src/startup/loading.rs` — The installed title stays visible until menu or world assets are ready.
-- `src/startup/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
-- `src/startup/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
-- `src/startup/mod.rs` — Startup images rendered from the install's authored splash and title assets.
-- `src/startup/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
-- `src/startup/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
-- `src/startup/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
-- `src/startup/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
@@ -143,6 +133,18 @@ module where it is defined and regenerate.
 - `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
 - `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
 - `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
+
+## `cyrus-startup` — Installed splash, title, book menu, settings, cinematics and world-entry presentation.
+
+- `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
+- `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
+- `src/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
+- `src/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
+- `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.
+- `src/movie_native.rs` — Native packet decoding and bounded audio playback without whole-movie PCM preparation.
+- `src/movie_stream.rs` — Browser fetch backpressure and packet PCM retain bounded movie preparation.
+- `src/preparation.rs` — Startup preload: scan the install and parse every known file with the
+- `src/settings.rs` — Persistent book preferences and their existing keyboard-input bindings.
 
 ## `cyrus-text` — Redguard FNT text: glyph lookup, advance, wrapping and pixel output, following
 

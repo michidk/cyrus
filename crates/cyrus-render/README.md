@@ -1,7 +1,7 @@
 # cyrus-render
 
 Native/browser presentation: scene graphics, environment, mesh poses, inspection
-camera, startup/book menu, HUD, subtitles and cinematics.
+camera, HUD and subtitles.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 
@@ -9,13 +9,12 @@ Depends on game/world/assets; none of those crates depends on presentation.
 `CameraPlugin` and `AnimationRenderPlugin`. Native and browser hosts submit the
 same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
 Script-driven actor poses retain the same scene origin as exported world placements and markers.
-HUD and startup remain separate plugins. Hosts install `cyrus-audio` separately;
+HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
 
 Menu edits persist before applying. Audio preference application precedes
 `AnimationSystems`, which precedes cue consumption in the same Update. Mesh poses
-apply in PostUpdate. Native media workers and browser cooperative decoding retain
-their existing cancellation, seeking and menu-return behavior.
+apply in PostUpdate. Cinematic presentation is owned by cyrus-startup.
 
 See [SETUP](../../docs/SETUP.md) for entry points, controls, export prerequisites,
 settings and fidelity limitations. Run `cargo test -p cyrus-render` for graphics
@@ -100,67 +99,8 @@ and horizontal then vertical integer rounding, following preservation
 Sun alpha rounding, other texture filtering, lighting, and physical-hardware
 pixel parity remain unverified.
 
-Default windowed startup plays the installed Windows Glide swoosh animation and decoded
-640×480 title image, then opens the book menu once required assets are ready.
-Native menu/HUD export begins after the title becomes visible. The full
-parser-coverage scan remains in direct/headless inspection launches.
-Loading stays asynchronous; skipping the splash retains required preparation.
-The title uses the configured FNT font and documented bottom-label positions.
-The bottom-right red title label reports menu/HUD preparation, menu asset loading,
-and browser sound loading. Labels describe cyrus stages rather than original map IDs.
-**Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
-the authored fade. The cache regenerates when replacing the older DOS shield
-splash. The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
-documents the driver variants and DLL format. Splash rasterization uses
-supersampling; Glide edge coverage, floating-point approximations and pixel
-quantization need a hardware comparison before claiming pixel-exact rendering.
-
-The book menu derives entries, layout, texture slots, widgets, and action IDs
-from `MENU.INI` through rgpre, following preservation's [book-menu rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md).
-Its portable `cache/menu/book.menu` retains all authored model frames and topology,
-textures, indexed fonts, previews, and defaults. Native and browser builds project
-the current book pose and redraw neighboring-page text during camera entry, page
-turns, and Quit closing. Input waits through the final settling update.
-Navigation skips disabled/hidden entries and wraps. Options opens Display, Sound,
-and Controls; Movies browses unlocked definitions and previews. Native Quit exits
-after the authored close. Browser Quit requests tab closure and leaves the menu
-running if the host refuses.
-Native Movies playback reads installed Smacker files or the GOG CD image via
-rgpre and decodes them in-process with the `smk` crate. Playback starts from the
-header and first packet, without reading the entire movie or decoding its full
-audio track. Two video frames and four audio blocks bound decoded lookahead;
-the audio callback never waits for disk reads or decoding. Audio starvation
-outputs silence and freezes the sample clock without losing stereo alignment.
-Dropping playback cancels the bounded readers and producers. It retains menu selection, consumes original
-skip points and timed subtitle definitions, and exposes progress through menu
-control state. Browser Movies uses locally exported compressed video, first-track
-WAV audio, subtitle definitions, and the configured font. Video decodes as
-compressed packets arrive; native browser audio streams the WAV and supplies the
-playback clock. Buffering pauses that clock, forward skips retain decoder state,
-and menu return cancels downloads. The preview server supports audio byte ranges.
-Native and browser playback share skip points, subtitles, interlace and menu return.
-New Game enters the installed starting world and marker. Load temporarily starts
-the same fresh world. Shared world entry waits for preparation, required asset dependencies and
-spawned scene instances behind the destination's installed GXA artwork, with preservation's
-red bar and REDSEL percentage label. Progress counts completed loading stages.
-Bottom-right red REDSEL status text reads native preparation stage labels and updates during asset loading and scene
-entry. Asset loading names the first pending top-level asset; dependencies remain
-in that asset's stage. Labels describe cyrus work rather than original loading messages.
-The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...feat/menu-game-entry)
-supplies the entry parser and loading layout. Saves, full story/gameplay
-initialization and progression unlocks remain unavailable.
-
-`MenuPreferences` stores original action units and fifteen binding codes in
-native `cyrus-config/menu.json` or browser localStorage. It validates local state,
-saves before applying edits, and leaves malformed files intact. Existing player
-input uses edited bindings, including direct scene launches. Subtitle and interlace
-settings apply to cinematics; saved Sound preferences apply to shared
-effects and CD music, and native speech. Browser CD tracks use exported WAV files and
-installed world assignments; native playback reads the CD image. Book motion and
-direction/capture feedback dispatch installed effects through the shared native/browser sound path, following
-preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
-**Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
-rebinding, lighting, camera-plane clipping and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
+Startup, the book menu, settings, cinematic playback and world-entry loading live in
+[cyrus-startup](../cyrus-startup/README.md).
 
 **Verified:** preservation's [HUD evidence](https://github.com/michidk/redguard-preservation/pull/28)
 establishes one candle update per rendered frame with a 60 Hz Glide retrace limit.

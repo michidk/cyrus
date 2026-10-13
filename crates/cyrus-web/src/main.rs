@@ -63,21 +63,20 @@ fn main() {
         cyrus_audio::sound::SoundPlugin,
         cyrus_audio::music::MusicPlugin,
     ));
-    app.add_plugins(cyrus_render::startup::StartupPlugin)
-        .add_systems(
-            Update,
-            load_new_game
-                .run_if(in_state(cyrus_game::AppState::Loading))
-                .run_if(resource_exists::<cyrus_render::startup::StartGame>),
-        );
+    app.add_plugins(cyrus_startup::StartupPlugin).add_systems(
+        Update,
+        load_new_game
+            .run_if(in_state(cyrus_game::AppState::Loading))
+            .run_if(resource_exists::<cyrus_startup::StartGame>),
+    );
     if options.skip_startup {
-        app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash());
+        app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
     }
     app.add_plugins(cyrus_debug::DebugMenuPlugin);
     debug::register(&mut app);
     if let Some(scene) = scene {
-        app.insert_resource(cyrus_render::startup::StartupPresentation::without_splash())
-            .insert_resource(cyrus_render::startup::StartGame::default())
+        app.insert_resource(cyrus_startup::StartupPresentation::without_splash())
+            .insert_resource(cyrus_startup::StartGame::default())
             .insert_resource(cyrus_world::lifecycle::SceneRequest(scene));
     }
     #[cfg(target_arch = "wasm32")]
@@ -97,7 +96,7 @@ fn load_new_game(
     mut commands: Commands,
     assets: Res<AssetServer>,
     request: Res<cyrus_world::lifecycle::SceneRequest>,
-    startup: Res<cyrus_render::startup::StartupPresentation>,
+    startup: Res<cyrus_startup::StartupPresentation>,
     prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
 ) {
     if !startup.loading_visible() || prepared.is_some() {
@@ -110,7 +109,7 @@ fn load_new_game(
 }
 
 #[cfg(target_arch = "wasm32")]
-fn quit_tab(mut requests: MessageReader<cyrus_render::startup::QuitRequest>) {
+fn quit_tab(mut requests: MessageReader<cyrus_startup::QuitRequest>) {
     for _ in requests.read() {
         if let Some(window) = web_sys::window() {
             // Browsers refuse to close ordinary user-opened tabs; keep the menu running.

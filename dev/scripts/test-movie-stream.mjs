@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import * as movie from '../../crates/cyrus-render/src/startup/movie_stream.js';
+import * as movie from '../../crates/cyrus-startup/src/movie_stream.js';
 
 let clock = 0;
 Object.defineProperty(globalThis, 'performance', { value: { now: () => clock } });
