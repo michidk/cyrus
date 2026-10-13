@@ -110,9 +110,16 @@ that reuses Faithful results. Existing Water and Fog switches remain independent
 **Unknown:** full pixel parity and remaining texture-filtering and combiner precision.
 **Verified:** preservation's [dirty-normal admission rules](https://github.com/michidk/redguard-preservation/blob/ebd7d9e/docs/engine/water.md#dirty-normals-and-retained-lighting)
 explain both retained edge normals in the captured original water update.
-The omitted diagonal retains its normal and RGB unless another water vertex
-marks it or the camera's terrain grid rebuilds. Cyrus still recomputes the full
-grid; applying the published rule and comparing rendered water edges remain open.
+Faithful water now replaces only admitted vertex normals and derives lighting
+from the retained or replaced values. The omitted diagonal retains its base
+normal and RGB unless another selected water vertex admits it. World changes
+and Modern-to-Faithful switches restore the base normals before admission;
+shared source meshes remain unchanged. The renderer test covers each transition. Matched 640×480 ISLAND ground captures
+compare the original, native and headless browser; shoreline captures compare
+native/browser at one pose without synchronized wave clocks.
+**Unknown:** original finite camera-window boundary behavior and rendered
+water-edge pixel parity. Cyrus still displaces its whole terrain grid; candidate
+face normals are calculated globally before selective vertex replacement.
 
 Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates

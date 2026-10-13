@@ -32,7 +32,30 @@ pub(crate) struct WaterPlayback {
     mode: Mode,
     grid: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
+    dirty_normals: Vec<bool>,
     rgb: Vec<[f32; 3]>,
+}
+
+/// Nonzero admission from preservation's water dirty-normal rules, in raw WLD rows.
+fn dirty_normals(water: &Water) -> Vec<bool> {
+    let mut dirty = vec![false; water.animated_vertices.len()];
+    for (vertex, &animated) in water.animated_vertices.iter().enumerate() {
+        if !animated {
+            continue;
+        }
+        let x = vertex % water.side;
+        let row = vertex / water.side;
+        for (dx, dr) in [(0, 0), (-1, 0), (-1, -1), (0, -1), (1, 0), (0, 1)] {
+            if let Some(x) = x.checked_add_signed(dx)
+                && let Some(row) = row.checked_add_signed(dr)
+                && x < water.side
+                && row < water.side
+            {
+                dirty[row * water.side + x] = true;
+            }
+        }
+    }
+    dirty
 }
 
 /// Modern art-style preset: two smooth crossing waves around the original mean height.
@@ -191,6 +214,7 @@ pub(crate) fn animate_water(
                 view: None,
             });
         }
+        playback.dirty_normals = water.map_or_else(Vec::new, dirty_normals);
         playback.source = Some(request.0.id());
     }
     let ticks = (time.elapsed_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
@@ -199,6 +223,12 @@ pub(crate) fn animate_water(
         || (water.is_some()
             && (mode != Mode::Faithful || playback.mode != mode || playback.tick != Some(ticks)));
     if update_grid {
+        if water.is_some()
+            && mode == Mode::Faithful
+            && (playback.tick.is_none() || playback.mode != mode)
+        {
+            playback.normals = crate::lighting::grid_normals(&playback.base, side);
+        }
         playback.tick = Some(ticks);
         playback.mode = mode;
         let mut grid = playback.base.clone();
@@ -212,8 +242,17 @@ pub(crate) fn animate_water(
                 };
             }
         }
-        // shortcut: original water edges can retain old normals; replace full recomputation when dirty admission is established.
-        playback.normals = crate::lighting::grid_normals(&grid, side);
+        let normals = crate::lighting::grid_normals(&grid, side);
+        if water.is_some() && mode == Mode::Faithful {
+            // Every changed face is admitted; unmarked vertex normals retain the base grid's values.
+            for (vertex, normal) in normals.into_iter().enumerate() {
+                if playback.dirty_normals[vertex] {
+                    playback.normals[vertex] = normal;
+                }
+            }
+        } else {
+            playback.normals = normals;
+        }
         playback.rgb = playback
             .normals
             .iter()
@@ -375,6 +414,128 @@ mod tests {
             VertexAttributeValues::Float32x3(positions) => positions.clone(),
             _ => panic!("wrong position format"),
         }
+    }
+
+    #[test]
+    fn water_edge_retains_base_lighting_until_another_wave_vertex_admits_it() {
+        let mut app = App::new();
+        let mut environments = Assets::<Environment>::default();
+        let mut water = Water {
+            parameters: [24.0, 512.0, 0.0],
+            side: 5,
+            animated_vertices: vec![false; 25],
+        };
+        water.animated_vertices[12] = true;
+        let environment = Environment {
+            object_lights: Vec::new(),
+            prelighting: Default::default(),
+            model_lighting: Default::default(),
+            sky: None,
+            background: [0; 3],
+            clipping: [7.0, 3800.0],
+            fog_table: [[0; 4]; 16],
+            terrain_lighting: Some(cyrus_assets::environment::TerrainLighting {
+                side: 5,
+                ambient: [32.0; 3],
+                directional: [128.0; 3],
+                direction: [0.0, -1.0, 0.0],
+            }),
+            water: Some(water),
+        };
+        let first_world = environments.add(environment);
+        app.insert_resource(environments)
+            .insert_resource(EnvironmentRequest(first_world.clone()))
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<WaterPlayback>()
+            .init_resource::<Fidelity>()
+            .init_resource::<Time<Real>>()
+            .add_systems(Update, animate_water);
+        let base: Vec<_> = (0..25)
+            .map(|i| {
+                [
+                    -(i % 5) as f32 * CELL_SIZE,
+                    0.0,
+                    -(i / 5) as f32 * CELL_SIZE,
+                ]
+            })
+            .collect();
+        let mut mesh = triangle(base.clone());
+        let mut indices = Vec::new();
+        for row in 0..4 {
+            for x in 0..4 {
+                let a = row * 5 + x;
+                indices.extend([a, a + 6, a + 1, a + 6, a, a + 5]);
+            }
+        }
+        mesh.insert_indices(bevy::mesh::Indices::U32(indices));
+        let original = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let entity = app
+            .world_mut()
+            .spawn((Name::new("Terrain"), Mesh3d(original.clone())))
+            .id();
+        let sample = |app: &App, vertex| {
+            let handle = &app.world().get::<Mesh3d>(entity).unwrap().0;
+            let mesh = app.world().resource::<Assets<Mesh>>().get(handle).unwrap();
+            let Some(VertexAttributeValues::Float32x3(normals)) =
+                mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+            else {
+                panic!("missing normals")
+            };
+            let Some(VertexAttributeValues::Float32x4(colors)) =
+                mesh.attribute(Mesh::ATTRIBUTE_COLOR)
+            else {
+                panic!("missing colors")
+            };
+            (normals[vertex], colors[vertex])
+        };
+        let retained = (
+            [0.0, 0.99609375, 0.0],
+            [159.5 / 255.0, 159.5 / 255.0, 159.5 / 255.0, 1.0],
+        );
+        app.update();
+        // Raw-row (+1,+1) is the omitted engine-grid (+1,-1) diagonal.
+        assert_eq!(sample(&app, 18), retained);
+        assert_ne!(sample(&app, 17).0, retained.0);
+        assert_eq!(positions(&app, &original), base);
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(110));
+        app.update();
+        assert_eq!(sample(&app, 18), retained);
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Water, Mode::Modern);
+        app.update();
+        assert_ne!(sample(&app, 18).0, retained.0);
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Water, Mode::Faithful);
+        app.update();
+        assert_eq!(
+            sample(&app, 18),
+            retained,
+            "Modern normals must not enter Faithful retention"
+        );
+
+        let mut next = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .remove(&first_world)
+            .unwrap();
+        next.water.as_mut().unwrap().animated_vertices[19] = true;
+        let next_world = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(next);
+        app.world_mut().resource_mut::<EnvironmentRequest>().0 = next_world;
+        app.update();
+        assert_ne!(
+            sample(&app, 18).0,
+            retained.0,
+            "a second selected water vertex admits the edge"
+        );
+        assert_ne!(sample(&app, 18).1, retained.1);
+        assert_eq!(positions(&app, &original), base);
     }
 
     #[test]
