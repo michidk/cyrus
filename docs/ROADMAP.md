@@ -227,7 +227,8 @@ world playback is incomplete.
 - [ ] Establish production invocation policy, eligible actors/callers and timing. Do not substitute a guessed fixed rate for original behavior.
 - [ ] Finish state-dependent defaults, remaining group types, cancellation/event commands and model replacement for all actors.
 - [ ] Complete object routing, variable references, scriptless receivers, allocation/recycling and model-coupled attributes; run all required scripts automatically through the [SOUP checklist](plans/2026-10-12-soup-completion.md).
-- [ ] Implement Wander and populated walk-map routing/steering, remaining object groups, movement, lights, visibility, NPC perception, hooks and synchronization with animation, speech and sound. Empty-map Wander is not a substitute for navigation or automatic scheduling.
+- [x] Explicit empty-map `Wander` hooks consume shared random candidate draws and restore excessive displacement. **Verified:** [implementation](https://github.com/michidk/cyrus/commit/5c90392), original-function comparisons, installed VILEDOG native hook, 443 workspace tests with zero missing-install skips and WASM check. Automatic invocation remains incomplete.
+- [ ] Implement populated walk-map routing/steering, remaining object groups, movement, lights, visibility, NPC perception, hooks and synchronization with animation, speech and sound. Empty-map Wander is not a substitute for navigation or automatic scheduling.
 - [ ] Handle script-requested world loads and cleanup; verify actor removal and world replacement with active runtime state.
 
 ### Sound and HUD
