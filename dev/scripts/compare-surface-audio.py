@@ -19,6 +19,7 @@ def validate(report, original=False):
         raise ValueError("report.cases: nonempty list required")
     names = set()
     plays = 0
+    starts = 0
     for case in cases:
         name = case["name"]
         if name in names:
@@ -35,8 +36,11 @@ def validate(report, original=False):
                     for start in event["started"]:
                         if len(start["target_candidates"]) != 1:
                             raise ValueError(f"case {name} step {index}: ambiguous PCM target")
+                        starts += 1
     if not plays:
         raise ValueError("report: no animation Play observations")
+    if not starts:
+        raise ValueError("report: no actual playback starts")
 
 
 def compare(actual, original):

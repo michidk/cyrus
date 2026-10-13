@@ -38,7 +38,8 @@ platform boundaries. Audible parity requires a separate original-game comparison
 `cargo run -p cyrus-audio --example surface_audio -- INSTALL PLAYER_CACHE RGM FIXTURE_JSON`
 runs the production static ground query, CYRUS animation interpreter and mixer
 without a window or audio device. It reads the install and cache without writing
-them. Supply a `.player` cache exported from the same installed RGM and world.
+them. CYRUS uses the player channel range. Supply a `.player` cache exported
+from the same installed RGM and world.
 The report goes to stdout; keep installed fixtures and reports under `magic/`.
 
 The JSON fixture has `world` and a nonempty `cases` array. Each case has a unique
@@ -68,7 +69,8 @@ radius, so this probe does not establish current-model candidate admission.
 version-1 reports, including ordered events and cleanup. The original report must
 use the same fields and add `evidence: {"kind":"original-runtime","record":"..."}`
 pointing to an independent observation record. The comparator rejects ambiguous
-PCM and empty Play coverage. It does not establish the provenance of a supplied
-record; retain original runtime inputs, binary hashes and observations alongside it.
+PCM, empty Play coverage and reports with no actual playback starts. It does not
+establish the provenance of a supplied record; retain original runtime inputs,
+binary hashes and observations alongside it.
 File-table predictions do not establish audible or gameplay parity. Synthetic
 negative controls run with `python3 -B dev/scripts/test-surface-audio.py` and in the gates.

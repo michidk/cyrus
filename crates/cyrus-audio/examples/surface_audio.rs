@@ -137,6 +137,7 @@ fn main() -> Result<()> {
         let actor = app
             .world_mut()
             .spawn((
+                cyrus_game::player::Player,
                 GlobalTransform::from_translation(Vec3::Z),
                 SoundSurface(case.initial_surface),
             ))
