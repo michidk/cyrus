@@ -166,6 +166,7 @@ fn stage(world: &mut ScriptWorld, id: ScriptActorId, stage: ScriptStage) {
                 ..Default::default()
             },
             None,
+            None,
             30,
         )
         .unwrap();
@@ -230,6 +231,7 @@ fn routed_animation_owns_receiver_task_and_emits_receiver_identity_synchronously
                 events.push((id, sound));
                 Ok(())
             }),
+            None,
             30,
         )
         .unwrap();
@@ -323,6 +325,7 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
                         ..Default::default()
                     },
                     None,
+                    None,
                     30
                 )
                 .unwrap_err()
@@ -343,6 +346,7 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
                         ..Default::default()
                     },
                     None,
+                    None,
                     30
                 )
                 .unwrap_err()
@@ -361,6 +365,7 @@ fn missing_ticks_and_stale_or_mismatched_identity_fail_before_mutation() {
                     frame_scale: Some(256),
                     ..Default::default()
                 },
+                None,
                 None,
                 30
             )
@@ -409,6 +414,7 @@ fn animation_stage_sound_failure_stops_later_effects_and_is_visible() {
                 ..Default::default()
             },
             Some(&mut emit),
+            None,
             30,
         )
         .unwrap_err()
@@ -426,6 +432,7 @@ fn animation_stage_sound_failure_stops_later_effects_and_is_visible() {
                     ..Default::default()
                 },
                 Some(&mut emit),
+                None,
                 30
             )
             .unwrap_err()
@@ -443,6 +450,7 @@ fn animation_stage_sound_failure_stops_later_effects_and_is_visible() {
                     ..Default::default()
                 },
                 Some(&mut emit),
+                None,
                 30
             )
             .unwrap_err()
@@ -520,6 +528,7 @@ fn unsupported_animation_group_is_not_narrowed_into_a_valid_request() {
                 ..Default::default()
             },
             None,
+            None,
             30,
         )
         .unwrap_err()
@@ -584,6 +593,7 @@ fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
                     ..Default::default()
                 },
                 Some(&mut fail),
+                None,
                 30
             )
             .is_err()
@@ -606,6 +616,7 @@ fn routed_animation_failure_is_reported_on_both_receiver_and_caller() {
                         ..Default::default()
                     },
                     Some(&mut fail),
+                    None,
                     30
                 )
                 .is_err()
@@ -694,16 +705,16 @@ fn rotation_zero_scale_and_nominal_tick_fallback_remain_distinct() {
         nominal_ticks: Some(0),
         ..Default::default()
     };
-    world.advance(id, BODY, zero, None, 30).unwrap();
+    world.advance(id, BODY, zero, None, None, 30).unwrap();
     assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
     let tick = ScriptInputs {
         nominal_ticks: Some(256),
         ..zero
     };
-    world.advance(id, TASKS, tick, None, 30).unwrap();
+    world.advance(id, TASKS, tick, None, None, 30).unwrap();
     // The fallback sign follows the saved target, not the negative delta.
     assert_eq!(world.spatial(id).unwrap().local.angles, [0, 0, 1]);
-    world.advance(id, TASKS, zero, None, 30).unwrap();
+    world.advance(id, TASKS, zero, None, None, 30).unwrap();
     assert_eq!(world.spatial(id).unwrap().local.angles, [0, 0, 1]);
 }
 
@@ -716,7 +727,7 @@ fn spatial_timing_is_checked_before_script_mutation() {
     let id = world.id(0).unwrap();
     assert!(
         world
-            .advance(id, BODY, ScriptInputs::default(), None, 30)
+            .advance(id, BODY, ScriptInputs::default(), None, None, 30)
             .is_err()
     );
     assert_eq!(world.spatial(id).unwrap().local.angles, [0; 3]);
@@ -932,6 +943,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
                 events.push((id, sound));
                 Ok(())
             }),
+            None,
             100,
         )
         .unwrap();
@@ -1087,6 +1099,7 @@ fn activate_world(world: &mut ScriptWorld, inputs: &cyrus_game::script::Activati
                 ..Default::default()
             },
             None,
+            None,
             30,
         )
         .unwrap();
@@ -1114,7 +1127,14 @@ fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
     assert_eq!(world.flags(), [1], "the existing owner may activate again");
     // Deactivation on the caller clears holdoff but cannot release a foreign owner.
     world
-        .advance(world.id(0).unwrap(), BODY, Default::default(), None, 30)
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            Default::default(),
+            None,
+            None,
+            30,
+        )
         .unwrap();
     assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
     assert_eq!(
@@ -1122,7 +1142,14 @@ fn routed_activation_retains_receiver_owner_and_prompt_until_drawn() {
         ActivationOverlay::Prompt("Open".into())
     );
     world
-        .advance(world.id(1).unwrap(), BODY, Default::default(), None, 30)
+        .advance(
+            world.id(1).unwrap(),
+            BODY,
+            Default::default(),
+            None,
+            None,
+            30,
+        )
         .unwrap();
     assert_eq!(world.activation().owner(), None);
 }
@@ -1186,6 +1213,7 @@ fn missing_activation_labels_do_not_claim_owner_and_stale_inputs_fail_before_exe
                     activation: Some(&inputs),
                     ..Default::default()
                 },
+                None,
                 None,
                 30
             )
@@ -1349,6 +1377,7 @@ fn activation_owner_blocks_a_different_receiver_after_prompt_consumption() {
                 ..Default::default()
             },
             None,
+            None,
             30,
         )
         .unwrap();
@@ -1431,6 +1460,7 @@ fn activation_distinguishes_animation_state_from_its_current_group() {
                         nominal_ticks: Some(0),
                         ..Default::default()
                     },
+                    None,
                     None,
                     30,
                 )
@@ -1575,6 +1605,7 @@ fn axis_movement_keeps_distinct_invalid_axis_and_zero_duration_rules() {
                 nominal_ticks: Some(1),
                 ..Default::default()
             },
+            None,
             None,
             30,
         )

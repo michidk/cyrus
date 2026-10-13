@@ -131,6 +131,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
                 ..Default::default()
             },
             None,
+            None,
             10,
         )
         .unwrap();

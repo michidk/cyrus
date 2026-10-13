@@ -242,6 +242,7 @@ fn installed_palace_lever_shares_player_tasks_waits_sound_and_rotation() {
                         sounds.push((owner, sound));
                         Ok(())
                     }),
+                    None,
                     100,
                 )
                 .unwrap();
@@ -360,6 +361,7 @@ fn installed_island_mechanism_moves_its_master_and_refreshes_attached_poses() {
             ScriptStage::Body(Thread::Main),
             inputs,
             Some(&mut emit),
+            None,
             100,
         )
         .unwrap();
@@ -369,7 +371,7 @@ fn installed_island_mechanism_moves_its_master_and_refreshes_attached_poses() {
     );
     for _ in 0..18 {
         world
-            .advance(id, ScriptStage::Tasks, inputs, Some(&mut emit), 100)
+            .advance(id, ScriptStage::Tasks, inputs, Some(&mut emit), None, 100)
             .unwrap();
     }
     assert_eq!(
@@ -457,6 +459,7 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
                 ..Default::default()
             },
             None,
+            None,
             20,
         )
         .unwrap_err();
@@ -475,4 +478,41 @@ fn installed_hideout_explicit_hook_reports_its_out_of_range_marker() {
         before
     );
     assert!(world.actors()[index].failure().is_some());
+}
+
+#[test]
+fn installed_viledog_selects_its_branch_from_the_shared_random_draw() {
+    use cyrus_game::{random::EngineRandom, script::ScriptStage};
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP random branch)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/VILE.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 14).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "VILEDOG")
+        .unwrap();
+    let mut random = EngineRandom::default();
+    world
+        .advance(
+            world.id(index).unwrap(),
+            ScriptStage::Body(cyrus_script::Thread::Main),
+            Default::default(),
+            None,
+            Some(&mut random),
+            100,
+        )
+        .unwrap();
+    assert_eq!(
+        world.actors()[index].runtime().unwrap().variables(),
+        [4, 0, 1, 6]
+    );
+    assert_eq!(random.state(), 1103527590);
+    assert!(world.actors()[index].failure().is_none());
 }

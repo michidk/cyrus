@@ -3,6 +3,7 @@ pub mod clock;
 pub mod fidelity;
 pub mod player;
 pub mod preferences;
+pub mod random;
 pub mod script;
 use bevy::prelude::*;
 /// Engine-to-export unit divisor, matching preservation's GLB conversion.
@@ -18,6 +19,7 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<preferences::Preferences>()
+            .init_resource::<random::EngineRandom>()
             .init_state::<AppState>()
             .init_resource::<fidelity::Fidelity>()
             .add_plugins((player::PlayerPlugin, script::ScriptPlugin));

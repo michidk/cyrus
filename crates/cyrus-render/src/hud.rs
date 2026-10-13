@@ -1010,6 +1010,7 @@ mod tests {
                     ..Default::default()
                 },
                 None,
+                None,
                 10,
             )
             .unwrap();

@@ -37,6 +37,8 @@ updates diagnostics, and advances explicitly attached animation playback.
   player, gremlin, and camera roles. It guards world generations and supports
   Me, Player, Camera, and named receivers. Inspection handlers support attribute
   reads/writes, flag helpers, Wait, WaitOnTasks, and WaitNonMulti.
+  Rnd and QuickRnd consume an explicit shared game random resource retained across
+  world replacement. Complete random consumer order and sky integration remain open.
   Ordinary map actors also support EnableScript/DisableScript and an explicit
   ordinary-main stage that retains pending tasks while disabled. The installed
   task-system switch suppresses that stage; ordinary-hook admission distinguishes

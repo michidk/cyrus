@@ -989,6 +989,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
                     ..Default::default()
                 },
                 Some(&mut |_, _| Ok(())),
+                None,
                 20,
             )
             .unwrap();

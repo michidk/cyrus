@@ -245,6 +245,7 @@ fn exported_island_flag_mapping_binds_a_real_frame_and_restores_the_mesh() {
                         ..Default::default()
                     },
                     None,
+                    None,
                     100_000,
                 )
                 .unwrap();

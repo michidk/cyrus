@@ -669,6 +669,7 @@ impl ScriptWorld {
             ScriptStage::Body(thread),
             ScriptInputs::default(),
             None,
+            None,
             budget,
         )
     }
@@ -689,18 +690,21 @@ impl ScriptWorld {
                 ..Default::default()
             },
             None,
+            None,
             0,
         )
     }
     /// Invokes one explicit stage against the actor's shared native services.
     /// Worlds with any animation-bound actor require nominal ticks, including zero. Sound effects
     /// are dispatched synchronously with the receiving actor's identity.
+    /// Random functions require the caller's shared engine stream; they never seed actor state.
     pub fn advance(
         &mut self,
         id: ScriptActorId,
         stage: ScriptStage,
         inputs: ScriptInputs<'_>,
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
+        random: Option<&mut crate::random::EngineRandom>,
         budget: usize,
     ) -> Result<()> {
         let index = self.resolve(id)?;
@@ -781,6 +785,7 @@ impl ScriptWorld {
             names: &self.names,
             flag_state: &mut self.flag_state,
             sounds,
+            random,
             spatial: self.spatial.as_mut(),
             markers: self.markers.as_ref(),
             activation: &mut self.activation,
@@ -1025,7 +1030,7 @@ pub(super) fn prepare(
     }
 }
 
-struct GameHost<'a, 'sound, 'input> {
+struct GameHost<'a, 'sound, 'input, 'random> {
     activation: &'a mut super::ActivationState,
     spatial: Option<&'a mut super::spatial::SpatialWorld>,
     markers: Option<&'a super::markers::Markers>,
@@ -1033,12 +1038,13 @@ struct GameHost<'a, 'sound, 'input> {
     index: usize,
     generation: u64,
     sounds: Option<&'sound mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
+    random: Option<&'random mut crate::random::EngineRandom>,
     actors: &'a mut [ScriptActor],
     task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
     names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
-impl GameHost<'_, '_, '_> {
+impl GameHost<'_, '_, '_, '_> {
     fn advance_animation(&mut self) -> Result<()> {
         let id = ScriptActorId {
             generation: self.generation,
@@ -1090,7 +1096,7 @@ impl GameHost<'_, '_, '_> {
         index.with_context(|| format!("object target {target:?}: receiver absent"))
     }
 }
-impl Host for GameHost<'_, '_, '_> {
+impl Host for GameHost<'_, '_, '_, '_> {
     fn call(
         &mut self,
         target: &Target,
@@ -1168,6 +1174,22 @@ impl Host for GameHost<'_, '_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        if function.eq_ignore_ascii_case("Rnd") || function.eq_ignore_ascii_case("QuickRnd") {
+            let [operand] = arguments else {
+                anyhow::bail!("{function} requires one argument")
+            };
+            let operand = operand.integer()?;
+            let random = self
+                .random
+                .as_deref_mut()
+                .with_context(|| format!("{function}: shared engine random stream unavailable"))?;
+            let value = if function.eq_ignore_ascii_case("Rnd") {
+                random.rnd(operand)?
+            } else {
+                random.quick_rnd(operand)
+            };
+            return Ok(CallResult::Complete(value));
+        }
         if function.eq_ignore_ascii_case("EnableScript")
             || function.eq_ignore_ascii_case("DisableScript")
         {

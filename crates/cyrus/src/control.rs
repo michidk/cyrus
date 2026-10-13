@@ -79,6 +79,7 @@ struct Inspection<'w, 's> {
     hud: Option<Res<'w, cyrus_render::hud::HudState>>,
     scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
+    random: ResMut<'w, cyrus_game::random::EngineRandom>,
     activation: Option<Res<'w, cyrus_game::script::ActivationInputs>>,
     prepared: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
     animations: Res<'w, Assets<cyrus_assets::animation::Animations>>,
@@ -113,6 +114,7 @@ fn handle(
         hud,
         scripts,
         mut script_actors,
+        mut random,
         activation,
         prepared,
         animations,
@@ -425,7 +427,7 @@ fn handle(
                         player, distance_override, fallback_position, linked_position: None,
                     }),
                 };
-                world.advance(id, stage, inputs, Some(&mut emit), 100_000)?;
+                world.advance(id, stage, inputs, Some(&mut emit), Some(&mut random), 100_000)?;
                 let mut result = world.inspect(index, 1);
                 result["captured_sounds"] = json!(captured_sounds);
                 Ok(result)
@@ -464,6 +466,7 @@ mod tests {
         .init_state::<cyrus_game::AppState>()
         .init_resource::<Assets<cyrus_assets::animation::Animations>>()
         .init_resource::<Fidelity>()
+        .init_resource::<cyrus_game::random::EngineRandom>()
         .init_resource::<CurrentScene>()
         .init_resource::<bevy::diagnostic::FrameCount>()
         .init_resource::<cyrus_game::player::input::PlayerInput>()

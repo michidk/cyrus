@@ -305,3 +305,12 @@ The installed HIDEOUT hook reports an out-of-range marker when explicitly invoke
 **Verified:** no installed WORLD.INI map assignment selects HIDEOUT.RGM; natural
 execution of that hook remains **Unknown**. This does not enable
 automatic actor updates.
+
+`GamePlugin` owns one `EngineRandom` resource independently of world replacement.
+`ScriptWorld::advance` accepts that stream explicitly for `Rnd` and `QuickRnd`,
+including routed calls. Missing state and nonpositive `Rnd` bounds fail without
+inventing a result. **Verified:** sequential result/state comparisons against
+original instructions cover the arithmetic documented in
+[preservation's random contract](https://github.com/michidk/redguard-preservation/blob/2390c5f/docs/engine/SOUP.md#random-functions).
+The executable's stored initial state is the default. Complete session seeding,
+consumer order, sky integration and automatic actor scheduling remain unsupported.
