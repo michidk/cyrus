@@ -26,13 +26,29 @@ fn update_native_world(
 }
 
 pub fn register(app: &mut App) {
-    app.add_systems(Startup, initialize_native_worlds)
-        .add_systems(Update, update_native_world);
+    app.add_systems(
+        Update,
+        initialize_native_worlds.run_if(resource_added::<cyrus_assets::install::GameInstall>),
+    )
+    .add_systems(Update, update_native_world);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn world_picker_waits_while_no_install_is_selected() {
+        let mut app = App::new();
+        app.init_resource::<WorldPicker>()
+            .init_resource::<cyrus_world::lifecycle::CurrentScene>()
+            .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()));
+        register(&mut app);
+        for _ in 0..3 {
+            app.update();
+            assert!(app.world().resource::<WorldPicker>().options.is_empty());
+        }
+    }
 
     #[test]
     fn installed_worlds_are_available_without_exporting_them() {
@@ -41,11 +57,15 @@ mod tests {
             return;
         };
         let mut app = App::new();
-        app.insert_resource(install)
-            .init_resource::<WorldPicker>()
+        app.init_resource::<WorldPicker>()
             .init_resource::<cyrus_world::lifecycle::CurrentScene>()
             .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()));
         register(&mut app);
+        for _ in 0..3 {
+            app.update();
+            assert!(app.world().resource::<WorldPicker>().options.is_empty());
+        }
+        app.insert_resource(install);
         app.update();
         let picker = app.world().resource::<WorldPicker>();
         for name in ["0", "ISLAND", "START", "BELLTOWR"] {

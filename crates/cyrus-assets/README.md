@@ -177,5 +177,10 @@ preparation diagnostics. Generated installed-content reports belong under `magic
 `CheatSeed` carries read-only installed CHT bytes and SYSTEM.INI startup defaults
 for the browser host. `console` prepares the installed paper, configured FNT and
 per-world palette inks for native and browser presentation.
+World preparation reads only the supported PlayerDistance seed from CHT. Other
+saved slots do not block loading; the runtime retains their values and reports
+unsupported effects. SYSTEM.INI supplies startup task and animation settings.
+Generated filesystem paths use portable slash-separated cache keys on every platform,
+including Windows. Absolute paths and traversal remain rejected.
 
 Native preload failures retain install-relative filenames, including directories and extensions, so audit diagnostics identify the source file without depending on the local install location.

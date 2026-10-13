@@ -18,21 +18,28 @@ pub(crate) trait Output {
 
 impl Output for BTreeMap<String, Vec<u8>> {
     fn read(&self, path: &Path) -> Option<Vec<u8>> {
-        self.get(path.to_str()?).cloned()
+        self.get(&generated_path(path).ok()?).cloned()
     }
     fn exists(&self, path: &Path) -> bool {
-        path.to_str().is_some_and(|path| self.contains_key(path))
+        generated_path(path).is_ok_and(|path| self.contains_key(&path))
     }
     fn remove(&mut self, path: &Path) -> Result<()> {
-        self.remove(path.to_str().context("generated path is not UTF-8")?);
+        self.remove(&generated_path(path)?);
         Ok(())
     }
     fn publish(&mut self, path: &Path, bytes: &[u8]) -> Result<()> {
-        let path = path.to_str().context("generated path is not UTF-8")?;
-        crate::validate_path(path)?;
-        self.insert(path.to_owned(), bytes.to_vec());
+        self.insert(generated_path(path)?, bytes.to_vec());
         Ok(())
     }
+}
+
+fn generated_path(path: &Path) -> Result<String> {
+    let path = path
+        .to_str()
+        .context("generated path is not UTF-8")?
+        .replace('\\', "/");
+    crate::validate_path(&path)?;
+    Ok(path)
 }
 
 /// Resolve authored DOS paths against the validated, case-insensitive source manifest.
@@ -65,19 +72,57 @@ pub(crate) struct DiskOutput<'a>(pub &'a Path);
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 impl Output for DiskOutput<'_> {
     fn read(&self, path: &Path) -> Option<Vec<u8>> {
-        std::fs::read(self.0.join(path)).ok()
+        std::fs::read(self.0.join(generated_path(path).ok()?)).ok()
     }
     fn exists(&self, path: &Path) -> bool {
-        self.0.join(path).is_file()
+        generated_path(path).is_ok_and(|path| self.0.join(path).is_file())
     }
     fn remove(&mut self, path: &Path) -> Result<()> {
-        if self.exists(path) {
-            std::fs::remove_file(self.0.join(path))?;
+        let path = self.0.join(generated_path(path)?);
+        if path.is_file() {
+            std::fs::remove_file(path)?;
         }
         Ok(())
     }
     fn publish(&mut self, path: &Path, bytes: &[u8]) -> Result<()> {
-        crate::validate_path(path.to_str().context("generated path is not UTF-8")?)?;
-        crate::native::publish(&self.0.join(path), bytes)
+        crate::native::publish(&self.0.join(generated_path(path)?), bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn nested_output_round_trip(output: &mut dyn Output) {
+        let windows = Path::new(r"sounds\000.wav");
+        let portable = Path::new("sounds/000.wav");
+        output.publish(windows, b"audio").unwrap();
+        assert_eq!(output.read(portable).as_deref(), Some(b"audio".as_slice()));
+        assert!(output.exists(windows));
+        output.remove(windows).unwrap();
+        assert!(!output.exists(portable));
+        for invalid in [
+            r"..\outside.wav",
+            r"C:\outside.wav",
+            r"\outside.wav",
+            "sounds/../outside.wav",
+        ] {
+            assert!(output.publish(Path::new(invalid), b"audio").is_err());
+        }
+    }
+
+    #[test]
+    fn memory_output_uses_portable_paths_for_windows_generated_assets() {
+        let mut files = BTreeMap::new();
+        nested_output_round_trip(&mut files);
+        assert!(files.is_empty());
+    }
+
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+    #[test]
+    fn disk_output_accepts_windows_generated_assets_without_allowing_escape() {
+        let root = std::env::temp_dir().join(format!("cyrus-output-paths-{}", std::process::id()));
+        nested_output_round_trip(&mut DiskOutput(&root));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

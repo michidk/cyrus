@@ -508,9 +508,15 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
     assert!(overridden.player_distance_override);
     assert_ne!(overridden.content_id, scripts.content_id);
     cheats[28..32].copy_from_slice(&1u32.to_le_bytes());
-    let error = prepare(0, 6, Some(cheats)).unwrap_err();
-    assert!(format!("{error:#}").contains("world 17 REDGUARD.CHT"));
-    assert!(format!("{error:#}").contains("drevil"));
+    cheats[12..16].copy_from_slice(&1u32.to_le_bytes());
+    cheats[16..20].copy_from_slice(&1u32.to_le_bytes());
+    let with_other_cheats = prepare(0, 6, Some(cheats.clone())).unwrap();
+    assert_eq!(with_other_cheats.content_id, overridden.content_id);
+    assert_eq!(with_other_cheats.updates, scripts.updates);
+    cheats[40..44].copy_from_slice(&0u32.to_le_bytes());
+    let without_override = prepare(0, 6, Some(cheats)).unwrap();
+    assert!(!without_override.player_distance_override);
+    assert_eq!(without_override.content_id, scripts.content_id);
     assert!(prepare(0, 6, Some(vec![0; 255])).is_err());
     assert_eq!(
         scripts.updates,

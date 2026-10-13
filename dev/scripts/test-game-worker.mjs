@@ -19,6 +19,12 @@ function scan(directory, prefix = '') {
   }
 }
 scan(root);
+// Saved task/animation settings and unsupported cheats must not block world preparation.
+const cheatState = Buffer.alloc(256);
+for (const slot of [3, 4, 7]) cheatState.writeUInt32LE(1, slot * 4);
+const cheatPath = [...originals.keys()].find(name => name.toLowerCase() === 'redguard.cht') || 'REDGUARD.CHT';
+originals.set(cheatPath, cheatState);
+const byteLength = source => Buffer.isBuffer(source) ? source.length : fs.statSync(source).size;
 for (const name of ['game.gog', 'game.ins']) {
   const filename = path.join(root, '..', name);
   if (fs.existsSync(filename)) originals.set('disc/' + name, filename);
@@ -34,13 +40,17 @@ globalThis.XMLHttpRequest = class {
     const name = decodeURIComponent(this.url.pathname.replace('/original/', ''));
     const filename = originals.get(name);
     assert.ok(filename, 'unknown original ' + name);
-    const size = fs.statSync(filename).size;
+    const size = byteLength(filename);
     const range = this.range ? /^bytes=(\d+)-(\d+)$/.exec(this.range).slice(1).map(Number) : [0, size - 1];
     const [start, end] = range;
     assert.ok(start >= 0 && end < size && end - start < 1024 * 1024);
-    const bytes = Buffer.alloc(end - start + 1), fd = fs.openSync(filename, 'r');
-    try { assert.equal(fs.readSync(fd, bytes, 0, bytes.length, start), bytes.length); }
-    finally { fs.closeSync(fd); }
+    const bytes = Buffer.alloc(end - start + 1);
+    if (Buffer.isBuffer(filename)) filename.copy(bytes, 0, start, end + 1);
+    else {
+      const fd = fs.openSync(filename, 'r');
+      try { assert.equal(fs.readSync(fd, bytes, 0, bytes.length, start), bytes.length); }
+      finally { fs.closeSync(fd); }
+    }
     this.status = this.range ? 206 : 200;
     this.contentRange = `bytes ${start}-${end}/${size}`;
     this.response = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length);
@@ -49,7 +59,7 @@ globalThis.XMLHttpRequest = class {
 };
 const { default: init, GameLibrary } = await import(pathToFileURL(path.join(packageDir, 'cyrus-assets-worker.js')));
 await init({ module_or_path: fs.readFileSync(path.join(packageDir, 'cyrus-assets-worker_bg.wasm')) });
-const manifest = JSON.stringify({ files: [...originals].sort().map(([name, filename]) => ({ path: name, bytes: fs.statSync(filename).size, digest: 'a'.repeat(64) })) });
+const manifest = JSON.stringify({ files: [...originals].sort().map(([name, filename]) => ({ path: name, bytes: byteLength(filename), digest: 'a'.repeat(64) })) });
 const game = new GameLibrary('https://example.test/original/', manifest, () => {});
 const worlds = JSON.parse(game.worlds());
 assert.ok(worlds.includes('START') && worlds.includes('ISLAND'));

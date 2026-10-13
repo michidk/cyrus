@@ -217,19 +217,9 @@ fn player_distance_override(source: &dyn crate::source::ReadAssets) -> Result<bo
     let Some(file) = source.manifest().find("REDGUARD.CHT") else {
         return Ok(false);
     };
-    let cheats = rgpre::import::cht::parse_cht_file(&source.read(&file.path)?)?;
-    let mut distance_override = false;
-    for cheat in cheats.entries {
-        match cheat.name {
-            Some("neversaydie") => distance_override = cheat.is_on(),
-            Some("savecheats") => {}
-            _ => anyhow::ensure!(
-                !cheat.is_on(),
-                "cheat {} in slot {} unsupported by script preparation",
-                cheat.name.unwrap_or("unnamed"),
-                cheat.index
-            ),
-        }
-    }
-    Ok(distance_override)
+    let cheats = crate::cheats::decode(&source.read(&file.path)?)?;
+    Ok(cheats
+        .value("neversaydie")
+        .context("missing neversaydie state")?
+        != 0)
 }
