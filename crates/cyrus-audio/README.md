@@ -32,3 +32,43 @@ in [preservation](https://github.com/michidk/redguard-preservation/blob/main/doc
 Run `cargo test -p cyrus-audio`; installed decoder tests report skips when the
 install is absent. Check the browser target and native headless assembly for
 platform boundaries. Audible parity requires a separate original-game comparison.
+
+## Surface-audio comparison
+
+`cargo run -p cyrus-audio --example surface_audio -- INSTALL PLAYER_CACHE RGM FIXTURE_JSON`
+runs the production static ground query, CYRUS animation interpreter and mixer
+without a window or audio device. It reads the install and cache without writing
+them. Supply a `.player` cache exported from the same installed RGM and world.
+The report goes to stdout; keep installed fixtures and reports under `magic/`.
+
+The JSON fixture has `world` and a nonempty `cases` array. Each case has a unique
+`name`, `initial_surface`, installed `collision_attribute`, animation `group`
+and nonempty `steps`. Each step supplies `position_q8`, `view`, `heading`, `ticks`
+and optional `later_surface`. Positions retain original axes and eight fractional
+bits; view coordinates are integer map X/Z units. Heading uses 1/2048 turns;
+ticks are whole nominal animation ticks, capped at 1024 per step. A case retains
+its surface, support history and animation state across steps. The first step
+activates the requested group after querying support. Later steps advance it.
+`later_surface` changes ECS state after each cue is queued, to check captured
+surface playback. This is an isolated support/animation probe, not a full player
+movement replay; it does not drive body clearance, dynamic support or keyboard input.
+
+Each report step records the position, prior and assigned surface, ground veto,
+support source and ordered animation events. Each event records its captured
+surface, authored effect/rate offset for Play, newly started PCM target candidates
+and playback speed, plus remaining channels after cleanup. Target identification
+compares the actual mixer PCM with every installed bank entry. Identical samples
+remain ambiguous rather than selecting an arbitrary effect ID.
+The omitted audio backend cannot finish samples naturally. Keep cases short enough
+to avoid filling the channel pool; remaining-channel counts test explicit cleanup,
+not sample-duration parity. Candidate selection uses the documented no-active-model
+radius, so this probe does not establish current-model candidate admission.
+
+`python3 dev/scripts/compare-surface-audio.py CYRUS_REPORT ORIGINAL_REPORT` compares
+version-1 reports, including ordered events and cleanup. The original report must
+use the same fields and add `evidence: {"kind":"original-runtime","record":"..."}`
+pointing to an independent observation record. The comparator rejects ambiguous
+PCM and empty Play coverage. It does not establish the provenance of a supplied
+record; retain original runtime inputs, binary hashes and observations alongside it.
+File-table predictions do not establish audible or gameplay parity. Synthetic
+negative controls run with `python3 -B dev/scripts/test-surface-audio.py` and in the gates.

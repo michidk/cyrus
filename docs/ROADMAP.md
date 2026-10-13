@@ -267,6 +267,7 @@ world playback is incomplete.
 - [x] Installed HUD candle, health, compass, items/counts, power-up slots, logbook, prompts and notices; F8/Tab/F7 preferences persist.
 - [x] Parse SURFACE.INI remapping in preservation and set actor SoundSurface from ground/collision.
   Preservation parser and engine rules: [PR #65](https://github.com/michidk/redguard-preservation/pull/65); native/browser animation playback consumes the installed remaps. Logical actor state projects to SoundSurface; supported grounded updates and animation cues retain the emission-time class. Synthetic playback tests cover same-update projection and queued remapping. Automatic scheduling and wider nonplayer ground updates remain with SOUP.
+  The native `surface_audio` example records static support, captured animation cues and actual mixer PCM. Its report comparator rejects wrong classes/targets, missing events and ambiguous PCM. Installed probes cover known zero, sand and rock; original runtime audio parity remains unverified.
 - [ ] Add positional/ambient starts, StopAllSounds results, shell/code-object ownership, KillMe/Resurrect cleanup, rope thresholds and torch loops; refresh moving-emitter gain/pan.
 - [ ] Feed production activation conditions, health, sword/lockout/player type, heading/world and compass state into the HUD. Connect bitmap/logbook script handlers and player walk-mode/auto-defend behavior.
 - [ ] Verify native/browser HUD layout, candle cadence, prompt/item timing and compass semantics. **Unknown:** compass frame-zero direction and item-zero compass activation.

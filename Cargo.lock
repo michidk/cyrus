@@ -2815,9 +2815,11 @@ dependencies = [
  "anyhow",
  "bevy",
  "cyrus-assets",
+ "cyrus-collision",
  "cyrus-game",
  "cyrus-world",
  "redguard-preservation",
+ "serde",
  "serde_json",
 ]
 

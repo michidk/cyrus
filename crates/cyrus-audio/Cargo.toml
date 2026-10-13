@@ -17,3 +17,5 @@ cyrus-assets = { workspace = true, features = ["native"] }
 
 [dev-dependencies]
 redguard-preservation.workspace = true
+cyrus-collision.workspace = true
+serde.workspace = true
