@@ -10,6 +10,7 @@ pub mod script_transform;
 mod sky;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod subtitles;
+mod terrain;
 mod water;
 use bevy::prelude::*;
 /// Shared world presentation for native and browser hosts.

@@ -85,6 +85,16 @@ records. Active light scripts are explicitly unsupported during preparation.
 actor lighting overrides and complete original-game pixel parity. The inspection
 camera supplies region selection until the original follow-camera target is implemented.
 
+Terrain prepares private triangles after wave updates and camera projection.
+It clips camera-space position, RGB and UV together, snaps projected vertices,
+and sends each fan triangle's fixed color coefficients to the shared shader.
+Camera movement, viewport changes and clipping-range edits rebuild these meshes;
+shared source assets remain unchanged. The encoded texture combiner consumes
+integer lighting channels before scene fog, following preservation's
+[terrain preparation rules](https://github.com/michidk/redguard-preservation/blob/449ba2a/docs/engine/terrain-lighting.md).
+Fog changes update materials referenced by live scene entities; retained assets
+from departed worlds do not trigger new GPU uploads.
+
 The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
 that reuses Faithful results. Existing Water and Fog switches remain independent.
 **Unknown:** full pixel parity, texture-filtering and combiner precision, and exact

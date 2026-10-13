@@ -34,7 +34,13 @@ impl Plugin for EnvironmentPlugin {
             .init_resource::<ActiveEnvironment>()
             .init_resource::<crate::water::WaterPlayback>()
             .add_systems(Update, apply_sky)
-            .add_systems(PostUpdate, crate::water::animate_water);
+            .add_systems(
+                PostUpdate,
+                crate::water::animate_water
+                    .after(TransformSystems::Propagate)
+                    .after(bevy::camera::CameraUpdateSystems)
+                    .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
+            );
     }
 }
 

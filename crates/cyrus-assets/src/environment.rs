@@ -235,11 +235,17 @@ pub struct TerrainLighting {
 impl TerrainLighting {
     /// Encoded RGB divided by 255; preserves the supplied normal's magnitude.
     pub fn color(&self, normal: [f32; 3]) -> [f32; 4] {
+        (Vec3::from(self.rgb(normal)) / 255.0)
+            .extend(1.0)
+            .to_array()
+    }
+
+    /// Encoded RGB in 0..=255 before clipping and raster setup, without normalization.
+    pub fn rgb(&self, normal: [f32; 3]) -> [f32; 3] {
         let weight = (-Vec3::from(self.direction).dot(Vec3::from(normal))).max(0.0);
-        let rgb = (Vec3::from(self.ambient) + weight * Vec3::from(self.directional))
+        (Vec3::from(self.ambient) + weight * Vec3::from(self.directional))
             .clamp(Vec3::ZERO, Vec3::splat(255.0))
-            / 255.0;
-        rgb.extend(1.0).to_array()
+            .to_array()
     }
 }
 

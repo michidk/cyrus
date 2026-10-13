@@ -13,7 +13,7 @@ use cyrus_assets::environment::Environment;
 use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Original scene clipping and a debug-only Modern fog override, in engine units.
 #[derive(Resource, Default)]
@@ -57,6 +57,33 @@ impl MaterialExtension for TerrainExtension {
     }
     fn fragment_shader() -> ShaderRef {
         "embedded://cyrus_render/terrain.wesl".into()
+    }
+
+    fn specialize(
+        _pipeline: &bevy::pbr::MaterialExtensionPipeline,
+        descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
+        layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        _key: bevy::pbr::MaterialExtensionKey<Self>,
+    ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
+        if layout.0.contains(crate::terrain::PROJECTED) {
+            descriptor
+                .vertex
+                .shader_defs
+                .push("PREPARED_TERRAIN".into());
+            if let Some(fragment) = &mut descriptor.fragment {
+                fragment.shader_defs.push("PREPARED_TERRAIN".into());
+            }
+            let extra = layout.0.get_layout(&[
+                crate::terrain::PROJECTED.at_shader_location(8),
+                crate::terrain::RED.at_shader_location(9),
+                crate::terrain::GREEN.at_shader_location(10),
+                crate::terrain::BLUE.at_shader_location(11),
+            ])?;
+            descriptor.vertex.buffers[0]
+                .attributes
+                .extend(extra.attributes);
+        }
+        Ok(())
     }
 }
 
@@ -149,9 +176,11 @@ fn apply_scene_fog(
         Local<Option<(AssetId<Environment>, FogExtension)>>,
         Local<crate::lighting::runtime::RuntimeLights>,
         ResMut<Assets<Image>>,
+        Query<&MeshMaterial3d<SceneMaterial>>,
+        Query<&MeshMaterial3d<TerrainMaterial>>,
     ),
 ) {
-    let (mut previous, mut lights, mut images) = runtime;
+    let (mut previous, mut lights, mut images, scene_handles, terrain_handles) = runtime;
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
     else {
@@ -201,14 +230,27 @@ fn apply_scene_fog(
         terrain_cache.clear();
     }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
-        for (_, material) in fog_materials.iter_mut() {
+        // Retained assets from a departed world must not trigger fresh GPU uploads.
+        for id in scene_handles
+            .iter()
+            .map(|h| h.0.id())
+            .collect::<HashSet<_>>()
+        {
+            let Some(mut material) = fog_materials.get_mut(id) else {
+                continue;
+            };
             let terrain = material.extension.fog.water.y;
             material.extension.fog = extension.clone();
             material.extension.fog.water.y = terrain;
         }
-    }
-    if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
-        for (_, material) in terrain_materials.iter_mut() {
+        for id in terrain_handles
+            .iter()
+            .map(|h| h.0.id())
+            .collect::<HashSet<_>>()
+        {
+            let Some(mut material) = terrain_materials.get_mut(id) else {
+                continue;
+            };
             material.extension.fog = extension.clone();
             material.extension.fog.water.y = 1.0;
         }
@@ -614,5 +656,35 @@ mod tests {
             );
             assert_eq!(terrain_material.extension.fog.water.y, 1.0);
         }
+        for entity in [first, second, terrain] {
+            app.world_mut().despawn(entity);
+        }
+        app.world_mut()
+            .resource_mut::<RenderDistance>()
+            .override_far = Some(9000.0);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<SceneMaterial>>()
+                .get(&handle)
+                .unwrap()
+                .extension
+                .fog
+                .clipping
+                .y,
+            15200.0,
+            "retained materials without scene entities must not be uploaded again"
+        );
+        assert_eq!(
+            app.world()
+                .resource::<Assets<TerrainMaterial>>()
+                .get(&terrain_handle)
+                .unwrap()
+                .extension
+                .fog
+                .clipping
+                .y,
+            15200.0
+        );
     }
 }
