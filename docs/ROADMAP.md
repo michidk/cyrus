@@ -58,7 +58,6 @@ therefore does not establish animated or playable world behavior.
 | --- | --- |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
-| Tooling: per-world audit report and matched original/native/browser captures | Codex, World Audit and Matched Captures, `t3/stage0-audit-captures` |
 
 The SOUP assignment includes remaining animation and script scheduling. Sound and HUD sessions have ended; their open items, startup fidelity follow-up and the rest of stages 3–6 are unassigned.
 
@@ -170,8 +169,8 @@ screen or root access.
 - [x] Preservation release v0.8.0 integration, including the Windows splash parser. **Verified:** [migration checks](https://github.com/michidk/cyrus/commit/10a953b) cover installed workspace gates and optimized browser builds.
 - [x] Asset viewer review: failed previews are never cached, CD images fingerprint by size and time, asset lookup and catalog classification are shared, and the viewer UI is split per content kind. Game and viewer share one world geometry pipeline, cue-sheet parser, WAV writer, file lookup, world resolver, font conversion, atomic cache publish and loading overlay; native world preparation reports its stages on the entry bar. **Verified:** [viewer fixes](https://github.com/michidk/cyrus/commit/949ff34), [shared assets](https://github.com/michidk/cyrus/commit/e389da4) and [stage progress](https://github.com/michidk/cyrus/commit/9139981) pass installed tests and a headless START export; the painted stage bar is unobserved.
 - [x] Browser game runtime parsing: remaining exporters use the byte-source trait and the browser worker prepares game assets without a server-side exporter. **Verified:** installed startup/menu/HUD/sound/START worker exports, bounded CD movie reads and native/WASM script metadata parity. Browser splash/menu interaction passed; complete movie interaction and audible parity remain open.
-- [ ] Audit skipped placements, missing assets, animation/script initialization failures and unsupported operations.
-- [ ] Produce matched original/cyrus scene and viewpoint captures.
+- [x] Audit skipped placements, missing assets, animation/script initialization failures and unsupported operations. **Verified:** [headless audit](https://github.com/michidk/cyrus/commit/49b16a8c1a662e98342a844d7132e8396b1046c4) loads every installed WORLD.INI entry through existing preload/export/preparation paths and writes contextual text and stable JSON. Uninitialized animations and unexercised operations remain explicit.
+- [x] Produce matched original/cyrus scene and viewpoint captures. **Verified:** [fixture replay](https://github.com/michidk/cyrus/commit/49b16a8c1a662e98342a844d7132e8396b1046c4) produced original/native/browser triplets for ISLAND, BELLTOWR and START; all nine images inspected, browser headless at 640×480. Fixtures verify static scene/viewpoint matching; animation and gameplay synchronization remain unknown. Art stays under `magic/`.
 
 Done when a fresh clone with a purchased install builds and runs both games,
 accepts agent control and produces a repeatable comparison through SETUP commands.
