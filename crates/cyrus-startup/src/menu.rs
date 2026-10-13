@@ -348,6 +348,13 @@ pub(super) fn drive(
                     }
                     // shortcut: Load starts fresh until the save-slot system is implemented.
                     2 | 10 => {
+                        if entry.action == 10 {
+                            commands.queue(|world: &mut World| {
+                                world
+                                    .resource_mut::<cyrus_game::script::ScriptActors>()
+                                    .begin_new_game();
+                            });
+                        }
                         commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
                         commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
                         commands.insert_resource(cyrus_world::lifecycle::SceneRequest(

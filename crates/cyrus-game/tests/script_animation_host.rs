@@ -2051,3 +2051,24 @@ fn lockout_clears_prompt_override_only_outside_exact_one() {
         );
     }
 }
+
+#[test]
+fn new_game_applies_lockout_cleanup_before_replacing_the_registry() {
+    let mut world = lockout_world(1, false);
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    world
+        .globals_mut()
+        .remember_choice("Remembered topic".into());
+    let mut registry = cyrus_game::script::ScriptActors::default();
+    registry.current = Some(world);
+    registry.begin_new_game();
+    let world = registry.current.as_ref().unwrap();
+    assert_eq!(world.globals().lockout(), Some(0));
+    assert_eq!(world.globals().highlighted_choice(), Some(""));
+    let actors = world.inspect(0, 4)["actors"].as_array().unwrap().clone();
+    assert_eq!(actors[0]["attributes"][117], 0);
+    assert_eq!(actors[1]["attributes"][117], 0);
+    assert_eq!(actors[2]["attributes"][117], 9);
+    assert_eq!(actors[3]["attributes"][117], 0);
+}

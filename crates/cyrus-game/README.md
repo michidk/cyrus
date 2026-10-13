@@ -260,8 +260,11 @@ updates consume that value immediately. Unknown initial lockout remains absent;
 explicit inspection inputs supply the fallback before a native call establishes
 it. The host retains gameplay globals while replacing logical world registries.
 **Verified:** setter semantics follow [preservation's HUD rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md).
-Topic-menu execution, production HUD inputs and death/session reset ownership
-remain incomplete.
+New Game applies zero lockout before world replacement, including when the first
+logical world has not yet been prepared. Ordinary reloads retain globals.
+**Verified:** New Game follows [preservation's menu rule](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/menu.md).
+Topic-menu execution, production HUD inputs and death/load reset ownership remain
+incomplete.
 
 `AmbientSound` native slots can use an explicitly supplied synchronous
 `AmbientSoundDriver` and sample-reset input. Each slot retains its own channel

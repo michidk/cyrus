@@ -17,6 +17,8 @@ Book motion and menu clock invocations follow changes in the host's BIOS-tick
 sample. Menu exit restores the partial timing checkpoint while retaining menu
 changes to smoothing, the measurement remainder, warmup and the last exposed step.
 World timing remains game-owned; this does not enable automatic actor updates.
+New Game applies the game-owned lockout reset before requesting its world. The
+temporary fresh-world Load action does not apply that New Game reset.
 
 Startup copies title readiness and committed menu preferences, including subtitles,
 into cyrus-audio before `ApplyPreferences`. Preferences still persist before they

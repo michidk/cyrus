@@ -73,9 +73,22 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         scene_path: "test.glb".into(),
         environment_path: "test.environment".into(),
     };
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .begin_new_game();
     app.insert_resource(prepared());
     app.insert_resource(AnimationRequest(animation_handle.clone()));
     app.update();
+    assert_eq!(
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .globals()
+            .lockout(),
+        Some(0)
+    );
     let id = app
         .world()
         .resource::<ScriptActors>()
@@ -279,4 +292,13 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .unwrap();
     assert_eq!(runtime.program_counter(Thread::Main), Some(0));
     assert_eq!(runtime.active_tasks(), 0);
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .begin_new_game();
+    app.insert_resource(prepared());
+    app.update();
+    let registry = app.world().resource::<ScriptActors>();
+    let globals = registry.current.as_ref().unwrap().globals();
+    assert_eq!(globals.lockout(), Some(0));
+    assert_eq!(globals.highlighted_choice(), Some(""));
 }

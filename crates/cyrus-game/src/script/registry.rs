@@ -1146,7 +1146,42 @@ fn animation_sound_position(
     Some(spatial?.actor(index).ok()?.local.position)
 }
 
+fn apply_player_lockout(
+    actors: &mut [ScriptActor],
+    activation: &mut super::ActivationState,
+    player: Option<usize>,
+    lockout: u16,
+) {
+    if let Some(player) = player {
+        actors[player].attributes[117] = u8::from(lockout == 1);
+    }
+    if lockout != 1 {
+        for actor in actors
+            .iter_mut()
+            .filter(|actor| actor.runtime_identifier.is_some())
+        {
+            actor.attributes[117] = 0;
+        }
+        activation.clear_prompt_override();
+    }
+}
+
 impl ScriptActors {
+    /// Apply New Game's documented LockoutPlayer(0) before replacing the world.
+    /// Ordinary world reloads retain globals and must not call this operation.
+    pub fn begin_new_game(&mut self) {
+        if let Some(world) = self.current.as_mut() {
+            let player = world
+                .actors
+                .iter()
+                .position(|actor| matches!(actor.source, ScriptActorSource::Player));
+            let lockout = world.globals.lockout_player(0);
+            apply_player_lockout(&mut world.actors, &mut world.activation, player, lockout);
+        } else {
+            self.globals.lockout_player(0);
+        }
+    }
+
     fn release_world(&mut self) {
         if let Some(world) = self.current.take() {
             self.globals = world.globals;
@@ -1365,19 +1400,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 })
                 .context("LockoutPlayer selected player unavailable")?;
             let lockout = self.globals.lockout_player(value);
-            if lockout == 1 {
-                self.actors[player].attributes[117] = 1;
-            } else {
-                self.actors[player].attributes[117] = 0;
-                for actor in self
-                    .actors
-                    .iter_mut()
-                    .filter(|actor| actor.runtime_identifier.is_some())
-                {
-                    actor.attributes[117] = 0;
-                }
-                self.activation.clear_prompt_override();
-            }
+            apply_player_lockout(self.actors, self.activation, Some(player), lockout);
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function {

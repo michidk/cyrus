@@ -24,7 +24,7 @@ and implementation docs, rather than repeated status histories here.
 
 ## Next work
 
-- Connect New Game world entry to automatic eligible actor updates, using the shared clock and authored script/animation order. START must visibly advance without inspection commands; repeat across all installed worlds. Supplied-tick inspection is already supported.
+- Finish START actor movement/collision, MoveToLocation and ambient maintenance so New Game sustains authored animation and scripts without inspection commands. Repeat that acceptance across all installed worlds. The shared clock and ordinary update caller are connected; native New Game currently stops on those unsupported services.
 - Finish terrain/model lighting, water-edge normal retention and sky/sun filtering comparisons.
 - Connect automatic sound triggers, surface remapping and moving emitters.
 - Feed production player/script state into the HUD and verify native/browser presentation.
@@ -48,7 +48,7 @@ Loading the correct map does not establish complete animated or playable world b
 | Build the existing native and browser cores | Verified on committed SOUP increments; compilation is not gameplay acceptance |
 | Load installed worlds and retain scripts/models | Implemented; all 29 WORLD.INI entries have export coverage |
 | Run script/animation stages explicitly | Implemented for the documented supported services |
-| Start eligible world animations and scripts automatically | Incomplete; first acceptance is New Game into START without debug stepping |
+| Start eligible world animations and scripts automatically | Incomplete; native New Game enters START, but sustained playback stops on actor movement/collision, MoveToLocation and ambient reset ownership |
 | Execute every required native service and actor lifecycle | Incomplete: navigation, remaining receivers/properties, synchronization and gameplay services |
 | Preserve progression through revisits and saves | Not implemented |
 | Complete original/native/browser playthrough | Not verified |
@@ -280,7 +280,7 @@ world playback is incomplete.
   The native `surface_audio` example records static support, captured animation cues and actual mixer PCM. Its report comparator rejects wrong classes/targets, missing events, ambiguous PCM and absent playback starts. **Verified:** installed static-support/mixer probes select effects 9, 107, 94 and 103 for authored sound 9 on known zero, sand class 6, wood class 7 and rock class 10, despite later ECS surface changes. Independent original remap calls agree; sand and wood observations are NPC cues. Original CYRUS walking calls cover known zero and rock. **Unknown:** complete player traversal and audible waveform, rate and cleanup parity.
 - [x] Lend synchronous ambient feedback and immediate script dispatch from the shared sixteen-slot audio service. **Verified:** focused production mixer tests cover allocation, reuse, live gain updates, ordered commands, expired worlds and captured logical animation positions. Automatic ambient scheduling remains blocked by maintenance/reset ownership.
 - [ ] Complete automatic positional/ambient scheduling, StopAllSounds results, shell/code-object ownership, KillMe/Resurrect cleanup, rope thresholds and torch loops; refresh moving-emitter gain/pan.
-- [ ] Complete gameplay-global lifecycle and menu/dialogue maintenance ownership. `LockoutPlayer` retains the low word, updates selected/registered actor attribute 117, clears topic-choice text and the documented prompt timer, and supplies activation gating. Initial lockout remains unknown until established; topic-menu execution and death/session resets remain open.
+- [ ] Complete gameplay-global lifecycle and menu/dialogue maintenance ownership. `LockoutPlayer` retains the low word, updates selected/registered actor attribute 117, clears topic-choice text and the documented prompt timer, and supplies activation gating. New Game establishes zero lockout before world replacement; ordinary reloads retain globals. Topic-menu execution and death/load resets remain open.
 - [ ] Feed production activation conditions, health, sword/lockout/player type, heading/world and compass state into the HUD. Connect bitmap/logbook script handlers and player walk-mode/auto-defend behavior.
 - [ ] Verify native/browser HUD layout, candle cadence, prompt/item timing and compass semantics. **Unknown:** compass frame-zero direction and item-zero compass activation.
 - [ ] Compare effects, speech/subtitles and music by ear; establish listener/camera rules, pan handedness, text-only subtitle timing and attached-emitter eligibility.
