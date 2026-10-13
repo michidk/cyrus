@@ -197,3 +197,30 @@ jobs:
               --title "${TAG_NAME#v}" --notes-file CHANGELOG.md
           fi
           gh release edit "$TAG_NAME" --draft=false
+
+  pages:
+    # Deploy only after the release is complete; the site is the released browser bundle.
+    name: Deploy browser build to GitHub Pages
+    needs: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Download browser bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: browser
+          path: bundle
+      - name: Unpack site
+        run: tar -xzf bundle/cyrus-browser.tar.gz -C bundle
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: bundle/browser
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

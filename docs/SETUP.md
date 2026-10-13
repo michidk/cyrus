@@ -83,6 +83,11 @@ are present in the checked-out revision. Both applications are built from this w
 Browser artifact builds compile all available applications and the viewer worker
 in one Cargo invocation so they share dependency features and compiled libraries.
 
+After the release is published, `Release` deploys the browser bundle to GitHub
+Pages. The repository's Pages source must be set to "GitHub Actions" once.
+The site contains application code only; supply a game install with
+`?install=<encoded-install-service-URL>`.
+
 Pushes and pull requests run tests, lint, and browser compatibility checks.
 They do not build release archives. Release builds run only for stable `vX.Y.Z`
 tags, either when pushed or selected in a manual `Release` dispatch.
