@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkView } from './matched-capture.mjs';
+import { checkView, submitCaptureInstall } from './matched-capture.mjs';
 
 test('matching quaternion signs describe the same capture orientation', () => {
   checkView([1, 2, 3, 0, 0, 0, 1], [1, 2, 3, 0, 0, 0, -1]);
@@ -25,5 +25,25 @@ test('an existing capture label fails before invoking any game', async () => {
   } finally {
     process.chdir(before);
     rmSync(directory, {recursive: true, force: true});
+  }
+});
+
+test('capture submits the explicitly selected server and rejects a different remembered location', () => {
+  let submissions = 0;
+  const picker = { requestSubmit() { submissions++; } };
+  const input = { value: 'https://example.test/original/' };
+  globalThis.location = { href: 'https://example.test/?install=https://example.test/original/' };
+  globalThis.document = { getElementById(id) { return id === 'install-picker' ? picker : input; } };
+  try {
+    assert.equal(submitCaptureInstall('https://example.test/original/'), true);
+    assert.equal(submissions, 1);
+    input.value = 'https://different.test/original/';
+    assert.throws(() => submitCaptureInstall('https://example.test/original/'), /explicitly supplied server/);
+    assert.equal(submissions, 1);
+    document.getElementById = () => null;
+    assert.equal(submitCaptureInstall('https://example.test/original/'), false);
+  } finally {
+    delete globalThis.document;
+    delete globalThis.location;
   }
 });

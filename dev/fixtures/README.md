@@ -30,6 +30,8 @@ ticks. **Unknown:** complete original/native/browser gameplay equivalence.
    `just run-web --install /absolute/path/to/Redguard`. Set
    `CYRUS_CAPTURE_WEB_URL` to its game URL, including an explicit `?install=` URL
    reachable from your capture browser.
+   Replay submits the prefilled server form once and rejects a different selected
+   URL before waiting for world readiness. It does not bypass the install picker.
 5. Set `CYRUS_CAPTURE_CDP` to a Chromium DevTools HTTP endpoint. Node 22 or newer
    supplies the WebSocket client; ImageMagick checks image dimensions. Use a
    dedicated browser for this automated replay. Interactive inspection uses the

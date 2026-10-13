@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { nativeProvenance } from './capture-provenance.mjs';
 import { connectCdp } from './capture-cdp.mjs';
 import { observeBrowserBuild } from './browser-provenance.mjs';
+import { directoryURL } from '../web/install.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export function fixtureAt(filename) {
@@ -66,11 +67,23 @@ async function until(check, description, timeout = 300000) {
   }
   throw new Error(`timed out waiting for ${description}`);
 }
+export function submitCaptureInstall(expected) {
+  const picker = document.getElementById('install-picker');
+  if (!picker) return false;
+  const input = document.getElementById('install-url');
+  if (!input || new URL(input.value, location.href).href !== new URL(expected, location.href).href) {
+    throw new Error('capture install picker does not contain the explicitly supplied server URL');
+  }
+  picker.requestSubmit();
+  return true;
+}
+
 async function browser(f, output, build) {
   assert(process.env.CYRUS_CAPTURE_WEB_URL, 'set CYRUS_CAPTURE_WEB_URL to the game server URL reachable by the capture browser');
   assert(process.env.CYRUS_CAPTURE_CDP, 'set CYRUS_CAPTURE_CDP to a Chromium DevTools HTTP endpoint');
   const url = new URL(process.env.CYRUS_CAPTURE_WEB_URL);
   assert(url.searchParams.has('install'), 'browser URL must explicitly supply ?install=');
+  url.searchParams.set('install', directoryURL(url.searchParams.get('install'), url.href).href);
   url.searchParams.set('scene', f.world);
   url.searchParams.set('capture', 'true');
   url.searchParams.set('view', f.view.join(','));
@@ -82,7 +95,15 @@ async function browser(f, output, build) {
     await cdp.call('Log.enable');
     await cdp.call('Emulation.setDeviceMetricsOverride', { width: f.viewport[0], height: f.viewport[1], deviceScaleFactor: 1, mobile: false });
     await cdp.call('Page.navigate', { url: url.href });
+    let installSubmitted = false;
     const observed = await until(async () => {
+      if (!installSubmitted) {
+        const selection = await cdp.call('Runtime.evaluate', {
+          expression: `(${submitCaptureInstall.toString()})(${JSON.stringify(url.searchParams.get('install'))})`, returnByValue: true,
+        });
+        assert(!selection.exceptionDetails, selection.exceptionDetails?.exception?.description || 'capture install selection failed');
+        installSubmitted = selection.result?.value === true;
+      }
       const r = await cdp.call('Runtime.evaluate', { expression: 'window.__cyrusCapture', returnByValue: true });
       return r.result?.value?.ready === true && r.result.value;
     }, 'browser world loading');
