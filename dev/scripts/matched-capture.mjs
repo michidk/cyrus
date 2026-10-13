@@ -7,6 +7,9 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from
 import net from 'node:net';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { nativeProvenance } from './capture-provenance.mjs';
+import { connectCdp } from './capture-cdp.mjs';
+import { observeBrowserBuild } from './browser-provenance.mjs';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export function fixtureAt(filename) {
@@ -63,40 +66,7 @@ async function until(check, description, timeout = 300000) {
   }
   throw new Error(`timed out waiting for ${description}`);
 }
-async function connectCdp(endpoint) {
-  const target = await (await fetch(`${endpoint}/json/new`, { method: 'PUT' })).json();
-  const socket = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-  let id = 0;
-  const pending = new Map();
-  const events = [];
-  socket.onmessage = ({ data }) => {
-    const message = JSON.parse(data);
-    if (message.method?.startsWith("Runtime.") || message.method === "Log.entryAdded") {
-      events.push(message);
-      if (events.length > 256) events.shift();
-    }
-    const request = pending.get(message.id);
-    if (!request) return;
-    pending.delete(message.id);
-    clearTimeout(request.timer);
-    if (message.error) request.reject(new Error(JSON.stringify(message.error)));
-    else request.resolve(message.result);
-  };
-  return {
-    events,
-    call(method, params = {}) {
-      return new Promise((resolve, reject) => {
-        const current = ++id;
-        const timer = setTimeout(() => { pending.delete(current); reject(new Error(`CDP timeout: ${method}`)); }, method === "Runtime.evaluate" ? 300000 : 30000);
-        pending.set(current, { resolve, reject, timer });
-        socket.send(JSON.stringify({ id: current, method, params }));
-      });
-    },
-    async close() { socket.close(); await fetch(`${endpoint}/json/close/${target.id}`); },
-  };
-}
-async function browser(f, output) {
+async function browser(f, output, build) {
   assert(process.env.CYRUS_CAPTURE_WEB_URL, 'set CYRUS_CAPTURE_WEB_URL to the game server URL reachable by the capture browser');
   assert(process.env.CYRUS_CAPTURE_CDP, 'set CYRUS_CAPTURE_CDP to a Chromium DevTools HTTP endpoint');
   const url = new URL(process.env.CYRUS_CAPTURE_WEB_URL);
@@ -105,7 +75,9 @@ async function browser(f, output) {
   url.searchParams.set('capture', 'true');
   url.searchParams.set('view', f.view.join(','));
   const cdp = await connectCdp(process.env.CYRUS_CAPTURE_CDP);
+  let provenance;
   try {
+    provenance = await observeBrowserBuild(cdp, build, url.href);
     await cdp.call('Runtime.enable');
     await cdp.call('Log.enable');
     await cdp.call('Emulation.setDeviceMetricsOverride', { width: f.viewport[0], height: f.viewport[1], deviceScaleFactor: 1, mobile: false });
@@ -119,9 +91,10 @@ async function browser(f, output) {
     await sleep(f.settle_ms);
     const r = await cdp.call('Page.captureScreenshot', { format: 'png' });
     writeFileSync(output, Buffer.from(r.data, 'base64'));
-    return { url: url.href, observed, browser: await cdp.call('Browser.getVersion') };
+    return { url: url.href, observed, provenance: await provenance.verify(), browser: await cdp.call('Browser.getVersion') };
   } finally {
     writeFileSync(path.join(path.dirname(output), 'browser-log.json'), JSON.stringify(cdp.events, null, 2) + '\n');
+    provenance?.stop();
     await cdp.close();
   }
 }
@@ -141,6 +114,13 @@ export async function capture(fixture, label, originalOnly = false) {
   const f = fixtureAt(fixture);
   const directory = path.join('magic', 'captures', label);
   assert(!existsSync(directory), `capture already exists: ${directory}; choose a new label`);
+  const nativeBuild = originalOnly ? null : nativeProvenance();
+  let webBuild;
+  if (!originalOnly) {
+    run('python3', ['dev/scripts/build-provenance.py', 'verify', 'target/web/build-provenance.json']);
+    webBuild = JSON.parse(readFileSync('target/web/build-provenance.json', 'utf8'));
+    assert.deepEqual(webBuild.source, nativeBuild.build.source, 'native and browser builds have different source snapshots');
+  }
   mkdirSync(directory, { recursive: true });
   const observation = await original(fixture, f, directory);
   if (originalOnly) return directory;
@@ -159,7 +139,8 @@ export async function capture(fixture, label, originalOnly = false) {
     if (!existsSync(nativeImage)) return false;
     return readFileSync(nativeImage).subarray(-12).equals(Buffer.from('0000000049454e44ae426082', 'hex'));
   }, 'complete native screenshot', 30000);
-  const web = await browser(f, path.join(directory, 'browser.png'));
+  const web = await browser(f, path.join(directory, 'browser.png'), webBuild);
+  assert.deepEqual(nativeProvenance(), nativeBuild, 'native build or container changed during capture');
   for (const name of ['original', 'native', 'browser']) {
     const size = run('identify', ['-format', '%w %h', path.join(directory, `${name}.png`)]);
     assert.equal(size, f.viewport.join(' '), `${name} viewport differs`);
@@ -167,6 +148,7 @@ export async function capture(fixture, label, originalOnly = false) {
   writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify({
     fixture: path.relative(process.cwd(), fixture), fixture_sha256: hash(fixture),
     revision: run('git', ['rev-parse', 'HEAD']), original: observation, native: state, browser: web,
+    native_provenance: nativeBuild,
     images: Object.fromEntries(['original', 'native', 'browser'].map(name => [name, hash(path.join(directory, `${name}.png`))])),
     scope: 'Verified scene/viewpoint capture. Animation phases and gameplay timing are not synchronized.',
   }, null, 2) + '\n');

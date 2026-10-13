@@ -78,6 +78,12 @@ jobs:
           node dev/scripts/test-local-install.mjs
           node dev/scripts/test-game-assets.mjs
 
+      - name: Check build and capture provenance
+        run: |
+          python3 dev/scripts/test-build-provenance.py
+          python3 dev/scripts/test-cargo-wrapper.py
+          node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check --color always
 

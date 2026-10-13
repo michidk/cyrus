@@ -55,6 +55,9 @@ exit 17
                 (root / "redguard").symlink_to(install, target_is_directory=True)
             shutil.copyfile(SCRIPTS / "gates.sh", scripts / "gates.sh")
             (scripts / "toolchain.sh").write_text("")
+            for name in ("test-build-provenance.py", "capture-provenance.test.mjs",
+                         "browser-provenance.test.mjs", "matched-capture.test.mjs"):
+                (scripts / name).write_text("")
             (scripts / "cargo.sh").write_text('''cargo() {
     [[ "${REDGUARD_DIR-}" == "$EXPECTED_INSTALL" ]] || return 98
     if [[ "$1" == test && "$TEST_SKIP" == yes ]]; then

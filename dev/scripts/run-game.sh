@@ -14,8 +14,7 @@ if [ "${1:-}" = --fixture ]; then
     shift 2
     set -- "${launch[@]}" "$@"
 fi
-. dev/scripts/cargo.sh
-cargo build -p cyrus
+bash dev/scripts/build-native.sh
 # Always build: the layer cache makes it quick, and a changed Dockerfile is never missed.
 docker build -q -t cyrus-dev:dev dev/docker/dev >/dev/null
 docker rm -f cyrus-dev >/dev/null 2>&1 || true

@@ -9,6 +9,8 @@ if [ -z "${REDGUARD_DIR+x}" ] && [ -d redguard ]; then
 fi
 dev/scripts/publish-check.sh
 dev/scripts/genmap.sh --check
+python3 dev/scripts/test-build-provenance.py
+node --test dev/scripts/capture-provenance.test.mjs dev/scripts/browser-provenance.test.mjs dev/scripts/matched-capture.test.mjs
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 log=$(mktemp)
