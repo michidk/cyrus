@@ -70,7 +70,7 @@ export async function chooseInstall() {
   form.id = "install-picker";
   const folder = document.createElement("button");
   folder.type = "button";
-  folder.textContent = "Choose local game folder";
+  folder.textContent = "Choose game folder on your computer";
   const folderInput = document.createElement("input");
   folderInput.type = "file";
   folderInput.id = "install-folder";
@@ -80,7 +80,7 @@ export async function chooseInstall() {
   const localHelp = document.createElement("p");
   localHelp.textContent = "Choose the GOG folder containing Redguard, DOSBOX and game.gog. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
   const label = document.createElement("label");
-  label.textContent = "Or use a game-files URL";
+  label.textContent = "Or connect to a game-file server";
   const input = document.createElement("input");
   input.type = "url";
   input.required = true;
@@ -89,15 +89,15 @@ export async function chooseInstall() {
   input.value = candidate ? directoryValue(candidate) : "";
   label.htmlFor = input.id;
   const help = document.createElement("p");
-  help.textContent = "Enter the URL serving your own Redguard installation.";
+  help.textContent = "Use this option if you already run the included Cyrus server for your game files. Enter that server's address, not a game download link. Otherwise, choose a folder on your computer above.";
   const error = document.createElement("p");
   error.setAttribute("role", "alert");
   error.textContent = message;
   const submit = document.createElement("button");
-  submit.textContent = "Use game files";
+  submit.textContent = "Connect to server";
   form.append(folder, folderInput, localHelp, label, input, help, error, submit);
   document.getElementById("loading").append(form);
-  document.getElementById("label").textContent = "Select your Redguard installation";
+  document.getElementById("label").textContent = "Choose your Redguard game files";
   folder.focus();
   return new Promise(resolve => {
     function acceptLocal(entries) {
