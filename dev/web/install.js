@@ -66,11 +66,14 @@ export async function chooseInstall() {
     try { return await accept(candidate); }
     catch (error) { message = error.message; }
   }
+  const loading = document.getElementById("loading");
+  loading.classList.add("selecting-install");
   const form = document.createElement("form");
   form.id = "install-picker";
   const folder = document.createElement("button");
   folder.type = "button";
-  folder.textContent = "Choose game folder on your computer";
+  folder.textContent = "Choose game folder";
+  folder.className = "primary";
   const folderInput = document.createElement("input");
   folderInput.type = "file";
   folderInput.id = "install-folder";
@@ -79,8 +82,13 @@ export async function chooseInstall() {
   folderInput.hidden = true;
   const localHelp = document.createElement("p");
   localHelp.textContent = "Choose the GOG folder containing Redguard, DOSBOX and game.gog. Files stay on your computer and are not uploaded. Select the folder again after reloading.";
+  const server = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = "Connect to a game-file server instead";
+  server.open = Boolean(message);
+  server.append(summary);
   const label = document.createElement("label");
-  label.textContent = "Or connect to a game-file server";
+  label.textContent = "Game-file server address";
   const input = document.createElement("input");
   input.type = "url";
   input.required = true;
@@ -90,14 +98,21 @@ export async function chooseInstall() {
   label.htmlFor = input.id;
   const help = document.createElement("p");
   help.textContent = "Use this option if you already run the included Cyrus server for your game files. Enter that server's address, not a game download link. Otherwise, choose a folder on your computer above.";
+  const status = document.createElement("p");
+  status.id = "install-status";
+  status.setAttribute("role", "status");
   const error = document.createElement("p");
   error.setAttribute("role", "alert");
   error.textContent = message;
   const submit = document.createElement("button");
   submit.textContent = "Connect to server";
-  form.append(folder, folderInput, localHelp, label, input, help, error, submit);
+  server.append(label, input, help, submit);
+  form.append(localHelp, folder, folderInput, status, error, server);
   document.getElementById("loading").append(form);
-  document.getElementById("label").textContent = "Choose your Redguard game files";
+  document.getElementById("label").textContent = "Choose your Redguard files";
+  const title = document.createElement("h1");
+  title.textContent = "Cyrus";
+  loading.prepend(title);
   folder.focus();
   return new Promise(resolve => {
     function acceptLocal(entries) {
@@ -107,41 +122,61 @@ export async function chooseInstall() {
       history.replaceState(null, "", url.href);
       try { localStorage.setItem(STORAGE_KEY, "local"); } catch { /* Selection works without storage. */ }
       document.querySelector('meta[name="cyrus-assets"]')?.remove();
+      finish(source);
+    }
+    function finish(source) {
+      loading.classList.remove("selecting-install");
+      title.remove();
       form.remove();
+      document.getElementById("label").textContent = "Game files selected. Preparing application…";
+      document.getElementById("fill").classList.add("indeterminate");
       resolve(source);
     }
-    function busy(value) { folder.disabled = submit.disabled = input.disabled = value; }
-    folder.addEventListener("click", async () => {
-      if (!globalThis.showDirectoryPicker) { folderInput.click(); return; }
-      busy(true);
+    function busy(value, message = "") {
+      folder.disabled = submit.disabled = input.disabled = value;
+      folder.textContent = value ? "Checking game files…" : "Choose game folder";
+      status.textContent = message;
       error.textContent = "";
+    }
+    function failed(failure) {
+      busy(false);
+      if (failure.name === "AbortError") status.textContent = "No folder selected. Choose your game folder to continue.";
+      else error.textContent = failure.name === "NotAllowedError"
+        ? "Folder access was denied. Choose the folder again and allow read access."
+        : failure.message;
+    }
+    folder.addEventListener("click", async () => {
+      busy(true, "Choose your GOG folder in the browser dialog and allow read access.");
+      if (!globalThis.showDirectoryPicker) { folderInput.value = ""; folderInput.click(); return; }
       try {
         const directory = await showDirectoryPicker({ mode: "read" });
-        error.textContent = "Checking selected folder…";
-        acceptLocal(await directoryEntries(directory));
+        status.textContent = "Checking " + directory.name + "…";
+        acceptLocal(await directoryEntries(directory, "", (count, path) => {
+          status.textContent = "Checking folder: " + count + " files found. " + path;
+        }));
       } catch (failure) {
-        if (failure.name !== "AbortError") error.textContent = failure.message;
-      } finally { busy(false); }
+        failed(failure);
+      }
     });
-    folderInput.addEventListener("change", () => {
-      if (!folderInput.files.length) return;
+    folderInput.addEventListener("cancel", () => failed({ name: "AbortError" }));
+    folderInput.addEventListener("change", async () => {
+      if (!folderInput.files.length) { failed({ name: "AbortError" }); return; }
+      busy(true, "Checking " + folderInput.files.length + " selected files…");
+      await new Promise(resolve => setTimeout(resolve, 0));
       try { acceptLocal([...folderInput.files].map(file => [file.webkitRelativePath, file])); }
-      catch (failure) { error.textContent = failure.message; folderInput.value = ""; }
+      catch (failure) { failed(failure); folderInput.value = ""; }
     });
     form.addEventListener("submit", async event => {
       event.preventDefault();
-      busy(true);
-      error.textContent = "Checking game files…";
+      busy(true, "Connecting to game-file server…");
       try {
         const source = await accept(input.value);
         const url = new URL(location.href);
         url.searchParams.set("install", source.url);
         history.replaceState(null, "", url.href);
-        form.remove();
-        resolve(source);
+        finish(source);
       } catch (failure) {
-        error.textContent = failure.message;
-        busy(false);
+        failed(failure);
       }
     });
   });

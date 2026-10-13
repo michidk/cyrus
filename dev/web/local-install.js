@@ -38,11 +38,19 @@ export function localInstall(entries) {
   return { files };
 }
 
-export async function directoryEntries(directory, prefix = '') {
+export async function directoryEntries(directory, prefix = '', progress = () => {}) {
   const entries = [];
-  for await (const [name, handle] of directory.entries()) {
-    if (handle.kind === 'directory') entries.push(...await directoryEntries(handle, prefix + name + '/'));
-    else entries.push([prefix + name, await handle.getFile()]);
+  async function walk(directory, prefix) {
+    for await (const [name, handle] of directory.entries()) {
+      const path = prefix + name;
+      progress(entries.length, path);
+      if (handle.kind === 'directory') await walk(handle, path + '/');
+      else {
+        entries.push([path, await handle.getFile()]);
+        progress(entries.length, path);
+      }
+    }
   }
+  await walk(directory, prefix);
   return entries;
 }

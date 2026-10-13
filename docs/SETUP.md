@@ -177,6 +177,9 @@ chunks and reports progress. Select the folder again after reload, world-picker
 navigation or opening the other application. Cancel leaves the picker open.
 Use `?install=local` to force local selection even with a saved URL or server
 default. Local selection saves only the preference `local` in `cyrus-install`.
+The picker reports folder scan progress, cancellation and denied access, and shows
+application preparation immediately after accepting a folder. Server connection
+is available under an expandable option.
 
 The picker also accepts an HTTP(S) install-service URL.
 It saves the validated URL under localStorage `cyrus-install`, shared by game and

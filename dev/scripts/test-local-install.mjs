@@ -22,5 +22,11 @@ assert.throws(() => localInstall([...entries, ['Redguard/disc/game.gog', new Fil
 const handle = { async *entries() {
   yield ['subfolder', { kind: 'directory', async *entries() { yield ['one', { kind: 'file', getFile: async () => entries[0][1] }]; } }];
 } };
-assert.deepEqual(await directoryEntries(handle), [['subfolder/one', entries[0][1]]]);
+const progress = [];
+assert.deepEqual(await directoryEntries(handle, '', (count, path) => progress.push([count, path])),
+  [['subfolder/one', entries[0][1]]]);
+assert.deepEqual(progress, [[0, 'subfolder'], [0, 'subfolder/one'], [1, 'subfolder/one']]);
+await assert.rejects(directoryEntries({ async *entries() {
+  yield ['locked.txt', { kind: 'file', getFile: async () => { throw new DOMException('Denied', 'NotAllowedError'); } }];
+} }), { name: 'NotAllowedError' });
 console.log('Local folder mapping, read-only handles, nested directories, companion files and invalid selections passed');
