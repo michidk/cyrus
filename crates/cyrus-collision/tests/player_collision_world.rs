@@ -33,6 +33,57 @@ fn placement(id: u32, position: [i32; 3], model: &str) -> StaticPlacement {
 }
 
 #[test]
+fn ordinary_actor_primary_miss_does_not_use_player_fallback() {
+    use cyrus_collision::collision_world::StaticCandidates;
+    use cyrus_collision::ground::{FallbackProbe, SupportHistory, SupportSource};
+    let mut scene = CollisionScene::default();
+    scene.models.insert("floor".into(), model(4));
+    scene
+        .placements
+        .push(placement(0, [1000, -8, 1000], "floor"));
+    let world = StaticCollision::new(&scene).unwrap();
+    let candidates = StaticCandidates {
+        faces: vec![0],
+        actors: vec![],
+    };
+    let position = [1000 * 256, 127, 1000 * 256];
+    let probe = GroundProbe::new(position, 0, 1).unwrap();
+    assert!(
+        world
+            .primary_support(&candidates, &probe, None, false)
+            .unwrap()
+            .is_none()
+    );
+    let mut history = SupportHistory::new(0, 0);
+    let selected = world
+        .selected_player_support(
+            &candidates,
+            &probe,
+            None,
+            &FallbackProbe::new(position, [0; 3], 0, false).unwrap(),
+            false,
+            &mut history,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        selected.source(),
+        SupportSource::Model { model: 0, face: 0 }
+    );
+    assert_eq!(selected.actor_height(62, -2), 127);
+    assert_eq!(history.ticks(), 12);
+    let hit = GroundProbe::new([1000 * 256, -8 * 256, 1000 * 256], 0, 1).unwrap();
+    assert_eq!(
+        world
+            .primary_support(&candidates, &hit, None, false)
+            .unwrap()
+            .unwrap()
+            .source(),
+        SupportSource::Model { model: 0, face: 0 }
+    );
+}
+
+#[test]
 fn support_metadata_retains_all_model_flags_and_terrain_clears_them() {
     use cyrus_collision::ground::SupportSource;
     let mut scene = CollisionScene::default();

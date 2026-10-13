@@ -59,6 +59,8 @@ Sphere model admission and forward slope/support selection follow the
 [published player facts](https://github.com/michidk/redguard-preservation/blob/2810574/docs/engine/player.md).
 The caller supplies the retained surface veto after support-state updates;
 geometric support alone does not authorize forward movement.
+`primary_support` selects ordinary actor support without player fallback or
+shared history updates; a primary miss stays absent.
 When primary support is absent, the selected-player fallback uses the caller's
 support-history state and retains the actor's runtime Y at the first accepted
 non-side contact. This follows the [published fallback rules](https://github.com/michidk/redguard-preservation/blob/3c5be4a/docs/engine/player.md#selected-player-fallback-support).

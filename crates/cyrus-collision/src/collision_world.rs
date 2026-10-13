@@ -375,6 +375,21 @@ impl StaticCollision {
         Ok(contacts)
     }
 
+    /// Query primary support for an ordinary actor, without selected-player fallback.
+    /// Candidates retain authored order. A miss remains absent; this does not update
+    /// shared player history, actor surface state, or movement state.
+    /// Follows preservation `engine/player.md` primary and selected-player support rules.
+    pub fn primary_support(
+        &self,
+        candidates: &StaticCandidates,
+        probe: &GroundProbe,
+        terrain: Option<GroundSupport>,
+        sidedness: bool,
+    ) -> anyhow::Result<Option<SelectedSupport>> {
+        let contacts = self.ground_contacts(candidates, probe, sidedness)?;
+        Ok(probe.select(terrain, &contacts))
+    }
+
     /// Select slope/ground geometry for a forward probe after body clearance.
     /// `check_slope` reflects the caller's original collision attributes and actor state.
     /// The caller must run support-state updates and `SelectedSupport::allows_forward` afterward.
