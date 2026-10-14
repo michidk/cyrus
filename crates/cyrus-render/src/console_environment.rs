@@ -10,7 +10,13 @@ use cyrus_world::lifecycle::CurrentScene;
 use std::collections::BTreeMap;
 
 #[derive(Resource, Default)]
-pub(crate) struct Edits(BTreeMap<u32, [Option<f32>; 5]>);
+pub(crate) struct Edits(BTreeMap<u32, WorldEdits>);
+
+#[derive(Default)]
+struct WorldEdits {
+    scalars: [Option<f32>; 5],
+    sky_speed: Option<u8>,
+}
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<Edits>();
@@ -22,6 +28,15 @@ pub(crate) fn register(app: &mut App) {
             cheat: false,
         },
         show,
+    );
+    app.console_command(
+        Command {
+            name: "fxskyspeed".into(),
+            alias: Some("skysp".into()),
+            usage: "fxskyspeed value".into(),
+            cheat: false,
+        },
+        speed,
     );
     for (name, alias) in [
         ("fxskyscale", "skysc"),
@@ -123,13 +138,67 @@ fn edit(In(command): In<Invocation>, world: &mut World) -> Result<Vec<String>> {
             .context("console environment is still loading")?;
         *slot(&mut environment, index)? = value;
     }
-    world.resource_mut::<Edits>().0.entry(id).or_default()[index] = Some(value);
+    world
+        .resource_mut::<Edits>()
+        .0
+        .entry(id)
+        .or_default()
+        .scalars[index] = Some(value);
     if index >= 2 {
         world
             .resource_mut::<crate::water::WaterPlayback>()
             .invalidate();
     }
     output.push(format!("{} = {value}", command.name));
+    Ok(output)
+}
+
+fn speed(In(command): In<Invocation>, world: &mut World) -> Result<Vec<String>> {
+    let mut output = Vec::new();
+    let value = cyrus_console::value(world, command.args.trim(), &mut output)? as i32;
+    let id = world
+        .get_resource::<CurrentScene>()
+        .and_then(|scene| scene.world)
+        .context("fxskyspeed requires a loaded world")?;
+    let handle = world
+        .get_resource::<EnvironmentRequest>()
+        .context("fxskyspeed environment is not prepared")?
+        .0
+        .clone();
+    anyhow::ensure!(
+        world
+            .resource::<Assets<Environment>>()
+            .get(&handle)
+            .and_then(|environment| environment.sky.as_ref())
+            .is_some(),
+        "world {id}: fxskyspeed requires a loaded sky"
+    );
+    let mut skies = world.query::<&mut crate::sky::Sky>();
+    anyhow::ensure!(
+        skies.iter(world).count() == 1,
+        "world {id}: sky is still loading"
+    );
+    let direction = (world
+        .get_resource_mut::<cyrus_game::random::EngineRandom>()
+        .context("fxskyspeed requires the shared engine random stream")?
+        .draw()
+        & 2047) as u16;
+    skies.single_mut(world)?.set_speed(direction, value);
+    world
+        .resource_mut::<Edits>()
+        .0
+        .entry(id)
+        .or_default()
+        .sky_speed = Some(value as u8);
+    world
+        .resource_mut::<Assets<Environment>>()
+        .get_mut(&handle)
+        .unwrap()
+        .sky
+        .as_mut()
+        .unwrap()
+        .speed = value as u8;
+    output.push(format!("fxskyspeed = {value}"));
     Ok(output)
 }
 
@@ -162,7 +231,7 @@ pub(crate) fn apply(
         return;
     };
     *applied = Some(key);
-    for (index, value) in values.iter().enumerate() {
+    for (index, value) in values.scalars.iter().enumerate() {
         if let Some(value) = value
             && let Ok(slot) = slot(&mut environment, index)
             && *slot != *value
@@ -172,6 +241,11 @@ pub(crate) fn apply(
                 water.invalidate();
             }
         }
+    }
+    if let Some(value) = values.sky_speed
+        && let Some(sky) = &mut environment.sky
+    {
+        sky.speed = value;
     }
     if let Some(sky) = &environment.sky {
         for handle in &skies {
@@ -212,6 +286,93 @@ mod tests {
             prelighting: default(),
             object_lights: Vec::new(),
         }
+    }
+
+    #[test]
+    fn speed_commands_consume_one_draw_and_retain_only_the_world_byte() {
+        use cyrus_game::random::EngineRandom;
+        let mut app = App::new();
+        app.add_plugins(cyrus_console::ConsolePlugin)
+            .init_resource::<EngineRandom>()
+            .init_resource::<Assets<Environment>>()
+            .init_resource::<Assets<crate::sky::SkyMaterial>>()
+            .init_resource::<crate::water::WaterPlayback>()
+            .insert_resource(CurrentScene {
+                name: "test".into(),
+                world: Some(7),
+            });
+        register(&mut app);
+        app.add_systems(Update, apply);
+        let first = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(environment());
+        app.insert_resource(EnvironmentRequest(first.clone()));
+        let submit = |app: &mut App, line| {
+            cyrus_console::submit(app.world_mut(), line, cyrus_console::Source::Interactive)
+        };
+        assert!(submit(&mut app, "skysp 0").is_err());
+        assert_eq!(app.world().resource::<EngineRandom>().state(), 1);
+        app.world_mut().spawn(crate::sky::Sky::new(1));
+        assert!(submit(&mut app, "skysp").is_err());
+        assert_eq!(app.world().resource::<EngineRandom>().state(), 1);
+        submit(&mut app, "skysp -257").unwrap();
+        assert_eq!(app.world().resource::<EngineRandom>().state(), 1103527590);
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Environment>>()
+                .get(&first)
+                .unwrap()
+                .sky
+                .as_ref()
+                .unwrap()
+                .speed,
+            255
+        );
+        let second = app
+            .world_mut()
+            .resource_mut::<Assets<Environment>>()
+            .add(environment());
+        app.insert_resource(EnvironmentRequest(second.clone()));
+        app.world_mut().resource_mut::<CurrentScene>().world = Some(8);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Environment>>()
+                .get(&second)
+                .unwrap()
+                .sky
+                .as_ref()
+                .unwrap()
+                .speed,
+            1
+        );
+        app.world_mut().resource_mut::<CurrentScene>().world = Some(7);
+        app.update();
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Environment>>()
+                .get(&second)
+                .unwrap()
+                .sky
+                .as_ref()
+                .unwrap()
+                .speed,
+            255
+        );
+        submit(&mut app, "fxskyspeed 0").unwrap();
+        assert_eq!(app.world().resource::<EngineRandom>().state(), 2524885223);
+        assert_eq!(
+            app.world()
+                .resource::<Assets<Environment>>()
+                .get(&second)
+                .unwrap()
+                .sky
+                .as_ref()
+                .unwrap()
+                .speed,
+            0
+        );
     }
 
     #[test]

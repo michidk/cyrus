@@ -36,7 +36,7 @@ impl Plugin for EnvironmentPlugin {
             .init_resource::<crate::water::WaterPlayback>()
             .add_systems(
                 Update,
-                (apply_sky, crate::console_environment::apply)
+                (crate::console_environment::apply, apply_sky)
                     .chain()
                     .after(crate::scene_presentation),
             )

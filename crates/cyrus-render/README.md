@@ -245,8 +245,14 @@ The public `ReadyScene` resource identifies the prepared world whose render inst
 
 Console rendering consumes CPF paper, GUI color and shadow settings and the
 shared cursor clock. `show world`, `fxskyscale`, `fxskylevel`, `fxwaveamp`,
-`fxwavespeed` and `fxwavefreq` use the current environment. Edits are retained
+`fxwavespeed`, `fxwavefreq` and `fxskyspeed` use the current environment. Edits are retained
 for world revisits within the session, outside the read-only install. Wave
 changes rebuild the private terrain meshes and bounds. Other environment/light
 editor commands remain explicitly unsupported. Re-export older console artwork
 caches to provide the complete world palette and GUI color mapping.
+
+**Verified:** `fxskyspeed` follows the published [signed live-speed contract](https://github.com/michidk/redguard-preservation/commit/8cf451e8c3bd0ed02d57855de1544b7e63348ce3).
+It consumes one shared random draw even at zero, preserves current offsets and
+timer state, and retains the low byte for later world loads. Initial sky creation
+still chooses an independent random direction; complete session random ordering
+remains unverified.

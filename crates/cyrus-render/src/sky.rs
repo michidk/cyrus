@@ -35,26 +35,33 @@ impl SkyScrollSync {
     }
 }
 
-fn scroll_velocity(direction: u16, speed: u8) -> Vec2 {
+fn scroll_velocity(direction: u16, speed: f32) -> Vec2 {
     // Preserve the original angle table's rounded turn constant.
     #[allow(clippy::approx_constant)]
     let angle = f64::from(direction) * 6.2831852 / 2048.0;
-    Vec2::new(angle.sin() as f32, angle.cos() as f32) * (speed as f32 / 16.0)
+    Vec2::new(angle.sin() as f32, angle.cos() as f32) * (speed / 16.0)
 }
 
 #[derive(Component)]
 pub(crate) struct Sky {
     velocity: Vec2,
-    speed: u8,
+    speed: f32,
     tick: u64,
 }
 
 impl Sky {
+    /// Change direction and signed live speed without resetting offsets or timer state.
+    /// Follows preservation's sky scrolling console-edit contract.
+    pub(crate) fn set_speed(&mut self, direction: u16, value: i32) {
+        self.speed = value as f32;
+        self.velocity = scroll_velocity(direction, self.speed);
+    }
+
     pub(crate) fn new(speed: u8) -> Self {
         let direction = (RandomState::new().hash_one(0_u8) & 2047) as u16;
         Self {
-            velocity: scroll_velocity(direction, speed),
-            speed,
+            velocity: scroll_velocity(direction, f32::from(speed)),
+            speed: f32::from(speed),
             tick: 0,
         }
     }
@@ -211,7 +218,7 @@ mod tests {
         app.world_mut().spawn((
             Sky {
                 velocity: Vec2::new(1.0, -1.0),
-                speed: 16,
+                speed: 16.0,
                 tick: 0,
             },
             MeshMaterial3d(handle.clone()),
@@ -261,5 +268,33 @@ mod tests {
         }
         assert_eq!(Sky::new(0).velocity, Vec2::ZERO);
         assert!((Sky::new(6).velocity.length() - 0.375).abs() < 0.00001);
+
+        let entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<Sky>>()
+            .single(app.world())
+            .unwrap();
+        let tick = app.world().get::<Sky>(entity).unwrap().tick;
+        app.world_mut()
+            .get_mut::<Sky>(entity)
+            .unwrap()
+            .set_speed(0, 0);
+        assert_eq!(app.world().get::<Sky>(entity).unwrap().tick, tick);
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(55));
+        app.update();
+        assert_eq!(scroll(&app), Vec4::new(12.0, 21.0, 1.0, 0.0));
+        app.world_mut()
+            .get_mut::<Sky>(entity)
+            .unwrap()
+            .set_speed(0, -257);
+        app.update();
+        assert_eq!(scroll(&app), Vec4::new(12.0, 21.0, 1.0, 0.0));
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_millis(55));
+        app.update();
+        assert_eq!(scroll(&app), Vec4::new(12.0, 4.9375, 1.0, 0.0));
     }
 }
