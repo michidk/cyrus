@@ -70,6 +70,13 @@ session's 400-tag duplicate table. RTX text is retained in native
 state and failed writes leave accepted entries unchanged and trigger no icon.
 **Verified:** tag acceptance and slot rules follow preservation's
 [script HUD contract](https://github.com/michidk/redguard-preservation/blob/docs/script-hud/docs/engine/hud.md).
+
+**Verified:** `ScriptHud` also retains the compass display flag and consumed-use latch across
+world changes. Owned item-zero use requires supplied activation state;
+missing actor eligibility remains unsupported. The shared renderer reads the
+installed Activate/Attack binding, selection and exported ownership. Receiving a
+compass does not enable it, and a held accepted use toggles only once. Rules follow
+preservation's [compass contract](https://github.com/michidk/redguard-preservation/commit/65d4885).
 The renderer consumes accepted notification requests. Full logbook navigation,
 new-game/death resets and save-game integration remain unsupported.
 The retained SOUP topic-menu word starts at zero and changes through its native

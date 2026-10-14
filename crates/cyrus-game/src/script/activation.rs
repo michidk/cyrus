@@ -64,6 +64,31 @@ pub struct ActivationInputs {
     pub render_disabled: bool,
 }
 impl ActivationInputs {
+    /// Known actor gates for owned compass use, from preservation's HUD item-use rules.
+    /// Lockout/ownership/selection and interaction routing belong to the caller.
+    pub fn compass_eligible(&self, player: &super::ScriptActor) -> Result<bool> {
+        let actor = self.player_state(player)?;
+        let group = actor.animation.and_then(|animation| animation.group);
+        let animated = self.item_system_ready && !self.shell_execution && actor.animation.is_some();
+        let climbing =
+            animated && (matches!(actor.state, 33 | 34) || matches!(group, Some(149 | 150)));
+        Ok(self.item_system_ready
+            && !self.shell_execution
+            && !matches!(actor.water_state, 2 | 4)
+            && !weapon_predicates(
+                actor.state,
+                actor.animation,
+                actor.weapon_assigned,
+                actor.weapon_drawn,
+                player.attributes()[110],
+                self.item_system_ready,
+                self.shell_execution,
+            )
+            .0
+            && !climbing
+            && actor.torch_burning == 0)
+    }
+
     fn player_state(&self, player: &super::ScriptActor) -> Result<ActivationActor> {
         let mut state = self.actor(self.player.index)?;
         if let Some(group) = player.bound_animation_group() {

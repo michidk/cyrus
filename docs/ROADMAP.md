@@ -63,7 +63,7 @@ or fidelity across every world and palette.
 | SFX, RTX, CD audio | Effects, speech, subtitles, channels, music, preferences and surface remaps | Complete automatic triggers, moving emitters, nonplayer ground updates and audible parity |
 | SOUP | Portable VM, logical actors, supported ordinary updates and explicit hosts | Remaining actor stages, native services, lifecycle, synchronization and persistence |
 | MENU.INI, KEYS.INI | Data-driven menu, keyboard navigation, settings, rebinding and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie unlocks |
-| ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
+| ITEM.INI, COMBAT.INI | Starting-item HUD icons/counts and compass use with supplied actor state | Shared inventory, pickups, production item use and combat |
 | SMK | Streamed native/browser video, first-track audio and skip/subtitle rules | Original comparison, A/V sync and hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Image inspection and authored-rate ANM playback | Game cursor and palette cycling |
 | CHT, CPF | Cheat and console parsing, local persistence and supported commands | Remaining gameplay effects, commands and console fidelity |
@@ -157,8 +157,9 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
 - [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support exists; topic execution and death/load resets remain open. Portable RTX preparation, the 20-entry cache and shared-sample dialogue playback are implemented in the current draft. Full New Game story acceptance remains open.
 - [x] Shared `ShowBitmap`/`UnShowBitmap` slots and `AddLog` persistence/notification dispatch. **Verified:** original-instruction acceptance checks, shared dispatch/render tests and native/browser START entry. Full logbook UI, save integration and original notification cadence remain open.
+- [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Inventory, production actor state and save restore remain open.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
-- [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original. Compass frame selection and item-zero use rules are documented in preservation; production compass activation remains unwired.
+- [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
 

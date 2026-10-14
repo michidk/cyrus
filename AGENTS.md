@@ -257,7 +257,12 @@ loading shows the original red bar and gold lower-left percentage, without a
 right-hand status message or pending asset filename. Failed world entry reports a
 contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
-walk mode, auto-defend, prompt, selected item and count. Installed `ShowBitmap`,
+walk mode, auto-defend, prompt, selected item and count. **Verified:** owned
+item-zero use toggles the shared compass flag once per held installed
+Activate/Attack binding when supplied actor state permits it. Unknown actor
+eligibility rejects use; inventory/acquisition, new-game/death resets and save
+restore remain unsupported. `state.script_hud.compass_on` reports the retained
+session flag. Installed `ShowBitmap`,
 `UnShowBitmap` and `AddLog` calls feed shared native/browser HUD state.
 `state.script_hud` reports native dispatch readiness, power-up slots and accepted
 logbook entry count or load error. Log text stays outside the install in native

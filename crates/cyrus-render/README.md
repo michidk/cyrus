@@ -288,9 +288,12 @@ heading/world and supplied script-player health/type and activation lockout feed
 the overlay. Installed bitmap/logbook script handlers feed shared game-owned
 slots and accepted notification requests. New logbook notifications draw frame 0
 first; entries accepted during playback do not restart the icon. Lockout hides
-power-up slots and leaves the logbook icon visible. Sword state, compass use
-and gameplay walk-mode/auto-defend behavior remain unwired. Native health-number placement
-matches the original at 640×480; complete pixel and timing parity remain open.
+power-up slots and leaves the logbook icon visible. Owned compass use consumes the
+installed Activate/Attack binding once per hold, with supplied actor
+gates. Missing eligibility rejects use; shared inventory/acquisition and save
+restore remain unsupported. The display flag survives HUD/world replacement.
+Sword state and gameplay walk-mode/auto-defend behavior remain unwired. Native
+health-number placement matches the original at 640×480; complete pixel and timing parity remain open.
 
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
 The `animated_i16_absolute` encoding distinguishes these from older raw-delta

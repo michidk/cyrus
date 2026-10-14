@@ -131,7 +131,7 @@ pub struct HudState {
     /// Placed player's heading in 2048-unit turns and the loaded WORLD.INI world ID, for the compass.
     pub heading: u16,
     pub world: Option<u32>,
-    /// Compass display flag, toggled by using item 0. *Unwired*.
+    /// Shared session compass display flag, toggled by using owned item 0.
     pub compass_on: bool,
     pub compass_frame: Option<u8>,
     /// Script-owned power-up slots as `(id, frame)`.
@@ -331,6 +331,7 @@ impl Plugin for HudPlugin {
                 Update,
                 update
                     .after(cyrus_game::script::OrdinaryUpdates)
+                    .after(cyrus_game::player::input::InputSample)
                     .run_if(in_state(AppState::InGame)),
             )
             .add_systems(OnExit(AppState::InGame), despawn);
@@ -460,6 +461,8 @@ struct CompassInputs<'w, 's> {
     player: Query<'w, 's, &'static PlayerPose, With<Player>>,
     request: Option<Res<'w, PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<PlayerScene>>>,
+    suppressed: Option<Res<'w, cyrus_game::player::input::InputSuppressed>>,
+    console: Option<Res<'w, cyrus_console::Console>>,
 }
 
 fn configure_scripts(
@@ -601,7 +604,27 @@ fn update(
             .as_ref()
             .is_some_and(|world| world.generation() == inputs.player.generation)
     });
-    state.lockout = activation.map_or(0, |inputs| inputs.lockout);
+    state.lockout = world
+        .as_ref()
+        .and_then(|world| world.globals().lockout())
+        .unwrap_or_else(|| activation.map_or(0, |inputs| inputs.lockout));
+    let on_edge = activation
+        .and_then(|inputs| inputs.actors.get(&inputs.player.index))
+        .is_some_and(|actor| (10..=19).contains(&actor.state));
+    let compass_eligible = match (world.as_ref(), activation) {
+        (Some(world), Some(inputs)) => world
+            .actors()
+            .get(inputs.player.index)
+            .ok_or_else(|| {
+                anyhow::anyhow!("selected compass actor {} unavailable", inputs.player.index)
+            })
+            .and_then(|player| inputs.compass_eligible(player))
+            .unwrap_or_else(|error| {
+                warn!("compass item use: {error:#}");
+                false
+            }),
+        _ => false,
+    };
 
     // Candle.
     if state.sword_drawn && state.lockout == 0 {
@@ -660,6 +683,7 @@ fn update(
         }
     }
 
+    let item_path = matches!(&overlay, ActivationOverlay::Item { .. });
     let (shown_item, prompt) = match overlay {
         ActivationOverlay::Hidden | ActivationOverlay::Item { visible: false, .. } => (None, None),
         ActivationOverlay::Prompt(text) => (None, Some(text)),
@@ -671,6 +695,30 @@ fn update(
     state.prompt = prompt.clone();
     state.count = shown_item.map(|i| i.count);
 
+    // The original consumes use once per hold, independently of drawing its compass.
+    let owns_compass = hud.items.iter().any(|item| item.id == 0 && item.count > 0);
+    let attempt = if state.lockout == 1
+        || on_edge
+        || compass
+            .suppressed
+            .as_ref()
+            .is_some_and(|suppressed| suppressed.0)
+        || compass.console.as_ref().is_some_and(|console| console.open)
+        // Readiness rejects after consuming use, even when it hides the item overlay.
+        || (!item_path && activation.is_none_or(|inputs| inputs.item_system_ready))
+    {
+        cyrus_game::script::CompassUse::Blocked
+    } else if state.selected == Some(0)
+        && owns_compass
+        && state.player_type != 1
+        && compass_eligible
+    {
+        cyrus_game::script::CompassUse::Accepted
+    } else {
+        cyrus_game::script::CompassUse::Rejected
+    };
+    state.compass_on = script_hud.compass_input(held(7), attempt);
+
     // Compass inputs: the placed player's heading and the loaded world's WORLD.INI ID.
     state.heading = compass.player.single().map_or(0, |pose| pose.heading);
     state.world = compass
@@ -681,7 +729,6 @@ fn update(
         .map(|scene| scene.world);
 
     // Compass: owning item 0 and its display flag.
-    let owns_compass = hud.items.iter().any(|i| i.id == 0 && i.count > 0);
     state.compass_frame =
         (state.lockout != 1 && state.player_type != 1 && owns_compass && state.compass_on).then(
             || {
@@ -1214,8 +1261,7 @@ mod tests {
         assert_eq!(visible(&mut app, HudSprite::Logbook), Visibility::Hidden);
     }
 
-    #[test]
-    fn compass_follows_the_placed_player_heading() {
+    fn compass_app() -> App {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
@@ -1230,13 +1276,14 @@ mod tests {
             .add(HudAsset {
                 items: vec![HudItem {
                     id: 0,
-                    bitmap: 0,
+                    bitmap: 1,
                     count: 1,
                     size: [1, 1],
                 }],
+                selected: Some(0),
                 ..asset(0)
             });
-        app.world_mut().insert_resource(HudHandle(hud));
+        app.insert_resource(HudHandle(hud));
         app.world_mut().spawn(HudViewport);
         app.world_mut().spawn((
             Player,
@@ -1246,10 +1293,231 @@ mod tests {
             },
         ));
         app.update();
-        app.world_mut().resource_mut::<HudState>().compass_on = true;
+        prepare_script(&mut app, &[]);
+        app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
+        app
+    }
+
+    fn use_key(app: &mut App, held: bool) {
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        if held {
+            keys.press(KeyCode::KeyE);
+        } else {
+            keys.release(KeyCode::KeyE);
+        }
         app.update();
+    }
+
+    #[test]
+    fn compass_uses_owned_item_once_per_hold_and_retains_session_state() {
+        let mut app = compass_app();
+        app.update();
+        assert!(!app.world().resource::<HudState>().compass_on);
+        use_key(&mut app, true);
         let state = app.world().resource::<HudState>();
         assert_eq!((state.heading, state.compass_frame), (1024, Some(16)));
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::script::ScriptHud>()
+                .inspect()["compass_on"],
+            true
+        );
+        app.update();
+        assert!(app.world().resource::<HudState>().compass_on);
+        let (node, visibility) = app
+            .world_mut()
+            .query::<(&HudSprite, &Node, &Visibility)>()
+            .iter(app.world())
+            .find(|(sprite, _, _)| **sprite == HudSprite::Compass)
+            .map(|(_, node, visibility)| (node.clone(), *visibility))
+            .unwrap();
+        assert_eq!(visibility, Visibility::Inherited);
+        assert_eq!(
+            (node.left, node.top, node.width, node.height),
+            (
+                Val::Percent(85.3125),
+                Val::Percent(82.5),
+                Val::Percent(11.40625),
+                Val::Percent(13.541666)
+            )
+        );
+        prepare_script(&mut app, &[("LockoutPlayer", &[1])]);
+        app.update();
+        assert_eq!(app.world().resource::<HudState>().compass_frame, None);
+        assert!(app.world().resource::<HudState>().compass_on);
+        prepare_script(&mut app, &[("LockoutPlayer", &[0])]);
+        app.update();
+        assert_eq!(app.world().resource::<HudState>().compass_frame, Some(16));
+        use_key(&mut app, false);
+        app.world_mut().remove_resource::<HudState>();
+        prepare_script(&mut app, &[]);
+        app.update();
+        app.update();
+        assert!(
+            app.world().resource::<HudState>().compass_on,
+            "world/HUD recreation retains the flag"
+        );
+        app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
+        use_key(&mut app, true);
+        assert!(!app.world().resource::<HudState>().compass_on);
+        assert_eq!(app.world().resource::<HudState>().compass_frame, None);
+    }
+
+    #[test]
+    fn compass_requires_known_actor_state_ownership_selection_and_current_binding() {
+        let mut app = compass_app();
+        let inputs = app
+            .world_mut()
+            .remove_resource::<ActivationInputs>()
+            .unwrap();
+        use_key(&mut app, true);
+        assert!(
+            !app.world().resource::<HudState>().compass_on,
+            "unknown gates reject use"
+        );
+        app.insert_resource(inputs);
+        app.update();
+        assert!(
+            !app.world().resource::<HudState>().compass_on,
+            "rejected hold stays consumed"
+        );
+        use_key(&mut app, false);
+        app.world_mut().resource_mut::<HudState>().selected = Some(1);
+        use_key(&mut app, true);
+        assert!(!app.world().resource::<HudState>().compass_on);
+        use_key(&mut app, false);
+        app.world_mut().resource_mut::<HudState>().selected = Some(0);
+        let handle = app.world().resource::<HudHandle>().0.clone();
+        app.world_mut()
+            .resource_mut::<Assets<HudAsset>>()
+            .get_mut(&handle)
+            .unwrap()
+            .items[0]
+            .count = 0;
+        use_key(&mut app, true);
+        assert!(
+            !app.world().resource::<HudState>().compass_on,
+            "zero count is unowned"
+        );
+        use_key(&mut app, false);
+        app.world_mut()
+            .resource_mut::<Assets<HudAsset>>()
+            .get_mut(&handle)
+            .unwrap()
+            .items[0]
+            .count = 1;
+        app.world_mut().resource_mut::<HudState>().bindings[7] = 0x21; // F
+        use_key(&mut app, true);
+        assert!(
+            !app.world().resource::<HudState>().compass_on,
+            "old binding cannot activate"
+        );
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyF);
+        app.update();
+        assert!(app.world().resource::<HudState>().compass_on);
+        app.world_mut().resource_mut::<HudState>().player_type = 1;
+        app.world_mut().remove_resource::<ActivationInputs>();
+        app.update();
+        assert_eq!(app.world().resource::<HudState>().compass_frame, None);
+        assert!(
+            app.world().resource::<HudState>().compass_on,
+            "hiding does not reset the flag"
+        );
+    }
+
+    #[test]
+    fn compass_early_blocks_defer_use_but_late_actor_gates_consume_it() {
+        let mut app = compass_app();
+        app.init_resource::<cyrus_console::Console>();
+        app.world_mut()
+            .resource_mut::<cyrus_console::Console>()
+            .open = true;
+        use_key(&mut app, true);
+        assert!(
+            !app.world().resource::<HudState>().compass_on,
+            "console owns input"
+        );
+        app.world_mut()
+            .resource_mut::<cyrus_console::Console>()
+            .open = false;
+        app.insert_resource(cyrus_game::player::input::InputSuppressed(true));
+        app.update();
+        assert!(!app.world().resource::<HudState>().compass_on);
+        app.world_mut()
+            .resource_mut::<cyrus_game::player::input::InputSuppressed>()
+            .0 = false;
+        app.world_mut().resource_mut::<ActivationInputs>().lockout = 1;
+        app.update();
+        assert!(!app.world().resource::<HudState>().compass_on);
+        app.world_mut().resource_mut::<ActivationInputs>().lockout = 0;
+        app.world_mut()
+            .resource_mut::<ActivationInputs>()
+            .actors
+            .get_mut(&1)
+            .unwrap()
+            .state = 10;
+        app.update();
+        assert!(!app.world().resource::<HudState>().compass_on);
+        app.world_mut()
+            .resource_mut::<ActivationInputs>()
+            .actors
+            .get_mut(&1)
+            .unwrap()
+            .state = 0;
+        app.update();
+        assert!(
+            app.world().resource::<HudState>().compass_on,
+            "early blocks leave use available"
+        );
+        use_key(&mut app, false);
+        for gate in 0..10 {
+            let baseline = {
+                let mut inputs = app.world_mut().resource_mut::<ActivationInputs>();
+                let baseline = inputs.actors[&1];
+                match gate {
+                    0 => inputs.item_system_ready = false,
+                    1 => inputs.shell_execution = true,
+                    2 => inputs.actors.get_mut(&1).unwrap().water_state = 2,
+                    3 => inputs.actors.get_mut(&1).unwrap().water_state = 4,
+                    4 => {
+                        let actor = inputs.actors.get_mut(&1).unwrap();
+                        actor.weapon_assigned = true;
+                        actor.weapon_drawn = true;
+                    }
+                    5 => inputs.actors.get_mut(&1).unwrap().state = 33,
+                    6 => inputs.actors.get_mut(&1).unwrap().state = 34,
+                    7 | 8 => {
+                        inputs.actors.get_mut(&1).unwrap().animation =
+                            Some(cyrus_game::script::ActivationAnimation {
+                                group: Some(if gate == 7 { 149 } else { 150 }),
+                            })
+                    }
+                    _ => inputs.actors.get_mut(&1).unwrap().torch_burning = 1,
+                }
+                baseline
+            };
+            use_key(&mut app, true);
+            assert!(
+                app.world().resource::<HudState>().compass_on,
+                "gate {gate} rejected"
+            );
+            {
+                let mut inputs = app.world_mut().resource_mut::<ActivationInputs>();
+                inputs.item_system_ready = true;
+                inputs.shell_execution = false;
+                inputs.actors.insert(1, baseline);
+            }
+            app.update();
+            assert!(
+                app.world().resource::<HudState>().compass_on,
+                "gate {gate} consumed hold"
+            );
+            use_key(&mut app, false);
+        }
+        use_key(&mut app, true);
+        assert!(!app.world().resource::<HudState>().compass_on);
     }
 
     #[test]

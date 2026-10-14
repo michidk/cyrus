@@ -1,4 +1,4 @@
-//! Script power-up slots and accepted logbook writes, independent of HUD rendering.
+//! Shared compass use, power-up slots and accepted logbook writes, independent of rendering.
 use crate::preferences::{PreferenceKey, PreferenceStore, Preferences};
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
@@ -9,8 +9,19 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// Result of the current item-use gates, before consuming the held-use latch.
+#[derive(Clone, Copy)]
+pub enum CompassUse {
+    /// Lockout, edge state or another interaction defers the attempt.
+    Blocked,
+    /// This attempt consumes the press without using an owned compass.
+    Rejected,
+    /// The selected, owned compass passed item-use eligibility.
+    Accepted,
+}
+
 /// Shared native/browser script HUD state. Rules follow preservation's engine/hud.md.
-/// Slot state and duplicate tags survive world changes within this game session.
+/// Slots, compass state and duplicate tags survive world changes within this game session.
 #[derive(Resource, Default)]
 pub struct ScriptHud(Mutex<State>);
 
@@ -23,6 +34,8 @@ struct State {
     entries: Option<Result<Vec<String>, String>>,
     store: Option<Arc<dyn PreferenceStore>>,
     notification: bool,
+    compass_on: bool,
+    use_consumed: bool,
 }
 
 impl std::fmt::Debug for ScriptHud {
@@ -72,6 +85,22 @@ impl ScriptHud {
         (state.powerups, std::mem::take(&mut state.notification))
     }
 
+    /// Use item 0 once per held input. The display flag survives world changes.
+    /// Release rearms use; blocked attempts retain it, rejected attempts consume it.
+    /// Save-game restore and new-game reset remain owned by the unfinished lifecycle.
+    pub fn compass_input(&self, held: bool, attempt: CompassUse) -> bool {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if !held {
+            state.use_consumed = false;
+        } else if !state.use_consumed && !matches!(attempt, CompassUse::Blocked) {
+            state.use_consumed = true;
+            if matches!(attempt, CompassUse::Accepted) {
+                state.compass_on = !state.compass_on;
+            }
+        }
+        state.compass_on
+    }
+
     /// Accepted logbook text, or the retained local-state load error.
     pub fn entries(&self) -> Result<Vec<String>> {
         let state = self.0.lock().expect("script HUD lock poisoned");
@@ -89,6 +118,7 @@ impl ScriptHud {
         serde_json::json!({
             "ready": state.data.is_some(),
             "powerups": state.powerups,
+            "compass_on": state.compass_on,
             "logbook_entries": state.entries.as_ref().and_then(|entries| entries.as_ref().ok()).map(Vec::len),
             "logbook_error": state.entries.as_ref().and_then(|entries| entries.as_ref().err()),
         })

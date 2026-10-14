@@ -14,7 +14,7 @@ pub use dialogue::{
 };
 mod flags;
 mod hud;
-pub use hud::ScriptHud;
+pub use hud::{CompassUse, ScriptHud};
 mod maintenance;
 mod markers;
 pub use maintenance::{SoundMaintenance, SoundResetStage};
