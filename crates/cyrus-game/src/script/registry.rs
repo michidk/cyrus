@@ -109,9 +109,11 @@ pub(crate) struct ScriptAnimation {
 pub struct ActorControlState {
     /// Runtime script flags, separate from installed attribute bytes.
     pub script_control: u8,
+    /// Lifecycle selector: combat entry uses six; IsDead tests eight.
     pub death_selector: u8,
     /// Allocator-zero death notification byte, set to eight by health death.
     pub death_response: u8,
+    /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
     pub sliding_state: u8,
