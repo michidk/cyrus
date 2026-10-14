@@ -20,7 +20,7 @@ pub(crate) fn load_scene_bindings(
         return;
     };
     let result = (|| {
-        let local = preferences.menu.clone().map_err(|e| e.to_string())?;
+        let local = preferences.menu().clone().map_err(|e| e.to_string())?;
         let codes = match local {
             Some(preferences) => std::array::from_fn(|i| preferences.bindings[i]),
             None => scene

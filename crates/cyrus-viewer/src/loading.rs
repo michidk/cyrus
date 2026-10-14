@@ -56,7 +56,7 @@ pub fn start(
     mut commands: Commands,
     assets: Res<AssetServer>,
     mut viewer: ResMut<Viewer>,
-    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
     #[cfg(not(target_arch = "wasm32"))] source: Res<cyrus_assets::install::GameInstall>,
     #[cfg(target_arch = "wasm32")] worker: NonSend<crate::browser::BrowserWorker>,
 ) {
@@ -160,7 +160,7 @@ pub fn poll(
     assets: Res<AssetServer>,
     blobs: Res<Assets<Blob>>,
     mut viewer: ResMut<Viewer>,
-    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
     #[cfg(not(target_arch = "wasm32"))] task: Option<ResMut<Preparation>>,
     #[cfg(not(target_arch = "wasm32"))] scan: Option<Res<ScanProgress>>,
 ) {
@@ -344,7 +344,7 @@ mod tests {
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Blob>()
             .init_asset_loader::<BlobLoader>()
-            .init_resource::<cyrus_app::LoadingProgress>()
+            .init_resource::<cyrus_app::loading::LoadingProgress>()
             .insert_resource(viewer)
             .insert_resource(NativeLibrary(std::sync::Arc::new(library)))
             .insert_resource(options)

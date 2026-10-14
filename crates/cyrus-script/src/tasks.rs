@@ -1,7 +1,7 @@
 //! Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
 use super::{CallResult, Host, Invocation, Runtime, Target, TaskSource};
+use crate::program::{Call, CallKind, Operation};
 use anyhow::{Context, Result};
-use cyrus_assets::script::{Call, CallKind, Operation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

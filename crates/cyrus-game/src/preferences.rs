@@ -23,7 +23,7 @@ pub trait PreferenceStore: Send + Sync + 'static {
 #[derive(Resource)]
 pub struct Preferences {
     store: Option<Box<dyn PreferenceStore>>,
-    pub menu: Result<Option<MenuPreferences>, String>,
+    menu: Result<Option<MenuPreferences>, String>,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -34,6 +34,11 @@ impl Default for Preferences {
     }
 }
 impl Preferences {
+    /// Last accepted menu state or load error; changes must go through `save_menu`.
+    pub fn menu(&self) -> &Result<Option<MenuPreferences>, String> {
+        &self.menu
+    }
+
     /// Loads once; each consumer resolves missing state using its own installed defaults.
     pub fn new(store: impl PreferenceStore) -> Self {
         let menu = (|| {

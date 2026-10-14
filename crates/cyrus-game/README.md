@@ -5,8 +5,8 @@ rules. Depends on `cyrus-world`, `cyrus-collision`, `cyrus-console` and `cyrus-a
 open sockets, spawn a camera, or play audio.
 
 `GameConsolePlugin` registers cheat handlers with `cyrus-console` and controls
-input availability from `AppState`. The console crate owns editing and command
-dispatch; game handlers own cheat state and call host-provided storage.
+input availability from `AppState`. The private `console::cheats` module owns
+cheat argument parsing. The console crate owns editing and command dispatch; game handlers own cheat state and call host-provided storage.
 Cheat assignments resolve named SOUP flags against the active world's live values.
 Missing or mismatched script metadata blocks symbolic assignments without changing
 cheats. Unknown names in a loaded definition report a diagnostic and use one,
@@ -18,7 +18,10 @@ and is rejected before any flag changes.
 `GamePlugin` installs app state, fidelity, `PlayerPlugin` and `ScriptPlugin`. The host supplies
 Bevy's asset/input/state infrastructure and `Preferences` with a concrete
 `PreferenceStore`. Menu load errors remain errors; each consumer owns its fallback.
-Successful saves precede runtime application.
+Successful saves precede runtime application. `Preferences::menu()` exposes a
+read-only result; `save_menu` is the only way to replace accepted menu values.
+Preferences and fidelity remain gameplay modules shared by consumers, without
+separate crates.
 
 Player scene loading prepares `PlayerDefinition`, terrain and static collision
 queries asynchronously from validated asset records. The world request carries a

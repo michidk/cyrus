@@ -1,10 +1,8 @@
 //! Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 use super::tasks::{AnimationCall, NativeTasks};
 use anyhow::Context;
-use cyrus_assets::{
-    animation::Animations,
-    script::{CallKind, Program},
-};
+use cyrus_assets::animation::Animations;
+use cyrus_script::program::{CallKind, Program};
 use cyrus_script::{Argument, CallResult, Host, Runtime, Target, Thread};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 

@@ -197,7 +197,7 @@ fn poll(
     inbox: Res<Inbox>,
     mut media: ResMut<Media>,
     mut viewer: ResMut<Viewer>,
-    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
 ) {
     let Ok(mut queue) = inbox.0.lock() else {
         return;

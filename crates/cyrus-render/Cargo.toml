@@ -6,11 +6,10 @@ edition.workspace = true
 
 [dependencies]
 cyrus-console.workspace = true
-cyrus-audio.workspace = true
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-game.workspace = true
-bevy = { workspace = true, features = ["default", "wav"] }
+bevy = { workspace = true, features = ["default"] }
 cyrus-text.workspace = true
 anyhow.workspace = true
 serde.workspace = true
@@ -22,6 +21,8 @@ gltf = { version = "1.4", default-features = false, features = ["extras"] }
 cyrus-assets = { workspace = true, features = ["native"] }
 
 [dev-dependencies]
+cyrus-audio.workspace = true
+cyrus-script.workspace = true
 cyrus-collision.workspace = true
 toml.workspace = true
 redguard-preservation.workspace = true

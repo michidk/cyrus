@@ -214,7 +214,7 @@ pub(super) fn drive(
     });
     let menu_tick = timing.last_tick != sample;
     if menu.preferences.is_none() {
-        menu.preferences = Some(match preferences_state.menu.clone() {
+        menu.preferences = Some(match preferences_state.menu().clone() {
             Ok(Some(preferences)) => preferences,
             Ok(None) => book.defaults.clone(),
             Err(error) => {

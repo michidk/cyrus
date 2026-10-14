@@ -1,7 +1,7 @@
 //! SOUP formula and condition evaluation in the original integer domain.
 use super::{Argument, Host, Runtime};
+use crate::program::{Call, CallKind, Condition, Formula, Value};
 use anyhow::{Context, Result};
-use cyrus_assets::script::{Call, CallKind, Condition, Formula, Value};
 
 impl Runtime {
     pub(super) fn arguments(

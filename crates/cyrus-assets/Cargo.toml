@@ -10,6 +10,7 @@ parsers = ["dep:redguard-preservation", "cyrus-text/native", "dep:image", "dep:h
 native = ["parsers", "dep:walkdir"]
 
 [dependencies]
+cyrus-script.workspace = true
 bevy = { workspace = true, features = ["bevy_asset"] }
 anyhow.workspace = true
 serde.workspace = true

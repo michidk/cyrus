@@ -199,3 +199,8 @@ Preparation uses preservation's validated per-header location parser; original
 home positions are assigned per instance by the game. Location offsets participate
 in script content identity. The parser increment is published on
 [the authored-location review branch](https://github.com/michidk/redguard-preservation/compare/main...feat/authored-location-offsets).
+
+SOUP program types and operand/definition validation belong to
+`cyrus-script::program`. This crate prepares those records from preservation,
+owns world/actor cache metadata and loads the cache through Bevy. Serialization
+and cache identities are independent of the Rust module that owns each record.

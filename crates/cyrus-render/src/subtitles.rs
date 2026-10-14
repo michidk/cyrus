@@ -17,8 +17,6 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use cyrus_assets::install::GameInstall;
 use cyrus_assets::sound::SoundSettings;
 use cyrus_assets::sound::ini_value;
-use cyrus_audio::sound::SoundRequest;
-use cyrus_audio::sound::Speech;
 use cyrus_text::Font;
 pub use cyrus_text::font_alpha;
 
@@ -28,23 +26,36 @@ const HEIGHT: usize = 480;
 /// (preservation `docs/engine/player.md#fps-derived-frame-scale`).
 const TICKS_PER_SECOND: f64 = 12.0 * 18.2065 / 18.0;
 
+/// Text and clip duration supplied by a host, independent of audio playback handles.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub enum SubtitleRequest {
+    Speech { text: String, seconds: f64 },
+    StopAll,
+}
+
+/// Host adapters submit requests before subtitle timing and drawing.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UpdateSubtitles;
+
 pub struct SubtitlePlugin;
 
 impl Plugin for SubtitlePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            load_font.run_if(
-                resource_exists::<GameInstall>
-                    .and_then(bevy::ecs::schedule::common_conditions::run_once),
-            ),
-        )
-        .add_systems(
-            Update,
-            (start_lines, show_lines)
-                .chain()
-                .run_if(resource_exists::<SubtitleFont>),
-        );
+        app.add_message::<SubtitleRequest>()
+            .add_systems(
+                Update,
+                load_font.run_if(
+                    resource_exists::<GameInstall>
+                        .and_then(bevy::ecs::schedule::common_conditions::run_once),
+                ),
+            )
+            .add_systems(
+                Update,
+                (start_lines, show_lines)
+                    .chain()
+                    .in_set(UpdateSubtitles)
+                    .run_if(resource_exists::<SubtitleFont>),
+            );
     }
 }
 
@@ -98,8 +109,7 @@ fn load_font(mut commands: Commands, install: Res<GameInstall>) {
 }
 
 fn start_lines(
-    mut requests: MessageReader<SoundRequest>,
-    speech: Res<Speech>,
+    mut requests: MessageReader<SubtitleRequest>,
     settings: Option<Res<SoundSettings>>,
     mut font: ResMut<SubtitleFont>,
     time: Res<Time<Real>>,
@@ -107,24 +117,20 @@ fn start_lines(
     let speaking = settings.as_ref().is_none_or(|s| s.speech);
     for request in requests.read() {
         match request {
-            SoundRequest::Speech(label) => {
-                let Some(clip) = speech.0.get(label) else {
-                    continue;
-                };
+            SubtitleRequest::Speech { text, seconds } => {
                 // Speech on: the line lasts as long as its clip. Off: clip seconds × 256, minus 21 per tick.
                 let remaining = if speaking {
-                    clip.seconds
+                    *seconds
                 } else {
-                    (clip.seconds * 256.0).trunc() / (21.0 * TICKS_PER_SECOND)
+                    (*seconds * 256.0).trunc() / (21.0 * TICKS_PER_SECOND)
                 };
-                let text = font.font.wrap(&clip.text, font.max_width);
+                let text = font.font.wrap(text, font.max_width);
                 // Slot 0 belongs to Cyrus; other speakers take the lowest free slot or get none.
                 if let Some(slot) = font.slots.iter_mut().skip(1).find(|s| s.is_none()) {
                     *slot = Some(Line { text, remaining });
                 }
             }
-            SoundRequest::StopAll => font.slots.iter_mut().for_each(|s| *s = None),
-            SoundRequest::Play { .. } => {}
+            SubtitleRequest::StopAll => font.slots.iter_mut().for_each(|s| *s = None),
         }
     }
     let delta = time.delta_secs_f64();
@@ -219,4 +225,96 @@ pub fn draw(font: &Font, text: &str, alpha: [u8; 2]) -> Vec<u8> {
         top += line_height;
     }
     rgba
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn subtitle_requests_draw_expire_and_stop_without_an_audio_plugin() {
+        let mut app = App::new();
+        app.init_resource::<Time<Real>>()
+            .init_resource::<Assets<Image>>()
+            .insert_resource(SubtitleFont {
+                font: Font {
+                    start: u16::from(b'A'),
+                    line_height: 1,
+                    glyphs: vec![cyrus_text::Glyph {
+                        enabled: true,
+                        width: 1,
+                        height: 1,
+                        offset: [0, 0],
+                        pixels: vec![1],
+                    }],
+                    palette: vec![[0, 0, 0], [63, 0, 0]],
+                },
+                max_width: 150,
+                alpha: [255, 199],
+                slots: vec![None, None],
+                shown: None,
+                overlay: None,
+            })
+            .add_plugins(SubtitlePlugin);
+        app.world_mut().write_message(SubtitleRequest::Speech {
+            text: "A".into(),
+            seconds: 2.0,
+        });
+        app.update();
+        let image = app
+            .world_mut()
+            .query::<&ImageNode>()
+            .single(app.world())
+            .unwrap()
+            .image
+            .clone();
+        let images = app.world().resource::<Assets<Image>>();
+        assert!(
+            images
+                .get(&image)
+                .unwrap()
+                .data
+                .as_ref()
+                .unwrap()
+                .as_chunks::<4>()
+                .0
+                .contains(&[252, 0, 0, 255])
+        );
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_secs(2));
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&ImageNode>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::ZERO);
+        app.world_mut().write_message(SubtitleRequest::Speech {
+            text: "A".into(),
+            seconds: 2.0,
+        });
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&ImageNode>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+        app.world_mut().write_message(SubtitleRequest::StopAll);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query::<&ImageNode>()
+                .iter(app.world())
+                .count(),
+            0
+        );
+    }
 }

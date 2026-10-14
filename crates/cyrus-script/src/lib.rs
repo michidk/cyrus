@@ -1,9 +1,10 @@
 //! Explicit SOUP invocation, continuations and values from preservation's engine contract.
+pub mod program;
 mod routing;
 mod tasks;
 mod values;
+use crate::program::{CallKind, Object, Operation, Place, Program};
 use anyhow::{Context, Result};
-use cyrus_assets::script::{CallKind, Object, Operation, Place, Program};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -117,7 +118,7 @@ pub trait Host {
     fn route(
         &mut self,
         target: &Target,
-        call: &cyrus_assets::script::Call,
+        call: &crate::program::Call,
         strings: &[String],
         source: Option<TaskSource>,
         flags: &mut [i32],
@@ -130,11 +131,7 @@ pub trait Host {
         Ok(Route::Here)
     }
     /// Retrieves the encoded call retained by a foreign task, never receiver instructions.
-    fn task_call(
-        &mut self,
-        origin: CodeOrigin,
-        instruction: u32,
-    ) -> Result<cyrus_assets::script::Call> {
+    fn task_call(&mut self, origin: CodeOrigin, instruction: u32) -> Result<crate::program::Call> {
         anyhow::bail!(
             "task source {} instruction {instruction} unavailable",
             origin.0

@@ -9,7 +9,9 @@ Loaded sample playback entities carry `PannedGains`, shared with their active
 decoder. A volume/pan update affects subsequent stereo frames without restarting
 the sample. One-shots retain their start gains unless explicitly updated.
 
-Hosts supply an optional `AudioListener` in Bevy world space. Positional starts
+Hosts supply an optional `AudioListener` in Bevy world space. Native and browser
+game hosts schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`;
+the audio crate does not import the rendering camera marker. Positional starts
 require that listener. `AudioReadiness { prepare }` defaults to true; startup
 holds it false until the title appears. Startup copies committed menu preferences
 to `SoundSettings` before `ApplyPreferences`. The Update order is

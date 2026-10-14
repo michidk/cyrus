@@ -1,5 +1,4 @@
 //! Gameplay state, fidelity and player rules, independent of presentation.
-mod cheat_command;
 pub mod cheats;
 pub mod clock;
 pub mod console;

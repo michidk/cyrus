@@ -2784,6 +2784,7 @@ dependencies = [
  "bevy",
  "blake3",
  "cyrus-media",
+ "cyrus-script",
  "cyrus-text",
  "hound",
  "image",
@@ -2915,6 +2916,7 @@ dependencies = [
  "cyrus-collision",
  "cyrus-console",
  "cyrus-game",
+ "cyrus-script",
  "cyrus-text",
  "cyrus-world",
  "gltf",
@@ -2929,7 +2931,6 @@ name = "cyrus-script"
 version = "0.1.7"
 dependencies = [
  "anyhow",
- "cyrus-assets",
  "serde",
 ]
 

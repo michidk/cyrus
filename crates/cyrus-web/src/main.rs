@@ -73,6 +73,11 @@ fn main() {
         cyrus_audio::sound::SoundPlugin,
         cyrus_audio::music::MusicPlugin,
     ));
+    app.add_systems(
+        Update,
+        cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>
+            .before(cyrus_audio::ApplyPreferences),
+    );
     app.add_plugins(cyrus_startup::StartupPlugin).add_systems(
         Update,
         load_new_game

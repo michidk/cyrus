@@ -108,3 +108,7 @@ file when local state is absent. `console save` writes only the local CPF;
 `console write` exports retained output to `cyrus-config/CONSOLE.LOG`. Malformed
 preferences remain visible in `state.console.preference_error` and block edits
 and saves. `console show` reports settings and any load error.
+
+The native host connects speech metadata to rendering through
+`subtitles::SubtitleRequest` and selects the rendering camera for audio listener
+updates. These adapters keep rendering independent of the audio backend.

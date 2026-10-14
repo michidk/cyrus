@@ -1,7 +1,7 @@
 //! Synchronous receiver dispatch preserves foreign task identity and native string context.
 use super::{Host, Route, Runtime, TaskSource};
+use crate::program::{Call, CallKind, Object};
 use anyhow::{Context, Result};
-use cyrus_assets::script::{Call, CallKind, Object};
 use std::sync::Arc;
 
 impl Runtime {

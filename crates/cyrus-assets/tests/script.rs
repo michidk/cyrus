@@ -1,5 +1,6 @@
 //! Script cache contracts use authored data and optional read-only installed extraction.
 use cyrus_assets::script::*;
+use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {

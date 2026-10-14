@@ -22,10 +22,16 @@ Small presentation and launch helpers shared by the game and viewer.
   `AssetPlugin` starts.
 - `window` creates the common native/browser window configuration.
 - `EguiPlugin` installs the pinned adapter and its WebGL shader adjustment.
-- `LoadingOverlayPlugin` displays `LoadingProgress`. The caller owns progress,
-  completion, and application state transitions. Native builds draw a Bevy
+- `loading::LoadingOverlayPlugin` displays `loading::LoadingProgress`. The caller
+  owns progress, completion, and application state transitions. Native builds draw a Bevy
   overlay. Browser builds update the existing HTML overlay; pages using that
   handoff set `data-loading="application"` so the download loader retains it.
 
 This crate depends on Bevy and `cyrus-assets`, never on game or viewer plugins.
 It does not install player, menu, world-camera, network, or gameplay systems.
+
+`loading` owns only generic progress presentation. Game settings, fidelity,
+audio listener selection and speech/subtitle integration belong to their game
+or host modules. The isolated app consumer in
+`dev/scripts/check-core-boundaries.sh` rejects gameplay and presentation-crate
+dependencies, even when the full workspace enables their features.

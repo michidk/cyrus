@@ -11,7 +11,7 @@ pub(crate) fn load(
     };
     let path = install.root.join("KEYS.INI");
     let result = cyrus_assets::install::keyboard_codes(&install).and_then(|ini| {
-        let local = preferences.menu.clone().map_err(|e| e.to_string())?;
+        let local = preferences.menu().clone().map_err(|e| e.to_string())?;
         PlayerBindings::from_codes(
             local.map_or_else(|| ini, |p| std::array::from_fn(|i| p.bindings[i])),
         )

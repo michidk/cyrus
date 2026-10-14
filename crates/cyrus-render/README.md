@@ -8,6 +8,11 @@ defines its scale. The original follow camera and matched-view pixel parity
 remain unsupported and unverified, respectively.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
+Production rendering has no `cyrus-audio` dependency. Native host composition
+translates speech requests into `subtitles::SubtitleRequest` before
+`UpdateSubtitles`; the renderer owns text timing, slots and drawing. Game hosts
+select the view camera for audio listener updates. The isolated consumer check
+rejects audio or startup dependencies in rendering.
 
 `WorldRenderPlugin` composes the shared scene-spawn path, environment,
 `CameraPlugin` and `AnimationRenderPlugin`. Native and browser hosts submit the

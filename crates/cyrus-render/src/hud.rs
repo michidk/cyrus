@@ -490,7 +490,7 @@ fn update(
             None
         });
         let mut state = HudState::new(hud, preferences, frames);
-        if let Ok(Some(menu)) = &preferences_store.menu {
+        if let Ok(Some(menu)) = preferences_store.menu() {
             state.bindings = menu.bindings;
         }
         commands.insert_resource(state);
@@ -879,6 +879,7 @@ mod tests {
     fn prepare_prompt(app: &mut App) {
         use cyrus_assets::script::*;
         use cyrus_game::script::{ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread};
+        use cyrus_script::program::*;
         let player = Actor {
             header_index: 0,
             code_origin: 100,

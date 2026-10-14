@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use cyrus_console::number;
 
 /// Execute normalized cheat arguments; the shared console owns command dispatch.
-pub(crate) fn execute(
+pub(super) fn execute(
     cheats: &mut Cheats,
     name: &str,
     args: &str,

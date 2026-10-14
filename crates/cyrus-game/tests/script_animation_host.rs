@@ -3,6 +3,7 @@ use cyrus_assets::{animation::Animations, script::*};
 use cyrus_game::script::ScriptSound;
 use cyrus_game::script::{ScriptActorId, ScriptStage, ScriptWorld};
 use cyrus_script::Thread;
+use cyrus_script::program::*;
 use cyrus_world::animation::AnimationSound;
 use serde_json::json;
 use std::collections::BTreeMap;

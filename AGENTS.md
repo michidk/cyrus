@@ -170,7 +170,9 @@ untracked working memory. Each crate has a `README.md` with its commands.
   merely to reach a preferred crate count.
 - Keep dependencies one-way. Core rules must not depend on rendering, a window,
   or networking. Run `dev/scripts/check-core-boundaries.sh` for an isolated
-  consumer check and the browser build for platform boundaries.
+  consumer check and the browser build for platform boundaries. The consumer
+  check also keeps the interpreter free of Bevy/assets, app helpers free of
+  gameplay, and rendering free of the audio and startup crates.
 - Document public APIs with their invariants, units, and provenance where
   applicable. Use explicit names that make the code readable without tracing
   unrelated modules.

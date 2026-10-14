@@ -1,4 +1,5 @@
 //! Game-owned console availability and cheat command handlers.
+mod cheats;
 use crate::script::{ScriptActors, ScriptWorld};
 use anyhow::{Context, ensure};
 use bevy::prelude::{
@@ -105,7 +106,7 @@ fn cheat(
         })?;
         Ok(Vec::new())
     } else {
-        crate::cheat_command::execute(&mut cheats, &command.name, &command.args, |name| {
+        cheats::execute(&mut cheats, &command.name, &command.args, |name| {
             lookup(
                 name,
                 actors.as_deref(),

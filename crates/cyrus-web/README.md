@@ -123,3 +123,6 @@ wait for a subsequent rendered frame before capturing. A mismatched or unready
 world, malformed request or invalid phase is rejected without changing the sky.
 Submit one request at a time and check its result. This inspection control is
 absent without `capture`; it does not reproduce original-session random order.
+
+The browser host selects `ViewCamera` for `cyrus_audio::follow_listener` before
+audio preferences and cue processing; rendering does not depend on audio.

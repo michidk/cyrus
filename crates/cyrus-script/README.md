@@ -1,8 +1,10 @@
 # cyrus-script
 
-Portable SOUP execution from `cyrus-assets::script::Program`. No Bevy types,
-renderer, filesystem, install parser, audio handle, or socket appears in its API.
-The asset crate still brings a transitive Bevy asset dependency.
+Portable SOUP execution from its own `program::Program`. The `program` module
+owns instructions, definitions and validation. Asset preparation constructs these
+records without changing their serialized schema. This crate depends only on
+`anyhow` and `serde`, with no Bevy, asset loader, install parser or platform I/O.
+`dev/scripts/check-core-boundaries.sh` verifies it as an isolated consumer.
 
 `Runtime::invoke` runs an explicitly eligible main or interrupt stage through an
 authored yield or blocking task. The host supplies synchronous native services,

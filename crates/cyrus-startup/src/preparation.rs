@@ -17,7 +17,7 @@ pub(crate) struct MenuPrepared;
 
 impl Plugin for LoadingPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<cyrus_app::LoadingProgress>()
+        app.init_resource::<cyrus_app::loading::LoadingProgress>()
             .add_systems(
                 Update,
                 (start, poll).chain().run_if(in_state(AppState::Loading)),
@@ -36,7 +36,7 @@ fn start(
     existing: Option<Res<Channel>>,
     preloaded: Option<Res<Preloaded>>,
     menu_prepared: Option<Res<MenuPrepared>>,
-    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
 ) {
     if existing.is_some()
         || preloaded.is_some()
@@ -89,7 +89,7 @@ fn poll(
     mut commands: Commands,
     channel: Option<Res<Channel>>,
     mut startup: Option<ResMut<crate::StartupPresentation>>,
-    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
     mut next: ResMut<NextState<AppState>>,
 ) {
     let Some(channel) = channel else {
@@ -135,7 +135,7 @@ fn poll(
     }
 }
 
-fn teardown(mut commands: Commands, mut progress: ResMut<cyrus_app::LoadingProgress>) {
+fn teardown(mut commands: Commands, mut progress: ResMut<cyrus_app::loading::LoadingProgress>) {
     progress.visible = false;
     commands.remove_resource::<Channel>();
 }

@@ -1,10 +1,11 @@
 //! Logical script instances retain authored object order and reject stale world identities.
+use cyrus_script::program::{Call, CallKind, Operation};
 pub(super) mod ordinary;
 use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
     animation::Animations,
-    script::{Call, CallKind, Instance, Operation, Scripts},
+    script::{Instance, Scripts},
 };
 use cyrus_script::{
     Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, TaskSource, Thread,

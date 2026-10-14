@@ -55,7 +55,10 @@ fn application() -> anyhow::Result<App> {
             }),
     )
     .insert_resource(ClearColor(Color::srgb(0.055, 0.073, 0.095)))
-    .add_plugins((cyrus_app::EguiPlugin, cyrus_app::LoadingOverlayPlugin))
+    .add_plugins((
+        cyrus_app::EguiPlugin,
+        cyrus_app::loading::LoadingOverlayPlugin,
+    ))
     .insert_resource(cyrus_app::bevy_egui::EguiGlobalSettings {
         auto_create_primary_context: false,
         ..default()

@@ -1,9 +1,7 @@
 //! Shared SOUP preparation through preservation's typed decoder and installed definitions.
-use crate::script::{
-    Actor, CallKind, ClockSettings, Definition, Flag, Function, Instance, Operation, Program,
-    Scripts, Step, UpdateSettings,
-};
+use crate::script::{Actor, ClockSettings, Instance, Scripts, UpdateSettings};
 use anyhow::{Context, Result};
+use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
 use rgpre::import::{
     rgm::{
         self, RgmFile,

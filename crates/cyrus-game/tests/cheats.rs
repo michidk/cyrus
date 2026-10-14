@@ -436,6 +436,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
     use cyrus_assets::script::*;
     use cyrus_console::{Source, submit};
     use cyrus_game::script::{ScriptActors, ScriptWorld, Thread};
+    use cyrus_script::program::*;
     use cyrus_world::lifecycle::PreparedWorld;
 
     let mut app = console_app();

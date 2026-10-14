@@ -1,6 +1,6 @@
 //! Actor-owned native task tokens share waits and animation requests.
 use anyhow::{Context, Result};
-use cyrus_assets::script::CallKind;
+use cyrus_script::program::CallKind;
 use cyrus_script::{Argument, CallResult, Invocation};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 use std::collections::BTreeMap;

@@ -2,7 +2,8 @@
 use super::{Call, Definition, Formula, Object, Operation, Place, Program, Value};
 use anyhow::Result;
 impl Program {
-    pub(super) fn validate_native_hook(&self, hook: &Call, definition: &Definition) -> Result<()> {
+    /// Checks an actor-load hook against its program operands and installed declarations.
+    pub fn validate_native_hook(&self, hook: &Call, definition: &Definition) -> Result<()> {
         anyhow::ensure!(
             hook.target == Object::Me && hook.kind == super::CallKind::Function,
             "native hook must directly call a function on its actor"

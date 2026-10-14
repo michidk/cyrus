@@ -1,5 +1,6 @@
 //! Static SOUP census; occurrence counts do not establish runtime support or reachability.
-use super::{Call, Object, Operation, Place, Scripts, Value};
+use super::Scripts;
+use cyrus_script::program::{Call, Object, Operation, Place, Value};
 use serde::Serialize;
 use std::collections::BTreeMap;
 

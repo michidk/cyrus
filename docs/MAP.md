@@ -7,6 +7,7 @@ module where it is defined and regenerate.
 ## `cyrus-app` — Shared window, cache source, egui and progress presentation for Cyrus applications.
 
 - `src/launch.rs` — Shared launch option names and validation for CLI flags and browser URL parameters.
+- `src/loading.rs` — Progress overlays driven by the host, without application transitions.
 - `src/native_install.rs` — Shared native install selection, remembered location and desktop folder picker.
 
 ## `cyrus-assets-worker` — Worker-only WASM bridge. Local files or HTTP supply bytes to shared Rust parsers.
@@ -49,9 +50,8 @@ module where it is defined and regenerate.
 - `src/runtime/palettes.rs` — Palette and texture relationships derived from installed world and model references.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
 - `src/scene.rs` — Native scene export and installed world selection.
-- `src/script.rs` — Portable SOUP programs and validated installed-definition records.
+- `src/script.rs` — World script caches and validated installed clock/update settings.
 - `src/script/inventory.rs` — Static SOUP census; occurrence counts do not establish runtime support or reachability.
-- `src/script/validation.rs` — Validate portable operands before a script can issue host side effects.
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
@@ -96,10 +96,10 @@ module where it is defined and regenerate.
 
 ## `cyrus-game` — Gameplay state, fidelity and player rules, independent of presentation.
 
-- `src/cheat_command.rs` — Cheat assignment and reports; cyrus-console owns input and numeric parsing.
 - `src/cheats.rs` — Shared cheat state and explicit effects; hosts own CHT storage and presentation.
 - `src/clock.rs` — Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
 - `src/console.rs` — Game-owned console availability and cheat command handlers.
+- `src/console/cheats.rs` — Cheat assignment and reports; cyrus-console owns input and numeric parsing.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
@@ -167,6 +167,8 @@ module where it is defined and regenerate.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 
+- `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
+- `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.
 - `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
 - `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
 - `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
@@ -229,3 +231,4 @@ module where it is defined and regenerate.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
 - `src/storage.rs` — Native byte storage shared by local preferences and cheat persistence.
+- `src/subtitles.rs` — Connect native speech metadata to subtitle presentation without coupling the backends.

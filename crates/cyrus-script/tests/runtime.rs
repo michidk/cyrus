@@ -1,5 +1,5 @@
 //! Public invocation contracts use independently authored portable programs.
-use cyrus_assets::script::*;
+use cyrus_script::program::*;
 use cyrus_script::*;
 use std::collections::BTreeMap;
 

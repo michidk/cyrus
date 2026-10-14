@@ -167,7 +167,7 @@ fn load_effects(
     audio: Option<ResMut<Assets<AudioSource>>>,
 ) {
     let mut settings = read_settings(&install);
-    match preferences.menu.clone() {
+    match preferences.menu().clone() {
         Ok(Some(preferences)) => settings.apply_menu(&preferences),
         Ok(None) => {}
         Err(e) => warn!("sound: {e:#}; using SYSTEM.INI volumes"),
@@ -770,7 +770,7 @@ fn finish_bank(
     } else {
         warn!("sound: CD metadata absent; re-export startup assets for browser music");
     }
-    if let Some(preferences) = preferences.menu.as_ref().ok().and_then(Option::as_ref) {
+    if let Some(preferences) = preferences.menu().as_ref().ok().and_then(Option::as_ref) {
         settings.apply_menu(preferences);
     }
     commands.insert_resource(settings);

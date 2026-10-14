@@ -4,6 +4,5 @@ description = "Portable SOUP execution with explicit host services and invocatio
 version.workspace = true
 edition.workspace = true
 [dependencies]
-cyrus-assets.workspace = true
 anyhow.workspace = true
 serde.workspace = true

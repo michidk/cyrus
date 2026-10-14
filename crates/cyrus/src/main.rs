@@ -3,6 +3,7 @@ mod audit;
 mod control;
 mod scene;
 mod settings;
+mod subtitles;
 use crate::control::ControlAddr;
 use crate::settings::Settings;
 mod bindings;
@@ -162,6 +163,11 @@ fn main() -> anyhow::Result<()> {
             cyrus_render::hud::HudPlugin,
             cyrus_debug::DebugMenuPlugin,
         ));
+        app.add_systems(
+            Update,
+            cyrus_audio::follow_listener::<cyrus_render::camera::ViewCamera>
+                .before(cyrus_audio::ApplyPreferences),
+        );
         debug::register(&mut app);
         if startup {
             app.add_plugins(cyrus_startup::StartupPlugin);
@@ -192,13 +198,14 @@ fn main() -> anyhow::Result<()> {
         .add_plugins((
             GamePlugin,
             cyrus_startup::LoadingPlugin,
-            cyrus_app::LoadingOverlayPlugin,
+            cyrus_app::loading::LoadingOverlayPlugin,
             scene::ScenePlugin,
             control::ControlPlugin,
             cyrus_audio::sound::SoundPlugin,
             cyrus_audio::music::MusicPlugin,
             cyrus_render::subtitles::SubtitlePlugin,
         ));
+    subtitles::register(&mut app);
     app.run();
     Ok(())
 }
@@ -210,7 +217,7 @@ fn prepare_install(
     startup: Option<Res<cyrus_startup::StartupPresentation>>,
     mut pending: Local<Option<bevy::tasks::Task<anyhow::Result<()>>>>,
     mut attempted: Local<bool>,
-    mut progress: ResMut<cyrus_app::LoadingProgress>,
+    mut progress: ResMut<cyrus_app::loading::LoadingProgress>,
     mut next: ResMut<NextState<cyrus_game::AppState>>,
 ) {
     if let Some(task) = pending.as_mut() {
@@ -264,13 +271,17 @@ mod install_tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
             .insert_state(cyrus_game::AppState::SelectingInstall)
-            .init_resource::<cyrus_app::LoadingProgress>()
+            .init_resource::<cyrus_app::loading::LoadingProgress>()
             .add_systems(Update, prepare_install);
         let window = app.world_mut().spawn(Window::default()).id();
         for _ in 0..3 {
             app.update();
         }
-        assert!(!app.world().resource::<cyrus_app::LoadingProgress>().visible);
+        assert!(
+            !app.world()
+                .resource::<cyrus_app::loading::LoadingProgress>()
+                .visible
+        );
         let root =
             std::env::temp_dir().join(format!("cyrus-missing-install-{}", std::process::id()));
         assert!(!root.exists());
@@ -278,7 +289,9 @@ mod install_tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             app.update();
-            let progress = app.world().resource::<cyrus_app::LoadingProgress>();
+            let progress = app
+                .world()
+                .resource::<cyrus_app::loading::LoadingProgress>();
             if progress.fraction == Some(0.) {
                 assert!(
                     progress.label.contains("cyrus-missing-install"),

@@ -34,9 +34,9 @@ fn missing_state_stays_missing_and_save_commits_only_after_storage_accepts_it() 
         fail_save: false,
         writes: writes.clone(),
     });
-    assert_eq!(state.menu, Ok(None));
+    assert_eq!(state.menu().clone(), Ok(None));
     state.save_menu(value(3)).unwrap();
-    assert_eq!(state.menu, Ok(Some(value(3))));
+    assert_eq!(state.menu().clone(), Ok(Some(value(3))));
     assert_eq!(
         serde_json::from_str::<MenuPreferences>(&writes.lock().unwrap()[0]).unwrap(),
         value(3)
@@ -51,14 +51,14 @@ fn failed_save_keeps_previous_values_and_malformed_load_cannot_be_overwritten() 
         writes: writes.clone(),
     });
     assert!(state.save_menu(value(9)).is_err());
-    assert_eq!(state.menu, Ok(Some(value(2))));
+    assert_eq!(state.menu().clone(), Ok(Some(value(2))));
     let mut malformed = Preferences::new(Store {
         text: Ok(Some("broken".into())),
         fail_save: false,
         writes: writes.clone(),
     });
-    assert!(malformed.menu.is_err());
+    assert!(malformed.menu().is_err());
     assert!(malformed.save_menu(value(9)).is_err());
     assert!(writes.lock().unwrap().is_empty());
-    assert!(Preferences::default().menu.is_err());
+    assert!(Preferences::default().menu().is_err());
 }

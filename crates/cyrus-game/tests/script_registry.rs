@@ -1,6 +1,7 @@
 //! Logical actors execute independently of geometry through explicit public stages.
 use cyrus_assets::script::*;
 use cyrus_game::script::ScriptWorld;
+use cyrus_script::program::*;
 use cyrus_script::{Argument, CallResult, Host, Target, Thread};
 use std::collections::BTreeMap;
 

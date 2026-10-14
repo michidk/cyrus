@@ -65,6 +65,7 @@ The SOUP assignment includes remaining animation and script scheduling. Sound an
 
 ### Crate boundaries
 
+- [x] Strengthen existing crate ownership without adding crates: portable program types and validation in `cyrus-script`, host-owned render/audio connections, private persisted game preferences and console parsing, and an explicit app loading module. **Verified:** isolated interpreter/core/app/render consumers, full gates with 580 Rust tests and zero install skips, native workspace and optimized browser game/viewer/worker builds, and rendered START speech/subtitle/control smoke.
 - [x] Keep shared font metrics, wrapping and rasterization in `cyrus-text`; screen-specific text placement remains with presentation and FNT parsing with preservation.
 - [x] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. **Verified:** installed streamed frame/PCM contracts, native headless START, installed WASM worker exports, metadata parity and isolated core/browser builds.
 - [x] Extract `cyrus-audio`: effects, speech playback, music and browser sound-bank playback. Presentation supplies listener, startup readiness and cinematic pause state. **Verified:** installed decoder/channel/cleanup contracts, preference/animation/cue ordering, native menu/control/CD state, headless START, WASM and isolated core checks; full gates passed with zero install skips.

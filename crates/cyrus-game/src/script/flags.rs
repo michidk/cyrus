@@ -1,7 +1,7 @@
 //! Installed global flag types and native latch operations from preservation's SOUP rules.
 use anyhow::{Context, Result};
-use cyrus_assets::script::Definition;
 use cyrus_script::Argument;
+use cyrus_script::program::Definition;
 
 #[derive(Clone, Copy)]
 enum Kind {
