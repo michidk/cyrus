@@ -70,6 +70,9 @@ closure and keeps running when refused. F1 opens the world,
 flycam and fidelity controls during startup, at the book menu, and in a world. Direct scenes apply exported keyboard defaults and
 saved Controls settings. Gameplay and original-game comparison limits are unchanged.
 
+Direct scene launches use the shared in-game presentation without an additional
+HTML control hint. F1 opens the inspection controls.
+
 Not a default workspace member so day-to-day builds and tests stay lean.
 
 Browser audio activates on keyboard input or pointer release. Movies, menu effects and

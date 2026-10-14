@@ -58,6 +58,7 @@ Loading the correct map does not establish complete animated or playable world b
 | Work | Session |
 | --- | --- |
 | Rendering comparisons, authored rendering and BELLTOWR generated-flat recovery | Codex, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
+| Stage 0 starter capture fidelity and rerun verification | Codex, `t3/stage0-audit-captures`; `magic/artifacts/2026-10-14-stage0-fidelity/`; protected runtime modules excluded |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 

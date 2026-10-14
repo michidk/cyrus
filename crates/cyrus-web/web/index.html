@@ -6,16 +6,9 @@
 <meta name="cyrus-worlds" content="">
 <title>cyrus</title>
 <link rel="stylesheet" href="./loading.css">
-<style>
-#hint{position:fixed;left:8px;bottom:8px;color:#aaa}
-</style>
 </head>
 <body data-engine="cyrus-web">
 <div id="loading"><div id="label">Loading…</div><div id="bar"><div id="fill"></div></div></div>
-<div id="hint">WASD move · right-drag look · Space/Shift up/down · ?scene=START</div>
-<script>
-if (!new URLSearchParams(location.search).has("scene")) document.getElementById("hint").style.display = "none";
-</script>
 <script type="module" src="./loader.js"></script>
 </body>
 </html>
