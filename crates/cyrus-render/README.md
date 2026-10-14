@@ -146,7 +146,8 @@ remain; default-speed timing and complete pixel parity are **Unknown**. Candidat
 calculated globally before selective vertex replacement.
 
 Sky tilting and the sun disc follow the documented plane transform and billboard
-inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
+inputs. **Verified:** matched coastal ISLAND captures cover the complete sun disc
+with frozen sky phase. Scrolling advances texture coordinates
 on the documented BIOS timer, using the per-world speed and a random initial
 direction. `SkyScrollSync` and MCP `set_sky_scroll` accept a captured direction
 and texture offsets. Browser [capture mode](../cyrus-web/README.md) accepts the
@@ -182,9 +183,11 @@ Modern Sky retains hardware alpha filtering; either Modern Sky or Modern Fog
 retains continuous blending. Modern Fog continues to bypass framebuffer
 quantization. **Verified:** original/native/browser ISLAND captures use the same
 viewpoint and 640×480 render size; the native/browser build sources match.
-Cloud phases are unsynchronized and visible terrain/sky differences remain.
-Other texture filtering, lighting, menu-to-world transitions and physical-hardware
-pixel parity remain unverified.
+The coastal comparison freezes cloud phase and follows an original book-menu
+return; native/browser use direct world entry. Sampled sun and cloud errors
+average below one RGB level. Terrain/model shading, remaining texture sampling,
+native/browser menu transitions and physical-hardware pixel parity remain
+**Unknown**.
 
 Ordinary archive-model and terrain texture playback use preservation's
 [shared frame and admission rules](https://github.com/michidk/redguard-preservation/blob/af411516a872f56afc3b164a384ab782f824a6fe/docs/engine/texture-animation.md).
