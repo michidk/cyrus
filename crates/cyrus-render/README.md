@@ -142,8 +142,10 @@ Placed MPSF flats use private, centered camera-facing meshes sized from exported
 source-image dimensions and scale. **Verified:** preservation's
 [flat drawing and export contract](https://github.com/michidk/redguard-preservation/blob/2a44319/docs/engine/model-lighting.md)
 supplies the geometry and alpha-dependent face brightness. Re-export worlds for
-`rgpre_flat` metadata. Centered flags 1 and 3 and unreduced images up to 64 texels
-per dimension are supported. Larger-texture reduction remains unsupported. Rejected flats are hidden;
+`rgpre_flat` metadata. Centered flags 1 and 3 support source images without a 64-texel size cutoff,
+following preservation's [flat dimension rules](https://github.com/michidk/redguard-preservation/commit/812dfb7).
+Configured texture reduction remains unsupported; the installed 3dfx factors `1,1`
+retain full-resolution textures. Rejected flats are hidden;
 preparation groups matching failures instead of logging each placement. Re-exporting
 valid data does not enable unsupported renderer features.
 **Verified:** matched 640×480 BELLTOWR native/browser captures replace the oversized

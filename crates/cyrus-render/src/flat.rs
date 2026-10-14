@@ -42,10 +42,6 @@ impl Description {
         let [width, height] = self
             .dimensions
             .ok_or_else(|| anyhow::anyhow!("missing flat image dimensions"))?;
-        ensure!(
-            width <= 64 && height <= 64,
-            "flat texture reduction is not yet supported"
-        );
         let scale = self
             .texture_scale
             .ok_or_else(|| anyhow::anyhow!("missing flat texture scale"))?;
@@ -230,7 +226,7 @@ mod tests {
         let source = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let entities = (0..2).map(|index| app.world_mut().spawn((
             Name::new(format!("F{index}_unsupported")), Mesh3d(source.clone()),
-            GltfExtras { value: r#"{"rgpre_flat":{"version":1,"dimensions":[128,128],"texture_scale":1,"flags":1,"alpha":255}}"#.into() },
+            GltfExtras { value: r#"{"rgpre_flat":{"version":1,"dimensions":[128,128],"texture_scale":1,"flags":0,"alpha":255}}"#.into() },
         )).id()).collect::<Vec<_>>();
         for _ in 0..2 {
             app.update();
@@ -299,6 +295,44 @@ mod tests {
                 .rotation()
                 .abs_diff_eq(Quat::from_rotation_z(-0.75), 0.000001)
         );
+    }
+
+    #[test]
+    fn large_flat_uses_full_source_dimensions_and_texture() {
+        let mut source = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        source.insert_attribute(
+            Mesh::ATTRIBUTE_UV_0,
+            vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]],
+        );
+        let mesh = Description {
+            version: 1,
+            dimensions: Some([128, 256]),
+            texture_scale: Some(0.5),
+            flags: 1,
+            alpha: 255,
+        }
+        .mesh(&source)
+        .unwrap();
+        assert_eq!(
+            mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+                .unwrap()
+                .as_float3()
+                .unwrap(),
+            &[
+                [-1.6, 3.2, 0.0],
+                [1.6, 3.2, 0.0],
+                [1.6, -3.2, 0.0],
+                [-1.6, -3.2, 0.0],
+            ]
+        );
+        let Some(VertexAttributeValues::Float32x2(uv)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+        else {
+            panic!("missing UVs")
+        };
+        assert_eq!(uv, &[[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]]);
     }
 
     #[test]
