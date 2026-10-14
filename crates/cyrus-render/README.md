@@ -139,7 +139,9 @@ Sky tilting and the sun disc follow the documented plane transform and billboard
 inputs; full original-game visual comparison remains pending. Scrolling advances texture coordinates
 on the documented BIOS timer, using the per-world speed and a random initial
 direction. `SkyScrollSync` and MCP `set_sky_scroll` accept a captured direction
-and texture offsets. The original session's shared random stream is not reproduced.
+and texture offsets. Browser [capture mode](../cyrus-web/README.md) accepts the
+same measured phase after world entry. The original session's shared random
+stream is not reproduced.
 
 Scene rendering uses the installed near/far planes, including a nonzero
 `world_back_plane` override. F1 exposes a render-distance override in game units;

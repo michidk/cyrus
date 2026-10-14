@@ -56,8 +56,8 @@ native exporter is required.
 Combine parameters with `&`; percent-encode values. Scene accepts a map stem or
 WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.
 Boolean `skip-startup` accepts an empty value, `true`/`1`, and `false`/`0`.
-`view` requires `scene` and supplies a one-shot inspection camera pose in scene
-coordinates with a unit quaternion. It does not move the player.
+`view` supplies a one-shot inspection camera pose in scene coordinates with a
+unit quaternion, including world entry through the menu. It does not move the player.
 World-picker navigation clears the one-shot inspection pose and preserves the install URL and other launch options.
 AI-driven browser tests must always supply the install to the server or in the URL,
 so the user never has to answer the prompt during testing.
@@ -81,7 +81,7 @@ instead of leaving an unexplained black screen.
 settings, cinematic playback and world-entry loading. Hosts add it alongside
 cyrus-render and cyrus-audio.
 
-Matched captures use `?capture=true` with `scene` and `view`. This enables the
+Matched captures use `?capture=true` with `view` and either `scene` or menu entry. This enables the
 read-only `window.__cyrusCapture` observation after world entry, containing the
 requested world and live scene-space camera pose. It does not change simulation
 or camera behavior. See [tracked fixtures](../../dev/fixtures/README.md) for the
@@ -103,3 +103,20 @@ rgpre. The optional installed CPF supplies defaults only when local state is
 absent. `console save` persists current preferences; `console write` downloads
 `CONSOLE.LOG`. Malformed stored CPF data blocks edits and saves and is reported
 by `console show`.
+
+In capture mode, freeze the sky with the original `fxskyspeed 0` console command,
+then assign a JSON string to `window.__cyrusSkyScrollRequest`:
+
+```js
+window.__cyrusSkyScrollRequest = JSON.stringify({
+  id: 1, world: window.__cyrusCapture.world, direction: 0, offset: [0, 0]
+});
+```
+
+Use the measured original direction and texel offsets for a comparison. The
+request is consumed once while InGame. `window.__cyrusSkyScrollResult` reports
+`id`, `accepted` and `error`. Acceptance queues the phase for the next sky update;
+wait for a subsequent rendered frame before capturing. A mismatched or unready
+world, malformed request or invalid phase is rejected without changing the sky.
+Submit one request at a time and check its result. This inspection control is
+absent without `capture`; it does not reproduce original-session random order.
