@@ -240,6 +240,7 @@ pub struct OrdinarySoundExecutor(pub fn(&mut World));
 #[derive(SystemParam)]
 pub struct OrdinaryContext<'w, 's> {
     prepared: OrdinaryAssets<'w>,
+    hud: Option<Res<'w, super::super::ScriptHud>>,
     actors: ResMut<'w, ScriptActors>,
     clock: Option<Res<'w, SimulationClock>>,
     random: ResMut<'w, crate::random::EngineRandom>,
@@ -284,12 +285,16 @@ pub fn run_ordinary(
 ) {
     let OrdinaryContext {
         prepared,
+        hud,
         mut actors,
         clock,
         mut random,
         bindings,
         players,
     } = context;
+    if hud.as_ref().is_some_and(|hud| !hud.ready()) {
+        return;
+    }
     let OrdinaryAssets {
         view,
         request,
@@ -360,6 +365,7 @@ pub fn run_ordinary(
         data,
         [view.position[0] >> 8, view.position[2] >> 8],
         ScriptInputs {
+            hud: hud.as_deref(),
             nominal_ticks: Some(timing.nominal_ticks),
             frame_scale: Some(timing.frame_scale),
             player_query,

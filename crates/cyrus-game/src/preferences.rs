@@ -2,17 +2,19 @@
 use bevy::prelude::*;
 use cyrus_assets::preferences::MenuPreferences;
 
-/// The two existing local-state documents; neither belongs in the install.
+/// Local-state documents stored outside the install.
 #[derive(Clone, Copy)]
 pub enum PreferenceKey {
     Menu,
     Hud,
+    Logbook,
 }
 impl PreferenceKey {
     pub fn name(self) -> &'static str {
         match self {
             Self::Menu => "menu",
             Self::Hud => "hud",
+            Self::Logbook => "logbook",
         }
     }
 }
@@ -22,7 +24,7 @@ pub trait PreferenceStore: Send + Sync + 'static {
 }
 #[derive(Resource)]
 pub struct Preferences {
-    store: Option<Box<dyn PreferenceStore>>,
+    store: Option<std::sync::Arc<dyn PreferenceStore>>,
     menu: Result<Option<MenuPreferences>, String>,
 }
 impl Default for Preferences {
@@ -53,9 +55,12 @@ impl Preferences {
         })()
         .map_err(|e: anyhow::Error| format!("local menu preferences: {e:#}"));
         Self {
-            store: Some(Box::new(store)),
+            store: Some(std::sync::Arc::new(store)),
             menu,
         }
+    }
+    pub(crate) fn store(&self) -> Option<std::sync::Arc<dyn PreferenceStore>> {
+        self.store.clone()
     }
     pub fn load_hud(&self) -> anyhow::Result<Option<String>> {
         self.store

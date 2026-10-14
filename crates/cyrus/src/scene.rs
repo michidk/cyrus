@@ -90,6 +90,7 @@ fn load_requested(
                 export_scene_reporting(&install, &requested, &glb, &|done, total, stage| {
                     let _ = stages.send(Message::Stage(done, total, stage.into()));
                 })?;
+                cyrus_assets::hud_export::export_hud(&install, &Settings::cache_dir())?;
                 cyrus_assets::sound_export::export(&install, &Settings::cache_dir())?;
                 Ok(world)
             })();
@@ -115,6 +116,8 @@ fn finish(
     pending: Option<Res<Preparation>>,
     request: Res<SceneRequest>,
     assets: Res<AssetServer>,
+    script_hud: Option<Res<cyrus_game::script::ScriptHud>>,
+    preferences: Option<Res<cyrus_game::preferences::Preferences>>,
 ) {
     let Some(pending) = pending else {
         return;
@@ -135,6 +138,17 @@ fn finish(
     if pending.name != request.0.to_ascii_uppercase() {
         return;
     }
+    let result = result.and_then(|world| {
+        if let (Some(hud), Some(preferences)) = (script_hud, preferences) {
+            let path = Settings::cache_dir().join("hud/overlay.hud");
+            let data: cyrus_assets::hud::HudAsset = serde_json::from_slice(
+                &std::fs::read(&path)
+                    .map_err(|error| anyhow::anyhow!("{}: {error}", path.display()))?,
+            )?;
+            hud.configure(&data, &preferences);
+        }
+        Ok(world)
+    });
     match result {
         Ok(world) => {
             let mut prepared = PreparedWorld::from_cache(pending.name.clone(), &assets);

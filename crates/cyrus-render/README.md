@@ -268,8 +268,11 @@ capping the application. `normal_frame_rate` is a simulation-tick input, not
 the candle cadence. Original in-world timing still needs a paired comparison.
 F8, Tab and F7 preferences survive native restart and browser reload. Placed-player
 heading/world and supplied script-player health/type and activation lockout feed
-the overlay. Sword state, compass use, power-up/logbook handlers and gameplay
-walk-mode/auto-defend behavior remain unwired. Native health-number placement
+the overlay. Installed bitmap/logbook script handlers feed shared game-owned
+slots and accepted notification requests. New logbook notifications draw frame 0
+first; entries accepted during playback do not restart the icon. Lockout hides
+power-up slots and leaves the logbook icon visible. Sword state, compass use
+and gameplay walk-mode/auto-defend behavior remain unwired. Native health-number placement
 matches the original at 640×480; complete pixel and timing parity remain open.
 
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.

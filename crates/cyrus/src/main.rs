@@ -192,7 +192,8 @@ fn main() -> anyhow::Result<()> {
                 (bindings::load, cheats::load),
             );
     }
-    app.insert_resource(control)
+    app.init_resource::<cyrus_game::script::ScriptHud>()
+        .insert_resource(control)
         .insert_resource(settings.fidelity.clone())
         .insert_resource(cyrus_world::lifecycle::SceneRequest(settings.scene.clone()))
         .add_plugins((

@@ -2265,3 +2265,212 @@ fn location_movement_quantizes_normalized_components_and_snaps_after_overshoot()
     assert_eq!(world.spatial(id).unwrap().local.position, [3, 4, 0]);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
+
+fn hud_asset() -> cyrus_assets::hud::HudAsset {
+    cyrus_assets::hud::HudAsset {
+        labels: [
+            ("TEST".into(), "A new journal entry.".into()),
+            ("EMPT".into(), String::new()),
+        ]
+        .into(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: BTreeMap::new(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![[1; 2]; 3],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+    }
+}
+struct LogStore {
+    load: Option<String>,
+    fail_save: bool,
+    writes: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+impl cyrus_game::preferences::PreferenceStore for LogStore {
+    fn load(&self, _: cyrus_game::preferences::PreferenceKey) -> anyhow::Result<Option<String>> {
+        Ok(self.load.clone())
+    }
+    fn save(&self, _: cyrus_game::preferences::PreferenceKey, text: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(!self.fail_save, "disk full");
+        self.writes.lock().unwrap().push(text.into());
+        Ok(())
+    }
+}
+fn hud_call(
+    hud: Option<&cyrus_game::script::ScriptHud>,
+    function: &str,
+    arguments: &[i32],
+) -> anyhow::Result<()> {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Function,
+                target: Object::Me,
+                function: function.into(),
+                arguments: arguments
+                    .iter()
+                    .map(|value| Value::Integer { value: *value })
+                    .collect(),
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: function.into(),
+        param_count: arguments.len().try_into().unwrap(),
+        kind: CallKind::Function,
+    });
+    data.content_id = data.content_identity()?;
+    let mut world = ScriptWorld::prepare(&data, 1)?;
+    world.advance(
+        world.id(0).unwrap(),
+        BODY,
+        cyrus_game::script::ScriptInputs {
+            hud,
+            ..Default::default()
+        },
+        None,
+        None,
+        30,
+    )?;
+    anyhow::ensure!(
+        world.actors()[0].failure().is_none(),
+        "{:?}",
+        world.actors()[0].failure()
+    );
+    Ok(())
+}
+#[test]
+fn script_powerup_dispatch_validates_installed_frames_and_retains_slot_order() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    assert!(hud_call(None, "ShowBitmap", &[0, 0]).is_err());
+    assert!(hud_call(Some(&hud), "ShowBitmap", &[0, 0]).is_err());
+    hud.configure(&hud_asset(), &Preferences::default());
+    hud_call(Some(&hud), "ShowBitmap", &[0, 0]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[1, 0]).unwrap();
+    assert_eq!(hud.presentation().0, [Some((0, 0)), None]);
+    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
+    assert_eq!(hud.presentation().0, [Some((0, 2)), Some((1, 1))]);
+    hud_call(Some(&hud), "UnShowBitmap", &[0]).unwrap();
+    assert_eq!(hud.presentation().0, [None, Some((1, 1))]);
+    hud_call(Some(&hud), "ShowBitmap", &[1, 0]).unwrap();
+    hud_call(Some(&hud), "UnShowBitmap", &[1]).unwrap();
+    assert_eq!(
+        hud.presentation().0,
+        [None, Some((1, 1))],
+        "clears only the first matching ID"
+    );
+    for values in [[-1, 0], [2, 0], [0, -1], [0, 3]] {
+        assert!(hud_call(Some(&hud), "ShowBitmap", &values).is_err());
+    }
+    assert_eq!(hud.presentation().0, [None, Some((1, 1))]);
+}
+#[test]
+fn script_logbook_dispatch_writes_installed_text_before_notifying_and_suppresses_tags() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: None,
+        fail_save: false,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&hud_asset(), &preferences);
+    let tag = i32::from_le_bytes(*b"TEST");
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    assert_eq!(hud.entries().unwrap(), ["A new journal entry."]);
+    assert!(hud.presentation().1);
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"NONE")]).unwrap();
+    assert!(!hud.presentation().1);
+    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"EMPT")]).unwrap();
+    assert!(
+        hud.presentation().1,
+        "an installed empty entry is still written"
+    );
+    assert_eq!(hud.entries().unwrap(), ["A new journal entry.", ""]);
+    assert_eq!(writes.lock().unwrap().len(), 2);
+    let reloaded = ScriptHud::default();
+    reloaded.configure(
+        &hud_asset(),
+        &Preferences::new(LogStore {
+            load: writes.lock().unwrap().last().cloned(),
+            fail_save: false,
+            writes: std::sync::Arc::clone(&writes),
+        }),
+    );
+    assert_eq!(reloaded.entries().unwrap(), hud.entries().unwrap());
+    assert!(
+        !reloaded.presentation().1,
+        "loading retained text is not a new notification"
+    );
+}
+#[test]
+fn failed_logbook_storage_does_not_notify_or_overwrite_and_tag_is_still_suppressed() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    for load in [Some("broken".into()), Some("[\"Earlier entry.\"]".into())] {
+        let writes = std::sync::Arc::default();
+        let preferences = Preferences::new(LogStore {
+            load: load.clone(),
+            fail_save: true,
+            writes: std::sync::Arc::clone(&writes),
+        });
+        let hud = ScriptHud::default();
+        hud.configure(&hud_asset(), &preferences);
+        let tag = i32::from_le_bytes(*b"TEST");
+        assert!(hud_call(Some(&hud), "AddLog", &[tag]).is_err());
+        assert!(!hud.presentation().1);
+        assert!(writes.lock().unwrap().is_empty());
+        if load.as_deref() == Some("broken") {
+            assert!(hud.entries().is_err());
+        } else {
+            assert_eq!(hud.entries().unwrap(), ["Earlier entry."]);
+        }
+        hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+        assert!(!hud.presentation().1);
+    }
+}
+
+#[test]
+fn full_logbook_tag_table_does_not_retain_new_tags() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let writes = std::sync::Arc::default();
+    let hud = ScriptHud::default();
+    hud.configure(
+        &hud_asset(),
+        &Preferences::new(LogStore {
+            load: None,
+            fail_save: false,
+            writes: std::sync::Arc::clone(&writes),
+        }),
+    );
+    for tag in 1..=400 {
+        hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    }
+    let tag = i32::from_le_bytes(*b"TEST");
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    assert_eq!(
+        hud.entries().unwrap(),
+        ["A new journal entry.", "A new journal entry."]
+    );
+}

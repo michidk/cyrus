@@ -7,6 +7,8 @@ pub use activation::{
 mod animation;
 mod attributes;
 mod flags;
+mod hud;
+pub use hud::ScriptHud;
 mod markers;
 mod navigation;
 mod order;

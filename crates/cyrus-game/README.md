@@ -63,6 +63,16 @@ using owned actor state and explicit item readiness and ticks. Activation and
 default selection share weapon predicates. Normal world updates initialize and schedule supported ordinary actors;
 scene binding itself does not advance animation or scripts.
 
+`ScriptHud` handles installed `ShowBitmap`, `UnShowBitmap` and `AddLog` calls
+for ordinary updates and explicit script steps. It owns power-up slots and the
+session's 400-tag duplicate table. RTX text is retained in native
+`cyrus-config/logbook.json` or browser localStorage `cyrus-logbook`; malformed
+state and failed writes leave accepted entries unchanged and trigger no icon.
+**Verified:** tag acceptance and slot rules follow preservation's
+[script HUD contract](https://github.com/michidk/redguard-preservation/blob/docs/script-hud/docs/engine/hud.md).
+The renderer consumes accepted notification requests. Full logbook navigation,
+new-game/death resets and save-game integration remain unsupported.
+
 Run `cargo test -p cyrus-game`. Installed-definition tests require `redguard/` and
 report when they skip. `dev/scripts/check-core-boundaries.sh` checks the production
 dependency graph without workspace or development feature unification.

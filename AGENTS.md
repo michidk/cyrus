@@ -257,7 +257,14 @@ loading shows the original red bar and gold lower-left percentage, without a
 right-hand status message or pending asset filename. Failed world entry reports a
 contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
-walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle
+walk mode, auto-defend, prompt, selected item and count. Installed `ShowBitmap`,
+`UnShowBitmap` and `AddLog` calls feed shared native/browser HUD state.
+`state.script_hud` reports native dispatch readiness, power-up slots and accepted
+logbook entry count or load error. Log text stays outside the install in native
+`cyrus-config/logbook.json` or browser localStorage `cyrus-logbook`. Malformed
+state and failed writes do not notify or overwrite accepted entries. Full logbook
+navigation, new-game/death resets and save-game integration remain unsupported.
+F8, Tab and F7 toggle
 candle mode, walk mode and auto-defend. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.
 Wait for `state.menu.ready` before sending menu input. Settings use original action

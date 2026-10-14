@@ -134,10 +134,8 @@ pub struct HudState {
     /// Compass display flag, toggled by using item 0. *Unwired*.
     pub compass_on: bool,
     pub compass_frame: Option<u8>,
-    /// Power-up slots as `(id, frame)`; see [`HudState::show_bitmap`]. *Unwired*.
+    /// Script-owned power-up slots as `(id, frame)`.
     pub powerups: [Option<(u8, u8)>; 2],
-    /// The slot `show_bitmap` chooses when both are full.
-    next_slot: usize,
     /// Logbook icon frame while it plays; see [`HudState::logbook_entry`].
     pub logbook_frame: Option<u8>,
     /// Walk mode (Tab) and auto-defend (F7); the player does not consume them yet.
@@ -194,7 +192,6 @@ impl HudState {
             compass_on: false,
             compass_frame: None,
             powerups: [None; 2],
-            next_slot: 0,
             logbook_frame: None,
             walk_mode: preferences.walk_mode,
             auto_defend: preferences.auto_defend,
@@ -226,35 +223,6 @@ impl HudState {
             self.show_timer = SHOW_TICKS;
         }
         self.sword_drawn = drawn;
-    }
-
-    /// Script `ShowBitmap(id, frame)`: `id` 0 or 1, `frame` a `game_bitmap` frame.
-    pub fn show_bitmap(&mut self, id: u8, frame: u8) -> Result<(), String> {
-        if id > 1 || usize::from(frame) >= self.frames.powerup.len() {
-            return Err(format!("ShowBitmap({id}, {frame}): invalid id or frame"));
-        }
-        if self.powerups.iter().flatten().any(|(_, f)| *f == frame) {
-            return Ok(());
-        }
-        let slot = self
-            .powerups
-            .iter()
-            .position(Option::is_none)
-            .unwrap_or(self.next_slot);
-        self.powerups[slot] = Some((id, frame));
-        self.next_slot = 1 - slot;
-        Ok(())
-    }
-
-    /// Script `UnShowBitmap(id)`: clears slot 1 if its id matches, else slot 2.
-    pub fn unshow_bitmap(&mut self, id: u8) {
-        if let Some(slot) = self
-            .powerups
-            .iter_mut()
-            .find(|s| s.is_some_and(|(i, _)| i == id))
-        {
-            *slot = None;
-        }
     }
 
     /// A new logbook entry plays the scroll icon once unless it is already playing.
@@ -346,10 +314,22 @@ impl AssetLoader for HudLoader {
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<cyrus_game::preferences::Preferences>()
+            .init_resource::<cyrus_game::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_asset_loader::<HudLoader>()
             .add_systems(OnEnter(AppState::InGame), spawn)
-            .add_systems(Update, update.run_if(in_state(AppState::InGame)))
+            .add_systems(
+                Update,
+                configure_scripts
+                    .before(cyrus_game::script::OrdinaryUpdates)
+                    .run_if(in_state(AppState::InGame)),
+            )
+            .add_systems(
+                Update,
+                update
+                    .after(cyrus_game::script::OrdinaryUpdates)
+                    .run_if(in_state(AppState::InGame)),
+            )
             .add_systems(OnExit(AppState::InGame), despawn);
     }
 }
@@ -450,8 +430,20 @@ struct CompassInputs<'w, 's> {
     scenes: Option<Res<'w, Assets<PlayerScene>>>,
 }
 
+fn configure_scripts(
+    handle: Option<Res<HudHandle>>,
+    data: Res<Assets<HudAsset>>,
+    hud: Res<cyrus_game::script::ScriptHud>,
+    preferences: Res<cyrus_game::preferences::Preferences>,
+) {
+    if let Some(asset) = handle.as_ref().and_then(|handle| data.get(&handle.0)) {
+        hud.configure(asset, &preferences);
+    }
+}
+
 #[allow(clippy::too_many_arguments)] // One Bevy system owning the overlay's input, state and nodes.
 fn update(
+    script_hud: Res<cyrus_game::script::ScriptHud>,
     preferences_store: Res<cyrus_game::preferences::Preferences>,
     mut commands: Commands,
     assets: Res<AssetServer>,
@@ -507,6 +499,10 @@ fn update(
         });
         return;
     };
+    let (powerups, notification) = script_hud.presentation();
+    state.powerups = powerups;
+    let start_notification = notification && state.logbook_frame.is_none();
+
     let state = &mut *state;
 
     // Fixed, non-configurable keys: F8 candle mode, Tab walk mode, F7 auto-defend.
@@ -544,6 +540,9 @@ fn update(
     while state.elapsed >= period {
         state.elapsed -= period;
         state.advance_frame();
+    }
+    if start_notification {
+        state.logbook_entry();
     }
     state.ticks += time.delta_secs_f64() * TICKS_PER_SECOND;
     let ticks = state.ticks.floor() as u32;
@@ -779,31 +778,6 @@ mod tests {
     }
 
     #[test]
-    fn powerup_slots_fill_then_alternate_and_clear_by_id() {
-        let mut state = HudState::new(
-            &asset(2),
-            None,
-            Frames {
-                powerup: vec![default(); 2],
-                ..default()
-            },
-        );
-        state.show_bitmap(0, 0).unwrap();
-        state.show_bitmap(1, 0).unwrap();
-        assert_eq!(
-            state.powerups,
-            [Some((0, 0)), None],
-            "a shown frame is kept"
-        );
-        state.show_bitmap(1, 1).unwrap();
-        assert_eq!(state.powerups, [Some((0, 0)), Some((1, 1))]);
-        state.unshow_bitmap(0);
-        state.show_bitmap(0, 0).unwrap();
-        assert_eq!(state.powerups, [Some((0, 0)), Some((1, 1))]);
-        assert!(state.show_bitmap(2, 0).is_err() && state.show_bitmap(0, 2).is_err());
-    }
-
-    #[test]
     fn show_timer_and_logbook_follow_their_triggers() {
         let mut state = HudState::new(&asset(0), None, Frames::default());
         state.set_health(80);
@@ -876,7 +850,7 @@ mod tests {
         }
     }
 
-    fn prepare_prompt(app: &mut App) {
+    fn prepare_script(app: &mut App, requests: &[(&str, &[i32])]) {
         use cyrus_assets::script::*;
         use cyrus_game::script::{ActivationActor, ScriptInputs, ScriptStage, ScriptWorld, Thread};
         use cyrus_script::program::*;
@@ -981,6 +955,44 @@ mod tests {
             }],
             unsupported: BTreeMap::new(),
         };
+        if !requests.is_empty() {
+            let mut steps = BTreeMap::new();
+            for (index, (function, arguments)) in requests.iter().enumerate() {
+                let function_id = scripts.definition.functions.len() as u16;
+                scripts.definition.functions.push(Function {
+                    name: (*function).into(),
+                    param_count: arguments.len().try_into().unwrap(),
+                    kind: CallKind::Function,
+                });
+                steps.insert(
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation: Operation::Call {
+                            call: Call {
+                                function_id,
+                                kind: CallKind::Function,
+                                target: Object::Me,
+                                function: (*function).into(),
+                                arguments: arguments
+                                    .iter()
+                                    .map(|value| Value::Integer { value: *value })
+                                    .collect(),
+                            },
+                        },
+                    },
+                );
+            }
+            let end = requests.len() as u32;
+            steps.insert(
+                end,
+                Step {
+                    next: end + 1,
+                    operation: Operation::End { target: 0 },
+                },
+            );
+            scripts.actors.get_mut("LEVER").unwrap().program.steps = steps;
+        }
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         let state = ActivationActor {
@@ -1010,6 +1022,7 @@ mod tests {
                 ScriptStage::Body(Thread::Main),
                 ScriptInputs {
                     activation: Some(&inputs),
+                    hud: app.world().get_resource::<cyrus_game::script::ScriptHud>(),
                     ..Default::default()
                 },
                 None,
@@ -1023,10 +1036,90 @@ mod tests {
     }
 
     #[test]
+    fn script_hud_renders_powerups_and_new_logbook_frame_zero_with_lockout_rules() {
+        struct Store;
+        impl cyrus_game::preferences::PreferenceStore for Store {
+            fn load(
+                &self,
+                _: cyrus_game::preferences::PreferenceKey,
+            ) -> anyhow::Result<Option<String>> {
+                Ok(None)
+            }
+            fn save(
+                &self,
+                _: cyrus_game::preferences::PreferenceKey,
+                _: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+        }
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .init_asset::<HudAsset>()
+            .init_resource::<cyrus_game::script::ScriptHud>()
+            .insert_resource(cyrus_game::preferences::Preferences::new(Store))
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .add_systems(Update, (configure_scripts, update).chain());
+        let mut data = asset(0);
+        data.labels.insert("TEST".into(), "New entry".into());
+        data.labels.insert("MORE".into(), "Another entry".into());
+        let handle = app.world_mut().resource_mut::<Assets<HudAsset>>().add(data);
+        app.insert_resource(HudHandle(handle));
+        app.world_mut().spawn(HudViewport);
+        app.update();
+        prepare_script(
+            &mut app,
+            &[
+                ("ShowBitmap", &[0, 0]),
+                ("AddLog", &[i32::from_le_bytes(*b"TEST")]),
+            ],
+        );
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().powerups,
+            [Some((0, 0)), None]
+        );
+        assert_eq!(app.world().resource::<HudState>().logbook_frame, Some(0));
+        let visible = |app: &mut App, expected| {
+            app.world_mut()
+                .query::<(&HudSprite, &Visibility)>()
+                .iter(app.world())
+                .find(|(sprite, _)| **sprite == expected)
+                .map(|(_, visibility)| *visibility)
+                .unwrap()
+        };
+        assert_eq!(
+            visible(&mut app, HudSprite::Powerup(0)),
+            Visibility::Inherited
+        );
+        assert_eq!(visible(&mut app, HudSprite::Logbook), Visibility::Inherited);
+        prepare_script(&mut app, &[("AddLog", &[i32::from_le_bytes(*b"MORE")])]);
+        app.world_mut().resource_mut::<ActivationInputs>().lockout = 1;
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().logbook_frame,
+            Some(1),
+            "new entry does not restart active icon"
+        );
+        assert_eq!(visible(&mut app, HudSprite::Powerup(0)), Visibility::Hidden);
+        assert_eq!(visible(&mut app, HudSprite::Logbook), Visibility::Inherited);
+        for _ in 0..31 {
+            app.update();
+        }
+        assert_eq!(app.world().resource::<HudState>().logbook_frame, None);
+        assert_eq!(visible(&mut app, HudSprite::Logbook), Visibility::Hidden);
+    }
+
+    #[test]
     fn compass_follows_the_placed_player_heading() {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
+            .init_resource::<cyrus_game::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
@@ -1064,6 +1157,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
             .init_asset::<Image>()
+            .init_resource::<cyrus_game::script::ScriptHud>()
             .init_asset::<HudAsset>()
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
@@ -1090,7 +1184,7 @@ mod tests {
         app.update();
         app.world_mut().resource_mut::<HudState>().bindings = bindings;
         app.update();
-        prepare_prompt(&mut app);
+        prepare_script(&mut app, &[]);
         let inputs = app
             .world_mut()
             .remove_resource::<ActivationInputs>()

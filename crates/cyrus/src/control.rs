@@ -79,6 +79,7 @@ struct Inspection<'w, 's> {
     preloaded: Option<Res<'w, Preloaded>>,
     textures: Option<ResMut<'w, cyrus_render::fog::TextureAnimations>>,
     hud: Option<Res<'w, cyrus_render::hud::HudState>>,
+    script_hud: Option<Res<'w, cyrus_game::script::ScriptHud>>,
     scripts: Option<Res<'w, cyrus_game::script::ScriptStatus>>,
     script_actors: Option<ResMut<'w, cyrus_game::script::ScriptActors>>,
     random: ResMut<'w, cyrus_game::random::EngineRandom>,
@@ -118,6 +119,7 @@ fn handle(
         preloaded,
         mut textures,
         hud,
+        script_hud,
         scripts,
         mut script_actors,
         mut random,
@@ -180,7 +182,7 @@ fn handle(
                     json!({"parsed": p.parsed, "failed": p.failed.len(), "by_type": p.by_type, "unsupported": p.unsupported, "report": "cyrus-config/preload-report.json"})
                 });
                 Ok(
-                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
+                    json!({"textures": textures.as_ref().map(|textures| textures.snapshot()), "state": format!("{:?}", state.get()), "menu": menu.as_deref(), "startup": startup.as_deref(), "hud": hud.as_deref(), "script_hud": script_hud.as_ref().map(|hud| hud.inspect()), "cheats": cheats.inspect(), "console": *console, "scripts": scripts.as_deref(), "scene": current.name, "scene_ready": scene_ready, "player": transform, "fidelity": *fidelity, "frame": frames.0, "preload": preload, "player_input": *input, "music_track": audio.music.as_ref().and_then(|m| m.track), "flycam": {"enabled": flycam.as_ref().is_some_and(|f| f.enabled), "position": camera.single().ok().map(|t| t.translation.to_array()), "rotation": camera.single().ok().map(|t| t.rotation.to_array())}}),
                 )
             }
             Command::Screenshot { path } => {
@@ -469,6 +471,7 @@ fn handle(
                     Ok(cyrus_game::script::PlayerQuery { position, heading: pose.heading })
                 }).transpose()?;
                 let inputs = cyrus_game::script::ScriptInputs {
+                    hud: script_hud.as_deref(),
                     activation: activation.as_deref(),
                     nominal_ticks, frame_scale,
                     player_query: Some(cyrus_game::script::QueryInputs {

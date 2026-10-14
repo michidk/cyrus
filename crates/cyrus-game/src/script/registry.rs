@@ -65,6 +65,7 @@ pub enum ScriptStage {
 /// Inputs supplied by the owning scheduler; missing values never imply a clock tick.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ScriptInputs<'a> {
+    pub hud: Option<&'a super::ScriptHud>,
     pub activation: Option<&'a super::ActivationInputs>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
@@ -1389,6 +1390,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        if kind == CallKind::Function && super::ScriptHud::handles(function) {
+            let hud = self.inputs.hud.context("script HUD host unavailable")?;
+            return Ok(CallResult::Complete(hud.call(function, arguments)?));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("LockoutPlayer") {
             let [value] = arguments else {
                 anyhow::bail!("LockoutPlayer requires one argument")
