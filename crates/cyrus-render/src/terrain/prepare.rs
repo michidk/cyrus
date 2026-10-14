@@ -16,7 +16,7 @@ pub(crate) struct Vertex {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(super) struct Projected {
+pub(crate) struct Projected {
     pub vertex: Vertex,
     /// Unbiased screen coordinates snapped to sixteenths of a pixel.
     pub screen: [f32; 2],
@@ -156,7 +156,7 @@ impl Preparation {
     }
 }
 
-fn project(vertex: Vertex, viewport: [f32; 2]) -> Projected {
+pub(crate) fn project(vertex: Vertex, viewport: [f32; 2]) -> Projected {
     let reciprocal = f64::from(1.0 / vertex.camera[2]);
     let [half_x, half_y] = viewport.map(|v| f64::from(v) * 0.5);
     // X has a binary32 store before the common projection bias; Y does not.

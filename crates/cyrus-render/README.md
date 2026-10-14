@@ -108,9 +108,16 @@ Matched 640×480 native/browser ISLAND captures reduce shoreline-region mean RGB
 error from 3.86 to 2.05 against the saved original viewpoint and prior-version
 control. Sky phase and the selected foam frame are held; the original water
 field is not synchronized. The original capture follows a book-menu return;
-these native/browser captures enter the world directly. Model projected
-snapping, fixed-point interpolation, transition parity and full pixel parity
-remain **Unknown**.
+these native/browser captures enter the world directly.
+
+Ordinary clipped-model draw meshes use the published
+[projection quantization rule](https://github.com/michidk/redguard-preservation/commit/c91863c44fafaf212e7b9928a3331c8242049cc1).
+Prepared screen coordinates lie on a 1/16-pixel grid and are recomputed when
+the physical viewport changes. Authored source geometry remains available to
+animation and polygon admission. Generated flats retain their separate path.
+**Verified:** the shared projection calculation matches original-instruction
+outputs for synthetic clipped polygons. Model fixed-point interpolation,
+transition parity and full pixel parity remain **Unknown**.
 
 Re-export worlds and player models for the `rgpre_lighting` primitive metadata
 and required environment model inputs. Invalid mesh lighting metadata hides the

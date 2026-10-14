@@ -1,5 +1,6 @@
 //! Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 //!
+//! Model projection: <https://github.com/michidk/redguard-preservation/commit/c91863c>.
 //! Model clipping: <https://github.com/michidk/redguard-preservation/commit/dd8c5f8>.
 use super::{ModelExtension, SceneMaterial, texture::admission::Model};
 use crate::{
@@ -10,16 +11,20 @@ use anyhow::ensure;
 use bevy::{
     camera::visibility::{NoFrustumCulling, RenderLayers, VisibilitySystems},
     gltf::GltfExtras,
-    mesh::{PrimitiveTopology, VertexAttributeValues},
+    mesh::{MeshVertexAttribute, PrimitiveTopology, VertexAttributeValues},
     prelude::*,
+    render::render_resource::VertexFormat,
 };
 use std::collections::HashSet;
+
+pub(super) const PROJECTED: MeshVertexAttribute =
+    MeshVertexAttribute::new("Model_Projected", 83010, VertexFormat::Float32x4);
 
 #[derive(Component)]
 struct Source {
     draw: Entity,
     polygons: Model,
-    previous: Option<(Mat4, Mat4, Vec2, AssetId<Mesh>, ModelExtension)>,
+    previous: Option<(Mat4, Mat4, Vec2, AssetId<Mesh>, ModelExtension, Vec2)>,
 }
 
 #[derive(Component)]
@@ -128,7 +133,7 @@ fn prepare(
         Without<Draw>,
     >,
     mut draws: Query<(&Mesh3d, &mut MeshMaterial3d<SceneMaterial>), With<Draw>>,
-    cameras: Query<(&GlobalTransform, &Projection), With<ViewCamera>>,
+    cameras: Query<(&GlobalTransform, &Projection, &Camera), With<ViewCamera>>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<SceneMaterial>>,
     images: Res<Assets<Image>>,
@@ -150,9 +155,16 @@ fn prepare(
             _ => None,
         })
         .collect();
-    let Ok((camera, projection)) = cameras.single() else {
+    let Ok((camera, projection, viewport_camera)) = cameras.single() else {
         return;
     };
+    let Some(viewport) = viewport_camera.physical_viewport_size() else {
+        return;
+    };
+    if viewport.min_element() == 0 {
+        return;
+    }
+    let viewport = viewport.as_vec2();
     let camera = camera.to_matrix();
     let projection = projection.get_clip_from_view();
     let scale = Vec2::new(projection.x_axis.x, projection.y_axis.y);
@@ -167,6 +179,7 @@ fn prepare(
             scale,
             mesh.0.id(),
             extension.clone(),
+            viewport,
         );
         let Ok((draw, mut draw_material)) = draws.get_mut(source.draw) else {
             continue;
@@ -193,6 +206,7 @@ fn prepare(
             key.1,
             camera,
             scale,
+            viewport.to_array(),
             extension,
             lights,
             animated.is_some(),
@@ -342,6 +356,7 @@ fn draw_mesh(
     transform: Mat4,
     camera: Mat4,
     scale: Vec2,
+    viewport: [f32; 2],
     material: &ModelExtension,
     lights: &Image,
     animated: bool,
@@ -381,6 +396,7 @@ fn draw_mesh(
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            Vec::new(),
         ));
     }
     let colors = light_colors(original, transform, material, lights)?;
@@ -391,6 +407,7 @@ fn draw_mesh(
     let mut output_normals = Vec::new();
     let mut output_uv = Vec::new();
     let mut output_colors = Vec::new();
+    let mut projected = Vec::new();
     for polygon in &model.polygons {
         let indices = polygon
             .vertices
@@ -431,6 +448,8 @@ fn draw_mesh(
         let corners = clip.polygon();
         for i in 1..corners.len() - 1 {
             for v in [corners[0], corners[i], corners[i + 1]] {
+                let screen = crate::terrain::project(v, viewport).screen;
+                projected.push([screen[0], screen[1], v.camera[2] / 20.0, 0.0]);
                 output_positions.push(v.local);
                 output_normals.push(v.normal);
                 output_uv.push(v.uv);
@@ -448,6 +467,7 @@ fn draw_mesh(
         output_normals,
         output_uv,
         output_colors,
+        projected,
     ))
 }
 
@@ -456,6 +476,7 @@ fn prepared_mesh(
     output_normals: Vec<[f32; 3]>,
     output_uv: Vec<[f32; 2]>,
     output_colors: Vec<[f32; 4]>,
+    projected: Vec<[f32; 4]>,
 ) -> Mesh {
     let count = output_positions.len();
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -464,6 +485,7 @@ fn prepared_mesh(
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, output_uv);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[-1.0, 1.0]; count]);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, output_colors);
+    mesh.insert_attribute(PROJECTED, projected);
     mesh
 }
 
@@ -528,6 +550,7 @@ mod tests {
             Mat4::IDENTITY,
             Mat4::IDENTITY,
             Vec2::ONE,
+            [640.0, 480.0],
             &material(),
             &Image::default(),
             false,
@@ -565,6 +588,7 @@ mod tests {
             Mat4::IDENTITY,
             Mat4::IDENTITY,
             Vec2::ONE,
+            [640.0, 480.0],
             &material(),
             &Image::default(),
             true,
@@ -574,6 +598,46 @@ mod tests {
         assert_eq!(draw.count_vertices(), 3);
         assert_eq!(moved.count_vertices(), 3);
     }
+    #[test]
+    fn prepared_model_projects_on_the_original_sixteenth_pixel_grid() {
+        let mut source = mesh();
+        source.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            vec![
+                [-0.12345 / 20.0, 0.23456 / 20.0, -2.0 / 20.0],
+                [0.25 / 20.0, 0.25 / 20.0, -2.0 / 20.0],
+                [0.0, -0.25 / 20.0, -2.0 / 20.0],
+            ],
+        );
+        for (viewport, expected) in [
+            ([640.0, 480.0], [300.25, 211.875, 0.1, 0.0]),
+            ([1280.0, 960.0], [600.5, 423.6875, 0.1, 0.0]),
+        ] {
+            let draw = draw_mesh(
+                &source,
+                &model(),
+                Mat4::IDENTITY,
+                Mat4::IDENTITY,
+                Vec2::ONE,
+                viewport,
+                &material(),
+                &Image::default(),
+                false,
+                &mut Preparation::default(),
+            )
+            .unwrap();
+            let Some(VertexAttributeValues::Float32x4(projected)) = draw.attribute(PROJECTED)
+            else {
+                panic!("missing model projection");
+            };
+            assert_eq!(projected[0], expected);
+            assert_eq!(
+                draw.attribute(Mesh::ATTRIBUTE_POSITION),
+                source.attribute(Mesh::ATTRIBUTE_POSITION)
+            );
+        }
+    }
+
     #[test]
     fn source_and_draw_keep_distinct_meshes_and_share_material_changes() {
         use bevy::asset::AssetPlugin;
@@ -599,6 +663,13 @@ mod tests {
             });
         app.world_mut().spawn((
             ViewCamera,
+            Camera {
+                viewport: Some(bevy::camera::Viewport {
+                    physical_size: UVec2::new(640, 480),
+                    ..default()
+                }),
+                ..default()
+            },
             Transform::IDENTITY,
             GlobalTransform::IDENTITY,
             Projection::Perspective(PerspectiveProjection::default()),
@@ -628,6 +699,35 @@ mod tests {
                 .unwrap()
                 .count_vertices(),
             6
+        );
+        let projected_before = app
+            .world()
+            .resource::<Assets<Mesh>>()
+            .get(&draw_mesh)
+            .unwrap()
+            .attribute(PROJECTED)
+            .unwrap()
+            .clone();
+        {
+            let world = app.world_mut();
+            let mut query = world.query_filtered::<&mut Camera, With<ViewCamera>>();
+            query
+                .single_mut(world)
+                .unwrap()
+                .viewport
+                .as_mut()
+                .unwrap()
+                .physical_size = UVec2::new(1280, 960);
+        }
+        app.update();
+        assert_ne!(
+            app.world()
+                .resource::<Assets<Mesh>>()
+                .get(&draw_mesh)
+                .unwrap()
+                .attribute(PROJECTED)
+                .unwrap(),
+            &projected_before
         );
         let replacement = app
             .world()

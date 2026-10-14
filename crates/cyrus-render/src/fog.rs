@@ -157,9 +157,18 @@ impl MaterialExtension for ModelExtension {
     fn specialize(
         _pipeline: &bevy::pbr::MaterialExtensionPipeline,
         descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
-        _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: bevy::pbr::MaterialExtensionKey<Self>,
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
+        if layout.0.contains(clipping::PROJECTED) {
+            descriptor.vertex.shader_defs.push("PREPARED_MODEL".into());
+            let extra = layout
+                .0
+                .get_layout(&[clipping::PROJECTED.at_shader_location(8)])?;
+            descriptor.vertex.buffers[0]
+                .attributes
+                .extend(extra.attributes);
+        }
         if key.bind_group_data.flat
             && let Some(depth) = &mut descriptor.depth_stencil
         {

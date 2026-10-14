@@ -31,12 +31,20 @@ struct ModelVertex {
 };
 
 @vertex
-fn vertex(raw: Vertex) -> ModelVertex {
+fn vertex(raw: Vertex,
+@if(PREPARED_MODEL)
+    @location(8) projected: vec4<f32>,
+) -> ModelVertex {
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
     var out: ModelVertex;
     out.world_position = mesh_functions::mesh_position_local_to_world(transform, vec4(vertex.position, 1.0));
     out.position = position_world_to_clip(out.world_position.xyz);
+@if(PREPARED_MODEL) {
+    out.position = view.clip_from_view * vec4(0.0, 0.0, -projected.z, 1.0);
+    out.position.x = (projected.x / view.viewport.z * 2.0 - 1.0) * out.position.w;
+    out.position.y = (1.0 - projected.y / view.viewport.w * 2.0) * out.position.w;
+}
     // The original model matrix acts directly on normals, retaining their magnitude.
     out.normal = (transform * vec4(vertex.normal, 0.0)).xyz;
     out.uv = vertex.uv;
