@@ -198,7 +198,12 @@ impl Model {
 
 // Projection-scaled bounds and single-precision stores follow preservation's
 // texture-animation.md, including strict rejection and plane-crossing boundaries.
-fn classify([x, y, z]: [f32; 3], radius: f32, scale: Vec2, [near, far]: [f32; 2]) -> Option<bool> {
+pub(in crate::fog) fn classify(
+    [x, y, z]: [f32; 3],
+    radius: f32,
+    scale: Vec2,
+    [near, far]: [f32; 2],
+) -> Option<bool> {
     let hx = 1.415 * (radius * scale.x);
     let hy = 1.415 * (radius * scale.y);
     let bounds = [

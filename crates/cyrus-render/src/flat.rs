@@ -9,6 +9,8 @@ pub(crate) struct PrepareFlats;
 #[derive(Component)]
 pub(crate) struct Flat {
     pub(crate) brightness: Option<u8>,
+    pub(crate) alpha: u16,
+    pub(crate) source_index: usize,
     pub(crate) radius: f32,
 }
 
@@ -89,6 +91,8 @@ impl Description {
                 .map(|&uv| ((uv - Vec2::splat(0.5)) * size).extend(0.0).to_array())
                 .collect::<Vec<_>>(),
         );
+        // Camera-facing local +Z maps to the original generated normal (0, 0, -1).
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0.0, 0.0, 1.0]; corners.len()]);
         mesh.insert_attribute(
             Mesh::ATTRIBUTE_UV_0,
             corners.iter().map(|uv| uv.to_array()).collect::<Vec<_>>(),
@@ -122,6 +126,7 @@ fn prepare(
     mut candidates: Query<(Entity, &mut Mesh3d), Without<Inspected>>,
     parents: Query<&ChildOf>,
     extras: Query<&GltfExtras>,
+    names: Query<&Name>,
 ) {
     for (entity, mut mesh) in &mut candidates {
         let Some(source) = meshes.get(&mesh.0) else {
@@ -137,6 +142,15 @@ fn prepare(
                     rgpre_flat: Option<Description>,
                 }
                 if let Some(flat) = serde_json::from_str::<Extras>(&extras.value)?.rgpre_flat {
+                    let source_index = names
+                        .get(ancestor)
+                        .ok()
+                        .and_then(|name| name.as_str().strip_prefix('F'))
+                        .and_then(|name| name.split_once('_'))
+                        .and_then(|(index, _)| index.parse().ok())
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("flat lacks its exported placement index")
+                        })?;
                     let mesh = flat.mesh(source)?;
                     let [width, height] = flat
                         .dimensions
@@ -148,6 +162,8 @@ fn prepare(
                         mesh,
                         Flat {
                             brightness: (flat.alpha < 254).then_some(255),
+                            alpha: flat.alpha,
+                            source_index,
                             radius: bound_radius(width, height, scale),
                         },
                     )));
@@ -212,6 +228,8 @@ mod tests {
             .spawn((
                 Flat {
                     brightness: Some(255),
+                    alpha: 181,
+                    source_index: 0,
                     radius: 1.0,
                 },
                 ChildOf(parent),
@@ -276,6 +294,13 @@ mod tests {
                 [0.05, -0.1, 0.0],
                 [-0.05, -0.1, 0.0]
             ]
+        );
+        assert_eq!(
+            mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+                .unwrap()
+                .as_float3()
+                .unwrap(),
+            &[[0.0, 0.0, 1.0]; 4]
         );
         let Some(VertexAttributeValues::Float32x2(uv)) = mesh.attribute(Mesh::ATTRIBUTE_UV_0)
         else {

@@ -17,11 +17,17 @@ fn scene_color(color: vec3<f32>, depth: f32, pixel: vec2<f32>) -> vec3<f32> {
 }
 
 fn scene_color_at_fog_position(color: vec3<f32>, depth: f32, pixel: vec2<f32>, position: vec2<u32>) -> vec3<f32> {
+    let result = scene_fog_at_position(color, depth, position);
+    if fog.clipping.z != 0.0 { return result; }
+    return framebuffer_rgb565(result, pixel);
+}
+
+fn scene_fog_at_position(color: vec3<f32>, depth: f32, position: vec2<u32>) -> vec3<f32> {
     if fog.clipping.z != 0.0 {
         let density = 255.0 * smoothstep(fog.clipping.y * 0.45, fog.clipping.y, depth);
         return blend_fog(color, fog.color.rgb, density);
     }
     let next = min(position.x + 1u, 63u);
     let density = table_density(fog.table[position.x / 4u][position.x % 4u], fog.table[next / 4u][next % 4u], position.y);
-    return framebuffer_rgb565(blend_fog_integer(color, fog.color.rgb, density), pixel);
+    return blend_fog_integer(color, fog.color.rgb, density);
 }

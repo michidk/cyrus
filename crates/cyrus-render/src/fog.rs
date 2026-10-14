@@ -1,4 +1,5 @@
 //! Documented Glide fog and clipping for exported scene materials.
+mod compositing;
 mod texture;
 
 use crate::camera::ViewCamera;
@@ -42,8 +43,16 @@ impl RenderDistance {
 }
 
 type SceneMaterial = ExtendedMaterial<StandardMaterial, ModelExtension>;
-type MaterialCache =
-    HashMap<(AssetId<StandardMaterial>, i32, Option<Entity>, Option<u8>), Handle<SceneMaterial>>;
+type MaterialCache = HashMap<
+    (
+        AssetId<StandardMaterial>,
+        i32,
+        Option<Entity>,
+        Option<u8>,
+        Option<u16>,
+    ),
+    Handle<SceneMaterial>,
+>;
 type TerrainMaterial = ExtendedMaterial<StandardMaterial, TerrainExtension>;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
@@ -113,6 +122,7 @@ struct FogExtension {
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
+#[bind_group_data(ModelKey)]
 struct ModelExtension {
     #[uniform(100)]
     fog: FogExtension,
@@ -122,9 +132,38 @@ struct ModelExtension {
     placement: Mat4,
     #[uniform(102)]
     lighting: Vec4,
+    #[uniform(103)]
+    compositing: Vec4,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ModelKey {
+    flat: bool,
+}
+
+impl From<&ModelExtension> for ModelKey {
+    fn from(extension: &ModelExtension) -> Self {
+        Self {
+            flat: extension.compositing.x >= 0.0,
+        }
+    }
 }
 
 impl MaterialExtension for ModelExtension {
+    fn specialize(
+        _pipeline: &bevy::pbr::MaterialExtensionPipeline,
+        descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
+        _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        key: bevy::pbr::MaterialExtensionKey<Self>,
+    ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
+        if key.bind_group_data.flat
+            && let Some(depth) = &mut descriptor.depth_stencil
+        {
+            depth.depth_write_enabled = Some(true);
+            depth.depth_compare = Some(bevy::render::render_resource::CompareFunction::Greater);
+        }
+        Ok(())
+    }
     fn vertex_shader() -> ShaderRef {
         "embedded://cyrus_render/scene_fog.wesl".into()
     }
@@ -140,6 +179,7 @@ pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
         texture::register(app);
+        compositing::register(app);
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");
         load_shader_library!(app, "model_lights.wesl");
@@ -152,7 +192,29 @@ impl Plugin for FogPlugin {
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
             ))
-            .add_systems(Update, apply_scene_fog.after(crate::flat::PrepareFlats));
+            .add_systems(
+                Update,
+                (apply_scene_fog, prepare_flat_compositing).after(crate::flat::PrepareFlats),
+            );
+    }
+}
+
+fn prepare_flat_compositing(
+    mut commands: Commands,
+    mut cameras: Query<(Entity, Option<&mut bevy::pbr::ScreenSpaceTransmission>), With<ViewCamera>>,
+    flats: Query<&crate::flat::Flat>,
+) {
+    let steps = flats.iter().len().max(1);
+    for (camera, transmission) in &mut cameras {
+        if let Some(mut transmission) = transmission {
+            if transmission.steps != steps {
+                transmission.steps = steps;
+            }
+        } else {
+            commands
+                .entity(camera)
+                .insert(bevy::pbr::ScreenSpaceTransmission { steps, ..default() });
+        }
     }
 }
 
@@ -376,11 +438,16 @@ fn apply_scene_fog(
                 radius,
                 instance.map(|(entity, _)| entity),
                 attributes,
+                flats.get(entity).ok().map(|flat| flat.alpha),
             ))
             .or_insert_with(|| {
                 let mut extension = extension.clone();
                 extension.water.y = u8::from(terrain) as f32;
                 let mut base = base.clone();
+                let flat = flats.get(entity).ok();
+                if flat.is_some() {
+                    base.specular_transmission = 1.0;
+                }
                 // shortcut: chroma-enabled meshes retain alpha masking until texture-key provenance is recovered.
                 if attributes.is_some_and(|flags| flags & 2 == 0) {
                     base.alpha_mode = AlphaMode::Opaque;
@@ -389,6 +456,12 @@ fn apply_scene_fog(
                     base,
                     extension: ModelExtension {
                         fog: extension,
+                        compositing: Vec4::new(
+                            flat.map_or(-1.0, |flat| f32::from(flat.alpha)),
+                            0.0,
+                            0.0,
+                            0.0,
+                        ),
                         lights: light_texture.clone(),
                         placement: instance.map_or(Mat4::IDENTITY, |(_, instance)| {
                             let m = instance.matrix.map(|value| value as f32 / 268_435_456.0);
@@ -401,7 +474,7 @@ fn apply_scene_fog(
                             )
                         }),
                         lighting: Vec4::new(
-                            radius as f32 / 256.0,
+                            flat.map_or(radius as f32 / 256.0, |flat| flat.radius),
                             u8::from(instance.is_some()) as f32,
                             u8::from(!terrain) as f32,
                             attributes.map_or(-1.0, f32::from),

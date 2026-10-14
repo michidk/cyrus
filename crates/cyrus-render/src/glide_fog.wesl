@@ -53,3 +53,15 @@ fn framebuffer_rgb565(linear_rgb: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
     let expanded = (packed << vec3(3u, 2u, 3u)) | (packed >> vec3(2u, 4u, 2u));
     return srgb_to_linear(vec3<f32>(expanded) / 255.0);
 }
+
+// Constant/texture alpha arithmetic, preservation model-lighting.md and sky.md.
+fn framebuffer_blend_integer(destination: vec3<f32>, tint: vec3<f32>, alpha: u32, threshold: u32) -> vec3<f32> {
+    let encoded = vec3<u32>(round(clamp(linear_to_srgb(destination), vec3(0.0), vec3(1.0)) * 255.0));
+    let truncated = encoded & vec3(248u, 252u, 248u);
+    let factors = vec3(2u, 4u, 2u);
+    let corrected = (truncated * factors + vec3(15u - threshold)) / factors;
+    let source = vec3<u32>(round(clamp(tint, vec3(0.0), vec3(1.0)) * 255.0));
+    let blended = (source * (alpha + 1u)) / vec3(256u)
+        + (corrected * (256u - alpha)) / vec3(256u);
+    return srgb_to_linear(vec3<f32>(min(blended, vec3(255u))) / 255.0);
+}

@@ -12,7 +12,7 @@ pub(crate) struct RuntimeLights {
     image: Handle<Image>,
 }
 
-fn region(target: [i32; 2]) -> [i32; 2] {
+pub(crate) fn region(target: [i32; 2]) -> [i32; 2] {
     target.map(|value| {
         (if value < 4608 {
             0

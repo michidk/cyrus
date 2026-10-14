@@ -1,5 +1,5 @@
 //! Demand-driven texture frames from preservation's texture-animation contract.
-mod admission;
+pub(super) mod admission;
 mod frames;
 
 use super::{SceneMaterial, TerrainMaterial};
@@ -316,7 +316,9 @@ fn advance(
                 positions, normals, transform, camera, scale, clipping, &mut clip,
             ),
             Admission::Flat(flat) => {
-                flat.admits(positions, transform, camera, scale, clipping, &mut clip)
+                super::compositing::selected_cell(transform.translation(), camera.translation())
+                    .is_some()
+                    && flat.admits(positions, transform, camera, scale, clipping, &mut clip)
             }
         };
         if admitted && let Some(state) = images.states.get_mut(&binding.key) {
@@ -430,6 +432,7 @@ mod tests {
                 ..default()
             },
             extension: super::super::ModelExtension {
+                compositing: Vec4::new(-1.0, 0.0, 0.0, 0.0),
                 fog: super::super::FogExtension {
                     color: Vec4::ZERO,
                     clipping: Vec4::ZERO,
@@ -486,11 +489,11 @@ mod tests {
             let admission = if index == 0 { Admission::Model(admission) } else {
                 Admission::Flat(admission::Flat::from_mesh(app.world().resource::<Assets<Mesh>>().get(&mesh).unwrap(), 2.0).unwrap())
             };
-            app.world_mut().spawn((Binding { key: "a00000".into(), frames: frames.clone() }, admission, Mesh3d(mesh.clone()), GlobalTransform::from_translation(Vec3::new(0.0,0.0,-1.0)), InheritedVisibility::VISIBLE, MeshMaterial3d(material.clone()))).id()
+            app.world_mut().spawn((Binding { key: "a00000".into(), frames: frames.clone() }, admission, Mesh3d(mesh.clone()), GlobalTransform::from_translation(Vec3::new(-1000.0,0.0,-1001.0)), InheritedVisibility::VISIBLE, MeshMaterial3d(material.clone()))).id()
         }).collect();
         app.world_mut().spawn((
             ViewCamera,
-            GlobalTransform::IDENTITY,
+            GlobalTransform::from_translation(Vec3::new(-1000.0, 0.0, -1000.0)),
             Projection::Perspective(PerspectiveProjection::default()),
         ));
         let check = |app: &App, frame: usize| {
@@ -560,9 +563,30 @@ mod tests {
             .advance_by(Duration::from_secs(10));
         app.update();
         check(&app, 3);
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<ViewCamera>>()
+            .single(app.world())
+            .unwrap();
+        app.world_mut()
+            .entity_mut(camera)
+            .insert(GlobalTransform::IDENTITY);
+        app.world_mut().entity_mut(nodes[1]).insert((
+            InheritedVisibility::VISIBLE,
+            GlobalTransform::from_translation(Vec3::new(0.0, 0.0, -1.0)),
+        ));
+        app.update();
+        check(&app, 3);
+        app.world_mut()
+            .entity_mut(camera)
+            .insert(GlobalTransform::from_translation(Vec3::new(
+                -1000.0, 0.0, -1000.0,
+            )));
         app.world_mut()
             .entity_mut(nodes[1])
-            .insert(InheritedVisibility::VISIBLE);
+            .insert(GlobalTransform::from_translation(Vec3::new(
+                -1000.0, 0.0, -1001.0,
+            )));
         app.update();
         check(&app, 0);
         app.update();

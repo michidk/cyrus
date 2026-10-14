@@ -10,9 +10,13 @@ import bevy_pbr::render::{
 @if(PREMULTIPLY_ALPHA)
 import bevy_pbr::render::pbr_functions::premultiply_alpha;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
-import package::scene_shading::{fog, scene_color};
-import package::model_lights::{apply_local_lights, model};
+import package::scene_shading::{fog, scene_color, scene_fog_at_position};
+import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
+@if(VIEW_TRANSMISSION_TEXTURE)
+import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
+import package::model_lights::{apply_local_lights, model, compositing};
 import package::sampling::sample_encoded;
+
 
 struct ModelVertex {
     @builtin(position) position: vec4<f32>,
@@ -73,6 +77,17 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     let color = srgb_to_linear(texture_rgb * (in.color * in.position.w));
     var out: FragmentOutput;
     out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
+@if(VIEW_TRANSMISSION_TEXTURE) {
+    if compositing.x >= 0.0 {
+        var result = scene_fog_at_position(color, depth, fog_table_position(depth));
+        if compositing.x < 254.0 {
+            let destination = textureLoad(view_transmission_texture, vec2<i32>(in.position.xy), 0).rgb;
+            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(compositing.x) & 255u, framebuffer_dither(in.position.xy));
+        }
+        if fog.clipping.z == 0.0 { result = framebuffer_rgb565(result, in.position.xy); }
+        out.color = vec4(result, 1.0);
+    }
+}
 @if(PREMULTIPLY_ALPHA) {
     out.color = premultiply_alpha(input.material.flags, out.color);
 }

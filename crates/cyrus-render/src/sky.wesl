@@ -1,7 +1,7 @@
 import bevy_pbr::render::mesh_view_bindings::view;
 import constants::MATERIAL_BIND_GROUP;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
-import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565, framebuffer_dither};
+import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var sky: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
@@ -63,16 +63,7 @@ fn faithful_sun_sample(uv: vec2<f32>) -> u32 {
 }
 
 // Preservation sky.md: separately truncated terms and RGB565 dither subtraction.
-fn sun_blend_integer(destination: vec3<f32>, tint: vec3<f32>, alpha: u32, threshold: u32) -> vec3<f32> {
-    let encoded = vec3<u32>(round(clamp(linear_to_srgb(destination), vec3(0.0), vec3(1.0)) * 255.0));
-    let truncated = encoded & vec3(248u, 252u, 248u);
-    let factors = vec3(2u, 4u, 2u);
-    let corrected = (truncated * factors + vec3(15u - threshold)) / factors;
-    let source = vec3<u32>(round(clamp(tint, vec3(0.0), vec3(1.0)) * 255.0));
-    let blended = (source * (alpha + 1u)) / vec3(256u)
-        + (corrected * (256u - alpha)) / vec3(256u);
-    return srgb_to_linear(vec3<f32>(min(blended, vec3(255u))) / 255.0);
-}
+
 
 fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     if plane.z == 0.0 { return srgb_to_linear(fog_rgb.rgb); }
@@ -136,7 +127,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
                 opacity = textureSampleLevel(sun, sun_sampler, uv, 0.0).r;
             }
             if scroll.z == 0.0 && scroll.w == 0.0 {
-                color = sun_blend_integer(color, sun_color.rgb, alpha, framebuffer_dither(in.position.xy));
+                color = framebuffer_blend_integer(color, sun_color.rgb, alpha, framebuffer_dither(in.position.xy));
             } else {
                 color = srgb_to_linear(mix(linear_to_srgb(color), sun_color.rgb, opacity));
             }

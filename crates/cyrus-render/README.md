@@ -119,9 +119,16 @@ supplies the geometry and alpha-dependent face brightness. Re-export worlds for
 per dimension are supported. Larger-texture reduction remains unsupported.
 **Verified:** matched 640×480 BELLTOWR native/browser captures replace the oversized
 inverted triangles with a small upright flame at the original sample's location;
-the previous geometry fails the measured flame-region comparison. The flame is
-still brighter. Constant-alpha compositing remains unsupported; synchronized phase
-and full pixel parity are **Unknown**. Placed flats use the recovered
+the previous geometry fails the measured flame-region comparison. Constant-alpha compositing uses a framebuffer copy per admitted flat, strict
+depth testing and retained depth writes. It follows preservation's
+[integer blend rule](https://github.com/michidk/redguard-preservation/blob/abd8576/docs/engine/model-lighting.md#flat-framebuffer-blending).
+Fog precedes the blend, and RGB565 quantization follows it. Billboard-local normals
+and light coordinates follow the [generated-flat lighting contract](https://github.com/michidk/redguard-preservation/commit/999c1e73ba07f86dc2dbbd8c0a72cd754a32cdba).
+Ordinary flats use the [spatial-list and alpha-partition order](https://github.com/michidk/redguard-preservation/blob/a9e6b62/docs/engine/model-lighting.md#flat-submission-order),
+with the inspection camera selecting the region. Excluded retained draws return
+when admitted again and still participate in material removal/respecialization.
+Scripted/translucent model ordering, synchronized phase and full pixel parity
+remain **Unknown**. Placed flats use the recovered
 [quantized sprite bound and first-polygon admission](https://github.com/michidk/redguard-preservation/blob/4b1f28b/docs/engine/texture-animation.md#placed-flat-admission)
 to request automatic frames from the shared image timeline. They bypass model
 face-normal rejection, retain point sampling and require at least three corners
