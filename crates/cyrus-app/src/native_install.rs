@@ -56,11 +56,14 @@ struct Selection {
     error: Option<String>,
     focus: bool,
     rejected: bool,
+    /// The open folder dialog. It runs off the main thread so the window keeps handling events.
+    browsing: Option<bevy::tasks::Task<Option<PathBuf>>>,
 }
 impl Selection {
     fn confirm(&self, preferences: &Path) -> anyhow::Result<GameInstall> {
         let install = GameInstall::resolve(Path::new(&self.path))?;
         remember(&install, preferences)?;
+        bevy::log::info!("game files selected: {}", install.root.display());
         Ok(install)
     }
 }
@@ -77,6 +80,7 @@ pub(super) fn prompt(app: &mut App, explicit: Option<&Path>, error: anyhow::Erro
         error: Some(format!("{error:#}")),
         focus: true,
         rejected: false,
+        browsing: None,
     })
     .add_systems(
         EguiPrimaryContextPass,
@@ -93,6 +97,17 @@ fn screen(
     let Ok(context) = contexts.ctx_mut() else {
         return;
     };
+    if let Some(task) = selection.browsing.as_mut()
+        && let Some(folder) = bevy::tasks::futures::check_ready(task)
+    {
+        selection.browsing = None;
+        if let Some(folder) = folder {
+            selection.path = folder.to_string_lossy().into_owned();
+            selection.focus = true;
+            selection.error = None;
+            selection.rejected = false;
+        }
+    }
     let mut viewport = egui::Ui::new(
         context.clone(),
         "install-picker".into(),
@@ -132,18 +147,25 @@ fn screen(
                             }
                             confirm = field.lost_focus()
                                 && ui.input(|input| input.key_pressed(egui::Key::Enter));
-                            if ui.button("Browse…").clicked() {
-                                let mut dialog =
-                                    rfd::FileDialog::new().set_title("Select your Redguard folder");
+                            let browse = ui.add_enabled(
+                                selection.browsing.is_none(),
+                                egui::Button::new("Browse…"),
+                            );
+                            if browse.clicked() {
+                                let mut dialog = rfd::AsyncFileDialog::new()
+                                    .set_title("Select your Redguard folder");
                                 if !selection.path.trim().is_empty() {
                                     dialog = dialog.set_directory(&selection.path);
                                 }
-                                if let Some(path) = dialog.pick_folder() {
-                                    selection.path = path.to_string_lossy().into_owned();
-                                    selection.focus = true;
-                                    selection.error = None;
-                                    selection.rejected = false;
-                                }
+                                // A blocking dialog here would freeze the window's event loop,
+                                // which Windows reports as "Not Responding".
+                                selection.browsing =
+                                    Some(bevy::tasks::IoTaskPool::get().spawn(async move {
+                                        dialog
+                                            .pick_folder()
+                                            .await
+                                            .map(|folder| folder.path().to_path_buf())
+                                    }));
                             }
                         });
                         ui.add_space(8.);
@@ -232,6 +254,7 @@ mod tests {
             error: None,
             focus: false,
             rejected: false,
+            browsing: None,
         };
         let accepted = selection.confirm(&preferences).unwrap();
         assert_eq!(accepted.root, root);
@@ -280,6 +303,7 @@ mod tests {
             error: None,
             focus: false,
             rejected: false,
+            browsing: None,
         };
         assert!(selection.confirm(&blocked.join("install.json")).is_err());
         assert_eq!(std::fs::read_to_string(&blocked).unwrap(), "keep this file");
