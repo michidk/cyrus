@@ -149,9 +149,25 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## Structure and quality
 
-- Group crates by concern: assets, world, rendering, text, player, and
-  control. `rgpre` owns formats and engine facts. Agree on file
-  ownership before a crate split or other change across shared boundaries.
+- Group code by responsibility and default to modules within existing crates.
+  A subsystem or Bevy plugin does not need its own crate. `rgpre` owns formats
+  and engine facts. Agree on file ownership before a crate split or other
+  change across shared boundaries.
+- Extract a crate when it provides a concrete benefit: independent consumers,
+  a separate build artifact, dependency or platform isolation, an enforceable
+  architectural boundary, or a measured build improvement. Before extracting,
+  state what becomes possible or prohibited and why a module is insufficient.
+  File size, a new feature name, or speculative reuse alone does not justify a split.
+- Keep each crate cohesive with a small public interface and one-way dependencies.
+  If extraction exposes many internals, passes an owner's entire state across
+  the boundary, or requires a generic shared-types crate to avoid a cycle,
+  reconsider ownership before splitting. Prefer modules for tightly coupled
+  code that shares dependencies and usually changes together.
+- Verify the claimed benefit of a split. Use an isolated consumer for dependency
+  isolation, relevant target builds for platform boundaries, and measurements
+  for build-speed claims. Workspace feature unification can hide dependency
+  leaks. Preserve useful existing boundaries; do not merge or split crates
+  merely to reach a preferred crate count.
 - Keep dependencies one-way. Core rules must not depend on rendering, a window,
   or networking. Run `dev/scripts/check-core-boundaries.sh` for an isolated
   consumer check and the browser build for platform boundaries.
