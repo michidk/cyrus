@@ -80,7 +80,13 @@ the effective palette-zero RGB before vertex lighting, following preservation's
 They do not use interpolated texture alpha as a cutoff. Solid-color faces bypass
 the texture-key test. Required version-1 `rgpre_texture` material metadata retains
 the selected key; missing or malformed metadata rejects the affected mesh with
-re-export instructions. Standalone/generated model defaults remain **Unknown**.
+re-export instructions. **Verified:** preservation's [draw-flag ownership](https://github.com/michidk/redguard-preservation/commit/2292a631df72c5dd80625340b39d93400a4638e3)
+distinguishes animated actor group initialization from static archive submission.
+A missing first-group archive entry preserves initialized actor flags; ordinary
+static submission refreshes flags from its selected archive record. Applying
+actor flags requires authoritative host model-path and first-group state, rather
+than treating every absent export attribute as zero. Later actor overrides and
+generated-model defaults remain **Unknown**.
 
 **Verified:** model ambient/directional shading follows preservation's
 [model-lighting rules](https://github.com/michidk/redguard-preservation/blob/feat/model-lighting/docs/engine/model-lighting.md).
