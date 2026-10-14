@@ -1,4 +1,5 @@
 //! Original static spatial ordering and model ground probes, independent of rendering.
+mod body;
 use super::candidates::{
     CandidateQuery, CollisionCandidates, ModelBounds, ModelInstance, StaticModel,
 };
@@ -11,6 +12,7 @@ use super::ground::SelectedSupport;
 use super::ground::SupportSource;
 use anyhow::Context;
 use bevy::math::{Mat3, Vec3};
+pub use body::{PrimaryBodyQuery, ResidualBodyQuery, RuntimeBodyContact};
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::StaticPlacement;
 use std::collections::BTreeMap;
@@ -48,6 +50,44 @@ pub struct BodyContact {
 }
 
 impl StaticCollision {
+    /// Resolve one retained actor-style static candidate to its model-radius sphere.
+    /// The placement origin is stored map position; rotation does not affect this
+    /// single sphere. Rejects foreign owner/model identities and face candidates.
+    pub fn static_actor_overlap_sphere(
+        &self,
+        candidate: &super::candidates::ActorCandidate,
+    ) -> anyhow::Result<super::actor_overlap::OverlapSphere> {
+        use super::candidates::{CandidateOwner, ModelInstance};
+        let CandidateOwner::Static(index) = candidate.owner else {
+            anyhow::bail!(
+                "static overlap: candidate has nonstatic owner {:?}",
+                candidate.owner
+            );
+        };
+        anyhow::ensure!(
+            candidate.model == Some(ModelInstance::StaticPlacement(index)),
+            "static overlap placement {index}: candidate model identity mismatch"
+        );
+        let placement = self.placements.get(index).with_context(|| {
+            format!("static overlap placement {index}: outside placement table")
+        })?;
+        let model = self.models.get(&placement.model).with_context(|| {
+            format!(
+                "static overlap placement {index} model {}: loaded geometry unavailable",
+                placement.model
+            )
+        })?;
+        anyhow::ensure!(
+            model.flags & 3 == 1 && candidate.collision_flags == model.flags,
+            "static overlap placement {index} model {}: actor-style flags mismatch",
+            placement.model
+        );
+        Ok(super::actor_overlap::OverlapSphere {
+            center: placement.position.map(|value| value as f32),
+            radius: model.radius,
+        })
+    }
+
     /// Metadata committed by a successful support query; terrain clears the byte.
     /// Preserve the previous byte on a miss instead of calling this with no support.
     pub fn support_metadata(&self, source: SupportSource) -> anyhow::Result<u8> {
@@ -536,6 +576,17 @@ impl StaticCollision {
         probe: &GroundProbe,
         sidedness: bool,
     ) -> anyhow::Result<Vec<super::collision_mesh::WorldSegmentContact>> {
+        let (start, end) = probe.endpoints();
+        self.static_world_segment_contacts(index, start, end, sidedness)
+    }
+
+    fn static_world_segment_contacts(
+        &self,
+        index: usize,
+        start: [i32; 3],
+        end: [i32; 3],
+        sidedness: bool,
+    ) -> anyhow::Result<Vec<super::collision_mesh::WorldSegmentContact>> {
         let placement = self
             .placements
             .get(index)
@@ -550,7 +601,6 @@ impl StaticCollision {
             placement.position.map(|value| value as f32),
             rotation,
         )?;
-        let (start, end) = probe.endpoints();
         model.mesh.world_segment_contacts(
             &pose,
             start.map(|value| value as f32),
@@ -561,6 +611,8 @@ impl StaticCollision {
 
     /// Query mixed face candidates in their retained order. Live poses come from
     /// the host's stored model instances. Transient geometry remains unsupported.
+    /// Candidate-type exclusion precedes geometry and pose resolution.
+    #[allow(clippy::too_many_arguments)] // Explicit retained query, probe and exclusion inputs.
     pub fn runtime_ground_contacts(
         &self,
         candidates: &CollisionCandidates,
@@ -568,50 +620,96 @@ impl StaticCollision {
         poses: &BTreeMap<usize, super::collision_mesh::ModelPose>,
         probe: &GroundProbe,
         sidedness: bool,
+        excluded_candidate_type: Option<u8>,
     ) -> anyhow::Result<Vec<ModelSupport>> {
-        let mut contacts = Vec::new();
         let (start, end) = probe.endpoints();
+        self.runtime_segment_contacts(
+            candidates,
+            actors,
+            poses,
+            start,
+            end,
+            sidedness,
+            excluded_candidate_type,
+        )
+        .map(|contacts| {
+            contacts
+                .into_iter()
+                .map(|(source, contact)| support_contact(source, contact))
+                .collect()
+        })
+    }
+
+    /// Query arbitrary map-unit segment endpoints against retained mixed face candidates.
+    /// Preserves candidate and face order, including duplicate contacts. Filtering a
+    /// candidate type happens before resolving its geometry or stored live pose.
+    /// Contact points and normals remain floats for the owning response to convert.
+    #[allow(clippy::too_many_arguments)] // Explicit query inputs match the ground and body boundaries.
+    pub fn runtime_segment_contacts(
+        &self,
+        candidates: &CollisionCandidates,
+        actors: &super::actor_models::ActorModelCollision,
+        poses: &BTreeMap<usize, super::collision_mesh::ModelPose>,
+        start: [i32; 3],
+        end: [i32; 3],
+        sidedness: bool,
+        excluded_candidate_type: Option<u8>,
+    ) -> anyhow::Result<Vec<(SupportSource, super::collision_mesh::WorldSegmentContact)>> {
+        let mut contacts = Vec::new();
         for candidate in &candidates.faces {
-            match candidate.owner {
+            if excluded_candidate_type == Some(candidate.candidate_type) {
+                continue;
+            }
+            let (source, hits) = match candidate.owner {
                 super::candidates::CandidateOwner::Static(index) => {
                     anyhow::ensure!(
                         candidate.model == ModelInstance::StaticPlacement(index),
                         "static candidate {index}: model identity mismatch"
                     );
-                    for contact in self.static_segment_contacts(index, probe, sidedness)? {
-                        contacts.push(support_contact(
-                            SupportSource::Model {
-                                model: index,
-                                face: contact.face,
-                            },
-                            contact,
-                        ));
-                    }
+                    (
+                        SupportSource::Model {
+                            model: index,
+                            face: 0,
+                        },
+                        self.static_world_segment_contacts(index, start, end, sidedness)?,
+                    )
                 }
                 super::candidates::CandidateOwner::Actor(index) => {
                     let pose = poses.get(&index).with_context(|| {
                         format!("live candidate MPOB {index}: stored model pose unavailable")
                     })?;
-                    for contact in actors.segment_contacts(
-                        index,
-                        pose,
-                        start.map(|value| value as f32),
-                        end.map(|value| value as f32),
-                        sidedness,
-                    )? {
-                        contacts.push(support_contact(
-                            SupportSource::Actor {
-                                actor: index,
-                                face: contact.face,
-                            },
-                            contact,
-                        ));
-                    }
+                    (
+                        SupportSource::Actor {
+                            actor: index,
+                            face: 0,
+                        },
+                        actors.segment_contacts(
+                            index,
+                            pose,
+                            start.map(|v| v as f32),
+                            end.map(|v| v as f32),
+                            sidedness,
+                        )?,
+                    )
                 }
                 super::candidates::CandidateOwner::Transient => anyhow::bail!(
                     "transient candidate {:?}: geometry owner unavailable",
                     candidate.model
                 ),
+            };
+            for contact in hits {
+                let source = match source {
+                    SupportSource::Model { model, .. } => SupportSource::Model {
+                        model,
+                        face: contact.face,
+                    },
+                    SupportSource::Actor { actor, .. } => SupportSource::Actor {
+                        actor,
+                        face: contact.face,
+                    },
+                    _ => unreachable!("segment model source"),
+                };
+                contacts.push((source, contact));
             }
         }
         Ok(contacts)

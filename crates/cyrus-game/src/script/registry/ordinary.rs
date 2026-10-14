@@ -21,33 +21,20 @@ pub struct OrdinaryUpdates;
 #[derive(Resource)]
 pub(crate) struct ClockSample(u64);
 
+/// Timing/services and matching world geometry for one ordinary traversal.
+/// Missing geometry cannot admit an actor's collision stages.
+pub struct OrdinaryInputs<'a> {
+    pub scripts: ScriptInputs<'a>,
+    pub scene: Option<&'a crate::player::data::PlayerScene>,
+}
+
 impl ScriptWorld {
-    /// Execute the supported ordinary map stages in authored traversal order.
-    /// Unsupported movement/combat and native services stop the affected actor,
-    /// retaining its diagnostic instead of treating the missing stage as successful.
-    pub fn update_ordinary(
+    pub(super) fn prepare_ordinary_models(
         &mut self,
         data: &Animations,
-        view: [i32; 2],
-        inputs: ScriptInputs<'_>,
-        random: &mut crate::random::EngineRandom,
+        ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> anyhow::Result<()>,
-        budget: usize,
     ) -> anyhow::Result<()> {
-        data.require_version()?;
-        anyhow::ensure!(
-            data.world == self.world
-                && data.metadata["script_content_id"].as_str() == Some(&self.content_id),
-            "world {} ordinary update asset identity mismatch",
-            self.world
-        );
-        let ticks = inputs
-            .nominal_ticks
-            .ok_or_else(|| anyhow::anyhow!("ordinary update requires nominal_ticks"))?;
-        anyhow::ensure!(
-            inputs.frame_scale.is_some(),
-            "ordinary update requires frame_scale"
-        );
         if self.spatial.is_none() {
             self.prepare_spatial()?;
             self.refresh_families()?;
@@ -85,8 +72,42 @@ impl ScriptWorld {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Execute the supported ordinary map stages in authored traversal order.
+    /// Unsupported movement/combat and native services stop the affected actor,
+    /// retaining its diagnostic instead of treating the missing stage as successful.
+    pub fn update_ordinary(
+        &mut self,
+        data: &Animations,
+        view: [i32; 2],
+        inputs: OrdinaryInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> anyhow::Result<()>,
+        budget: usize,
+    ) -> anyhow::Result<()> {
+        let OrdinaryInputs {
+            scripts: inputs,
+            scene,
+        } = inputs;
+        data.require_version()?;
+        anyhow::ensure!(
+            data.world == self.world
+                && data.metadata["script_content_id"].as_str() == Some(&self.content_id),
+            "world {} ordinary update asset identity mismatch",
+            self.world
+        );
+        let ticks = inputs
+            .nominal_ticks
+            .ok_or_else(|| anyhow::anyhow!("ordinary update requires nominal_ticks"))?;
+        anyhow::ensure!(
+            inputs.frame_scale.is_some(),
+            "ordinary update requires frame_scale"
+        );
+        self.prepare_ordinary_models(data, ticks, sounds)?;
         let selected = self.ordinary_actors(view)?.to_vec();
-        for id in selected {
+        for &id in &selected {
             let actor = &mut self.actors[id.index];
             // Standalone player/camera stages have separate, not yet connected owners.
             if actor.placement().is_none() {
@@ -112,6 +133,7 @@ impl ScriptWorld {
             }
             let result = (|| -> anyhow::Result<()> {
                 self.snapshot_spatial(id)?;
+                self.actors[id.index].model.support = Default::default();
                 if self.actors[id.index].animation.is_some() {
                     // No item-system owner is installed yet.
                     self.select_map_animation_default(id, false, ticks, sounds)?;
@@ -126,10 +148,22 @@ impl ScriptWorld {
                         )?;
                     }
                 }
+                let rollback = self.capture_ordinary_rollback(id, sounds)?;
+                let control = self.actors[id.index]
+                    .control
+                    .as_ref()
+                    .expect("admitted ordinary control");
                 anyhow::ensure!(
-                    self.actors[id.index].attributes[1] == 0,
-                    "ordinary movement and collision stage unsupported"
+                    control.queued_motion == 0 && control.falling_state == 0,
+                    "ordinary queued motion stage unsupported"
                 );
+                let collision = if self.actors[id.index].attributes[1] != 0 {
+                    let scene = scene
+                        .ok_or_else(|| anyhow::anyhow!("ordinary collision scene unavailable"))?;
+                    Some(self.prepare_ordinary_collision_query(id, scene, data, view, &selected)?)
+                } else {
+                    None
+                };
                 self.advance(
                     id,
                     ScriptStage::OrdinaryHook,
@@ -139,18 +173,38 @@ impl ScriptWorld {
                     budget,
                 )?;
                 let actor = &self.actors[id.index];
-                anyhow::ensure!(
-                    !self.updates.task_system
-                        || actor
-                            .control
-                            .as_ref()
-                            .is_none_or(|control| control.combat_death_default.is_none())
-                        || actor
-                            .runtime
-                            .as_ref()
-                            .is_some_and(cyrus_script::Runtime::has_unpaused_task),
-                    "ordinary combat stage unsupported"
-                );
+                if self.updates.task_system
+                    && !actor
+                        .runtime
+                        .as_ref()
+                        .is_some_and(cyrus_script::Runtime::has_unpaused_task)
+                {
+                    let shell = inputs.activation.is_some_and(|input| input.shell_execution);
+                    let transition = inputs.activation.is_some_and(|input| {
+                        input.item_system_ready
+                            && !shell
+                            && input.actors.get(&input.player.index).is_some_and(|player| {
+                                let animation = self
+                                    .actors
+                                    .get(input.player.index)
+                                    .and_then(super::ScriptActor::bound_animation_group)
+                                    .map(|group| super::super::ActivationAnimation { group })
+                                    .or(player.animation);
+                                let (_, drawing, sheathing) =
+                                    super::super::activation::weapon_predicates(
+                                        player.state,
+                                        animation,
+                                        player.weapon_assigned,
+                                        player.weapon_drawn,
+                                        0,
+                                        input.item_system_ready,
+                                        shell,
+                                    );
+                                drawing || sheathing
+                            })
+                    });
+                    self.maintain_map_combat(id, ticks, transition, shell)?;
+                }
                 self.advance(
                     id,
                     ScriptStage::OrdinaryMain,
@@ -159,14 +213,52 @@ impl ScriptWorld {
                     Some(random),
                     budget,
                 )?;
-                anyhow::ensure!(
-                    self.actors[id.index].attributes[1] == 0,
-                    "script enabled an unsupported ordinary collision stage"
-                );
+                if self.actors[id.index].attributes[1] != 0 {
+                    let collision = collision.ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "script enabled collision without pre-script candidate preparation"
+                        )
+                    })?;
+                    let scene = anyhow::Context::context(
+                        scene,
+                        "ordinary late collision scene unavailable",
+                    )?;
+                    anyhow::Context::context(
+                        self.resolve_ordinary_late_collision(
+                            id,
+                            super::ground::OrdinaryGroundQuery {
+                                scene,
+                                animations: data,
+                                prepared: &collision,
+                                distance: scene.settings.post_collide_height,
+                                sidedness: false,
+                            },
+                            (
+                                ticks,
+                                anyhow::Context::context(
+                                    inputs.frame_scale,
+                                    "ordinary frame scale unavailable",
+                                )?,
+                            ),
+                            &rollback,
+                            super::recovery::OrdinaryStableRecoveryInputs {
+                                scene,
+                                animations: data,
+                                view,
+                                actors: &selected,
+                                random,
+                            },
+                            sounds,
+                        ),
+                        "ordinary late collision response",
+                    )?;
+                }
+                self.follow_ordinary_support(id, None)?;
                 self.restore_axis_locks(id)?;
                 if self.spatial(id)?.parent.is_none() {
                     self.refresh_transform(id)?;
                 }
+                self.retain_ordinary_water_position(id)?;
                 Ok(())
             })();
             if let Err(error) = result {
@@ -178,7 +270,8 @@ impl ScriptWorld {
                 ));
             }
         }
-        self.refresh_families()
+        self.refresh_families()?;
+        self.update_separate(view, inputs, random, sounds, budget)
     }
 }
 
@@ -224,6 +317,8 @@ pub(crate) struct OrdinaryAssets<'w> {
     view: Option<Res<'w, ScriptView>>,
     request: Option<Res<'w, AnimationRequest>>,
     assets: Res<'w, Assets<Animations>>,
+    scene_request: Option<Res<'w, crate::player::data::PlayerSceneRequest>>,
+    scenes: Option<Res<'w, Assets<crate::player::data::PlayerScene>>>,
     sample: Option<Res<'w, ClockSample>>,
     cheats: Option<Res<'w, crate::cheats::Cheats>>,
     console: Option<Res<'w, cyrus_console::Console>>,
@@ -250,6 +345,55 @@ pub struct OrdinaryContext<'w, 's> {
 }
 
 impl OrdinaryContext<'_, '_> {
+    /// Whether automatic world execution may request host services this update.
+    pub fn is_running(&self) -> bool {
+        self.prepared
+            .state
+            .as_ref()
+            .is_some_and(|state| *state.get() == crate::AppState::InGame)
+            && !self
+                .prepared
+                .console
+                .as_ref()
+                .is_some_and(|console| console.open)
+            && self.actors.error.is_none()
+            && self.actors.current.is_some()
+    }
+
+    /// Lend the admitted world and sampled nominal ticks to its service stages.
+    /// The same asset/model/clock gates as ordinary traversal apply. No host work
+    /// runs while the console is open or world preparation remains incomplete.
+    pub fn with_world_services<R>(
+        &mut self,
+        update: impl FnOnce(&mut ScriptWorld, u32) -> R,
+    ) -> Option<R> {
+        if !self.is_running() {
+            return None;
+        }
+        let view = self.prepared.view.as_ref()?;
+        let request = self.prepared.request.as_ref()?;
+        if view.source != request.0 || self.prepared.assets.get(&request.0).is_none() {
+            return None;
+        }
+        let world = self.actors.current.as_mut()?;
+        if self
+            .prepared
+            .sample
+            .as_ref()
+            .is_none_or(|sample| sample.0 != world.generation())
+            || !world.model_resources_prepared()
+            || world.model_admission.is_none()
+        {
+            return None;
+        }
+        Some(update(world, self.clock.as_ref()?.step().nominal_ticks))
+    }
+
+    /// Retain a contextual host failure and stop automatic world updates.
+    pub fn report_error(&mut self, error: String) {
+        self.actors.report_runtime_error(error);
+    }
+
     /// Current logical world identity, used to reject expired audio ownership.
     pub fn generation(&self) -> Option<u64> {
         self.actors.current.as_ref().map(ScriptWorld::generation)
@@ -266,7 +410,7 @@ pub(crate) fn step(world: &mut World) {
 }
 
 fn queued_step(context: OrdinaryContext, mut sounds: Option<ResMut<Messages<SoundCue>>>) {
-    run_ordinary(context, None, None, &mut |cue| {
+    run_ordinary(context, None, None, None, &mut |cue| {
         let sounds = sounds
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("ordinary sound consumer unavailable"))?;
@@ -281,6 +425,7 @@ pub fn run_ordinary(
     context: OrdinaryContext,
     ambient_sound: Option<&dyn cyrus_world::sound::AmbientSoundDriver>,
     sound_reset: Option<bool>,
+    dialogue_source: Option<&dyn super::super::DialogueSource>,
     emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) {
     let OrdinaryContext {
@@ -299,6 +444,8 @@ pub fn run_ordinary(
         view,
         request,
         assets,
+        scene_request,
+        scenes,
         sample,
         cheats,
         console,
@@ -323,6 +470,9 @@ pub fn run_ordinary(
         return;
     };
     if sample.is_none_or(|sample| sample.0 != world.generation()) {
+        return;
+    }
+    if !world.model_resources_prepared() || world.model_admission.is_none() {
         return;
     }
     let timing = clock.step();
@@ -361,51 +511,65 @@ pub fn run_ordinary(
         actors.error = Some(format!("automatic deferred movement: {error:#}"));
         return;
     }
-    let result = world.update_ordinary(
-        data,
-        [view.position[0] >> 8, view.position[2] >> 8],
-        ScriptInputs {
-            hud: hud.as_deref(),
-            nominal_ticks: Some(timing.nominal_ticks),
-            frame_scale: Some(timing.frame_scale),
-            player_query,
-            ambient_sound,
-            sound_reset,
-            ..default()
-        },
-        &mut random,
-        &mut |actor, sound| {
-            let cue = match sound {
-                super::super::ScriptSound::Animation {
+    let mut send_sound = |actor: ScriptActorId, sound| {
+        let cue = match sound {
+            super::super::ScriptSound::Animation {
+                sound,
+                surface,
+                position,
+            } => {
+                let mut nodes = bindings
+                    .iter()
+                    .filter(|(_, binding)| binding.actor == actor && binding.source == request.0);
+                let (entity, _) = nodes
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("animation sound scene binding unavailable"))?;
+                anyhow::ensure!(
+                    nodes.next().is_none(),
+                    "animation sound scene binding ambiguous"
+                );
+                SoundCue::Animation {
+                    actor: entity,
                     sound,
                     surface,
                     position,
-                } => {
-                    let mut nodes = bindings.iter().filter(|(_, binding)| {
-                        binding.actor == actor && binding.source == request.0
-                    });
-                    let (entity, _) = nodes.next().ok_or_else(|| {
-                        anyhow::anyhow!("animation sound scene binding unavailable")
-                    })?;
-                    anyhow::ensure!(
-                        nodes.next().is_none(),
-                        "animation sound scene binding ambiguous"
-                    );
-                    SoundCue::Animation {
-                        actor: entity,
-                        sound,
-                        surface,
-                        position,
-                    }
                 }
-                sound => SoundCue::Script {
-                    generation: actor.generation,
-                    index: actor.index,
-                    sound,
-                },
-            };
-            emit(cue)
+            }
+            sound => SoundCue::Script {
+                generation: actor.generation,
+                index: actor.index,
+                sound,
+            },
+        };
+        emit(cue)
+    };
+    let preparation = world
+        .prepare_ordinary_models(data, timing.nominal_ticks, &mut send_sound)
+        .and_then(|()| world.refresh_automatic_models(data, view.position));
+    if let Err(error) = preparation {
+        actors.error = Some(format!("automatic model presentation: {error:#}"));
+        return;
+    }
+    let result = world.update_ordinary(
+        data,
+        [view.position[0] >> 8, view.position[2] >> 8],
+        OrdinaryInputs {
+            scene: scene_request
+                .as_ref()
+                .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0))),
+            scripts: ScriptInputs {
+                hud: hud.as_deref(),
+                nominal_ticks: Some(timing.nominal_ticks),
+                frame_scale: Some(timing.frame_scale),
+                player_query,
+                ambient_sound,
+                dialogue_source,
+                sound_reset,
+                ..default()
+            },
         },
+        &mut random,
+        &mut send_sound,
         100_000,
     );
     if let Err(error) = result {

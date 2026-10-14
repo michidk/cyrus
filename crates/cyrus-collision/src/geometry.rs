@@ -154,6 +154,9 @@ pub fn ordered_contacts(
                     projection,
                     normal: face.normal,
                 });
+                if contacts.len() == 32 {
+                    return Ok(contacts);
+                }
             }
         }
     }

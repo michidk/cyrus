@@ -72,6 +72,10 @@ state and failed writes leave accepted entries unchanged and trigger no icon.
 [script HUD contract](https://github.com/michidk/redguard-preservation/blob/docs/script-hud/docs/engine/hud.md).
 The renderer consumes accepted notification requests. Full logbook navigation,
 new-game/death resets and save-game integration remain unsupported.
+The retained SOUP topic-menu word starts at zero and changes through its native
+menu lifecycle, independently of the book menu and dialogue state. RTXp keeps
+its native task pending during host asset preparation and installs the reserved
+player line only after preparation succeeds.
 
 Run `cargo test -p cyrus-game`. Installed-definition tests require `redguard/` and
 report when they skip. `dev/scripts/check-core-boundaries.sh` checks the production
@@ -149,6 +153,14 @@ It retains the selected file frame for presentation, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 This explicit entry API does not choose a production clock or enable locomotion.
 
+Grounded animation sound callbacks retain the surface and local Q8 position at
+command execution. The runtime converts Play coordinates into the checked i32
+transport before later movement and ground response; Stop and Forget do not
+require a position. This follows [preservation's animation sound rules](https://github.com/michidk/redguard-preservation/blob/a89de2b/docs/engine/sound.md).
+**Verified:** a runtime contract retains the emitting position while the player
+finishes the update at a different position. Complete walking/audio parity remains
+**Unknown**.
+
 `script::ScriptPlugin` samples the shared nominal clock once per InGame update.
 With a matching `ScriptView`, it initializes placed animation-table actors and
 flushes deferred movement before traversing the authored camera-centered actor
@@ -185,6 +197,46 @@ immutable instructions and global inspection flags while retaining separate
 initial locals. Generations reject stale explicit invocations. This is fresh
 inspection state, not progression, revisit or save semantics. Preparation does
 not grant update eligibility. Removing the prepared world clears this registry.
+
+Explicit model-resource preparation and caller-admitted presentation refresh retain
+collision-facing poses separately from logical movement. Hidden actors lose their
+current record but retain selected resources; showing a retained static model
+refreshes its record immediately. Automatic camera-centered PVO admission reads
+retained support before ordinary updates clear it, using a frozen load-time
+secondary table. Dry model positioning works with collision enabled; water-specific
+position adjustments and ordinary collision response remain unsupported. Matching
+world geometry and visibility preparation are required before automatic updates.
+The explicit ordinary ground query composes static and live candidates using
+stored model poses, excludes the querying actor's own model, and retains the
+selected support owner. Actors without a current model record are rejected before
+collision-path metadata is required, including model-less standalone roles. It has no selected-player fallback or history. Probe
+distance remains caller-supplied. The vertical extent comes from the actor's
+initialized collision shape. Shape preparation distinguishes authored MPSZ bounds,
+static vertices with installed horizontal scaling, and the model-less single
+sphere. Placed-model fallback does not rebuild that shape. Automatic response
+and surface transitions are not enabled by querying support.
+The explicit ordinary body query shares those admitted models and stored poses,
+uses the actor's initial spheres and rebuilt local collision orientation, and retains integer
+contacts in original order. Its primary sixteen-contact limit is separate from
+each model's thirty-two-contact buffer. Terrain admission and candidate-type
+exclusions remain caller-owned; collection does not perform motion response.
+Ordinary control owns allocator-zeroed sliding, falling and queued-motion bytes
+separately from animation groups. Explicit primary wall response updates grounded
+position, heading and result marks from retained ordered contacts. State-specific
+motion, overlap, residual separation and support following remain separate;
+this primary loop does not enable automatic collision updates. Explicit residual
+queries use copied update angles, adjusted common sphere radii and uncapped
+static/live collection without terrain. Residual response owns separation and
+its result mark. `OrdinaryCollisionQuery` retains actor-bound candidates and copied working angles
+prepared before the script wrapper. Ground, primary and residual inputs require
+that record, while query origins follow current actor state. They do not rerun
+spatial admission. Queries reject another actor or world generation. Ordinary
+traversal receives matching scene geometry through `OrdinaryInputs` and prepares
+its list before the wrapper. Unsupported queued motion and late response remain
+explicit failures. Overlap, support transitions and rollback still need their
+own stages before sustained automatic collision updates can run.
+The lifecycle follows preservation's
+[model rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#current-model-presentation).
 
 Native control and MCP `scripts` page through at most 64 actor diagnostics.
 `step_script` runs a selected animation, entry, main, interrupt or existing-task stage. The
@@ -223,8 +275,11 @@ channels remain unsupported. These tools do not start New Game.
 instances from installed definitions, after ordinary map actors. They have separate
 locals and task slots. Player defaults to CYRUS; Camera uses its own instance.
 `ScriptActorSource` distinguishes those roles from map placements. Type-2/type-6
-map records retain diagnostics for their separate unsupported object paths and do
-not consume ordinary actor locals. Status `instances` counts logical entries,
+map records consume sequential authored locals without ordinary actor identifiers.
+Selected type-two records run their entry hook and enabled script/task pass after
+ordinary actors. Their attributes and control state are temporary; locals,
+continuations and tasks persist. Type-six light lifecycle and separate-record
+movement remain explicitly unsupported. Status `instances` counts logical entries,
 including standalone roles and unavailable map records.
 
 Native routing supports Me, Player, Camera and installed RANM names with ASCII
@@ -464,3 +519,147 @@ assignments. Symbolic/exotic numeric forms and non-cheat commands other than
 `console clear` remain unsupported. Console toggles use parity; gameplay toggles
 use zero versus nonzero. Hosts share this editor and dispatcher; rendering and
 file dialogs stay outside the core.
+
+Ordinary actor overlap reads current logical local positions independently of
+stored face-model presentation poses. Static-model actors supply one model-radius
+sphere; initial nonstatic shapes retain fractional actor-matrix-transformed
+centers and exclude the additional support sphere. Vertex-bound RAVC shapes
+report unsupported until their animated vertex owner is connected. Pair queries
+reject stale IDs and exclude self. The admitted automatic collision path invokes ordered weighted response.
+
+Explicit grounded ordinary actor-pair overlap response commits weighted X/Z
+separation or previous-position rollback to logical actors. Tiny contacts retain
+both runtime identifiers and return a pass-ending Touch result. Contact marks
+preserve existing transition bits. Other actors receive the original conditional
+mark. Selected-player overrides, support-state bypasses and airborne/damage paths
+remain unsupported by this adapter; vertex-bound shape and complete movement acceptance remain open.
+
+The explicit retained actor-style overlap pass visits static and live candidates
+in prepared order. Static tiny separation still responds; tiny live contact ends
+the pass before later queries. Its typed result retains required obstacle-repeat
+work across later rollback or misses, and skips that repeat on early Touch.
+The ordinary scheduler still stops before unsupported complete late response.
+
+**Verified:** explicit ordinary forward segment response probes previous-to-current effective
+motion through the retained face-model list. It selects the closest masked
+rank, combines all accepted normals in order, and writes logical X/Z using the
+selected first sphere radius while preserving Y and model presentation.
+Response-disabled queries report contact without moving the actor. These rules
+follow [preservation's forward response](https://github.com/michidk/redguard-preservation/blob/729dc5b/docs/engine/player.md#ordinary-forward-segment-response).
+State-fifteen forward probes run the two stored-bounds segments instead and
+report no ordinary forward hit. The bounds stage retains independent signed
+rank limits per segment, accumulates improving wall normals without normalizing,
+and writes all logical axes with body-response bit six. Polygon sidedness is
+explicit per query; the normal forward path enables it and the bounds path
+bypasses it. Selected-player auto-grab and complete automatic late collision integration
+remain incomplete.
+
+**Verified:** the explicit ordinary obstacle wrapper runs its responding,
+conditional nonresponding and higher responding probes in order. Motion
+transitions share body-response flags with overlap, independently of rollback
+collision-transition flags, clear the interrupted motion vector,
+and write the fall origin/timer. Queued falls force the published animation
+group through captured sound/position dispatch; they do not replace the default
+group. The overlap-stage adapter performs the required obstacle repeat after
+weighted separation and skips it on an early tiny actor-pair contact. Rules
+follow [preservation's wrapper and transitions](https://github.com/michidk/redguard-preservation/blob/f2f8a02/docs/engine/player.md#forward-obstacle-wrapper-and-motion-transition).
+**Unknown:** full automatic late-response and selected-player grabbing parity.
+
+`prepare_stable_recovery_query` creates a separate actor-bound admission record.
+`query_stable_recovery` accepts model contacts in traversal order and leaves
+terrain acceptance without a position write. Terrain water and grid edges remain
+explicitly unsupported. The automatic late path composes the supported branches; airborne timing and complete collision acceptance remain open.
+`capture_ordinary_rollback` saves the post-advancement receiver, frame and movement
+flags. The water-veto host restores a separately retained dry/falling position;
+its fresh-allocation value remains unavailable until its owner establishes it.
+The audio consumer saves and restores the remembered animation slot in cue order.
+
+The ordinary script wrapper counts prior packed response marks in its byte age,
+then clears those marks and the overlap identifier. Stable recovery uses a fresh
+candidate query and restores rejected nonplayer updates to their retained stable
+position, movement flags and animation snapshot. Its heading change consumes the
+shared random stream; age above 16 also runs the bounds response. The automatic
+late path applies the published attribute-89 and captured-landing predicates.
+A missing surface-veto owner remains an error when that predicate needs it.
+**Verified:** public contracts cover byte wrapping, the age-200 cutoff, one shared
+heading draw, position/frame rollback and response cleanup on the next script
+wrapper. Selected-player recovery and full START acceptance remain **Unknown**.
+These rules follow [preservation's stable recovery response](https://github.com/michidk/redguard-preservation/blob/34a2dd8/docs/engine/player.md#stable-recovery-response).
+
+The explicit ordinary slope stage accepts primary support, installed
+`slide_speed` and caller-established combat/weapon predicates. It orders local
+turning, first-slide forced or continuing ordinary animation requests, Q8
+translation and a second retained-candidate support query. It retains sliding
+state and accumulated distance. Selected-player camera updates remain
+unsupported. These rules follow preservation's
+[ordinary slope response](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-slope-response).
+Automatic collision-stage composition and New Game intro acceptance remain open.
+
+**Verified:** ordinary support-following uses retained actor ownership and the
+support's update-entry position and angles. The unattached nonplayer path carries
+the rider through translation and two original rounded matrix transforms, then
+adds heading delta before axis locks. Static ownership alone and attribute 24
+zero leave the rider unchanged. Selected-player collision admission and
+attached/linked support snapshots remain unavailable. Automatic collision
+composition still stops before this stage for unsupported collision paths.
+
+**Verified:** automatic ordinary updates now compose forward/overlap response,
+primary support, admitted grounded height and surface assignment, stable-position
+retention, supported body/residual response, reserved-weight restoration, water
+rollback, support-following, axis locks and water-position retention. A synthetic
+public-interface test sustains three script updates on retained live support and
+checks Q8 height, surface, stable record and restored weight. Airborne timing,
+terrain body contacts, slope suppression/combat admissions, conditional stable
+recovery and special movement still fail contextually. This does not establish
+START intro playback or all-world acceptance.
+
+Combat maintenance retains constructor-owned target, action, flags and cooldown
+separately from the death-animation default. The supported idle nonplayer stage
+restores collision attribute 1 from 119 and applies action/cooldown maintenance.
+Shared class queues retain independent actor read cursors, addressed filtering
+and eight-entry wrapping. Target/perception, combat messages, decision state 6
+and attacks remain explicitly unsupported. Queue reset ownership and complete
+START intro acceptance remain open. These rules follow preservation's
+[combat maintenance](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#combat-maintenance).
+
+
+`SoundMaintenance` samples signed whole nominal ticks before ordinary actors and
+requests RTX release, dialogue cleanup, sample stopping and walk-node reservation
+clearing in preservation order. It exposes a reset only after successful cleanup;
+a failed stage retains a contextual error and prevents another update from
+silently completing a partial reset. Menu, WaitOnDialog and lockout inputs remain
+explicit. Automatic scheduling has not installed the complete RTX/dialogue owners,
+so ambient tasks still report missing reset input.
+
+Navigation preparation retains cleared ownership bytes for every authored WDNM
+map and node. Logical actors acquire or release reservations using their runtime
+identifier's low byte. A foreign reservation blocks acquisition, and periodic
+maintenance clears every reservation regardless of owner. Route selection and
+movement through nonempty maps remain unsupported. These contracts follow
+[preservation sound maintenance](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md)
+and [WDNM ownership](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md).
+
+Dialogue preparation retains installed settings and zero-initialized active records
+in gameplay globals across world replacement. `WaitOnDialog` reads this shared
+owner and yields through the ordinary task lifecycle even when no line is active.
+Explicit topic-menu lifecycle operations retain the shared state used by sound
+maintenance. The installed `menuProc` task is not yet connected to this owner;
+engine helper names do not add functions to the installed script definition.
+Explicit dialogue records support ordinary allocation, reserved player replacement,
+sample-matching cleanup and the ordered record-update stage. Sound-reset cleanup
+clears active ordinary and reserved player lines before the host stops samples.
+`ScriptWorld` owns
+speaker inhibition and retained lockout; the host supplies playback status, volume
+and presentation synchronously. Expired speaker identities fail before actor writes.
+The combined update accepts a configured skip signal and retained lockout, applies
+edge-triggered cleanup, then advances records. Unknown lockout is rejected only
+when a fresh skip edge needs its value. `RTXp` native tasks accept an explicit synchronous `DialogueSource`, select the
+player as speaker, replace record zero once at zero elapsed time, and wait for
+that record to clear. A shared sound reset completes the task before lookup.
+The source owns entry lookup, optional shared-channel voice start and installed
+REDSEL formatting. The live audio adapter prepares entries asynchronously, then
+runs the record stage and cache aging after object updates. Keyboard dialogue
+skip uses the configured key_a before Modern movement interpretation; joystick
+input remains unsupported. Ordinary RTX creation, topic-menu processing and the
+complete automatic maintenance owner remain unsupported, so story progression
+is not yet established.

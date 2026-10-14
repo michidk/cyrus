@@ -19,28 +19,21 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         eprintln!("skipped: no install (SOUP automatic island flags)");
         return;
     }
-    let path = std::fs::read_dir(root.join("maps"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .find(|path| {
-            path.file_name()
-                .unwrap()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("ISLAND.RGM")
-        })
-        .unwrap();
-    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(path).unwrap()).unwrap();
-    let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
-    let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
-    metadata["script_content_id"] = scripts.content_id.clone().into();
-    let data = Animations {
-        version: 2,
-        world: scripts.world,
-        metadata,
-        sections: Default::default(),
-        models: Default::default(),
-        unsupported: Default::default(),
-    };
+    let install = cyrus_assets::install::GameInstall::open(&root).unwrap();
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("script-ordinary-island-{}", std::process::id()));
+    let path = directory.join("ISLAND.glb");
+    cyrus_assets::scene::export_scene(&install, "ISLAND", &path).unwrap();
+    let scripts: Scripts =
+        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
+    let data: Animations =
+        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+    let scene = cyrus_game::player::data::PlayerScene::decode(
+        &std::fs::read(path.with_extension("player")).unwrap(),
+    )
+    .unwrap();
+    let world_id = scripts.world;
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
     world.prepare_markers(&data).unwrap();
     world.prepare_navigation(&data).unwrap();
@@ -49,6 +42,12 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         .iter()
         .position(|actor| actor.name() == "FLAG2")
         .unwrap();
+    assert_eq!(scene.collision.sphere_object_scale, Some(256));
+    let id = world.id(index).unwrap();
+    world
+        .prepare_ordinary_collision_shape(id, &data, &scene)
+        .unwrap();
+    assert!(!world.ordinary_collision_shape(id).unwrap().body.is_empty());
     let placement = world.actors()[index].placement().unwrap();
     let view = [
         placement.map_position[0] as i32,
@@ -59,7 +58,9 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         .init_state::<AppState>()
         .init_asset::<Scripts>()
         .init_asset::<Animations>()
+        .init_asset::<cyrus_game::player::data::PlayerScene>()
         .add_message::<AnimationTick>()
+        .add_message::<cyrus_world::sound::SoundCue>()
         .add_plugins(ScriptPlugin);
     let scripts = app
         .world_mut()
@@ -71,13 +72,22 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         .add(data);
     app.insert_resource(PreparedWorld {
         requested_name: "ISLAND".into(),
-        world: Some(0),
+        world: Some(world_id),
         scripts,
         animations: animations.clone(),
         player_path: "test.player".into(),
         scene_path: "test.glb".into(),
         environment_path: "test.environment".into(),
     });
+    let scene_handle = app
+        .world()
+        .resource::<AssetServer>()
+        .load::<cyrus_game::player::data::PlayerScene>("test.player");
+    app.world_mut()
+        .resource_mut::<Assets<cyrus_game::player::data::PlayerScene>>()
+        .insert(scene_handle.id(), scene)
+        .unwrap();
+    app.insert_resource(cyrus_game::player::data::PlayerSceneRequest(scene_handle));
     app.insert_resource(AnimationRequest(animations.clone()));
     app.insert_resource(ScriptView {
         source: animations,
@@ -92,9 +102,24 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         let actors = app.world().resource::<ScriptActors>();
         let world = actors.current.as_ref().unwrap();
         assert!(
+            !matches!(
+                app.world().resource::<cyrus_game::script::ScriptStatus>(),
+                cyrus_game::script::ScriptStatus::Failed { .. }
+            ),
+            "{:?}",
+            app.world().resource::<cyrus_game::script::ScriptStatus>()
+        );
+        assert!(
             world.actors()[index].failure().is_none(),
             "{:?}",
             world.actors()[index].failure()
+        );
+        assert!(
+            !world
+                .ordinary_collision_shape(world.id(index).unwrap())
+                .unwrap()
+                .body
+                .is_empty()
         );
         frames.push(world.animation_frame(world.id(index).unwrap()).unwrap());
     }
@@ -102,6 +127,7 @@ fn installed_island_flags_advance_through_ordinary_updates() {
         frames.windows(2).any(|frames| frames[0] != frames[1]),
         "installed FLAG2 remained frozen: {frames:?}"
     );
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -126,15 +152,22 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         let mut metadata = rgpre::import::rgm::export_rgm_metadata_json(&map, None);
         metadata["script_content_id"] = scripts.content_id.clone().into();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata,
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
         world
-            .prepare_markers(&cyrus_assets::animation::Animations {
-                version: 2,
-                world: scripts.world,
-                metadata,
-                sections: Default::default(),
-                models: Default::default(),
-                unsupported: Default::default(),
-            })
+            .prepare_markers(&data)
+            .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
+        world
+            .prepare_navigation(&data)
+            .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
+        world
+            .clear_walk_node_reservations()
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         for actor in world.actors() {
             if let Some(error) = actor.unavailable() {
@@ -148,7 +181,12 @@ fn installed_maps_prepare_receivers_without_using_map_object_ids_as_runtime_ids(
                 && matches!(placement.object_type, 2 | 6)
             {
                 assert!(actor.runtime_identifier.is_none());
-                assert!(actor.runtime().is_none());
+                assert!(
+                    actor.runtime().is_some(),
+                    "{}: {:?}",
+                    path.display(),
+                    actor.unavailable()
+                );
             }
         }
         for (name, role, identifier) in [
@@ -251,7 +289,17 @@ fn installed_caverns_fish_starts_rotation_multitask_and_retains_concurrent_movem
     let mut random = cyrus_game::random::EngineRandom::from_state(0);
     for expected in [1036, 1046, 1056] {
         world
-            .update_ordinary(&data, view, inputs, &mut random, &mut |_, _| Ok(()), 30)
+            .update_ordinary(
+                &data,
+                view,
+                cyrus_game::script::OrdinaryInputs {
+                    scripts: inputs,
+                    scene: None,
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+                30,
+            )
             .unwrap();
         let id = world.id(index).unwrap();
         assert!(

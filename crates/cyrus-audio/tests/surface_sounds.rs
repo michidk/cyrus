@@ -497,3 +497,114 @@ fn animation_uses_emission_position_even_after_the_scene_transform_changes() {
     assert_eq!(decoder.next(), Some(0.5));
     assert_eq!(decoder.next(), Some(0.5));
 }
+
+#[test]
+fn animation_checkpoint_restores_remembered_slot_without_stopping_new_sound() {
+    use cyrus_world::sound::AnimationSoundState;
+    let (mut app, actor) = fixture();
+    play(&mut app, actor, 200);
+    let first = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 4,
+        sound: ScriptSound::AnimationState(AnimationSoundState::Capture),
+    });
+    app.update();
+    play(&mut app, actor, 200);
+    assert_eq!(playing(&mut app), 2);
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 4,
+        sound: ScriptSound::AnimationState(AnimationSoundState::Restore),
+    });
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        2,
+        "restoring the receiver changes only its remembered handle"
+    );
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        position: None,
+        surface: None,
+        sound: AnimationSound::Stop,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+    assert!(
+        app.world().get_entity(first).is_err(),
+        "EndAnimation stops the restored earlier slot"
+    );
+}
+
+#[test]
+fn animation_checkpoint_can_restore_absent_slot_and_current_replacement() {
+    use cyrus_world::sound::AnimationSoundState;
+    let (mut app, actor) = fixture();
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 4,
+        sound: ScriptSound::AnimationState(AnimationSoundState::Capture),
+    });
+    app.update();
+    play(&mut app, actor, 200);
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 4,
+        sound: ScriptSound::AnimationState(AnimationSoundState::Restore),
+    });
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        position: None,
+        surface: None,
+        sound: AnimationSound::Stop,
+    });
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        1,
+        "a captured absent handle is restored as absent"
+    );
+    let (mut app, actor) = fixture();
+    play(&mut app, actor, 200);
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 4,
+        sound: ScriptSound::AnimationState(AnimationSoundState::Capture),
+    });
+    app.update();
+    let remembered = app
+        .world_mut()
+        .query_filtered::<Entity, With<PlayingSound>>()
+        .single(app.world())
+        .unwrap();
+    app.world_mut().despawn(remembered);
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 0,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(playing(&mut app), 1);
+    app.world_mut().write_message(SoundCue::Script {
+        generation: 17,
+        index: 4,
+        sound: ScriptSound::AnimationState(AnimationSoundState::Restore),
+    });
+    app.world_mut().write_message(SoundCue::Animation {
+        actor,
+        position: None,
+        surface: None,
+        sound: AnimationSound::Stop,
+    });
+    app.update();
+    assert_eq!(
+        playing(&mut app),
+        0,
+        "a reusable remembered slot stops its replacement occupant"
+    );
+}

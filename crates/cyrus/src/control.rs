@@ -432,6 +432,8 @@ fn handle(
                                 ScriptSound::Positional { effect, volume, rate_offset_hz, position } => json!({"type":"positional", "effect":effect, "volume":volume, "rate_offset_hz":rate_offset_hz, "position":position}),
                                 ScriptSound::StopEffect { effect, owned } => json!({"type":"stop_effect", "effect":effect, "owned":owned}),
                                 ScriptSound::StopOwned => json!({"type":"stop_owned"}),
+                                ScriptSound::StopAll => json!({"type":"stop_all"}),
+                                ScriptSound::AnimationState(state) => json!({"type":"animation_state", "state":format!("{state:?}")}),
                                 ScriptSound::Animation { .. } => unreachable!(),
                             };
                             captured_sounds.push(json!({"actor":actor, "sound":event}));
@@ -651,7 +653,7 @@ mod tests {
         use cyrus_game::script::{ScriptActors, ScriptWorld};
         let mut app = app();
         let mut scripts: Scripts = serde_json::from_value(json!({
-            "version":10,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":11,"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}
@@ -760,7 +762,7 @@ mod tests {
         }
         let mut app = app();
         let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(json!({
-            "version":10,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},
+            "version":11,"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},
             "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
             "actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[

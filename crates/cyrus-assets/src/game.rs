@@ -95,6 +95,7 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
         "menu" => crate::startup::prepare_menu(source, output)?,
         "hud" => crate::hud_export::prepare(source, output)?,
         "sounds" => crate::sound_export::prepare(source, output)?,
+        "dialogue" => crate::sound::dialogue::export::prepare(source, path, output)?,
         "music" => crate::music::prepare_track(source, path, output)?,
         _ => {
             let file = Path::new(path);

@@ -2,6 +2,30 @@
 use cyrus_collision::actor_shape::{ActorBounds, BodySphere, Orientation};
 
 #[test]
+fn static_vertex_bounds_round_to_even_and_scale_only_horizontal_extents() {
+    let vertices = [[2.5, 2.5, 5.5], [-5.5, -4.5, -7.5]];
+    let bounds = ActorBounds::from_vertices(&vertices, 128, 128).unwrap();
+    assert_eq!(bounds.positive_extent(), [1, 2, 3]);
+    let shape = bounds.prepare(0, 0).unwrap();
+    assert_eq!(shape.orientation, Orientation::Z);
+    assert_eq!(
+        shape.body,
+        [BodySphere {
+            center: [0, 0, 0],
+            radius: 2
+        }]
+    );
+    assert_eq!(
+        ActorBounds::from_vertices(&vertices, 0, 0)
+            .unwrap()
+            .positive_extent(),
+        [2, 2, 6]
+    );
+    assert!(ActorBounds::from_vertices(&[[f32::NAN, 0.0, 0.0]], 256, 256).is_err());
+    assert!(ActorBounds::from_vertices(&[[2147483648.0, 0.0, 0.0]], 256, 256).is_err());
+}
+
+#[test]
 fn upright_installed_dimensions_keep_the_additional_sphere_separate() {
     let shape = ActorBounds::new([24, 62, 24], [24, 66, 25], 0)
         .unwrap()

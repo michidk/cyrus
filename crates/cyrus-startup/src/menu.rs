@@ -30,7 +30,10 @@ pub struct MovieStatus {
 }
 
 #[derive(Message)]
-pub(super) struct MovieRequest(pub usize);
+pub(super) enum MovieRequest {
+    Menu(usize),
+    NewGame,
+}
 
 struct MenuTiming {
     checkpoint: ClockCheckpoint,
@@ -46,6 +49,8 @@ pub struct MenuState {
     pub capturing: Option<i32>,
     /// Cinematic loading/playback; menu input is suspended while present.
     pub movie: Option<MovieStatus>,
+    #[serde(skip)]
+    pub(super) enter_world: bool,
     pub preferences: Option<MenuPreferences>,
     pub entries: Vec<MenuItem>,
     pub selected: Option<usize>,
@@ -239,6 +244,18 @@ pub(super) fn drive(
         menu.blink_on = true;
         apply_bindings(&menu, &mut bindings);
     }
+    if menu.enter_world {
+        menu.enter_world = false;
+        begin_world_entry(
+            &mut commands,
+            &mut images,
+            &mut next,
+            book,
+            input.0.elapsed_secs_f64(),
+        );
+        menu.ready = false;
+        return;
+    }
     if menu.movie.is_some() {
         return;
     }
@@ -355,38 +372,17 @@ pub(super) fn drive(
                                     .begin_new_game();
                             });
                         }
-                        commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
-                        commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
-                        commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
-                            book.new_game.world.to_string(),
-                        ));
-                        commands.insert_resource(cyrus_game::player::placement::MarkerEntry {
-                            marker: book.new_game.marker as usize,
-                            heading: 0,
-                        });
-                        let variation = std::collections::hash_map::RandomState::new()
-                            .hash_one(input.0.elapsed_secs_f64().to_bits())
-                            as usize
-                            % book.new_game.loading.len();
-                        let picture = &book.new_game.loading[variation];
-                        let image = images.add(Image::new(
-                            bevy::render::render_resource::Extent3d {
-                                width: picture.width.into(),
-                                height: picture.height.into(),
-                                depth_or_array_layers: 1,
-                            },
-                            bevy::render::render_resource::TextureDimension::D2,
-                            picture.rgba.clone(),
-                            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
-                            bevy::asset::RenderAssetUsages::default(),
-                        ));
-                        commands.insert_resource(super::StartGame {
-                            image,
-                            background: picture.rgba.clone(),
-                            font: book.new_game.font.clone(),
-                            progress: (0, 1),
-                        });
-                        next.set(AppState::Loading);
+                        if entry.action == 10 {
+                            commands.write_message(MovieRequest::NewGame);
+                        } else {
+                            begin_world_entry(
+                                &mut commands,
+                                &mut images,
+                                &mut next,
+                                book,
+                                input.0.elapsed_secs_f64(),
+                            );
+                        }
                         menu.ready = false;
                         return;
                     }
@@ -400,7 +396,7 @@ pub(super) fn drive(
                     601 | 602 => {}
                     301..=305 => {
                         menu.unavailable = None;
-                        commands.write_message(MovieRequest((entry.action - 301) as usize));
+                        commands.write_message(MovieRequest::Menu((entry.action - 301) as usize));
                     }
                     710..=724 => {
                         menu.capturing = Some(entry.action);
@@ -526,6 +522,48 @@ fn cleanup(
         clock.restore(timing.checkpoint, bios_tick(time.elapsed()));
     }
     commands.remove_resource::<MenuState>();
+}
+
+/// Enter the installed starting world after a completed New Game introduction,
+/// or the temporary fresh-world Load action.
+fn begin_world_entry(
+    commands: &mut Commands,
+    images: &mut Assets<Image>,
+    next: &mut NextState<AppState>,
+    book: &MenuAsset,
+    elapsed: f64,
+) {
+    commands.remove_resource::<cyrus_world::lifecycle::PreparedWorld>();
+    commands.remove_resource::<cyrus_world::lifecycle::SceneLoadError>();
+    commands.insert_resource(cyrus_world::lifecycle::SceneRequest(
+        book.new_game.world.to_string(),
+    ));
+    commands.insert_resource(cyrus_game::player::placement::MarkerEntry {
+        marker: book.new_game.marker as usize,
+        heading: 0,
+    });
+    let variation = std::collections::hash_map::RandomState::new().hash_one(elapsed.to_bits())
+        as usize
+        % book.new_game.loading.len();
+    let picture = &book.new_game.loading[variation];
+    let image = images.add(Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: picture.width.into(),
+            height: picture.height.into(),
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        picture.rgba.clone(),
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    ));
+    commands.insert_resource(super::StartGame {
+        image,
+        background: picture.rgba.clone(),
+        font: book.new_game.font.clone(),
+        progress: (0, 1),
+    });
+    next.set(AppState::Loading);
 }
 
 #[cfg(test)]

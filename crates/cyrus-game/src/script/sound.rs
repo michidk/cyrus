@@ -8,7 +8,8 @@ pub(super) fn command(name: &str, arguments: &[Argument]) -> Result<Option<Scrip
         3
     } else if name.eq_ignore_ascii_case("EndSound") || name.eq_ignore_ascii_case("EndMySound") {
         1
-    } else if name.eq_ignore_ascii_case("EndMySounds") {
+    } else if name.eq_ignore_ascii_case("EndMySounds") || name.eq_ignore_ascii_case("StopAllSounds")
+    {
         0
     } else {
         return Ok(None);
@@ -25,6 +26,8 @@ pub(super) fn command(name: &str, arguments: &[Argument]) -> Result<Option<Scrip
             effect: arguments[0].integer()?,
             owned: name.eq_ignore_ascii_case("EndMySound"),
         }
+    } else if name.eq_ignore_ascii_case("StopAllSounds") {
+        ScriptSound::StopAll
     } else {
         ScriptSound::StopOwned
     };

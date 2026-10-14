@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 pub(super) struct ActorLists {
     cells: BTreeMap<[i32; 2], Vec<usize>>,
     persistent: Vec<usize>,
+    separate_cells: BTreeMap<[i32; 2], Vec<usize>>,
+    separate_selected: Vec<ScriptActorId>,
     membership: BTreeMap<usize, [i32; 2]>,
     first: Option<[i32; 2]>,
     selected: Vec<ScriptActorId>,
@@ -15,11 +17,22 @@ impl ActorLists {
     pub(super) fn new(actors: &[ScriptActor]) -> Result<Self> {
         let mut cells: BTreeMap<_, Vec<_>> = BTreeMap::new();
         let mut persistent = Vec::new();
+        let mut separate_cells: BTreeMap<[i32; 2], Vec<usize>> = BTreeMap::new();
         let mut membership = BTreeMap::new();
         for (index, actor) in actors.iter().enumerate().rev() {
             match &actor.source {
                 ScriptActorSource::Map(placement) => {
                     if matches!(placement.object_type, 2 | 6) {
+                        let position = [placement.map_position[0], placement.map_position[2]];
+                        anyhow::ensure!(
+                            position.iter().all(|value| (0..=65535).contains(value)),
+                            "instance {index} actor {}: separate cell position {position:?} outside supported map",
+                            actor.name()
+                        );
+                        separate_cells
+                            .entry(position.map(|value| (value / 512) as i32))
+                            .or_default()
+                            .push(index);
                         continue;
                     }
                     if placement.active != 0 {
@@ -42,10 +55,34 @@ impl ActorLists {
         Ok(Self {
             cells,
             persistent,
+            separate_cells,
+            separate_selected: Vec::new(),
             membership,
             first: None,
             selected: Vec::new(),
         })
+    }
+
+    pub(super) fn separate_selected(&self) -> &[ScriptActorId] {
+        &self.separate_selected
+    }
+
+    /// Complete load-time cell scan for the PVO secondary actor table.
+    pub(super) fn secondary_actors(
+        &self,
+        actors: &[ScriptActor],
+        generation: u64,
+    ) -> Vec<ScriptActorId> {
+        let mut cells: Vec<_> = self.cells.iter().collect();
+        cells.sort_by_key(|(cell, _)| [cell[1], cell[0]]);
+        cells
+            .into_iter()
+            .flat_map(|(_, indices)| indices.iter())
+            .chain(self.persistent.iter())
+            .copied()
+            .filter(|&index| actors[index].attributes()[122] != 0)
+            .map(|index| ScriptActorId { generation, index })
+            .collect()
     }
 
     /// Deferred relocation retains cached traversal until a distant cell change invalidates it.
@@ -103,12 +140,19 @@ impl ActorLists {
             return Ok(&self.selected);
         }
         self.selected.clear();
+        self.separate_selected.clear();
         for z in 0..18 {
             for x in 0..18 {
                 let border_x = x == 0 || x == 17;
                 let border_z = z == 0 || z == 17;
                 if border_x && border_z {
                     continue;
+                }
+                if let Some(cell) = self.separate_cells.get(&[first[0] + x, first[1] + z]) {
+                    self.separate_selected.extend(
+                        cell.iter()
+                            .map(|&index| ScriptActorId { generation, index }),
+                    );
                 }
                 if let Some(cell) = self.cells.get(&[first[0] + x, first[1] + z]) {
                     for &index in cell {

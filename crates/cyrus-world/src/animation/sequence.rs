@@ -35,6 +35,7 @@ pub(super) type SoundDispatcher<'a> =
 
 /// A forward current group. Callers supply activation, whole nominal ticks, and exit eligibility.
 /// Sound commands require actor-side dispatch; reverse playback and other group types are unsupported.
+#[derive(Clone)]
 pub struct FrameSequence {
     context: String,
     commands: Vec<Command>,

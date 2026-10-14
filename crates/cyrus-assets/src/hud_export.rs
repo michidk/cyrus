@@ -73,7 +73,7 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        6u32,
+        7u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
@@ -119,6 +119,10 @@ pub(crate) fn prepare(
     let text_alpha =
         cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_sel")?)
             .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_sel: {e}"))?;
+
+    let player_text_alpha =
+        cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_norm")?)
+            .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_norm: {e}"))?;
 
     let flag = |section: &str, key: &str| -> anyhow::Result<bool> {
         Ok(system_number(section, key)? != 0)
@@ -234,6 +238,7 @@ pub(crate) fn prepare(
         bindings: keys.control_codes(),
         font,
         text_alpha,
+        player_text_alpha,
         labels,
     };
 

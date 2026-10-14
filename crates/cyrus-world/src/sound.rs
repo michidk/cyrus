@@ -68,10 +68,21 @@ pub trait AmbientSoundDriver: std::fmt::Debug {
     fn update(&self, request: AmbientSoundRequest) -> Result<AmbientSoundUpdate, String>;
 }
 
+/// Ordinary collision snapshots save and restore the remembered animation slot.
+/// Restoration changes memory only; it neither stops nor restarts a sample.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationSoundState {
+    Capture,
+    Restore,
+}
+
 /// Synchronous sound effects from a logical script actor. Effect indices retain
 /// their signed authored value; invalid starts allocate no channel.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ScriptSound {
+    /// Save or restore the receiver's remembered animation slot in cue order.
+    /// The receiver is identified by the enclosing logical script cue.
+    AnimationState(AnimationSoundState),
     /// Surface captured by the logical actor host when its animation command runs.
     Animation {
         sound: crate::animation::AnimationSound,
@@ -98,4 +109,7 @@ pub enum ScriptSound {
         owned: bool,
     },
     StopOwned,
+    /// Stop every sample channel regardless of owner or authored effect.
+    /// Remembered animation/task handles remain slot references.
+    StopAll,
 }

@@ -1,4 +1,7 @@
 //! Portable authored collision inputs; units and ordering follow preservation's player rules.
+mod visibility;
+pub use visibility::{ModelVisibility, VisibilityNode};
+
 use anyhow::Context;
 use bevy::math::Vec3;
 use serde::{Deserialize, Serialize};
@@ -7,6 +10,13 @@ use std::collections::BTreeMap;
 /// Original static placements in MPSO order, with models shared by name.
 #[derive(Default, Serialize, Deserialize)]
 pub struct CollisionScene {
+    /// Effective positive SYSTEM.INI sphere-object scale; absent in old caches.
+    #[serde(default)]
+    pub sphere_object_scale: Option<i32>,
+    /// Original-coordinate model admission, independent of rendering visibility.
+    /// Missing identifies an older preparation whose admission remains unsupported.
+    #[serde(default)]
+    pub model_visibility: Option<ModelVisibility>,
     /// Initial type-one live static models, keyed by original MPOB index.
     /// Missing means an older cache; an empty present record means no such models.
     #[serde(default)]
@@ -27,6 +37,10 @@ pub struct ActorCollisionModels {
     pub object_count: usize,
     pub models: BTreeMap<String, CollisionGeometry>,
     pub instances: BTreeMap<usize, String>,
+    /// Initial per-actor collision metadata, including model-less and animated ordinary actors.
+    /// Older caches omit it and cannot establish live support metadata.
+    #[serde(default)]
+    pub collision_flags: BTreeMap<usize, u8>,
     /// Loaded-model references whose geometry could not be prepared.
     pub unsupported: BTreeMap<usize, String>,
 }
@@ -50,6 +64,20 @@ impl ActorCollisionModels {
             anyhow::ensure!(
                 self.models.contains_key(name),
                 "live model MPOB {index}: missing geometry {name}"
+            );
+            anyhow::ensure!(
+                self.collision_flags.contains_key(&index),
+                "live model MPOB {index}: collision metadata absent; re-export"
+            );
+        }
+        for &index in self.collision_flags.keys() {
+            anyhow::ensure!(
+                index < self.object_count,
+                "live collision metadata MPOB {index}: outside object table"
+            );
+            anyhow::ensure!(
+                !self.unsupported.contains_key(&index),
+                "live collision metadata MPOB {index}: unsupported actor"
             );
         }
         for &index in self.unsupported.keys() {
@@ -167,6 +195,13 @@ impl CollisionGeometry {
 
 impl CollisionScene {
     pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.sphere_object_scale.is_none_or(|scale| scale > 0),
+            "collision sphere_object_scale must be effective positive scale"
+        );
+        if let Some(visibility) = &self.model_visibility {
+            visibility.validate()?;
+        }
         if let Some(models) = &self.actor_models {
             models.validate()?;
         }

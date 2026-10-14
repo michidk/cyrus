@@ -18,12 +18,16 @@ pub(crate) fn prepare(
     let map = &geometry.rgm;
     let terrain = geometry.terrain.as_deref();
     let world = geometry.entry.index;
-    let config = PlayerConfig::parse(&crate::preparation::text(source, "SYSTEM.INI")?)
+    let system_text = crate::preparation::text(source, "SYSTEM.INI")?;
+    let system = rgpre::import::system_ini::SystemIni::parse(&system_text)
+        .with_context(|| format!("world {world}: parse SYSTEM.INI slope settings"))?;
+    let config = PlayerConfig::parse(&system_text)
         .with_context(|| format!("world {world}: parse SYSTEM.INI"))?;
     let settings = MovementSettings {
         standing_height: config.standing_height,
         post_collide_height: config.post_collide_height,
         slide_range: config.slide_range,
+        slide_speed: system.game.slide_speed,
         turn_speed: config.turn_speed,
         turn_max_speed: config.turn_max_speed,
         poly_push_units: config.poly_push_units,

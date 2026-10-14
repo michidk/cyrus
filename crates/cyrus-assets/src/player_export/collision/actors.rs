@@ -4,6 +4,11 @@ use crate::collision::{ActorCollisionModels, CollisionGeometry};
 use anyhow::{Context, Result, ensure};
 use rgpre::import::{FileType, registry::Registry, rgm, rob};
 
+struct InitialModel {
+    flags: u8,
+    geometry: Option<(String, CollisionGeometry)>,
+}
+
 pub(super) fn prepare(
     map: &rgm::RgmFile,
     registry: &Registry,
@@ -25,7 +30,7 @@ pub(super) fn prepare(
         if object["object_type"] != 1 {
             continue;
         }
-        let decoded = (|| -> Result<Option<(String, CollisionGeometry)>> {
+        let decoded = (|| -> Result<InitialModel> {
             let script = object["script_name"]
                 .as_str()
                 .context("missing script name")?;
@@ -48,11 +53,19 @@ pub(super) fn prepare(
                         .as_str()
                         .context("missing MPOB model name")?;
                     if name.is_empty() || object["is_static"] != 1 {
-                        return Ok(None);
+                        return Ok(InitialModel {
+                            flags: 0,
+                            geometry: None,
+                        });
                     }
                     name
                 }
-                Some("animation_table") => return Ok(None),
+                Some("animation_table") => {
+                    return Ok(InitialModel {
+                        flags: 0,
+                        geometry: None,
+                    });
+                }
                 other => anyhow::bail!("actor {script}: unsupported loaded model path {other:?}"),
             };
             let name = model_key(path);
@@ -60,10 +73,21 @@ pub(super) fn prepare(
             // Geometry is shared by model name only after source selection. Mutable
             // model instances and actor collision flags remain game-owned.
             let geometry = load(path, &name, registry, archive)?;
-            Ok(Some((name, geometry)))
+            let flags = archive
+                .segments
+                .iter()
+                .find(|segment| segment.name().eq_ignore_ascii_case(&name))
+                .map_or(0, |segment| segment._face_count_low[0]);
+            Ok(InitialModel {
+                flags,
+                geometry: Some((name, geometry)),
+            })
         })();
         match decoded {
-            Ok(Some((name, geometry))) => {
+            Ok(InitialModel {
+                flags,
+                geometry: Some((name, geometry)),
+            }) => {
                 if let Some(previous) = result.models.get(&name) {
                     ensure!(
                         serde_json::to_vec(previous)? == serde_json::to_vec(&geometry)?,
@@ -73,8 +97,14 @@ pub(super) fn prepare(
                     result.models.insert(name.clone(), geometry);
                 }
                 result.instances.insert(index, name);
+                result.collision_flags.insert(index, flags);
             }
-            Ok(None) => {}
+            Ok(InitialModel {
+                flags,
+                geometry: None,
+            }) => {
+                result.collision_flags.insert(index, flags);
+            }
             Err(error) => {
                 result
                     .unsupported

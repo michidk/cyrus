@@ -5,6 +5,7 @@ use cyrus_assets::collision::ActorCollisionModels;
 use std::collections::BTreeMap;
 
 struct Model {
+    vertices: Vec<[f32; 3]>,
     mesh: CollisionMesh,
     radius: f32,
     version: Option<[u8; 4]>,
@@ -14,9 +15,11 @@ struct Model {
 /// Initial MPOB model bindings and immutable query geometry. A missing entry is
 /// unsupported, distinct from a successfully prepared scene with no static actors.
 pub struct ActorModelCollision {
+    object_count: usize,
     models: BTreeMap<String, Model>,
     instances: BTreeMap<usize, String>,
     unsupported: BTreeMap<usize, String>,
+    collision_flags: BTreeMap<usize, u8>,
 }
 
 impl ActorModelCollision {
@@ -29,6 +32,7 @@ impl ActorModelCollision {
                 Ok((
                     name.clone(),
                     Model {
+                        vertices: model.vertices.clone(),
                         mesh: CollisionMesh::new(model)
                             .with_context(|| format!("live model {name}"))?,
                         radius: model.radius,
@@ -39,9 +43,11 @@ impl ActorModelCollision {
             })
             .collect::<Result<_>>()?;
         Ok(Self {
+            object_count: source.object_count,
             models,
             instances: source.instances.clone(),
             unsupported: source.unsupported.clone(),
+            collision_flags: source.collision_flags.clone(),
         })
     }
 
@@ -63,6 +69,45 @@ impl ActorModelCollision {
         Ok(self.model(actor)?.radius)
     }
 
+    /// Initial static bounds use original vertices, not polygon bounds or rendered meshes.
+    pub fn initial_bounds(
+        &self,
+        actor: usize,
+        system_scale: i32,
+        radius_scale: i32,
+    ) -> Result<crate::actor_shape::ActorBounds> {
+        crate::actor_shape::ActorBounds::from_vertices(
+            &self.model(actor)?.vertices,
+            system_scale,
+            radius_scale,
+        )
+        .with_context(|| format!("MPOB {actor} initial static bounds"))
+    }
+
+    /// Loaded initial static resource, distinguishing a model-less actor from unsupported data.
+    pub fn loaded_radius(&self, actor: usize) -> Result<Option<f32>> {
+        anyhow::ensure!(
+            actor < self.object_count,
+            "MPOB {actor}: outside object table"
+        );
+        if self.unsupported.contains_key(&actor) || self.instances.contains_key(&actor) {
+            self.radius(actor).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Initial ordinary actor metadata; animation/model-less actors also have a known byte.
+    pub fn collision_flags(&self, actor: usize) -> Result<u8> {
+        if let Some(reason) = self.unsupported.get(&actor) {
+            anyhow::bail!("MPOB {actor}: {reason}");
+        }
+        self.collision_flags
+            .get(&actor)
+            .copied()
+            .with_context(|| format!("MPOB {actor}: collision metadata absent; re-export"))
+    }
+
     /// Query the caller's current stored model pose; never infer it from renderer state.
     pub fn segment_contacts(
         &self,
@@ -76,6 +121,19 @@ impl ActorModelCollision {
             .mesh
             .world_segment_contacts(pose, start, end, sidedness)
             .with_context(|| format!("MPOB {actor} live model segment"))
+    }
+
+    /// Body geometry uses the host's stored model pose and original actor spheres.
+    pub fn body_contacts(
+        &self,
+        actor: usize,
+        pose: &ModelPose,
+        probe: &crate::collision_mesh::BodyProbe<'_>,
+    ) -> Result<Vec<crate::collision_mesh::WorldSphereContact>> {
+        self.model(actor)?
+            .mesh
+            .world_sphere_contacts(pose, probe)
+            .with_context(|| format!("MPOB {actor} live model body query"))
     }
 
     /// Installed face material; mutable actor surface assignment is a separate stage.

@@ -55,13 +55,18 @@ pub fn advance_animation(
 impl GroundedWalk {
     /// Run admitted ordinary walking and collision after animation/candidate preparation.
     /// Returns a frame only when the movement request selects one; retain the prior pose otherwise.
+    /// Sound callbacks receive the surface and local Q8 position at command emission.
     pub fn move_grounded(
         &mut self,
         query: &StaticGroundQuery<'_>,
         input: &mut GroundedUpdate,
         shared: (&mut SupportHistory, &mut i32),
         animation: &mut cyrus_world::animation::ActorAnimation,
-        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound, u8) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(
+            cyrus_world::animation::AnimationSound,
+            u8,
+            [i64; 3],
+        ) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
         let definition = query
@@ -198,7 +203,11 @@ impl GroundedWalk {
         input: &ForwardWalk,
         shared: (&mut SupportHistory, &mut i32),
         animation: &mut cyrus_world::animation::ActorAnimation,
-        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound, u8) -> anyhow::Result<()>,
+        sounds: &mut dyn FnMut(
+            cyrus_world::animation::AnimationSound,
+            u8,
+            [i64; 3],
+        ) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<super::walk::WalkingStep>> {
         let definition = query
             .scene
@@ -217,7 +226,7 @@ impl GroundedWalk {
             definition,
             input.frame_scale,
             input.nominal_ticks,
-            &mut |sound| sounds(sound, self.surface),
+            &mut |sound| sounds(sound, self.surface, self.position),
         )?;
         if let Some(step) = &step {
             self.position =

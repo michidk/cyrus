@@ -6,6 +6,16 @@ and the supporting actor and face. Callers supply stored model poses in original
 map axes. Transient geometry and authoritative live support flags require their
 runtime owners and remain unsupported by this registry.
 
+`ModelAdmission` validates prepared PVO references and supplies ordered object IDs
+from an original-coordinate camera lookup. It permits shared children, rejects
+cycles, and does not choose actor eligibility or rendering culling. Gameplay owns
+retained support and the load-time secondary actor table.
+
+`ActorBounds::from_vertices` derives static-actor extents from original model
+vertices, with nearest-even conversion and installed horizontal scaling.
+Authored MPSZ bounds use the same sphere builder after validation. Gameplay owns
+selection of the original loader branch and its model-less single-sphere path.
+
 Terrain support, polygon contacts, model meshes and ordered static-world queries.
 Consumes serialized `cyrus-assets::collision` records and Bevy math, without world
 lifecycle, gameplay, rendering, an install parser or an audio backend.
@@ -85,3 +95,32 @@ and automatic locomotion remain unsupported. Re-export cached worlds after updat
 Actor collision shapes share one map-coordinate builder for upright, X-dominant and Z-dominant authored bounds. Ordinary obstacle spheres remain separate from the additional stored sphere. The selected player consumes the same builder. Construction follows [preservation’s actor shape rules](https://github.com/michidk/redguard-preservation/blob/e33cfa2/docs/engine/player.md#horizontal-actor-collision-spheres). This prepares geometry; ordinary NPC motion/support/contact stage integration remains incomplete.
 
 Runtime candidate preparation visits the static spatial list, ordinary live actors and transient models in original order. Separate face and actor-style lists each retain their 64-entry limit, model-instance identity, owners and collision metadata. Existing static queries use the same selection core. The host supplies current loaded-model bounds and authoritative exclusion state. This prepares candidate records; live model geometry, ordinary NPC support/response and transient runtime owners remain incomplete. Rules follow [preservation’s candidate construction](https://github.com/michidk/redguard-preservation/blob/192fd01/docs/engine/player.md#live-and-transient-collision-candidates).
+
+Mixed primary body queries retain static/live owners and nearest-even integer
+world normals. Model-local queries retain the first thirty-two successful faces;
+the primary collector returns after sixteen model contacts before later models
+or terrain. Invalid body shapes fail even with no admitted candidates. These
+queries follow preservation's [body-query contracts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#primary-body-contact-collection).
+Response and transient geometry remain owned by the caller.
+
+Residual body collection scans all admitted static/live face models without the
+primary contact cap or terrain addition. It retains model-local limits and
+caller-supplied working spheres. Ordinary gameplay owns state-dependent radius
+adjustment, angle snapshots, separation and result flags.
+
+Actor-style overlap queries consume host-transformed selected spheres, visit the
+first thirty-two in shape order, and return horizontal separation from the first
+strict three-dimensional overlap. Static placement and actor-pair radius truncation
+remain distinct, following [preservation's overlap rules](https://github.com/michidk/redguard-preservation/blob/6e0102f/docs/engine/player.md#actor-sphere-overlap).
+Shared original distance arithmetic also supplies SOUP spatial queries. Gameplay
+still owns selected-shape preparation, self exclusion and weighted response.
+
+Actor-style static sphere lookup validates retained placement/model identities
+and collision flags before returning the stored placement origin and model
+radius. It does not re-admit candidates or substitute face-model geometry.
+
+**Verified:** mixed segment queries accept explicit map-unit endpoints and preserve retained
+static/live face order and duplicates. Candidate-type exclusion precedes live
+pose resolution. The world integer adapter rounds points and scaled normals
+nearest-even without normalizing or changing rank, following preservation's
+[ordinary segment rules](https://github.com/michidk/redguard-preservation/blob/729dc5b/docs/engine/player.md#ordinary-forward-segment-response).

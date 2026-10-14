@@ -36,6 +36,8 @@ pub fn prepare_source(
         .with_context(|| format!("world {world} script clock"))?;
     let updates = UpdateSettings::from_system(&system)
         .with_context(|| format!("world {world} script update settings"))?;
+    let dialogue = crate::script::DialogueSettings::from_system(&system)
+        .with_context(|| format!("world {world} script dialogue settings"))?;
     let player_distance_override = player_distance_override(source)
         .with_context(|| format!("world {world} REDGUARD.CHT script query settings"))?;
     let definition = crate::preparation::soup(source)?;
@@ -167,10 +169,11 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 10,
+        version: 11,
         player_distance_override,
         clock,
         updates,
+        dialogue,
         actor_pool_capacity: config.actor_pool_capacity,
         world,
         content_id: String::new(),

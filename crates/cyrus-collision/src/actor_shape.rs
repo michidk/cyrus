@@ -35,6 +35,63 @@ pub struct ActorBounds {
 }
 
 impl ActorBounds {
+    /// Derive initial static-actor bounds in stored vertex order. Nearest-even
+    /// conversion precedes the next extremum comparison; only X/Z extents use
+    /// the positive system scale. Follows preservation's ordinary initialization.
+    pub fn from_vertices(
+        vertices: &[[f32; 3]],
+        system_scale: i32,
+        radius_scale: i32,
+    ) -> Result<Self> {
+        let mut positive = [0i32; 3];
+        let mut negative = [0i32; 3];
+        for (index, vertex) in vertices.iter().enumerate() {
+            for axis in 0..3 {
+                let value = vertex[axis];
+                ensure!(
+                    value.is_finite()
+                        && (-2147483648.0..2147483648.0)
+                            .contains(&f64::from(value.round_ties_even())),
+                    "actor bounds vertex {index} axis {axis}: outside signed coordinate range"
+                );
+                if value >= 0.0 {
+                    if value > positive[axis] as f32 {
+                        positive[axis] = value.round_ties_even() as i32;
+                    }
+                } else if value < negative[axis] as f32 {
+                    negative[axis] = value.round_ties_even() as i32;
+                }
+            }
+        }
+        let system_scale = if system_scale > 0 { system_scale } else { 256 };
+        for axis in 0..3 {
+            negative[axis] = negative[axis]
+                .checked_abs()
+                .context("actor bounds: negative magnitude overflow")?;
+            if axis != 1 {
+                positive[axis] = positive[axis]
+                    .checked_mul(system_scale)
+                    .context("actor bounds: positive scaled extent overflow")?
+                    >> 8;
+                negative[axis] = negative[axis]
+                    .checked_mul(system_scale)
+                    .context("actor bounds: negative scaled extent overflow")?
+                    >> 8;
+            }
+        }
+        Self::new(positive, negative, radius_scale)
+    }
+
+    /// Nonnegative positive extents in original map units, after any system scaling.
+    pub fn positive_extent(&self) -> [i32; 3] {
+        self.positive
+    }
+
+    /// Stored nonnegative negative-side extents, after any system scaling.
+    pub fn negative_extent(&self) -> [i32; 3] {
+        self.negative
+    }
+
     pub fn new(positive: [i32; 3], negative: [i32; 3], scale: i32) -> Result<Self> {
         let mut total = [0; 3];
         for axis in 0..3 {

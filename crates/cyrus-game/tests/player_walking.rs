@@ -219,6 +219,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
             standing_height: -2,
             post_collide_height: 50,
             slide_range: -60000,
+            slide_speed: None,
             turn_speed: 12,
             turn_max_speed: 48,
             poly_push_units: 16,
@@ -406,8 +407,8 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
                 &input,
                 (&mut history, &mut veto),
                 &mut animation,
-                &mut |sound, surface| {
-                    emitted.push((sound, surface));
+                &mut |sound, surface, position| {
+                    emitted.push((sound, surface, position));
                     Ok(())
                 },
             )
@@ -429,13 +430,14 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
                     rate_offset_hz: 0,
                 },
                 6,
+                initial,
             )]
         } else {
             vec![]
         };
         assert_eq!(
             emitted, expected,
-            "walking cue captures the assigned support surface"
+            "walking cue captures assigned surface and position before translation"
         );
         if !accepted {
             assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
@@ -630,7 +632,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
             &mut input,
             (&mut history, &mut veto),
             &mut animation,
-            &mut |_, _| Ok(()),
+            &mut |_, _, _| Ok(()),
         )
         .unwrap();
     assert_eq!(frame, Some(20));
@@ -649,7 +651,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         &mut input,
         (&mut history, &mut veto),
         &mut animation,
-        &mut |_, _| Ok(()),
+        &mut |_, _, _| Ok(()),
     )
     .unwrap();
     assert_eq!(animation.pending_group(), Some(3));
@@ -669,7 +671,7 @@ fn admitted_update_continues_released_walk_until_idle_without_replacing_pending_
         &mut input,
         (&mut history, &mut veto),
         &mut animation,
-        &mut |_, _| Ok(()),
+        &mut |_, _, _| Ok(()),
     )
     .unwrap();
     assert_eq!(walk.position, [start[0], start[1], start[2] + 512 + 682]);
@@ -739,7 +741,7 @@ fn released_marker_keeps_startup_and_support_veto_still_blocks_continuation() {
                 &mut input,
                 (&mut history, &mut 0),
                 &mut animation,
-                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
             )
             .unwrap();
         assert_eq!(frame.or(ordinary_frame), Some(20));
@@ -901,7 +903,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         .resource_mut::<Messages<SoundCue>>()
         .drain()
         .collect();
-    assert_eq!(cues.iter().filter(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 7, rate_offset_hz: 0 }, .. } if *actor == player)).count(), 1);
+    assert_eq!(cues.iter().filter(|cue| matches!(cue, SoundCue::Animation { actor, sound: cyrus_world::animation::AnimationSound::Play { effect: 7, rate_offset_hz: 0 }, position: Some([131072, -16384, 131072]), .. } if *actor == player)).count(), 1);
 
     assert_eq!(
         app.world().get::<PlayerPose>(player).unwrap().position,
@@ -1052,7 +1054,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
 
 fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
     let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(serde_json::json!({
-        "version":10,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"world":world,"actor_pool_capacity":10,"content_id":"",
+        "version":11,"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"world":world,"actor_pool_capacity":10,"content_id":"",
         "definition":{"functions":[
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}

@@ -18,7 +18,7 @@ pub mod source;
 
 /// Local generated files, never the original installation.
 pub const CACHE_DIR: &str = "cyrus-config/cache";
-pub const CATALOG_VERSION: u32 = 20;
+pub const CATALOG_VERSION: u32 = 23;
 
 /// Content categories, independent of source file extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

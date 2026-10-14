@@ -280,3 +280,84 @@ fn invalid_sound_fields_and_handler_failures_stop_with_context() {
     assert!(error.starts_with("world 17 actor ACTOR group 7 command 0:"));
     assert!(actor.advance_with_sounds(0, &mut |_| Ok(())).is_err());
 }
+
+#[test]
+fn collision_checkpoint_restores_cursor_pending_and_sound_state_but_keeps_default() {
+    use cyrus_world::animation::ActorAnimation;
+    let data = asset(json!([
+        {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":4,"volume_shift":0},
+            {"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},{"opcode":1}]},
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":70},{"opcode":2,"value":0}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":80}]}
+    ]));
+    let mut events = Vec::new();
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 8).unwrap();
+    actor
+        .request_with_sounds(0, 0, 0, &mut |sound| {
+            events.push(sound);
+            Ok(())
+        })
+        .unwrap();
+    actor
+        .request_with_sounds(7, 0, 0, &mut |sound| {
+            events.push(sound);
+            Ok(())
+        })
+        .unwrap();
+    let checkpoint = actor.checkpoint().unwrap();
+    actor
+        .select_default_with_sounds(7, 0, &mut |sound| {
+            events.push(sound);
+            Ok(())
+        })
+        .unwrap();
+    actor
+        .force_request_with_sounds(8, 0, 0, &mut |sound| {
+            events.push(sound);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(actor.current_group(), Some(8));
+    actor.restore_checkpoint(&checkpoint).unwrap();
+    assert_eq!(actor.default_group(), 7);
+    assert_eq!(actor.current_group(), Some(0));
+    assert_eq!(actor.pending_group(), Some(7));
+    let count = events.len();
+    assert_eq!(
+        actor
+            .advance_with_sounds(1, &mut |sound| {
+                events.push(sound);
+                Ok(())
+            })
+            .unwrap(),
+        Some(10)
+    );
+    assert_eq!(
+        actor
+            .advance_with_sounds(1, &mut |sound| {
+                events.push(sound);
+                Ok(())
+            })
+            .unwrap(),
+        Some(11)
+    );
+    assert_eq!(
+        events.len(),
+        count,
+        "restoring does not replay the earlier sound command"
+    );
+    actor
+        .advance_with_sounds(1, &mut |sound| {
+            events.push(sound);
+            Ok(())
+        })
+        .unwrap();
+    actor
+        .advance_with_sounds(1, &mut |sound| {
+            events.push(sound);
+            Ok(())
+        })
+        .unwrap();
+    assert!(events[count..].contains(&AnimationSound::Stop));
+}

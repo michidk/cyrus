@@ -81,3 +81,17 @@ and sums use software x87 extended intermediates and nearest-even stores and
 integer conversion, following preservation PR55. The shared rotation table also
 supplies player heading projection. Matrix arithmetic requires no renderer or
 host floating-point-mode changes.
+
+`Matrix::collision_orientation` rebuilds shape orientation from local angles,
+using the published collision matrix rather than retained presentation history.
+It shares table samples and extended arithmetic, while retaining the collision
+matrix's distinct yaw direction. Model presentation matrices remain independent.
+
+Stored-coordinate matrix transforms retain fractional sphere centers with the
+same extended dot-product arithmetic as integer actor transforms. Integer
+conversion remains a separate operation for queries that require it.
+
+`ActorAnimation::checkpoint` saves the current receiver and pending request for
+ordinary collision rollback. Restoration retains the separately selected default
+and sticky failure. The game host validates actor generation and restores the
+selected frame; the audio host restores its remembered animation sample slot.

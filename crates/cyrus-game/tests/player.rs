@@ -81,16 +81,31 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
             ..default()
         }
     );
+    assert!(
+        app.world()
+            .resource::<cyrus_game::player::input::DialogueSkip>()
+            .0
+    );
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .release(KeyCode::ShiftLeft);
     app.update();
     assert!(app.world().resource::<PlayerInput>().walk);
+    assert!(
+        !app.world()
+            .resource::<cyrus_game::player::input::DialogueSkip>()
+            .0
+    );
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::ShiftRight);
     app.update();
     assert!(!app.world().resource::<PlayerInput>().walk);
+    assert!(
+        !app.world()
+            .resource::<cyrus_game::player::input::DialogueSkip>()
+            .0
+    );
     app.world_mut().resource_mut::<Fidelity>().player_controller = Mode::Faithful;
     app.update();
     assert_eq!(

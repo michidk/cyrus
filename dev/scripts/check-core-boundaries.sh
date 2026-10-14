@@ -39,6 +39,8 @@ check_consumer script '^(bevy(_[^ ]+)?|cyrus-assets|redguard-preservation) ' \
 
 check_consumer core '^(bevy_(render|window|winit|audio|pbr|gltf|mesh|image)|redguard-preservation|cyrus-(render|control)|wgpu|winit|cpal|rodio) ' \
     'pub use cyrus_assets::animation::Animations;
+pub use cyrus_assets::sound::{DialogueCache, DialogueEntry, DialoguePayload};
+pub fn dialogue_cache() -> DialogueCache<DialogueEntry> { DialogueCache::default() }
 pub use cyrus_collision::collision_world::StaticCollision;
 pub use cyrus_media::{Movie, MovieStream, Packets};
 pub use cyrus_world::{animation::AnimationPlugin, lifecycle::WorldPlugin};

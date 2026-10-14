@@ -128,7 +128,7 @@ pub fn separate_residual(
     true
 }
 
-fn facing_difference(movement: u16, normal: [i32; 3]) -> i32 {
+pub(crate) fn facing_difference(movement: u16, normal: [i32; 3]) -> i32 {
     let facing = (i32::from(super::motion::displacement_heading(
         i64::from(normal[0]),
         i64::from(normal[2]),

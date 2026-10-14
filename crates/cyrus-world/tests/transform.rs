@@ -108,3 +108,57 @@ fn invalid_integer_results_report_the_axis_and_input() {
     }
     assert!(Matrix::IDENTITY.transform([i32::MAX, 0, 0]).is_err());
 }
+
+#[test]
+fn collision_orientation_rebuilds_shape_angles_with_distinct_yaw_direction() {
+    assert_eq!(
+        Matrix::collision_orientation([0; 3])
+            .transform([256, 512, 768])
+            .unwrap(),
+        [256, 512, 768]
+    );
+    assert_eq!(
+        Matrix::collision_orientation([0, 512, 0])
+            .transform([256, 0, 0])
+            .unwrap(),
+        [0, 0, -256]
+    );
+    assert_eq!(
+        Matrix::collision_orientation([512, 0, 0])
+            .transform([0, 256, 0])
+            .unwrap(),
+        [0, 0, -256]
+    );
+    assert_eq!(
+        Matrix::collision_orientation([0, 0, 512])
+            .transform([256, 0, 0])
+            .unwrap(),
+        [0, -256, 0]
+    );
+    assert_eq!(
+        Matrix::collision_orientation([2048, 2560, 2048]),
+        Matrix::collision_orientation([0, 512, 0])
+    );
+    assert_ne!(
+        Matrix::collision_orientation([0, 512, 0]),
+        Matrix::orientation([0, 512, 0])
+    );
+}
+
+#[test]
+fn stored_sphere_transform_keeps_fractional_centers_and_extended_products() {
+    let half = Matrix([[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.5]]);
+    assert_eq!(
+        half.transform_stored([1.0, 3.0, -5.0]).unwrap(),
+        [0.5, 1.5, -2.5]
+    );
+    let large = 1_152_921_504_606_846_976.0_f32;
+    let matrix = Matrix([[large, 1.0, -large], [0.0; 3], [0.0; 3]]);
+    assert_eq!(matrix.transform_stored([1.0; 3]).unwrap(), [1.0, 0.0, 0.0]);
+    assert!(
+        Matrix::IDENTITY
+            .transform_stored([f32::NAN, 0.0, 0.0])
+            .is_err()
+    );
+    assert!(half.transform_stored([f32::INFINITY, 0.0, 0.0]).is_err());
+}

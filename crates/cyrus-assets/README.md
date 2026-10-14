@@ -7,9 +7,12 @@ belong to the consuming crates.
 
 Collision caches retain shared authored geometry separately from static placement
 flags. Initial type-one live static models retain their MPOB bindings and model
-header radii. Runtime hosts supply their current poses and collision flags.
-Missing live geometry remains unsupported; catalog version 20 requires preparation
-of older caches. Animation models also retain the original header radius.
+header radii and initial ROB collision metadata, including known zero for ordinary
+actors without a static resource. Runtime hosts retain that metadata and supply
+current poses. Collision scenes retain the effective installed sphere-object scale
+for initial static bounds. Missing live geometry or metadata remains unsupported;
+catalog version 22 requires preparation of older caches. Animation models also
+retain the original header radius.
 
 The opt-in `native` feature enables read-only install discovery, preload scans,
 native filesystem and disk-cache adapters. The `parsers` feature enables shared
@@ -194,11 +197,27 @@ including Windows. Absolute paths and traversal remain rejected.
 
 Native preload failures retain install-relative filenames, including directories and extensions, so audit diagnostics identify the source file without depending on the local install location.
 
-Catalog version 19 invalidates older browser export caches. Script schema 10 retains each actor definition's authored RALC offsets in Q8 units.
+Catalog version 19 invalidates older browser export caches. Script schema 11 retains authored RALC offsets in Q8 units and validated installed gameplay dialogue settings, including effective allocation minima. These settings participate in script content identity; older caches require preparation again.
 Preparation uses preservation's validated per-header location parser; original
 home positions are assigned per instance by the game. Location offsets participate
 in script content identity. The parser increment is published on
 [the authored-location review branch](https://github.com/michidk/redguard-preservation/compare/main...feat/authored-location-offsets).
+
+With `parsers`, `sound::dialogue` reads selected installed RTX ranges. Portable
+`sound::DialogueCache<T>` retains twenty owned payloads without parser
+dependencies. A cache-miss reader supplies the payload; `DialoguePayload` exposes
+voice presence and text release while retaining audio ownership. Native readers
+use `RtxEntry`; runtime hosts can retain prepared records and audio handles.
+Maintenance requires synchronous
+sample status and stop feedback. Playing payloads do not age. Lookup reuses an
+authored label or replaces the first entry not marked used; exhausting the used
+entries returns an error. These loading APIs do not enable automatic dialogue
+tasks or presentation by themselves. `game::prepare` also accepts
+`dialogue/<eight lowercase hex digits>.dialogue` and `.wav`, prepares only that
+authored four-byte key, and retains original text and voice lifetimes plus PCM
+metadata. Native `sound::dialogue::export::export` writes the same output.
+The current original-text lifetime adapter supports ASCII without embedded NUL;
+other text encodings remain explicitly unsupported.
 
 SOUP program types and operand/definition validation belong to
 `cyrus-script::program`. This crate prepares those records from preservation,

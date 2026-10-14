@@ -4,7 +4,7 @@ use bevy::prelude::*;
 mod actor;
 mod playback;
 mod sequence;
-pub use actor::ActorAnimation;
+pub use actor::{ActorAnimation, ActorAnimationCheckpoint};
 pub use playback::{AnimationPlayback, AnimationTick};
 pub use sequence::{AnimationSound, FrameSequence};
 

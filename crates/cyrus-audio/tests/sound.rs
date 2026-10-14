@@ -457,6 +457,41 @@ fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
     send(&mut app, 1, ScriptSound::StopOwned);
     app.update();
     assert_eq!(count(&mut app), 0);
+    // Global cleanup crosses script ownership and unowned presentation samples.
+    for index in [0, 1] {
+        send(
+            &mut app,
+            index,
+            ScriptSound::Flat {
+                effect: 0,
+                volume: 0,
+                rate_offset_hz: 0,
+            },
+        );
+    }
+    app.world_mut().write_message(SoundCue::Flat {
+        effect: 1,
+        volume: 0,
+        rate_offset_hz: 0,
+    });
+    app.update();
+    assert_eq!(count(&mut app), 3);
+    send(&mut app, 0, ScriptSound::StopAll);
+    // A later start in the same invocation survives the earlier global stop.
+    send(
+        &mut app,
+        1,
+        ScriptSound::Flat {
+            effect: 1,
+            volume: 0,
+            rate_offset_hz: 0,
+        },
+    );
+    app.update();
+    assert_eq!(count(&mut app), 1);
+    send(&mut app, 0, ScriptSound::StopAll);
+    app.update();
+    assert_eq!(count(&mut app), 0);
     // A start and its cleanup in one update cannot leave a deferred sound alive.
     send(
         &mut app,

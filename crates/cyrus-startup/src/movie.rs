@@ -25,6 +25,7 @@ use {
 
 #[derive(Resource, Default)]
 struct MoviePlayback {
+    new_game: bool,
     #[cfg(not(target_arch = "wasm32"))]
     load: Option<Task<anyhow::Result<Prepared>>>,
     #[cfg(target_arch = "wasm32")]
@@ -210,7 +211,11 @@ fn drive(
         }
         #[cfg(not(target_arch = "wasm32"))]
         let root = install.root.clone();
-        let index = request.0;
+        let index = match request {
+            MovieRequest::Menu(index) => *index,
+            MovieRequest::NewGame => 0,
+        };
+        playback.new_game = matches!(request, MovieRequest::NewGame);
         menu.movie = Some(MovieStatus {
             name: String::new(),
             frame: 0,
@@ -263,6 +268,7 @@ fn drive(
                 playback.playing = Some(playing);
             }
             Err(error) => {
+                playback.new_game = false;
                 menu.movie = None;
                 menu.unavailable = Some(format!("Movie unavailable: {error:#}"));
                 menu.dirty = true;
@@ -453,6 +459,8 @@ fn drive(
         for entity in &audio_players {
             commands.entity(entity).despawn();
         }
+        menu.enter_world = failure.is_none() && playback.new_game;
+        playback.new_game = false;
         playback.playing = None;
         menu.movie = None;
         menu.dirty = true;
@@ -523,6 +531,77 @@ mod tests {
     use super::*;
     #[cfg(not(target_arch = "wasm32"))]
     use cyrus_assets::movie::MovieSubtitle;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn movie_completion_enters_new_game_only_after_success() {
+        for (new_game, complete, fail) in [
+            (true, false, false),
+            (true, true, false),
+            (false, true, false),
+            (true, false, true),
+        ] {
+            let mut world = World::new();
+            world.insert_resource(GameInstall {
+                root: Default::default(),
+            });
+            world.init_resource::<Messages<MovieRequest>>();
+            world.init_resource::<Time<Real>>();
+            world.init_resource::<ButtonInput<KeyCode>>();
+            world.init_resource::<Assets<Image>>();
+            world.init_resource::<Assets<StreamingAudio>>();
+            let mut menu = MenuState::default();
+            menu.movie = Some(MovieStatus {
+                name: "synthetic.smk".into(),
+                frame: u32::from(complete),
+                frames: 1,
+                loading: !complete,
+            });
+            world.insert_resource(menu);
+            let (sender, receiver) = mpsc::channel();
+            let _sender = (!fail).then_some(sender);
+            world.insert_resource(MoviePlayback {
+                new_game,
+                load: None,
+                playing: Some(Playing {
+                    movie: Prepared {
+                        source: cyrus_assets::movie::MovieInput::File(Default::default()),
+                        metadata: cyrus_assets::movie::MovieMetadata {
+                            definition: MovieDefinition {
+                                name: "synthetic.smk".into(),
+                                keys: Vec::new(),
+                                subtitles: Vec::new(),
+                            },
+                            frames: 1,
+                            frame_micros: 1000,
+                            has_audio: false,
+                            font: default(),
+                            line_height: 26,
+                            font_color: [255; 3],
+                        },
+                    },
+                    decoder: Decoder {
+                        frames: Mutex::new(receiver),
+                        audio: None,
+                    },
+                    image: default(),
+                    audio: None,
+                    elapsed: if complete { 0.001 } else { 0.0 },
+                    next_frame: if complete { 2 } else { 1 },
+                    started: complete,
+                    audio_started: false,
+                }),
+            });
+            world.run_system_cached(drive).unwrap();
+            let menu = world.resource::<MenuState>();
+            assert_eq!(menu.enter_world, new_game && complete && !fail);
+            assert_eq!(menu.movie.is_some(), !complete && !fail);
+            assert_eq!(menu.unavailable.is_some(), fail);
+            if fail {
+                assert!(menu.unavailable.as_ref().unwrap().contains("disconnected"));
+            }
+        }
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]

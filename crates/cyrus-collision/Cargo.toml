@@ -8,3 +8,4 @@ edition.workspace = true
 bevy.workspace = true
 cyrus-assets.workspace = true
 anyhow.workspace = true
+rustc_apfloat = "0.2.3"

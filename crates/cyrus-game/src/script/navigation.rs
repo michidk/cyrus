@@ -41,3 +41,71 @@ pub(super) fn wander_without_maps(
     }
     Ok(displacement)
 }
+
+/// Runtime ownership bytes in WDNM file-map and node-index order.
+/// Loading discards authored reserved bytes. Acquisition/release use the low byte
+/// of the actor identifier; periodic sound maintenance clears every reservation.
+#[derive(Debug)]
+pub(super) struct WalkNodeReservations {
+    maps: Vec<Vec<u8>>,
+}
+
+impl WalkNodeReservations {
+    pub(super) fn prepare(metadata: &serde_json::Value, world: u32) -> Result<Self> {
+        let maps = metadata
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("world {world} walk_node_maps absent or invalid"))?;
+        let maps = maps
+            .iter()
+            .enumerate()
+            .map(|(map, value)| {
+                let nodes = value["walk_nodes"].as_array().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "world {world} walk_node_maps map {map}: walk_nodes absent or invalid"
+                    )
+                })?;
+                ensure!(
+                    value["node_count"].as_u64() == Some(nodes.len() as u64),
+                    "world {world} walk_node_maps map {map}: node_count does not match walk_nodes"
+                );
+                Ok(vec![0; nodes.len()])
+            })
+            .collect::<Result<_>>()?;
+        Ok(Self { maps })
+    }
+
+    pub(super) fn map_count(&self) -> usize {
+        self.maps.len()
+    }
+
+    fn node(&mut self, map: usize, node: usize) -> Result<&mut u8> {
+        self.maps
+            .get_mut(map)
+            .and_then(|nodes| nodes.get_mut(node))
+            .ok_or_else(|| anyhow::anyhow!("walk-node map {map} node {node}: unavailable"))
+    }
+
+    pub(super) fn acquire(&mut self, map: usize, node: usize, actor: i16) -> Result<bool> {
+        let owner = self.node(map, node)?;
+        let actor = actor as u8;
+        if *owner != 0 && *owner != actor {
+            return Ok(false);
+        }
+        *owner = actor;
+        Ok(true)
+    }
+
+    pub(super) fn release(&mut self, map: usize, node: usize, actor: i16) -> Result<()> {
+        let owner = self.node(map, node)?;
+        if *owner == actor as u8 {
+            *owner = 0;
+        }
+        Ok(())
+    }
+
+    pub(super) fn reset(&mut self) {
+        for nodes in &mut self.maps {
+            nodes.fill(0);
+        }
+    }
+}

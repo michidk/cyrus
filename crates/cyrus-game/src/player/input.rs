@@ -24,6 +24,11 @@ pub struct PlayerInput {
 #[derive(Resource, Default)]
 pub struct PlayerBindings([Option<KeyCode>; 8]);
 
+/// Configured keyboard key_a before Modern movement interpretation.
+/// Joystick input remains unavailable until its device adapter is supported.
+#[derive(Resource, Default)]
+pub struct DialogueSkip(pub bool);
+
 impl PlayerBindings {
     /// Translate documented PC AT input codes into Bevy physical keys.
     /// Zero is unbound. Unsupported device/unknown codes return an error,
@@ -129,12 +134,15 @@ pub(super) fn sample(
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<Fidelity>,
     mut input: ResMut<PlayerInput>,
+    mut dialogue_skip: ResMut<DialogueSkip>,
 ) {
     if suppressed.0 || console.is_some_and(|console| console.open) {
         *input = PlayerInput::default();
+        dialogue_skip.0 = false;
         return;
     }
     *input = bindings.sample(&keys);
+    dialogue_skip.0 = input.walk;
     if fidelity.player_controller == Mode::Modern {
         input.forward = keys.pressed(KeyCode::KeyW);
         input.backward = keys.pressed(KeyCode::KeyS);

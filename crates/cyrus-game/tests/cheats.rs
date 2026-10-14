@@ -441,7 +441,18 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 10,
+        version: 11,
+        dialogue: cyrus_assets::script::DialogueSettings {
+            menu_start: [35, 25],
+            max_menu_items: 300,
+            max_dialog_lines: 20,
+            max_text_width: 500,
+            menu_traverse_delay: 4,
+            print_text: true,
+            use_speech: true,
+            max_distance: 1600,
+            rtx_filename: "ENGLISH.RTX".into(),
+        },
         clock: ClockSettings {
             normal_frame_rate: 12,
             min_frame_rate: 6,

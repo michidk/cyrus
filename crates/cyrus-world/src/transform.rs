@@ -34,6 +34,40 @@ impl Matrix {
         result
     }
 
+    /// Rebuild the collision shape's matrix from local pitch, yaw and roll.
+    /// This differs from retained actor presentation orientation. Uses shared
+    /// table samples at wrapped negative angles and extended intermediates,
+    /// following preservation's per-update collision shape preparation.
+    pub fn collision_orientation(angles: [u16; 3]) -> Self {
+        let samples = angles.map(|angle| {
+            let index = usize::from(angle.wrapping_neg() & 2047);
+            (
+                extended(rotation_sample(index)),
+                extended(rotation_sample(index + 512)),
+            )
+        });
+        let [(sp, cp), (sy, cy), (sr, cr)] = samples;
+        let product = |a: X87DoubleExtended, b: X87DoubleExtended| (a * b).value;
+        let triple = |a: X87DoubleExtended, b: X87DoubleExtended, c: X87DoubleExtended| {
+            product(product(a, b), c)
+        };
+        let add = |a: X87DoubleExtended, b: X87DoubleExtended| stored((a + b).value);
+        let subtract = |a: X87DoubleExtended, b: X87DoubleExtended| stored((a - b).value);
+        Self([
+            [
+                add(triple(sp, sr, sy), product(cr, cy)),
+                stored(product(-sr, cp)),
+                subtract(triple(sr, sp, cy), product(sy, cr)),
+            ],
+            [
+                subtract(product(sr, cy), triple(sp, sy, cr)),
+                stored(product(cr, cp)),
+                subtract(product(-sr, sy), triple(cr, sp, cy)),
+            ],
+            [stored(product(cp, sy)), stored(sp), stored(product(cp, cy))],
+        ])
+    }
+
     /// Apply negative yaw, pitch, then roll, wrapping each angle to 1/2048 turns.
     /// Each axis reads the old row and stores each resulting component as f32.
     pub fn rotate(&mut self, [pitch, yaw, roll]: [u16; 3]) {
@@ -88,6 +122,33 @@ impl Matrix {
                 "actor matrix transform axis {axis}: position {position:?} with row {row:?} cannot convert to i32"
             );
             result[axis] = integer.value as i32;
+        }
+        Ok(result)
+    }
+
+    /// Transform stored single-precision coordinates without integer conversion.
+    /// Sphere overlap retains these fractional centers until pair differences are
+    /// rounded. Uses the same extended dot products as actor-coordinate transforms.
+    pub fn transform_stored(self, position: [f32; 3]) -> Result<[f32; 3]> {
+        ensure!(
+            position.iter().all(|value| value.is_finite()),
+            "actor stored transform: nonfinite position"
+        );
+        let inputs = position.map(extended);
+        let mut result = [0.0; 3];
+        for (axis, row) in self.0.into_iter().enumerate() {
+            let products: [X87DoubleExtended; 3] =
+                std::array::from_fn(|i| (inputs[i] * extended(row[i])).value);
+            let first = if axis == 0 {
+                (products[1] + products[0]).value
+            } else {
+                (products[0] + products[1]).value
+            };
+            result[axis] = stored((first + products[2]).value);
+            ensure!(
+                result[axis].is_finite(),
+                "actor stored transform axis {axis}: nonfinite result for {position:?}"
+            );
         }
         Ok(result)
     }

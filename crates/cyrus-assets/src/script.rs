@@ -96,6 +96,90 @@ impl UpdateSettings {
     }
 }
 
+/// Installed gameplay dialogue settings, distinct from the startup book menu.
+/// Effective allocation minima follow preservation's engine/sound.md.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DialogueSettings {
+    pub menu_start: [i32; 2],
+    pub max_menu_items: u32,
+    pub max_dialog_lines: u32,
+    pub max_text_width: u32,
+    /// Held-choice traversal delay in BIOS ticks; configured zero resolves to one.
+    pub menu_traverse_delay: u32,
+    pub print_text: bool,
+    pub use_speech: bool,
+    pub max_distance: i32,
+    pub rtx_filename: String,
+}
+
+impl DialogueSettings {
+    #[cfg(feature = "parsers")]
+    pub fn from_system(settings: &rgpre::import::system_ini::SystemIni) -> anyhow::Result<Self> {
+        let dialog = &settings.dialog;
+        let required = |name: &str, value: Option<i32>| {
+            value.with_context(|| format!("SYSTEM.INI [dialog] {name} missing"))
+        };
+        let delay = required("menu_traverse_delay", dialog.menu_traverse_delay)?;
+        let prepared = Self {
+            menu_start: [
+                required("menu_start_x", dialog.menu_start_x)?,
+                required("menu_start_y", dialog.menu_start_y)?,
+            ],
+            max_menu_items: required("dialog_max_menu_items", dialog.dialog_max_menu_items)?
+                .max(300) as u32,
+            max_dialog_lines: required("dialog_max_dialog_lines", dialog.dialog_max_dialog_lines)?
+                .max(16) as u32,
+            max_text_width: required("dialog_max_text_width", dialog.dialog_max_text_width)?
+                .max(150) as u32,
+            menu_traverse_delay: u32::try_from(if delay == 0 { 1 } else { delay })
+                .context("SYSTEM.INI [dialog] menu_traverse_delay is negative")?,
+            print_text: dialog
+                .dialog_print_text
+                .context("SYSTEM.INI [dialog] dialog_print_text missing")?,
+            use_speech: dialog
+                .dialog_use_speech
+                .context("SYSTEM.INI [dialog] dialog_use_speech missing")?,
+            max_distance: required("dialog_max_distance", dialog.dialog_max_distance)?,
+            rtx_filename: settings
+                .system
+                .rtx_filename
+                .clone()
+                .context("SYSTEM.INI [system] rtx_filename missing")?,
+        };
+        prepared.validate()?;
+        Ok(prepared)
+    }
+
+    /// Reject unsupported allocation overflow and invalid prepared minima.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (300..=i32::MAX as u32 / 30).contains(&self.max_menu_items),
+            "SYSTEM.INI [dialog] invalid menu capacity {}",
+            self.max_menu_items
+        );
+        anyhow::ensure!(
+            (16..=i32::MAX as u32 / 300).contains(&self.max_dialog_lines),
+            "SYSTEM.INI [dialog] invalid dialogue capacity {}",
+            self.max_dialog_lines
+        );
+        anyhow::ensure!(
+            self.max_text_width >= 150 && self.max_text_width <= i32::MAX as u32,
+            "SYSTEM.INI [dialog] invalid text width {}",
+            self.max_text_width
+        );
+        anyhow::ensure!(
+            self.menu_traverse_delay > 0 && self.menu_traverse_delay <= i32::MAX as u32,
+            "SYSTEM.INI [dialog] invalid traversal delay {}",
+            self.menu_traverse_delay
+        );
+        anyhow::ensure!(
+            !self.rtx_filename.is_empty(),
+            "SYSTEM.INI [system] rtx_filename is empty"
+        );
+        Ok(())
+    }
+}
+
 /// Script metadata remains available even for actors without animation geometry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Actor {
@@ -135,6 +219,7 @@ pub struct Scripts {
     pub version: u32,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
+    pub dialogue: DialogueSettings,
     /// Initial `neversaydie` cheat state, loaded from optional REDGUARD.CHT.
     pub player_distance_override: bool,
     /// Installed reusable actor-pool capacity, including the engine's minimum of ten.
@@ -154,6 +239,7 @@ impl Scripts {
             self.version,
             &self.clock,
             &self.updates,
+            &self.dialogue,
             self.player_distance_override,
             self.actor_pool_capacity,
             self.world,
@@ -166,7 +252,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 10,
+            self.version == 11,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
@@ -174,6 +260,9 @@ impl Scripts {
         self.clock
             .validate()
             .with_context(|| format!("world {} script clock", self.world))?;
+        self.dialogue
+            .validate()
+            .with_context(|| format!("world {} script dialogue", self.world))?;
         anyhow::ensure!(
             (10..=i32::MAX as u32).contains(&self.actor_pool_capacity),
             "world {}: invalid script actor pool capacity {}",

@@ -51,6 +51,8 @@ pub struct HudAsset {
     pub font: cyrus_text::Font,
     /// SYSTEM.INI `[3dfx] font_sel` as main and shadow alpha.
     pub text_alpha: [u8; 2],
+    /// SYSTEM.INI [3dfx] font_norm, for reserved player dialogue record zero.
+    pub player_text_alpha: [u8; 2],
 }
 
 #[derive(Serialize, Deserialize, Clone)]

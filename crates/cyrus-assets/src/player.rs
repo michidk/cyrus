@@ -7,6 +7,9 @@ pub struct MovementSettings {
     pub standing_height: i32,
     pub post_collide_height: u32,
     pub slide_range: i32,
+    /// Installed [game] slide_speed; absent old caches cannot perform slope motion.
+    #[serde(default)]
+    pub slide_speed: Option<i32>,
     pub turn_speed: u32,
     pub turn_max_speed: u32,
     pub poly_push_units: u32,

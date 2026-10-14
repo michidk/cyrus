@@ -161,6 +161,8 @@ pub struct HudState {
     /// Text lines and pen positions currently drawn on the text layer.
     #[serde(skip)]
     text: Vec<(String, [i32; 2])>,
+    #[serde(skip)]
+    dialogue_text: Option<(usize, String)>,
 }
 
 #[derive(Default, Debug)]
@@ -204,6 +206,7 @@ impl HudState {
             bindings: hud.bindings,
             frames,
             text: Vec::new(),
+            dialogue_text: None,
         }
     }
 
@@ -402,12 +405,41 @@ fn text_lines(
     lines
 }
 
+/// Already formatted dialogue uses preservation's fixed virtual-screen band.
+fn dialogue_lines(hud: &HudAsset, text: &str) -> Vec<(String, [i32; 2])> {
+    let breaks = text.bytes().filter(|byte| *byte == b'\n').count();
+    let top = 470i64 - 26 * (breaks.max(1) as i64 + 1);
+    text.split('\n')
+        .enumerate()
+        .map(|(index, line)| {
+            (
+                line.to_owned(),
+                centred(hud, line, 320, (top + index as i64 * 26) as i32),
+            )
+        })
+        .collect()
+}
+
 /// Renders the HUD text lines into one 640×480 overlay image.
-fn text_image(hud: &HudAsset, lines: &[(String, [i32; 2])]) -> Image {
+fn text_image(
+    hud: &HudAsset,
+    lines: &[(String, [i32; 2])],
+    dialogue: Option<&(usize, String)>,
+) -> Image {
     let mut rgba = vec![0; 640 * 480 * 4];
     for (text, at) in lines {
         hud.font
             .draw_shadowed(&mut rgba, 640, text, *at, hud.text_alpha);
+    }
+    if let Some((slot, text)) = dialogue {
+        let alpha = if *slot == 0 {
+            hud.player_text_alpha
+        } else {
+            hud.text_alpha
+        };
+        for (line, at) in dialogue_lines(hud, text) {
+            hud.font.draw_shadowed(&mut rgba, 640, &line, at, alpha);
+        }
     }
     Image::new(
         Extent3d {
@@ -453,7 +485,11 @@ fn update(
     viewport: Query<Entity, With<HudViewport>>,
     mut sprites: Query<(&HudSprite, &mut ImageNode, &mut Node, &mut Visibility)>,
     text_layer: Query<Entity, With<HudText>>,
-    (keys, time): (Res<ButtonInput<KeyCode>>, Res<Time>),
+    (keys, time, sound_settings): (
+        Res<ButtonInput<KeyCode>>,
+        Res<Time>,
+        Option<Res<cyrus_assets::sound::SoundSettings>>,
+    ),
     mut images: ResMut<Assets<Image>>,
     (mut actors, activation): (Option<ResMut<ScriptActors>>, Option<Res<ActivationInputs>>),
     compass: CompassInputs,
@@ -548,6 +584,17 @@ fn update(
     let ticks = state.ticks.floor() as u32;
     state.ticks -= f64::from(ticks);
 
+    let dialogue_text = actors
+        .as_ref()
+        .and_then(|actors| actors.current.as_ref())
+        .and_then(|world| world.globals().dialogue())
+        .and_then(|dialogue| dialogue.presented_line())
+        .filter(|_| {
+            sound_settings
+                .as_ref()
+                .is_some_and(|settings| settings.subtitles)
+        })
+        .map(|(slot, text)| (slot, text.to_owned()));
     let world = actors.as_mut().and_then(|actors| actors.current.as_mut());
     let activation = activation.as_deref().filter(|inputs| {
         world
@@ -708,12 +755,12 @@ fn update(
     if let Some(prompt) = prompt {
         text.push((prompt, hud.prompt));
     }
-    if text != state.text {
+    if text != state.text || dialogue_text != state.dialogue_text {
         for entity in &text_layer {
             commands.entity(entity).despawn();
         }
-        if !text.is_empty() {
-            let image = images.add(text_image(hud, &text));
+        if !text.is_empty() || dialogue_text.is_some() {
+            let image = images.add(text_image(hud, &text, dialogue_text.as_ref()));
             commands.entity(viewport).with_child((
                 HudText,
                 ImageNode::new(image),
@@ -722,6 +769,7 @@ fn update(
             ));
         }
         state.text = text;
+        state.dialogue_text = dialogue_text;
     }
 }
 
@@ -796,6 +844,46 @@ mod tests {
     }
 
     #[test]
+    fn dialogue_band_uses_formatted_breaks_without_advancing_or_wrapping() {
+        let hud = asset(0);
+        assert_eq!(dialogue_lines(&hud, "one")[0].1[1], 418);
+        let two = dialogue_lines(&hud, "one\ntwo");
+        assert_eq!(
+            two.iter().map(|(_, at)| at[1]).collect::<Vec<_>>(),
+            [418, 444]
+        );
+        let three = dialogue_lines(&hud, "one\ntwo\nthree");
+        assert_eq!(
+            three.iter().map(|(_, at)| at[1]).collect::<Vec<_>>(),
+            [392, 418, 444]
+        );
+        assert_eq!(three[2].0, "three");
+    }
+
+    #[test]
+    fn dialogue_record_selects_installed_player_or_npc_shadow_alpha() {
+        let mut hud = asset(2);
+        hud.font = cyrus_text::Font {
+            start: 65,
+            line_height: 26,
+            palette: vec![[0, 0, 0], [63, 39, 1]],
+            glyphs: vec![cyrus_text::Glyph {
+                enabled: true,
+                width: 1,
+                height: 1,
+                pixels: vec![1],
+                ..default()
+            }],
+        };
+        let (_, at) = dialogue_lines(&hud, "A").remove(0);
+        let shadow = ((at[1] + 1) as usize * 640 + (at[0] + 1) as usize) * 4;
+        let player = text_image(&hud, &[], Some(&(0, "A".into())));
+        let npc = text_image(&hud, &[], Some(&(1, "A".into())));
+        assert_eq!(player.data.as_ref().unwrap()[shadow + 3], 97);
+        assert_eq!(npc.data.as_ref().unwrap()[shadow + 3], 199);
+    }
+
+    #[test]
     fn text_lines_centre_health_under_the_candle_and_place_counts() {
         let digit = cyrus_text::Glyph {
             enabled: true,
@@ -847,6 +935,7 @@ mod tests {
             bindings: [0; 15],
             font: default(),
             text_alpha: [255, 199],
+            player_text_alpha: [255, 97],
         }
     }
 
@@ -907,7 +996,18 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 10,
+            version: 11,
+            dialogue: cyrus_assets::script::DialogueSettings {
+                menu_start: [35, 25],
+                max_menu_items: 300,
+                max_dialog_lines: 20,
+                max_text_width: 500,
+                menu_traverse_delay: 4,
+                print_text: true,
+                use_speech: true,
+                max_distance: 1600,
+                rtx_filename: "ENGLISH.RTX".into(),
+            },
             player_distance_override: false,
             updates: cyrus_assets::script::UpdateSettings {
                 task_system: true,

@@ -94,16 +94,19 @@ fn body_contacts_retry_misses_but_suppress_successes_across_spheres_and_groups()
     assert_eq!(contacts[0].projection, Vec3::new(0.2, 5.0, 0.0));
     assert_eq!(contacts[0].normal, Vec3::Z);
 
-    source.geometry.faces = vec![vec![0, 1, 2]; 32];
-    source.geometry.normals = vec![[0.0, 0.0, 1.0]; 32];
-    source.geometry.subobjects[0].faces = (0..32).collect();
-    assert!(
-        CollisionMesh::new(&source.geometry)
-            .unwrap()
-            .sphere_contacts(&[(Vec3::new(0.2, 5.0, 0.5), 1.0)], true)
-            .unwrap_err()
-            .to_string()
-            .contains("saturation")
+    source.geometry.faces = vec![vec![0, 1, 2]; 33];
+    source.geometry.normals = vec![[0.0, 0.0, 1.0]; 33];
+    source.geometry.subobjects[0].faces = (0..33).collect();
+    let saturated = CollisionMesh::new(&source.geometry)
+        .unwrap()
+        .sphere_contacts(&[(Vec3::new(0.2, 5.0, 0.5), 1.0)], true)
+        .unwrap();
+    assert_eq!(
+        saturated
+            .iter()
+            .map(|contact| contact.face)
+            .collect::<Vec<_>>(),
+        (0..32).collect::<Vec<_>>()
     );
 }
 
@@ -123,4 +126,32 @@ fn version_four_authored_subobjects_are_not_runtime_collision() {
     assert!(!mesh.intersects_spheres(&spheres, true).unwrap());
     source.geometry.version = None;
     assert!(CollisionMesh::new(&source.geometry).is_err());
+}
+
+#[test]
+fn world_segment_integer_adapter_rounds_ties_and_retains_rank_without_normalizing() {
+    use cyrus_collision::collision_mesh::{IntegerSegmentContact, WorldSegmentContact};
+    let contact = WorldSegmentContact {
+        face: 7,
+        rank: 0x8001,
+        point: [0.5, -0.5, 1.5],
+        normal: [0.5 / 256.0, -1.5 / 256.0, 2.5 / 256.0],
+    };
+    assert_eq!(
+        contact.integer().unwrap(),
+        IntegerSegmentContact {
+            face: 7,
+            rank: 0x8001,
+            point: [0, 0, 2],
+            normal: [0, -2, 2],
+        }
+    );
+    assert!(
+        WorldSegmentContact {
+            point: [f32::NAN, 0.0, 0.0],
+            ..contact
+        }
+        .integer()
+        .is_err()
+    );
 }

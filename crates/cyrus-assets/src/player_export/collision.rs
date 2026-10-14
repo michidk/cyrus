@@ -6,6 +6,7 @@ use rgpre::import::{FileType, model3d, registry::Registry, rgm, rob, world_ini};
 use std::{collections::BTreeMap, path::Path};
 
 mod actors;
+mod visibility;
 
 pub(super) fn export(
     source: &dyn crate::source::ReadAssets,
@@ -14,6 +15,15 @@ pub(super) fn export(
     world: u32,
 ) -> anyhow::Result<CollisionScene> {
     let mut scene = CollisionScene::default();
+    let settings = rgpre::import::system_ini::SystemIni::parse(&crate::preparation::text(
+        source,
+        "SYSTEM.INI",
+    )?)?;
+    let scale = settings
+        .system
+        .sphere_object_scale
+        .context("SYSTEM.INI [system] sphere_object_scale missing")?;
+    scene.sphere_object_scale = Some(if scale > 0 { scale } else { 256 });
     for section in &map.sections {
         if let rgm::RgmSection::Mps(_, records) = section {
             for record in records {
@@ -37,6 +47,10 @@ pub(super) fn export(
         .file_stem()
         .and_then(|stem| stem.to_str())
         .with_context(|| format!("world {world}: invalid map filename {}", entry.map))?;
+    scene.model_visibility = Some(
+        visibility::prepare(source, stem)
+            .with_context(|| format!("world {world} map {stem}: model visibility"))?,
+    );
     let archive_entry = registry
         .files
         .values()
@@ -200,6 +214,34 @@ mod tests {
             assert_eq!(actors.instances[&index], name, "MPOB {index}");
         }
         assert_eq!(actors.instances.len(), 19);
+        let metadata = rgm::export_rgm_metadata_json(&map, None);
+        let ordinary_count = metadata["mpob_objects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|object| object["object_type"] == 1)
+            .count();
+        assert_eq!(actors.collision_flags.len(), ordinary_count);
+        let archive = world
+            .registry
+            .files
+            .values()
+            .find(|entry| {
+                entry.file_type == FileType::Rob && entry.name.eq_ignore_ascii_case("START")
+            })
+            .unwrap();
+        let archive = rob::parse_rob_file(archive.data.as_deref().unwrap()).unwrap();
+        for (&index, name) in &actors.instances {
+            let expected = archive
+                .segments
+                .iter()
+                .find(|segment| segment.name().eq_ignore_ascii_case(name))
+                .map_or(0, |segment| segment._face_count_low[0]);
+            assert_eq!(
+                actors.collision_flags[&index], expected,
+                "MPOB {index} {name}"
+            );
+        }
         for (name, geometry) in &actors.models {
             assert!(geometry.radius > 0.0, "{name}");
             assert!(!geometry.faces.is_empty(), "{name}");

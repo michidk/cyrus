@@ -38,6 +38,7 @@ pub use cyrus_world::sound::SoundSurface;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+pub mod dialogue;
 mod samples;
 mod script;
 use samples::{Reservation, SampleSlots};
@@ -50,6 +51,10 @@ pub struct SoundPlugin;
 
 impl Plugin for SoundPlugin {
     fn build(&self, app: &mut App) {
+        if app.world().contains_resource::<AssetServer>() {
+            app.init_asset::<dialogue::DialogueClip>()
+                .init_asset_loader::<dialogue::DialogueClipLoader>();
+        }
         if app.is_plugin_added::<bevy::audio::AudioPlugin>() {
             bevy::audio::AddAudioSource::add_audio_source::<Panned>(app);
         }
@@ -69,6 +74,7 @@ impl Plugin for SoundPlugin {
             .init_resource::<SoundEffects>()
             .init_resource::<Speech>()
             .init_resource::<Channels>()
+            .init_resource::<script::RuntimeDialogue>()
             .insert_resource(cyrus_game::script::OrdinarySoundExecutor(execute_ordinary))
             .add_systems(Update, play_audio.in_set(PlayCues));
         #[cfg(target_arch = "wasm32")]
@@ -263,6 +269,8 @@ pub(crate) struct Channels {
     start: usize,
     /// The last sound each animated actor started, for its EndAnimation.
     animation: HashMap<Entity, u8>,
+    /// One post-advancement animation slot snapshot per bound actor, including None.
+    animation_checkpoint: HashMap<Entity, Option<u8>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

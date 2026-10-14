@@ -4,7 +4,18 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 10,
+        version: 11,
+        dialogue: cyrus_assets::script::DialogueSettings {
+            menu_start: [35, 25],
+            max_menu_items: 300,
+            max_dialog_lines: 20,
+            max_text_width: 500,
+            menu_traverse_delay: 4,
+            print_text: true,
+            use_speech: true,
+            max_distance: 1600,
+            rtx_filename: "ENGLISH.RTX".into(),
+        },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
@@ -458,7 +469,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     }
     let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
-        let system = format!("[system]\nmax_active_objects=10\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n").into_bytes();
+        let system = format!("[system]\nmax_active_objects=10\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n").into_bytes();
         let mut source = Source {
             manifest: Manifest {
                 files: vec![
@@ -501,7 +512,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 10);
+    assert_eq!(scripts.version, 11);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -709,4 +720,62 @@ fn authored_location_offsets_participate_in_content_identity() {
             .to_string()
             .contains("identity mismatch")
     );
+}
+
+#[test]
+fn dialogue_settings_are_required_validated_and_part_of_content_identity() {
+    let original = cache();
+    let mut changed = original.clone();
+    changed.dialogue.max_dialog_lines += 1;
+    assert_ne!(changed.content_identity().unwrap(), original.content_id);
+    assert!(
+        changed
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("content identity")
+    );
+    changed.content_id = changed.content_identity().unwrap();
+    changed.validate().unwrap();
+    for capacity in [0, 15, u32::MAX] {
+        let mut invalid = cache();
+        invalid.dialogue.max_dialog_lines = capacity;
+        invalid.content_id = invalid.content_identity().unwrap();
+        assert!(format!("{:#}", invalid.validate().unwrap_err()).contains("dialogue capacity"));
+    }
+    let mut old = cache();
+    old.version = 10;
+    assert!(
+        old.validate()
+            .unwrap_err()
+            .to_string()
+            .contains("re-export")
+    );
+    let mut missing = serde_json::to_value(original).unwrap();
+    missing.as_object_mut().unwrap().remove("dialogue");
+    assert!(serde_json::from_value::<Scripts>(missing).is_err());
+}
+
+#[cfg(feature = "parsers")]
+#[test]
+fn installed_dialogue_settings_apply_original_minima_without_guessing_missing_inputs() {
+    let text = "[system]\nrtx_filename=ENGLISH.RTX\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=1\ndialog_max_text_width=20\nmenu_traverse_delay=0\ndialog_print_text=yes\ndialog_use_speech=no\ndialog_max_distance=1600\n";
+    let parse = |text: &str| {
+        DialogueSettings::from_system(&rgpre::import::system_ini::SystemIni::parse(text).unwrap())
+    };
+    let settings = parse(text).unwrap();
+    assert_eq!(settings.max_menu_items, 300);
+    assert_eq!(settings.max_dialog_lines, 16);
+    assert_eq!(settings.max_text_width, 150);
+    assert_eq!(settings.menu_traverse_delay, 1);
+    assert_eq!(settings.menu_start, [35, 25]);
+    assert!(settings.print_text);
+    assert!(!settings.use_speech);
+    assert!(
+        parse(&text.replace("dialog_max_dialog_lines=1\n", ""))
+            .unwrap_err()
+            .to_string()
+            .contains("dialog_max_dialog_lines")
+    );
+    assert!(parse(&text.replace("menu_traverse_delay=0", "menu_traverse_delay=-1")).is_err());
 }

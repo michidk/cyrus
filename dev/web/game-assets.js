@@ -2,6 +2,7 @@
 export async function openGameAssets(source, { createWorker = () => new Worker('./asset-worker.js', { type: 'module' }), progress = () => {} } = {}) {
   const worker = createWorker();
   const files = new Map(), pending = new Map(), requests = new Map();
+  const dialoguePaths = new Map();
   let nextId = 1, worldPaths = [], failure;
   worker.onmessage = ({ data }) => {
     if (data.kind === 'progress') { progress(data.done, data.total, data.name); return; }
@@ -29,6 +30,7 @@ export async function openGameAssets(source, { createWorker = () => new Worker('
     const root = path.split('/')[0];
     if (['startup', 'menu', 'hud', 'sounds', 'cheats', 'console'].includes(root)) return root;
     if (root === 'music' || root === 'movies') return path;
+    if (root === 'dialogue') return path.replace(/\.(dialogue|wav)$/, '');
     return root.replace(/\.(glb|animations|scripts|environment|player|player-models)$/, '');
   }
   async function read(path) {
@@ -42,12 +44,23 @@ export async function openGameAssets(source, { createWorker = () => new Worker('
           worldPaths = result.files.map(([name]) => name);
         }
         for (const [name, bytes] of result.files) files.set(name, bytes);
+        if (path.startsWith('dialogue/')) {
+          dialoguePaths.delete(key);
+          dialoguePaths.set(key, result.files.map(([name]) => name));
+          while (dialoguePaths.size > 20) {
+            const oldest = dialoguePaths.keys().next().value;
+            for (const name of dialoguePaths.get(oldest)) files.delete(name);
+            dialoguePaths.delete(oldest);
+          }
+        }
+        return new Map(result.files);
       }).finally(() => pending.delete(key));
       pending.set(key, task);
     }
-    await pending.get(key);
-    if (!files.has(path)) throw new Error('Game preparation did not produce ' + path);
-    return files.get(path);
+    const prepared = await pending.get(key);
+    const bytes = files.get(path) ?? prepared.get(path);
+    if (!bytes) throw new Error('Game preparation did not produce ' + path);
+    return bytes;
   }
   function movieIndex(url) {
     const match = /(?:^|\/)movies\/(\d+)\.(?:smk|wav)$/.exec(url);
@@ -75,6 +88,6 @@ export async function openGameAssets(source, { createWorker = () => new Worker('
     failure = new Error('Asset worker closed');
     worker.terminate();
     for (const request of requests.values()) request.reject(new Error('Asset worker closed'));
-    requests.clear(); files.clear();
+    requests.clear(); files.clear(); dialoguePaths.clear();
   } };
 }

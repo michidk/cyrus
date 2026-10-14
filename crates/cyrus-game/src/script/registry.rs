@@ -1,6 +1,23 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use cyrus_script::program::{Call, CallKind, Operation};
+pub(super) mod body;
+pub(super) mod bounds;
+mod dialogue;
+pub(super) mod falling;
+mod follow;
+pub(super) mod ground;
+mod late;
+pub(super) mod model;
+pub(super) mod obstacle;
 pub(super) mod ordinary;
+pub(super) mod overlap;
+pub(super) mod prevalidation;
+pub(super) mod queued;
+pub(super) mod recovery;
+mod separate;
+pub(super) mod slope;
+pub(super) mod transition;
+pub(super) mod vertical;
 use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
@@ -53,6 +70,10 @@ impl ScriptActorSource {
 pub enum ScriptStage {
     /// Caller has admitted the ordinary main stage; actor script-control flags still apply.
     OrdinaryMain,
+    /// Separate-record main/task stage, without ordinary control/collision gates.
+    SeparateMain,
+    /// Separate-record native entry, gated only by pending unpaused tasks.
+    SeparateHook,
     /// Caller has admitted this actor; task-system and hook-suppression gates still apply.
     OrdinaryHook,
     NativeHook,
@@ -71,6 +92,7 @@ pub struct ScriptInputs<'a> {
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
     pub ambient_sound: Option<&'a dyn cyrus_world::sound::AmbientSoundDriver>,
+    pub dialogue_source: Option<&'a dyn super::DialogueSource>,
     /// Explicit shared sample-reset flag from the owning engine update.
     pub sound_reset: Option<bool>,
 }
@@ -83,12 +105,45 @@ pub(crate) struct ScriptAnimation {
 /// Allocated ordinary-map control state, separate from animation playback.
 /// Allocation and combat construction follow preservation's engine/animation.md.
 /// Standalone role setup and death/removal transitions remain unsupported.
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct ActorControlState {
     /// Runtime script flags, separate from installed attribute bytes.
     pub script_control: u8,
     pub death_selector: u8,
+    /// Allocator-zero death notification byte, set to eight by health death.
+    pub death_response: u8,
     pub living_state: u8,
+    /// Allocator-zeroed runtime motion bytes, independent of animation groups.
+    pub sliding_state: u8,
+    pub falling_state: u8,
+    pub queued_motion: u8,
+    pub motion_direction: u8,
+    /// Allocator-zero directional-state bytes; low bits gate surface assignment.
+    pub directional_state: [u8; 2],
+    /// Retained directional motion bits, allocated as zero.
+    pub movement_flags: u8,
+    /// Retained integer motion components; obstacle interruption only clears them here.
+    pub motion_vector: [i32; 3],
+    /// Original fall origin in Q8 and byte countdown, allocated as zero.
+    pub fall_origin_y: i32,
+    pub fall_timer: u8,
+    /// Allocator-zero runtime jump selector, separate from living and torch state.
+    pub jump_selector: u8,
+    /// Validity of the separately retained stable local position.
+    pub stable_position_valid: bool,
+    /// Separately retained stable local Q8 coordinates, allocated as zero.
+    pub stable_local_position: [i32; 3],
+    /// Accumulated sliding distance in Q8, cleared by ordinary jump entry.
+    pub sliding_distance: i32,
+    /// Ordered body response marks; cleared only by their owning update stage.
+    pub body_response_flags: u8,
+    pub collision_transition_flags: u8,
+    /// Other bytes in the packed response record; retained until script-wrapper cleanup.
+    pub collision_response_auxiliary: [u8; 2],
+    /// Allocator-zero collision-response age, incremented before clearing prior marks.
+    pub collision_response_age: u8,
+    /// Original low-word overlap contact identifier; zero also denotes a static placement.
+    pub overlap_contact_identifier: u16,
     pub rope_attached: bool,
     pub torch_burning: u8,
     pub weapon_drawn: bool,
@@ -96,9 +151,12 @@ pub struct ActorControlState {
     /// Presentation hidden state; this does not exclude script or animation updates.
     pub hidden: bool,
     pub combat_death_default: Option<i32>,
+    pub combat: Option<super::CombatControlState>,
 }
 
 pub struct ScriptActor {
+    /// Allocator-zero class-message read cursor, independent of combat allocation.
+    message_read: u8,
     pub source: ScriptActorSource,
     /// Signed low word used by namespace lookup; absent for separate map object paths.
     pub runtime_identifier: Option<i16>,
@@ -109,6 +167,8 @@ pub struct ScriptActor {
     attributes: Vec<u8>,
     control: Option<ActorControlState>,
     surface: Option<u8>,
+    model: model::ModelState,
+    collision: Option<ground::OrdinaryCollisionShape>,
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
@@ -182,11 +242,117 @@ pub struct ScriptWorld {
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
-    walk_map_count: Option<usize>,
+    walk_nodes: Option<super::navigation::WalkNodeReservations>,
     ordinary_prepared: bool,
+    model_admission: Option<model::AdmissionState>,
     map_updates: Vec<usize>,
+    /// Shared surface-query veto; absent until an assigning query establishes it.
+    surface_veto: Option<bool>,
 }
 impl ScriptWorld {
+    /// Send an addressed combat message using the receiver's authored class.
+    /// A zero code has no effect; nonzero messages require live logical identities.
+    pub fn send_combat_message(
+        &mut self,
+        sender: ScriptActorId,
+        receiver: ScriptActorId,
+        code: i32,
+    ) -> Result<()> {
+        if code == 0 {
+            return Ok(());
+        }
+        self.resolve(sender)?;
+        let index = self.resolve(receiver)?;
+        self.globals.combat_messages.send(
+            self.actors[index].attributes[125],
+            super::CombatMessage {
+                sender,
+                receiver: Some(receiver),
+                code,
+            },
+        );
+        Ok(())
+    }
+
+    /// Consume one addressed message using the actor's retained class cursor.
+    /// This is message transport; combat effects belong to the maintenance stage.
+    pub fn consume_combat_message(
+        &mut self,
+        actor: ScriptActorId,
+    ) -> Result<Option<super::CombatMessage>> {
+        let index = self.resolve(actor)?;
+        let receiver = &mut self.actors[index];
+        self.globals.combat_messages.consume(
+            receiver.attributes[125],
+            actor,
+            &mut receiver.message_read,
+        )
+    }
+
+    /// Maintain an admitted nonplayer combat record using shared nominal ticks.
+    /// Targeting, messages, decision state and attacks retain unsupported guards.
+    /// The owner supplies the selected player's drawing/sheathing and shell gates.
+    pub fn maintain_map_combat(
+        &mut self,
+        id: ScriptActorId,
+        ticks: u32,
+        player_weapon_transition: bool,
+        shell_execution: bool,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        anyhow::ensure!(
+            self.actors[index].placement().is_some(),
+            "ordinary combat requires a map actor"
+        );
+        if shell_execution {
+            return Ok(());
+        }
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("ordinary combat control unavailable")?;
+        let Some(combat) = control.combat.as_ref() else {
+            return Ok(());
+        };
+        if control.death_selector == 8 {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            actor.attributes[116] != 0 || combat.flags & 4 == 0 || combat.target.is_none(),
+            "ordinary combat target/perception stage unsupported"
+        );
+        self.actors[index].attributes[1] = self.actors[index].attributes[119];
+        if let Some(message) = self.consume_combat_message(id)? {
+            anyhow::bail!(
+                "ordinary combat message {} from actor {} unsupported",
+                message.code,
+                message.sender.index
+            );
+        }
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .expect("admitted control");
+        anyhow::ensure!(
+            control.death_selector != 6,
+            "ordinary combat decision stage unsupported"
+        );
+        let combat = control.combat.as_mut().expect("admitted combat");
+        if !player_weapon_transition {
+            if combat.cooldown != 0 {
+                combat.cooldown = combat.cooldown.saturating_sub(ticks);
+            } else if combat.action != -1 {
+                anyhow::ensure!(
+                    !(0..=6).contains(&combat.action),
+                    "ordinary combat attack stage unsupported"
+                );
+                combat.action = -1;
+            }
+        }
+        Ok(())
+    }
+
     pub fn prepare(scripts: &Scripts, generation: u64) -> Result<Self> {
         scripts.validate()?;
         let programs: BTreeMap<_, _> = scripts
@@ -221,10 +387,6 @@ impl ScriptWorld {
             );
             let metadata = scripts.actors.get(name);
             let result = (|| {
-                anyhow::ensure!(
-                    runtime_identifier.is_some(),
-                    "separate map object path unsupported"
-                );
                 let actor = metadata.context("program absent")?;
                 let allocated = allocations.entry(name.to_owned()).or_default();
                 let locals = actor
@@ -249,18 +411,40 @@ impl ScriptWorld {
                     Some(ActorControlState {
                         script_control: 0,
                         death_selector: 0,
+                        death_response: 0,
                         living_state: 0,
+                        sliding_state: 0,
+                        falling_state: 0,
+                        queued_motion: 0,
+                        motion_direction: 0,
+                        directional_state: [0; 2],
+                        movement_flags: 0,
+                        motion_vector: [0; 3],
+                        fall_origin_y: 0,
+                        fall_timer: 0,
+                        jump_selector: 0,
+                        stable_position_valid: false,
+                        stable_local_position: [0; 3],
+                        sliding_distance: 0,
+                        body_response_flags: 0,
+                        collision_transition_flags: 0,
+                        collision_response_auxiliary: [0; 2],
+                        collision_response_age: 0,
+                        overlap_contact_identifier: 0,
                         rope_attached: false,
                         torch_burning: 0,
                         weapon_drawn: false,
                         object_update_excluded: false,
                         hidden: false,
                         combat_death_default: None,
+                        combat: None,
                     })
                 }
                 _ => None,
             };
+            let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6));
             ScriptActor {
+                message_read: 0,
                 surface: (control.is_some()
                     || matches!(
                         &source,
@@ -279,11 +463,15 @@ impl ScriptWorld {
                     .unwrap_or_default(),
                 tasks: Default::default(),
                 animation: None,
+                model: Default::default(),
+                collision: None,
                 animation_failure: None,
                 update_failure: None,
                 attributes: (0..256)
                     .map(|index| {
-                        metadata
+                        (!separate)
+                            .then_some(metadata)
+                            .flatten()
                             .and_then(|actor| {
                                 let key = scripts
                                     .definition
@@ -336,6 +524,8 @@ impl ScriptWorld {
                 names.entry(identifier).or_insert(index);
             }
         }
+        let mut globals = super::GameplayGlobals::default();
+        globals.prepare_dialogue(&scripts.dialogue)?;
         Ok(Self {
             map_updates: Vec::new(),
             updates: scripts.updates,
@@ -356,11 +546,13 @@ impl ScriptWorld {
             names,
             actor_lists: None,
             markers: None,
-            walk_map_count: None,
+            walk_nodes: None,
             ordinary_prepared: false,
+            surface_veto: None,
+            model_admission: None,
             spatial: None,
             activation: Default::default(),
-            globals: Default::default(),
+            globals,
         })
     }
     /// Prepare ordinary-world markers from the matching sidecar before script execution.
@@ -385,7 +577,7 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Load navigation availability from the matching animation sidecar.
+    /// Load cleared navigation reservations from the matching animation sidecar.
     /// Nonempty maps remain explicit unsupported movement; an absent table is an error.
     pub fn prepare_navigation(&mut self, data: &Animations) -> Result<()> {
         data.require_version()?;
@@ -396,16 +588,70 @@ impl ScriptWorld {
             self.world
         );
         anyhow::ensure!(
-            self.walk_map_count.is_none(),
+            self.walk_nodes.is_none(),
             "world {} navigation already prepared",
             self.world
         );
-        self.walk_map_count = Some(
-            data.metadata["walk_node_maps"]
-                .as_array()
-                .with_context(|| format!("world {} walk_node_maps absent or invalid", self.world))?
-                .len(),
-        );
+        self.walk_nodes = Some(super::navigation::WalkNodeReservations::prepare(
+            &data.metadata["walk_node_maps"],
+            self.world,
+        )?);
+        Ok(())
+    }
+
+    /// Acquire a loaded WDNM reservation using the actor identifier's low byte.
+    /// A foreign owner returns false; stale actors and invalid map/node indices fail.
+    pub fn reserve_walk_node(
+        &mut self,
+        actor: ScriptActorId,
+        map: usize,
+        node: usize,
+    ) -> Result<bool> {
+        let index = self.resolve(actor)?;
+        let identifier = self.actors[index]
+            .runtime_identifier
+            .context("walk-node actor identifier unavailable")?;
+        self.walk_nodes
+            .as_mut()
+            .context("walk-node navigation not prepared")?
+            .acquire(map, node, identifier)
+            .with_context(|| {
+                format!(
+                    "world {} actor {} reserve navigation",
+                    self.world, actor.index
+                )
+            })
+    }
+
+    /// Release only a reservation whose byte still matches this actor's identifier.
+    pub fn release_walk_node(
+        &mut self,
+        actor: ScriptActorId,
+        map: usize,
+        node: usize,
+    ) -> Result<()> {
+        let index = self.resolve(actor)?;
+        let identifier = self.actors[index]
+            .runtime_identifier
+            .context("walk-node actor identifier unavailable")?;
+        self.walk_nodes
+            .as_mut()
+            .context("walk-node navigation not prepared")?
+            .release(map, node, identifier)
+            .with_context(|| {
+                format!(
+                    "world {} actor {} release navigation",
+                    self.world, actor.index
+                )
+            })
+    }
+
+    /// Complete the navigation stage of sound maintenance across every loaded map.
+    pub fn clear_walk_node_reservations(&mut self) -> Result<()> {
+        self.walk_nodes
+            .as_mut()
+            .context("walk-node navigation not prepared")?
+            .reset();
         Ok(())
     }
 
@@ -471,7 +717,8 @@ impl ScriptWorld {
     }
 
     /// Prepare ordinary map poses and unique attachment families transactionally.
-    /// Separate map paths and standalone roles remain unavailable for spatial services.
+    /// Separate map records retain position with cleared temporary orientation;
+    /// standalone roles still require their own spatial owners.
     pub fn prepare_spatial(&mut self) -> Result<()> {
         anyhow::ensure!(
             self.spatial.is_none(),
@@ -628,6 +875,11 @@ impl ScriptWorld {
                     .as_mut()
                     .expect("type-one map actor has allocation state")
                     .combat_death_default = (actor.attributes[14] != 0).then_some(0);
+                actor
+                    .control
+                    .as_mut()
+                    .expect("allocated map control")
+                    .combat = (actor.attributes[14] != 0).then(super::CombatControlState::default);
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 Ok(())
             }
@@ -855,8 +1107,20 @@ impl ScriptWorld {
         if let Some(activation) = inputs.activation {
             self.validate_activation(activation)?;
         }
+        if matches!(stage, ScriptStage::SeparateMain | ScriptStage::SeparateHook) {
+            anyhow::ensure!(
+                self.actors[index]
+                    .placement()
+                    .is_some_and(|placement| placement.object_type == 2)
+                    && self.actors[index].control.is_some(),
+                "separate stage requires admitted type-two scratch state"
+            );
+        }
         let nominal_ticks = inputs.nominal_ticks;
-        if matches!(stage, ScriptStage::Tasks | ScriptStage::OrdinaryMain) {
+        if matches!(
+            stage,
+            ScriptStage::Tasks | ScriptStage::OrdinaryMain | ScriptStage::SeparateMain
+        ) {
             anyhow::ensure!(
                 inputs.frame_scale.is_some(),
                 "task stage requires frame_scale"
@@ -887,7 +1151,7 @@ impl ScriptWorld {
             );
         }
         if matches!(stage, ScriptStage::OrdinaryMain) && !self.updates.task_system {
-            return Ok(());
+            return self.finish_ordinary_script_response(id, nominal_ticks);
         }
         if matches!(stage, ScriptStage::OrdinaryHook) {
             let actor = &self.actors[index];
@@ -907,6 +1171,15 @@ impl ScriptWorld {
                 return Ok(());
             }
         }
+        if matches!(stage, ScriptStage::SeparateHook)
+            && self.updates.task_system
+            && self.actors[index]
+                .runtime
+                .as_ref()
+                .is_some_and(Runtime::has_unpaused_task)
+        {
+            return Ok(());
+        }
         let bypass_tasks = if matches!(stage, ScriptStage::OrdinaryMain) {
             let control = self.actors[index].control.as_ref().with_context(|| {
                 format!(
@@ -915,7 +1188,7 @@ impl ScriptWorld {
                 )
             })?;
             if control.script_control & 1 != 0 {
-                return Ok(());
+                return self.finish_ordinary_script_response(id, nominal_ticks);
             }
             control.script_control & 4 != 0
         } else {
@@ -932,7 +1205,7 @@ impl ScriptWorld {
             random,
             spatial: self.spatial.as_mut(),
             markers: self.markers.as_ref(),
-            walk_map_count: self.walk_map_count,
+            walk_map_count: self.walk_nodes.as_ref().map(|nodes| nodes.map_count()),
             map_updates: &mut self.map_updates,
             activation: &mut self.activation,
             globals: &mut self.globals,
@@ -962,19 +1235,21 @@ impl ScriptWorld {
                 .unwrap_or_else(|| "program absent".into())
         })?;
         let result = match stage {
-            ScriptStage::OrdinaryMain => runtime.invoke_main_stage(
+            ScriptStage::OrdinaryMain | ScriptStage::SeparateMain => runtime.invoke_main_stage(
                 &mut host,
                 &mut self.flags,
                 inputs.frame_scale.unwrap(),
                 budget,
                 bypass_tasks,
             ),
-            ScriptStage::NativeHook | ScriptStage::OrdinaryHook => match native_hook {
-                Some(call) => runtime
-                    .invoke_native_hook(&call, &mut host, &mut self.flags)
-                    .map(|_| ()),
-                None => Ok(()),
-            },
+            ScriptStage::NativeHook | ScriptStage::OrdinaryHook | ScriptStage::SeparateHook => {
+                match native_hook {
+                    Some(call) => runtime
+                        .invoke_native_hook(&call, &mut host, &mut self.flags)
+                        .map(|_| ()),
+                    None => Ok(()),
+                }
+            }
             ScriptStage::Entry => runtime.invoke_entry(&mut host, &mut self.flags, budget),
             ScriptStage::Body(thread) => {
                 runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
@@ -985,7 +1260,11 @@ impl ScriptWorld {
             ScriptStage::Animation => unreachable!(),
         };
         host.actors[index].runtime = Some(runtime);
-        result
+        result?;
+        if matches!(stage, ScriptStage::OrdinaryMain) {
+            self.finish_ordinary_script_response(id, nominal_ticks)?;
+        }
+        Ok(())
     }
     /// Gameplay-global state shared by native calls and activation presentation.
     pub fn globals(&self) -> &super::GameplayGlobals {
@@ -1173,7 +1452,7 @@ fn apply_player_lockout(
 }
 
 impl ScriptActors {
-    /// Apply New Game's documented LockoutPlayer(0) before replacing the world.
+    /// Apply New Game's lockout cleanup and combat-queue reset before world replacement.
     /// Ordinary world reloads retain globals and must not call this operation.
     pub fn begin_new_game(&mut self) {
         if let Some(world) = self.current.as_mut() {
@@ -1183,8 +1462,10 @@ impl ScriptActors {
                 .position(|actor| matches!(actor.source, ScriptActorSource::Player));
             let lockout = world.globals.lockout_player(0);
             apply_player_lockout(&mut world.actors, &mut world.activation, player, lockout);
+            world.globals.combat_messages.reset();
         } else {
             self.globals.lockout_player(0);
+            self.globals.combat_messages.reset();
         }
     }
 
@@ -1248,6 +1529,7 @@ pub(super) fn prepare(
                 scripts.world
             );
         }
+        actors.globals.prepare_dialogue(&scripts.dialogue)?;
         let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
         world.prepare_markers(animation_data)?;
         world.prepare_navigation(animation_data)?;
@@ -1309,6 +1591,27 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .map(|control| control.object_update_excluded),
             generation: self.generation,
             actor_index: self.index,
+        }
+    }
+
+    fn player_dialogue_call(&self) -> super::tasks::PlayerDialogueCall<'input> {
+        let player = self
+            .inputs
+            .activation
+            .map(|inputs| inputs.player)
+            .or_else(|| {
+                self.actors
+                    .iter()
+                    .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+                    .map(|index| ScriptActorId {
+                        generation: self.generation,
+                        index,
+                    })
+            });
+        super::tasks::PlayerDialogueCall {
+            source: self.inputs.dialogue_source,
+            player,
+            reset: self.inputs.sound_reset,
         }
     }
 
@@ -1432,6 +1735,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
         }
         let ambient = self.ambient_call();
+        let player_dialogue = self.player_dialogue_call();
         let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -1482,7 +1786,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             invocation,
             &mut animation,
             &mut spatial_call,
-            Some(&ambient),
+            super::tasks::NativeServices {
+                ambient: Some(&ambient),
+                dialogue: self.globals.dialogue.as_mut(),
+                player_dialogue: Some(player_dialogue),
+            },
         )? {
             return Ok(result);
         }
@@ -1497,6 +1805,21 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 format!("{function}: receiver visibility lifecycle unavailable")
             })?;
             control.hidden = function.eq_ignore_ascii_case("HideMe");
+            if control.hidden {
+                self.actors[self.index].model.current = None;
+            } else if self.actors[self.index].model.static_radius.is_some() {
+                let spatial = self
+                    .spatial
+                    .as_deref_mut()
+                    .context("ShowMe: model spatial state unavailable")?;
+                let state = spatial.actor_mut(self.index)?;
+                if state.parent.is_none() {
+                    state.refresh_transform()?;
+                }
+                self.actors[self.index]
+                    .model
+                    .show_static(state.query_pose()?);
+            }
             return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("isDead") {
@@ -1573,6 +1896,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .as_mut()
                 .context("script sound handler absent")?(id, sound)?;
             return Ok(CallResult::Complete(0));
+        }
+        if self.actors[self.index].runtime_identifier.is_none()
+            && [
+                "Wander",
+                "MoveByAxis",
+                "sMoveByAxis",
+                "MoveObjectAxis",
+                "MoveToLocation",
+                "RotateByAxis",
+                "sRotateByAxis",
+                "RotateToAxis",
+            ]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            anyhow::bail!("{function}: separate movement/relocation owner unavailable");
         }
         if function.eq_ignore_ascii_case("Wander") {
             let [radius, tolerance] = arguments else {
@@ -1692,6 +2031,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             index: self.index,
         };
         let ambient = self.ambient_call();
+        let player_dialogue = self.player_dialogue_call();
         let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -1742,7 +2082,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             invocation,
             &mut animation,
             &mut spatial_call,
-            Some(&ambient),
+            super::tasks::NativeServices {
+                ambient: Some(&ambient),
+                dialogue: self.globals.dialogue.as_mut(),
+                player_dialogue: Some(player_dialogue),
+            },
         )
     }
     fn cancel(&mut self, token: u64) -> Result<()> {

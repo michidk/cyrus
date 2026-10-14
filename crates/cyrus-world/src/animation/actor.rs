@@ -16,7 +16,44 @@ pub struct ActorAnimation {
     failure: Option<String>,
 }
 
+/// Saved current receiver and pending request for ordinary collision rollback.
+/// The caller saves its selected model frame and remembered sound slot separately.
+/// This excludes the independently retained default and sticky host failure.
+pub struct ActorAnimationCheckpoint {
+    context: String,
+    current: Option<(u16, FrameSequence)>,
+    pending: Option<(u16, u8)>,
+}
+
 impl ActorAnimation {
+    /// Save the post-advancement receiver without executing commands or audio.
+    pub fn checkpoint(&self) -> anyhow::Result<ActorAnimationCheckpoint> {
+        self.check_failure()?;
+        Ok(ActorAnimationCheckpoint {
+            context: self.context.clone(),
+            current: self.current.clone(),
+            pending: self.pending,
+        })
+    }
+
+    /// Restore a checkpoint from this actor's receiver. The game host must also
+    /// validate world generation and restore its frame and remembered sound slot.
+    /// The current default and any sticky failure remain owned by their services.
+    pub fn restore_checkpoint(
+        &mut self,
+        checkpoint: &ActorAnimationCheckpoint,
+    ) -> anyhow::Result<()> {
+        self.check_failure()?;
+        anyhow::ensure!(
+            self.context == checkpoint.context,
+            "{}: animation checkpoint belongs to another actor",
+            self.context
+        );
+        self.current = checkpoint.current.clone();
+        self.pending = checkpoint.pending;
+        Ok(())
+    }
+
     /// Initializes an animation-table model with the two ordinary group-zero requests
     /// specified by preservation's engine/animation.md. The caller establishes the
     /// model loading path and supplies the shared nominal ticks and sound dispatcher.
@@ -104,6 +141,14 @@ impl ActorAnimation {
     /// The caller-selected playback default, distinct from the model's attribute default.
     pub fn default_group(&self) -> u16 {
         self.default
+    }
+
+    /// Whether the current sequence reached its authored exit marker. This
+    /// remains distinct from completion of the sequence's exit tail.
+    pub fn exit_reached(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|(_, sequence)| sequence.exit_reached())
     }
 
     /// Sticky advancement or sound-dispatch failure.

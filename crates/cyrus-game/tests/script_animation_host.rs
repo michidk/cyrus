@@ -71,7 +71,18 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 10,
+        version: 11,
+        dialogue: cyrus_assets::script::DialogueSettings {
+            menu_start: [35, 25],
+            max_menu_items: 300,
+            max_dialog_lines: 20,
+            max_text_width: 500,
+            menu_traverse_delay: 4,
+            print_text: true,
+            use_speech: true,
+            max_distance: 1600,
+            rtx_filename: "ENGLISH.RTX".into(),
+        },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
             task_system: true,
@@ -974,6 +985,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
         ("EndMySound", vec![12]),
         ("EndSound", vec![12]),
         ("EndMySounds", vec![]),
+        ("StopAllSounds", vec![]),
     ];
     let mut data = scripts(vec![Operation::End { target: 0 }]);
     let mut operations = Vec::new();
@@ -1044,7 +1056,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
             100,
         )
         .unwrap();
-    assert_eq!(world.flags(), [0, 0, 0, 0]);
+    assert_eq!(world.flags(), [0, 0, 0, 0, 0]);
     assert_eq!(
         events,
         vec![
@@ -1071,6 +1083,7 @@ fn routed_sound_commands_keep_receiver_and_authored_operands() {
                 }
             ),
             (receiver, ScriptSound::StopOwned),
+            (receiver, ScriptSound::StopAll),
         ]
     );
 }
@@ -1914,8 +1927,8 @@ fn lockout_player_retains_low_word_and_cleans_only_registered_actors() {
         assert_eq!(actors[0]["attributes"][117], if exact_one { 8 } else { 0 });
         assert_eq!(actors[1]["attributes"][117], if exact_one { 9 } else { 0 });
         assert_eq!(
-            actors[2]["attributes"][117], 9,
-            "separate object path remains outside actor registry"
+            actors[2]["attributes"][117], 0,
+            "separate object attributes start cleared"
         );
     }
 }
@@ -2058,6 +2071,8 @@ fn lockout_clears_prompt_override_only_outside_exact_one() {
 fn new_game_applies_lockout_cleanup_before_replacing_the_registry() {
     let mut world = lockout_world(1, false);
     let id = world.id(0).unwrap();
+    let sender = world.id(1).unwrap();
+    world.send_combat_message(sender, id, 0xd001).unwrap();
     stage(&mut world, id, BODY);
     world
         .globals_mut()
@@ -2071,8 +2086,17 @@ fn new_game_applies_lockout_cleanup_before_replacing_the_registry() {
     let actors = world.inspect(0, 4)["actors"].as_array().unwrap().clone();
     assert_eq!(actors[0]["attributes"][117], 0);
     assert_eq!(actors[1]["attributes"][117], 0);
-    assert_eq!(actors[2]["attributes"][117], 9);
+    assert_eq!(actors[2]["attributes"][117], 0);
     assert_eq!(actors[3]["attributes"][117], 0);
+    assert_eq!(
+        registry
+            .current
+            .as_mut()
+            .unwrap()
+            .consume_combat_message(id)
+            .unwrap(),
+        None
+    );
 }
 
 fn location_task_scripts(selector: i32, duration: i32) -> Scripts {
@@ -2295,6 +2319,7 @@ fn hud_asset() -> cyrus_assets::hud::HudAsset {
         bindings: [0; 15],
         font: Default::default(),
         text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
     }
 }
 struct LogStore {

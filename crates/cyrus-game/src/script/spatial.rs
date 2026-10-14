@@ -45,6 +45,9 @@ pub struct ActorSpatial {
     pub previous_effective_position: Option<[i32; 3]>,
     /// Local position captured at the ordinary update boundary, in Q8 units.
     pub previous_local_position: [i32; 3],
+    /// End-of-update position retained by dry or falling updates for water veto.
+    /// None leaves the fresh-allocation record explicitly unavailable.
+    pub water_rollback_position: Option<[i32; 3]>,
     /// Previous local angles after snapshot; propagated deltas after family refresh.
     pub angle_history: [u16; 3],
     pub parent: Option<usize>,
@@ -64,16 +67,18 @@ impl SpatialWorld {
         let mut poses = Vec::with_capacity(actors.len());
         let mut masters = BTreeMap::new();
         for (index, actor) in actors.iter().enumerate() {
-            let placement = actor
-                .placement()
-                .filter(|_| actor.runtime_identifier.is_some());
+            let placement = actor.placement();
             let pose = placement.map(|placement| -> Result<_> {
                 let mut position = [0; 3];
                 for (axis, value) in placement.map_position.into_iter().enumerate() {
                     position[axis] = value.checked_mul(256).and_then(|value| i32::try_from(value).ok())
                         .with_context(|| format!("actor {index} {} map position axis {axis}: outside Q8 i32 range", actor.name()))?;
                 }
-                let angles = placement.angles.map(|angle| (angle & 2047) as u16);
+                let angles = if matches!(placement.object_type, 2 | 6) {
+                    [0; 3]
+                } else {
+                    placement.angles.map(|angle| (angle & 2047) as u16)
+                };
                 Ok(Pose { position, angles, matrix: Matrix::orientation(angles) })
             }).transpose()?;
             if pose.is_some() && actor.attributes()[25] != 0 {
@@ -150,6 +155,7 @@ impl SpatialWorld {
                 effective: parent.is_none().then_some(original),
                 previous_effective_position: None,
                 previous_local_position: local.position,
+                water_rollback_position: None,
                 angle_history: original.angles,
                 parent,
                 linked_position: None,
@@ -384,45 +390,8 @@ fn serialize_matrix<S: serde::Serializer>(
     matrix.0.serialize(serializer)
 }
 
-/// Original mixed-precision Euclidean distance, rounded to a signed integer.
-pub fn rounded_distance(differences: [i32; 3]) -> Result<i32> {
-    let length = single_precision_length(differences).round_ties_even();
-    ensure!(
-        f64::from(length) <= f64::from(i32::MAX),
-        "distance exceeds signed integer range"
-    );
-    Ok(length as i32)
-}
-
-fn single_precision_length(differences: [i32; 3]) -> f32 {
-    // Stored f32 differences are integers; their squared sum fits u64 exactly.
-    let squared: u64 = differences
-        .into_iter()
-        .map(|difference| {
-            let difference = difference as f32 as i64;
-            (difference * difference) as u64
-        })
-        .sum();
-    let squared = squared as f64;
-    let root = squared.sqrt();
-    let mut single = root as f32;
-    let neighbor = if f64::from(single) > root {
-        single.next_down()
-    } else {
-        single.next_up()
-    };
-    let midpoint = (f64::from(single) + f64::from(neighbor)) / 2.0;
-    // Correct a double-rounded square root at a single-precision midpoint.
-    if root == midpoint {
-        let boundary = midpoint * midpoint;
-        if squared < boundary {
-            single = single.min(neighbor);
-        } else if squared > boundary {
-            single = single.max(neighbor);
-        }
-    }
-    single
-}
+pub use cyrus_collision::distance::rounded_distance;
+use cyrus_collision::distance::single_precision_length;
 
 /// Original single-precision normalization to Q16, using nearest-even integers.
 pub(super) fn normalized_direction(differences: [i32; 3]) -> [i32; 3] {

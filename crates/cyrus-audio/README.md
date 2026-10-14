@@ -21,6 +21,8 @@ same message cursor, so commands are consumed once. Immediate ordinary script
 commands and ambient polling use one live sixteen-slot channel pool. Backend
 completion identifies an individual start; animation and ambient handles identify
 a reusable slot and control its current occupant.
+SOUP `StopAllSounds` stops the shared pool in command order, across owners and
+unowned effects. It retains remembered slot handles and does not stop CD music.
 `CinematicAudio` marks cinematic playback and pauses CD music. Browser startup
 can inspect `SoundBankHandle` and its asset dependencies for loading failures.
 
@@ -33,6 +35,17 @@ use their scene transform. Stop and
 Forget do not require surface state. Playback validates the remapped effect, while cleanup retains
 the authored source ID. Script, combat and speech starts bypass these tables.
 Actor surface updates belong to the ground/SOUP host, not the sound plugin.
+Logical `ScriptSound::AnimationState` Capture/Restore commands save the bound
+actor's remembered slot in cue order, including an absent slot. Restore neither
+stops newer samples nor restarts old ones. Subsequent animation cleanup uses the
+restored reusable slot. Snapshots expire with the bound actor.
+
+RTX preparation returns an explicit pending result while an entry or its audio
+dependency loads. RTXp retains its task without replacing dialogue records or
+allocating a sample, then starts the prepared line once. A cache hit reuses the
+retained entry without requesting another asset. Native per-label preparation
+runs off the update thread; browser preparation uses the existing worker cache. Automatic sample reset, cache aging and dialogue
+record updates still require integration.
 
 `ScriptSounds::with_driver` lends synchronous `AmbientSoundDriver` feedback and
 immediate cue dispatch for one logical-world update. The caller owns timing and
@@ -60,7 +73,10 @@ The report goes to stdout; keep installed fixtures and reports under `magic/`.
 The JSON fixture has `world` and a nonempty `cases` array. Each case has a unique
 `name`, `initial_surface`, installed `collision_attribute`, animation `group`
 and nonempty `steps`. Each step supplies `position_q8`, `view`, `heading`, `ticks`
-and optional `later_surface`. Positions retain original axes and eight fractional
+and optional `later_surface`, `listener_position_q8` and `listener_yaw`. Listener
+position uses signed original Q8 coordinates; yaw uses 1/2048 turns in the range
+0..2048. Supply the render-camera state at cue emission for gain comparisons.
+Positions retain original axes and eight fractional
 bits; view coordinates are integer map X/Z units. Heading uses 1/2048 turns;
 ticks are whole nominal animation ticks, capped at 1024 per step. A case retains
 its surface, support history and animation state across steps. The first step
@@ -71,14 +87,20 @@ movement replay; it does not drive body clearance, dynamic support or keyboard i
 
 Each report step records the position, prior and assigned surface, ground veto,
 support source and ordered animation events. Each event records its captured
-surface, authored effect/rate offset for Play, newly started PCM target candidates
-and playback speed, plus remaining channels after cleanup. Target identification
+surface, signed Q8 position for Play, authored effect/rate offset, newly started
+PCM target candidates, playback speed and decoded channel gain ratios, plus
+remaining channels after cleanup. Gain ratios compare actual decoder output with
+the source samples; a silent prefix reports null. Target identification
 compares the actual mixer PCM with every installed bank entry. Identical samples
 remain ambiguous rather than selecting an arbitrary effect ID.
 For admitted grounded movement, pass a complete `.animations` cache from the same
 world instead of the RGM, and set the case's `grounded` field to true and `group`
 to zero. Optional `entry_ticks` supplies nominal ticks for player animation
-initialization, defaulting to zero. Each step also requires
+initialization, defaulting to zero. Optional `idle_ticks` is an array of whole
+nominal tick counts used to advance idle animation before the first compared
+step, with position and surface fixed. It defaults to an empty array and requires
+grounded mode. Each tick count is limited to 1024. Supply observed tick counts
+to reconstruct the starting idle cursor. Each step also requires
 `movement: {"frame_scale": 256, "walk": true}`. Movement scale retains eight
 fractional bits and is independent of nominal `ticks`; `walk` admits forward
 movement. Supply measured inputs rather than deriving them from host durations.
@@ -89,13 +111,20 @@ reports the case and step instead of teleporting the player.
 Grounded cases initialize player animation, advance the ordinary animation stage,
 select candidates with the current model's installed radius, then run the public
 grounded movement and body/ground response. Reports include input and final pose,
-timing inputs, frame/group state and ordered cues tagged by emitting stage. Each
+timing inputs, frame/group state entering and leaving each step, and ordered cues
+tagged by emitting stage. Priming cues use the `idle_animation` stage and appear
+before the first step's cues. Each
 cue retains its surface at that stage. This exposes the distinction between
 ordinary animation before support assignment and a forward request after it.
-Like the player runtime, these cues omit a position snapshot and use the final
-scene transform; `captured_position_q8` is null. The listener stays at the case's
-starting position. This tests PCM selection and requested rate, not original
-camera/listener placement, audible output or automatic keyboard admission.
+Each cue also retains the position of its emitting stage, before subsequent
+movement. Coordinates must fit the transport's signed 32-bit Q8 range; an
+out-of-range coordinate reports an error. Stop and Forget need no position and
+report a null snapshot. Without listener snapshots, grounded cases keep the listener at the
+case's starting position; other cases use the default origin. Supplied snapshots update it before that step's cues;
+all cues in a step must share the supplied camera state. Coordinates use the
+production camera origin conversion. This tests PCM selection, requested rate
+and decoded gains. It does not establish native audible output, sample lifetime
+or automatic keyboard admission.
 Dynamic support, airborne/weapon policy and remaining actor-update stages are
 outside the admitted grounded path.
 
@@ -113,3 +142,29 @@ establish the provenance of a supplied record; retain original runtime inputs,
 binary hashes and observations alongside it.
 File-table predictions do not establish audible or gameplay parity. Synthetic
 negative controls run with `python3 -B dev/scripts/test-surface-audio.py` and in the gates.
+
+Per-label dialogue assets use `sound::dialogue::DialogueClip` and the shared
+`cache://dialogue/<key>.dialogue` loader, with an optional generated WAV dependency.
+The browser worker prepares a requested entry from the original byte source;
+native hosts prepare the same entry into their local cache. Loading preserves
+unformatted RTX text, original lifetime counters and header metadata.
+`ScriptSounds` starts prepared voices through the shared sample channels at
+header volume and centre pan from slot zero, then restores the general start
+index to six. Volume refresh uses the logical speaker's local Q8 position and
+retains centre pan. Disabled speech, text-only entries and channel exhaustion use
+text lifetime. Missing voice dependencies and looping voices report unsupported
+playback.
+
+The ordinary host retains a twenty-entry cache and lends `DialogueSource` to
+RTXp tasks. A cache miss returns pending until the entry and its audio dependency
+are ready; pending preparation does not allocate a dialogue record or start a
+voice. Ready text uses the installed HUD REDSEL font for wrapping. After object
+updates, the host advances game-owned dialogue records through synchronous sample
+feedback, then ages the RTX cache. The game selects the subtitle record and owns
+speaker inhibition; rendering only reads that selection. The configured keyboard
+key_a signal is sampled before Modern movement interpretation. Joystick input
+remains unsupported.
+
+The complete periodic reset and its selected-player inhibition stage remain
+unconnected. Automatic RTXp and ambient tasks therefore still report missing
+reset input; these adapters do not establish story or full dialogue acceptance.

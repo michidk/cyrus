@@ -1,9 +1,10 @@
 //! Read-only installed ground/animation/mixer probe. See the crate README for the fixture contract.
 use anyhow::{Context, Result, ensure};
 use bevy::{
-    audio::{AudioPlayer, AudioSource, PlaybackSettings},
+    audio::{AudioPlayer, AudioSource, Decodable, PlaybackSettings, Source},
     prelude::{
-        App, AssetApp, AssetPlugin, Assets, Entity, GlobalTransform, MinimalPlugins, Vec3, With,
+        App, AssetApp, AssetPlugin, Assets, Entity, GlobalTransform, MinimalPlugins, Quat,
+        Transform, Vec3, With,
     },
 };
 use cyrus_assets::{
@@ -50,12 +51,18 @@ struct Case {
     grounded: bool,
     #[serde(default)]
     entry_ticks: u32,
+    #[serde(default)]
+    idle_ticks: Vec<u32>,
     steps: Vec<Step>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Step {
     position_q8: [i64; 3],
+    /// Original render-camera position at cue emission, in signed Q8 units.
+    listener_position_q8: Option<[i32; 3]>,
+    /// Render-camera yaw in 1/2048 turns, paired with its position.
+    listener_yaw: Option<u16>,
     view: [i32; 2],
     heading: u16,
     ticks: u32,
@@ -179,6 +186,11 @@ fn main() -> Result<()> {
             continue;
         }
         ensure!(
+            case.idle_ticks.is_empty(),
+            "case {}: idle_ticks requires grounded mode",
+            case.name
+        );
+        ensure!(
             case.entry_ticks == 0,
             "case {}: entry_ticks requires grounded mode",
             case.name
@@ -224,16 +236,23 @@ fn main() -> Result<()> {
                 cues.push(sound);
                 Ok(())
             })?;
+            if let Some(listener) = step.listener_position_q8 {
+                set_listener(&mut app, listener, step.listener_yaw.unwrap_or(0))?;
+            }
             let mut events = Vec::new();
             for sound in cues {
-                events.push(play(
-                    &mut app,
-                    actor,
-                    sound,
-                    surface,
-                    step.later_surface,
-                    &bank,
-                )?);
+                events.push(
+                    play(
+                        &mut app,
+                        actor,
+                        sound,
+                        surface,
+                        step.position_q8,
+                        step.later_surface,
+                        &bank,
+                    )
+                    .with_context(|| format!("case {} step {index}", case.name))?,
+                );
             }
             steps.push(json!({"position_q8": step.position_q8, "prior_surface": prior,
                 "surface": surface, "veto": veto, "support": support.map(|s| format!("{:?}", s.source())), "events": events}));
@@ -273,15 +292,33 @@ fn grounded_steps(
         let [x, y, z] = position.map(|v| v as f32 / (256.0 * cyrus_game::ENGINE_UNIT_SCALE));
         Vec3::new(-x, -y, z)
     };
-    app.insert_resource(AudioListener(GlobalTransform::from_translation(
-        translation(walking.position),
-    )));
+    let mut initial_listener = [0; 3];
+    for (axis, coordinate) in walking.position.into_iter().enumerate() {
+        initial_listener[axis] = i32::try_from(coordinate)
+            .with_context(|| format!("initial listener axis {axis}: Q8 coordinate outside i32"))?;
+    }
+    set_listener(
+        app,
+        first.listener_position_q8.unwrap_or(initial_listener),
+        first.listener_yaw.unwrap_or(0),
+    )?;
     let mut pending = Vec::new();
     let (mut animation, mut frame) = initial_animation(data, case.entry_ticks, &mut |sound| {
-        pending.push((sound, walking.surface, "entry"));
+        pending.push((sound, walking.surface, walking.position, "entry"));
         Ok(())
     })?;
     let mut history = SupportHistory::new(0, 0);
+    for (index, &ticks) in case.idle_ticks.iter().enumerate() {
+        let context = format!("idle_ticks {index}");
+        ensure!(ticks <= 1024, "{context}: ticks exceeds 1024");
+        frame =
+            grounded::advance_animation(scene, ticks, &mut history, &mut animation, &mut |sound| {
+                pending.push((sound, walking.surface, walking.position, "idle_animation"));
+                Ok(())
+            })
+            .with_context(|| context.clone())?
+            .or(frame);
+    }
     let mut veto = 0;
     let mut heading = first.heading;
     let mut reports = Vec::new();
@@ -303,14 +340,18 @@ fn grounded_steps(
             .movement
             .as_ref()
             .with_context(|| format!("{context}: movement missing"))?;
+        let input_frame = frame;
+        let input_group = animation.current_group();
+        let input_pending_group = animation.pending_group();
         let prior = walking.surface;
+        let emission_position = walking.position;
         frame = grounded::advance_animation(
             scene,
             step.ticks,
             &mut history,
             &mut animation,
             &mut |sound| {
-                pending.push((sound, prior, "ordinary_animation"));
+                pending.push((sound, prior, emission_position, "ordinary_animation"));
                 Ok(())
             },
         )
@@ -350,8 +391,8 @@ fn grounded_steps(
                 &mut input,
                 (&mut history, &mut veto),
                 &mut animation,
-                &mut |sound, surface| {
-                    pending.push((sound, surface, "forward_animation"));
+                &mut |sound, surface, position| {
+                    pending.push((sound, surface, position, "forward_animation"));
                     Ok(())
                 },
             )
@@ -363,21 +404,68 @@ fn grounded_steps(
             .insert(GlobalTransform::from_translation(translation(
                 walking.position,
             )));
+        if let Some(listener) = step.listener_position_q8 {
+            set_listener(app, listener, step.listener_yaw.unwrap_or(0))?;
+        }
         let mut events = Vec::new();
-        for (sound, surface, stage) in pending.drain(..) {
-            let mut event = play(app, actor, sound, surface, step.later_surface, bank)?;
+        for (sound, surface, position, stage) in pending.drain(..) {
+            let mut event = play(
+                app,
+                actor,
+                sound,
+                surface,
+                position,
+                step.later_surface,
+                bank,
+            )
+            .with_context(|| context.clone())?;
             event["stage"] = json!(stage);
-            // Player runtime emits no position snapshot and resolves its final scene transform.
-            event["captured_position_q8"] = Value::Null;
             events.push(event);
         }
         reports.push(json!({"position_q8": walking.position, "input_position_q8": step.position_q8,
             "heading": heading, "input_heading": step.heading, "ticks": step.ticks,
             "frame_scale": movement.frame_scale, "walk": movement.walk,
             "prior_surface": prior, "surface": walking.surface, "veto": veto,
-            "frame_reference": frame, "group": animation.current_group(), "pending_group": animation.pending_group(), "events": events}));
+            "input_frame_reference": input_frame, "input_group": input_group,
+            "input_pending_group": input_pending_group, "frame_reference": frame, "group": animation.current_group(), "pending_group": animation.pending_group(), "events": events}));
     }
     Ok(reports)
+}
+
+fn set_listener(app: &mut App, position_q8: [i32; 3], yaw: u16) -> Result<()> {
+    ensure!(yaw < 2048, "listener yaw {yaw} outside 0..2048");
+    let [x, y, z] = position_q8.map(f64::from);
+    let position = Vec3::new(
+        (-x / 5120.0) as f32,
+        (-y / 5120.0) as f32,
+        ((z - 16_777_215.0) / 5120.0) as f32,
+    );
+    let angle = f32::from(yaw) * std::f32::consts::TAU / 2048.0;
+    app.insert_resource(AudioListener(GlobalTransform::from(
+        Transform::from_translation(position)
+            .with_rotation(Quat::from_rotation_y(std::f32::consts::PI - angle)),
+    )));
+    Ok(())
+}
+
+/// Infer applied channel gains from actual public decoder samples.
+/// A silent prefix or unsupported channel layout has no measurable ratio.
+fn decoded_channel_gains(panned: &Panned) -> Option<[f32; 2]> {
+    let mut source = panned.source.decoder();
+    let channels = source.channels().get();
+    if !matches!(channels, 1 | 2) {
+        return None;
+    }
+    let mut output = panned.decoder();
+    for _ in 0..65_536 {
+        let left = source.next()?;
+        let right = if channels == 1 { left } else { source.next()? };
+        let mixed = [output.next()?, output.next()?];
+        if left != 0.0 && right != 0.0 {
+            return Some([mixed[0] / left, mixed[1] / right]);
+        }
+    }
+    None
 }
 
 fn play(
@@ -385,9 +473,21 @@ fn play(
     actor: Entity,
     sound: AnimationSound,
     surface: u8,
+    position_q8: [i64; 3],
     later: Option<u8>,
     bank: &[Vec<u8>],
 ) -> Result<Value> {
+    let position = if matches!(sound, AnimationSound::Play { .. }) {
+        let mut captured = [0; 3];
+        for (axis, coordinate) in position_q8.into_iter().enumerate() {
+            captured[axis] = i32::try_from(coordinate).with_context(|| {
+                format!("sound position axis {axis}: Q8 coordinate {coordinate} outside i32")
+            })?;
+        }
+        Some(captured)
+    } else {
+        None
+    };
     let before: HashSet<_> = app
         .world_mut()
         .query_filtered::<Entity, With<PlayingSound>>()
@@ -402,7 +502,7 @@ fn play(
         AnimationSound::Forget => json!({"kind": "forget"}),
     };
     app.world_mut().write_message(SoundCue::Animation {
-        position: None,
+        position,
         actor,
         sound,
         surface: Some(surface),
@@ -420,13 +520,13 @@ fn play(
         .collect();
     let mut started = Vec::new();
     for (handle, speed) in players {
-        let pcm = &app
+        let panned = app
             .world()
             .resource::<Assets<Panned>>()
             .get(&handle)
-            .context("started PCM missing")?
-            .source
-            .bytes;
+            .context("started PCM missing")?;
+        let gains = decoded_channel_gains(panned);
+        let pcm = &panned.source.bytes;
         let targets: Vec<_> = bank
             .iter()
             .enumerate()
@@ -437,7 +537,8 @@ fn play(
             !targets.is_empty(),
             "mixer PCM does not match any installed bank entry"
         );
-        started.push(json!({"target_candidates": targets, "speed": speed}));
+        started.push(json!({"target_candidates": targets, "speed": speed,
+            "decoded_channel_gains": gains}));
     }
     let remaining = app
         .world_mut()
@@ -445,6 +546,7 @@ fn play(
         .iter(app.world())
         .count();
     event["captured_surface"] = json!(surface);
+    event["captured_position_q8"] = json!(position);
     event["started"] = json!(started);
     event["remaining"] = json!(remaining);
     Ok(event)
@@ -457,8 +559,31 @@ mod tests {
     use cyrus_collision::{collision_world::StaticCollision, ground::TerrainGround};
 
     #[test]
+    fn listener_uses_original_origin_and_decoder_reports_applied_gains() {
+        let mut app = App::new();
+        set_listener(&mut app, [5120, -10240, 16_777_215], 0).unwrap();
+        let listener = &app.world().resource::<AudioListener>().0;
+        assert_eq!(listener.translation(), Vec3::new(-1.0, 2.0, 0.0));
+        assert!((listener.forward().z - 1.0).abs() < 0.000001);
+        assert!(set_listener(&mut app, [0; 3], 2048).is_err());
+        let bytes =
+            cyrus_assets::audio::pcm_wav(rgpre::import::sfx::AudioType::Mono8, 11025, &[200; 16])
+                .unwrap();
+        let panned = Panned {
+            source: AudioSource {
+                bytes: bytes.into(),
+            },
+            gains: cyrus_audio::sound::PannedGains::new(32, 256, 32),
+        };
+        assert_eq!(
+            decoded_channel_gains(&panned),
+            Some([0.2578125, 0.12890625])
+        );
+    }
+
+    #[test]
     fn grounded_report_keeps_each_stage_surface_and_rejects_a_discontinuous_path() {
-        let data: Animations = serde_json::from_value(json!({
+        let mut data: Animations = serde_json::from_value(json!({
             "version":2, "world":1, "sections":{}, "unsupported":{},
             "models":{"TEST":{"radius":1.0,"base_positions":[],"base_normals":[],"faces":[],
                 "encoding":"static_3d","positions":[[],[]],"normals":[[],[]]}},
@@ -478,7 +603,7 @@ mod tests {
             texture_surfaces: Some(std::collections::BTreeMap::from([((302 << 7) | 25, 6)])),
             ..Default::default()
         };
-        let scene = PlayerScene {
+        let mut scene = PlayerScene {
             world: 1,
             model_radii: std::collections::BTreeMap::from([("TEST".into(), 1.0)]),
             keyboard_codes: None,
@@ -488,6 +613,7 @@ mod tests {
                 standing_height: -2,
                 post_collide_height: 50,
                 slide_range: -60000,
+                slide_speed: None,
                 turn_speed: 12,
                 turn_max_speed: 48,
                 poly_push_units: 16,
@@ -570,13 +696,80 @@ mod tests {
         assert_eq!(events[1]["captured_surface"], 6);
         assert_eq!(events[1]["started"], json!([]));
         assert_eq!(events[1]["remaining"], 1);
+        assert_eq!(events[1]["captured_position_q8"], Value::Null);
         assert_eq!(events[2]["stage"], "forward_animation");
         assert_eq!(events[2]["captured_surface"], 6);
         assert_eq!(events[2]["started"][0]["target_candidates"], json!([1]));
-        assert_eq!(events[2]["captured_position_q8"], Value::Null);
+        assert_eq!(
+            events[0]["captured_position_q8"],
+            json!([131072, -16384, 131072])
+        );
+        assert_eq!(
+            events[2]["captured_position_q8"],
+            json!([131072, -16384, 131072])
+        );
         assert_eq!(events[2]["started"][0]["speed"], 1.0);
+        let cleanup = play(
+            &mut app,
+            actor,
+            AnimationSound::Forget,
+            6,
+            [i64::MAX; 3],
+            None,
+            &bank,
+        )
+        .unwrap();
+        assert_eq!(cleanup["captured_position_q8"], Value::Null);
         case.steps[1].position_q8[2] += 1;
         let error = grounded_steps(&case, &scene, &data, (&mut app, actor, &bank)).unwrap_err();
         assert!(format!("{error:#}").contains("step 1: expected input position"));
+        let mut primed_data = serde_json::to_value(&data).unwrap();
+        primed_data["metadata"]["actors"][0]["attributes"]["attr_panic_group"] = json!(0);
+        primed_data["metadata"]["actors"][0]["animation_groups"][0]["commands"] = json!([
+            {"opcode":0,"frame_reference":0},
+            {"opcode":0,"frame_reference":1},
+            {"opcode":2,"value":0}
+        ]);
+        data = serde_json::from_value(primed_data).unwrap();
+        scene.definition = Some(
+            cyrus_game::player::definition::PlayerDefinition::from_metadata(&data.metadata)
+                .unwrap(),
+        );
+        case.entry_ticks = 1;
+        case.idle_ticks = vec![1];
+        case.steps.truncate(1);
+        case.steps[0].movement.as_mut().unwrap().walk = false;
+        let report = grounded_steps(&case, &scene, &data, (&mut app, actor, &bank)).unwrap();
+        assert_eq!(report[0]["input_frame_reference"], 1);
+        assert_eq!(report[0]["input_group"], 0);
+        assert_eq!(report[0]["input_pending_group"], Value::Null);
+        assert_eq!(report[0]["position_q8"], json!([131072, -16384, 131072]));
+        assert_eq!(report[0]["events"], json!([]));
+        case.idle_ticks = vec![1025];
+        let error = grounded_steps(&case, &scene, &data, (&mut app, actor, &bank)).unwrap_err();
+        assert!(format!("{error:#}").contains("idle_ticks 0: ticks exceeds 1024"));
+    }
+
+    #[test]
+    fn play_rejects_a_position_outside_the_q8_transport_range() {
+        let mut app = App::new();
+        let actor = app.world_mut().spawn_empty().id();
+        let error = play(
+            &mut app,
+            actor,
+            AnimationSound::Play {
+                effect: 9,
+                rate_offset_hz: 0,
+            },
+            6,
+            [0, 0, i64::from(i32::MAX) + 1],
+            None,
+            &[],
+        )
+        .unwrap_err();
+        assert!(
+            format!("{error:#}")
+                .contains("sound position axis 2: Q8 coordinate 2147483648 outside i32")
+        );
     }
 }

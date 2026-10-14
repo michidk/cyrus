@@ -37,8 +37,24 @@ pub(super) struct AmbientCall<'a> {
     pub actor_index: usize,
 }
 
+/// Shared services sampled for each native task invocation.
+#[derive(Default)]
+pub(super) struct NativeServices<'a> {
+    pub ambient: Option<&'a AmbientCall<'a>>,
+    pub dialogue: Option<&'a mut super::DialogueState>,
+    pub player_dialogue: Option<PlayerDialogueCall<'a>>,
+}
+
+pub(super) struct PlayerDialogueCall<'a> {
+    pub source: Option<&'a dyn super::DialogueSource>,
+    pub player: Option<super::ScriptActorId>,
+    pub reset: Option<bool>,
+}
+
 #[derive(Clone, Copy)]
 enum Task {
+    Dialogue,
+    PlayerDialogue { started: bool },
     Ambient { channel: Option<u8> },
     Movement { target: i32 },
     ObjectMovement { target: i32, traveled: i32 },
@@ -60,9 +76,53 @@ impl Task {
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
-        ambient: Option<&AmbientCall<'_>>,
+        services: NativeServices<'_>,
     ) -> Result<bool> {
+        let ambient = services.ambient;
         Ok(match self {
+            Self::PlayerDialogue { started } => {
+                let [label] = arguments else {
+                    anyhow::bail!("RTXp requires one argument");
+                };
+                let input = services
+                    .player_dialogue
+                    .context("RTXp service inputs unavailable")?;
+                if input.reset.context("RTXp sample-reset input unavailable")? {
+                    return Ok(true);
+                }
+                invocation.elapsed.context("RTXp requires elapsed input")?;
+                let dialogue = services
+                    .dialogue
+                    .context("RTXp dialogue records unavailable")?;
+                if !*started {
+                    let player = input.player.context("RTXp selected player unavailable")?;
+                    let source = input.source.context("RTXp source service unavailable")?;
+                    let std::task::Poll::Ready(line) = source.player_line(
+                        label.integer()?.to_le_bytes(),
+                        player,
+                        dialogue.settings().max_text_width,
+                    )?
+                    else {
+                        return Ok(false);
+                    };
+                    *started = true;
+                    if let Some(line) = line {
+                        anyhow::ensure!(
+                            line.sample.is_none_or(|sample| sample < 16),
+                            "RTXp source returned invalid sample slot"
+                        );
+                        dialogue.begin_player_line(player, line.text, line.sample, line.lifetime);
+                    }
+                }
+                !dialogue.line_active(Some(0))
+            }
+            Self::Dialogue => {
+                anyhow::ensure!(arguments.is_empty(), "WaitOnDialog requires no arguments");
+                !services
+                    .dialogue
+                    .context("WaitOnDialog records unavailable")?
+                    .waiting()
+            }
             Self::Ambient { channel } => {
                 let [effect, volume, rate] = arguments else {
                     anyhow::bail!("AmbientSound requires three arguments")
@@ -528,9 +588,18 @@ impl NativeTasks {
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
-        ambient: Option<&AmbientCall<'_>>,
+        services: NativeServices<'_>,
     ) -> Result<Option<CallResult>> {
-        let mut task = if function.eq_ignore_ascii_case("AmbientSound") {
+        let mut task = if function.eq_ignore_ascii_case("WaitOnDialog") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "WaitOnDialog requires task encoding"
+            );
+            Task::Dialogue
+        } else if function.eq_ignore_ascii_case("RTXp") {
+            anyhow::ensure!(kind == CallKind::Task, "RTXp requires task encoding");
+            Task::PlayerDialogue { started: false }
+        } else if function.eq_ignore_ascii_case("AmbientSound") {
             anyhow::ensure!(
                 kind == CallKind::Multitask,
                 "AmbientSound requires multitask encoding"
@@ -584,7 +653,7 @@ impl NativeTasks {
             .checked_add(1)
             .context("native task identity exhausted")?;
         // Initial completion still allocates a slot and yields until a later task pass.
-        task.complete(arguments, invocation, animation, spatial, ambient)?;
+        task.complete(arguments, invocation, animation, spatial, services)?;
         self.next = next;
         self.tasks.insert(next, task);
         Ok(Some(CallResult::Pending(next)))
@@ -596,13 +665,13 @@ impl NativeTasks {
         invocation: Invocation,
         animation: &mut Option<AnimationCall<'_, '_>>,
         spatial: &mut Option<SpatialCall<'_>>,
-        ambient: Option<&AmbientCall<'_>>,
+        services: NativeServices<'_>,
     ) -> Result<bool> {
         let task = self
             .tasks
             .get_mut(&token)
             .with_context(|| format!("native task {token} absent"))?;
-        let completed = task.complete(arguments, invocation, animation, spatial, ambient)?;
+        let completed = task.complete(arguments, invocation, animation, spatial, services)?;
         if completed {
             self.tasks.remove(&token);
         }

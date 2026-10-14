@@ -86,14 +86,62 @@ pub enum ActivationOverlay {
     Item { visible: bool, cycle_allowed: bool },
 }
 
-/// Gameplay globals established by native calls. Unknown startup values remain None.
+/// Gameplay globals retain engine initialization and native-call assignments.
+/// Unknown startup values remain None.
 /// The host retains these globals while replacing the logical world registry.
 #[derive(Default, Debug, Serialize)]
 pub struct GameplayGlobals {
+    /// Engine message queues persist independently of a logical world registry.
+    pub(super) combat_messages: super::CombatMessages,
+    pub(super) dialogue: Option<super::DialogueState>,
     lockout: Option<u16>,
+    menu_state: u16,
     highlighted_choice: Option<String>,
 }
 impl GameplayGlobals {
+    /// Retained SOUP topic-menu state, distinct from the startup book menu and
+    /// dialogue state. Engine initialization starts it at zero; world replacement
+    /// retains it. See preservation engine/sound.md.
+    pub fn menu_state(&self) -> u16 {
+        self.menu_state
+    }
+
+    /// The topic-menu task establishes active state before processing choices.
+    /// This is an engine lifecycle operation, not an installed script function.
+    pub fn begin_topic_menu(&mut self) {
+        self.menu_state = 1;
+    }
+
+    /// Accepting a topic selection clears the engine menu-state word.
+    pub fn end_topic_menu(&mut self) {
+        self.menu_state = 0;
+    }
+
+    /// Shared dialogue owner, absent until installed settings are prepared.
+    pub fn dialogue(&self) -> Option<&super::DialogueState> {
+        self.dialogue.as_ref()
+    }
+
+    /// Mutable dialogue owner for the host's supported speech lifecycle.
+    pub fn dialogue_mut(&mut self) -> Option<&mut super::DialogueState> {
+        self.dialogue.as_mut()
+    }
+
+    pub(super) fn prepare_dialogue(
+        &mut self,
+        settings: &cyrus_assets::script::DialogueSettings,
+    ) -> Result<()> {
+        if let Some(dialogue) = &self.dialogue {
+            anyhow::ensure!(
+                dialogue.settings() == settings,
+                "dialogue settings differ from the active game's installed settings"
+            );
+        } else {
+            self.dialogue = Some(super::DialogueState::new(settings)?);
+        }
+        Ok(())
+    }
+
     /// Last retained LockoutPlayer low word, or unknown before an established call.
     pub fn lockout(&self) -> Option<u16> {
         self.lockout

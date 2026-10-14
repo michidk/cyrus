@@ -1,0 +1,286 @@
+//! Ordinary slope response follows preservation's player engine rules.
+use super::{ScriptActorId, ScriptWorld, ground::OrdinaryGroundQuery};
+use anyhow::{Context, Result, ensure};
+use cyrus_collision::ground::SelectedSupport;
+
+/// A class-two slide decision in Q8 distance and 1/2048-turn headings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrdinarySlide {
+    pub movement_heading: u16,
+    pub target_heading: u16,
+    pub group: u16,
+    pub movement_bits: u8,
+    pub distance: i32,
+}
+
+fn difference(first: u16, second: u16) -> i32 {
+    let delta = i32::from(first & 2047) - i32::from(second & 2047);
+    if delta > 1024 {
+        delta - 2048
+    } else if delta < -1024 {
+        delta + 2048
+    } else {
+        delta
+    }
+}
+
+/// Resolve class-two motion from the support normal and effective heading.
+/// Settings loading clamps slide speed before the wrapping distance product.
+pub fn ordinary_slide(
+    normal: [i32; 3],
+    effective_heading: u16,
+    torch: bool,
+    slide_speed: i32,
+    frame_scale: u32,
+) -> OrdinarySlide {
+    let movement_heading =
+        crate::player::motion::displacement_heading(i64::from(normal[0]), i64::from(normal[2]));
+    let forward = difference(movement_heading, effective_heading).abs() < 512;
+    OrdinarySlide {
+        movement_heading,
+        target_heading: (movement_heading + if forward { 0 } else { 1024 }) & 2047,
+        group: match (forward, torch) {
+            (true, false) => 75,
+            (true, true) => 77,
+            (false, false) => 76,
+            (false, true) => 78,
+        },
+        movement_bits: if forward { 0x30 } else { 0xc0 },
+        distance: slide_speed
+            .max(8)
+            .wrapping_mul(128)
+            .wrapping_mul(frame_scale as i32)
+            >> 8,
+    }
+}
+
+/// One local-heading update and its optional ordinary turn animation request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrdinarySlopeTurn {
+    pub heading: u16,
+    pub group: Option<u16>,
+}
+
+/// Turn rate is clamped after frame scaling. Weapon state chooses animation;
+/// combat mode independently chooses which installed attribute supplies rate.
+pub fn ordinary_slope_turn(
+    local_heading: u16,
+    target: u16,
+    rate_attribute: u8,
+    frame_scale: u32,
+    holding_weapon: bool,
+    torch: bool,
+) -> OrdinarySlopeTurn {
+    let delta = -difference(local_heading, target);
+    let rate = (i32::from(rate_attribute).wrapping_mul(frame_scale as i32) >> 8).max(8);
+    if delta.abs() <= rate {
+        return OrdinarySlopeTurn {
+            heading: target & 2047,
+            group: None,
+        };
+    }
+    let positive = delta > 0;
+    let group = match (holding_weapon, positive, torch) {
+        (true, true, _) => 96,
+        (true, false, _) => 97,
+        (false, true, false) => 14,
+        (false, true, true) => 16,
+        (false, false, false) => 15,
+        (false, false, true) => 17,
+    };
+    OrdinarySlopeTurn {
+        heading: (i32::from(local_heading).wrapping_add(if positive { rate } else { -rate }) & 2047)
+            as u16,
+        group: Some(group),
+    }
+}
+
+/// Caller-established predicates for an admitted nonplayer slope stage.
+/// Combat mode is separate from the existence of a combat record. The caller
+/// supplies the weapon predicate after item/shell services and actor overrides.
+pub struct OrdinarySlopeInputs {
+    pub selected_player: Option<ScriptActorId>,
+    pub holding_weapon: bool,
+    pub combat_active: bool,
+    pub frame_scale: u32,
+    pub ticks: u32,
+}
+
+impl ScriptWorld {
+    fn request_slope_group(
+        &mut self,
+        id: ScriptActorId,
+        group: u16,
+        force: bool,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        let actor = &mut self.actors[index];
+        let surface = actor.surface;
+        let animation = actor
+            .animation
+            .as_mut()
+            .context("ordinary slope animation unavailable")?;
+        let mut emit = |sound| {
+            sounds(
+                id,
+                super::super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            )
+        };
+        let result = if force {
+            animation
+                .playback
+                .force_request_with_sounds(group, 0, ticks, &mut emit)
+        } else {
+            animation
+                .playback
+                .request_with_sounds(group, 0, ticks, &mut emit)
+        };
+        match result {
+            Ok(frame) => animation.frame = frame.or(animation.frame),
+            Err(error) => {
+                let message = format!(
+                    "world {} instance {index} slope animation: {error:#}",
+                    self.world
+                );
+                actor.animation_failure = Some(message.clone());
+                anyhow::bail!(message);
+            }
+        }
+        Ok(())
+    }
+
+    /// Execute the admitted slope helper, including ordered turn/slide requests,
+    /// translation and a second primary support query. Selected-player camera
+    /// updates require their separate owner and are rejected before mutation.
+    pub fn resolve_ordinary_slope(
+        &mut self,
+        id: ScriptActorId,
+        support: Option<&SelectedSupport>,
+        query: OrdinaryGroundQuery<'_>,
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
+        let index = self.resolve(id)?;
+        ensure!(
+            inputs.selected_player != Some(id),
+            "world {} instance {index}: selected-player slope camera unsupported",
+            self.world
+        );
+        ensure!(
+            !matches!(support, Some(SelectedSupport::Fallback { .. })),
+            "world {} instance {index}: ordinary slope requires primary support",
+            self.world
+        );
+        let actor = &self.actors[index];
+        let animation = actor
+            .animation
+            .as_ref()
+            .context("ordinary slope animation unavailable")?;
+        let control = actor
+            .control
+            .as_ref()
+            .context("ordinary slope control unavailable")?;
+        let torch = control.torch_burning != 0;
+        let Some(support) = support.and_then(|support| match support {
+            SelectedSupport::Primary { support, .. } if support.classification() == 2 => {
+                Some(support)
+            }
+            _ => None,
+        }) else {
+            if !matches!(animation.playback.current_group(), Some(75..=78)) {
+                self.request_slope_group(
+                    id,
+                    if torch { 77 } else { 75 },
+                    false,
+                    inputs.ticks,
+                    sounds,
+                )?;
+            }
+            return Ok(());
+        };
+        let slide_speed = query
+            .scene
+            .settings
+            .slide_speed
+            .context("ordinary slope slide_speed absent; re-export world")?;
+        let first = control.sliding_state == 0;
+        let spatial = self.spatial(id)?;
+        let slide = ordinary_slide(
+            support.normal,
+            spatial.query_pose()?.angles[1],
+            torch,
+            slide_speed,
+            inputs.frame_scale,
+        );
+        let turn = ordinary_slope_turn(
+            spatial.local.angles[1],
+            slide.target_heading,
+            actor.attributes[if inputs.holding_weapon || inputs.combat_active {
+                21
+            } else {
+                15
+            }],
+            inputs.frame_scale,
+            inputs.holding_weapon,
+            torch,
+        );
+        if let Some(group) = turn.group {
+            self.request_slope_group(id, group, false, inputs.ticks, sounds)?;
+        }
+        self.spatial
+            .as_mut()
+            .context("ordinary slope spatial state unavailable")?
+            .actor_mut(index)?
+            .local
+            .angles[1] = turn.heading;
+        self.request_slope_group(id, slide.group, first, inputs.ticks, sounds)?;
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated slope control")
+            .movement_flags |= slide.movement_bits;
+        if slide.distance > 0 {
+            let position = cyrus_world::transform::translate_forward(
+                self.spatial(id)?.local.position,
+                slide.movement_heading,
+                slide.distance,
+            )?;
+            self.spatial
+                .as_mut()
+                .context("ordinary slope spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .position = position;
+        }
+        let extent = self.ordinary_collision_shape(id)?.positive_extent[1];
+        let standing_height = query.scene.settings.standing_height;
+        if let Some(support) = self.query_ordinary_ground(id, query)? {
+            let height = i32::try_from(support.actor_height(extent, standing_height))
+                .context("ordinary slope origin outside Q8 range")?;
+            self.spatial
+                .as_mut()
+                .context("ordinary slope spatial state unavailable")?
+                .actor_mut(index)?
+                .local
+                .position[1] = height;
+        }
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated slope control");
+        if first {
+            control.sliding_distance = 0;
+        }
+        control.sliding_distance = control.sliding_distance.wrapping_add(slide.distance);
+        control.sliding_state = 1;
+        Ok(())
+    }
+}

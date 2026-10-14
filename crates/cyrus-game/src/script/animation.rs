@@ -124,7 +124,7 @@ impl Host for AnimationHost<'_, '_> {
                 invocation,
                 &mut self.input,
                 &mut None,
-                None,
+                Default::default(),
             )?
             .context("animation task absent")
     }
@@ -141,7 +141,7 @@ impl Host for AnimationHost<'_, '_> {
             invocation,
             &mut self.input,
             &mut None,
-            None,
+            Default::default(),
         )
     }
     fn cancel(&mut self, token: u64) -> anyhow::Result<()> {

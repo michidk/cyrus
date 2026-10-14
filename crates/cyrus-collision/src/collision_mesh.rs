@@ -53,6 +53,59 @@ pub struct WorldSegmentContact {
     pub normal: [f32; 3],
 }
 
+/// Segment contact after the original world adapter's nearest-even conversion.
+/// Points use integer map units; normal components have scale 256. Rank is unchanged.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntegerSegmentContact {
+    pub face: usize,
+    pub rank: u32,
+    pub point: [i32; 3],
+    pub normal: [i32; 3],
+}
+
+impl WorldSegmentContact {
+    /// Convert stored world points and single-precision scaled normals without
+    /// normalization, following preservation's ordinary segment adapter.
+    pub fn integer(&self) -> anyhow::Result<IntegerSegmentContact> {
+        let convert = |values: [f32; 3]| -> anyhow::Result<[i32; 3]> {
+            let mut converted = [0; 3];
+            for (axis, value) in values.into_iter().enumerate() {
+                let rounded = value.round_ties_even();
+                anyhow::ensure!(
+                    rounded.is_finite()
+                        && (-2147483648.0..2147483648.0).contains(&f64::from(rounded)),
+                    "segment face {} axis {axis}: world conversion outside integer range",
+                    self.face
+                );
+                converted[axis] = rounded as i32;
+            }
+            Ok(converted)
+        };
+        Ok(IntegerSegmentContact {
+            face: self.face,
+            rank: self.rank,
+            point: convert(self.point)?,
+            normal: convert(self.normal.map(|value| value * 256.0))?,
+        })
+    }
+}
+
+/// Original body query inputs. Sphere centers/radii are actor-local map units;
+/// actor position has eight fractional bits. Rotation uses original engine axes.
+pub struct BodyProbe<'a> {
+    pub position: [i64; 3],
+    pub rotation: Mat3,
+    pub spheres: &'a [(Vec3, f32)],
+    pub sidedness: bool,
+}
+
+/// Successful body contact before the original world integer conversion.
+pub struct WorldSphereContact {
+    pub face: usize,
+    pub point: Vec3,
+    pub normal: Vec3,
+}
+
 impl CollisionMesh {
     /// Prepare authored geometry once when loading a scene.
     pub fn new(model: &CollisionGeometry) -> anyhow::Result<Self> {
@@ -99,12 +152,16 @@ impl CollisionMesh {
     }
 
     /// Ordered model-local body contacts, suppressing successful faces across spheres.
-    /// Saturated contact buffers remain unsupported; callers must not treat an error as clearance.
+    /// Retains the first 32 successful faces; a full buffer is a successful query.
     pub fn sphere_contacts(
         &self,
         spheres: &[(Vec3, f32)],
         sidedness: bool,
     ) -> anyhow::Result<Vec<FaceContact>> {
+        anyhow::ensure!(
+            spheres.len() <= 24,
+            "body query: more than 24 spheres unsupported"
+        );
         let mut candidates = Vec::new();
         for &(center, radius) in spheres {
             anyhow::ensure!(
@@ -121,12 +178,51 @@ impl CollisionMesh {
                 }
             }
         }
-        let contacts = ordered_contacts(&self.faces, &candidates, sidedness)?;
+        ordered_contacts(&self.faces, &candidates, sidedness)
+    }
+
+    /// Query actor-local spheres against a stored model pose. Model-radius
+    /// admission uses the sum of squared radii, before subobject/face admission.
+    pub fn world_sphere_contacts(
+        &self,
+        pose: &ModelPose,
+        probe: &BodyProbe<'_>,
+    ) -> anyhow::Result<Vec<WorldSphereContact>> {
         anyhow::ensure!(
-            contacts.len() < 32,
-            "sphere contact buffer saturation unsupported"
+            probe.rotation.is_finite(),
+            "body query: nonfinite actor rotation"
         );
-        Ok(contacts)
+        anyhow::ensure!(
+            probe.spheres.len() <= 24,
+            "body query: more than 24 spheres unsupported"
+        );
+        let origin = Vec3::from_array(probe.position.map(|coordinate| (coordinate >> 8) as f32));
+        let local_model = probe.rotation.transpose() * (pose.translation - origin);
+        let mut admitted = Vec::new();
+        for &(center, radius) in probe.spheres {
+            anyhow::ensure!(
+                center.is_finite() && radius.is_finite() && radius >= 0.0,
+                "body query: invalid sphere"
+            );
+            let delta = center - local_model;
+            let limit = f64::from(self.radius * self.radius) + f64::from(radius * radius);
+            if delta.as_dvec3().length_squared() <= limit {
+                admitted.push((
+                    pose.rotation.transpose()
+                        * (probe.rotation * center + origin - pose.translation),
+                    radius,
+                ));
+            }
+        }
+        Ok(self
+            .sphere_contacts(&admitted, probe.sidedness)?
+            .into_iter()
+            .map(|contact| WorldSphereContact {
+                face: contact.face,
+                point: pose.rotation * contact.projection + pose.translation,
+                normal: pose.rotation * contact.normal,
+            })
+            .collect())
     }
 
     /// Test model-admitted spheres in model-local map units for any polygon contact.

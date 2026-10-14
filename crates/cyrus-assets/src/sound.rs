@@ -1,6 +1,10 @@
 //! Portable sound settings and exported effect metadata.
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
+mod cache;
+pub use cache::{DialogueCache, DialoguePayload};
+#[cfg(feature = "parsers")]
+pub mod dialogue;
 /// `MAIN.SFX` metadata and the `SYSTEM.INI` values the mixer needs, exported for the browser.
 #[derive(Asset, TypePath, Deserialize, Serialize)]
 pub struct SoundBank {
@@ -188,4 +192,39 @@ pub struct VoiceClip<A> {
     pub base_volume: u8,
     pub seconds: f64,
     pub text: String,
+}
+
+/// One original RTX payload prepared for portable, on-demand dialogue playback.
+/// Text is unformatted; lifetime counts precede REDSEL wrapping.
+#[derive(Asset, TypePath, Debug, Clone, Serialize, Deserialize)]
+pub struct DialogueEntry {
+    pub version: u32,
+    /// Authored four-byte lookup key; file lookup folds ASCII case.
+    pub label: [u8; 4],
+    pub text: String,
+    /// Signed wrapping original text byte count times fifteen.
+    pub text_lifetime: i32,
+    pub voice: Option<DialogueVoice>,
+}
+
+/// Original voice metadata and its generated WAV dependency.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DialogueVoice {
+    /// Cache-relative WAV path, without a scheme.
+    pub audio: String,
+    pub base_volume: u8,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub bits_per_sample: u16,
+    pub loop_flag: i8,
+    pub loop_offset: u32,
+    pub loop_end: u32,
+    /// Signed integer duration in 1/256-second units, used with a remembered sample.
+    pub lifetime: i32,
+}
+
+/// Sample status and stop operations must complete before cache maintenance returns.
+pub trait DialogueSamples {
+    fn playing(&mut self, sample: u8) -> anyhow::Result<bool>;
+    fn stop(&mut self, sample: u8) -> anyhow::Result<()>;
 }

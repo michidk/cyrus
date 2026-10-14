@@ -132,7 +132,13 @@ change visible output. Revisit only with a demonstrated fidelity or performance 
 - [x] Initial actor collision shapes, ordered static/live/transient candidates and live static-model support geometry.
 
 **Verified:** native New Game advances START sharks without debug stepping.
-Crew/pirate collision, BOAT1 ambient sound and WATERSND object paths remain blockers.
+**Verified:** the current draft plays New Game Introduction before world loading;
+a rebuilt native virtual-display run displayed INTRO.SMK, followed its installed
+skip points, and reached a ready starting world. A sustained 120-update native
+probe also confirms shark movement and Brennan animation-frame advancement.
+Browser acceptance remains open. The probe identifies missing shared sample-reset
+inputs on BOAT1 and WATERSND, and unsupported beginCombat on two pirates; these
+block full opening-story acceptance alongside remaining collision behavior.
 Explicit-stage tests and export coverage do not close automatic acceptance.
 
 - [ ] Complete production eligibility and invocation timing, model/default ownership, initialization, group types, cancellation and model replacement.
@@ -149,7 +155,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Installed HUD elements, activation prompts and persistent F8/Tab/F7 preferences. Placed-player heading/world and script-actor health/type feed the HUD.
 - [x] Native restart and browser reload acceptance for F8/Tab/F7 preferences, including restored candle visibility and subsequent toggle notices. **Verified:** native health-number placement matches the original at 640×480; both builds cycle starting items and display the installed gold count of 53. Complete pixel parity remains open.
 - [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
-- [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support exists; topic execution and death/load resets remain open.
+- [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support exists; topic execution and death/load resets remain open. Portable RTX preparation, the 20-entry cache and shared-sample dialogue playback are implemented in the current draft. Full New Game story acceptance remains open.
 - [x] Shared `ShowBitmap`/`UnShowBitmap` slots and `AddLog` persistence/notification dispatch. **Verified:** original-instruction acceptance checks, shared dispatch/render tests and native/browser START entry. Full logbook UI, save integration and original notification cadence remain open.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
 - [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original. Compass frame selection and item-zero use rules are documented in preservation; production compass activation remains unwired.

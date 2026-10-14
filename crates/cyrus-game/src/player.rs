@@ -29,6 +29,7 @@ impl Plugin for PlayerPlugin {
         }
         app.init_resource::<input::PlayerBindings>()
             .init_resource::<input::PlayerInput>()
+            .init_resource::<input::DialogueSkip>()
             .init_resource::<input::InputSuppressed>()
             .init_resource::<placement::MarkerEntry>()
             .init_resource::<runtime::PlayerRuntime>()

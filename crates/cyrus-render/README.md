@@ -364,3 +364,10 @@ inspection holds for matched captures. Holding a frame suppresses automatic
 requests for that image until resumed; selection preserves its deadline.
 World replacement clears the hold with the image timeline. Ordinary playback
 has no hold. Explicit gameplay frame requests remain unsupported.
+
+The HUD reads dialogue text selected by the game-owned record update.
+It uses installed REDSEL data, font_norm alpha for player record zero,
+font_sel alpha for other records, and the fixed 640×480 subtitle band,
+without wrapping again or advancing lifetime. The sound subtitle preference
+controls visibility. Automatic dialogue update
+and source scheduling remain separate game/audio work.

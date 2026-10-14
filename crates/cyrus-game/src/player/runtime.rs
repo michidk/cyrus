@@ -164,12 +164,24 @@ pub(crate) fn step(
                 scene.world
             );
             let initial_surface = world.actor_surface(tick.actor)?;
-            let mut emit = |sound, surface| {
+            let mut emit = |sound, surface, position: [i64; 3]| {
+                let captured_position = if matches!(
+                    &sound,
+                    cyrus_world::animation::AnimationSound::Play { .. }
+                ) {
+                    let mut captured = [0; 3];
+                    for (axis, value) in position.into_iter().enumerate() {
+                        captured[axis] = i32::try_from(value).with_context(|| format!("player animation sound position axis {axis}: Q8 coordinate {value} outside i32"))?;
+                    }
+                    Some(captured)
+                } else {
+                    None
+                };
                 sounds
                     .as_mut()
                     .context("player animation: sound consumer unavailable")?
                     .write(SoundCue::Animation {
-                        position: None,
+                        position: captured_position,
                         actor: entity,
                         sound,
                         surface: Some(surface),
@@ -192,9 +204,10 @@ pub(crate) fn step(
                     veto: 0,
                 });
             }
+            let initial_position = runtime.running.as_ref().unwrap().walk.position;
             let animation =
                 world.player_animation(tick.actor, data, tick.nominal_ticks, &mut |sound| {
-                    emit(sound, initial_surface)
+                    emit(sound, initial_surface, initial_position)
                 })?;
             let running = runtime.running.as_mut().unwrap();
             if let Some(frame) = grounded::advance_animation(
@@ -202,7 +215,7 @@ pub(crate) fn step(
                 tick.nominal_ticks,
                 &mut running.history,
                 &mut animation.playback,
-                &mut |sound| emit(sound, running.walk.surface),
+                &mut |sound| emit(sound, running.walk.surface, running.walk.position),
             )? {
                 animation.frame = Some(frame);
             }

@@ -70,7 +70,9 @@ service. cyrus-media decodes video and first-track PCM incrementally. A bounded
 Web Audio adapter supplies the playback clock and pauses it while buffering.
 Forward skips retain decoder state; menu return cancels downloads and playback.
 Native and browser playback share skip points, subtitles, interlace and menu return.
-New Game enters the installed starting world and marker. Load temporarily starts
+New Game plays installed movie zero (Introduction), then enters the installed
+starting world and marker after playback completes or advances through its skip
+points. Movie loading or playback failure returns to the menu with an error. Load temporarily starts
 the same fresh world. Shared world entry waits for preparation, required asset dependencies and
 spawned scene instances behind the destination's installed GXA artwork, with preservation's
 red bar and REDSEL percentage label. Progress counts completed loading stages.
