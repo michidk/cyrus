@@ -68,19 +68,18 @@ fn poll(
             && startup.error.is_none()
             && let Some(game) = game.as_mut()
         {
-            let (done, total, status) = preparation
+            let (done, total) = preparation
                 .as_ref()
-                .map_or((0, WORLD_ASSET_STEPS, "Preparing world..."), |stage| {
-                    (stage.done, offset + WORLD_ASSET_STEPS, stage.label.as_str())
+                .map_or((0, WORLD_ASSET_STEPS), |stage| {
+                    (stage.done, offset + WORLD_ASSET_STEPS)
                 });
-            update_progress(game, &mut images, done, total, status);
+            update_progress(game, &mut images, done, total);
         }
         if startup.error.is_none()
             && let Some(prepared) = prepared
         {
             if let Some(handles) = world_assets {
                 let mut loaded = 0;
-                let mut status = String::from("Entering world...");
                 for handle in &handles.0 {
                     if let Some(bevy::asset::LoadState::Failed(error)) =
                         assets.get_load_state(handle.id())
@@ -96,14 +95,6 @@ fn poll(
                     }
                     if assets.is_loaded_with_dependencies(handle.id()) {
                         loaded += 1;
-                    } else if status == "Entering world..." {
-                        status = assets.get_path(handle.id()).map_or_else(
-                            || "Loading world assets...".into(),
-                            |path| {
-                                let name = path.path().file_name().unwrap_or_default();
-                                format!("Loading {}...", name.to_string_lossy())
-                            },
-                        );
                     }
                 }
                 let spawned = !instances.is_empty()
@@ -113,7 +104,7 @@ fn poll(
                 if let Some(game) = game.as_mut() {
                     let total = offset + handles.0.len() + 2;
                     let done = offset + loaded + 1 + usize::from(spawned);
-                    update_progress(game, &mut images, done, total, &status);
+                    update_progress(game, &mut images, done, total);
                 }
                 if loaded == handles.0.len() && spawned && startup.error.is_none() {
                     commands.remove_resource::<StartGame>();
@@ -149,13 +140,7 @@ fn poll(
                     }
                 }
                 if let Some(game) = game.as_mut() {
-                    update_progress(
-                        game,
-                        &mut images,
-                        offset + 1,
-                        offset + handles.len() + 2,
-                        "Loading world assets...",
-                    );
+                    update_progress(game, &mut images, offset + 1, offset + handles.len() + 2);
                 }
                 commands.insert_resource(WorldAssets(handles));
             }
@@ -241,37 +226,19 @@ fn poll(
     }
 }
 
-fn update_progress(
-    game: &mut StartGame,
-    images: &mut Assets<Image>,
-    done: usize,
-    total: usize,
-    status: &str,
-) {
+fn update_progress(game: &mut StartGame, images: &mut Assets<Image>, done: usize, total: usize) {
     let percent = ((done * 100 + total / 2) / total) as u8;
     let (previous_done, previous_total) = game.progress;
     let previous_percent =
         ((previous_done * 100 + previous_total / 2) / previous_total.max(1)) as u8;
-    if (percent <= previous_percent && status == game.status) || game.background.is_empty() {
+    if percent <= previous_percent || game.background.is_empty() {
         return;
     }
     if let Some(mut image) = images.get_mut(&game.image) {
         let mut pixels = game.background.clone();
-        if percent >= previous_percent {
-            game.progress = (done, total);
-        }
+        game.progress = (done, total);
         paint_progress(&mut pixels, &game.font, game.progress.0, game.progress.1);
-        let mut status_font = game.font.clone();
-        status_font.palette.fill([63, 0, 0]);
-        status_font.draw_shadowed(
-            &mut pixels,
-            640,
-            status,
-            [608 - game.font.width(status), 451],
-            [255, 180],
-        );
         image.data = Some(pixels);
-        game.status = status.into();
     }
 }
 
@@ -304,8 +271,9 @@ fn cleanup(mut commands: Commands) {
 mod tests {
     use super::*;
     #[test]
-    fn status_updates_without_percentage_changes_and_clears_old_text() {
+    fn world_loading_draws_only_the_bar_and_percentage() {
         let mut images = Assets::<Image>::default();
+        let background = [17, 18, 19, 255].repeat(640 * 480);
         let image = images.add(Image::new(
             bevy::render::render_resource::Extent3d {
                 width: 640,
@@ -313,47 +281,53 @@ mod tests {
                 depth_or_array_layers: 1,
             },
             bevy::render::render_resource::TextureDimension::D2,
-            [17, 18, 19, 255].repeat(640 * 480),
+            background.clone(),
             bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
             bevy::asset::RenderAssetUsages::default(),
         ));
         let mut game = StartGame {
             image,
-            background: [17, 18, 19, 255].repeat(640 * 480),
+            background: background.clone(),
             font: cyrus_text::Font {
-                start: b'A'.into(),
-                glyphs: vec![cyrus_text::Glyph {
-                    enabled: true,
-                    width: 2,
-                    height: 1,
-                    pixels: vec![1, 1],
-                    ..default()
-                }],
+                start: b'%'.into(),
+                glyphs: vec![
+                    cyrus_text::Glyph {
+                        enabled: true,
+                        width: 2,
+                        height: 1,
+                        pixels: vec![1, 1],
+                        offset: [0, 6],
+                    };
+                    usize::from(b'9' - b'%' + 1)
+                ],
                 palette: vec![[0; 3], [63, 39, 1]],
                 ..default()
             },
             ..default()
         };
-        let handle = game.image.clone();
-        let pixel = |images: &Assets<Image>, x: usize, y: usize| {
-            let data = images.get(&handle).unwrap().data.as_ref().unwrap();
-            data[(y * 640 + x) * 4..][..4].to_vec()
-        };
-        update_progress(&mut game, &mut images, 0, 2, "AA");
-        assert_eq!(pixel(&images, 602, 451), [252, 0, 0, 255]);
-        assert_eq!(pixel(&images, 608, 451), [17, 18, 19, 255]);
-        assert_eq!(pixel(&images, 32, 448), [17, 18, 19, 255]);
-        update_progress(&mut game, &mut images, 0, 2, "A");
-        assert_eq!(pixel(&images, 602, 451), [17, 18, 19, 255]);
-        assert_eq!(pixel(&images, 605, 451), [252, 0, 0, 255]);
-        update_progress(&mut game, &mut images, 1, 6, "AA");
-        assert_eq!(pixel(&images, 127, 448), [252, 0, 0, 255]);
-        assert_eq!(pixel(&images, 128, 448), [0, 0, 0, 255]);
-        update_progress(&mut game, &mut images, 1, 2, "AA");
-        update_progress(&mut game, &mut images, 0, 2, "A");
-        assert_eq!(game.progress, (1, 2));
-        assert_eq!(pixel(&images, 319, 448), [252, 0, 0, 255]);
-        assert_eq!(pixel(&images, 320, 448), [0, 0, 0, 255]);
+        update_progress(&mut game, &mut images, 0, 6);
+        assert_eq!(
+            images.get(&game.image).unwrap().data.as_ref().unwrap(),
+            &background
+        );
+        update_progress(&mut game, &mut images, 1, 6);
+        let pixels = images.get(&game.image).unwrap().data.as_ref().unwrap();
+        assert_eq!(&pixels[(457 * 640 + 32) * 4..][..4], &[252, 156, 4, 255]);
+        assert_eq!(&pixels[(448 * 640 + 127) * 4..][..4], &[252, 0, 0, 255]);
+        assert_eq!(&pixels[(448 * 640 + 128) * 4..][..4], &[0, 0, 0, 255]);
+        for y in 454..480 {
+            assert_eq!(
+                &pixels[(y * 640 + 320) * 4..(y * 640 + 640) * 4],
+                &background[(y * 640 + 320) * 4..(y * 640 + 640) * 4],
+            );
+        }
+        let before = pixels.clone();
+        update_progress(&mut game, &mut images, 0, 6);
+        assert_eq!(game.progress, (1, 6));
+        assert_eq!(
+            images.get(&game.image).unwrap().data.as_ref().unwrap(),
+            &before
+        );
     }
 
     #[test]

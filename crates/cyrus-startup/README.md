@@ -74,9 +74,10 @@ New Game enters the installed starting world and marker. Load temporarily starts
 the same fresh world. Shared world entry waits for preparation, required asset dependencies and
 spawned scene instances behind the destination's installed GXA artwork, with preservation's
 red bar and REDSEL percentage label. Progress counts completed loading stages.
-Bottom-right red REDSEL status text reads native preparation stage labels and updates during asset loading and scene
-entry. Asset loading names the first pending top-level asset; dependencies remain
-in that asset's stage. Labels describe cyrus work rather than original loading messages.
+**Verified:** original New Game loading shows the red bar and gold lower-left
+percentage without a right-hand status message. Shared native/browser presentation
+uses that layout and leaves the remaining artwork untouched. See preservation
+[startup rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#world-loading-screen).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...feat/menu-game-entry)
 supplies the entry parser and loading layout. Saves, full story/gameplay
 initialization and progression unlocks remain unavailable.

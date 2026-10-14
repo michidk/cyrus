@@ -211,7 +211,7 @@ F12 opens the shared native/browser editor; browser CHT import/export lives in F
 - [x] Native/browser Smacker playback, skip points, subtitles/interlace and retained menu selection. Native video/audio streams from the installed file or CD image without whole-movie preparation; browser video/audio streams before full download. CD tracks and world assignments export for shared music playback.
 - [x] New Game and temporary Load enter the installed starting world/marker behind destination artwork and a dependency barrier.
 - [ ] Compare splash pixels and authored animation, inherited menu lighting, camera-plane clipping, book transitions and audible output with the original. Loading duration need not match.
-- [x] Bottom-right red loading status reports cyrus preparation stages and pending assets. **Verified:** installed export contracts and native menu-to-world captures; original internal progress weights remain unsupported.
+- [x] Match world-entry loading text to the original: gold lower-left percentage and no right-hand stage or asset message. **Verified:** GOG Glide New Game capture sequence and shared loading raster contract; original internal progress weights remain unsupported. Startup title retains its small bottom-right preparation labels.
 - [ ] Add save slots/thumbnails, overwrite/delete handling, Continue/pause, full New Game initialization and progression movie unlocks when the corresponding gameplay state exists.
 - [ ] Support mouse/joystick rebinding and gameplay snapshots. **Verified:** the original ordinary book menu has no pointer label selection.
 

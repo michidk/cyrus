@@ -233,9 +233,10 @@ unsupported. Ground and SOUP hosts own surface assignment. Sound cleanup retains
 the authored effect ID, and old browser sound banks require re-export.
 Skipping startup retains required preparation behind the title and does not enable gameplay.
 Menu New/Load wait behind installed destination artwork and a red percentage bar
-for world preparation and asset dependencies. Bottom-right red labels report startup
-menu/HUD preparation and world-entry loading stages, including the pending asset
-filename. Labels describe cyrus work. Failed world entry reports a
+for world preparation and asset dependencies. Bottom-right red title labels report startup
+menu/HUD preparation. Those labels describe cyrus work. **Verified:** world-entry
+loading shows the original red bar and gold lower-left percentage, without a
+right-hand status message or pending asset filename. Failed world entry reports a
 contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
 walk mode, auto-defend, prompt, selected item and count; F8, Tab and F7 toggle

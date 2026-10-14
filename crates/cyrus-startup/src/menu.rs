@@ -385,7 +385,6 @@ pub(super) fn drive(
                             background: picture.rgba.clone(),
                             font: book.new_game.font.clone(),
                             progress: (0, 1),
-                            status: String::new(),
                         });
                         next.set(AppState::Loading);
                         menu.ready = false;
