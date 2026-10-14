@@ -26,8 +26,7 @@ pub struct GroundSupport {
 
 /// A model contact after placement transformation and integer probe conversion.
 pub struct ModelSupport {
-    pub model: usize,
-    pub face: usize,
+    pub source: SupportSource,
     pub support: GroundSupport,
     /// Stored segment fraction scaled by 32,768, unchanged by the integer adapter.
     pub rank: u32,
@@ -38,6 +37,8 @@ pub struct ModelSupport {
 pub enum SupportSource {
     Terrain,
     Model { model: usize, face: usize },
+    Actor { actor: usize, face: usize },
+    Transient { model: usize, face: usize },
 }
 
 /// Shared fallback history, including metadata retained by a failed support query.
@@ -182,10 +183,7 @@ impl GroundProbe {
             if matches!(model.support.classification(), 2 | 4) && distance < rank {
                 rank = distance;
                 selected = Some(SelectedSupport::Primary {
-                    source: SupportSource::Model {
-                        model: model.model,
-                        face: model.face,
-                    },
+                    source: model.source,
                     support: model.support,
                 });
             }
@@ -270,10 +268,7 @@ impl GroundProbe {
             if matches!(model.support.classification(), 2 | 4) && model.rank <= rank {
                 rank = model.rank;
                 selected = Some(SelectedSupport::Primary {
-                    source: SupportSource::Model {
-                        model: model.model,
-                        face: model.face,
-                    },
+                    source: model.source,
                     support: model.support,
                 });
             }

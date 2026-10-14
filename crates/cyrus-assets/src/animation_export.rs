@@ -30,6 +30,7 @@ fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
         "incomplete normal frame table"
     );
     Ok(AnimationModel {
+        radius: Some(model.header.radius as f32 / 256.0),
         base_positions: model
             .vertex_coords
             .iter()

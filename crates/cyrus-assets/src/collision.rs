@@ -7,6 +7,10 @@ use std::collections::BTreeMap;
 /// Original static placements in MPSO order, with models shared by name.
 #[derive(Default, Serialize, Deserialize)]
 pub struct CollisionScene {
+    /// Initial type-one live static models, keyed by original MPOB index.
+    /// Missing means an older cache; an empty present record means no such models.
+    #[serde(default)]
+    pub actor_models: Option<ActorCollisionModels>,
     pub placements: Vec<StaticPlacement>,
     pub models: BTreeMap<String, CollisionModel>,
     /// Missing or ambiguous installed models. They must not become empty collision geometry.
@@ -15,6 +19,47 @@ pub struct CollisionScene {
     /// Missing keys mean surface zero; a missing table means an old cache.
     #[serde(default)]
     pub texture_surfaces: Option<BTreeMap<u16, u8>>,
+}
+
+/// Portable live static-model geometry, without mutable actor poses or flags.
+#[derive(Default, Serialize, Deserialize)]
+pub struct ActorCollisionModels {
+    pub object_count: usize,
+    pub models: BTreeMap<String, CollisionGeometry>,
+    pub instances: BTreeMap<usize, String>,
+    /// Loaded-model references whose geometry could not be prepared.
+    pub unsupported: BTreeMap<usize, String>,
+}
+
+impl ActorCollisionModels {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        for (name, model) in &self.models {
+            model
+                .validate()
+                .with_context(|| format!("live model {name}"))?;
+        }
+        for (&index, name) in &self.instances {
+            anyhow::ensure!(
+                index < self.object_count,
+                "live model MPOB {index}: outside object table"
+            );
+            anyhow::ensure!(
+                !self.unsupported.contains_key(&index),
+                "live model MPOB {index}: both supported and unsupported"
+            );
+            anyhow::ensure!(
+                self.models.contains_key(name),
+                "live model MPOB {index}: missing geometry {name}"
+            );
+        }
+        for &index in self.unsupported.keys() {
+            anyhow::ensure!(
+                index < self.object_count,
+                "unsupported live model MPOB {index}: outside object table"
+            );
+        }
+        Ok(())
+    }
 }
 
 /// Authored placement coordinates and Q4.28 matrix, before renderer conversion.
@@ -26,14 +71,28 @@ pub struct StaticPlacement {
     pub rotation: [i32; 9],
 }
 
-/// Model-local map units, original polygons, and the named ROB segment's flags.
+/// Static archive model geometry and the named ROB segment's collision flags.
 #[derive(Serialize, Deserialize)]
 pub struct CollisionModel {
+    pub flags: u8,
+    #[serde(flatten)]
+    pub geometry: CollisionGeometry,
+}
+
+impl CollisionModel {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.geometry.validate()
+    }
+}
+
+/// Authored model-local polygons and subobjects, independent of instance flags.
+/// Live actors supply collision flags through their runtime candidate records.
+#[derive(Serialize, Deserialize)]
+pub struct CollisionGeometry {
     /// Original model version; missing in older caches.
     #[serde(default)]
     pub version: Option<[u8; 4]>,
     pub radius: f32,
-    pub flags: u8,
     pub vertices: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub faces: Vec<Vec<usize>>,
@@ -54,7 +113,7 @@ pub struct CollisionSubobject {
     pub faces: Vec<usize>,
 }
 
-impl CollisionModel {
+impl CollisionGeometry {
     /// Validate authored polygons and normals without constructing runtime query objects.
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
@@ -108,6 +167,9 @@ impl CollisionModel {
 
 impl CollisionScene {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if let Some(models) = &self.actor_models {
+            models.validate()?;
+        }
         for (name, model) in &self.models {
             anyhow::ensure!(
                 !self.unsupported.contains_key(name),

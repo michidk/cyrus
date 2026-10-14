@@ -1,5 +1,11 @@
 # cyrus-collision
 
+`ActorModelCollision` prepares initial live static-model geometry independently
+of mutable actor state. Mixed ground queries retain static/live candidate order
+and the supporting actor and face. Callers supply stored model poses in original
+map axes. Transient geometry and authoritative live support flags require their
+runtime owners and remain unsupported by this registry.
+
 Terrain support, polygon contacts, model meshes and ordered static-world queries.
 Consumes serialized `cyrus-assets::collision` records and Bevy math, without world
 lifecycle, gameplay, rendering, an install parser or an audio backend.

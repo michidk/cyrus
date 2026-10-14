@@ -53,6 +53,12 @@ impl StaticCollision {
     pub fn support_metadata(&self, source: SupportSource) -> anyhow::Result<u8> {
         match source {
             SupportSource::Terrain => Ok(0),
+            SupportSource::Actor { actor, .. } => {
+                anyhow::bail!("actor support {actor}: runtime collision metadata owner required")
+            }
+            SupportSource::Transient { model, .. } => anyhow::bail!(
+                "transient support {model}: runtime collision metadata owner required"
+            ),
             SupportSource::Model { model, .. } => {
                 let placement = self
                     .placements
@@ -99,11 +105,12 @@ impl StaticCollision {
                 Ok((
                     name.clone(),
                     Model {
-                        version: model.version,
-                        mesh: CollisionMesh::new(model).with_context(|| format!("model {name}"))?,
-                        radius: model.radius,
+                        version: model.geometry.version,
+                        mesh: CollisionMesh::new(&model.geometry)
+                            .with_context(|| format!("model {name}"))?,
+                        radius: model.geometry.radius,
                         flags: model.flags,
-                        textures: model.textures.clone(),
+                        textures: model.geometry.textures.clone(),
                     },
                 ))
             })
@@ -150,24 +157,21 @@ impl StaticCollision {
     /// Resolve contact material through the installed SURFACE.INI assignment table.
     /// Version-4/5 solid-color faces resolve to surface zero.
     pub fn face_surface(&self, placement: usize, face: usize) -> anyhow::Result<u8> {
-        let texture = self.face_texture(placement, face)?;
-        let Some([set, image]) = texture else {
-            let model = &self.models[&self.placements[placement].model];
-            anyhow::ensure!(
-                matches!(model.version, Some(version) if version == *b"v4.0" || version == *b"v5.0"),
-                "placement {placement} face {face}: solid-color model version unsupported"
-            );
-            return Ok(0);
-        };
-        anyhow::ensure!(
-            set < 512 && image < 128,
-            "placement {placement} face {face}: invalid texture {set},{image}"
-        );
-        let table = self
-            .texture_surfaces
-            .as_ref()
-            .context("missing SURFACE.INI assignments; re-export world")?;
-        Ok(table.get(&((set << 7) | image)).copied().unwrap_or(0))
+        let record = self
+            .placements
+            .get(placement)
+            .context("surface placement outside world")?;
+        let model = self
+            .models
+            .get(&record.model)
+            .context("surface model unavailable")?;
+        super::collision_mesh::face_surface(
+            model.version,
+            model.textures.as_deref(),
+            face,
+            self.texture_surfaces.as_ref(),
+        )
+        .with_context(|| format!("placement {} model {} face {face}", record.id, record.model))
     }
 
     /// View-centered static window, then actor-centered distance selection in map units.
@@ -511,41 +515,103 @@ impl StaticCollision {
         probe: &GroundProbe,
         sidedness: bool,
     ) -> anyhow::Result<Vec<ModelSupport>> {
-        let (start, end) = probe.endpoints();
-        let start = Vec3::from_array(start.map(|v| v as f32));
-        let end = Vec3::from_array(end.map(|v| v as f32));
         let mut contacts = Vec::new();
         for &index in &candidates.faces {
-            let placement = self
-                .placements
-                .get(index)
-                .context("ground candidate outside static placements")?;
-            let model = self
-                .models
-                .get(&placement.model)
-                .context("ground candidate model unavailable")?;
-            let translation = Vec3::from_array(placement.position.map(|v| v as f32));
-            let rotation =
-                Mat3::from_cols_array(&placement.rotation.map(|v| v as f32 / 268_435_456.0));
-            let inverse = rotation.transpose();
-            for contact in model.mesh.segment_contacts(
-                inverse * (start - translation),
-                inverse * (end - translation),
-                sidedness,
-            )? {
-                let point = rotation * contact.contact.point + translation;
-                let normal = rotation * contact.contact.normal;
-                contacts.push(ModelSupport {
-                    model: index,
-                    face: contact.face,
-                    rank: contact.contact.rank,
-                    support: GroundSupport {
-                        height: f64::from(point.y.round_ties_even()),
-                        normal: normal
-                            .to_array()
-                            .map(|v| (v * 256.0).round_ties_even() as i32),
+            for contact in self.static_segment_contacts(index, probe, sidedness)? {
+                contacts.push(support_contact(
+                    SupportSource::Model {
+                        model: index,
+                        face: contact.face,
                     },
-                });
+                    contact,
+                ));
+            }
+        }
+        Ok(contacts)
+    }
+
+    fn static_segment_contacts(
+        &self,
+        index: usize,
+        probe: &GroundProbe,
+        sidedness: bool,
+    ) -> anyhow::Result<Vec<super::collision_mesh::WorldSegmentContact>> {
+        let placement = self
+            .placements
+            .get(index)
+            .context("ground candidate outside static placements")?;
+        let model = self
+            .models
+            .get(&placement.model)
+            .context("ground candidate model unavailable")?;
+        let rotation =
+            Mat3::from_cols_array(&placement.rotation.map(|value| value as f32 / 268_435_456.0));
+        let pose = super::collision_mesh::ModelPose::new(
+            placement.position.map(|value| value as f32),
+            rotation,
+        )?;
+        let (start, end) = probe.endpoints();
+        model.mesh.world_segment_contacts(
+            &pose,
+            start.map(|value| value as f32),
+            end.map(|value| value as f32),
+            sidedness,
+        )
+    }
+
+    /// Query mixed face candidates in their retained order. Live poses come from
+    /// the host's stored model instances. Transient geometry remains unsupported.
+    pub fn runtime_ground_contacts(
+        &self,
+        candidates: &CollisionCandidates,
+        actors: &super::actor_models::ActorModelCollision,
+        poses: &BTreeMap<usize, super::collision_mesh::ModelPose>,
+        probe: &GroundProbe,
+        sidedness: bool,
+    ) -> anyhow::Result<Vec<ModelSupport>> {
+        let mut contacts = Vec::new();
+        let (start, end) = probe.endpoints();
+        for candidate in &candidates.faces {
+            match candidate.owner {
+                super::candidates::CandidateOwner::Static(index) => {
+                    anyhow::ensure!(
+                        candidate.model == ModelInstance::StaticPlacement(index),
+                        "static candidate {index}: model identity mismatch"
+                    );
+                    for contact in self.static_segment_contacts(index, probe, sidedness)? {
+                        contacts.push(support_contact(
+                            SupportSource::Model {
+                                model: index,
+                                face: contact.face,
+                            },
+                            contact,
+                        ));
+                    }
+                }
+                super::candidates::CandidateOwner::Actor(index) => {
+                    let pose = poses.get(&index).with_context(|| {
+                        format!("live candidate MPOB {index}: stored model pose unavailable")
+                    })?;
+                    for contact in actors.segment_contacts(
+                        index,
+                        pose,
+                        start.map(|value| value as f32),
+                        end.map(|value| value as f32),
+                        sidedness,
+                    )? {
+                        contacts.push(support_contact(
+                            SupportSource::Actor {
+                                actor: index,
+                                face: contact.face,
+                            },
+                            contact,
+                        ));
+                    }
+                }
+                super::candidates::CandidateOwner::Transient => anyhow::bail!(
+                    "transient candidate {:?}: geometry owner unavailable",
+                    candidate.model
+                ),
             }
         }
         Ok(contacts)
@@ -592,5 +658,21 @@ fn static_indices(candidates: CollisionCandidates) -> StaticCandidates {
                 _ => unreachable!("static candidate construction retains static owners"),
             })
             .collect(),
+    }
+}
+
+fn support_contact(
+    source: SupportSource,
+    contact: super::collision_mesh::WorldSegmentContact,
+) -> ModelSupport {
+    ModelSupport {
+        source,
+        rank: contact.rank,
+        support: GroundSupport {
+            height: f64::from(contact.point[1].round_ties_even()),
+            normal: contact
+                .normal
+                .map(|value| (value * 256.0).round_ties_even() as i32),
+        },
     }
 }

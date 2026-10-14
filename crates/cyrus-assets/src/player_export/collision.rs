@@ -1,8 +1,11 @@
 //! Installed static placements and authored collision geometry for the portable player cache.
+use crate::collision::CollisionGeometry;
 use crate::collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement};
 use anyhow::Context;
 use rgpre::import::{FileType, model3d, registry::Registry, rgm, rob, world_ini};
 use std::{collections::BTreeMap, path::Path};
+
+mod actors;
 
 pub(super) fn export(
     source: &dyn crate::source::ReadAssets,
@@ -102,17 +105,25 @@ pub(super) fn export(
             }
         }
     }
+    scene.actor_models = Some(actors::prepare(map, registry, &archive, world)?);
     scene.validate()?;
     Ok(scene)
 }
 
 fn decode(flags: u8, bytes: &[u8]) -> anyhow::Result<CollisionModel> {
+    Ok(CollisionModel {
+        flags,
+        geometry: decode_geometry(bytes)?,
+    })
+}
+
+fn decode_geometry(bytes: &[u8]) -> anyhow::Result<CollisionGeometry> {
     let model = model3d::parse_3d_file(bytes)?;
     let subobjects = model3d::subobjects::parse_subobjects(bytes)?;
-    let result = CollisionModel {
+    let result = CollisionGeometry {
         version: Some(model.header.version),
         radius: model.header.radius as f32 / 256.0,
-        flags,
+
         vertices: model
             .vertex_coords
             .iter()
@@ -161,6 +172,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn installed_start_live_static_models_retain_authored_geometry() {
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+        if !root.join("RGFX.EXE").is_file() {
+            eprintln!("skipped: no install at {}", root.display());
+            return;
+        }
+        let install = crate::install::GameInstall::open(&root).unwrap();
+        let source = crate::native::Files::scan(&install, false).unwrap();
+        let world = crate::runtime::geometry::world(&source, "START").unwrap();
+        let map =
+            rgm::parse_rgm_file(&std::fs::read(root.join("maps/START.RGM")).unwrap()).unwrap();
+        let scene = export(&source, &world.registry, &map, world.entry.index).unwrap();
+        let actors = scene.actor_models.as_ref().unwrap();
+        assert!(actors.unsupported.is_empty(), "{:?}", actors.unsupported);
+        for index in [0, 2, 8, 9, 10, 11, 12, 14, 22, 25, 26, 27, 28, 29, 30] {
+            assert_eq!(actors.instances[&index], "SHARKFIN", "MPOB {index}");
+        }
+        for (index, name) in [
+            (7, "BOAT1"),
+            (15, "DOLPHIN"),
+            (16, "DOLPHIN"),
+            (20, "BOAT2"),
+        ] {
+            assert_eq!(actors.instances[&index], name, "MPOB {index}");
+        }
+        assert_eq!(actors.instances.len(), 19);
+        for (name, geometry) in &actors.models {
+            assert!(geometry.radius > 0.0, "{name}");
+            assert!(!geometry.faces.is_empty(), "{name}");
+            assert_eq!(
+                geometry.textures.as_ref().unwrap().len(),
+                geometry.faces.len()
+            );
+        }
+    }
+
+    #[test]
     fn installed_static_collision_retains_authored_inputs() {
         let root = std::env::var_os("REDGUARD_DIR")
             .map(std::path::PathBuf::from)
@@ -187,27 +237,37 @@ mod tests {
         assert_eq!(scene.models["BARREL"].flags, 1);
         assert!(scene.unsupported.is_empty(), "{:?}", scene.unsupported);
         for (name, model) in &scene.models {
-            let textures = model.textures.as_ref().expect("exported face textures");
-            assert_eq!(textures.len(), model.faces.len(), "{name}");
+            let textures = model
+                .geometry
+                .textures
+                .as_ref()
+                .expect("exported face textures");
+            assert_eq!(textures.len(), model.geometry.faces.len(), "{name}");
         }
+        assert!(scene.models.values().any(|model| {
+            model
+                .geometry
+                .textures
+                .as_ref()
+                .unwrap()
+                .iter()
+                .any(Option::is_some)
+        }));
         assert!(
             scene
                 .models
                 .values()
-                .any(|model| { model.textures.as_ref().unwrap().iter().any(Option::is_some) })
-        );
-        assert!(
-            scene
-                .models
-                .values()
-                .any(|model| !model.subobjects.is_empty())
+                .any(|model| !model.geometry.subobjects.is_empty())
         );
         let bytes = serde_json::to_vec(&scene).unwrap();
         let restored: CollisionScene = serde_json::from_slice(&bytes).unwrap();
         restored.validate().unwrap();
         assert_eq!(restored.placements.len(), scene.placements.len());
         for (name, model) in &scene.models {
-            assert_eq!(restored.models[name].textures, model.textures, "{name}");
+            assert_eq!(
+                restored.models[name].geometry.textures, model.geometry.textures,
+                "{name}"
+            );
         }
     }
 }

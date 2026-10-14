@@ -1,25 +1,30 @@
+use cyrus_assets::collision::CollisionGeometry;
 use cyrus_assets::collision::CollisionModel;
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::CollisionSubobject;
 use cyrus_assets::collision::StaticPlacement;
 use cyrus_collision::collision_world::StaticCollision;
 use cyrus_collision::ground::GroundProbe;
+use cyrus_collision::ground::SupportSource;
 
 fn model(flags: u8) -> CollisionModel {
     CollisionModel {
-        version: Some(*b"v5.0"),
-        textures: None,
-        radius: 100.0,
         flags,
-        vertices: vec![[-50.0, 0.0, -50.0], [50.0, 0.0, -50.0], [0.0, 0.0, 50.0]],
-        normals: vec![[0.0, -1.0, 0.0]],
-        faces: vec![vec![0, 1, 2]],
-        subobjects: vec![CollisionSubobject {
-            center: [0.0; 3],
+        geometry: CollisionGeometry {
+            version: Some(*b"v5.0"),
+            textures: None,
             radius: 100.0,
-            extents: Some([1.0; 3]),
-            faces: vec![0],
-        }],
+
+            vertices: vec![[-50.0, 0.0, -50.0], [50.0, 0.0, -50.0], [0.0, 0.0, 50.0]],
+            normals: vec![[0.0, -1.0, 0.0]],
+            faces: vec![vec![0, 1, 2]],
+            subobjects: vec![CollisionSubobject {
+                center: [0.0; 3],
+                radius: 100.0,
+                extents: Some([1.0; 3]),
+                faces: vec![0],
+            }],
+        },
     }
 }
 
@@ -178,7 +183,10 @@ fn static_candidates_keep_cells_reverse_authored_order_and_separate_flags() {
         )
         .unwrap();
     assert_eq!(contacts.len(), 1);
-    assert_eq!(contacts[0].model, 0);
+    assert!(matches!(
+        contacts[0].source,
+        SupportSource::Model { model: 0, .. }
+    ));
 }
 
 #[test]
@@ -200,7 +208,10 @@ fn loaded_static_world_transforms_ground_contacts_and_preserves_rank() {
         )
         .unwrap();
     assert_eq!(contacts.len(), 1);
-    assert_eq!(contacts[0].model, 0);
+    assert!(matches!(
+        contacts[0].source,
+        SupportSource::Model { model: 0, .. }
+    ));
     assert_eq!(contacts[0].support.height, -20.0);
     assert_eq!(contacts[0].support.normal, [0, -256, 0]);
     assert_eq!(contacts[0].rank, 16384);
@@ -240,8 +251,8 @@ fn body_probe_uses_squared_radius_sum_and_original_polygons() {
     use bevy::math::{Mat3, Vec3};
     let mut scene = CollisionScene::default();
     let mut floor = model(0);
-    floor.subobjects[0].radius = 1000.0;
-    for vertex in &mut floor.vertices {
+    floor.geometry.subobjects[0].radius = 1000.0;
+    for vertex in &mut floor.geometry.vertices {
         vertex[1] = -50.0;
     }
     scene.models.insert("floor".into(), floor);
@@ -315,7 +326,7 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
             .face_texture(0, 0)
             .is_err()
     );
-    scene.models.get_mut("floor").unwrap().textures = Some(vec![Some([42, 3])]);
+    scene.models.get_mut("floor").unwrap().geometry.textures = Some(vec![Some([42, 3])]);
     let world = StaticCollision::new(&scene).unwrap();
     assert_eq!(world.face_texture(0, 0).unwrap(), Some([42, 3]));
     assert!(world.face_surface(0, 0).is_err());
@@ -339,7 +350,7 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
     scene.texture_surfaces = Some([(((42 << 7) | 3), 12)].into());
     assert!(StaticCollision::new(&scene).is_err());
     scene.texture_surfaces = Some(Default::default());
-    scene.models.get_mut("floor").unwrap().textures = Some(vec![None]);
+    scene.models.get_mut("floor").unwrap().geometry.textures = Some(vec![None]);
     assert_eq!(
         StaticCollision::new(&scene)
             .unwrap()
@@ -354,7 +365,7 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
             .unwrap(),
         0
     );
-    scene.models.get_mut("floor").unwrap().version = Some(*b"v4.0");
+    scene.models.get_mut("floor").unwrap().geometry.version = Some(*b"v4.0");
     assert_eq!(
         StaticCollision::new(&scene)
             .unwrap()
@@ -362,14 +373,14 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
             .unwrap(),
         0
     );
-    scene.models.get_mut("floor").unwrap().version = Some(*b"v2.7");
+    scene.models.get_mut("floor").unwrap().geometry.version = Some(*b"v2.7");
     assert!(
         StaticCollision::new(&scene)
             .unwrap()
             .face_surface(0, 0)
             .is_err()
     );
-    scene.models.get_mut("floor").unwrap().textures = Some(vec![]);
+    scene.models.get_mut("floor").unwrap().geometry.textures = Some(vec![]);
     assert!(StaticCollision::new(&scene).is_err());
 }
 

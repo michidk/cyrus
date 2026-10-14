@@ -21,6 +21,8 @@ pub struct PlayerScene {
     pub collision: CollisionScene,
     /// Prepared original polygons for runtime instance queries.
     pub static_collision: StaticCollision,
+    /// Initial live static geometry. Missing means an older cache, not an empty world.
+    pub actor_collision: Option<cyrus_collision::actor_models::ActorModelCollision>,
     /// Why the installed player definition cannot be used in this world.
     pub unavailable: Option<String>,
 }
@@ -57,6 +59,20 @@ impl PlayerScene {
             cyrus_collision::ground::SupportSource::Model { model, face } => {
                 self.static_collision.face_surface(model, face)
             }
+            cyrus_collision::ground::SupportSource::Actor { actor, face } => {
+                let models = self.actor_collision.as_ref().with_context(|| {
+                    format!(
+                        "world {}: missing live collision geometry; re-export",
+                        self.world
+                    )
+                })?;
+                let assignments = self.collision.texture_surfaces.as_ref();
+                models.face_surface(actor, face, assignments)
+            }
+            cyrus_collision::ground::SupportSource::Transient { model, face } => anyhow::bail!(
+                "world {} transient model {model} face {face}: surface owner unavailable",
+                self.world
+            ),
             cyrus_collision::ground::SupportSource::Terrain => {
                 let context = || format!("world {} terrain surface", self.world);
                 let terrain = self
@@ -110,6 +126,12 @@ impl PlayerScene {
             .with_context(|| format!("world {} collision", data.world))?;
         let static_collision = StaticCollision::new(&collision)
             .with_context(|| format!("world {} static collision", data.world))?;
+        let actor_collision = collision
+            .actor_models
+            .as_ref()
+            .map(cyrus_collision::actor_models::ActorModelCollision::new)
+            .transpose()
+            .with_context(|| format!("world {} live collision", data.world))?;
         let terrain = match (data.heights, data.water, data.terrain_textures) {
             (Some(heights), Some(water), textures) => Some(
                 TerrainGround::new(heights, water, textures)
@@ -134,6 +156,7 @@ impl PlayerScene {
             terrain,
             collision,
             static_collision,
+            actor_collision,
             unavailable,
         })
     }

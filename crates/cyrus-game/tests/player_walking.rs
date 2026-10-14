@@ -1,4 +1,5 @@
 //! Walking request ordering against the production animation interpreter.
+use cyrus_assets::collision::CollisionGeometry;
 use cyrus_assets::{
     animation::Animations,
     collision::{CollisionModel, CollisionScene, CollisionSubobject, StaticPlacement},
@@ -210,6 +211,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
         ..Default::default()
     };
     PlayerScene {
+        actor_collision: None,
         model_radii: Default::default(),
         world: 1,
         keyboard_codes: None,
@@ -502,24 +504,27 @@ fn stationary_grounded_update_separates_remaining_wall_overlap() {
     scene.collision.models.insert(
         "wall".into(),
         CollisionModel {
-            version: Some(*b"v5.0"),
-            radius: 300.0,
             flags: 0,
-            vertices: vec![
-                [0.0, -200.0, -200.0],
-                [0.0, 200.0, -200.0],
-                [0.0, 200.0, 200.0],
-                [0.0, -200.0, 200.0],
-            ],
-            normals: vec![[1.0, 0.0, 0.0]],
-            faces: vec![vec![0, 1, 2, 3]],
-            textures: Some(vec![None]),
-            subobjects: vec![CollisionSubobject {
-                center: [0.0; 3],
+            geometry: CollisionGeometry {
+                version: Some(*b"v5.0"),
                 radius: 300.0,
-                extents: Some([1.0; 3]),
-                faces: vec![0],
-            }],
+
+                vertices: vec![
+                    [0.0, -200.0, -200.0],
+                    [0.0, 200.0, -200.0],
+                    [0.0, 200.0, 200.0],
+                    [0.0, -200.0, 200.0],
+                ],
+                normals: vec![[1.0, 0.0, 0.0]],
+                faces: vec![vec![0, 1, 2, 3]],
+                textures: Some(vec![None]),
+                subobjects: vec![CollisionSubobject {
+                    center: [0.0; 3],
+                    radius: 300.0,
+                    extents: Some([1.0; 3]),
+                    faces: vec![0],
+                }],
+            },
         },
     );
     scene.collision.placements.push(StaticPlacement {
@@ -817,6 +822,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         animations.models.insert(
             model.into(),
             AnimationModel {
+                radius: None,
                 base_positions: vec![],
                 base_normals: vec![],
                 faces: vec![],

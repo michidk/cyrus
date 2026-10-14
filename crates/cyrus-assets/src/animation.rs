@@ -25,6 +25,10 @@ pub struct Animations {
 /// Frame geometry in source vertex/face order, without guessed interpolation or timing.
 #[derive(Serialize, Deserialize)]
 pub struct AnimationModel {
+    /// Original header radius in map units, independent of deformed render bounds.
+    /// Missing older metadata cannot supply model-distance collision selection.
+    #[serde(default)]
+    pub radius: Option<f32>,
     /// Base positions in the coordinate system returned by rgpre.
     pub base_positions: Vec<[f32; 3]>,
     /// Base face normals, indexed by face.
@@ -60,6 +64,12 @@ impl Animations {
         );
         for (name, model) in &self.models {
             let context = format!("world {} animation {name}", self.world);
+            anyhow::ensure!(
+                model
+                    .radius
+                    .is_none_or(|radius| radius.is_finite() && radius >= 0.0),
+                "{context}: invalid header radius"
+            );
             anyhow::ensure!(
                 matches!(
                     model.encoding.as_str(),

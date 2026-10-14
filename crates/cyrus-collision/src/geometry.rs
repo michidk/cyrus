@@ -18,8 +18,8 @@ pub struct SegmentContact {
 
 impl CollisionFace {
     /// Constructs query polygons from a validated authored model without triangulation.
-    pub fn from_model(
-        model: &cyrus_assets::collision::CollisionModel,
+    pub fn from_geometry(
+        model: &cyrus_assets::collision::CollisionGeometry,
     ) -> anyhow::Result<Vec<Self>> {
         model.validate()?;
         model

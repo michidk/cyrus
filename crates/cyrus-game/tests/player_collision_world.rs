@@ -1,3 +1,4 @@
+use cyrus_assets::collision::CollisionGeometry;
 use cyrus_assets::collision::CollisionModel;
 use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::CollisionSubobject;
@@ -7,19 +8,22 @@ use cyrus_collision::ground::GroundProbe;
 
 fn model(flags: u8) -> CollisionModel {
     CollisionModel {
-        version: Some(*b"v5.0"),
-        textures: None,
-        radius: 100.0,
         flags,
-        vertices: vec![[-50.0, 0.0, -50.0], [50.0, 0.0, -50.0], [0.0, 0.0, 50.0]],
-        normals: vec![[0.0, -1.0, 0.0]],
-        faces: vec![vec![0, 1, 2]],
-        subobjects: vec![CollisionSubobject {
-            center: [0.0; 3],
+        geometry: CollisionGeometry {
+            version: Some(*b"v5.0"),
+            textures: None,
             radius: 100.0,
-            extents: Some([1.0; 3]),
-            faces: vec![0],
-        }],
+
+            vertices: vec![[-50.0, 0.0, -50.0], [50.0, 0.0, -50.0], [0.0, 0.0, 50.0]],
+            normals: vec![[0.0, -1.0, 0.0]],
+            faces: vec![vec![0, 1, 2]],
+            subobjects: vec![CollisionSubobject {
+                center: [0.0; 3],
+                radius: 100.0,
+                extents: Some([1.0; 3]),
+                faces: vec![0],
+            }],
+        },
     }
 }
 
@@ -169,20 +173,17 @@ fn forward_slope_selects_nearest_midpoint_and_keeps_first_equal_model() {
     };
     let contacts = [
         ModelSupport {
-            face: 3,
-            model: 0,
+            source: cyrus_collision::ground::SupportSource::Model { model: 0, face: 3 },
             rank: 0,
             support: flat,
         },
         ModelSupport {
-            face: 3,
-            model: 1,
+            source: cyrus_collision::ground::SupportSource::Model { model: 1, face: 3 },
             rank: 16000,
             support: steep,
         },
         ModelSupport {
-            face: 3,
-            model: 2,
+            source: cyrus_collision::ground::SupportSource::Model { model: 2, face: 3 },
             rank: 16768,
             support: flat,
         },
@@ -241,8 +242,8 @@ fn fallback_keeps_first_non_side_contact_and_fractional_actor_height() {
     use cyrus_collision::ground::SupportSource;
     let mut scene = CollisionScene::default();
     let mut wall = model(0);
-    wall.vertices = vec![[-50.0, -50.0, 0.0], [50.0, -50.0, 0.0], [0.0, 50.0, 0.0]];
-    wall.normals = vec![[0.0, 0.0, 1.0]];
+    wall.geometry.vertices = vec![[-50.0, -50.0, 0.0], [50.0, -50.0, 0.0], [0.0, 50.0, 0.0]];
+    wall.geometry.normals = vec![[0.0, 0.0, 1.0]];
     scene.models.insert("wall".into(), wall);
     scene.models.insert("floor".into(), model(0));
     scene.placements = vec![
@@ -279,8 +280,8 @@ fn fallback_history_expands_radius_and_accepts_undersides() {
     use cyrus_collision::ground::FallbackProbe;
     let mut scene = CollisionScene::default();
     let mut underside = model(0);
-    underside.normals = vec![[0.0, 1.0, 0.0]];
-    underside.faces[0].reverse();
+    underside.geometry.normals = vec![[0.0, 1.0, 0.0]];
+    underside.geometry.faces[0].reverse();
     scene.models.insert("ceiling".into(), underside);
     scene
         .placements

@@ -5,6 +5,12 @@ sound cache records. Data-only lookup and validation live with their serialized
 records. Runtime animation, collision queries, mesh bindings and audio handles
 belong to the consuming crates.
 
+Collision caches retain shared authored geometry separately from static placement
+flags. Initial type-one live static models retain their MPOB bindings and model
+header radii. Runtime hosts supply their current poses and collision flags.
+Missing live geometry remains unsupported; catalog version 20 requires preparation
+of older caches. Animation models also retain the original header radius.
+
 The opt-in `native` feature enables read-only install discovery, preload scans,
 native filesystem and disk-cache adapters. The `parsers` feature enables shared
 scene/startup/menu/HUD/movie and sound/CD/voice/font preparation through `rgpre`

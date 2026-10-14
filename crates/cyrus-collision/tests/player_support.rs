@@ -113,8 +113,7 @@ fn original_model_support_replaces_terrain_and_preserves_actor_height() {
         .select(
             Some(support(-287.5)),
             &[ModelSupport {
-                face: 3,
-                model: 7,
+                source: cyrus_collision::ground::SupportSource::Model { model: 7, face: 3 },
                 support: support(-325.0),
                 rank: 17_039,
             }],
@@ -132,20 +131,17 @@ fn terrain_rank_truncates_height_and_equal_model_ranks_keep_last_contact() {
     let probe = GroundProbe::new([0, -327 * 256, 0], 0, 50).unwrap();
     let candidates = [
         ModelSupport {
-            face: 3,
-            model: 1,
+            source: cyrus_collision::ground::SupportSource::Model { model: 1, face: 3 },
             support: support(-323.0),
             rank: 17_650,
         },
         ModelSupport {
-            face: 3,
-            model: 2,
+            source: cyrus_collision::ground::SupportSource::Model { model: 2, face: 3 },
             support: support(-323.0),
             rank: 17_650,
         },
         ModelSupport {
-            face: 3,
-            model: 3,
+            source: cyrus_collision::ground::SupportSource::Model { model: 3, face: 3 },
             support: GroundSupport {
                 height: -350.0,
                 normal: [256, 0, 0],

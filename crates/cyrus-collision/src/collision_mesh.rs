@@ -5,8 +5,8 @@ use super::geometry::SegmentContact;
 use super::geometry::SphereCandidates;
 use super::geometry::ordered_contacts;
 use anyhow::Context;
-use bevy::math::Vec3;
-use cyrus_assets::collision::CollisionModel;
+use bevy::math::{Mat3, Vec3};
+use cyrus_assets::collision::CollisionGeometry;
 use cyrus_assets::collision::CollisionSubobject;
 
 /// Validated, prepared polygons shared by queries against instances of one model.
@@ -23,21 +23,79 @@ pub struct ModelSegmentContact {
     pub contact: SegmentContact,
 }
 
+/// Stored model-instance transform in original map units. Its transpose performs
+/// inverse queries; no general matrix inverse or renderer conversion is used.
+#[derive(Clone, Copy)]
+pub struct ModelPose {
+    pub(crate) translation: Vec3,
+    pub(crate) rotation: Mat3,
+}
+
+impl ModelPose {
+    pub fn new(position: [f32; 3], rotation: Mat3) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            position.iter().all(|value| value.is_finite()) && rotation.is_finite(),
+            "model pose: nonfinite position or rotation"
+        );
+        Ok(Self {
+            translation: Vec3::from_array(position),
+            rotation,
+        })
+    }
+}
+
+/// Original contact identity and rank with points/normals transformed into map axes.
+#[derive(Debug)]
+pub struct WorldSegmentContact {
+    pub face: usize,
+    pub rank: u32,
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
+}
+
 impl CollisionMesh {
     /// Prepare authored geometry once when loading a scene.
-    pub fn new(model: &CollisionModel) -> anyhow::Result<Self> {
+    pub fn new(model: &CollisionGeometry) -> anyhow::Result<Self> {
         let version = model
             .version
             .context("missing collision model version; re-export")?;
         Ok(Self {
             radius: model.radius,
-            faces: crate::geometry::CollisionFace::from_model(model)?,
+            faces: crate::geometry::CollisionFace::from_geometry(model)?,
             subobjects: if version[1] == b'5' {
                 model.subobjects.clone()
             } else {
                 Vec::new()
             },
         })
+    }
+
+    /// Transform a world segment into the stored model pose and retain contact order.
+    pub fn world_segment_contacts(
+        &self,
+        pose: &ModelPose,
+        start: [f32; 3],
+        end: [f32; 3],
+        sidedness: bool,
+    ) -> anyhow::Result<Vec<WorldSegmentContact>> {
+        let inverse = pose.rotation.transpose();
+        self.segment_contacts(
+            inverse * (Vec3::from_array(start) - pose.translation),
+            inverse * (Vec3::from_array(end) - pose.translation),
+            sidedness,
+        )?
+        .into_iter()
+        .map(|contact| {
+            let point = pose.rotation * contact.contact.point + pose.translation;
+            let normal = pose.rotation * contact.contact.normal;
+            Ok(WorldSegmentContact {
+                face: contact.face,
+                rank: contact.contact.rank,
+                point: point.to_array(),
+                normal: normal.to_array(),
+            })
+        })
+        .collect()
     }
 
     /// Ordered model-local body contacts, suppressing successful faces across spheres.
@@ -194,4 +252,34 @@ fn dot(a: Vec3, b: Vec3) -> f32 {
 
 fn scale_endpoint(point: Vec3, center: Vec3, inverse: Vec3) -> Vec3 {
     ((point.as_dvec3() - center.as_dvec3()) * inverse.as_dvec3()).as_vec3()
+}
+
+/// Resolve authored face texture through installed assignments. Missing metadata
+/// remains unsupported; version-4/5 solid-color faces have the known class zero.
+pub(crate) fn face_surface(
+    version: Option<[u8; 4]>,
+    textures: Option<&[Option<[u16; 2]>]>,
+    face: usize,
+    assignments: Option<&std::collections::BTreeMap<u16, u8>>,
+) -> anyhow::Result<u8> {
+    let texture = textures
+        .context("missing face textures; re-export world")?
+        .get(face)
+        .context("face outside texture table")?;
+    let Some([set, image]) = texture else {
+        anyhow::ensure!(
+            matches!(version, Some(value) if value == *b"v4.0" || value == *b"v5.0"),
+            "solid-color model version unsupported"
+        );
+        return Ok(0);
+    };
+    anyhow::ensure!(
+        *set < 512 && *image < 128,
+        "invalid face texture {set},{image}"
+    );
+    let assignments = assignments.context("missing SURFACE.INI assignments; re-export world")?;
+    Ok(assignments
+        .get(&((*set << 7) | *image))
+        .copied()
+        .unwrap_or(0))
 }
