@@ -80,7 +80,10 @@ still use alpha masking, so filtered chroma rejection remains unsupported.
 **Verified:** model ambient/directional shading follows preservation's
 [model-lighting rules](https://github.com/michidk/redguard-preservation/blob/feat/model-lighting/docs/engine/model-lighting.md).
 Models use the installed world RGB, authored face brightness and normals, and
-solid-color tint. RGB is calculated at vertices, interpolated in screen space
+solid-color tint. File-model brightness uses preservation's
+[stored-to-runtime conversion](https://github.com/michidk/redguard-preservation/commit/87a19a3c3a07f7b44d91fdcc808255201b4cd9de).
+Version-3 caches contain unconverted brightness and require re-export, including
+player models. Generated-flat brightness remains a direct runtime input. RGB is calculated at vertices, interpolated in screen space
 and combined with encoded texture colors before fog. The fixed Bevy directional
 light and model PBR response are removed. Mesh transforms and explicitly selected
 animation frames feed the same shader on native and browser builds.
@@ -94,7 +97,7 @@ Private instance meshes retain signed local-light contributions, quantized fallo
 authored matrix/bound selection and nearest-even channel rounding. Palette tint
 precedes rounding and is not applied twice. Map lights accumulate in the original
 spatial-cell order and are not reapplied every frame. Re-export worlds for the
-required environment placement records and version-3 model lighting metadata.
+required environment placement records and version-4 model lighting metadata.
 Authored object lights are selected around the inspection camera and added to
 model RGB each frame, including retained static colors, using preservation's
 [runtime-light rules](https://github.com/michidk/redguard-preservation/blob/e0529f1/docs/engine/model-lighting.md).

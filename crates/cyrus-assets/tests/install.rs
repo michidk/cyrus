@@ -188,13 +188,39 @@ fn world_exports_include_declared_terrain_and_textures() {
                 .unwrap()
             {
                 let lighting = &primitive["extras"]["rgpre_lighting"];
-                assert_eq!(lighting["version"], 3, "{name}: {}", node["name"]);
+                assert_eq!(lighting["version"], 4, "{name}: {}", node["name"]);
                 let position = primitive["attributes"]["POSITION"].as_u64().unwrap() as usize;
                 assert_eq!(
                     lighting["vertices"].as_array().unwrap().len() as u64,
                     document["accessors"][position]["count"].as_u64().unwrap()
                 );
             }
+        }
+        if name == "START" {
+            // Installed BOAT2 source face 334 stores 6; original model preparation yields 24.
+            let boat = nodes
+                .iter()
+                .find(|node| node["name"] == "B_020_SBOAT")
+                .unwrap();
+            let mesh = &document["meshes"][boat["mesh"].as_u64().unwrap() as usize];
+            let mut checked = false;
+            for primitive in mesh["primitives"].as_array().unwrap() {
+                let extras = &primitive["extras"];
+                for polygon in extras["rgpre_admission"]["polygons"].as_array().unwrap() {
+                    if polygon["source_face"] != 334 {
+                        continue;
+                    }
+                    for vertex in polygon["vertices"].as_array().unwrap() {
+                        assert_eq!(
+                            extras["rgpre_lighting"]["vertices"][vertex.as_u64().unwrap() as usize]
+                                [0],
+                            24
+                        );
+                    }
+                    checked = true;
+                }
+            }
+            assert!(checked, "START SBOAT deck face is present in export");
         }
         let environment: cyrus_assets::environment::Environment =
             serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())

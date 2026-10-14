@@ -85,7 +85,7 @@ pub(crate) fn model_mesh(
     }
     let inputs = serde_json::from_str::<Extras>(extras)?.rgpre_lighting;
     anyhow::ensure!(
-        inputs.version == 3,
+        inputs.version == 4,
         "unsupported model lighting version {}",
         inputs.version
     );
@@ -223,7 +223,7 @@ mod tests {
         );
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[-1.0, 0.0, 0.0]; 3]);
-        let extras = r#"{"rgpre_lighting":{"version":3,"radius_fixed":256,"solid_rgb":[200,100,50],"vertices":[[16,1],[16,1],[16,1]]}}"#;
+        let extras = r#"{"rgpre_lighting":{"version":4,"radius_fixed":256,"solid_rgb":[200,100,50],"vertices":[[16,1],[16,1],[16,1]]}}"#;
         let mut instance = StaticLightingInstance {
             position: [0; 3],
             matrix: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
@@ -261,7 +261,7 @@ mod tests {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
         let (prepared, _) = model_mesh(
             &mesh,
-            r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":[200,100,50],"vertices":[[0,1],[64,1],[255,1]]}}"#,
+            r#"{"rgpre_lighting":{"version":4,"radius_fixed":0,"solid_rgb":[200,100,50],"vertices":[[0,1],[64,1],[255,1]]}}"#,
             None,
         )
         .unwrap();
@@ -277,10 +277,11 @@ mod tests {
         assert!(mesh.attribute(Mesh::ATTRIBUTE_UV_1).is_none());
         for invalid in [
             r#"{}"#,
+            r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[0,0],[0,0]]}}"#,
             r#"{"rgpre_lighting":{"version":2,"vertices":[[0,0],[0,0],[0,0]]}}"#,
-            r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0]]}}"#,
-            r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[0,0],[0,2]]}}"#,
-            r#"{"rgpre_lighting":{"version":3,"radius_fixed":0,"solid_rgb":[1,2,3],"vertices":[[0,0],[0,0],[0,0]]}}"#,
+            r#"{"rgpre_lighting":{"version":4,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0]]}}"#,
+            r#"{"rgpre_lighting":{"version":4,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[0,0],[0,2]]}}"#,
+            r#"{"rgpre_lighting":{"version":4,"radius_fixed":0,"solid_rgb":[1,2,3],"vertices":[[0,0],[0,0],[0,0]]}}"#,
         ] {
             assert!(model_mesh(&mesh, invalid, None).is_err());
         }

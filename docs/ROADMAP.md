@@ -110,6 +110,7 @@ world playback remains unfinished.
 - [x] Shared texture playback for terrain, ordinary archive models and MPSF flats; inspection holds for matched frames.
 - [x] Source-sized camera-facing flats with authored brightness, alpha blending, generated normals and submission order.
 - [x] Matched rendering comparisons in ISLAND, BELLTOWR and START, including controlled texture/sky/wave state. **Verified:** [latest START menu-entry comparison](https://github.com/michidk/cyrus/commit/bdfa55c). The native/browser deck remains darker; complete pixel parity is **Unknown**.
+- [x] Consume [converted runtime face brightness](https://github.com/michidk/redguard-preservation/commit/aa9632769884108395f45f0d6de51ac98dddea57) in version-4 model exports. **Verified:** installed START deck input, rejection of old lighting metadata, and matched original/native/browser menu-entry captures with measured camera, frozen sky/waves and held water texture. Against the old-version control, mean deck RGB error falls from 18.36 to 12.96 and rail error from 8.62 to 1.82 on both backends. Generated-flat brightness remains direct. Residual deck shading and full parity remain **Unknown**.
 - [ ] Apply actor prelighting from authoritative world-entry state and recover dynamic lighting overrides.
 - [ ] Complete standalone/generated model filtering defaults, filtered chroma rejection and remaining texture admission/animation paths.
 - [ ] Resolve terrain/model shading, sampling and water-edge differences. Compare hardware color precision, sky/sun state and fog/clipping across transitions.
