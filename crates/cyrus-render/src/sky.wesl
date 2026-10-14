@@ -100,8 +100,10 @@ fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     if distance <= 0.0 || depth < 0.05 || depth > 3250.0 || any(abs(plane_xz) > vec2(3250.0)) {
         return srgb_to_linear(fog_rgb.rgb);
     }
-    // Texture coordinates follow the untilted corners; scene export flips X/Y.
-    let uv = (-plane.y * plane_xz * 20.0 / 65000.0 - view.world_position.xz * 20.0 * 0.009 + scroll.xy) / plane.zw;
+    // Preservation RGM export shifts Z; sky.md uses the original camera coordinates.
+    let camera_z = (view.world_position.z * 5120.0 + 16777215.0) / 256.0;
+    let texture_center = vec2(-view.world_position.x * 20.0, -camera_z) * 0.009;
+    let uv = (-plane.y * plane_xz * 20.0 / 65000.0 + texture_center + scroll.xy) / plane.zw;
     let color = faithful_cloud_sample(uv);
     if scroll.w != 0.0 { return blend_fog(color, fog_rgb.rgb, sky_fog_density(depth * 20.0)); }
     let position = fog_table_position(depth * 20.0);

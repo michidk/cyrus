@@ -143,6 +143,11 @@ and texture offsets. Browser [capture mode](../cyrus-web/README.md) accepts the
 same measured phase after world entry. The original session's shared random
 stream is not reproduced.
 
+Faithful cloud coordinates undo the scene export's Z-origin shift before using
+the original camera position. This combines preservation's
+[RGM position conversion](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md)
+with its [sky texture mapping](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md).
+
 Scene rendering uses the installed near/far planes, including a nonzero
 `world_back_plane` override. F1 exposes a render-distance override in game units;
 editing it switches Fog to Modern. Faithful uses the original range and fog
