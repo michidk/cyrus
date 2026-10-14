@@ -57,7 +57,6 @@ Loading the correct map does not establish complete animated or playable world b
 
 | Work | Session |
 | --- | --- |
-| Rendering: terrain precision, actor lighting and remaining comparisons | Codex, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-terrain-fog/`; protected SOUP/save files excluded |
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 
