@@ -15,6 +15,8 @@ Small presentation and launch helpers shared by the game and viewer.
   errors. Linux Browse uses a desktop file portal or Zenity; Windows and macOS
   use native folder dialogs. `GameOptions` and `ViewerOptions` define the
   launch names and validation used by both CLI and URL parameters.
+  The game's optional `view` inspection pose also accepts menu entry without
+  `scene`; the rendering host applies it when the first world is framed.
 - `browser_source` reads the validated install/cache URLs from the shared bootstrap.
 - `register_cache` registers the shared `cache://` asset source before Bevy's
   `AssetPlugin` starts.

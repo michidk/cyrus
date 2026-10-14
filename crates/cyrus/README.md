@@ -14,6 +14,7 @@ Without `--scene`, a windowed launch runs startup through the book menu.
 `--skip-startup` bypasses the splash and waits behind the title for required
 menu/HUD preparation. New Game and the temporary Load fallback export the
 installed starting world in a worker and enter after its dependencies are ready.
+Menu requests start preparation in Loading, after the attempt record is reset.
 
 Windowed launches show the shared install picker when their explicit, remembered,
 or discovered game-files location is unusable. Continue validates and remembers
@@ -42,7 +43,7 @@ Shared browser/CLI options use exactly the same names:
 | --- | --- | --- |
 | `--install PATH` | `?install=URL` | Read-only original install, local directory or install-service URL |
 | `--scene START` | `?scene=START` | Load a map stem or WORLD.INI ID directly |
-| `--view=x,y,z,qx,qy,qz,qw` | `?view=x,y,z,qx,qy,qz,qw` | Initial scene-space inspection camera pose; requires `scene` and a unit quaternion |
+| `--view=x,y,z,qx,qy,qz,qw` | `?view=x,y,z,qx,qy,qz,qw` | First-world scene-space inspection camera pose; accepts menu entry and requires a unit quaternion |
 | `--skip-startup` | `?skip-startup=true` | Bypass the splash |
 | `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |

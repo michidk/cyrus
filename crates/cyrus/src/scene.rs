@@ -44,7 +44,10 @@ impl Plugin for ScenePlugin {
             .add_systems(
                 Update,
                 load_requested.before(WorldChange).after(finish).run_if(
-                    in_state(AppState::InGame).or_else(resource_exists::<cyrus_startup::StartGame>),
+                    in_state(AppState::InGame).or_else(
+                        in_state(AppState::Loading)
+                            .and_then(resource_exists::<cyrus_startup::StartGame>),
+                    ),
                 ),
             );
     }
@@ -158,6 +161,26 @@ fn finish(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn menu_request_waits_for_loading_before_starting_preparation() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::state::app::StatesPlugin,
+            AssetPlugin::default(),
+        ))
+        .insert_state(AppState::Menu)
+        .insert_resource(GameInstall {
+            root: std::env::temp_dir().join("cyrus-absent-install"),
+        })
+        .insert_resource(SceneRequest("START".into()))
+        .insert_resource(cyrus_startup::StartGame::default())
+        .add_plugins(ScenePlugin);
+        app.update();
+        assert!(!app.world().contains_resource::<Preparation>());
+        assert!(!app.world().contains_resource::<LastAttempt>());
+    }
+
     #[test]
     fn failed_preparation_preserves_the_committed_scene_and_references() {
         let mut app = App::new();

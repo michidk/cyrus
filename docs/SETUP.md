@@ -61,6 +61,8 @@ For repeatable comparisons, `--scene NAME --view=x,y,z,qx,qy,qz,qw` sets the
 initial inspection pose in exported scene coordinates with a unit quaternion.
 The browser accepts the same `scene` and `view` URL parameters. The pose applies
 once, does not move the player, and does not persist into later scene loads.
+Omit `--scene` or the `scene` URL parameter to enter through the book menu;
+the supplied pose waits for the first world, including New Game.
 
 ## Asset viewer
 
