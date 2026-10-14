@@ -130,6 +130,41 @@ impl<T: DialoguePayload> DialogueCache<T> {
         Ok(())
     }
 
+    /// Replace an actor's retained combat-taunt reference, per preservation
+    /// engine/sound.md. Release the previous entry only when it remembers a
+    /// sample; otherwise keep its payload cached. A successful lookup stops and
+    /// forgets its remembered sample without checking playback status.
+    /// The caller must prepare dependencies before invoking this synchronous path.
+    /// Failure retains sample ownership where stopping failed; the actor's old
+    /// reference is cleared once its release succeeds, before the new lookup.
+    pub fn replace_taunt(
+        &mut self,
+        retained: &mut Option<usize>,
+        label: [u8; 4],
+        read: impl FnOnce([u8; 4]) -> Result<T>,
+        samples: &mut dyn DialogueSamples,
+    ) -> Result<usize> {
+        if let Some(index) = *retained {
+            let slot = self.slots.get_mut(index).with_context(|| {
+                format!("dialogue taunt: retained cache index {index} out of range")
+            })?;
+            if slot.sample.is_some() {
+                Self::release_slot(index, slot, samples)?;
+            }
+            *retained = None;
+        }
+        let index = self.load(label, read)?;
+        let slot = &mut self.slots[index];
+        if let Some(sample) = slot.sample {
+            samples.stop(sample).with_context(|| {
+                format!("dialogue taunt slot {index}: sample {sample} restart stop")
+            })?;
+            slot.sample = None;
+        }
+        *retained = Some(index);
+        Ok(index)
+    }
+
     /// Playing entries do not age. Used entries reset to eight nominal ticks;
     /// unused entries release only when their age is strictly below this update.
     pub fn advance(&mut self, nominal_ticks: u32, samples: &mut dyn DialogueSamples) -> Result<()> {
@@ -165,20 +200,29 @@ impl<T: DialoguePayload> DialogueCache<T> {
     /// then release audio and clear occupancy. Errors retain remaining ownership.
     pub fn reset(&mut self, samples: &mut dyn DialogueSamples) -> Result<()> {
         for (index, slot) in self.slots.iter_mut().enumerate() {
-            if let Some(payload) = &mut slot.payload {
-                payload.release_text();
-            }
-            if let Some(sample) = slot.sample
-                && samples.playing(sample).with_context(|| {
-                    format!("dialogue cache slot {index}: sample {sample} reset status")
-                })?
-            {
-                samples.stop(sample).with_context(|| {
-                    format!("dialogue cache slot {index}: sample {sample} reset stop")
-                })?;
-            }
-            *slot = Slot::default();
+            Self::release_slot(index, slot, samples)?;
         }
+        Ok(())
+    }
+
+    fn release_slot(
+        index: usize,
+        slot: &mut Slot<T>,
+        samples: &mut dyn DialogueSamples,
+    ) -> Result<()> {
+        if let Some(payload) = &mut slot.payload {
+            payload.release_text();
+        }
+        if let Some(sample) = slot.sample
+            && samples.playing(sample).with_context(|| {
+                format!("dialogue cache slot {index}: sample {sample} reset status")
+            })?
+        {
+            samples.stop(sample).with_context(|| {
+                format!("dialogue cache slot {index}: sample {sample} reset stop")
+            })?;
+        }
+        *slot = Slot::default();
         Ok(())
     }
 }
@@ -233,6 +277,144 @@ mod tests {
             age: 0,
         };
         cache
+    }
+
+    #[test]
+    fn taunt_replacement_releases_previous_payload_and_restarts_cached_sample() {
+        let mut cache = voiced_cache();
+        let payload = cache.payload(0).unwrap().clone();
+        let next = cache.load(*b"next", |_| Ok(payload)).unwrap();
+        cache.remember_sample(next, Some(3)).unwrap();
+        let mut retained = Some(0);
+        let mut samples = Samples {
+            playing: true,
+            fail_stop: false,
+            events: vec![],
+        };
+        assert_eq!(
+            cache
+                .replace_taunt(&mut retained, *b"next", |_| panic!("cached"), &mut samples)
+                .unwrap(),
+            next
+        );
+        assert_eq!(retained, Some(next));
+        assert!(cache.payload(0).is_none());
+        assert_eq!(cache.payload(next).unwrap().text, "Hello");
+        assert_eq!(cache.sample(next), None);
+        assert_eq!(samples.events, ["status", "stop", "stop"]);
+    }
+
+    #[test]
+    fn taunt_without_previous_sample_retains_payload_and_restarts_even_finished_sample() {
+        let mut cache = voiced_cache();
+        let payload = cache.payload(0).unwrap().clone();
+        cache.remember_sample(0, None).unwrap();
+        let next = cache.load(*b"next", |_| Ok(payload)).unwrap();
+        cache.remember_sample(next, Some(3)).unwrap();
+        let mut retained = Some(0);
+        let mut samples = Samples {
+            playing: false,
+            fail_stop: false,
+            events: vec![],
+        };
+        cache
+            .replace_taunt(&mut retained, *b"next", |_| panic!("cached"), &mut samples)
+            .unwrap();
+        assert_eq!(cache.payload(0).unwrap().text, "Hello");
+        assert_eq!(cache.sample(next), None);
+        assert_eq!(retained, Some(next));
+        assert_eq!(samples.events, ["stop"]);
+    }
+
+    #[test]
+    fn taunt_same_label_reloads_released_voice_but_reuses_unremembered_payload() {
+        let mut cache = voiced_cache();
+        let payload = cache.payload(0).unwrap().clone();
+        let mut retained = Some(0);
+        let mut samples = Samples {
+            playing: false,
+            fail_stop: false,
+            events: vec![],
+        };
+        let mut reads = 0;
+        cache
+            .replace_taunt(
+                &mut retained,
+                *b"voic",
+                |_| {
+                    reads += 1;
+                    Ok(payload)
+                },
+                &mut samples,
+            )
+            .unwrap();
+        assert_eq!(reads, 1);
+        assert_eq!(samples.events, ["status"]);
+        assert_eq!(retained, Some(0));
+        assert_eq!(cache.sample(0), None);
+        cache
+            .replace_taunt(
+                &mut retained,
+                *b"voic",
+                |_| panic!("retained payload"),
+                &mut samples,
+            )
+            .unwrap();
+        assert_eq!(cache.payload(0).unwrap().text, "Hello");
+        assert_eq!(samples.events, ["status"]);
+    }
+
+    #[test]
+    fn taunt_restart_failure_keeps_target_sample_but_drops_replaced_actor_reference() {
+        let mut cache = voiced_cache();
+        let payload = cache.payload(0).unwrap().clone();
+        let previous = cache.load(*b"prev", |_| Ok(payload)).unwrap();
+        let mut retained = Some(previous);
+        let mut samples = Samples {
+            playing: false,
+            fail_stop: true,
+            events: vec![],
+        };
+        let error = cache
+            .replace_taunt(&mut retained, *b"voic", |_| panic!("cached"), &mut samples)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("taunt slot 0: sample 3 restart stop")
+        );
+        assert_eq!(retained, None);
+        assert_eq!(cache.sample(0), Some(3));
+        assert_eq!(cache.payload(0).unwrap().text, "Hello");
+        assert!(cache.payload(previous).is_some());
+        assert_eq!(samples.events, ["stop"]);
+    }
+
+    #[test]
+    fn taunt_release_failure_retains_previous_reference_and_audio_ownership() {
+        let mut cache = voiced_cache();
+        let mut retained = Some(0);
+        let mut samples = Samples {
+            playing: true,
+            fail_stop: true,
+            events: vec![],
+        };
+        assert!(
+            cache
+                .replace_taunt(
+                    &mut retained,
+                    *b"next",
+                    |_| panic!("must not read"),
+                    &mut samples
+                )
+                .is_err()
+        );
+        assert_eq!(retained, Some(0));
+        assert_eq!(cache.sample(0), Some(3));
+        let payload = cache.payload(0).unwrap();
+        assert!(payload.text.is_empty());
+        assert!(payload.voice.is_some());
+        assert_eq!(samples.events, ["status", "stop"]);
     }
 
     #[test]

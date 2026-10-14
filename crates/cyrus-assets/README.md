@@ -211,7 +211,11 @@ use `RtxEntry`; runtime hosts can retain prepared records and audio handles.
 Maintenance requires synchronous
 sample status and stop feedback. Playing payloads do not age. Lookup reuses an
 authored label or replaces the first entry not marked used; exhausting the used
-entries returns an error. These loading APIs do not enable automatic dialogue
+entries returns an error. `replace_taunt` drops the actor-held cache reference,
+releases the old payload only when it remembers a sample, and stops the requested
+label's cached sample before retaining its new reference. This follows
+[preservation's combat cache lifecycle](https://github.com/michidk/redguard-preservation/commit/5393814ce34c2d43a12a793c17df4eec8fc4a636).
+The caller prepares dependencies before this synchronous operation. These loading APIs do not enable automatic dialogue
 tasks or presentation by themselves. `game::prepare` also accepts
 `dialogue/<eight lowercase hex digits>.dialogue` and `.wav`, prepares only that
 authored four-byte key, and retains original text and voice lifetimes plus PCM
