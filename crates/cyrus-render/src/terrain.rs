@@ -91,13 +91,28 @@ pub(super) struct Grid<'a> {
     pub water: Option<&'a [bool]>,
 }
 
+/// Original texture admission, independent of projected area and raster visibility.
+#[derive(Component, Default)]
+pub(crate) struct TextureAdmission(pub bool);
+
+pub(super) struct Prepared {
+    pub visible: bool,
+    pub texture_admitted: bool,
+}
+
 pub(super) fn update(
     source: &mut Source,
     mapping: &[usize],
     grid: Grid<'_>,
     view: View,
     preparation: &mut Preparation,
-) -> bool {
+) -> Prepared {
+    let camera = view
+        .camera_from_local
+        .inverse()
+        .transform_point3(Vec3::ZERO)
+        * 20.0;
+    let mut texture_admitted = false;
     let mesh = &mut source.prepared;
     // Reuse the previous frame's allocations when returning attributes to the mesh.
     let take3 = |mesh: &mut Mesh, attribute| match mesh.remove_attribute(attribute) {
@@ -153,6 +168,18 @@ pub(super) fn update(
                 water: u8::from(grid.water.is_some_and(|w| w[vertex])) as f32,
             }
         });
+        if !texture_admitted {
+            let indices = triangle.map(|index| mapping[index]);
+            let anchor = *indices.iter().min().unwrap();
+            let relative = Vec3::new(
+                -((anchor % grid.window.side) as f32) * 256.0,
+                grid.local[anchor][1] * 20.0,
+                -((anchor / grid.window.side) as f32) * 256.0,
+            ) - camera;
+            let normal = crate::lighting::grid_face_normal(grid.local, grid.window.side, indices);
+            let facing = (relative.x * normal.x + relative.y * normal.y) + relative.z * normal.z;
+            texture_admitted = facing < 0.0 && preparation.admits(vertices, view.clipping);
+        }
         preparation.triangles(vertices, view.clipping, view.viewport, |triangle| {
             let [r, g, b] = triangle.planes;
             for vertex in triangle.vertices {
@@ -184,12 +211,73 @@ pub(super) fn update(
     mesh.insert_attribute(RED, red);
     mesh.insert_attribute(GREEN, green);
     mesh.insert_attribute(BLUE, blue);
-    visible
+    Prepared {
+        visible,
+        texture_admitted,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn texture_admission_uses_facing_window_and_clipping_before_raster_area() {
+        use bevy::{
+            asset::RenderAssetUsages,
+            mesh::{Indices, PrimitiveTopology},
+        };
+        let local = [
+            [0., 0., 0.],
+            [-12.8, 0., 0.],
+            [0., 0., -12.8],
+            [-12.8, 0., -12.8],
+        ];
+        let mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::MAIN_WORLD,
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, local.to_vec())
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0., 0.]; 4])
+        .with_inserted_indices(Indices::U32(vec![0, 3, 1, 3, 0, 2]));
+        let mut source = Source::new(&mesh, 4).unwrap();
+        let mut preparation = Preparation::default();
+        let mut check = |height: f32, far: f32, center: [i32; 2], viewport: [f32; 2]| {
+            let transform = Transform::from_xyz(-6.4, height, -6.4)
+                .looking_at(Vec3::new(-6.4, 0., -6.4), Vec3::Z);
+            let matrix = transform.to_matrix().inverse();
+            let camera = local.map(|p| {
+                let p = matrix.transform_point3(Vec3::from(p)) * 20.;
+                [p.x, -p.y, -p.z]
+            });
+            update(
+                &mut source,
+                &[0, 1, 2, 3],
+                Grid {
+                    window: Window { center, side: 2 },
+                    local: &local,
+                    camera: &camera,
+                    normals: &[[0., 1., 0.]; 4],
+                    rgb: &[[255.; 3]; 4],
+                    water: None,
+                },
+                View {
+                    camera_from_local: matrix,
+                    scale: Vec2::new(1., -1.),
+                    viewport,
+                    clipping: [1., far],
+                },
+                &mut preparation,
+            )
+        };
+        let ordinary = check(10., 1000., [0, 0], [640., 480.]);
+        assert!(ordinary.visible && ordinary.texture_admitted);
+        let subpixel = check(10., 1000., [0, 0], [0.0001, 0.0001]);
+        assert!(!subpixel.visible && subpixel.texture_admitted);
+        assert!(!check(-10., 1000., [0, 0], [640., 480.]).texture_admitted);
+        assert!(!check(10., 50., [0, 0], [640., 480.]).texture_admitted);
+        assert!(!check(10., 1000., [100, 100], [640., 480.]).texture_admitted);
+    }
 
     #[test]
     fn camera_window_rounds_ties_even_and_reverses_source_rows() {

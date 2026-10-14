@@ -33,13 +33,6 @@ fn normalize(normal: Vec3) -> Vec3 {
 /// Equal-face-weight shading normals. Positions are in exported units.
 pub(crate) fn grid_normals(grid: &[[f32; 3]], side: usize) -> Vec<[f32; 3]> {
     let mut normals = vec![Vec3::ZERO; grid.len()];
-    let position = |vertex: usize| {
-        Vec3::new(
-            -((vertex % side) as f32) * 256.0,
-            grid[vertex][1] * 20.0,
-            -((vertex / side) as f32) * 256.0,
-        )
-    };
     for row in 0..side - 1 {
         for x in 0..side - 1 {
             let tl = x + row * side;
@@ -47,7 +40,7 @@ pub(crate) fn grid_normals(grid: &[[f32; 3]], side: usize) -> Vec<[f32; 3]> {
             let bl = tl + side;
             let br = bl + 1;
             for [a, b, c] in [[tl, br, tr], [br, tl, bl]] {
-                let face = normalize((position(b) - position(a)).cross(position(c) - position(a)));
+                let face = grid_face_normal(grid, side, [a, b, c]);
                 for vertex in [a, b, c] {
                     normals[vertex] += face;
                 }
@@ -58,6 +51,18 @@ pub(crate) fn grid_normals(grid: &[[f32; 3]], side: usize) -> Vec<[f32; 3]> {
         .into_iter()
         .map(|normal| normalize(normal).to_array())
         .collect()
+}
+
+/// Stored terrain face normal in export axes, with original normalization precision.
+pub(crate) fn grid_face_normal(grid: &[[f32; 3]], side: usize, [a, b, c]: [usize; 3]) -> Vec3 {
+    let position = |vertex: usize| {
+        Vec3::new(
+            -((vertex % side) as f32) * 256.0,
+            grid[vertex][1] * 20.0,
+            -((vertex / side) as f32) * 256.0,
+        )
+    };
+    normalize((position(b) - position(a)).cross(position(c) - position(a)))
 }
 
 /// Copy authored per-face inputs into a private mesh's unused second UV channel.

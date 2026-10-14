@@ -332,7 +332,7 @@ pub(crate) fn animate_water(
                 }));
                 transformed = Some(key);
             }
-            let visible = crate::terrain::update(
+            let prepared = crate::terrain::update(
                 &mut terrain.source,
                 &terrain.vertices,
                 crate::terrain::Grid {
@@ -346,18 +346,26 @@ pub(crate) fn animate_water(
                 view,
                 &mut preparation,
             );
-            commands.entity(terrain.entity).insert(if visible {
+            commands
+                .entity(terrain.entity)
+                .insert(crate::terrain::TextureAdmission(prepared.texture_admitted));
+            commands.entity(terrain.entity).insert(if prepared.visible {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
             });
-            if visible && let Some(mut mesh) = meshes.get_mut(&terrain.animated) {
+            if prepared.visible
+                && let Some(mut mesh) = meshes.get_mut(&terrain.animated)
+            {
                 std::mem::swap(&mut *mesh, &mut terrain.source.prepared);
             }
             terrain.view = Some(view);
             continue;
         }
         if restore {
+            commands
+                .entity(terrain.entity)
+                .insert(crate::terrain::TextureAdmission(false));
             terrain.view = None;
             commands
                 .entity(terrain.entity)

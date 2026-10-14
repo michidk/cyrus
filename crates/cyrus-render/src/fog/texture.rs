@@ -2,7 +2,7 @@
 mod admission;
 mod frames;
 
-use super::SceneMaterial;
+use super::{SceneMaterial, TerrainMaterial};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use anyhow::ensure;
 use bevy::{
@@ -36,7 +36,6 @@ struct Inspected;
 struct Binding {
     key: String,
     frames: Vec<Handle<Image>>,
-    admission: admission::Model,
 }
 
 #[derive(Default)]
@@ -86,6 +85,8 @@ fn bind(
     request: Res<EnvironmentRequest>,
     mut images: ResMut<Images>,
     meshes: Res<Assets<Mesh>>,
+    parents: Query<&ChildOf>,
+    names: Query<&Name>,
     candidates: Query<
         (
             Entity,
@@ -106,25 +107,32 @@ fn bind(
         let Some(mesh) = meshes.get(&mesh.0) else {
             continue;
         };
-        let result = (|| -> anyhow::Result<Option<Binding>> {
+        let result = (|| -> anyhow::Result<Option<(Binding, Option<admission::Model>)>> {
             let Some(description) =
                 serde_json::from_str::<MaterialExtras>(&extras.value)?.rgpre_texture_animation
             else {
                 return Ok(None);
             };
-            // Terrain admission and scripted presentation use separate ownership inputs.
-            let Some(geometry) = geometry else {
-                return Ok(None);
+            let terrain = std::iter::once(entity)
+                .chain(parents.iter_ancestors(entity))
+                .any(|node| names.get(node).is_ok_and(|name| name.as_str() == "Terrain"));
+            let admission = if terrain {
+                None
+            } else {
+                let Some(geometry) = geometry else {
+                    return Ok(None);
+                };
+                let Some(admission) = admission::Model::parse(&geometry.value)? else {
+                    return Ok(None);
+                };
+                let Some(VertexAttributeValues::Float32x3(positions)) =
+                    mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+                else {
+                    anyhow::bail!("animated texture mesh lacks three-component positions")
+                };
+                admission.validate(positions)?;
+                Some(admission)
             };
-            let Some(admission) = admission::Model::parse(&geometry.value)? else {
-                return Ok(None);
-            };
-            let Some(VertexAttributeValues::Float32x3(positions)) =
-                mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-            else {
-                anyhow::bail!("animated texture mesh lacks three-component positions")
-            };
-            admission.validate(positions)?;
             ensure!(
                 description.version == 1,
                 "texture animation version {} unsupported",
@@ -177,16 +185,15 @@ fn bind(
                     delay,
                     playback: Playback::default(),
                 });
-            Ok(Some(Binding {
-                key,
-                frames,
-                admission,
-            }))
+            Ok(Some((Binding { key, frames }, admission)))
         })();
         commands.entity(entity).insert(Inspected);
         match result {
-            Ok(Some(binding)) => {
+            Ok(Some((binding, admission))) => {
                 commands.entity(entity).insert(binding);
+                if let Some(admission) = admission {
+                    commands.entity(entity).insert(admission);
+                }
             }
             Ok(None) => {}
             Err(error) => error!(
@@ -208,14 +215,21 @@ fn advance(
     assets: Res<Assets<Image>>,
     meshes: Res<Assets<Mesh>>,
     mut materials: ResMut<Assets<SceneMaterial>>,
+    mut terrain_materials: ResMut<Assets<TerrainMaterial>>,
     camera: Query<(&GlobalTransform, &Projection), With<ViewCamera>>,
     bindings: Query<(
         &Binding,
+        &admission::Model,
         &Mesh3d,
         &GlobalTransform,
         &InheritedVisibility,
         &MeshMaterial3d<SceneMaterial>,
         Entity,
+    )>,
+    terrain: Query<(
+        &Binding,
+        &crate::terrain::TextureAdmission,
+        &MeshMaterial3d<TerrainMaterial>,
     )>,
     parents: Query<&ChildOf>,
     scripted: Query<(), With<ScriptBinding>>,
@@ -230,7 +244,18 @@ fn advance(
     let projection = projection.get_clip_from_view();
     let scale = Vec2::new(projection.x_axis.x, projection.y_axis.y);
     let now = bios_tick(time.elapsed());
-    for (binding, mesh, transform, visibility, material, entity) in &bindings {
+    for (binding, admission, _) in &terrain {
+        if admission.0
+            && binding
+                .frames
+                .iter()
+                .all(|frame| assets.contains(frame.id()))
+            && let Some(state) = images.states.get_mut(&binding.key)
+        {
+            state.playback.request(now, state.count, state.delay);
+        }
+    }
+    for (binding, admission, mesh, transform, visibility, material, entity) in &bindings {
         if !visibility.get()
             || binding
                 .frames
@@ -268,14 +293,14 @@ fn advance(
         } else {
             None
         };
-        if binding.admission.admits(
+        if admission.admits(
             positions, normals, transform, camera, scale, clipping, &mut clip,
         ) && let Some(state) = images.states.get_mut(&binding.key)
         {
             state.playback.request(now, state.count, state.delay);
         }
     }
-    for (binding, _, _, _, material, _) in &bindings {
+    for (binding, _, _, _, _, material, _) in &bindings {
         let Some(frame) = images
             .states
             .get(&binding.key)
@@ -288,6 +313,23 @@ fn advance(
             .get(&material.0)
             .is_some_and(|material| material.base.base_color_texture.as_ref() != Some(texture))
             && let Some(mut material) = materials.get_mut(&material.0)
+        {
+            material.base.base_color_texture = Some(texture.clone());
+        }
+    }
+    for (binding, _, material) in &terrain {
+        let Some(frame) = images
+            .states
+            .get(&binding.key)
+            .and_then(|state| state.playback.frame)
+        else {
+            continue;
+        };
+        let texture = &binding.frames[frame];
+        if terrain_materials
+            .get(&material.0)
+            .is_some_and(|material| material.base.base_color_texture.as_ref() != Some(texture))
+            && let Some(mut material) = terrain_materials.get_mut(&material.0)
         {
             material.base.base_color_texture = Some(texture.clone());
         }
@@ -323,6 +365,7 @@ mod tests {
             .init_resource::<Assets<Image>>()
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<SceneMaterial>>()
+            .init_resource::<Assets<TerrainMaterial>>()
             .init_resource::<Images>()
             .add_systems(Update, advance);
         let frames: Vec<_> = (0..4)
@@ -369,6 +412,36 @@ mod tests {
                 lighting: Vec4::ZERO,
             },
         };
+        let terrain_frames: Vec<_> = (0..4)
+            .map(|_| {
+                app.world_mut()
+                    .resource_mut::<Assets<Image>>()
+                    .add(Image::default())
+            })
+            .collect();
+        let terrain_material = app
+            .world_mut()
+            .resource_mut::<Assets<TerrainMaterial>>()
+            .add(TerrainMaterial {
+                base: StandardMaterial {
+                    base_color_texture: Some(terrain_frames[0].clone()),
+                    ..default()
+                },
+                extension: super::super::TerrainExtension {
+                    fog: material.extension.fog.clone(),
+                },
+            });
+        let terrain_node = app
+            .world_mut()
+            .spawn((
+                Binding {
+                    key: "a00000".into(),
+                    frames: terrain_frames.clone(),
+                },
+                crate::terrain::TextureAdmission(false),
+                MeshMaterial3d(terrain_material.clone()),
+            ))
+            .id();
         let materials: Vec<_> = (0..2)
             .map(|_| {
                 app.world_mut()
@@ -378,7 +451,7 @@ mod tests {
             .collect();
         let nodes: Vec<_> = materials.iter().map(|material| {
             let admission = admission::Model::parse(r#"{"rgpre_admission":{"version":1,"radius_fixed":256,"polygons":[{"vertices":[0,1,2],"normal":[0,0,1]}]}}"#).unwrap().unwrap();
-            app.world_mut().spawn((Binding { key: "a00000".into(), frames: frames.clone(), admission }, Mesh3d(mesh.clone()), GlobalTransform::from_translation(Vec3::new(0.0,0.0,-1.0)), InheritedVisibility::VISIBLE, MeshMaterial3d(material.clone()))).id()
+            app.world_mut().spawn((Binding { key: "a00000".into(), frames: frames.clone() }, admission, Mesh3d(mesh.clone()), GlobalTransform::from_translation(Vec3::new(0.0,0.0,-1.0)), InheritedVisibility::VISIBLE, MeshMaterial3d(material.clone()))).id()
         }).collect();
         app.world_mut().spawn((
             ViewCamera,
@@ -386,6 +459,15 @@ mod tests {
             Projection::Perspective(PerspectiveProjection::default()),
         ));
         let check = |app: &App, frame: usize| {
+            assert_eq!(
+                app.world()
+                    .resource::<Assets<TerrainMaterial>>()
+                    .get(&terrain_material)
+                    .unwrap()
+                    .base
+                    .base_color_texture,
+                Some(terrain_frames[frame].clone())
+            );
             for material in &materials {
                 assert_eq!(
                     app.world()
@@ -420,7 +502,35 @@ mod tests {
             .insert(InheritedVisibility::VISIBLE);
         app.update();
         check(&app, 2);
+        for &node in &nodes {
+            app.world_mut()
+                .entity_mut(node)
+                .insert(InheritedVisibility::HIDDEN);
+        }
+        app.world_mut()
+            .entity_mut(terrain_node)
+            .insert(crate::terrain::TextureAdmission(true));
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_secs(1));
         app.update();
-        check(&app, 2);
+        check(&app, 3);
+        app.update();
+        check(&app, 3);
+        app.world_mut()
+            .entity_mut(terrain_node)
+            .insert(crate::terrain::TextureAdmission(false));
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_secs(10));
+        app.update();
+        check(&app, 3);
+        app.world_mut()
+            .entity_mut(nodes[0])
+            .insert(InheritedVisibility::VISIBLE);
+        app.update();
+        check(&app, 0);
+        app.update();
+        check(&app, 0);
     }
 }

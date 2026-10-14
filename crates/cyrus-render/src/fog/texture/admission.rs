@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 pub(super) type Clip = crate::terrain::Preparation;
 
-#[derive(Deserialize)]
+#[derive(Component, Deserialize)]
 pub(super) struct Model {
     version: u32,
     radius_fixed: u32,
