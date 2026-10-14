@@ -44,7 +44,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | SOUP integration: dialogue speech/skip input, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: grounded walking cues and release cleanup | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
-Save/load and remaining HUD work are unassigned. The save/load session ended with
+Save/load and remaining HUD integration are unassigned. The save/load session ended with
 an unfinished prototype; it is not active work. Controller implementation remains
 parked; the surface session compares bounded supplied-tick behavior.
 
@@ -144,10 +144,11 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Shared native/browser effects, music, animation cues and script sound ownership/cleanup with synchronous channel feedback.
 - [x] Installed SURFACE.INI remapping and supported ground-derived actor surfaces. **Verified:** [grounded surface-cue comparison](https://github.com/michidk/cyrus/commit/4f66c96). Complete player traversal and audible parity remain open.
 - [x] Installed HUD elements, activation prompts and persistent F8/Tab/F7 preferences. Placed-player heading/world and script-actor health/type feed the HUD.
+- [x] Native restart and browser reload acceptance for F8/Tab/F7 preferences, including restored candle visibility and subsequent toggle notices. **Verified:** native health-number placement matches the original at 640×480; both builds cycle starting items and display the installed gold count of 53. Complete pixel parity remains open.
 - [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
 - [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support exists; topic execution and death/load resets remain open.
 - [ ] Connect remaining production activation/sword state, bitmap/logbook handlers and player walk-mode/auto-defend behavior.
-- [ ] Verify HUD layout, candle cadence, prompt/item timing and browser restart persistence. **Unknown:** compass frame-zero direction and item-zero activation.
+- [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original. Compass frame selection and item-zero use rules are documented in preservation; production compass activation remains unwired.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
 

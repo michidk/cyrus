@@ -253,9 +253,11 @@ establishes one candle update per rendered frame with a 60 Hz Glide retrace limi
 Cyrus advances the candle at that rate independently of rendering, without
 capping the application. `normal_frame_rate` is a simulation-tick input, not
 the candle cadence. Original in-world timing still needs a paired comparison.
-Every documented overlay element is implemented, but only the F8, Tab and F7
-toggles reach it from play; health, sword, lockout, heading, scripts and the
-logbook do not feed it yet (see the roadmap).
+F8, Tab and F7 preferences survive native restart and browser reload. Placed-player
+heading/world and supplied script-player health/type and activation lockout feed
+the overlay. Sword state, compass use, power-up/logbook handlers and gameplay
+walk-mode/auto-defend behavior remain unwired. Native health-number placement
+matches the original at 640×480; complete pixel and timing parity remain open.
 
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
 The `animated_i16_absolute` encoding distinguishes these from older raw-delta
