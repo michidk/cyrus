@@ -23,7 +23,7 @@ pub(crate) struct Projected {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Triangle {
+pub(crate) struct Triangle {
     pub vertices: [Projected; 3],
     /// Each channel stores the adjusted start, X gradient, and Y gradient.
     pub planes: [[i32; 3]; 3],
@@ -176,7 +176,7 @@ fn signed24(value: f32) -> i32 {
     ((integer as i32) << 8) >> 8
 }
 
-fn prepare_triangle(vertices: [Projected; 3]) -> Option<Triangle> {
+pub(crate) fn prepare_triangle(vertices: [Projected; 3]) -> Option<Triangle> {
     let [a, b, c] = vertices.map(|v| v.screen[1]);
     let order = if a < b {
         if b <= c {

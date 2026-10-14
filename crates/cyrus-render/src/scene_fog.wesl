@@ -15,7 +15,7 @@ import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
 import package::model_lights::{apply_local_lights, model, compositing};
-import package::sampling::{sample_encoded, matches_chroma};
+import package::sampling::{sample_encoded, matches_chroma, color_channel};
 import constants::MATERIAL_BIND_GROUP;
 @group(MATERIAL_BIND_GROUP) @binding(104) var<uniform> chroma_key: vec4<f32>;
 
@@ -28,12 +28,24 @@ struct ModelVertex {
     @location(3) color: vec3<f32>,
     @location(4) @interpolate(flat) instance_index: u32,
     @location(5) @interpolate(flat) retained_solid: u32,
+@if(PREPARED_MODEL)
+    @location(6) @interpolate(flat) red: vec4<i32>,
+@if(PREPARED_MODEL)
+    @location(7) @interpolate(flat) green: vec4<i32>,
+@if(PREPARED_MODEL)
+    @location(8) @interpolate(flat) blue: vec4<i32>,
 };
 
 @vertex
 fn vertex(raw: Vertex,
 @if(PREPARED_MODEL)
     @location(8) projected: vec4<f32>,
+@if(PREPARED_MODEL)
+    @location(9) red: vec4<i32>,
+@if(PREPARED_MODEL)
+    @location(10) green: vec4<i32>,
+@if(PREPARED_MODEL)
+    @location(11) blue: vec4<i32>,
 ) -> ModelVertex {
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
@@ -41,6 +53,9 @@ fn vertex(raw: Vertex,
     out.world_position = mesh_functions::mesh_position_local_to_world(transform, vec4(vertex.position, 1.0));
     out.position = position_world_to_clip(out.world_position.xyz);
 @if(PREPARED_MODEL) {
+    out.red = red;
+    out.green = green;
+    out.blue = blue;
     out.position = view.clip_from_view * vec4(0.0, 0.0, -projected.z, 1.0);
     out.position.x = (projected.x / view.viewport.z * 2.0 - 1.0) * out.position.w;
     out.position.y = (1.0 - projected.y / view.viewport.w * 2.0) * out.position.w;
@@ -95,7 +110,13 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
         discard;
     }
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
-    let color = srgb_to_linear(texture_rgb * (in.color * in.position.w));
+    var encoded = texture_rgb * (in.color * in.position.w);
+@if(PREPARED_MODEL) {
+    let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
+    let light = vec3(color_channel(in.red, offset), color_channel(in.green, offset), color_channel(in.blue, offset));
+    encoded = floor(round(texture_rgb * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
+}
+    let color = srgb_to_linear(encoded);
     var out: FragmentOutput;
     out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
 @if(VIEW_TRANSMISSION_TEXTURE) {

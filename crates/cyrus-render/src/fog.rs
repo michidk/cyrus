@@ -162,9 +162,15 @@ impl MaterialExtension for ModelExtension {
     ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
         if layout.0.contains(clipping::PROJECTED) {
             descriptor.vertex.shader_defs.push("PREPARED_MODEL".into());
-            let extra = layout
-                .0
-                .get_layout(&[clipping::PROJECTED.at_shader_location(8)])?;
+            if let Some(fragment) = &mut descriptor.fragment {
+                fragment.shader_defs.push("PREPARED_MODEL".into());
+            }
+            let extra = layout.0.get_layout(&[
+                clipping::PROJECTED.at_shader_location(8),
+                crate::terrain::RED.at_shader_location(9),
+                crate::terrain::GREEN.at_shader_location(10),
+                crate::terrain::BLUE.at_shader_location(11),
+            ])?;
             descriptor.vertex.buffers[0]
                 .attributes
                 .extend(extra.attributes);

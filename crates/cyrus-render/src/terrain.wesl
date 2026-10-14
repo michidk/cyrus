@@ -9,7 +9,7 @@ import bevy_pbr::render::{
 import bevy_render::color_operations::srgb_to_linear;
 import package::scene_shading::{fog, scene_color_at_fog_position};
 import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
-import package::sampling::sample_encoded;
+import package::sampling::{sample_encoded, color_channel};
 import package::terrain_texture::{terrain_texture_uv, texture_plane};
 import bevy_pbr::render::pbr_bindings::base_color_texture;
 
@@ -93,13 +93,6 @@ fn vertex(raw: Vertex,
 }
 
 
-@if(PREPARED_TERRAIN)
-fn terrain_channel(plane: vec4<i32>, offset: vec2<i32>) -> f32 {
-    let value = plane.x + offset.x * plane.y + offset.y * plane.z;
-    let channel = (value >> 12u) & 4095;
-    return f32(select(select(channel & 255, 255, channel == 256), 0, channel == 4095));
-}
-
 @fragment
 fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> FragmentOutput {
     var depth = -(view.view_from_world * in.world_position).z * 20.0;
@@ -136,7 +129,7 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     encoded = sample_encoded(surface.uv, false) * (in.color * in.position.w);
 @if(PREPARED_TERRAIN) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
-    let light = vec3(terrain_channel(in.red, offset), terrain_channel(in.green, offset), terrain_channel(in.blue, offset));
+    let light = vec3(color_channel(in.red, offset), color_channel(in.green, offset), color_channel(in.blue, offset));
     encoded = floor(round(sample_encoded(surface.uv, false) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
 }
     var color = srgb_to_linear(encoded);

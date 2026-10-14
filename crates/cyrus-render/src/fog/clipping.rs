@@ -1,5 +1,6 @@
 //! Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 //!
+//! Model color setup: <https://github.com/michidk/redguard-preservation/commit/8e504c1>.
 //! Model projection: <https://github.com/michidk/redguard-preservation/commit/c91863c>.
 //! Model clipping: <https://github.com/michidk/redguard-preservation/commit/dd8c5f8>.
 use super::{ModelExtension, SceneMaterial, texture::admission::Model};
@@ -397,6 +398,7 @@ fn draw_mesh(
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            Default::default(),
         ));
     }
     let colors = light_colors(original, transform, material, lights)?;
@@ -408,6 +410,7 @@ fn draw_mesh(
     let mut output_uv = Vec::new();
     let mut output_colors = Vec::new();
     let mut projected = Vec::new();
+    let mut color_planes: [Vec<[i32; 4]>; 3] = Default::default();
     for polygon in &model.polygons {
         let indices = polygon
             .vertices
@@ -447,8 +450,19 @@ fn draw_mesh(
         }
         let corners = clip.polygon();
         for i in 1..corners.len() - 1 {
-            for v in [corners[0], corners[i], corners[i + 1]] {
-                let screen = crate::terrain::project(v, viewport).screen;
+            let vertices = [corners[0], corners[i], corners[i + 1]]
+                .map(|v| crate::terrain::project(v, viewport));
+            let Some(triangle) = crate::terrain::prepare_triangle(vertices) else {
+                continue;
+            };
+            for vertex in triangle.vertices {
+                let v = vertex.vertex;
+                let screen = vertex.screen;
+                for (channel, values) in color_planes.iter_mut().enumerate() {
+                    let [start, dx, dy] = triangle.planes[channel];
+                    let anchor = triangle.anchor.get(channel).copied().unwrap_or(0);
+                    values.push([start, dx, dy, anchor]);
+                }
                 projected.push([screen[0], screen[1], v.camera[2] / 20.0, 0.0]);
                 output_positions.push(v.local);
                 output_normals.push(v.normal);
@@ -468,6 +482,7 @@ fn draw_mesh(
         output_uv,
         output_colors,
         projected,
+        color_planes,
     ))
 }
 
@@ -477,6 +492,7 @@ fn prepared_mesh(
     output_uv: Vec<[f32; 2]>,
     output_colors: Vec<[f32; 4]>,
     projected: Vec<[f32; 4]>,
+    color_planes: [Vec<[i32; 4]>; 3],
 ) -> Mesh {
     let count = output_positions.len();
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -486,6 +502,16 @@ fn prepared_mesh(
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, vec![[-1.0, 1.0]; count]);
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, output_colors);
     mesh.insert_attribute(PROJECTED, projected);
+    for (attribute, values) in [
+        crate::terrain::RED,
+        crate::terrain::GREEN,
+        crate::terrain::BLUE,
+    ]
+    .into_iter()
+    .zip(color_planes)
+    {
+        mesh.insert_attribute(attribute, values);
+    }
     mesh
 }
 
@@ -634,6 +660,42 @@ mod tests {
             assert_eq!(
                 draw.attribute(Mesh::ATTRIBUTE_POSITION),
                 source.attribute(Mesh::ATTRIBUTE_POSITION)
+            );
+        }
+    }
+
+    #[test]
+    fn model_color_planes_use_the_original_top_edge_anchor() {
+        let mut source = mesh();
+        source.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            vec![
+                [-8.0 / 20.0, 8.0 / 20.0, -8.0 / 20.0],
+                [0.0, 8.0 / 20.0, -8.0 / 20.0],
+                [-8.0 / 20.0, 0.0, -8.0 / 20.0],
+            ],
+        );
+        let draw = draw_mesh(
+            &source,
+            &model(),
+            Mat4::IDENTITY,
+            Mat4::IDENTITY,
+            Vec2::ONE,
+            [8.0, 8.0],
+            &material(),
+            &Image::default(),
+            false,
+            &mut Preparation::default(),
+        )
+        .unwrap();
+        for (attribute, expected) in [
+            (crate::terrain::RED, [532_480, 81_920, 163_840, 4]),
+            (crate::terrain::GREEN, [614_400, 81_920, 163_840, 0]),
+            (crate::terrain::BLUE, [696_320, 81_920, 163_840, 0]),
+        ] {
+            assert_eq!(
+                draw.attribute(attribute),
+                Some(&VertexAttributeValues::Sint32x4(vec![expected; 3]))
             );
         }
     }

@@ -23,3 +23,10 @@ fn sample_encoded(uv: vec2<f32>, point: bool) -> vec3<f32> {
 fn matches_chroma(rgb: vec3<f32>, key: vec3<f32>) -> bool {
     return all(round(rgb * 255.0) == key);
 }
+
+// Signed Voodoo color planes use twelve fractional bits and per-pixel stepping.
+fn color_channel(plane: vec4<i32>, offset: vec2<i32>) -> f32 {
+    let value = plane.x + offset.x * plane.y + offset.y * plane.z;
+    let channel = (value >> 12u) & 4095;
+    return f32(select(select(channel & 255, 255, channel == 256), 0, channel == 4095));
+}

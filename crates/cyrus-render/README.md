@@ -116,8 +116,11 @@ Prepared screen coordinates lie on a 1/16-pixel grid and are recomputed when
 the physical viewport changes. Authored source geometry remains available to
 animation and polygon admission. Generated flats retain their separate path.
 **Verified:** the shared projection calculation matches original-instruction
-outputs for synthetic clipped polygons. Model fixed-point interpolation,
-transition parity and full pixel parity remain **Unknown**.
+outputs for synthetic clipped polygons. Prepared ordinary models also use the published
+[fixed color-gradient setup](https://github.com/michidk/redguard-preservation/commit/8e504c11309a9daf5cb33ac743d602ce4baf875e),
+including screen-Y anchor selection, subpixel adjustment and integer encoded
+texture modulation. Texture-coordinate interpolation, transition parity and
+full pixel parity remain **Unknown**.
 
 Re-export worlds and player models for the `rgpre_lighting` primitive metadata
 and required environment model inputs. Invalid mesh lighting metadata hides the
