@@ -37,7 +37,7 @@ fn set_scene(window: &web_sys::Window, scene: &str) -> Result<(), wasm_bindgen::
 }
 
 #[cfg(target_arch = "wasm32")]
-fn web_worlds() -> Vec<String> {
+fn web_worlds() -> Vec<[String; 2]> {
     let worlds = web_sys::window()
         .and_then(|window| window.document())
         .and_then(|document| document.query_selector("meta[name='cyrus-worlds']").ok()?)
@@ -47,15 +47,8 @@ fn web_worlds() -> Vec<String> {
 }
 
 #[cfg(any(target_arch = "wasm32", test))]
-fn parse_worlds(worlds: &str) -> Vec<String> {
-    let mut worlds = worlds
-        .split(',')
-        .filter(|world| !world.is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    worlds.sort();
-    worlds.dedup();
-    worlds
+fn parse_worlds(worlds: &str) -> Vec<[String; 2]> {
+    serde_json::from_str(worlds).unwrap_or_default()
 }
 
 pub fn register(app: &mut App) {
@@ -70,10 +63,13 @@ pub fn register(app: &mut App) {
 mod tests {
     use super::*;
     #[test]
-    fn world_options_are_sorted_and_unique() {
+    fn world_options_preserve_ids_for_shared_maps() {
         assert_eq!(
-            parse_worlds("START,2,ISLAND,START"),
-            ["2", "ISLAND", "START"]
+            parse_worlds(r#"[["0","ISLAND"],["27","ISLAND"]]"#),
+            [
+                ["0".to_owned(), "ISLAND".to_owned()],
+                ["27".to_owned(), "ISLAND".to_owned()]
+            ]
         );
     }
 }

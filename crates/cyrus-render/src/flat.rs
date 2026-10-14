@@ -2,6 +2,7 @@
 use anyhow::ensure;
 use bevy::{gltf::GltfExtras, mesh::VertexAttributeValues, prelude::*};
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct PrepareFlats;
@@ -128,6 +129,7 @@ fn prepare(
     extras: Query<&GltfExtras>,
     names: Query<&Name>,
 ) {
+    let mut failures = BTreeMap::<String, (Entity, String, usize)>::new();
     for (entity, mut mesh) in &mut candidates {
         let Some(source) = meshes.get(&mesh.0) else {
             continue;
@@ -181,11 +183,19 @@ fn prepare(
                     .remove::<bevy::camera::primitives::Aabb>();
             }
             Ok(None) => {}
-            Err(error) => error!(
-                "flat mesh {:?} {entity:?}: {error:#}; re-export the world",
-                mesh.0.path()
-            ),
+            Err(error) => {
+                commands.entity(entity).insert(Visibility::Hidden);
+                let failure = failures
+                    .entry(format!("{error:#}"))
+                    .or_insert_with(|| (entity, format!("{:?}", mesh.0.path()), 0));
+                failure.2 += 1;
+            }
         }
+    }
+    for (reason, (entity, path, count)) in failures {
+        error!(
+            "flat preparation rejected {count} meshes: {reason}; first mesh {path}, entity {entity:?}"
+        );
     }
 }
 
@@ -207,6 +217,33 @@ fn face_camera(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsupported_flats_are_hidden_and_not_retried() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Mesh>>()
+            .add_systems(Update, prepare);
+        let mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        let source = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let entities = (0..2).map(|index| app.world_mut().spawn((
+            Name::new(format!("F{index}_unsupported")), Mesh3d(source.clone()),
+            GltfExtras { value: r#"{"rgpre_flat":{"version":1,"dimensions":[128,128],"texture_scale":1,"flags":1,"alpha":255}}"#.into() },
+        )).id()).collect::<Vec<_>>();
+        for _ in 0..2 {
+            app.update();
+            for &entity in &entities {
+                assert_eq!(
+                    app.world().get::<Visibility>(entity),
+                    Some(&Visibility::Hidden)
+                );
+                assert!(app.world().get::<Inspected>(entity).is_some());
+                assert!(app.world().get::<Flat>(entity).is_none());
+            }
+        }
+    }
 
     #[test]
     fn generated_bound_retains_original_square_root_quantization() {

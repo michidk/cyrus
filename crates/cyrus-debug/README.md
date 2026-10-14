@@ -5,6 +5,8 @@ runtime fidelity individually or all at once, an independent flycam toggle and
 speed, loads an installed world from a dropdown, and launches a separate
 `bevy-inspector-egui` World Inspector. Expand Entities to inspect components,
 Resources to edit reflected resources, and Assets to inspect loaded assets.
+The inspector scrolls within its resized window. World choices show their installed
+map name alongside the WORLD.INI ID, including shared-map palette variants.
 The inspector stays open independently of the F1 menu and has its own close button.
 F1 is available during startup, at the book menu, and in a world. Its overlay
 camera persists when startup and world cameras are replaced. Headless launches
@@ -27,6 +29,7 @@ Flycam leaves the player in place. Turning it off returns the camera to the
 player pose; it does not change the fidelity settings.
 
 Render distance starts at the installed game's value. Changing it selects
-Modern Fog; Original clears the override and returns Fog to Faithful. Modern
-Fog defaults to four times the original distance with a gradual distant fade.
+Modern Fog; Original clears the override and returns Fog to Faithful. Modern Fog
+also expands terrain and water submission to the selected distance. Modern Fog
+defaults to four times the original distance with a gradual distant fade.
 Water, Fog, and Sky have independent Faithful/Modern buttons.

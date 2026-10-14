@@ -62,7 +62,7 @@ await init({ module_or_path: fs.readFileSync(path.join(packageDir, 'cyrus-assets
 const manifest = JSON.stringify({ files: [...originals].sort().map(([name, filename]) => ({ path: name, bytes: byteLength(filename), digest: 'a'.repeat(64) })) });
 const game = new GameLibrary('https://example.test/original/', manifest, () => {});
 const worlds = JSON.parse(game.worlds());
-assert.ok(worlds.includes('START') && worlds.includes('ISLAND'));
+assert.ok(worlds.some(([, map]) => map === 'START') && worlds.some(([, map]) => map === 'ISLAND'));
 let menuClock;
 for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 'sounds/bank.sounds', 'START.scripts']) {
   console.log('Preparing ' + name);

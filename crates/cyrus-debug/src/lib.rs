@@ -28,7 +28,8 @@ struct DebugMenu {
 pub struct WorldPicker {
     pub current: String,
     pub selected: String,
-    pub options: Vec<String>,
+    /// World ID and installed map label, in WORLD.INI order.
+    pub options: Vec<[String; 2]>,
     pub pending: Option<String>,
 }
 
@@ -117,14 +118,26 @@ fn debug_menu(
 
     let window = egui::Window::new("cyrus debug").vscroll(true);
     window.show(contexts.ctx_mut()?, |ui| {
-        ui.label(format!("World: {}", world.current));
+        let label = |name: &str| {
+            world
+                .options
+                .iter()
+                .find(|[id, map]| id == name || map.eq_ignore_ascii_case(name))
+                .map_or_else(|| name.to_owned(), |[id, map]| format!("{id}: {map}"))
+        };
+        ui.label(format!("World: {}", label(&world.current)));
+        let selected_label = label(&world.selected);
         ui.horizontal(|ui| {
             egui::ComboBox::from_id_salt("world picker")
-                .selected_text(&world.selected)
+                .selected_text(selected_label)
                 .show_ui(ui, |ui| {
                     for index in 0..world.options.len() {
-                        let option = world.options[index].clone();
-                        ui.selectable_value(&mut world.selected, option.clone(), option);
+                        let [id, map] = world.options[index].clone();
+                        ui.selectable_value(
+                            &mut world.selected,
+                            id.clone(),
+                            format!("{id}: {map}"),
+                        );
                     }
                 });
             if ui.button("Load").clicked() && !world.selected.is_empty() {
@@ -243,12 +256,15 @@ fn world_inspector_window(world: &mut World) {
     let mut context = context.clone();
     let mut open = world.resource::<DebugMenu>().inspector_open;
     egui::Window::new("World Inspector")
+        .id(egui::Id::new("World Inspector"))
         .open(&mut open)
         .default_size((420.0, 500.0))
         .show(context.get_mut(), |ui| {
-            egui::ScrollArea::both().show(ui, |ui| {
-                bevy_inspector::ui_for_world(world, ui);
-            });
+            egui::ScrollArea::both()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    bevy_inspector::ui_for_world(world, ui);
+                });
         });
     let mut menu = world.resource_mut::<DebugMenu>();
     menu.inspector_open = open;
@@ -288,7 +304,13 @@ mod tests {
         .add_plugins(DebugMenuPlugin)
         .init_resource::<FlycamSettings>()
         .init_resource::<Fidelity>()
-        .init_resource::<RenderDistance>();
+        .init_resource::<RenderDistance>()
+        .insert_resource(WorldPicker {
+            current: "0".into(),
+            selected: "0".into(),
+            options: vec![["0".into(), "START".into()]],
+            pending: None,
+        });
         let startup_camera = app.world_mut().spawn(Camera2d).id();
         app.finish();
         app.cleanup();
@@ -332,6 +354,9 @@ mod tests {
                 )),
                 expected_open,
             );
+            assert_eq!(output.shapes.iter().any(|shape| matches!(
+                &shape.shape, egui::epaint::Shape::Text(text) if text.galley.job.text == "World: 0: START"
+            )), expected_open);
             app.world_mut()
                 .resource_mut::<ButtonInput<KeyCode>>()
                 .release(KeyCode::F1);
@@ -388,6 +413,96 @@ mod tests {
             app.world()
                 .resource::<EguiGlobalSettings>()
                 .enable_absorb_bevy_input_system
+        );
+    }
+
+    #[test]
+    fn inspector_resizes_without_growing_to_fit_the_entity_tree() {
+        let mut app = App::new();
+        app.add_plugins(DefaultInspectorConfigPlugin)
+            .insert_resource(DebugMenu {
+                open: false,
+                inspector_open: true,
+            })
+            .init_resource::<EguiGlobalSettings>();
+        let mut context = EguiContext::default();
+        app.world_mut().spawn((context.clone(), PrimaryEguiContext));
+        for index in 0..150 {
+            app.world_mut()
+                .spawn(Name::new(format!("Resize entity {index}")));
+        }
+        let mut frame = |events: Vec<egui::Event>| {
+            let mut output = context.get_mut().run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 900.0),
+                    )),
+                    events,
+                    ..default()
+                },
+                |_| world_inspector_window(app.world_mut()),
+            );
+            output.textures_delta.clear();
+            let clip = output
+                .shapes
+                .iter()
+                .find_map(|shape| match &shape.shape {
+                    egui::epaint::Shape::Text(text)
+                        if text.galley.job.text.contains("Resize entity") =>
+                    {
+                        Some(shape.clip_rect)
+                    }
+                    _ => None,
+                })
+                .unwrap_or(egui::Rect::NOTHING);
+            let rect = context.get_mut().memory(|memory| {
+                memory
+                    .area_rect(egui::Id::new("World Inspector"))
+                    .unwrap_or(egui::Rect::NOTHING)
+            });
+            (rect, clip)
+        };
+        for _ in 0..3 {
+            frame(vec![]);
+        }
+        let (before, before_clip) = frame(vec![]);
+        assert!(
+            before.height() < 550.0,
+            "entity tree expanded the window: {before:?}"
+        );
+        let corner = before.max - egui::vec2(2.0, 2.0);
+        frame(vec![egui::Event::PointerMoved(corner)]);
+        frame(vec![egui::Event::PointerButton {
+            pos: corner,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: default(),
+        }]);
+        let target = corner + egui::vec2(140.0, 120.0);
+        frame(vec![egui::Event::PointerMoved(target)]);
+        frame(vec![egui::Event::PointerButton {
+            pos: target,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: default(),
+        }]);
+        let (after, after_clip) = frame(vec![]);
+        assert!(
+            after.width() > before.width() + 100.0,
+            "window did not widen: {before:?} -> {after:?}"
+        );
+        assert!(
+            after.height() > before.height() + 80.0,
+            "window did not grow: {before:?} -> {after:?}"
+        );
+        assert!(
+            after_clip.width() > before_clip.width() + 100.0,
+            "entity viewport did not fill the wider window: {before_clip:?} -> {after_clip:?}"
+        );
+        assert!(
+            after_clip.height() > before_clip.height() + 80.0,
+            "entity viewport did not fill the taller window: {before_clip:?} -> {after_clip:?}"
         );
     }
 

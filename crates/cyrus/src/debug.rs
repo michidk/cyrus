@@ -6,7 +6,7 @@ fn initialize_native_worlds(
     install: Res<cyrus_assets::install::GameInstall>,
     mut picker: ResMut<WorldPicker>,
 ) -> Result {
-    picker.options = cyrus_assets::scene::world_names(&install)?;
+    picker.options = cyrus_assets::scene::world_options(&install)?;
     Ok(())
 }
 
@@ -68,9 +68,10 @@ mod tests {
         app.insert_resource(install);
         app.update();
         let picker = app.world().resource::<WorldPicker>();
-        for name in ["0", "ISLAND", "START", "BELLTOWR"] {
-            assert!(picker.options.iter().any(|option| option == name), "{name}");
+        for name in ["ISLAND", "START", "BELLTOWR"] {
+            assert!(picker.options.iter().any(|[_, map]| map == name), "{name}");
         }
+        assert_eq!(picker.options[0], ["0", "START"]);
         app.world_mut().resource_mut::<WorldPicker>().pending = Some("START".into());
         app.update();
         assert_eq!(

@@ -132,7 +132,9 @@ source-image dimensions and scale. **Verified:** preservation's
 [flat drawing and export contract](https://github.com/michidk/redguard-preservation/blob/2a44319/docs/engine/model-lighting.md)
 supplies the geometry and alpha-dependent face brightness. Re-export worlds for
 `rgpre_flat` metadata. Centered flags 1 and 3 and unreduced images up to 64 texels
-per dimension are supported. Larger-texture reduction remains unsupported.
+per dimension are supported. Larger-texture reduction remains unsupported. Rejected flats are hidden;
+preparation groups matching failures instead of logging each placement. Re-exporting
+valid data does not enable unsupported renderer features.
 **Verified:** matched 640×480 BELLTOWR native/browser captures replace the oversized
 inverted triangles with a small upright flame at the original sample's location;
 the previous geometry fails the measured flame-region comparison. Constant-alpha compositing uses a framebuffer copy per admitted flat, strict
@@ -211,7 +213,9 @@ with its [sky texture mapping](https://github.com/michidk/redguard-preservation/
 Scene rendering uses the installed near/far planes, including a nonzero
 `world_back_plane` override. F1 exposes a render-distance override in game units;
 editing it switches Fog to Modern. Faithful uses the original range and fog
-tables. Modern Fog defaults to four times the far distance and a gradual distant
+tables. Modern Fog expands the camera-centered terrain and water window to cover the
+selected far frustum. Faithful Fog retains the original terrain window.
+Modern Fog defaults to four times the far distance and a gradual distant
 fade. Modern Sky is camera-centered; Modern Water adds smooth crossing waves,
 fine texture ripples, and view-dependent sheen while retaining the installed
 textures. Water, Fog, and Sky are independently switchable and default to

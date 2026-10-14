@@ -72,7 +72,7 @@ try {
       } });
       globalThis.cyrusConsoleSeed = new TextDecoder().decode(await globalThis.cyrusGameAssets.read('console/startup.json'));
       globalThis.cyrusCheatSeed = new TextDecoder().decode(await globalThis.cyrusGameAssets.read('cheats/startup.json'));
-      document.querySelector('meta[name=cyrus-worlds]').content = globalThis.cyrusGameAssets.worlds.join(',');
+      document.querySelector('meta[name=cyrus-worlds]').content = JSON.stringify(globalThis.cyrusGameAssets.worlds);
     }
   }
   if ("serviceWorker" in navigator) {

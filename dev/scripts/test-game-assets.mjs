@@ -7,14 +7,14 @@ const assets = await openGameAssets('https://example.test/original/', { createWo
   worker = { postMessage(data) {
     calls.push(data);
     queueMicrotask(() => {
-      if (data.kind === 'game-open') this.onmessage({ data: { id: data.id, worlds: '["START"]' } });
+      if (data.kind === 'game-open') this.onmessage({ data: { id: data.id, worlds: '[["2","START"]]' } });
       if (data.kind === 'game-prepare') this.onmessage({ data: { id: data.id, files: [['START.glb', new Uint8Array([1])], ['START.scripts', new Uint8Array([2])]] } });
       if (data.kind === 'movie-range') this.onmessage({ data: { id: data.id, bytes: new Uint8Array(Math.min(256 * 1024, 512 * 1024 - data.start)), total: 512 * 1024 } });
     });
   }, terminate() { this.terminated = true; } };
   return worker;
 } });
-assert.deepEqual(assets.worlds, ['START']);
+assert.deepEqual(assets.worlds, [['2', 'START']]);
 assert.deepEqual(await Promise.all([assets.read('START.glb'), assets.read('START.scripts')]), [new Uint8Array([1]), new Uint8Array([2])]);
 assert.equal(calls.filter(call => call.kind === 'game-prepare').length, 1, 'world sidecars share one preparation');
 const controller = new AbortController();

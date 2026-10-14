@@ -225,13 +225,23 @@ pub(crate) fn animate_water(
         }
         playback.source = Some(request.0.id());
     }
-    let window = cameras.single().ok().and_then(|(_, camera)| {
+    let window = cameras.single().ok().and_then(|(view, camera)| {
         let terrain = transforms.get(playback.terrain[0].entity).ok()?;
         let camera_local = terrain
             .affine()
             .inverse()
             .transform_point3(camera.translation());
-        Some(crate::terrain::Window::new(camera_local, side))
+        let window = crate::terrain::Window::new(camera_local, side);
+        Some(if fidelity.mode(Area::Fog) == Mode::Modern {
+            let far = distance
+                .as_ref()
+                .and_then(|d| d.effective(&fidelity))
+                .unwrap_or(environment.clipping)[1];
+            let projection = view.clip_from_view();
+            window.with_far(far, Vec2::new(projection.x_axis.x, projection.y_axis.y))
+        } else {
+            window
+        })
     });
     // Camera removal restores the unprojected mesh using its last admission window.
     let Some(window) = window.or(playback.window) else {
@@ -550,6 +560,33 @@ mod tests {
         app.update();
         assert_eq!(positions(&app, &animated)[820][1], -0.6);
         assert_ne!(normal(&app), [0.0, 0.99609375, 0.0]);
+
+        app.world_mut()
+            .entity_mut(camera)
+            .insert(GlobalTransform::from_translation(Vec3::new(
+                0.0,
+                0.0,
+                -20.0 * CELL_SIZE,
+            )));
+        app.insert_resource(crate::fog::RenderDistance {
+            original: Some([7.0, 3800.0]),
+            override_far: Some(1300.0),
+        });
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Fog, Mode::Modern);
+        app.update();
+        assert_eq!(positions(&app, &animated)[820][1], 0.0);
+        app.world_mut()
+            .resource_mut::<crate::fog::RenderDistance>()
+            .override_far = Some(7600.0);
+        app.update();
+        assert_eq!(positions(&app, &animated)[820][1], -0.6);
+        app.world_mut()
+            .resource_mut::<Fidelity>()
+            .set(Area::Fog, Mode::Faithful);
+        app.update();
+        assert_eq!(positions(&app, &animated)[820][1], 0.0);
     }
 
     fn triangle(positions: Vec<[f32; 3]>) -> Mesh {

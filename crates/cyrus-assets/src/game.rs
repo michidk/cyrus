@@ -3,26 +3,31 @@ use crate::{preparation::Output, source::ReadAssets};
 use anyhow::{Context, Result};
 use std::{collections::BTreeMap, path::Path};
 
-/// Original world IDs and map aliases, preserving installed palette variants.
-pub fn worlds(source: &dyn ReadAssets) -> Result<Vec<String>> {
+/// Debug world IDs paired with their installed map names, preserving palette variants.
+pub fn world_options(source: &dyn ReadAssets) -> Result<Vec<[String; 2]>> {
     let ini = crate::preparation::text(source, "WORLD.INI")?;
-    let mut names = Vec::new();
-    for entry in rgpre::import::world_ini::WorldIni::parse(&ini).entries {
-        names.push(entry.index.to_string());
-        let filename = entry
-            .map
-            .rsplit(['/', '\\'])
-            .next()
-            .context("empty map filename")?;
-        let stem = Path::new(filename)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .with_context(|| format!("world {}: invalid map {}", entry.index, entry.map))?;
-        names.push(stem.to_ascii_uppercase());
-    }
-    names.sort();
-    names.dedup();
-    Ok(names)
+    world_options_from_ini(rgpre::import::world_ini::WorldIni::parse(&ini))
+}
+
+pub(crate) fn world_options_from_ini(
+    worlds: rgpre::import::world_ini::WorldIni,
+) -> Result<Vec<[String; 2]>> {
+    worlds
+        .entries
+        .into_iter()
+        .map(|entry| {
+            let filename = entry
+                .map
+                .rsplit(['/', '\\'])
+                .next()
+                .context("empty map filename")?;
+            let stem = Path::new(filename)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .with_context(|| format!("world {}: invalid map {}", entry.index, entry.map))?;
+            Ok([entry.index.to_string(), stem.to_ascii_uppercase()])
+        })
+        .collect()
 }
 
 pub(crate) fn scene(
@@ -116,4 +121,21 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
         "game preparation did not produce {path}"
     );
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn debug_world_labels_preserve_shared_map_identities() {
+        let worlds = rgpre::import::world_ini::WorldIni::parse(
+            "world_map[1]=MAPS\\island.rgm\nworld_palette[1]=3DART\\day.COL\nworld_map[27]=MAPS\\island.rgm\nworld_palette[27]=3DART\\night.COL\n",
+        );
+        assert_eq!(
+            super::world_options_from_ini(worlds).unwrap(),
+            [
+                ["1".to_owned(), "ISLAND".to_owned()],
+                ["27".to_owned(), "ISLAND".to_owned()]
+            ]
+        );
+    }
 }

@@ -170,7 +170,7 @@ impl GameLibrary {
     }
     pub fn worlds(&self) -> std::result::Result<String, JsValue> {
         serde_json::to_string(
-            &cyrus_assets::game::worlds(&self.source)
+            &cyrus_assets::game::world_options(&self.source)
                 .map_err(|error| bridge_error(format!("{error:#}")))?,
         )
         .map_err(bridge_error)

@@ -112,6 +112,11 @@ pub fn world_names(install: &GameInstall) -> anyhow::Result<Vec<String>> {
     Ok(names)
 }
 
+/// Debug world IDs and map labels from the installed WORLD.INI.
+pub fn world_options(install: &GameInstall) -> anyhow::Result<Vec<[String; 2]>> {
+    crate::game::world_options_from_ini(read_worlds(install)?)
+}
+
 /// Enumerate installed world identities, including shared maps with distinct palettes.
 pub fn read_worlds(install: &GameInstall) -> anyhow::Result<WorldIni> {
     let path = world_ini::find_world_ini(&install.root)

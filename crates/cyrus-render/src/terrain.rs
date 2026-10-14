@@ -76,6 +76,7 @@ pub(super) struct View {
 pub(super) struct Window {
     center: [i32; 2],
     side: usize,
+    radius: i32,
 }
 
 impl Window {
@@ -88,13 +89,21 @@ impl Window {
                 side as i32 - (engine_z / 256.0).round_ties_even() as i32,
             ],
             side,
+            radius: 16,
         }
+    }
+
+    /// Modern fog admits the whole far frustum, including its horizontal corners.
+    pub fn with_far(mut self, far: f32, scale: Vec2) -> Self {
+        let extent = far * (1.0 + (Vec2::ONE / scale).length_squared()).sqrt();
+        self.radius = ((extent / 256.0).ceil() as i32).saturating_add(1).max(16);
+        self
     }
 
     pub fn contains(self, vertex: usize) -> bool {
         let x = (vertex % self.side) as i32 - self.center[0];
         let row = (vertex / self.side) as i32 - self.center[1];
-        (-16..=15).contains(&x) && (-15..=16).contains(&row)
+        (-self.radius..self.radius).contains(&x) && (-self.radius + 1..=self.radius).contains(&row)
     }
 }
 
@@ -296,7 +305,11 @@ mod tests {
                 &mut source,
                 &[0, 1, 2, 3],
                 Grid {
-                    window: Window { center, side: 2 },
+                    window: Window {
+                        center,
+                        side: 2,
+                        radius: 16,
+                    },
                     local: &local,
                     camera: &camera,
                     normals: &[[0., 1., 0.]; 4],
@@ -331,6 +344,16 @@ mod tests {
                 [0.00390625, 0.99609375],
             ]))
         );
+    }
+
+    #[test]
+    fn modern_window_reaches_distant_water_and_restores_original_admission() {
+        let original = Window::new(Vec3::new(-32.0 * 12.8, 0.0, -32.0 * 12.8), 64);
+        let distant = 32 * 64 + 55;
+        assert!(!original.contains(distant));
+        assert!(!original.with_far(3000.0, Vec2::ONE).contains(distant));
+        assert!(original.with_far(7600.0, Vec2::ONE).contains(distant));
+        assert!(!original.contains(distant));
     }
 
     #[test]
