@@ -290,3 +290,10 @@ do not establish playable acceptance. **Inferred next implementation order:**
    its flag, transform, animation and sound outcomes with the original.
 4. Enable automatic acceptance only after production invocation pacing and
    eligibility are verified; repeat in the browser and across world replacement.
+
+**Verified:** periodic sound-maintenance inhibition is sampled by the player
+controller, rather than every ordinary object update, as documented in
+[preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md).
+Automatic reset integration must preserve that admission point and the ordered
+RTX-cache, dialogue, sample-channel and walk-node cleanup. The explicit
+`SoundMaintenance` timer does not establish this runtime ownership.

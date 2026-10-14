@@ -70,7 +70,9 @@ impl SoundMaintenance {
         Ok(true)
     }
 
-    /// Apply the ordinary actor's menu/WaitOnDialog/LockoutPlayer inputs.
+    /// Apply menu/WaitOnDialog/LockoutPlayer inputs at the player-controller stage.
+    /// The caller must establish controller admission; do not sample this once
+    /// per ordinary map actor. See preservation engine/sound.md.
     /// An active menu or dialogue inhibits maintenance. With both inactive,
     /// nonzero lockout retains the prior inhibition rather than enabling it.
     pub fn ordinary_actor(
