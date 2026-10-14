@@ -1,8 +1,7 @@
 # Roadmap
 
-Rebuild the original single-player Redguard. The original game is the specification;
-no multiplayer or new content. Build tooling first, then world playback, the player
-controller, interaction and saves.
+Rebuild the original single-player Redguard. The original game is the
+specification. No multiplayer or new content.
 
 ## At a glance
 
@@ -11,47 +10,31 @@ controller, interaction and saves.
 | Foundations | Done | Install loading, world exports, browser viewer and development tools |
 | 0. Development tooling | In progress | Build, run, drive and compare both games |
 | 1. Complete world playback | In progress | Render, animate, sound and execute every required world script |
-| 2. Player controller | Parked at user request | Original movement, camera, collision and interaction |
+| 2. Player controller | Parked at user request | Original movement, camera and collision |
 | 3. Interaction and persistence | Later | Dialogue, inventory, scripted cameras, transitions and saves |
-| 4. Complete gameplay | Later | Quests, combat and complete gameplay services |
+| 4. Complete gameplay | Later | Quests, combat and remaining gameplay services |
 | 5. Full-game fidelity | Later | A verified new-game-to-ending playthrough |
-| 6. Release | Later | A tested distribution and clean-machine setup |
+| 6. Release | Later; packaging exists | A tested distribution and clean-machine setup |
 
-Checked items exist in committed code. They do not imply original-game fidelity.
-Unchecked items remain required. **Verified** identifies recorded evidence;
-**Unknown** identifies unresolved behavior. Verification details belong in commits
-and implementation docs, rather than repeated status histories here.
+Checked items exist in committed code; they do not establish complete fidelity.
+**Verified** means recorded evidence, **Inferred** means a conclusion from evidence,
+and **Unknown** means unresolved behavior. Detailed verification belongs in
+commits and implementation docs.
 
 ## Next work
 
-- Finish START actor movement/collision and ambient maintenance so New Game sustains authored animation and scripts without inspection commands. Repeat that acceptance across all installed worlds. The shared clock and ordinary update caller are connected; native New Game currently stops on those unsupported services.
-- Finish terrain/model lighting, water-edge normal retention and sky/sun filtering comparisons.
-- Connect automatic sound triggers, surface remapping and moving emitters.
-- Feed production player/script state into the HUD and verify native/browser presentation.
-- Compare matched original/native/browser scenes and audible sequences. Keep controller work parked until requested.
+- Complete START actor movement, collision and ambient maintenance so New Game
+  sustains authored scripts and animation. Repeat acceptance across installed worlds.
+- Resolve remaining terrain/model shading differences, actor prelighting and
+  synchronized texture playback. Verify sky, sun and water across menu transitions.
+- Complete automatic sound triggers and moving emitters. Surface remapping exists.
+- Connect remaining gameplay state to the HUD and verify its timing and presentation.
+- Compare original, native and browser behavior and audible output. Keep controller
+  work parked until requested.
 
 The [SOUP completion checklist](plans/2026-10-12-soup-completion.md) owns detailed
-script service, scheduling and persistence dependencies. Crate ownership is in
-[MAP.md](MAP.md); launch and cache requirements are in [SETUP.md](SETUP.md).
-
-### SOUP completion status
-
-**Verified:** SOUP is not complete from an implementation standpoint. The portable
-VM, asset preparation and explicit game hosts exist and have native/WASM checks.
-Normal world entry prepares actors and render bindings. Camera-centered ordinary
-updates run the supported script/animation stages; unsupported collision, combat,
-and native services stop the affected actor with a contextual diagnostic.
-Loading the correct map does not establish complete animated or playable world behavior.
-
-| Requirement | Current state |
-| --- | --- |
-| Build the existing native and browser cores | Verified on committed SOUP increments; compilation is not gameplay acceptance |
-| Load installed worlds and retain scripts/models | Implemented; all 29 WORLD.INI entries have export coverage |
-| Run script/animation stages explicitly | Implemented for the documented supported services |
-| Start eligible world animations and scripts automatically | Incomplete; native New Game enters START, but sustained playback stops on actor movement/collision and ambient reset ownership |
-| Execute every required native service and actor lifecycle | Incomplete: navigation, remaining receivers/properties, synchronization and gameplay services |
-| Preserve progression through revisits and saves | Not implemented |
-| Complete original/native/browser playthrough | Not verified |
+script dependencies. [MAP.md](MAP.md) owns module boundaries;
+[SETUP.md](SETUP.md) owns launch, cache and comparison instructions.
 
 ### Active assignments
 
@@ -61,317 +44,171 @@ Loading the correct map does not establish complete animated or playable world b
 | SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
 
-The SOUP assignment includes remaining animation and script scheduling. Sound and HUD sessions have ended; their open items, startup fidelity follow-up and the rest of stages 3–6 are unassigned.
-
-### Crate boundaries
-
-- [x] Strengthen existing crate ownership without adding crates: portable program types and validation in `cyrus-script`, host-owned render/audio connections, private persisted game preferences and console parsing, and an explicit app loading module. **Verified:** isolated interpreter/core/app/render consumers, full gates with 580 Rust tests and zero install skips, native workspace and optimized browser game/viewer/worker builds, and rendered START speech/subtitle/control smoke.
-- [x] Keep shared font metrics, wrapping and rasterization in `cyrus-text`; screen-specific text placement remains with presentation and FNT parsing with preservation.
-- [x] Extract `cyrus-media`: portable movie decoding, packet input, PCM conversion and waveform envelopes shared by asset preparation, the viewer and playback. Keep installed menu metadata, platform I/O and audio/render backends outside the codec core. **Verified:** installed streamed frame/PCM contracts, native headless START, installed WASM worker exports, metadata parity and isolated core/browser builds.
-- [x] Extract `cyrus-audio`: effects, speech playback, music and browser sound-bank playback. Presentation supplies listener, startup readiness and cinematic pause state. **Verified:** installed decoder/channel/cleanup contracts, preference/animation/cue ordering, native menu/control/CD state, headless START, WASM and isolated core checks; full gates passed with zero install skips.
-- [x] Extract `cyrus-startup`: splash, title, book menu, settings, cinematic presentation and world-entry loading, with one presentation facade and native preparation boundary. **Verified:** installed startup/movie/preferences contracts, full gates with zero install skips, native menu/movie/world-entry/Quit, integrated optimized browser and installed WASM worker; presentation schedules and cache formats preserved. Fidelity comparison remains open.
-- [x] Extract `cyrus-collision` with terrain, model and static-world query contracts; keep player admission and response in gameplay and serialized inputs in assets.
-- [ ] Revisit `cyrus-animation` after production scheduling and actor ownership settle; retain explicit requests/ticks in the core and mesh presentation outside it.
-
-## Verification still required
-
-**Verified:** committed increments have native contracts, installed export checks
-and WASM compilation. Explicit animation, sound, spatial and activation hosts have
-headless contracts. These establish the supported cores, not automatic gameplay.
-
-**Verified:** optimized native default and skipped startup reach the ready menu;
-restart retains Display preferences and a rebound key. Installed INTRO skips
-reach the authored points and return to the selected Movies entry; authored Quit
-exits. Native Load enters the starting world, F8/Tab/F7 update HUD state, and
-held flycam input leaves the player position unchanged. Browser audio/cache,
-movie streaming and server/package contracts pass. The earlier served WASM matched
-its optimized build. The subsequent rebuild was terminated before emitting a
-bundle, and the shared server returns 404. A replacement optimized build is in
-progress; current browser runtime remains unverified until its served bundle passes
-the remaining interaction checks. Headless browser checks at 1280×800 exercise URL startup
-skip, temporary Load/New artwork/progress, world entry, F1 in the menu and
-after New Game, and F1 in a direct START launch. F8/Tab/F7 write browser HUD
-preferences and show notices.
-Asset inspection now includes automatic WLD heightmaps, texture-rotation maps and
-direction arrows, model normals/bounds/face picking/UVs, world record diagrams,
-PVO scene/object inspection, authored movie-track selection and expanded decoded
-JSON. Face picking is always active; UV inspection overlays the sampled texture
-and identifies its TEXBSI bank and image. Normal settings occupy a separate row.
-**Verified:** integrated workspace gates pass with the install and no skipped
-install tests; optimized browser/native builds and the isolated core consumer pass.
-Native checks cover WLD maps/arrows, model picking/UVs, sky palettes and movie
-controls. Browser checks cover restricted TEXBSI palettes, BSI JSON and the
-BELLTOWR world/actor inspector. Browser WLD capture and audible playback remain
-unverified because the software-rendered shared tab times out and the native
-container has no audio device.
-
-Native viewer GUI checks cover textured/unlit/solid rendering, edge overlays,
-JSON inspection, font preview, ANM playback and movie frame stepping. Tagged Linux
-viewer checks also verify visible wireframe geometry, Orbit drag, Flycam look and
-held-key movement, and Frame object recovery; the virtual display requires window
-focus for keyboard input. Image Fit/1:1/zoom and CD waveform, seek, pause and
-playback and loop wrap also pass; a paced virtual audio sink receives nonzero
-samples. Installed LBM palette replacement and movie play/seek/pause/step controls
-respond through the GUI. These
-checks establish runtime behavior, not visual or audible parity with the original. Further shared-tab inspection and
-headless control captures time out, so remaining browser interaction/audio
-checks stay open. **Verified:** the subsequent native development build also reaches a ready menu
-and New Game world 0 with initialized script actors, health/world HUD state and
-F8/Tab/F7 updates. Its shared loading edits are recorded separately from the tagged
-package evidence; browser checks after these integrations remain open. Starting-world
-settling reports unsupported water/terrain-edge support and retains the marker.
-
-| Area | Remaining acceptance checks |
-| --- | --- |
-| World rendering | Matched original/native/browser views across worlds and palettes; placement, scale, visibility, transparency, clipping and terrain/model lighting |
-| Sky and water | Tilt, synchronized scrolling, above-plane views, sun alpha/filter state after transitions, waves, water-edge normals and hardware color precision |
-| Animation and scripts | Production clock and eligible callers; rendered/audible sequences; actor removal and world replacement with active scripts, meshes and sounds |
-| Player | Complete startup/steady/release updates, ground and wall responses, native/browser input, original follow camera and flycam independence after integration |
-| HUD | Every element and notice, original candle cadence, prompt/item behavior, compass direction and starting inventory; browser restart persistence |
-| Startup and menu | Browser keyboard startup skip and restart persistence; original book motion, loading artwork and lighting/clipping comparisons |
-| Movies and audio | Picture, skips, subtitles, interlace, A/V sync, integrated cancellation/download failures and seek responsiveness; audible effects, speech, CD music and pan handedness |
-| Cheats and console | Original non-cheat commands, console preferences/presentation fidelity and remaining gameplay effects |
-| Asset viewer | Other-platform runtime and browser media checks; native inspection controls pass, without a Faithful rendering claim. Game and viewer share asset code; the installed WASM worker prepares game assets |
-| Releases | Clean-machine play/save/resume and other-platform runtime checks |
-
-Browser tooling verification is deferred at user request: F1 during unskipped
-startup, fidelity controls, render-distance editing/reset and cache reuse/invalidation.
+SOUP owns remaining animation and script scheduling. Sound and HUD sessions have
+ended; their remaining work and other unlisted tasks are unassigned.
 
 ## Resource coverage
 
-Parsing does not establish runtime behavior. **Verified:** all 29 installed
-WORLD.INI entries export geometry and supported animation references. Coverage
-of every palette and world still needs original-game comparison.
+**Verified:** all 29 installed WORLD.INI entries export geometry and supported
+animation references. Parsing and export coverage do not establish working gameplay
+or fidelity across every world and palette.
 
 | Resources | Implemented | Still required |
 | --- | --- | --- |
-| WORLD.INI, RGM, WLD | World selection, placements, terrain, per-world ambient/directional lighting, static map-light baking and authored object lights | Scripted light changes, actor prelighting eligibility, exact water-edge normals and actor behavior |
-| 3D, 3DC, ROB | Static models, retained frames, supplied-tick poses/groups and authored book motion | Production animation, remaining encodings/group types and all-actor model replacement |
-| BSI, COL, Glide sky | Textures/palettes, sky plane/tilt/sun, scrolling inputs, fog and terrain waves | Other animated textures and matched filtering/blending/lighting |
-| GXA, splash DLL, FNT | Installed splash/title, menu widgets, HUD artwork and shared text rendering | Remaining gameplay screens, software sky projection and exact splash hardware rendering |
-| SFX, RTX, CD audio | Effects/speech decode, subtitles, shared channels, explicit script sound ownership, native/browser music, preferences and animation surface remaps | Automatic gameplay triggers, nonplayer ground updates, moving emitters and audible parity |
-| SOUP | Portable VM, actor locals/flags/tasks, supported automatic ordinary traversal, explicit animation/spatial/wait/routing/sound/activation services, shared clock/random stream and typed native-hook dispatch | Remaining automatic actor stages, receivers/native services, automatic ambient reset ownership, synchronization and persistence |
-| MENU.INI, KEYS.INI | Installed menu content, keyboard navigation, preferences, rebinding, held player input, New/temporary Load and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie progression unlocks |
+| WORLD.INI, RGM, WLD | World selection, placements, terrain and authored lighting | Scripted light changes, actor prelighting and complete actor behavior |
+| 3D, 3DC, ROB | Static models, retained frames, supplied-tick poses and book motion | Complete production animation, encodings, group types and model replacement |
+| BSI, COL, Glide sky | Textures, palettes, sky, fog, waves and supported texture playback | Remaining animation and matched filtering, blending and lighting |
+| GXA, splash DLL, FNT | Splash, title, menu, HUD artwork and shared text rendering | Remaining gameplay screens, software sky and splash fidelity |
+| SFX, RTX, CD audio | Effects, speech, subtitles, channels, music, preferences and surface remaps | Complete automatic triggers, moving emitters, nonplayer ground updates and audible parity |
+| SOUP | Portable VM, logical actors, supported ordinary updates and explicit hosts | Remaining actor stages, native services, lifecycle, synchronization and persistence |
+| MENU.INI, KEYS.INI | Data-driven menu, keyboard navigation, settings, rebinding and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie unlocks |
 | ITEM.INI, COMBAT.INI | Starting-item HUD icons and counts | Shared inventory, pickups, item use and combat |
-| SMK | Native/browser video, first-track audio, installed skip/subtitle rules and streamed browser playback | Original comparison, A/V sync and player-hardware seek/audio checks |
-| BMP, PCX, LBM, ANM | Cursor/indexed image inspection and authored-rate ANM playback | Game cursor integration and palette cycling |
-| CHT | Preload/viewer parsing; native/browser runtime restore/save, import/export, keyboard/console commands and `neversaydie` | Remaining gameplay effects and console fidelity; see the cheat checklist below |
-| PVO | Preload parsing and viewer inspection | Runtime culling excluded at user request |
-| Save data | Unsupported | Safe world/player/script/quest persistence |
+| SMK | Streamed native/browser video, first-track audio and skip/subtitle rules | Original comparison, A/V sync and hardware seek/audio checks |
+| BMP, PCX, LBM, ANM | Image inspection and authored-rate ANM playback | Game cursor and palette cycling |
+| CHT, CPF | Cheat and console parsing, local persistence and supported commands | Remaining gameplay effects, commands and console fidelity |
+| PVO | Parsing and viewer inspection | Runtime culling excluded at user request |
+| Save data | Unsupported | Safe world, player, script and quest persistence |
 
 ## 0. Development tooling
 
-In progress. Both games must be runnable and comparable without a physical GPU,
-screen or root access.
+- [x] Install discovery, preload reports, world exports and read-only install access.
+- [x] Original-game runner, captures, TCP/MCP control, headless mode and replay fixtures.
+- [x] Native/browser inspection controls, independent flycam and world picker.
+- [x] Separate asset viewer with model/world inspection, images, fonts, animations and media controls.
+- [x] Shared asset preparation, browser workers, caching and byte-range serving.
+- [x] Local browser folder access without uploads and native install selection in the application window.
+- [x] CI, native/browser packaging and preservation integration.
+- [x] Installed world audit and repeatable original/native/browser captures for ISLAND, BELLTOWR and START. **Verified:** [capture workflow closeout](https://github.com/michidk/cyrus/commit/6248d6f). Static captures do not verify synchronized gameplay or audio.
+- [ ] Verify fresh-clone setup and complete native install-picker Continue flow, including Windows.
+- [ ] Finish browser viewer media and other-platform runtime checks. Native inspection controls have recorded GUI checks.
+- [ ] Resume deferred browser checks when requested: F1 during unskipped startup, fidelity controls, render-distance reset and cache reuse/invalidation.
 
-- [x] Install discovery, preload coverage report, world exports and local-state separation.
-- [x] DOSBox-X/Voodoo original-game runner, capture tools, TCP/MCP control, headless mode and replay fixtures.
-- [x] Native/browser debug menu, independent flycam, world picker and F1 registration across camera replacement.
-- [x] Separate asset viewer with Orbit/Flycam, four shading modes, edge overlay and staged loading progress. **Verified:** [viewer increment](https://github.com/michidk/cyrus/commit/4ee41d8) includes viewer tests, installed gates and headless browser checks.
-- [x] Shared CLI/URL options, explicit browser install source, digest-based caching, byte-range serving and read-only install preparation.
-- [x] Browser play from a locally selected GOG folder through read-only File handles without upload; native install selection and preparation in the game window without a launcher process. **Verified:** [implementation](https://github.com/michidk/cyrus/commit/8279a2f) passes focused native tests, browser builds and networkless worker tests. Windows and the complete native Continue transition remain unverified.
-- [x] CI checks and native/browser packaging. Stable version tags build and publish packages; push/PR CI runs checks without packaging. **Verified:** [release workflow checks](https://github.com/michidk/cyrus/commit/938ae35); [v0.1.1 publication](https://github.com/michidk/cyrus/releases/tag/v0.1.1) passed with native/browser packages.
-- [x] Preservation release v0.8.0 integration, including the Windows splash parser. **Verified:** [migration checks](https://github.com/michidk/cyrus/commit/10a953b) cover installed workspace gates and optimized browser builds.
-- [x] Asset viewer review: failed previews are never cached, CD images fingerprint by size and time, asset lookup and catalog classification are shared, and the viewer UI is split per content kind. Game and viewer share one world geometry pipeline, cue-sheet parser, WAV writer, file lookup, world resolver, font conversion, atomic cache publish and loading overlay; native world preparation reports its stages on the entry bar. **Verified:** [viewer fixes](https://github.com/michidk/cyrus/commit/949ff34), [shared assets](https://github.com/michidk/cyrus/commit/e389da4) and [stage progress](https://github.com/michidk/cyrus/commit/9139981) pass installed tests and a headless START export; the painted stage bar is unobserved.
-- [x] Browser game runtime parsing: remaining exporters use the byte-source trait and the browser worker prepares game assets without a server-side exporter. **Verified:** installed startup/menu/HUD/sound/START worker exports, bounded CD movie reads and native/WASM script metadata parity. Browser splash/menu interaction passed; complete movie interaction and audible parity remain open.
-- [x] Audit skipped placements, missing assets, animation/script initialization failures and unsupported operations. **Verified:** [headless audit](https://github.com/michidk/cyrus/commit/49b16a8c1a662e98342a844d7132e8396b1046c4) reuses preload/export/preparation paths and writes contextual text and stable JSON. The full installed audit passed at [recorded source](https://github.com/michidk/cyrus/commit/086507576a8ff7be898727dd58400016a48b5dc1). Overlapping asset/placement reports, uninitialized animations and unexercised operations remain explicit.
-- [x] Produce matched original/cyrus scene and viewpoint captures. **Verified:** [cold-start fixtures](https://github.com/michidk/cyrus/commit/086507576a8ff7be898727dd58400016a48b5dc1) produced fresh ISLAND, BELLTOWR and START original/native/browser triplets; all nine images inspected, browser headless at 640×480. Fixtures establish static world/viewpoint matching. Animation/gameplay synchronization and pixel fidelity remain unknown. Art stays under `magic/`.
-- [x] Produce and inspect fresh ISLAND, BELLTOWR and START original/native/browser triplets at one recorded source revision, with an installed audit from that revision. **Verified:** source [0865075](https://github.com/michidk/cyrus/commit/086507576a8ff7be898727dd58400016a48b5dc1), identical native/browser build inputs, executed-byte checks, all nine images inspected and installed gates with zero skips. Original loading artwork was rejected through consecutive loading-clear observations and image inspection. [Archived evidence and scoped fidelity backlog](https://github.com/michidk/redguard-decomp/tree/a0e1120f6a0b3843a54835774b24f04cf57ac93c/research/supplements/2026-10-13-stage0-owned-preview/final-proof) retain candle, shading, browser-hint and wider coverage follow-ups; see the fixture README for the cold restore workflow.
+Done when a fresh clone with a purchased install runs both games, accepts agent
+control and produces a repeatable comparison through SETUP commands.
 
-- [x] Verify the starter capture workflow after removing the browser-only control hint. **Verified:** [hint fix](https://github.com/michidk/cyrus/commit/f053431b7d22cdc0f39580c426287f26406f329a) and [recorded runtime](https://github.com/michidk/cyrus/commit/c3f5fe50b3d3ec59134b66247de7a812ca8df62d) produced fresh ISLAND, BELLTOWR and START triplets with matching executed builds; all nine images inspected. The installed audit matches the accepted report, and headless browser F1 opens/closes inspection controls without the HTML hint. [Archived text evidence](https://github.com/michidk/redguard-decomp/tree/628df8c1a51e1498deb20591194e566db3341f45/research/supplements/2026-10-14-stage0-fidelity/fresh-triplets-closeout) retains rendering gaps and accepted owners. Static views do not verify synchronized gameplay, animation or audio; both owned previews are stopped.
+### Console and cheats
 
-Done when a fresh clone with a purchased install builds and runs both games,
-accepts agent control and produces a repeatable comparison through SETUP commands.
-
-### Original console UI and cheats
-
-**Verified:** preservation documents the [13 cheats and activation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/cheats.md)
-and [REDGUARD.CHT format](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/CHT.md).
-Cyrus parses CHT during preload and exposes decoded values in the asset viewer.
-Native startup restores local or installed CHT state; TCP/MCP supports named
-toggles, integer assignment, `oracle` and `savecheats`. Automatic world updates and explicit script steps
-use runtime `neversaydie` state; inspection callers may override it.
-Other gameplay effects report unsupported, including the unknown `oddjob` effect.
-F12 opens the shared native/browser editor; browser CHT import/export lives in F1.
-
-- [x] Extract `cyrus-console` with subsystem command registration, editor/input, dispatch and retained reports. Native TCP and keyboard entry share dispatch. Independent-consumer, command/cheat tests and WebAssembly checking verify the boundary. Decimal, hexadecimal, percent-prefixed and packed four-byte values share one parser; short quoted input remains unsupported.
-- [x] Resolve console assignments from live SOUP flag values and preserve numeric-prefix/wrapping conversion. **Verified:** isolated command tests cover script-written values, duplicate names, unknown-name diagnostics and stale-world rejection. Preservation documents temporary equate-table lifetime; no persistent equates are fabricated.
-- [x] Shared cheat state, native CHT restore/save and TCP/MCP commands, including explicit SOUP `neversaydie` integration. Native storage shares byte read/replacement code with preferences. Verification is recorded in the implementation commit.
-- [x] Native/browser F12 console with installed paper/font, world-palette inks, text editing, retained output and command submission. **Verified:** presentation rules are [published in preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/console.md). Pixel parity remains part of the comparison item below.
-- [x] Implement gameplay cheat-name entry followed by Enter, console toggles, explicit integer assignment and `oracle` output through shared runtime cheat state. Use preservation's names and rules; keep unsupported effects explicit.
-- [x] Add browser cheat persistence and CHT file import/export using the shared state and preservation codec. Share storage, safe file replacement, import/export and error handling with save-game persistence where their requirements match; keep each format's encoding separate. Native startup restore and `savecheats` writing to `cyrus-config/REDGUARD.CHT` are implemented; the install remains read-only.
-- [ ] Connect each documented cheat effect to its owning gameplay, script, animation or rendering system as those systems become available in stages 1–4. `neversaydie` already reaches automatic and explicit script queries; leave the unknown `oddjob` gameplay effect unsupported. The inspection flycam does not implement player flight cheats.
-- [x] Inventory all 82 original command names and aliases, retaining explicit unsupported diagnostics. Add CPF restore/save, preference commands, log export, empty Glide `get`/`set`, SOUP flag inspection/assignment, `show world` and the supported sky-plane/wave controls. **Verified:** focused tests cover CPF precedence/failure protection, live flag updates, world-edit restoration and console raster pixels. A three-launch native headless probe verifies CPF save/log export, restart normalization, malformed-file protection and unchanged installed files; the browser target and isolated portable consumer compile.
-- [ ] Implement the remaining original console's non-cheat commands from preservation evidence and original-game observations, including object/marker editors and remaining diagnostic owners. Report unsupported commands explicitly; publish missing command contracts first.
-- [x] Verify native input isolation, CHT save/restart, malformed state and failed writes, and install immutability. Verify browser keyboard entry, persistence/reload, malformed import rejection and byte-exact CHT import/export in headless Chrome at desktop and narrow widths.
-- [ ] Complete original-console pixel parity and live cursor-timing comparisons, and compare remaining cheat gameplay effects as their owners become available.
-
-### Startup and book menu
-
-- [x] Installed Windows metallic-logo/swoosh splash, title and data-driven book pages, including authored turns, camera moves and Quit closing.
-- [x] Options, Display, Sound, Controls and Movies; keyboard navigation, persistent validated preferences and installed feedback effects. **Verified:** native MCP/export contracts and browser menu/movie/world-entry checks.
-- [x] Native/browser Smacker playback, skip points, subtitles/interlace and retained menu selection. Native video/audio streams from the installed file or CD image without whole-movie preparation; browser video/audio streams before full download. CD tracks and world assignments export for shared music playback.
-- [x] New Game and temporary Load enter the installed starting world/marker behind destination artwork and a dependency barrier.
-- [ ] Compare splash pixels and authored animation, inherited menu lighting, camera-plane clipping, book transitions and audible output with the original. Loading duration need not match.
-- [x] Match world-entry loading text to the original: gold lower-left percentage and no right-hand stage or asset message. **Verified:** GOG Glide New Game capture sequence and shared loading raster contract; original internal progress weights remain unsupported. Startup title retains its small bottom-right preparation labels.
-- [ ] Add save slots/thumbnails, overwrite/delete handling, Continue/pause, full New Game initialization and progression movie unlocks when the corresponding gameplay state exists.
-- [ ] Support mouse/joystick rebinding and gameplay snapshots. **Verified:** the original ordinary book menu has no pointer label selection.
-
-Load currently starts a fresh world. It does not read saves. Browser Quit can be
-refused by the browser and leaves the menu usable. Forward movie seeks decode
-preceding delta frames; keyframe seeking is not implemented.
+- [x] Shared console editor, keyboard/TCP dispatch, installed paper/font and original command catalog with explicit unsupported diagnostics.
+- [x] Native/browser CHT restore/save, import/export, cheat-name entry and assignments. `neversaydie` reaches automatic and explicit script queries.
+- [x] CPF preferences, log export, live SOUP flag commands and supported sky/wave controls.
+- [x] Input isolation, restart persistence, malformed-state protection and install immutability checks.
+- [ ] Connect remaining documented cheat effects as their gameplay owners become available. **Unknown:** `oddjob` behavior.
+- [ ] Implement remaining non-cheat commands, including object/marker editors and diagnostics, from preservation evidence.
+- [ ] Compare original console pixels, cursor timing and gameplay effects. Short quoted assignments remain unsupported.
 
 ## 1. Complete world playback
 
-In progress. Static loading and explicitly driven runtime cores work; automatic
-world playback is incomplete.
+Static loading and supported ordinary script updates work. Complete automatic
+world playback remains unfinished.
 
 ### Rendering
 
-- Won't implement PVO runtime culling at user request. No performance benefit or visible fidelity difference has been demonstrated. Keep PVO parsing and viewer inspection. **Unknown:** whether the original's PVO exclusions change visible output; revisit only if profiling or original-game comparison establishes a need.
-- [x] Worlds, terrain, textures and palettes; dry/water terrain lighting, faithful sky/tilt/sun/scroll inputs, fog/range defaults and water waves.
-- [x] Independent fidelity controls; optional Modern sky/fog/water presentation. Modern lighting currently reuses Faithful results.
-- [x] Match the original world camera's horizontal projection across viewport sizes. **Verified:** original viewport arithmetic and matched BELLTOWR inspection poses in native/browser builds. Original follow-camera behavior and lighting/pixel parity remain open.
-- [x] Apply [dirty water-edge normal admission/retention](https://github.com/michidk/cyrus/commit/96824363121633c891982215d8beb20f9e332361) to the current terrain grid. **Verified:** [published admission rules](https://github.com/michidk/redguard-preservation/commit/ebd7d9e), renderer tests for retained RGB, ticks, mode switches and environment replacement, and a failing omitted-diagonal negative control. Matched ISLAND ground captures compare original/native/headless browser at 640×480; native/browser shoreline captures share a pose but not wave phase.
-- [x] Apply the [original finite terrain window](https://github.com/michidk/cyrus/commit/c03a3aa05de6ea74d9a0ff9e7a45acda4f143937). **Verified:** original draw/admission ranges, live rounding mode and renderer tests for cell changes, retained normals and wave-angle precision.
-- [x] Compare [water edges](https://github.com/michidk/cyrus/commit/c03a3aa05de6ea74d9a0ff9e7a45acda4f143937) at a matched ISLAND shoreline pose in original/native/browser at 640×480. **Verified:** controlled zero-speed waves hold phase constant; the camera window follows the [published draw range](https://github.com/michidk/redguard-preservation/commit/0913cd1). **Unknown:** complete pixel parity and default-speed timing; edge texture/color differences remain.
-- [x] Replace fixed Bevy model lighting with installed ambient/directional RGB, authored face brightness, supplied normals and solid-color tint. **Verified:** original-code/GPU arithmetic comparisons, render contracts and native ISLAND/BELLTOWR/START scene switches.
-- [x] Compare static map-light baking in matched BELLTOWR original/native/browser views at 640×480. **Verified:** wall/table captures share the camera pose; lighting and filtering differences remain, so pixel parity is not established.
-- [x] Recover [actor prelighting eligibility](https://github.com/michidk/redguard-preservation/commit/d1cbf68). **Verified:** the world-entry pass requires nonzero `attr_non_moving`, the runtime static-model kind and a loaded model, plus the shared static/map-light list gates.
-- [ ] Apply actor prelighting from authoritative world-entry state; recover dynamic lighting overrides.
-- [x] Add authored object lights after retained static RGB. **Verified:** original-code/GPU arithmetic, installed export switches, renderer contracts and matched BELLTOWR native/browser views. Scripted changes and complete pixel parity remain open.
-- [x] Prepare terrain clipping, projected snapping and fixed color interpolation before integer texture modulation. **Verified:** original clipping/setup arithmetic comparisons, a failing subpixel-bias negative control, renderer contracts and improved matched ISLAND native/browser terrain regions. Fog updates exclude retained materials without live entities; the native ISLAND/BELLTOWR round trip passes, with substantial scene-loading delays still present.
-- [x] Preserve selected ROB attributes on world nodes and select encoded point/bilinear model filtering. **Verified:** archive fallback/cache and shared-mesh metadata tests, material flag separation, and improved matched BELLTOWR native/browser regions. Standalone/generated model defaults and filtered chroma rejection remain unsupported.
-- [x] Recover the [FLAT texture-attribute layout and MPSF submission defaults](https://github.com/michidk/redguard-preservation/commit/ff5a965cfb49b41de4e7bb29a7e671883760e0a6). **Verified:** original loader, lookup and submission instructions; exact payload consumption in all 27 installed maps. Typed export, generated-flat rendering and matched candle comparison remain open.
-- [x] Add [typed FLAT texture attributes and metadata export](https://github.com/michidk/redguard-preservation/commit/3b380953b87d67616d890d20c96c57f281e2e78d) in preservation. **Verified:** malformed input and archive/alpha boundary tests, all 27 installed maps, and BELLTOWR candle lookup. Preservation format, clippy and tests pass; unrelated optional fixture tests skip. Cyrus consumption and matched rendering remain open.
-- [x] Export [generated-flat source dimensions and drawing attributes](https://github.com/michidk/redguard-preservation/commit/226ba52b8968c14d0b1bbda2acce707d62430dac). **Verified:** synthetic defaults, malformed placement diagnostics, all 27 installed maps and BELLTOWR candle metadata pass preservation tests. Renderer consumption and fresh matched candle captures remain open.
-- [x] Recover [placed-flat sampling, alpha/depth behavior and automatic frame admission](https://github.com/michidk/redguard-preservation/commit/1480911603d6798a9275374f69051314dcf263d5). **Verified:** 22 original-instruction cases cover alpha boundaries, clipping, degenerate geometry and a rejecting ordinary-model control. GPU/lighting callbacks were stubbed; renderer integration and fresh matched candle captures remain open.
-- [x] Apply source-sized camera-facing MPSF geometry and the [documented translucent-flat brightness](https://github.com/michidk/redguard-preservation/commit/2a44319a1f1b94d0198ddab42b85d0c52cef0801). **Verified:** geometry/transform contracts and matched 640×480 BELLTOWR original-sample/native/browser flame regions detect the previous oversized inverted geometry. Centered unreduced flats are supported. Alpha compositing, sampling, animation admission and synchronized candle acceptance remain open.
-- [x] Animate prepared MPSF flats through the shared texture timeline using [quantized bound and first-polygon admission](https://github.com/michidk/redguard-preservation/commit/4b1f28bfe0f2bc9ee7f8eca080968723192b879e), with point sampling. **Verified:** 21 original bound cases, a failing exact-root control, renderer clipping/shared-playback tests and matched 640×480 BELLTOWR original/native/browser views; twelve native and twelve browser captures expose all five flame states. Alpha compositing and synchronized cadence remain open.
-- [x] Apply placed-flat constant-alpha framebuffer blending, generated normals and local-light coordinates, and [spatial submission/partition order](https://github.com/michidk/redguard-preservation/commit/a9e6b6275e0d75b9b2112d6618854d22b6b608c7). **Verified:** original-instruction order controls, production GPU blend checks, spatial animation and retained-phase regressions, and matched 640×480 BELLTOWR original/native/browser candle regions with matching build sources. The wrong-lighting-basis control is visibly different. Synchronized texture phase/cadence and overlapping-flat image acceptance remain open.
-- [x] Expose native/MCP and browser inspection holds for measured shared texture frames, preserving the [explicit-selection deadline](https://github.com/michidk/redguard-preservation/commit/5ab06cf). **Verified:** frame validation, shared material selection, resume and world-reset tests; matched 640×480 BELLTOWR original/native/browser captures hold the measured candle frame. Repeat/restore crops agree, and a wrong-frame control changes them. Invalid live requests leave state unchanged; MCP smoke passes. Residual shading/raster differences and synchronized cadence remain open.
-- [x] Compare START after original book-menu return and native/browser New Game using [measured texture holds](https://github.com/michidk/cyrus/commit/4f490b0ea0623ad6e72f63fe5119be170f92e840). **Verified:** matched measured camera and 640×480, frozen sky and water frame; separate deck, rail, sky and water crops. Wrong water-frame controls change water while leaving the other crops identical. The deck remains darker on native/browser; its cause, wrong-version acceptance and full parity remain **Unknown**.
-- [ ] Compare remaining terrain sampling precision and sky/sun filtering/alpha after menu/world transitions. **Verified:** cloud-filter arithmetic has isolated GPU checks. Filtered model chroma rejection, complete pixel parity and menu transition comparisons remain open.
-- [x] Compare START sky, sun edge and water after original book-menu return and native/browser New Game using the [verified renderer build](https://github.com/michidk/cyrus/commit/0a3b388791da5e189eabd5b4940ca43da46b52bb). **Verified:** matched 640×480 camera and frozen sky/wave state; freezing waves removes most native/browser water differences. Sampled sun-edge and sky errors against the original average below one RGB level. Terrain/model differences, full-disc sun coverage and complete pixel parity remain open.
-- [x] Compare the complete ISLAND sun disc at a settled coastal viewpoint using the [verified renderer build](https://github.com/michidk/cyrus/commit/ab5048d). **Verified:** matched 640×480 original/native/browser captures with frozen sky phase; sampled sun and cloud errors average below one RGB level. The original returned from the book; native/browser loaded directly. Native/browser menu transitions, terrain/model shading and full pixel parity remain open.
-- [x] Recover the [software Voodoo perspective reciprocal](https://github.com/michidk/redguard-preservation/commit/fe4b8315b28472af697d6a8740e5ca352c7b965c), [texture-plane setup](https://github.com/michidk/redguard-preservation/commit/aa7073484423a2c14b9d3a9b5bd298fdcb8d7b9d) and [integer sample selection](https://github.com/michidk/redguard-preservation/commit/837f22c8d7b1d11f4316df26f7ddc941e18c7354). **Verified:** compiled arithmetic agrees with generated cases and captured ISLAND terrain texture planes. A portable integer shader draft passes Vulkan checks; converting coordinates to float before sample selection crosses boundaries. Production integration is verified below; physical hardware equivalence is Unknown.
-- [x] Apply [fixed-point terrain perspective sampling](https://github.com/michidk/redguard-preservation/commit/837f22c8d7b1d11f4316df26f7ddc941e18c7354) in native and browser rendering. **Verified:** 480 original-instruction setup cases, 9,062 production Vulkan cases, a failing carry-propagation negative control, and matched 640×480 ISLAND original/native/browser captures. Native/browser foreground pixels agree exactly; original-image errors remain mixed. Menu-transition and full pixel parity remain open.
-- [x] Apply [fixed reciprocal-depth terrain fog](https://github.com/michidk/redguard-preservation/commit/e8588b5e7c8d4f7fc6169c93886fb66e1a53e5a0). **Verified:** original-instruction checks, 65,671 production GPU cases and a failing old-interpolation comparison. Matched 640×480 START captures after native/browser New Game use identical build sources and an observed matching texture phase. The sampled native water region is unchanged from before; two horizon pixels change. Final gates pass with zero install skips. Complete pixel parity and synchronized texture cadence remain open.
-- [x] Apply the [original terrain texture corner range](https://github.com/michidk/redguard-preservation/commit/aa7073484423a2c14b9d3a9b5bd298fdcb8d7b9d), accounting for vertically flipped exported images. **Verified:** all eight original triangle/rotation cases, prepared-mesh UV assertions and matched 640×480 ISLAND original/native/browser captures. All three measured dry-terrain regions improve; full pixel parity remains open.
-- [x] Preserve [original filter weights after vertical image export](https://github.com/michidk/redguard-preservation/commit/e4408c6a886c2336cd960ff2a4bc5eb4f6200098). **Verified:** compiled-original and production GPU checks agree on 40,960 samples; the old rounding fails the GPU negative control. Matched 640×480 ISLAND original/native/browser captures improve all three measured ground regions, with exact native/browser foreground agreement. Full pixel parity remains open.
-- [x] Apply [integer sun alpha filtering](https://github.com/michidk/redguard-preservation/commit/306bdf59a3a968dcec73848f24db6c7cab7bda9d) and [framebuffer blending](https://github.com/michidk/redguard-preservation/commit/421912a01adfbce8c6116fc4b1892cbdc77551ea). **Verified:** software Vulkan checks cover wrapped alpha sampling, separately truncated blend terms and a complete synthetic sun frame; the previous shader fails the frame check. Matched original/native/browser ISLAND captures at 640×480 show the sun and sky; native/browser source snapshots match. Cloud phases are unsynchronized, visible terrain/sky differences remain, and post-menu sun comparison and pixel parity stay open.
-- [x] Recover [authored texture frame selection](https://github.com/michidk/redguard-preservation/commit/5ab06cf). **Verified:** frame requests share image state, advance once at the BIOS deadline and retain explicit selections. Rendering admission controls advancement; runtime playback remains open.
-- [x] Retain [authored texture frames in exported GLBs](https://github.com/michidk/redguard-preservation/commit/d0eec6c98e6917f942e643204fc155f53b34b649). **Verified:** installed START, ISLAND and BELLTOWR export checks compare frame order, delay, palette, row orientation and transparency against TEXBSI data. Runtime playback remains open.
-- [x] Retain [authored polygon admission inputs](https://github.com/michidk/redguard-preservation/commit/a4b007242d7a72eea1a54a42d5bd7afe57d0d459) alongside texture frames. **Verified:** installed START, ISLAND and BELLTOWR checks compare source corners, face normals and model bounds after material splitting and triangulation. Runtime admission and playback remain open.
-- [x] Preserve [opaque terrain texture frames](https://github.com/michidk/redguard-preservation/commit/9ac35c15c66b9a5671320e42951e0a53e05ae39e), including palette-index-zero RGB. **Verified:** preservation tests cover nonblack zero colors and unchanged model transparency; installed START, ISLAND and BELLTOWR export checks pass. Re-export existing caches; this does not establish shoreline pixel parity.
-- [x] Play ordinary archive-model texture frames using the [published admission and shared-image rules](https://github.com/michidk/redguard-preservation/commit/af411516a872f56afc3b164a384ab782f824a6fe). **Verified:** renderer contracts and a failing frame-retention negative control; matched original/native/browser ISLAND river captures at 640×480 and changing water-rock foam in native/browser samples. **Unknown:** synchronized cadence and pixel parity. Script actor admission, explicit selections and generated billboards remain open.
-- [x] Play terrain texture frames through the [shared image timeline](https://github.com/michidk/redguard-preservation/commit/af411516a872f56afc3b164a384ab782f824a6fe). **Verified:** facing/window/clipping admission survives geometry reuse and subpixel rejection; 44 renderer tests, a failing terrain-request negative control and zero-skip gates pass. Matched original/native/browser ISLAND river views use 640×480; separate zero-wave-speed native/browser samples show texture advancement. Synchronized cadence, actor requests and pixel parity remain open.
-- [x] Preserve explicit inspection poses through native/browser New Game. **Verified:** native preparation starts in Loading without a duplicate export; the previous scheduling fails the regression test. Matched START original/native/browser captures use the measured pose at 640×480, with identical native/browser build sources and zero-skip gates. Shading/filtering differences remain.
-- [x] Compare sky-plane crossing at a matched START pose after native/browser New Game. **Verified:** 640×480 original/native/browser captures place the plane one engine unit on either side of the camera and at its height; the projected crossing agrees. Cloud color/phase, scrolling cadence and broader clipping comparisons remain open.
-- [x] Implement signed live sky-speed edits and retain byte-valued world settings from the [published command rule](https://github.com/michidk/redguard-preservation/commit/8cf451e8c3bd0ed02d57855de1544b7e63348ce3). **Verified:** renderer tests cover freeze/resume, unchanged offsets/tick, one random draw even at zero and world-specific reload settings; a byte-only live-speed negative control fails and zero-skip gates pass. Matched START original/native/browser captures at 640×480 verify freeze/resume after native/browser New Game. Original/native frozen offsets align cloud structures; browser phase, horizon/terrain differences and full pixel parity remain open.
-- [x] Synchronize captured sky phase through browser inspection, matching native control. **Verified:** live requests reject malformed data, wrong worlds and invalid phases; a wrong-phase capture changes the sky and restoration reproduces it. Matched 640×480 START after native/browser New Game and direct ISLAND captures hold the [published scroll state](https://github.com/michidk/redguard-preservation/commit/8cf451e8c3bd0ed02d57855de1544b7e63348ce3). Settled native/browser ISLAND sky regions match exactly, including the phase captured after the original returned from its book menu. Rebuild ISLAND loads were direct; original color/filtering and terrain differences remain. Final gates pass with zero install skips.
-- [x] Restore the exported Z origin before calculating Faithful cloud texture coordinates. **Verified:** the [published position conversion](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md) and [sky mapping](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sky.md) agree with the shader GPU check; the previous expression fails. Matched 640×480 original/native/browser captures cover START after native/browser New Game and direct ISLAND after the original book return. Sampled sky errors fall below one channel level; 45 renderer tests and zero-skip gates pass. Terrain/horizon differences and full pixel parity remain open.
-- [ ] Compare sky scrolling, plane crossing, fog/clipping and water across original/native/browser views; complete other authored texture animation.
+- [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky, fog and water exist; Modern lighting reuses Faithful results.
+- [x] Installed model lighting, static map-light baking, authored object lights and ROB filtering attributes.
+- [x] Finite terrain window, clipping, fixed-point texture sampling, fog and water-edge normal retention.
+- [x] Sky phase controls, plane-crossing behavior, cloud coordinates and integer sun filtering/blending.
+- [x] Shared texture playback for terrain, ordinary archive models and MPSF flats; inspection holds for matched frames.
+- [x] Source-sized camera-facing flats with authored brightness, alpha blending, generated normals and submission order.
+- [x] Matched rendering comparisons in ISLAND, BELLTOWR and START, including controlled texture/sky/wave state. **Verified:** [latest START menu-entry comparison](https://github.com/michidk/cyrus/commit/bdfa55c). The native/browser deck remains darker; complete pixel parity is **Unknown**.
+- [ ] Apply actor prelighting from authoritative world-entry state and recover dynamic lighting overrides.
+- [ ] Complete standalone/generated model filtering defaults, filtered chroma rejection and remaining texture admission/animation paths.
+- [ ] Resolve terrain/model shading, sampling and water-edge differences. Compare hardware color precision, sky/sun state and fog/clipping across transitions.
+- [ ] Verify synchronized texture/sky/wave cadence and overlapping-flat rendering against the original.
+
+PVO runtime culling is excluded at user request. **Unknown:** whether its exclusions
+change visible output. Revisit only with a demonstrated fidelity or performance need.
 
 ### Animation and scripts
 
-- [x] **Verified:** actor-load preparation exports attribute defaults through preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59), using installed SYSTEM.INI. Installed-map tests and a native headless PALACE check verify the initialized attributes. Model-path message-group assignment and complete actor initialization remain open.
-- [x] Retained animation metadata and source-mapped i32/reconstructed-i16 poses; supplied-tick type-0/type-1 requests, priorities, default replacement, exit tails and authored sound markers. **Verified:** animation transition and grounded-update contracts cover changed current/pending defaults and retained frames.
-- [x] Portable SOUP VM and logical actors; explicit animation, waits, flags, attributes, routed tasks, spatial attachment/rotation and player queries share state with presentation. **Verified:** FLAG2 supplied-tick sequences and PALACE headless spatial contracts.
-- [x] Explicit activation shares receiver ownership, pending prompts and timers with HUD drawing. **Verified:** [activation increment](https://github.com/michidk/cyrus/commit/5358aa0) includes script/headless HUD contracts and installed RTX labels, including text-only entries.
-- [x] Shared clock arithmetic consumes validated installed settings and explicit BIOS samples, retaining startup warmup, smoothing and fractional nominal ticks. Menu entry/exit and world replacement preserve the documented shared clock state. **Verified:** clock contracts, installed native/browser schema-6 preparation and headless START loading. This does not schedule actors.
-- [x] The script schema retains typed RAHK native calls separately from script continuations; explicit dispatch preserves cursors and tasks. Fresh-world actor ordering, map defaults and axis-lock restoration have supplied-stage contracts. **Verified:** all installed maps decode, native PALACE stage/error checks and installed WASM worker preparation pass. Automatic eligibility and remaining hook services are not implemented.
-- [x] Ordinary `AtNodeMarker` queries share receiver-local spatial state and matching world marker metadata. **Verified:** installed-map preparation, routed attached queries and original-instruction distance/error comparisons. Explicit HIDEOUT invocation reports its out-of-range marker; that map is not selected by installed WORLD.INI.
-- [x] Explicit ordinary stages honor EnableScript/DisableScript, task bypass, installed task/animation switches and unpaused-task hook admission. **Verified:** [script-control contracts](https://github.com/michidk/cyrus/commit/3419b23), [schema-8 update switches](https://github.com/michidk/cyrus/commit/4509128), original-instruction comparisons, installed worker exports and native PALACE checks. These gates do not supply automatic callers.
-- [x] Normal world updates automatically traverse supported ordinary actors with the shared clock, defaults, hooks, tasks and family transforms. **Verified:** normal-update contracts and native menu New Game into START move all 15 sharks without debug stepping. Seven crew/pirate actors still stop at unsupported collision, BOAT1 at AmbientSound, and five WATERSND objects lack their separate object path. Full world animation acceptance remains open.
-- [x] Same-list duplicate family roots select the original first match instead of failing spatial preparation. **Verified:** installed CATACOMB attachment contract, rebuilt native spatial/family control checks and NPC primary-support/fallback separation test. The traversal rules are contributed in [preservation PR72](https://github.com/michidk/redguard-preservation/pull/72). Cross-list duplicate roots and complete NPC collision admission remain open.
-- [x] Absolute `RotateToAxis` and elapsed `sRotateToAxis`/`sRotateByAxis` tasks share logical actor slots and local angles. **Verified:** fourteen original-instruction angle sequences and installed CAVERNS fish rotation with concurrent movement through explicit stages and normal ordinary traversal. Arithmetic is published in [preservation PR73](https://github.com/michidk/redguard-preservation/pull/73). The fish's later navigation and full world playback remain incomplete.
-- [x] Relative `MoveByAxis` and `sMoveByAxis` tasks update actor-owned local positions with deferred family refresh. **Verified:** [movement increment](https://github.com/michidk/cyrus/commit/73e983a), installed ISLAND mechanism and original rounding/completion comparisons.
-- [x] `Rnd` and `QuickRnd` use one game-owned stream retained across world replacement. **Verified:** [random increment](https://github.com/michidk/cyrus/commit/d5a77cb), original result/state comparisons and native VILEDOG draws across world changes. Full consumer order and sky integration remain open.
-- [x] Ordinary actor cells use decoded map coordinates and retain authored traversal order. **Verified:** [coordinate fix](https://github.com/michidk/cyrus/commit/3c467ce), installed PALACE selection and a deliberately wrong original-instruction comparison. Deferred MoveObjectAxis cell relocation retains registration order and invalidates distant cached traversal; dynamic allocation remains open.
-- [ ] Establish production invocation policy, eligible actors/callers and timing. Do not substitute a guessed fixed rate for original behavior.
-- [ ] Finish state-dependent defaults, remaining group types, cancellation/event commands and model replacement for all actors.
-- [ ] Complete object routing, variable references, scriptless receivers, allocation/recycling and model-coupled attributes; run all required scripts automatically through the [SOUP checklist](plans/2026-10-12-soup-completion.md).
-- [x] Explicit empty-map `Wander` hooks consume shared random candidate draws and restore excessive displacement. **Verified:** [implementation](https://github.com/michidk/cyrus/commit/5c90392), original-function comparisons, installed VILEDOG native hook, 443 workspace tests with zero missing-install skips and WASM check. Automatic invocation remains incomplete.
-- [ ] Implement populated walk-map routing/steering, remaining object groups, movement, lights, visibility, NPC perception, hooks and synchronization with animation, speech and sound. Empty-map Wander is not a substitute for navigation or automatic scheduling.
-- [ ] Handle script-requested world loads and cleanup; verify actor removal and world replacement with active runtime state.
+- [x] Portable SOUP VM, logical actors, installed defaults, retained animation frames and supported requests/tasks.
+- [x] Shared explicit hosts for attributes, flags, waits, routing, activation, spatial transforms, movement/rotation and player queries.
+- [x] Shared clock and random arithmetic, ordinary actor ordering, native-hook dispatch and supported automatic traversal.
+- [x] Initial actor collision shapes, ordered static/live/transient candidates and live static-model support geometry.
+
+**Verified:** native New Game advances START sharks without debug stepping.
+Crew/pirate collision, BOAT1 ambient sound and WATERSND object paths remain blockers.
+Explicit-stage tests and export coverage do not close automatic acceptance.
+
+- [ ] Complete production eligibility and invocation timing, model/default ownership, initialization, group types, cancellation and model replacement.
+- [ ] Complete receivers, properties, variable references, scriptless objects, allocation/recycling and model-coupled attributes.
+- [ ] Complete NPC collision/support/response, model-state refresh, transient geometry and populated walk-map navigation/perception.
+- [ ] Complete hooks, synchronization, lights, visibility and remaining native services through the [SOUP checklist](plans/2026-10-12-soup-completion.md).
+- [ ] Handle script-requested world loads and verify removal/replacement with active scripts, tasks, meshes and sounds.
+- [ ] Sustain automatic scripts and rendered animation across every required world on native and browser hosts.
 
 ### Sound and HUD
 
-- [x] Shared native/browser 16-channel effects, animation cues and explicit script flat starts/selective cleanup with receiver/effect ownership. **Verified:** [sound increment](https://github.com/michidk/cyrus/commit/ea836da) includes receiver/result and headless mixer contracts, queued browser cleanup and old-world expiry.
-- [x] Installed HUD candle, health, compass, items/counts, power-up slots, logbook, prompts and notices; F8/Tab/F7 preferences persist.
-- [x] Parse SURFACE.INI remapping in preservation and set actor SoundSurface from ground/collision.
-  Preservation parser and engine rules: [PR #65](https://github.com/michidk/redguard-preservation/pull/65); native/browser animation playback consumes the installed remaps. Logical actor state projects to SoundSurface; supported grounded updates and animation cues retain the emission-time class. Synthetic playback tests cover same-update projection and queued remapping. Automatic scheduling and wider nonplayer ground updates remain with SOUP.
-  The native `surface_audio` example records static support, captured animation cues and actual mixer PCM. Its report comparator rejects wrong classes/targets, missing events, ambiguous PCM and absent playback starts. **Verified:** installed static-support/mixer probes select effects 9, 107, 94 and 103 for authored sound 9 on known zero, sand class 6, wood class 7 and rock class 10, despite later ECS surface changes. Independent original remap calls agree; sand and wood observations are NPC cues. Original CYRUS walking calls cover known zero and rock. **Unknown:** complete player traversal and audible waveform, rate and cleanup parity.
-- [x] Lend synchronous ambient feedback and immediate script dispatch from the shared sixteen-slot audio service. **Verified:** focused production mixer tests cover allocation, reuse, live gain updates, ordered commands, expired worlds and captured logical animation positions. Automatic ambient scheduling remains blocked by maintenance/reset ownership.
-- [x] Prepare authored per-instance home/RALC locations and implement MoveToLocation tasks with original normalization, frame-scale arithmetic, strict duration completion and deferred map updates. Actor collision and all-world automatic acceptance remain separate.
-- [x] Share authored upright and horizontal actor collision shape construction between player and collision core, retaining the separate additional sphere. Ordinary NPC admission, support and response remain incomplete.
-- [x] Prepare ordered static/live/transient collision candidates with separate 64-entry limits and retained owner/model identities. Existing static queries share the selection core. **Verified:** public collision contracts cover phase order, exclusions, saturation and static/live identity separation. Runtime model-state ownership, NPC support/response and sustained world animation remain incomplete.
-- [x] Prepare initial live static-model collision geometry and animation header radii through the shared asset source. Mixed support queries retain actor/face ownership and caller-supplied stored poses. **Verified:** installed START retains 19 authored live static bindings; mixed/static support, material and cache contracts pass. Ordinary model-state refresh, transient geometry, NPC response and sustained animation remain incomplete.
-- [ ] Complete automatic positional/ambient scheduling, StopAllSounds results, shell/code-object ownership, KillMe/Resurrect cleanup, rope thresholds and torch loops; refresh moving-emitter gain/pan.
-- [ ] Complete gameplay-global lifecycle and menu/dialogue maintenance ownership. `LockoutPlayer` retains the low word, updates selected/registered actor attribute 117, clears topic-choice text and the documented prompt timer, and supplies activation gating. New Game establishes zero lockout before world replacement; ordinary reloads retain globals. Topic-menu execution and death/load resets remain open.
-- [ ] Feed production activation conditions, health, sword/lockout/player type, heading/world and compass state into the HUD. Connect bitmap/logbook script handlers and player walk-mode/auto-defend behavior.
-- [ ] Verify native/browser HUD layout, candle cadence, prompt/item timing and compass semantics. **Unknown:** compass frame-zero direction and item-zero compass activation.
-- [ ] Compare effects, speech/subtitles and music by ear; establish listener/camera rules, pan handedness, text-only subtitle timing and attached-emitter eligibility.
-- [ ] Consider optional Modern suppression of the startup CD burst, retaining current playback in Faithful. **Verified:** installed and exported track bytes preserve the GOG disc-data overlap documented in the [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...docs/gog-audio-boundary). The user reports the burst in original Redguard and the web build; a paired audio capture remains open. No audio fidelity area or suppression is implemented.
+- [x] Shared native/browser effects, music, animation cues and script sound ownership/cleanup with synchronous channel feedback.
+- [x] Installed SURFACE.INI remapping and supported ground-derived actor surfaces. **Verified:** [grounded surface-cue comparison](https://github.com/michidk/cyrus/commit/4f66c96). Complete player traversal and audible parity remain open.
+- [x] Installed HUD elements, activation prompts and persistent F8/Tab/F7 preferences. Placed-player heading/world and script-actor health/type feed the HUD.
+- [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
+- [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support exists; topic execution and death/load resets remain open.
+- [ ] Connect remaining production activation/sword state, bitmap/logbook handlers and player walk-mode/auto-defend behavior.
+- [ ] Verify HUD layout, candle cadence, prompt/item timing and browser restart persistence. **Unknown:** compass frame-zero direction and item-zero activation.
+- [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
+- [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
+
+### Startup and book menu
+
+- [x] Installed Windows splash/title and data-driven book motion, settings, keyboard navigation, feedback and authored Quit.
+- [x] Streamed native/browser Movies with skip points, subtitles/interlace and retained menu selection.
+- [x] New Game and temporary Load enter the installed starting world behind artwork and dependency readiness. Original-style world-entry progress text is implemented.
+- [ ] Compare splash, menu lighting, camera clipping, book transitions, loading artwork and audible output with the original.
+- [ ] Verify integrated browser startup skipping, restart persistence, movie cancellation/download failures, seeking and A/V sync.
+- [ ] Complete New Game initialization, save slots/thumbnails, overwrite/delete, Continue/pause and progression movie unlocks as gameplay state becomes available.
+- [ ] Support mouse/joystick rebinding. **Verified:** the original book menu has no pointer label selection.
+
+Load starts a fresh world; it does not restore a save. Browser Quit leaves the
+menu usable when tab closure is refused. Movie keyframe seeking remains unsupported.
 
 Done when every world renders, animates, sounds and executes its required scripts
-against repeatable original-game comparisons. Missing behavior remains a blocker.
+against repeatable original-game comparisons.
 
 ## 2. Player controller
 
-Parked at user request. Keyboard input and bounded supplied-tick cores do not
-enable live locomotion or the original follow camera.
+Parked at user request. Supplied-tick cores do not enable live locomotion or the
+original follow camera.
 
-- [x] Installed keyboard bindings, independent debug flycam, marker placement and static/dry-terrain startup settling.
-- [x] Explicit GroundedTick adapter composes ordinary walking/turning, support and wall response with player/render/animation poses. **Verified:** installed ISLAND startup and twelve supplied-tick walking-release updates, plus headless lifecycle/input contracts. Production ticks are not supplied.
-- [x] Walking and SOUP share logical-player animation, selected frames and sound ownership. **Verified:** [headless interleaving contracts](https://github.com/michidk/cyrus/commit/21b9b40); combined-tree native startup/world-entry smoke passes; explicit walking/script interleaving still needs rendered verification. Playback defaults have one owner; model-default attribute writes remain unsupported.
-- [ ] Establish complete eligibility and simulation timing; compare fractional startup, steady movement, release, walls and ground updates.
-- [ ] Implement movement, turning, original follow camera, jumping, gravity and remaining quick actions.
-- [ ] Complete Faithful controls and the original follow camera.
-- [ ] Add an optional Modern character controller with camera-relative movement, mouse camera, Space jump and held Shift run; keep flycam independent and Faithful as the default.
-- [ ] Add native/browser gamepad support for menu navigation and character control, including configurable bindings, analog movement/camera input, deadzones and connection/disconnection handling. Route gameplay input through the selected Faithful or Modern controller.
-- [x] HUD takes heading and world ID (compass) from the placed player and loaded world, and health and player type from the player script actor while activation inputs are supplied.
-- [ ] Feed sword state to the HUD and consume walk mode and auto-defend in movement. Preservation records the HUD consequences of the sword and the walk-mode key, but not how the sword is drawn, what walk mode changes in movement, or the quick-sword and quick-health actions; recover and publish those rules first.
-- [ ] Complete wall/slope/step and animated-geometry collision, subgroup/dynamic admission, orientation refresh, slope sliding and airborne/rollback responses.
-- [ ] Match ledge hanging, sideways movement, drops and pull-up clearance.
-- [ ] Carry the player on moving/rotating platforms and expose standing/contact state to scripts.
-- [ ] Support swimming, climbing, falls and exits; connect player actions to authored scripts/animation/sound and restore control after scripted motion.
+- [x] Installed keyboard bindings, marker placement, static/dry-ground settling and independent flycam.
+- [x] Explicit grounded walking/turning/support/wall response with shared player, script, animation and render poses.
+- [ ] Establish complete eligibility/timing and compare fractional startup, steady movement, release, walls and ground updates.
+- [ ] Complete Faithful movement, turning, follow camera, jumping, gravity and quick actions. Recover sword, walk-mode and auto-defend rules before connecting them.
+- [ ] Complete slopes, steps, animated/dynamic collision, sliding, airborne/rollback response, ledges and moving platforms.
+- [ ] Complete swimming, climbing, falls, exits and restoration after scripted motion; expose standing/contact state to scripts.
+- [ ] Add optional Modern camera-relative movement, mouse camera, Space jump and held Shift run.
+- [ ] Add native/browser gamepad navigation and character control with bindings, analog input, deadzones and connection handling.
 
-Done when recorded input routes match original movement, collision, camera,
-interaction and transitions in native and browser builds.
+Done when recorded routes match original movement, collision, camera and
+transitions in native and browser builds.
 
 ## 3. Interaction and persistence
 
-Later. Requires the player controller.
+Requires the player controller.
 
-- [ ] Production interaction and one eligible target, including overlapping pickups and removed objects on revisits.
-- [ ] One inventory shared by scripts, HUD, item selection/use and saves; update quantities/icons and compass behavior. The inventory screen must retain its candle rules.
-- [ ] Dialogue choices, including disabled choices, synchronized speech/subtitles/animation and results returned to waiting scripts.
+- [ ] Production interaction with one eligible target, including overlapping pickups and removed objects on revisits.
+- [ ] One inventory shared by scripts, HUD, selection/use and saves, retaining inventory-screen candle rules.
+- [ ] Dialogue choices, disabled choices, synchronized speech/subtitles/animation and results returned to waiting scripts.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
-- [ ] World transitions with authored spawn/orientation/artwork and old sound/script/transient cleanup.
-- [ ] Pause/resume simulation, scripts, animation and audio; original save-slot menus.
-- [ ] Safely persist world/player/NPC/object/quest state, inventory, script threads/waits/tasks/flags/references, and HUD timers/power-up slots/compass in cyrus-config.
-- [ ] Coordinate save-game and cheat-file persistence: share storage and safe read/write operations across native/browser hosts, while keeping game snapshots, cheat state and format-specific encoding separate. Original-format readers and writers belong together in `rgpre`; cyrus owns state capture, restoration and storage policy.
+- [ ] Authored world transitions and old sound/script/transient cleanup.
+- [ ] Pause/resume of simulation and audio; original save-slot menus.
+- [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. Share storage operations with cheats where appropriate; format readers/writers belong in preservation.
 
-Done when a reference route picks up and uses an item, chooses dialogue,
-transitions worlds, saves, restarts and resumes with matching state and control.
+Done when a reference route uses an item, chooses dialogue, transitions worlds,
+saves, restarts and resumes with matching state and control.
 
 ## 4. Complete gameplay
 
-Later. Requires interaction and persistence.
+Requires interaction and persistence.
 
-- [ ] Complete dialogue conditions, quest consequences and item-use rules.
-- [ ] Complete NPC navigation/perception, combat, damage, death and restart.
+- [ ] Complete dialogue conditions, quests, item-use rules, NPC navigation/perception, combat, damage, death and restart.
 - [ ] Complete fonts, settings and remaining gameplay feedback.
-- [ ] Verify interrupted tasks, object attributes and quest/script persistence across content.
-- [ ] Verify integrated dialogue, items, combat and transitions with save/resume.
+- [ ] Verify interrupted tasks, object/quest persistence and integrated gameplay across save/resume.
 
 Original-save compatibility requires format evidence before a commitment.
 
 ## 5. Full-game fidelity
 
-Later. Requires complete gameplay.
+Requires complete gameplay.
 
 - [ ] Cover all worlds, quests, actors, items, encounters and endings.
 - [ ] Test revisits, alternate quest order, failure paths and repeated transitions with active runtime state.
@@ -380,17 +217,15 @@ Later. Requires complete gameplay.
 
 ## 6. Release
 
-Later. Requires full-game fidelity; packaging infrastructure already exists.
+Requires full-game fidelity. Packaging and publication already exist.
 
-- [ ] Choose and test supported platforms/hardware and clean setup with a purchased GOG install.
+- [x] Tagged native/browser packages, checksums and release-triggered GitHub Pages deployment. **Verified:** [v0.1.7 release pipeline](https://github.com/michidk/cyrus/actions/runs/38526911906) passed, including Pages deployment.
+- [x] Native package-content audit and Linux menu/New Game smoke; Windows/macOS packaging and runner help checks.
+- [x] Fix the release shell-block extraction in the artifact test. **Verified:** [fix](https://github.com/michidk/cyrus/commit/70069b2); all five artifact tests pass.
+- [ ] Test supported platforms/hardware and clean setup with a purchased GOG install.
 - [ ] Measure loading, frame pacing and bounded memory across repeated transitions; fix observed bottlenecks.
-- [x] Audit tagged native packages. **Verified:** all eight archives from the [tagged release run](https://github.com/michidk/cyrus/actions/runs/38272630723) contain only the executable and README. Linux game/viewer help runs in a clean runtime container; the packaged game reaches the menu and enters New Game with a read-only install. Windows and both macOS build/package/help jobs passed on their runners.
-- [x] Complete browser packaging and tagged publication. **Verified:** [v0.1.1](https://github.com/michidk/cyrus/releases/tag/v0.1.1) is published with all eight native archives, the browser archive and `SHA256SUMS`. The [release pipeline](https://github.com/michidk/cyrus/actions/runs/38314713622) passed every job; all nine archive checksums match GitHub upload digests.
-- [x] Add release-triggered GitHub Pages deployment of the packaged browser build. **Verified:** [workflow implementation](https://github.com/michidk/cyrus/commit/ecd885f). Deployment success remains separate from workflow presence.
-- [ ] Fix the artifact-packaging test to stop its extracted release shell block before later workflow jobs, and verify the Pages deployment. **Verified:** the new Pages job exposes this [CI failure](https://github.com/michidk/cyrus/actions/runs/38356786059); local `python3 dev/scripts/test-build-artifacts.py` reproduces it. This is not a SOUP compiler failure.
-- [ ] Publish setup, controls and known limitations; verify install, play, save and resume on a clean machine.
+- [ ] Publish final controls and limitations; verify install, play, save and resume on a clean machine.
 
 Follow [METHOD.md](METHOD.md) for evidence and fidelity, [WORKFLOW.md](WORKFLOW.md)
 for ownership/handoffs and AGENTS.md for verification. Formats and recovered
-engine facts belong in redguard-preservation. Read the install only; keep local
-state and research outside the tracked tree.
+engine facts belong in redguard-preservation.
