@@ -13,7 +13,12 @@ fn blend_fog(linear_rgb: vec3<f32>, fog_rgb: vec3<f32>, density: f32) -> vec3<f3
 // Voodoo 1 reciprocal-depth precision, per preservation's fog documentation.
 fn fog_table_position(depth: f32) -> vec2<u32> {
     if depth <= 1.0 { return vec2(0u); }
-    let reciprocal = u32(4294967296.0 / depth);
+    return fog_table_position_from_reciprocal(u32(4294967296.0 / depth));
+}
+
+// Positive fixed reciprocal depth below 2^32, after pixel stepping.
+// https://github.com/michidk/redguard-preservation/blob/e8588b5/docs/engine/fog.md
+fn fog_table_position_from_reciprocal(reciprocal: u32) -> vec2<u32> {
     var encoded = 65535u;
     if reciprocal >= 65536u {
         let exponent = countLeadingZeros(reciprocal);

@@ -13,11 +13,14 @@ struct SceneFog {
 @group(MATERIAL_BIND_GROUP) @binding(100) var<uniform> fog: SceneFog;
 
 fn scene_color(color: vec3<f32>, depth: f32, pixel: vec2<f32>) -> vec3<f32> {
+    return scene_color_at_fog_position(color, depth, pixel, fog_table_position(depth));
+}
+
+fn scene_color_at_fog_position(color: vec3<f32>, depth: f32, pixel: vec2<f32>, position: vec2<u32>) -> vec3<f32> {
     if fog.clipping.z != 0.0 {
         let density = 255.0 * smoothstep(fog.clipping.y * 0.45, fog.clipping.y, depth);
         return blend_fog(color, fog.color.rgb, density);
     }
-    let position = fog_table_position(depth);
     let next = min(position.x + 1u, 63u);
     let density = table_density(fog.table[position.x / 4u][position.x % 4u], fog.table[next / 4u][next % 4u], position.y);
     return framebuffer_rgb565(blend_fog_integer(color, fog.color.rgb, density), pixel);

@@ -7,10 +7,10 @@ import bevy_pbr::render::{
     pbr_functions::alpha_discard,
 };
 import bevy_render::color_operations::srgb_to_linear;
-import package::scene_shading::{fog, scene_color};
-import package::glide_fog::blend_fog;
+import package::scene_shading::{fog, scene_color_at_fog_position};
+import package::glide_fog::{blend_fog, fog_table_position, fog_table_position_from_reciprocal};
 import package::sampling::sample_encoded;
-import package::terrain_texture::terrain_texture_uv;
+import package::terrain_texture::{terrain_texture_uv, texture_plane};
 import bevy_pbr::render::pbr_bindings::base_color_texture;
 
 struct TerrainVertex {
@@ -112,9 +112,12 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     surface.world_position = in.world_position;
     surface.world_normal = in.normal;
     surface.uv = in.uv;
+    var fog_position = fog_table_position(depth);
 @if(PREPARED_TERRAIN) {
     let pixel = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
     surface.uv = terrain_texture_uv(in.texture0, in.texture1, in.texture2, in.texture3, in.texture4, pixel, textureDimensions(base_color_texture));
+    let reciprocal = texture_plane(in.texture3.xy, in.texture3.zw, in.texture4.xy, pixel);
+    fog_position = fog_table_position_from_reciprocal(reciprocal.x);
 }
 @if(VERTEX_COLORS)
     surface.color = vec4(1.0);
@@ -146,6 +149,6 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
         color = mix(rippled, reflected_sky, sheen * 0.12 * water_weight);
     }
     var out: FragmentOutput;
-    out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
+    out.color = vec4(scene_color_at_fog_position(color, depth, in.position.xy, fog_position), base.a);
     return out;
 }

@@ -110,6 +110,8 @@ It clips camera-space position, RGB and UV together, snaps projected vertices,
 and sends each fan triangle's fixed color and texture coefficients to the shared
 shader. Original texture coordinates survive clipping before perspective weighting;
 the shader evaluates signed fixed-point planes using pairs of 32-bit words.
+Terrain fog uses the same stepped reciprocal-depth plane as texture sampling,
+following preservation's [fog interpolation rule](https://github.com/michidk/redguard-preservation/blob/e8588b5/docs/engine/fog.md).
 Camera movement, viewport changes and clipping-range edits rebuild these meshes;
 shared source assets remain unchanged. The encoded texture combiner consumes
 integer lighting channels before scene fog, following preservation's
