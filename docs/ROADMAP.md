@@ -156,8 +156,9 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Installed Windows splash/title and data-driven book motion, settings, keyboard navigation, feedback and authored Quit.
 - [x] Streamed native/browser Movies with skip points, subtitles/interlace and retained menu selection.
 - [x] New Game and temporary Load enter the installed starting world behind artwork and dependency readiness. Original-style world-entry progress text is implemented.
-- [ ] Compare splash, menu lighting, camera clipping, book transitions, loading artwork and audible output with the original.
-- [ ] Verify integrated browser startup skipping, restart persistence, movie cancellation/download failures, seeking and A/V sync.
+- [x] Compare settled startup title, Options/Display layout and native loading-bar presentation with the original; verify native/browser startup skipping and subtitle persistence across restart/reload. Full pixel and timing parity remain **Unknown**.
+- [ ] Complete splash, camera clipping, book-transition timing, loading-artwork and audible comparisons.
+- [ ] Verify browser movie cancellation/download failures, seeking and A/V sync.
 - [ ] Complete New Game initialization, save slots/thumbnails, overwrite/delete, Continue/pause and progression movie unlocks as gameplay state becomes available.
 - [ ] Support mouse/joystick rebinding. **Verified:** the original book menu has no pointer label selection.
 
