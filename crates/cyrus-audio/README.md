@@ -149,6 +149,13 @@ binary hashes and observations alongside it.
 File-table predictions do not establish audible or gameplay parity. Synthetic
 negative controls run with `python3 -B dev/scripts/test-surface-audio.py` and in the gates.
 
+`ScriptSounds::with_combat_taunt_playback` lends a prepared RTX clip and the
+shared sample allocator to the game-owned taunt presenter. It validates requested
+speech dependencies before releasing old ownership, restarts cached samples,
+and formats text only when requested. Speech can start without a text record;
+text-only presentation requires no audio dependency. This synchronous adapter
+does not admit combat or preload candidates for script functions.
+
 Per-label dialogue assets use `sound::dialogue::DialogueClip` and the shared
 `cache://dialogue/<key>.dialogue` loader, with an optional generated WAV dependency.
 The browser worker prepares a requested entry from the original byte source;

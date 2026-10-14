@@ -144,15 +144,7 @@ impl<T: DialoguePayload> DialogueCache<T> {
         read: impl FnOnce([u8; 4]) -> Result<T>,
         samples: &mut dyn DialogueSamples,
     ) -> Result<usize> {
-        if let Some(index) = *retained {
-            let slot = self.slots.get_mut(index).with_context(|| {
-                format!("dialogue taunt: retained cache index {index} out of range")
-            })?;
-            if slot.sample.is_some() {
-                Self::release_slot(index, slot, samples)?;
-            }
-            *retained = None;
-        }
+        self.release_taunt(retained, samples)?;
         let index = self.load(label, read)?;
         let slot = &mut self.slots[index];
         if let Some(sample) = slot.sample {
@@ -163,6 +155,25 @@ impl<T: DialoguePayload> DialogueCache<T> {
         }
         *retained = Some(index);
         Ok(index)
+    }
+
+    /// Release an actor's retained reference before its dialogue record is
+    /// cleared. Unremembered payloads remain cached, as in taunt replacement.
+    pub fn release_taunt(
+        &mut self,
+        retained: &mut Option<usize>,
+        samples: &mut dyn DialogueSamples,
+    ) -> Result<()> {
+        if let Some(index) = *retained {
+            let slot = self.slots.get_mut(index).with_context(|| {
+                format!("dialogue taunt: retained cache index {index} out of range")
+            })?;
+            if slot.sample.is_some() {
+                Self::release_slot(index, slot, samples)?;
+            }
+            *retained = None;
+        }
+        Ok(())
     }
 
     /// Playing entries do not age. Used entries reset to eight nominal ticks;

@@ -627,7 +627,13 @@ The logical actor also retains its prepared combat-taunt list.
 `select_ordered_combat_taunt` implements admitted begin-combat, hurt, death and
 opponent-unarmed selection against the shared RNG, including death fallback.
 It does not establish eligibility, mutate weapon state or present the selection;
-timed generic selection remains unsupported. Selection follows preservation's
+timed generic selection remains unsupported. `present_combat_taunt` now performs
+the explicit shared cache/dialogue/animation presentation path and returns the
+retained dialogue active flag, rather than its lifetime. The actor owns cache and
+dialogue indices independently. Playback dependencies must be ready before old
+ownership is released; the caller supplies the animation admission gate and
+nominal ticks. This still does not enable `beginCombat` or automatic combat.
+Selection follows preservation's
 [taunt rules](https://github.com/michidk/redguard-preservation/commit/fcc0314a02ce735185f064449802acee154f47c7).
 Shared class queues retain independent actor read cursors, addressed filtering
 and eight-entry wrapping. Target/perception, combat messages, decision state 6

@@ -1,4 +1,4 @@
-//! Combat message queues follow preservation's SOUP combat-maintenance rules.
+//! Combat state, taunt presentation services and class-message queues.
 use super::ScriptActorId;
 use anyhow::Result;
 use serde::Serialize;
@@ -12,6 +12,10 @@ pub struct CombatControlState {
     pub flags: u8,
     pub action: i32,
     pub cooldown: u32,
+    /// Shared RTX cache index, distinct from the retained dialogue record.
+    pub taunt_cache: Option<usize>,
+    pub taunt_dialogue: Option<usize>,
+    pub taunt_active: i32,
 }
 impl Default for CombatControlState {
     fn default() -> Self {
@@ -20,8 +24,27 @@ impl Default for CombatControlState {
             flags: 0,
             action: -1,
             cooldown: 0,
+            taunt_cache: None,
+            taunt_dialogue: Some(0),
+            taunt_active: 0,
         }
     }
+}
+
+/// Synchronous taunt services following preservation's engine/sound.md.
+/// Preparation must check all payload and playback dependencies before release.
+/// A failure after release retains the last completed ownership transition.
+pub trait CombatTauntPlayback {
+    fn prepare(&mut self, label: [u8; 4], speech: bool, text_width: Option<u32>) -> Result<()>;
+    fn release(&mut self, retained: &mut Option<usize>) -> Result<()>;
+    fn load(&mut self, label: [u8; 4]) -> Result<usize>;
+    /// Start speech when requested even when no text record will be created.
+    fn present(
+        &mut self,
+        cache_index: usize,
+        speech: bool,
+        text_width: Option<u32>,
+    ) -> Result<super::DialogueLine>;
 }
 
 /// Logical identities retain sender and addressed receiver across queue operations.

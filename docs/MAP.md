@@ -129,7 +129,7 @@ module where it is defined and regenerate.
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
-- `src/script/combat.rs` — Combat message queues follow preservation's SOUP combat-maintenance rules.
+- `src/script/combat.rs` — Combat state, taunt presentation services and class-message queues.
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/hud.rs` — Shared compass use, power-up slots and accepted logbook writes, independent of rendering.
@@ -143,7 +143,7 @@ module where it is defined and regenerate.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
-- `src/script/registry/dialogue.rs` — Dialogue updates write inhibition through the authoritative logical actors.
+- `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
 - `src/script/registry/ground.rs` — Ordinary primary ground queries use retained models and never player fallback.

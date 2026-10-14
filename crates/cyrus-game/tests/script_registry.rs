@@ -9330,3 +9330,240 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
     );
     assert_eq!(random.state(), 3295386429);
 }
+
+#[test]
+fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
+    use cyrus_game::script::{CombatTauntPlayback, DialogueLine, ScriptActorId};
+    #[derive(Default)]
+    struct Playback {
+        events: Vec<&'static str>,
+        fail: Option<&'static str>,
+        speech: bool,
+        width: Option<u32>,
+    }
+    impl Playback {
+        fn stage(&mut self, stage: &'static str) -> anyhow::Result<()> {
+            self.events.push(stage);
+            anyhow::ensure!(self.fail != Some(stage), "injected {stage}");
+            Ok(())
+        }
+    }
+    impl CombatTauntPlayback for Playback {
+        fn prepare(
+            &mut self,
+            label: [u8; 4],
+            speech: bool,
+            width: Option<u32>,
+        ) -> anyhow::Result<()> {
+            assert_eq!(label, *b"TEST");
+            self.speech = speech;
+            self.width = width;
+            self.stage("prepare")
+        }
+        fn release(&mut self, retained: &mut Option<usize>) -> anyhow::Result<()> {
+            self.stage("release")?;
+            *retained = None;
+            Ok(())
+        }
+        fn load(&mut self, _: [u8; 4]) -> anyhow::Result<usize> {
+            self.stage("load")?;
+            Ok(4)
+        }
+        fn present(
+            &mut self,
+            index: usize,
+            _: bool,
+            _: Option<u32>,
+        ) -> anyhow::Result<DialogueLine> {
+            assert_eq!(index, 4);
+            self.stage("present")?;
+            Ok(DialogueLine {
+                text: "Voice".into(),
+                sample: Some(3),
+                lifetime: 210,
+            })
+        }
+    }
+    let fixture = |print_text, use_speech| {
+        let mut scripts = cache();
+        scripts.dialogue.print_text = print_text;
+        scripts.dialogue.use_speech = use_speech;
+        scripts.definition.attributes = (0..128).map(|index| format!("attr_{index}")).collect();
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_14".into(), 1);
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+            "animation_groups":[
+                {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]},
+                {"group_index":159,"anim_id":2,"anim_type":0,"commands":[{"opcode":0,"frame_reference":42},{"opcode":2,"value":0}]}
+            ]}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        world
+            .globals_mut()
+            .dialogue_mut()
+            .unwrap()
+            .begin_player_line(id, "Prior".into(), Some(2), 999);
+        (world, id)
+    };
+    let taunt = CombatTaunt {
+        trigger: 0,
+        label: *b"TEST",
+        animation: 159,
+    };
+    let empty = CombatTaunt {
+        trigger: 0,
+        label: [0; 4],
+        animation: 159,
+    };
+    let (mut world, id) = fixture(true, true);
+    let mut playback = Playback::default();
+    assert_eq!(
+        world
+            .present_combat_taunt(id, &empty, &mut playback, 0, true, &mut |_, _| Ok(()))
+            .unwrap(),
+        1
+    );
+    assert!(playback.events.is_empty());
+    assert_eq!(world.animation_frame(id).unwrap(), Some(10));
+    assert_eq!(
+        world
+            .present_combat_taunt(id, &taunt, &mut playback, 0, true, &mut |_, _| Ok(()))
+            .unwrap(),
+        1
+    );
+    assert_eq!(playback.events, ["prepare", "release", "load", "present"]);
+    assert!(playback.speech);
+    assert_eq!(playback.width, Some(500));
+    assert_eq!(world.animation_frame(id).unwrap(), Some(42));
+    let state = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (state.taunt_cache, state.taunt_dialogue, state.taunt_active),
+        (Some(4), Some(1), 1)
+    );
+    assert!(!world.globals().dialogue().unwrap().line_active(Some(0)));
+    world
+        .globals_mut()
+        .dialogue_mut()
+        .unwrap()
+        .clear_line(Some(1));
+    assert_eq!(
+        world
+            .present_combat_taunt(id, &empty, &mut playback, 0, true, &mut |_, _| Ok(()))
+            .unwrap(),
+        0
+    );
+    assert_eq!(playback.events.len(), 4);
+
+    for (print_text, speech) in [(false, true), (true, false), (false, false)] {
+        let (mut world, id) = fixture(print_text, speech);
+        let mut playback = Playback::default();
+        assert_eq!(
+            world
+                .present_combat_taunt(id, &taunt, &mut playback, 0, false, &mut |_, _| Ok(()))
+                .unwrap(),
+            i32::from(print_text)
+        );
+        assert_eq!(playback.speech, speech);
+        assert_eq!(playback.width, print_text.then_some(500));
+        assert_eq!(
+            world.globals().dialogue().unwrap().line_active(Some(0)),
+            !print_text
+        );
+        assert_eq!(world.animation_frame(id).unwrap(), Some(10));
+    }
+    for failure in ["prepare", "release", "load"] {
+        let (mut world, id) = fixture(true, true);
+        let mut playback = Playback {
+            fail: Some(failure),
+            ..Default::default()
+        };
+        assert!(
+            world
+                .present_combat_taunt(id, &taunt, &mut playback, 0, true, &mut |_, _| Ok(()))
+                .is_err()
+        );
+        assert_eq!(
+            world.globals().dialogue().unwrap().line_active(Some(0)),
+            failure != "load"
+        );
+        assert_eq!(world.animation_frame(id).unwrap(), Some(10));
+    }
+    let (mut full, full_id) = fixture(true, true);
+    for _ in 1..20 {
+        assert!(
+            full.globals_mut()
+                .dialogue_mut()
+                .unwrap()
+                .begin_line(full_id, "Occupied".into(), None, 50)
+                .is_some()
+        );
+    }
+    let mut full_playback = Playback::default();
+    assert_eq!(
+        full.present_combat_taunt(
+            full_id,
+            &taunt,
+            &mut full_playback,
+            0,
+            false,
+            &mut |_, _| Ok(())
+        )
+        .unwrap(),
+        0
+    );
+    let state = full.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (state.taunt_cache, state.taunt_dialogue, state.taunt_active),
+        (Some(4), None, 0)
+    );
+    assert_eq!(
+        full_playback.events,
+        ["prepare", "release", "load", "present"]
+    );
+    let mut playback = Playback::default();
+    assert!(
+        world
+            .present_combat_taunt(
+                ScriptActorId {
+                    generation: 2,
+                    ..id
+                },
+                &taunt,
+                &mut playback,
+                0,
+                true,
+                &mut |_, _| Ok(())
+            )
+            .is_err()
+    );
+    assert!(playback.events.is_empty());
+}

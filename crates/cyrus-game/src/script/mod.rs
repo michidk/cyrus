@@ -7,7 +7,7 @@ pub use activation::{
 mod animation;
 mod attributes;
 mod combat;
-pub use combat::{CombatControlState, CombatMessage, CombatMessages};
+pub use combat::{CombatControlState, CombatMessage, CombatMessages, CombatTauntPlayback};
 mod dialogue;
 pub use dialogue::{
     DialogueEffects, DialogueLine, DialoguePlayback, DialogueSource, DialogueState,

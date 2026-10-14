@@ -528,24 +528,16 @@ impl ScriptSounds<'_, '_> {
         })
     }
 
-    /// Start one loaded RTX voice on the shared sample allocator. The caller owns
-    /// the cache entry and must remember the returned slot; text is not formatted
-    /// or presented here. Missing dependencies fail before sample allocation.
-    /// Speech disabled, text-only entries and channel exhaustion use text lifetime.
-    /// See preservation engine/sound.md for start index and duration rules.
-    pub fn start_dialogue(
-        &mut self,
+    fn check_dialogue_dependencies(
+        &self,
         clip: &super::dialogue::DialogueClip,
-    ) -> anyhow::Result<super::dialogue::DialogueStart> {
+    ) -> anyhow::Result<()> {
         let settings = anyhow::Context::context(
             self.frame.settings.as_deref(),
             "RTX start: sound settings unavailable",
         )?;
         let Some(voice) = clip.entry.voice.as_ref().filter(|_| settings.speech) else {
-            return Ok(super::dialogue::DialogueStart {
-                sample: None,
-                lifetime: clip.entry.text_lifetime,
-            });
+            return Ok(());
         };
         anyhow::ensure!(
             voice.loop_flag == 0,
@@ -568,6 +560,31 @@ impl ScriptSounds<'_, '_> {
             self.frame.panned.is_some(),
             "RTX start: panned audio assets unavailable"
         );
+        Ok(())
+    }
+
+    /// Start one loaded RTX voice on the shared sample allocator. The caller owns
+    /// the cache entry and must remember the returned slot; text is not formatted
+    /// or presented here. Missing dependencies fail before sample allocation.
+    /// Speech disabled, text-only entries and channel exhaustion use text lifetime.
+    /// See preservation engine/sound.md for start index and duration rules.
+    pub fn start_dialogue(
+        &mut self,
+        clip: &super::dialogue::DialogueClip,
+    ) -> anyhow::Result<super::dialogue::DialogueStart> {
+        self.check_dialogue_dependencies(clip)?;
+        let settings = self
+            .frame
+            .settings
+            .as_deref()
+            .expect("checked dialogue settings");
+        let Some(voice) = clip.entry.voice.as_ref().filter(|_| settings.speech) else {
+            return Ok(super::dialogue::DialogueStart {
+                sample: None,
+                lifetime: clip.entry.text_lifetime,
+            });
+        };
+        let audio = clip.audio.as_ref().expect("checked dialogue audio");
         let mut mixer = Mixer {
             master: settings.master_volume,
             sources: self.frame.sources.as_deref(),
@@ -650,6 +667,24 @@ impl ScriptSounds<'_, '_> {
             sample,
             lifetime,
         }))
+    }
+
+    /// Lend synchronous, already prepared taunt services to the logical actor.
+    /// The supplied clip must include ready audio dependencies before invocation;
+    /// this path never yields a script function or repeats its random selection.
+    pub fn with_combat_taunt_playback<R>(
+        &mut self,
+        cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
+        clip: &super::dialogue::DialogueClip,
+        hud: Option<&cyrus_assets::hud::HudAsset>,
+        update: impl FnOnce(&mut dyn cyrus_game::script::CombatTauntPlayback) -> R,
+    ) -> R {
+        update(&mut PreparedCombatTaunt {
+            sounds: self,
+            cache,
+            clip,
+            hud,
+        })
     }
 
     /// Lend a cache-backed source to one game-owned script invocation. The
@@ -788,6 +823,82 @@ impl cyrus_game::script::DialoguePlayback for SharedDialoguePlayback<'_, '_, '_>
         // DialogueState stores the selected record after this succeeds. The HUD
         // reads that selection; audio does not keep another presentation cursor.
         Ok(())
+    }
+}
+
+struct PreparedCombatTaunt<'a, 'w, 's> {
+    sounds: &'a mut ScriptSounds<'w, 's>,
+    cache: &'a mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
+    clip: &'a super::dialogue::DialogueClip,
+    hud: Option<&'a cyrus_assets::hud::HudAsset>,
+}
+
+impl cyrus_game::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_> {
+    fn prepare(
+        &mut self,
+        label: [u8; 4],
+        speech: bool,
+        text_width: Option<u32>,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            label == self.clip.entry.label,
+            "combat taunt prepared label mismatch"
+        );
+        if let Some(width) = text_width {
+            anyhow::ensure!(
+                (150..=i32::MAX as u32).contains(&width),
+                "combat taunt text width unsupported"
+            );
+            anyhow::Context::context(self.hud, "combat taunt font unavailable")?;
+        }
+        if speech {
+            self.sounds.check_dialogue_dependencies(self.clip)?;
+        }
+        Ok(())
+    }
+
+    fn release(&mut self, retained: &mut Option<usize>) -> anyhow::Result<()> {
+        self.cache.release_taunt(retained, self.sounds)
+    }
+
+    fn load(&mut self, label: [u8; 4]) -> anyhow::Result<usize> {
+        self.cache
+            .replace_taunt(&mut None, label, |_| Ok(self.clip.clone()), self.sounds)
+    }
+
+    fn present(
+        &mut self,
+        cache_index: usize,
+        speech: bool,
+        text_width: Option<u32>,
+    ) -> anyhow::Result<cyrus_game::script::DialogueLine> {
+        let clip = anyhow::Context::context(
+            self.cache.payload(cache_index),
+            "combat taunt cache payload absent",
+        )?;
+        let start = if speech {
+            self.sounds.start_dialogue(clip)?
+        } else {
+            super::dialogue::DialogueStart {
+                sample: None,
+                lifetime: clip.entry.text_lifetime,
+            }
+        };
+        if clip.entry.voice.is_some() {
+            self.cache.remember_sample(cache_index, start.sample)?;
+        }
+        Ok(cyrus_game::script::DialogueLine {
+            text: text_width
+                .map(|width| {
+                    self.hud
+                        .expect("checked taunt font")
+                        .font
+                        .wrap(&self.clip.entry.text, width as i32)
+                })
+                .unwrap_or_default(),
+            sample: start.sample,
+            lifetime: start.lifetime,
+        })
     }
 }
 
@@ -1351,8 +1462,8 @@ mod dialogue_tests {
         );
         assert_eq!(world.resource::<Channels>().playing.len(), 1);
     }
-    fn cached_line(mut sounds: ScriptSounds, clip: Res<LoadedDialogue>) {
-        let hud: cyrus_assets::hud::HudAsset = serde_json::from_value(serde_json::json!({
+    fn dialogue_test_hud() -> cyrus_assets::hud::HudAsset {
+        serde_json::from_value(serde_json::json!({
             "labels": {}, "candle_mode": 0, "candle": [0,0], "candle_size": [0,0],
             "pickup": [0,0], "prompt": [0,0], "override_ticks": 0,
             "compass": [0,0], "compass_size": [0,0], "world_compass": {},
@@ -1363,7 +1474,11 @@ mod dialogue_tests {
             "font": {"start": 0, "line_height": 0, "glyphs": [], "palette": []},
             "text_alpha": [255,255], "player_text_alpha": [255,97]
         }))
-        .unwrap();
+        .unwrap()
+    }
+
+    fn cached_line(mut sounds: ScriptSounds, clip: Res<LoadedDialogue>) {
+        let hud = dialogue_test_hud();
         let mut cache = cyrus_assets::sound::DialogueCache::default();
         sounds.with_dialogue_source(&mut cache, &hud, &mut |_| Ok(Poll::Pending), |source| {
             let player = cyrus_game::script::ScriptActorId {
@@ -1411,8 +1526,65 @@ mod dialogue_tests {
         assert!(cache.payload(0).is_none());
     }
 
-    #[test]
-    fn dialogue_source_reuses_prepared_entry_and_sample_then_resets_shared_slot() {
+    fn taunt_cache_restart(mut sounds: ScriptSounds, clip: Res<LoadedDialogue>) {
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let hud = dialogue_test_hud();
+        let (index, first) =
+            sounds.with_combat_taunt_playback(&mut cache, &clip.0, Some(&hud), |source| {
+                source.prepare(*b"TEST", true, Some(150)).unwrap();
+                let index = source.load(*b"TEST").unwrap();
+                let line = source.present(index, true, Some(150)).unwrap();
+                (index, line)
+            });
+        assert_eq!(
+            (first.text.as_str(), first.sample, first.lifetime),
+            ("Hi", Some(0), 128)
+        );
+        assert_eq!(sounds.frame.channels.samples.status(Some(0)), 4);
+        let first_entity = sounds.frame.channels.playing.values().next().unwrap().sound;
+        let mut retained = Some(index);
+        let mut invalid = clip.0.clone();
+        invalid.audio = None;
+        sounds.with_combat_taunt_playback(&mut cache, &invalid, Some(&hud), |source| {
+            assert!(source.prepare(*b"TEST", true, Some(150)).is_err());
+        });
+        assert_eq!(cache.sample(index), Some(0));
+        assert_eq!(sounds.frame.channels.samples.status(Some(0)), 4);
+        let (next, second) =
+            sounds.with_combat_taunt_playback(&mut cache, &clip.0, None, |source| {
+                source.prepare(*b"TEST", true, None).unwrap();
+                source.release(&mut retained).unwrap();
+                assert_eq!(retained, None);
+                let next = source.load(*b"TEST").unwrap();
+                (next, source.present(next, true, None).unwrap())
+            });
+        assert_eq!(
+            (second.text.as_str(), second.sample, second.lifetime),
+            ("", Some(0), 128)
+        );
+        assert_eq!(sounds.frame.channels.samples.status(Some(0)), 4);
+        assert_ne!(
+            sounds.frame.channels.playing.values().next().unwrap().sound,
+            first_entity
+        );
+        assert_eq!(cache.sample(next), Some(0));
+        // A cache hit restarts even without a retained previous actor reference.
+        let unvoiced =
+            sounds.with_combat_taunt_playback(&mut cache, &clip.0, Some(&hud), |source| {
+                source.prepare(*b"TEST", false, Some(150)).unwrap();
+                let reused = source.load(*b"TEST").unwrap();
+                assert_eq!(reused, next);
+                source.present(reused, false, Some(150)).unwrap()
+            });
+        assert_eq!(
+            (unvoiced.text.as_str(), unvoiced.sample, unvoiced.lifetime),
+            ("Hi", None, 30)
+        );
+        assert_eq!(sounds.frame.channels.samples.status(Some(0)), 2);
+        assert_eq!(cache.sample(next), None);
+    }
+
+    fn dialogue_test_world() -> World {
         use cyrus_assets::sound::{DialogueEntry, DialogueVoice};
         let mut world = World::new();
         world.init_resource::<SoundEffects>();
@@ -1444,6 +1616,19 @@ mod dialogue_tests {
             },
             audio: Some(audio),
         }));
+        world
+    }
+
+    #[test]
+    fn combat_taunt_restarts_cached_voice_and_preflights_before_releasing() {
+        let mut world = dialogue_test_world();
+        world.run_system_cached(taunt_cache_restart).unwrap();
+        assert!(world.resource::<Channels>().playing.is_empty());
+    }
+
+    #[test]
+    fn dialogue_source_reuses_prepared_entry_and_sample_then_resets_shared_slot() {
+        let mut world = dialogue_test_world();
         world.run_system_cached(cached_line).unwrap();
         let channels = world.resource::<Channels>();
         assert_eq!(channels.samples.status(Some(0)), 2);
