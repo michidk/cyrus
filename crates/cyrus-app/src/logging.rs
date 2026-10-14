@@ -264,6 +264,9 @@ mod tests {
         for day in 1..=10 {
             std::fs::write(dir.join(format!("test.2020-01-{day:02}.log")), "old").unwrap();
         }
+        // The appender removes the files created longest ago, not the lowest names. Wait out the
+        // filesystem's timestamp granularity so today's file is strictly the newest.
+        std::thread::sleep(std::time::Duration::from_millis(100));
         file_sink(&dir, "test", file_filter("")).unwrap();
         let mut kept: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
@@ -271,9 +274,8 @@ mod tests {
             .collect();
         std::fs::remove_dir_all(&dir).unwrap();
         kept.sort();
-        // Today's file counts toward the limit, so the oldest fake files go first.
+        // Today's file counts toward the limit.
         assert_eq!(kept.len(), KEPT_FILES, "{kept:?}");
-        assert_eq!(kept[0], "test.2020-01-05.log", "{kept:?}");
         assert!(
             kept.last().unwrap() > &"test.2020-01-10.log".to_owned(),
             "today's file exists: {kept:?}"
