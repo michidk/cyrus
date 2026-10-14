@@ -192,12 +192,17 @@ impl Library {
 }
 
 /// Rename publishes a complete file; temporary names do not collide between processes.
+/// A file that already holds these bytes is left alone: replacing it is wasted work, and on
+/// Windows the rename fails with "Access is denied" while another program has the file open.
 pub fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
+    if std::fs::read(path).is_ok_and(|existing| existing == bytes) {
+        return Ok(());
+    }
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)?;
+    std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     let temp = path.with_extension(format!(
         "tmp-{}-{}",
         std::process::id(),
@@ -208,7 +213,7 @@ pub fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
     std::fs::write(&temp, bytes).with_context(|| format!("write {}", temp.display()))?;
     if let Err(error) = std::fs::rename(&temp, path) {
         let _ = std::fs::remove_file(temp);
-        return Err(error.into());
+        return Err(error).with_context(|| format!("replace {}", path.display()));
     }
     Ok(())
 }
@@ -216,6 +221,31 @@ pub fn publish(path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::{Category, Source, runtime::entry};
+
+    #[test]
+    fn publish_replaces_changed_files_and_skips_identical_ones() {
+        let dir = std::env::temp_dir().join(format!("cyrus-publish-{}", std::process::id()));
+        let path = dir.join("nested/a.bin");
+        super::publish(&path, b"one").unwrap();
+        // An unchanged file is not rewritten, even when it is read-only (the stand-in for
+        // "open in another program" that Linux can reproduce).
+        let writable = std::fs::metadata(&path).unwrap().permissions();
+        let mut locked = writable.clone();
+        locked.set_readonly(true);
+        std::fs::set_permissions(&path, locked).unwrap();
+        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
+        super::publish(&path, b"one").unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            before
+        );
+        std::fs::set_permissions(&path, writable).unwrap();
+        super::publish(&path, b"two").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"two");
+        let leftovers = std::fs::read_dir(path.parent().unwrap()).unwrap().count();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(leftovers, 1, "no temporary files remain");
+    }
     #[test]
     fn identity_preserves_same_name_files_and_archive_members() {
         let a = entry("fxart/A.ROB", 0, Category::Models, Source::Model(0), "TREE");
