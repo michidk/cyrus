@@ -372,3 +372,65 @@ fn contact_texture_distinguishes_solid_faces_from_missing_cache_metadata() {
     scene.models.get_mut("floor").unwrap().textures = Some(vec![]);
     assert!(StaticCollision::new(&scene).is_err());
 }
+
+#[test]
+fn runtime_candidates_share_static_order_and_keep_live_model_identity_separate() {
+    use cyrus_collision::candidates::{
+        CandidateOwner, CandidateQuery, LiveActor, ModelBounds, ModelInstance,
+    };
+    let mut scene = CollisionScene::default();
+    scene.models.insert("floor".into(), model(0));
+    scene.placements = vec![
+        placement(10, [600, 0, 600], "floor"),
+        placement(11, [600, 0, 600], "floor"),
+    ];
+    let world = StaticCollision::new(&scene).unwrap();
+    let own = ModelBounds {
+        instance: ModelInstance::Runtime(0),
+        position: [600.0, 0.0, 600.0],
+        radius: 100.0,
+    };
+    let query = CandidateQuery::new([600 * 256, 0, 600 * 256], Some(own)).unwrap();
+    let live = LiveActor {
+        actor: 1,
+        model: Some(ModelBounds {
+            instance: ModelInstance::Runtime(1),
+            ..own
+        }),
+        ordinary_excluded: false,
+        animation_excluded: false,
+        attribute_55: 0,
+        static_model_path: true,
+        collision_flags: 4,
+    };
+    let candidates = world
+        .runtime_candidates([5000, 5000], &query, &[live], &[])
+        .unwrap();
+    assert_eq!(
+        candidates
+            .faces
+            .iter()
+            .map(|candidate| candidate.owner)
+            .collect::<Vec<_>>(),
+        vec![
+            CandidateOwner::Static(1),
+            CandidateOwner::Static(0),
+            CandidateOwner::Actor(1)
+        ]
+    );
+    assert_eq!(candidates.faces[1].model, ModelInstance::StaticPlacement(0));
+    assert_eq!(candidates.faces[2].model, ModelInstance::Runtime(1));
+    let own_static = CandidateQuery::new(
+        [600 * 256, 0, 600 * 256],
+        Some(ModelBounds {
+            instance: ModelInstance::StaticPlacement(0),
+            ..own
+        }),
+    )
+    .unwrap();
+    let candidates = world
+        .runtime_candidates([5000, 5000], &own_static, &[], &[])
+        .unwrap();
+    assert_eq!(candidates.faces.len(), 1);
+    assert_eq!(candidates.faces[0].owner, CandidateOwner::Static(1));
+}

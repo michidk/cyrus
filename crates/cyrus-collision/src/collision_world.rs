@@ -1,4 +1,7 @@
 //! Original static spatial ordering and model ground probes, independent of rendering.
+use super::candidates::{
+    CandidateQuery, CollisionCandidates, ModelBounds, ModelInstance, StaticModel,
+};
 use super::collision_mesh::CollisionMesh;
 use super::ground::FallbackProbe;
 use super::ground::GroundProbe;
@@ -194,11 +197,35 @@ impl StaticCollision {
         actor: [i64; 3],
         radius: f32,
     ) -> anyhow::Result<StaticCandidates> {
+        self.prepare_static_candidates(view, &CandidateQuery::static_query(actor, radius))
+            .map(static_indices)
+    }
+
+    /// Complete original candidate phases, retaining owners for later support
+    /// and response. Live records use ordinary update order; transient records
+    /// use transient-list order. Runtime model identities must remain stable
+    /// for this query and are distinct from this registry's static placements.
+    pub fn runtime_candidates(
+        &self,
+        view: [i32; 2],
+        query: &CandidateQuery,
+        live: &[super::candidates::LiveActor],
+        transients: &[super::candidates::TransientModel],
+    ) -> anyhow::Result<CollisionCandidates> {
+        let mut candidates = self.prepare_static_candidates(view, query)?;
+        candidates.append_runtime(query, live, transients)?;
+        Ok(candidates)
+    }
+
+    fn prepare_static_candidates(
+        &self,
+        view: [i32; 2],
+        query: &CandidateQuery,
+    ) -> anyhow::Result<CollisionCandidates> {
         anyhow::ensure!(
             view.iter().all(|v| (0..=65535).contains(v)),
             "static view outside map"
         );
-        let origin = Vec3::from_array(actor.map(|v| (v >> 8) as f32));
         let first = view.map(|v| {
             (if v < 4608 {
                 0
@@ -208,10 +235,7 @@ impl StaticCollision {
                 v - 4608
             }) / 512
         });
-        let mut result = StaticCandidates {
-            faces: Vec::new(),
-            actors: Vec::new(),
-        };
+        let mut result = CollisionCandidates::default();
         for z in 0..18 {
             for x in 0..18 {
                 if (x == 0 || x == 17) && (z == 0 || z == 17) {
@@ -232,25 +256,17 @@ impl StaticCollision {
                                 .map_or("missing collision model", String::as_str)
                         )
                     })?;
-                    if model.flags & 2 != 0 {
-                        continue;
-                    }
-                    let displacement =
-                        origin - Vec3::from_array(placement.position.map(|v| v as f32));
-                    let distance_squared = displacement.as_dvec3().length_squared() as f32;
-                    let combined = radius + model.radius;
-                    if f64::from(distance_squared) > f64::from(combined).powi(2) {
-                        continue;
-                    }
-                    if model.flags & 1 != 0 {
-                        if result.actors.len() < 64 {
-                            result.actors.push(index);
-                        }
-                    } else {
-                        if result.faces.len() == 64 {
-                            return Ok(result);
-                        }
-                        result.faces.push(index);
+                    let record = StaticModel {
+                        placement: index,
+                        model: Some(ModelBounds {
+                            instance: ModelInstance::StaticPlacement(index),
+                            position: placement.position.map(|coordinate| coordinate as f32),
+                            radius: model.radius,
+                        }),
+                        collision_flags: model.flags,
+                    };
+                    if !result.admit_static(query, &record)? {
+                        return Ok(result);
                     }
                 }
             }
@@ -556,4 +572,25 @@ fn admitted_spheres(
                 .then(|| (inverse * (rotation * center + origin - translation), radius))
         })
         .collect()
+}
+
+fn static_indices(candidates: CollisionCandidates) -> StaticCandidates {
+    StaticCandidates {
+        faces: candidates
+            .faces
+            .into_iter()
+            .map(|candidate| match candidate.owner {
+                super::candidates::CandidateOwner::Static(index) => index,
+                _ => unreachable!("static candidate construction retains static owners"),
+            })
+            .collect(),
+        actors: candidates
+            .actors
+            .into_iter()
+            .map(|candidate| match candidate.owner {
+                super::candidates::CandidateOwner::Static(index) => index,
+                _ => unreachable!("static candidate construction retains static owners"),
+            })
+            .collect(),
+    }
 }
