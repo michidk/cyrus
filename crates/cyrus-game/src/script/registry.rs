@@ -22,7 +22,7 @@ use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
     animation::Animations,
-    script::{Instance, Scripts},
+    script::{CombatTaunt, Instance, Scripts},
 };
 use cyrus_script::{
     Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, TaskSource, Thread,
@@ -162,6 +162,7 @@ pub struct ScriptActor {
     pub runtime_identifier: Option<i16>,
     pub namespace: Option<String>,
     native_hook: Option<Call>,
+    combat_taunts: Vec<CombatTaunt>,
     runtime: Option<Runtime>,
     unavailable: Option<String>,
     attributes: Vec<u8>,
@@ -456,6 +457,9 @@ impl ScriptWorld {
                 runtime_identifier,
                 namespace: metadata.and_then(|actor| actor.namespace.clone()),
                 native_hook: metadata.and_then(|actor| actor.native_hook.clone()),
+                combat_taunts: metadata
+                    .map(|actor| actor.combat_taunts.clone())
+                    .unwrap_or_default(),
                 runtime,
                 unavailable,
                 location_offsets: metadata
@@ -730,6 +734,44 @@ impl ScriptWorld {
                 .with_context(|| format!("world {} spatial preparation", self.world))?,
         );
         Ok(())
+    }
+
+    /// Select an ordered combat taunt for an already admitted invocation.
+    /// Supports begin-combat, hurt, death and opponent-unarmed types, following
+    /// preservation config/combat-ini.md. Each matching nonzero label consumes
+    /// one shared random draw. Death alone falls back to hurt when none matched.
+    /// The caller owns eligibility and prepared presentation dependencies; this
+    /// does not enter combat or admit the generic timed selection path.
+    pub fn select_ordered_combat_taunt(
+        &self,
+        id: ScriptActorId,
+        trigger: u8,
+        random: &mut crate::random::EngineRandom,
+    ) -> Result<Option<&CombatTaunt>> {
+        let index = self.resolve(id)?;
+        anyhow::ensure!(
+            matches!(trigger, 0 | 2 | 6 | 10 | 11),
+            "world {} instance {index}: combat taunt type {trigger} requires timed selection",
+            self.world
+        );
+        let actor = &self.actors[index];
+        let mut requested = trigger;
+        loop {
+            let mut selected = None;
+            for taunt in &actor.combat_taunts {
+                if taunt.trigger != requested || taunt.label == [0; 4] {
+                    continue;
+                }
+                selected = Some(taunt);
+                if 4 * random.draw() / 32767 == 1 {
+                    break;
+                }
+            }
+            if selected.is_some() || requested != 6 {
+                return Ok(selected);
+            }
+            requested = 2;
+        }
     }
 
     /// Read stored actor surface state; unsupported object paths have no established value.

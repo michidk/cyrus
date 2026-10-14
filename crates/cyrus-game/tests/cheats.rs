@@ -441,7 +441,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 11,
+        version: 12,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -501,6 +501,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
                 instance_variables: vec![vec![]],
                 location_offsets: vec![],
                 attributes: Default::default(),
+                combat_taunts: vec![],
                 native_hook: None,
                 program: Program {
                     version: 2,

@@ -623,6 +623,12 @@ START intro playback or all-world acceptance.
 Combat maintenance retains constructor-owned target, action, flags and cooldown
 separately from the death-animation default. The supported idle nonplayer stage
 restores collision attribute 1 from 119 and applies action/cooldown maintenance.
+The logical actor also retains its prepared combat-taunt list.
+`select_ordered_combat_taunt` implements admitted begin-combat, hurt, death and
+opponent-unarmed selection against the shared RNG, including death fallback.
+It does not establish eligibility, mutate weapon state or present the selection;
+timed generic selection remains unsupported. Selection follows preservation's
+[taunt rules](https://github.com/michidk/redguard-preservation/commit/fcc0314a02ce735185f064449802acee154f47c7).
 Shared class queues retain independent actor read cursors, addressed filtering
 and eight-entry wrapping. Target/perception, combat messages, decision state 6
 and attacks remain explicitly unsupported. Queue reset ownership and complete

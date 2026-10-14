@@ -8,6 +8,7 @@ pub mod preferences;
 pub mod random;
 pub mod script;
 use bevy::prelude::*;
+use log::info;
 /// Engine-to-export unit divisor, matching preservation's GLB conversion.
 pub const ENGINE_UNIT_SCALE: f32 = 20.0;
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

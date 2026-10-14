@@ -59,7 +59,7 @@ unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
 retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
 program descriptors with names from the installed SOUP386.DEF. The independent
-version-8 `.scripts` sidecar retains the validated SYSTEM.INI clock and ordinary-update switches, the installed actor-pool capacity, actor RASC
+version-12 `.scripts` sidecar retains the validated SYSTEM.INI clock and ordinary-update switches, the installed actor-pool capacity, actor RASC
 origins, definitions, fresh-game flag values, locals, strings,
 initialized attributes, typed native hooks and explicit unsupported records. Placement records retain
 the original model name and complete model-mode byte for actor initialization.
@@ -197,7 +197,12 @@ including Windows. Absolute paths and traversal remain rejected.
 
 Native preload failures retain install-relative filenames, including directories and extensions, so audit diagnostics identify the source file without depending on the local install location.
 
-Catalog version 19 invalidates older browser export caches. Script schema 11 retains authored RALC offsets in Q8 units and validated installed gameplay dialogue settings, including effective allocation minima. These settings participate in script content identity; older caches require preparation again.
+Catalog version 19 invalidates older browser export caches. Script schema 12 retains authored RALC offsets in Q8 units and validated installed gameplay dialogue settings, including effective allocation minima. These settings participate in script content identity; older caches require preparation again.
+Each actor also retains its consecutive combat-taunt list from RAEX and
+`attr_num_taunts`. Preparation reads COMBAT.INI through preservation, retains
+four-byte labels, expands missing sections to empty records, and resolves
+nonzero combat animation offsets. Taunts participate in script content identity.
+These records do not enable combat or load voice assets by themselves.
 Preparation uses preservation's validated per-header location parser; original
 home positions are assigned per instance by the game. Location offsets participate
 in script content identity. The parser increment is published on

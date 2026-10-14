@@ -4,7 +4,7 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 11,
+        version: 12,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -192,6 +192,7 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
     }
     let definition = rgpre::import::soup_def::load_soup_def(&root).unwrap();
     let mut maps = 0;
+    let mut taunts = 0;
     for file in std::fs::read_dir(root.join("maps")).unwrap() {
         let path = file.unwrap().path();
         if !path
@@ -255,6 +256,12 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
                     .unwrap_or_else(|| format!("attr_{index}"));
                 actor.attributes[&key]
             };
+            assert_eq!(
+                actor.combat_taunts.len(),
+                usize::from(attribute(85)),
+                "{name}: authored combat taunt count"
+            );
+            taunts += actor.combat_taunts.len();
             assert_eq!(attribute(115), attribute(6), "{name}: reserved weight");
             assert_eq!(attribute(119), attribute(1), "{name}: reserved collision");
             assert_ne!(attribute(34), 0, "{name}: sheath frame default");
@@ -269,6 +276,10 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         maps += 1;
     }
     assert!(maps > 0);
+    assert!(
+        taunts > 0,
+        "installed maps must exercise combat-taunt preparation"
+    );
 }
 
 #[test]
@@ -316,6 +327,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
             instance_variables: vec![vec![]],
             location_offsets: vec![],
             attributes: BTreeMap::new(),
+            combat_taunts: vec![],
             native_hook: Some(Call {
                 function_id: 3,
                 function: "Hook".into(),
@@ -512,7 +524,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 11);
+    assert_eq!(scripts.version, 12);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -562,6 +574,7 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
             instance_variables: vec![vec![]],
             location_offsets: vec![],
             attributes: BTreeMap::new(),
+            combat_taunts: vec![],
             native_hook: Some(Call {
                 function_id: 0,
                 function: "NullFunction".into(),
@@ -707,6 +720,7 @@ fn authored_location_offsets_participate_in_content_identity() {
             )]),
         },
         attributes: BTreeMap::new(),
+        combat_taunts: vec![],
         native_hook: None,
     };
     scripts.actors.insert("ACTOR".into(), actor.clone());
@@ -778,4 +792,75 @@ fn installed_dialogue_settings_apply_original_minima_without_guessing_missing_in
             .contains("dialog_max_dialog_lines")
     );
     assert!(parse(&text.replace("menu_traverse_delay=0", "menu_traverse_delay=-1")).is_err());
+}
+
+#[test]
+fn combat_taunt_records_participate_in_identity_and_require_the_complete_actor_list() {
+    let mut scripts = cache();
+    scripts.actors.insert(
+        "TEST".into(),
+        Actor {
+            header_index: 0,
+            code_origin: 0,
+            instances: 1,
+            namespace: None,
+            instance_variables: vec![vec![]],
+            location_offsets: vec![],
+            program: Program {
+                version: 2,
+                entry: 0,
+                variables: vec![],
+                strings: vec![],
+                steps: BTreeMap::from([(
+                    0,
+                    Step {
+                        next: 1,
+                        operation: Operation::End { target: 0 },
+                    },
+                )]),
+            },
+            attributes: BTreeMap::from([("attr_num_taunts".into(), 1)]),
+            native_hook: None,
+            combat_taunts: vec![CombatTaunt {
+                trigger: 0,
+                label: *b"AbCd",
+                animation: 0,
+            }],
+        },
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts.validate().unwrap();
+    scripts.actors.get_mut("TEST").unwrap().combat_taunts[0].label = *b"EfGh";
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts.validate().unwrap();
+    scripts
+        .actors
+        .get_mut("TEST")
+        .unwrap()
+        .combat_taunts
+        .clear();
+    scripts.content_id = scripts.content_identity().unwrap();
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("actor TEST: incomplete combat taunts")
+    );
+    scripts.version = 11;
+    scripts.content_id = scripts.content_identity().unwrap();
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("script schema 11 unsupported")
+    );
 }

@@ -998,6 +998,7 @@ mod tests {
             instance_variables: vec![vec![]],
             location_offsets: vec![],
             attributes: BTreeMap::new(),
+            combat_taunts: vec![],
             native_hook: None,
             program: Program {
                 version: 2,
@@ -1043,7 +1044,7 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 11,
+            version: 12,
             dialogue: cyrus_assets::script::DialogueSettings {
                 menu_start: [35, 25],
                 max_menu_items: 300,

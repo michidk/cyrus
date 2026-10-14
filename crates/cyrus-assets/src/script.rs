@@ -180,6 +180,16 @@ impl DialogueSettings {
     }
 }
 
+/// One authored combat voice candidate, in the actor's original list order.
+/// Labels retain their literal spelling, including numeric-reference forms.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CombatTaunt {
+    pub trigger: u8,
+    pub label: [u8; 4],
+    /// Resolved animation group, with zero retaining no-animation semantics.
+    pub animation: i32,
+}
+
 /// Script metadata remains available even for actors without animation geometry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Actor {
@@ -196,6 +206,9 @@ pub struct Actor {
     pub attributes: BTreeMap<String, u8>,
     /// Per-update RAHK native call, distinct from the RASC entry continuation.
     pub native_hook: Option<Call>,
+    /// Consecutive COMBAT.INI records selected by RAEX and attr_num_taunts.
+    #[serde(default)]
+    pub combat_taunts: Vec<CombatTaunt>,
 }
 
 /// Authored MPOB order identifies logical objects independently of mesh availability.
@@ -252,7 +265,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 11,
+            self.version == 12,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
@@ -285,6 +298,16 @@ impl Scripts {
             self.world
         );
         for (name, actor) in &self.actors {
+            let taunt_count = actor
+                .attributes
+                .get("attr_num_taunts")
+                .copied()
+                .unwrap_or(0);
+            anyhow::ensure!(
+                actor.combat_taunts.len() == usize::from(taunt_count),
+                "world {} actor {name}: incomplete combat taunts, expected {taunt_count}",
+                self.world
+            );
             anyhow::ensure!(
                 actor.instance_variables.len() == usize::from(actor.instances)
                     && actor

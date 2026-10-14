@@ -895,3 +895,64 @@ fn installed_viledog_wander_hook_consumes_random_without_walk_maps() {
     assert_eq!(world.spatial(id).unwrap().local.position, before);
     assert!(world.actors()[index].failure().is_none());
 }
+
+#[test]
+fn installed_map_taunts_reach_logical_actors_before_explicit_ordered_selection() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP ordered combat taunts)");
+        return;
+    }
+    let mut exercised = 0;
+    let mut maps = 0;
+    let mut random = cyrus_game::random::EngineRandom::default();
+    for entry in std::fs::read_dir(root.join("maps")).unwrap() {
+        let path = entry.unwrap().path();
+        if !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rgm"))
+        {
+            continue;
+        }
+        let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(&path).unwrap()).unwrap();
+        let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
+        let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        for (index, actor) in world.actors().iter().enumerate() {
+            let Some(authored) = scripts.actors.get(actor.name()) else {
+                continue;
+            };
+            for trigger in [0, 2, 6, 10, 11] {
+                let has = |trigger| {
+                    authored
+                        .combat_taunts
+                        .iter()
+                        .any(|taunt| taunt.trigger == trigger && taunt.label != [0; 4])
+                };
+                let expected_type = if trigger == 6 && !has(6) { 2 } else { trigger };
+                let selected = world
+                    .select_ordered_combat_taunt(world.id(index).unwrap(), trigger, &mut random)
+                    .unwrap();
+                assert_eq!(
+                    selected.is_some(),
+                    has(expected_type),
+                    "{} actor {} trigger {trigger}",
+                    path.display(),
+                    actor.name()
+                );
+                if let Some(selected) = selected {
+                    assert_eq!(selected.trigger, expected_type);
+                    assert_ne!(selected.label, [0; 4]);
+                    assert!(authored.combat_taunts.contains(selected));
+                    exercised += 1;
+                }
+            }
+        }
+        maps += 1;
+    }
+    assert!(maps > 0);
+    assert!(
+        exercised > 0,
+        "installed maps must exercise authored ordered-taunt candidates"
+    );
+}

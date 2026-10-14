@@ -1,5 +1,5 @@
 //! Shared SOUP preparation through preservation's typed decoder and installed definitions.
-use crate::script::{Actor, ClockSettings, Instance, Scripts, UpdateSettings};
+use crate::script::{Actor, ClockSettings, CombatTaunt, Instance, Scripts, UpdateSettings};
 use anyhow::{Context, Result};
 use cyrus_script::program::{CallKind, Definition, Flag, Function, Operation, Program, Step};
 use rgpre::import::{
@@ -42,6 +42,8 @@ pub fn prepare_source(
         .with_context(|| format!("world {world} REDGUARD.CHT script query settings"))?;
     let definition = crate::preparation::soup(source)?;
     let metadata = rgm::export_rgm_metadata_json(rgm, Some(&definition));
+    let assets_source = source;
+    let mut combat = None;
     let mut actors = BTreeMap::new();
     let mut unsupported = BTreeMap::new();
     for (name, source) in rgm::disassemble_rgm_scripts(rgm, Some(&definition)) {
@@ -78,6 +80,19 @@ pub fn prepare_source(
         for (key, value) in attribute_keys.into_iter().zip(initialized) {
             attributes.insert(key, value);
         }
+        if attributes.get("attr_num_taunts").copied().unwrap_or(0) != 0 && combat.is_none() {
+            combat = Some(
+                rgpre::import::combat_ini::CombatIni::parse(&crate::preparation::text(
+                    assets_source,
+                    "COMBAT.INI",
+                )?)
+                .with_context(|| format!("{context}: COMBAT.INI"))?,
+            );
+        }
+        let combat_taunts = match &combat {
+            Some(combat) => prepare_combat_taunts(record, &attributes, combat, &context)?,
+            None => vec![],
+        };
         let native_hook = decode_native_hook(rgm, source.header_index, &definition)
             .map_err(anyhow::Error::msg)
             .with_context(|| format!("{context}: native hook"))?
@@ -135,7 +150,8 @@ pub fn prepare_source(
                             .with_context(|| format!("{context}: authored locations"))?,
                         program,
                         attributes,
-                        native_hook
+                        native_hook,
+                        combat_taunts
                     }
                 )
                 .is_none(),
@@ -169,7 +185,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 11,
+        version: 12,
         player_distance_override,
         clock,
         updates,
@@ -226,4 +242,159 @@ fn player_distance_override(source: &dyn crate::source::ReadAssets) -> Result<bo
         .value("neversaydie")
         .context("missing neversaydie state")?
         != 0)
+}
+
+fn prepare_combat_taunts(
+    record: &serde_json::Value,
+    attributes: &BTreeMap<String, u8>,
+    combat: &rgpre::import::combat_ini::CombatIni,
+    context: &str,
+) -> Result<Vec<CombatTaunt>> {
+    use rgpre::import::combat_ini::TauntTrigger;
+    let count = attributes.get("attr_num_taunts").copied().unwrap_or(0);
+    if count == 0 {
+        return Ok(vec![]);
+    }
+    let first = match record.get("raex") {
+        None => 0,
+        Some(raex) => raex["taunt_id"]
+            .as_i64()
+            .with_context(|| format!("{context}: RAEX taunt_id absent"))?,
+    };
+    let first = u32::try_from(first)
+        .with_context(|| format!("{context}: negative RAEX taunt_id {first}"))?;
+    let maximum = combat
+        .misc
+        .max_taunts
+        .with_context(|| format!("{context}: COMBAT.INI max_taunts absent"))?;
+    (0..u32::from(count))
+        .map(|offset| {
+            let index = first
+                .checked_add(offset)
+                .context("combat taunt range overflow")?;
+            anyhow::ensure!(
+                index <= maximum,
+                "{context}: combat taunt index {index} exceeds max_taunts {maximum}"
+            );
+            let Some(taunt) = combat.taunts.get(&index).filter(|_| index != maximum) else {
+                return Ok(CombatTaunt {
+                    trigger: 0,
+                    label: [0; 4],
+                    animation: 0,
+                });
+            };
+            let trigger = match taunt
+                .trigger
+                .with_context(|| format!("{context}: COMBAT.INI [taunt{index}] type absent"))?
+            {
+                TauntTrigger::BeginCombat => 0,
+                TauntTrigger::Attack => 1,
+                TauntTrigger::HurtByOpponent => 2,
+                TauntTrigger::HitOpponent => 3,
+                TauntTrigger::Defend => 4,
+                TauntTrigger::Move => 5,
+                TauntTrigger::Death => 6,
+                TauntTrigger::KilledOpponent => 7,
+                TauntTrigger::WantSwitchOut => 8,
+                TauntTrigger::WantSwitchIn => 9,
+                TauntTrigger::UnarmedMaleOpponent => 10,
+                TauntTrigger::UnarmedFemaleOpponent => 11,
+                TauntTrigger::Unknown(code) => u8::try_from(code).with_context(|| {
+                    format!("{context}: COMBAT.INI [taunt{index}] type {code} outside byte range")
+                })?,
+            };
+            let label = taunt.rtx_label.as_ref().with_context(|| {
+                format!("{context}: COMBAT.INI [taunt{index}] rtx_label absent")
+            })?;
+            let label = label.as_bytes().get(..4).with_context(|| {
+                format!("{context}: COMBAT.INI [taunt{index}] rtx_label shorter than four bytes")
+            })?;
+            Ok(CombatTaunt {
+                trigger,
+                label: label.try_into().context("four-byte combat taunt label")?,
+                animation: match taunt.animation.with_context(|| {
+                    format!("{context}: COMBAT.INI [taunt{index}] animation absent")
+                })? {
+                    0 => 0,
+                    animation => animation.wrapping_add(152),
+                },
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod combat_tests {
+    use super::*;
+    #[test]
+    fn actor_taunts_use_consecutive_authored_records_and_keep_reference_spelling() {
+        let ini = rgpre::import::combat_ini::CombatIni::parse("[misc]\nmax_taunts=8\n[taunt3]\ntype=2\nrtx_label=Nope\nanimation=0\n[taunt4]\ntype=0\nrtx_label=AbCd\nanimation=7\n[taunt5]\ntype=6\nrtx_label=&123\nanimation=0\n").unwrap();
+        let mut attributes = BTreeMap::from([("attr_num_taunts".into(), 2)]);
+        let record = serde_json::json!({"raex":{"taunt_id":4}});
+        let taunts =
+            prepare_combat_taunts(&record, &attributes, &ini, "world 7 actor TEST").unwrap();
+        assert_eq!(
+            taunts,
+            [
+                CombatTaunt {
+                    trigger: 0,
+                    label: *b"AbCd",
+                    animation: 159
+                },
+                CombatTaunt {
+                    trigger: 6,
+                    label: *b"&123",
+                    animation: 0
+                }
+            ]
+        );
+        attributes.insert("attr_num_taunts".into(), 3);
+        let sparse =
+            prepare_combat_taunts(&record, &attributes, &ini, "world 7 actor TEST").unwrap();
+        assert_eq!(
+            sparse[2],
+            CombatTaunt {
+                trigger: 0,
+                label: [0; 4],
+                animation: 0
+            }
+        );
+        attributes.insert("attr_num_taunts".into(), 6);
+        assert!(
+            prepare_combat_taunts(&record, &attributes, &ini, "world 7 actor TEST")
+                .unwrap_err()
+                .to_string()
+                .contains("combat taunt index 9 exceeds max_taunts 8")
+        );
+        attributes.insert("attr_num_taunts".into(), 0);
+        assert!(
+            prepare_combat_taunts(&serde_json::Value::Null, &attributes, &ini, "TEST")
+                .unwrap()
+                .is_empty()
+        );
+    }
+    #[test]
+    fn combat_taunt_sentinel_ignores_configured_record_and_absent_raex_starts_at_zero() {
+        let ini = rgpre::import::combat_ini::CombatIni::parse(
+            "[misc]\nmax_taunts=8\n[taunt8]\ntype=0\nrtx_label=Test\nanimation=1\n",
+        )
+        .unwrap();
+        let attributes = BTreeMap::from([("attr_num_taunts".into(), 1)]);
+        let empty = CombatTaunt {
+            trigger: 0,
+            label: [0; 4],
+            animation: 0,
+        };
+        let sentinel = prepare_combat_taunts(
+            &serde_json::json!({"raex":{"taunt_id":8}}),
+            &attributes,
+            &ini,
+            "TEST",
+        )
+        .unwrap();
+        assert_eq!(sentinel.as_slice(), std::slice::from_ref(&empty));
+        let absent =
+            prepare_combat_taunts(&serde_json::json!({}), &attributes, &ini, "TEST").unwrap();
+        assert_eq!(absent, [empty]);
+    }
 }

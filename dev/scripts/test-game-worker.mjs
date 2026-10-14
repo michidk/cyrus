@@ -78,7 +78,7 @@ for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 's
   }
   if (name === 'START.scripts') {
     const scripts = JSON.parse(new TextDecoder().decode(files.get(name)));
-    assert.equal(scripts.version, 11);
+    assert.equal(scripts.version, 12);
     assert.deepEqual(scripts.clock, menuClock);
     assert.deepEqual(scripts.updates, {
       task_system: true, animation_system: true, disable_slaves: false, disable_master_slaves: false,

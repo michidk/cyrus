@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 11,
+        version: 12,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -128,6 +128,7 @@ fn cache() -> Scripts {
                 location_offsets: vec![],
                 program,
                 attributes: BTreeMap::new(),
+                combat_taunts: vec![],
                 native_hook: None,
             },
         )]),
@@ -9264,4 +9265,68 @@ fn player_dialogue_task_uses_reserved_record_once_and_reset_bypasses_lookup() {
         .unwrap();
     assert_eq!(reset_world.actors()[0].runtime().unwrap().active_tasks(), 0);
     assert!(!reset_world.globals().dialogue().unwrap().waiting());
+}
+
+#[test]
+fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for_death() {
+    use cyrus_game::random::EngineRandom;
+    let mut scripts = cache();
+    let actor = scripts.actors.get_mut("LOGIC").unwrap();
+    actor.combat_taunts = [
+        (2, *b"H000"),
+        (0, *b"A000"),
+        (0, [0; 4]),
+        (0, *b"B000"),
+        (0, *b"C000"),
+        (0, *b"D000"),
+    ]
+    .into_iter()
+    .map(|(trigger, label)| CombatTaunt {
+        trigger,
+        label,
+        animation: 0,
+    })
+    .collect();
+    actor.attributes.insert("attr_num_taunts".into(), 6);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let mut random = EngineRandom::default();
+    let selected = world
+        .select_ordered_combat_taunt(id, 0, &mut random)
+        .unwrap()
+        .unwrap();
+    assert_eq!(selected.label, *b"C000");
+    assert_eq!(random.state(), 662824084);
+    assert!(
+        world
+            .select_ordered_combat_taunt(id, 10, &mut random)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(random.state(), 662824084);
+    assert_eq!(
+        world
+            .select_ordered_combat_taunt(id, 6, &mut random)
+            .unwrap()
+            .unwrap()
+            .label,
+        *b"H000"
+    );
+    assert_eq!(random.state(), 3295386429);
+    assert!(
+        world
+            .select_ordered_combat_taunt(id, 1, &mut random)
+            .unwrap_err()
+            .to_string()
+            .contains("requires timed selection")
+    );
+    assert_eq!(random.state(), 3295386429);
+    let replacement = ScriptWorld::prepare(&scripts, 2).unwrap();
+    assert!(
+        replacement
+            .select_ordered_combat_taunt(id, 0, &mut random)
+            .is_err()
+    );
+    assert_eq!(random.state(), 3295386429);
 }
