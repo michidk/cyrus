@@ -75,3 +75,5 @@ half-length of 500. Its distinct terrain/model ranking retains earlier equal
 contacts, following [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 The game uses this static query for inspection placement. Dynamic/transient support
 and automatic locomotion remain unsupported. Re-export cached worlds after updating.
+
+Actor collision shapes share one map-coordinate builder for upright, X-dominant and Z-dominant authored bounds. Ordinary obstacle spheres remain separate from the additional stored sphere. The selected player consumes the same builder. Construction follows [preservation’s actor shape rules](https://github.com/michidk/redguard-preservation/blob/e33cfa2/docs/engine/player.md#horizontal-actor-collision-spheres). This prepares geometry; ordinary NPC motion/support/contact stage integration remains incomplete.

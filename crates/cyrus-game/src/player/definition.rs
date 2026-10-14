@@ -15,12 +15,7 @@ pub struct PlayerDefinition {
     collision_scale: i32,
 }
 
-/// One upright body sphere, excluding the separate ground-support sphere.
-#[derive(Debug, PartialEq, Eq)]
-pub struct BodySphere {
-    pub center: [i32; 3],
-    pub radius: i32,
-}
+pub use cyrus_collision::actor_shape::BodySphere;
 
 #[derive(Deserialize)]
 struct Bounds {
@@ -127,40 +122,15 @@ impl PlayerDefinition {
         Ok(probe)
     }
 
-    /// Build the original upright body spheres using installed `post_collide_height`.
-    /// Dominant-X/Z shapes remain unsupported instead of using an upright approximation.
+    /// Build ordinary obstacle spheres from installed bounds and post-collision height.
+    /// Shape construction follows preservation's actor collision sphere rules.
     pub fn body_spheres(&self, post_collide_height: u32) -> anyhow::Result<Vec<BodySphere>> {
-        let total: [i64; 3] = std::array::from_fn(|axis| {
-            i64::from(self.positive_extent[axis]) + i64::from(self.negative_extent[axis])
-        });
-        anyhow::ensure!(
-            !(total[0] > total[1] && total[0] > total[2])
-                && !(total[2] > total[0] && total[2] > total[1]),
-            "CYRUS: non-upright collision bounds unsupported"
-        );
-        let radius = (total[0].max(total[2]) / 2).max(4);
-        let spacing = 3 * (radius / 2);
-        let post = i64::from(post_collide_height);
-        let available = total[1] - post;
-        let count = ((if available < 0 { post } else { available }) / spacing).max(2);
-        let scaled_radius = (radius * i64::from(self.collision_scale)) >> 8;
-        let mut spheres = Vec::new();
-        for index in 0..count {
-            let y = if index + 1 == count {
-                i64::from(self.positive_extent[1]) - post - scaled_radius
-            } else {
-                radius - i64::from(self.negative_extent[1]) + index * spacing
-            };
-            spheres.push(BodySphere {
-                center: [
-                    0,
-                    i32::try_from(y).context("CYRUS: collision sphere Y outside i32 range")?,
-                    0,
-                ],
-                radius: i32::try_from(scaled_radius)
-                    .context("CYRUS: collision radius outside i32 range")?,
-            });
-        }
-        Ok(spheres)
+        cyrus_collision::actor_shape::ActorBounds::new(
+            self.positive_extent,
+            self.negative_extent,
+            self.collision_scale,
+        )?
+        .body_spheres(post_collide_height)
+        .context("CYRUS collision shape")
     }
 }

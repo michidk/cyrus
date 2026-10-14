@@ -71,6 +71,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-collision` — Terrain and authored static geometry queries.
 
+- `src/actor_shape.rs` — Authored actor collision spheres in original map coordinates.
 - `src/collision_mesh.rs` — Authored model queries from preservation's segment and sphere admission rules.
 - `src/collision_world.rs` — Original static spatial ordering and model ground probes, independent of rendering.
 - `src/geometry.rs` — Original polygon contacts from preservation's engine/player.md.
