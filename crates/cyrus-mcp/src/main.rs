@@ -74,6 +74,16 @@ struct SkyScrollParams {
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
+struct TextureFrameParams {
+    world: String,
+    image: String,
+    #[schemars(
+        description = "Zero-based measured frame to hold; omit or null to resume automatic playback"
+    )]
+    frame: Option<usize>,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
 struct SceneParams {
     #[schemars(
         description = "Scene stem from the install's maps/ directory, e.g. ISLAND, START, TAVERN"
@@ -272,6 +282,20 @@ impl Cyrus {
         text(call(Command::SetSkyScroll {
             direction: p.direction,
             offset: p.offset,
+        })?)
+    }
+
+    #[tool(
+        description = "Hold a measured texture frame in a ready world for comparison, or resume automatic playback."
+    )]
+    fn hold_texture_frame(
+        &self,
+        Parameters(p): Parameters<TextureFrameParams>,
+    ) -> Result<CallToolResult, McpError> {
+        text(call(Command::HoldTextureFrame {
+            world: p.world,
+            image: p.image,
+            frame: p.frame,
         })?)
     }
 

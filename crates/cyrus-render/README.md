@@ -320,3 +320,9 @@ and selects four-bit texture samples in integers before float normalization and
 row reversal. Modern water adds its existing ripples after this selection.
 Original-instruction comparisons cover CPU setup; Vulkan checks cover the
 production shader arithmetic. Full pixel parity remains unverified.
+
+`fog::TextureAnimations` exposes loaded shared frame state and validated
+inspection holds for matched captures. Holding a frame suppresses automatic
+requests for that image until resumed; selection preserves its deadline.
+World replacement clears the hold with the image timeline. Ordinary playback
+has no hold. Explicit gameplay frame requests remain unsupported.

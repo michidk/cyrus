@@ -66,3 +66,10 @@ Without a value, `oracle` lists state and `savecheats` writes the complete CHT f
 Unsupported effects retain their values but do not change gameplay. This is an
 inspection interface. `console {open?, line?}` opens/closes or submits to the
 shared F12 editor. `state.console` exposes its output and selection.
+
+`hold_texture_frame {world, image, frame}` holds a zero-based texture frame for
+matched captures. `frame: null` resumes automatic requests from the selected
+frame without replacing its deadline. `state.textures` reports loaded image
+names, frame counts, selected frames and holds. The requested world must be
+ready, and the image/frame must exist. World replacement clears holds. These
+inspection controls do not change ordinary playback or establish cadence parity.

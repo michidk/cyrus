@@ -52,6 +52,12 @@ pub enum Command {
         direction: u16,
         offset: [f32; 2],
     },
+    /// Hold a measured texture frame for comparison; null resumes automatic playback.
+    HoldTextureFrame {
+        world: String,
+        image: String,
+        frame: Option<usize>,
+    },
     LoadScene {
         name: String,
     },

@@ -112,3 +112,10 @@ and saves. `console show` reports settings and any load error.
 The native host connects speech metadata to rendering through
 `subtitles::SubtitleRequest` and selects the rendering camera for audio listener
 updates. These adapters keep rendering independent of the audio backend.
+
+`hold_texture_frame {world, image, frame}` holds a zero-based texture frame for
+matched captures. `frame: null` resumes automatic requests from the selected
+frame without replacing its deadline. `state.textures` reports loaded image
+names, frame counts, selected frames and holds. The requested world must be
+ready, and the image/frame must exist. World replacement clears holds. These
+inspection controls do not change ordinary playback or establish cadence parity.

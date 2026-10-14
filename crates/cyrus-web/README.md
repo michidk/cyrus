@@ -126,3 +126,11 @@ absent without `capture`; it does not reproduce original-session random order.
 
 The browser host selects `ViewCamera` for `cyrus_audio::follow_listener` before
 audio preferences and cue processing; rendering does not depend on audio.
+
+Capture mode also reports shared texture state in `window.__cyrusCapture.textures`.
+Set `window.__cyrusTextureFrameRequest` to a JSON string containing `id`, `world`,
+`image` and a zero-based `frame` to hold a measured frame. Read
+`window.__cyrusTextureFrameResult` for acceptance or an error; use `frame: null`
+to resume automatic requests. The world must be ready and match the request.
+Unknown images and invalid frames leave playback unchanged. Holds clear on
+world replacement and do not establish animation cadence parity.

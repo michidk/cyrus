@@ -13,7 +13,7 @@ use bevy::{
 };
 use cyrus_assets::environment::Environment;
 use cyrus_game::{clock::bios_tick, fidelity::Fidelity, script::ScriptBinding};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Deserialize)]
@@ -66,17 +66,76 @@ struct ImageState {
     count: usize,
     delay: u32,
     playback: Playback,
+    held: bool,
 }
 
+impl ImageState {
+    fn request(&mut self, now: u32) {
+        if !self.held {
+            self.playback.request(now, self.count, self.delay);
+        }
+    }
+}
+
+/// Loaded shared image timelines, with explicit inspection holds for matched captures.
+/// Holds are absent during ordinary playback and are cleared on world replacement.
 #[derive(Resource, Default)]
-struct Images {
+pub struct TextureAnimations {
     environment: Option<AssetId<Environment>>,
     states: HashMap<String, ImageState>,
 }
 
+/// Observed zero-based image frame and inspection state, sorted by canonical image name.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct TextureFrame {
+    pub image: String,
+    pub frame: Option<usize>,
+    pub count: usize,
+    pub held: bool,
+}
+
+impl TextureAnimations {
+    /// Inspect loaded animated images. An unset frame has not yet received a draw request.
+    pub fn snapshot(&self) -> Vec<TextureFrame> {
+        let mut frames: Vec<_> = self
+            .states
+            .iter()
+            .map(|(image, state)| TextureFrame {
+                image: image.clone(),
+                frame: state.playback.frame,
+                count: state.count,
+                held: state.held,
+            })
+            .collect();
+        frames.sort_by(|a, b| a.image.cmp(&b.image));
+        frames
+    }
+
+    /// Hold a measured frame for inspection, or resume automatic requests with `None`.
+    /// Selection preserves the existing deadline, following preservation's explicit-frame rule.
+    /// Unknown images and out-of-range frames fail without changing the timeline.
+    pub fn hold(&mut self, image: &str, frame: Option<usize>) -> anyhow::Result<()> {
+        let key = image.to_ascii_lowercase();
+        let state = self
+            .states
+            .get_mut(&key)
+            .ok_or_else(|| anyhow::anyhow!("texture {image} is not loaded for animation"))?;
+        if let Some(frame) = frame {
+            ensure!(
+                frame < state.count,
+                "texture {image}: frame {frame} outside 0..{}",
+                state.count
+            );
+            state.playback.frame = Some(frame);
+        }
+        state.held = frame.is_some();
+        Ok(())
+    }
+}
+
 pub(super) fn register(app: &mut App) {
     frames::register(app);
-    app.init_resource::<Images>()
+    app.init_resource::<TextureAnimations>()
         .add_systems(
             Update,
             bind.after(crate::flat::PrepareFlats)
@@ -93,7 +152,7 @@ pub(super) fn register(app: &mut App) {
 fn bind(
     mut commands: Commands,
     request: Res<EnvironmentRequest>,
-    mut images: ResMut<Images>,
+    mut images: ResMut<TextureAnimations>,
     meshes: Res<Assets<Mesh>>,
     parents: Query<&ChildOf>,
     names: Query<&Name>,
@@ -200,6 +259,7 @@ fn bind(
                     count,
                     delay,
                     playback: Playback::default(),
+                    held: false,
                 });
             Ok(Some((Binding { key, frames }, admission)))
         })();
@@ -227,7 +287,7 @@ fn advance(
     time: Res<Time<Real>>,
     distance: Res<super::RenderDistance>,
     fidelity: Res<Fidelity>,
-    mut images: ResMut<Images>,
+    mut images: ResMut<TextureAnimations>,
     assets: Res<Assets<Image>>,
     meshes: Res<Assets<Mesh>>,
     mut materials: ResMut<Assets<SceneMaterial>>,
@@ -268,7 +328,7 @@ fn advance(
                 .all(|frame| assets.contains(frame.id()))
             && let Some(state) = images.states.get_mut(&binding.key)
         {
-            state.playback.request(now, state.count, state.delay);
+            state.request(now);
         }
     }
     for (binding, admission, mesh, transform, visibility, material, entity) in &bindings {
@@ -322,7 +382,7 @@ fn advance(
             }
         };
         if admitted && let Some(state) = images.states.get_mut(&binding.key) {
-            state.playback.request(now, state.count, state.delay);
+            state.request(now);
         }
     }
     for (binding, _, _, _, _, material, _) in &bindings {
@@ -365,6 +425,79 @@ fn advance(
 mod tests {
     use super::*;
     #[test]
+    fn replacing_the_environment_discards_inspection_holds() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Mesh>>()
+            .init_resource::<TextureAnimations>()
+            .insert_resource(EnvironmentRequest(Handle::default()))
+            .add_systems(Update, bind);
+        app.update();
+        app.world_mut()
+            .resource_mut::<TextureAnimations>()
+            .states
+            .insert(
+                "d52001".into(),
+                ImageState {
+                    count: 5,
+                    delay: 1,
+                    playback: Playback::default(),
+                    held: false,
+                },
+            );
+        app.world_mut()
+            .resource_mut::<TextureAnimations>()
+            .hold("d52001", Some(4))
+            .unwrap();
+        app.update();
+        assert!(app.world().resource::<TextureAnimations>().snapshot()[0].held);
+        app.insert_resource(EnvironmentRequest(Handle::default()));
+        app.update();
+        assert!(
+            app.world()
+                .resource::<TextureAnimations>()
+                .snapshot()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn inspection_hold_validates_and_preserves_shared_deadline() {
+        let mut images = TextureAnimations::default();
+        images.states.insert(
+            "d52001".into(),
+            ImageState {
+                count: 5,
+                delay: 2,
+                playback: Playback {
+                    frame: Some(1),
+                    deadline: 20,
+                },
+                held: false,
+            },
+        );
+        assert!(images.hold("missing", Some(0)).is_err());
+        assert!(images.hold("d52001", Some(5)).is_err());
+        assert_eq!(images.snapshot()[0].frame, Some(1));
+        images.hold("D52001", Some(4)).unwrap();
+        images.states.get_mut("d52001").unwrap().request(100);
+        assert_eq!(
+            images.snapshot(),
+            vec![TextureFrame {
+                image: "d52001".into(),
+                frame: Some(4),
+                count: 5,
+                held: true
+            }]
+        );
+        assert_eq!(images.states["d52001"].playback.deadline, 20);
+        images.hold("d52001", None).unwrap();
+        images.states.get_mut("d52001").unwrap().request(100);
+        assert_eq!(images.snapshot()[0].frame, Some(0));
+        assert!(!images.snapshot()[0].held);
+        assert_eq!(images.states["d52001"].playback.deadline, 102);
+    }
+
+    #[test]
     fn admitted_requests_share_a_deadline_and_do_not_catch_up() {
         let mut playback = Playback::default();
         assert_eq!(playback.request(100, 4, 2), 0);
@@ -391,7 +524,7 @@ mod tests {
             .init_resource::<Assets<Mesh>>()
             .init_resource::<Assets<SceneMaterial>>()
             .init_resource::<Assets<TerrainMaterial>>()
-            .init_resource::<Images>()
+            .init_resource::<TextureAnimations>()
             .add_systems(Update, advance);
         let frames: Vec<_> = (0..4)
             .map(|_| {
@@ -400,14 +533,18 @@ mod tests {
                     .add(Image::default())
             })
             .collect();
-        app.world_mut().resource_mut::<Images>().states.insert(
-            "a00000".into(),
-            ImageState {
-                count: 4,
-                delay: 2,
-                playback: Playback::default(),
-            },
-        );
+        app.world_mut()
+            .resource_mut::<TextureAnimations>()
+            .states
+            .insert(
+                "a00000".into(),
+                ImageState {
+                    count: 4,
+                    delay: 2,
+                    playback: Playback::default(),
+                    held: false,
+                },
+            );
         let mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::MAIN_WORLD,
@@ -591,5 +728,22 @@ mod tests {
         check(&app, 0);
         app.update();
         check(&app, 0);
+        app.world_mut()
+            .resource_mut::<TextureAnimations>()
+            .hold("a00000", Some(2))
+            .unwrap();
+        app.world_mut()
+            .resource_mut::<Time<Real>>()
+            .advance_by(Duration::from_secs(10));
+        app.update();
+        check(&app, 2);
+        app.update();
+        check(&app, 2);
+        app.world_mut()
+            .resource_mut::<TextureAnimations>()
+            .hold("a00000", None)
+            .unwrap();
+        app.update();
+        check(&app, 3);
     }
 }

@@ -10,7 +10,7 @@ pub fn register(app: &mut App) {
     if enabled {
         app.add_systems(
             Update,
-            sync_sky.run_if(in_state(cyrus_game::AppState::InGame)),
+            (sync_sky, sync_texture).run_if(in_state(cyrus_game::AppState::InGame)),
         );
         app.add_systems(
             PostUpdate,
@@ -76,8 +76,65 @@ fn sync_sky(
     }
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TextureRequest {
+    id: u32,
+    world: String,
+    image: String,
+    frame: Option<usize>,
+}
+
+fn sync_texture(
+    scene: Res<cyrus_world::lifecycle::SceneRequest>,
+    prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
+    ready: Option<Res<cyrus_render::ReadyScene>>,
+    mut textures: ResMut<cyrus_render::fog::TextureAnimations>,
+) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let result = (|| -> Result<(), JsValue> {
+        let key = JsValue::from_str("__cyrusTextureFrameRequest");
+        let value = js_sys::Reflect::get(&window, &key)?;
+        if value.is_null() || value.is_undefined() {
+            return Ok(());
+        }
+        js_sys::Reflect::set(&window, &key, &JsValue::NULL)?;
+        let mut id = None;
+        let accepted = (|| -> anyhow::Result<()> {
+            let request: TextureRequest =
+                serde_json::from_str(&value.as_string().ok_or_else(|| {
+                    anyhow::anyhow!("texture capture request must be a JSON string")
+                })?)?;
+            id = Some(request.id);
+            anyhow::ensure!(
+                request.world == scene.0
+                    && ready.as_ref().is_some_and(|ready| {
+                        prepared
+                            .as_ref()
+                            .is_some_and(|world| ready.0 == world.animations)
+                    }),
+                "texture capture requires the requested ready world"
+            );
+            textures.hold(&request.image, request.frame)
+        })();
+        let response = serde_json::json!({"id": id, "accepted": accepted.is_ok(), "error": accepted.err().map(|error| error.to_string())});
+        js_sys::Reflect::set(
+            &window,
+            &"__cyrusTextureFrameResult".into(),
+            &js_sys::JSON::parse(&response.to_string())?,
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        error!("browser texture capture request: {error:?}");
+    }
+}
+
 fn observe(
     request: Res<cyrus_world::lifecycle::SceneRequest>,
+    textures: Res<cyrus_render::fog::TextureAnimations>,
     prepared: Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
     ready_scene: Option<Res<cyrus_render::ReadyScene>>,
     camera: Query<&Transform, With<cyrus_render::camera::ViewCamera>>,
@@ -99,6 +156,9 @@ fn observe(
         .map(|value| JsValue::from_f64(f64::from(value)))
         .collect::<js_sys::Array>();
     let result = (|| {
+        let frames = serde_json::to_string(&textures.snapshot())
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        js_sys::Reflect::set(&record, &"textures".into(), &js_sys::JSON::parse(&frames)?)?;
         js_sys::Reflect::set(&record, &"world".into(), &request.0.as_str().into())?;
         js_sys::Reflect::set(&record, &"view".into(), &view)?;
         js_sys::Reflect::set(&record, &"ready".into(), &ready.into())?;

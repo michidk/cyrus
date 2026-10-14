@@ -1,6 +1,7 @@
 //! Documented Glide fog and clipping for exported scene materials.
 mod compositing;
 mod texture;
+pub use texture::{TextureAnimations, TextureFrame};
 
 use crate::camera::ViewCamera;
 use crate::environment::EnvironmentRequest;
