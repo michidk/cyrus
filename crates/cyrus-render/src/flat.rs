@@ -9,6 +9,7 @@ pub(crate) struct PrepareFlats;
 #[derive(Component)]
 pub(crate) struct Flat {
     pub(crate) brightness: Option<u8>,
+    pub(crate) radius: f32,
 }
 
 #[derive(Component)]
@@ -96,6 +97,15 @@ impl Description {
     }
 }
 
+// Source-image diagonal, quantized before scaling, from preservation flat admission.
+fn bound_radius(width: u32, height: u32, scale: f32) -> f32 {
+    let width = width as f32;
+    let height = height as f32;
+    let half_diagonal =
+        crate::lighting::quantized_distance(width * width + height * height).0 * 0.5;
+    half_diagonal * scale
+}
+
 pub(crate) fn register(app: &mut App) {
     app.add_systems(Update, prepare.in_set(PrepareFlats))
         .add_systems(
@@ -128,10 +138,17 @@ fn prepare(
                 }
                 if let Some(flat) = serde_json::from_str::<Extras>(&extras.value)?.rgpre_flat {
                     let mesh = flat.mesh(source)?;
+                    let [width, height] = flat
+                        .dimensions
+                        .ok_or_else(|| anyhow::anyhow!("missing flat dimensions"))?;
+                    let scale = flat
+                        .texture_scale
+                        .ok_or_else(|| anyhow::anyhow!("missing flat scale"))?;
                     return Ok(Some((
                         mesh,
                         Flat {
                             brightness: (flat.alpha < 254).then_some(255),
+                            radius: bound_radius(width, height, scale),
                         },
                     )));
                 }
@@ -176,6 +193,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn generated_bound_retains_original_square_root_quantization() {
+        assert_eq!(bound_radius(9, 26, 0.5), 6.84375);
+        assert_eq!(bound_radius(4, 8, 1.0), 4.46875);
+        assert_ne!(bound_radius(9, 26, 0.5), (757.0_f32).sqrt() * 0.25);
+    }
+
+    #[test]
     fn billboard_tracks_camera_rotation_without_moving_its_placed_center() {
         let mut app = App::new();
         app.add_plugins(TransformPlugin)
@@ -188,6 +212,7 @@ mod tests {
             .spawn((
                 Flat {
                     brightness: Some(255),
+                    radius: 1.0,
                 },
                 ChildOf(parent),
                 Transform::IDENTITY,

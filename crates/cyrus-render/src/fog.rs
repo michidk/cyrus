@@ -328,6 +328,10 @@ fn apply_scene_fog(
                                     .map(|extras| extras.value.as_str())
                             }),
                     )?;
+                    if flats.contains(entity) {
+                        // The material sampling word uses point/chroma bits shared with ROB flags.
+                        attributes = Some(2);
+                    }
                     crate::lighting::model_mesh(
                         original,
                         &extras.value,

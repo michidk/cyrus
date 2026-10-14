@@ -68,8 +68,8 @@ attributes; non-chroma models are opaque. Instances sharing a source material
 retain separate flag settings. Re-export worlds for required version-1
 `rgpre_render` node metadata. Standalone and generated models explicitly retain
 absent ROB provenance and their previous sampling. **Unknown:** standalone-model
-sampling defaults and texture-specific key conversion. Placed-flat point sampling
-is recovered but not integrated. Chroma-enabled models
+sampling defaults and texture-specific key conversion. Placed flats select point
+sampling. Chroma-enabled models
 still use alpha masking, so filtered chroma rejection remains unsupported.
 
 **Verified:** model ambient/directional shading follows preservation's
@@ -115,8 +115,16 @@ per dimension are supported. Larger-texture reduction remains unsupported.
 **Verified:** matched 640×480 BELLTOWR native/browser captures replace the oversized
 inverted triangles with a small upright flame at the original sample's location;
 the previous geometry fails the measured flame-region comparison. The flame is
-still brighter. Constant-alpha compositing, flat-specific sampling and animation
-admission remain unsupported; synchronized phase and full pixel parity are **Unknown**.
+still brighter. Constant-alpha compositing remains unsupported; synchronized phase
+and full pixel parity are **Unknown**. Placed flats use the recovered
+[quantized sprite bound and first-polygon admission](https://github.com/michidk/redguard-preservation/blob/4b1f28b/docs/engine/texture-animation.md#placed-flat-admission)
+to request automatic frames from the shared image timeline. They bypass model
+face-normal rejection, retain point sampling and require at least three corners
+after clipping. Their frame requests do not depend on rasterized pixel coverage.
+**Verified:** matched BELLTOWR original/native/browser views, twelve native samples
+and twelve browser samples show all five authored flame states.
+The original was paused after loading artwork cleared; its texture index and
+synchronized cadence remain **Unknown**.
 
 Terrain prepares private triangles after wave updates and camera projection.
 It clips camera-space position, RGB and UV together, snaps projected vertices,
@@ -202,7 +210,7 @@ average below one RGB level. Terrain/model shading, remaining texture sampling,
 native/browser menu transitions and physical-hardware pixel parity remain
 **Unknown**.
 
-Ordinary archive-model and terrain texture playback use preservation's
+Ordinary archive-model, placed-flat and terrain texture playback use preservation's
 [shared frame and admission rules](https://github.com/michidk/redguard-preservation/blob/af411516a872f56afc3b164a384ab782f824a6fe/docs/engine/texture-animation.md).
 **Verified:** renderer tests cover shared deadlines, late admission advancing only
 once, retained hidden frames, authored facing and clipping before raster area.
@@ -213,9 +221,9 @@ Materials share image state by canonical image name while retaining their own
 exported frame handles. The GLTF loader retains all authored frames during its
 initial decode; frame selection does not reload the source asset. World replacement
 clears that world's playback records.
-Only known ordinary ROB draw attributes participate. Script-bound actor admission,
-explicit frame overrides and generated billboards remain
-unsupported. **Verified:** original/native/browser ISLAND river captures share the
+Archive models require known ordinary ROB draw attributes; prepared MPSF flats
+use their separate first-polygon path. Script-bound actor admission and explicit
+frame overrides remain unsupported. **Verified:** original/native/browser ISLAND river captures share the
 camera pose at 640×480; successive native/browser samples change the water-rock
 foam textures. Separate zero-wave-speed native/browser samples also show terrain
 texture advancement with fixed geometry. Native/browser builds share their source snapshot. **Unknown:**

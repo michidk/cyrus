@@ -5,7 +5,74 @@ use serde::Deserialize;
 
 pub(super) type Clip = crate::terrain::Preparation;
 
-#[derive(Component, Deserialize)]
+pub(super) struct Flat {
+    radius: f32,
+    corners: [usize; 4],
+}
+
+impl Flat {
+    pub(super) fn from_mesh(mesh: &Mesh, radius: f32) -> anyhow::Result<Self> {
+        let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) =
+            mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+        else {
+            anyhow::bail!("flat admission requires prepared texture coordinates");
+        };
+        let mut corners = [0; 4];
+        for (index, corner) in [[0., 1.], [1., 1.], [1., 0.], [0., 0.]]
+            .into_iter()
+            .enumerate()
+        {
+            corners[index] = uv
+                .iter()
+                .position(|&value| value == corner)
+                .ok_or_else(|| anyhow::anyhow!("flat admission lacks prepared corner {index}"))?;
+        }
+        ensure!(
+            radius.is_finite() && radius > 0.0,
+            "invalid flat admission radius"
+        );
+        Ok(Self { radius, corners })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn admits(
+        &self,
+        positions: &[[f32; 3]],
+        model: &GlobalTransform,
+        camera: &GlobalTransform,
+        scale: Vec2,
+        clipping: [f32; 2],
+        clip: &mut Clip,
+    ) -> bool {
+        if self.corners.iter().any(|&index| {
+            positions
+                .get(index)
+                .is_none_or(|p| p.iter().any(|v| !v.is_finite()))
+        }) {
+            return false;
+        }
+        let camera_from_model = camera.affine().inverse() * model.affine();
+        let scaled = |p: Vec3| {
+            let point = camera_from_model.transform_point3(p) * 20.0;
+            [point.x * scale.x, point.y * scale.y, -point.z]
+        };
+        let Some(crosses) = classify(scaled(Vec3::ZERO), self.radius, scale, clipping) else {
+            return false;
+        };
+        !crosses
+            || clip.admits(
+                self.corners
+                    .iter()
+                    .map(|&index| crate::terrain::ClipVertex {
+                        camera: scaled(Vec3::from(positions[index])),
+                        ..Default::default()
+                    }),
+                clipping,
+            )
+    }
+}
+
+#[derive(Deserialize)]
 pub(super) struct Model {
     version: u32,
     radius_fixed: u32,
@@ -155,6 +222,42 @@ fn classify([x, y, z]: [f32; 3], radius: f32, scale: Vec2, [near, far]: [f32; 2]
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn flat_requests_frames_after_clipping_even_without_raster_area() {
+        let flat = Flat {
+            radius: 6.84375,
+            corners: [0, 1, 2, 3],
+        };
+        let mut clip = Clip::default();
+        let camera = GlobalTransform::IDENTITY;
+        let transform = GlobalTransform::from_translation(Vec3::new(0., 0., -1.));
+        // Four coincident corners survive preparation, regardless of raster coverage.
+        assert!(flat.admits(
+            &[[0.; 3]; 4],
+            &transform,
+            &camera,
+            Vec2::ONE,
+            [1., 20.5],
+            &mut clip
+        ));
+        assert!(!flat.admits(
+            &[[100., 0., 0.]; 4],
+            &transform,
+            &camera,
+            Vec2::ONE,
+            [1., 20.5],
+            &mut clip
+        ));
+        let far = GlobalTransform::from_translation(Vec3::new(0., 0., -10.));
+        assert!(!flat.admits(
+            &[[0.; 3]; 4],
+            &far,
+            &camera,
+            Vec2::ONE,
+            [1., 20.5],
+            &mut clip
+        ));
+    }
     #[test]
     fn bounds_reject_tangency_but_do_not_classify_equal_endpoints_as_crossings() {
         assert_eq!(

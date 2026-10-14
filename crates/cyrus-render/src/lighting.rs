@@ -1,6 +1,7 @@
 //! Authored model lighting inputs and quantized terrain normals from preservation.
 
 mod prelight;
+pub(crate) use prelight::distance as quantized_distance;
 pub(crate) mod runtime;
 
 use bevy::mesh::VertexAttributeValues;

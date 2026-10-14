@@ -33,7 +33,7 @@ fn transpose_transform(matrix: [Vector; 3], value: Vector) -> Vector {
     std::array::from_fn(|axis| dot([matrix[0][axis], matrix[1][axis], matrix[2][axis]], value))
 }
 
-fn distance(squared: f32) -> (f32, f32) {
+pub(crate) fn distance(squared: f32) -> (f32, f32) {
     static TABLES: OnceLock<[[u32; 256]; 2]> = OnceLock::new();
     let tables = TABLES.get_or_init(|| {
         std::array::from_fn(|kind| {

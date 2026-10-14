@@ -38,6 +38,12 @@ struct Binding {
     frames: Vec<Handle<Image>>,
 }
 
+#[derive(Component)]
+enum Admission {
+    Model(admission::Model),
+    Flat(admission::Flat),
+}
+
 #[derive(Default)]
 struct Playback {
     frame: Option<usize>,
@@ -71,7 +77,11 @@ struct Images {
 pub(super) fn register(app: &mut App) {
     frames::register(app);
     app.init_resource::<Images>()
-        .add_systems(Update, bind.before(super::apply_scene_fog))
+        .add_systems(
+            Update,
+            bind.after(crate::flat::PrepareFlats)
+                .before(super::apply_scene_fog),
+        )
         .add_systems(
             PostUpdate,
             advance.after(VisibilitySystems::CheckVisibility),
@@ -95,6 +105,7 @@ fn bind(
             Option<&GltfExtras>,
             &Mesh3d,
             Option<&frames::Frames>,
+            Option<&crate::flat::Flat>,
         ),
         Without<Inspected>,
     >,
@@ -103,11 +114,11 @@ fn bind(
         images.environment = Some(request.0.id());
         images.states.clear();
     }
-    for (entity, material, extras, geometry, mesh, frames) in &candidates {
+    for (entity, material, extras, geometry, mesh, frames, flat) in &candidates {
         let Some(mesh) = meshes.get(&mesh.0) else {
             continue;
         };
-        let result = (|| -> anyhow::Result<Option<(Binding, Option<admission::Model>)>> {
+        let result = (|| -> anyhow::Result<Option<(Binding, Option<Admission>)>> {
             let Some(description) =
                 serde_json::from_str::<MaterialExtras>(&extras.value)?.rgpre_texture_animation
             else {
@@ -118,6 +129,11 @@ fn bind(
                 .any(|node| names.get(node).is_ok_and(|name| name.as_str() == "Terrain"));
             let admission = if terrain {
                 None
+            } else if let Some(flat) = flat {
+                Some(Admission::Flat(admission::Flat::from_mesh(
+                    mesh,
+                    flat.radius,
+                )?))
             } else {
                 let Some(geometry) = geometry else {
                     return Ok(None);
@@ -131,7 +147,7 @@ fn bind(
                     anyhow::bail!("animated texture mesh lacks three-component positions")
                 };
                 admission.validate(positions)?;
-                Some(admission)
+                Some(Admission::Model(admission))
             };
             ensure!(
                 description.version == 1,
@@ -219,7 +235,7 @@ fn advance(
     camera: Query<(&GlobalTransform, &Projection), With<ViewCamera>>,
     bindings: Query<(
         &Binding,
-        &admission::Model,
+        &Admission,
         &Mesh3d,
         &GlobalTransform,
         &InheritedVisibility,
@@ -274,7 +290,9 @@ fn advance(
             continue;
         };
         let attributes = material.extension.lighting.w;
-        if attributes < 0.0 || attributes as u8 & 4 != 0 {
+        if matches!(admission, Admission::Model(_))
+            && (attributes < 0.0 || attributes as u8 & 4 != 0)
+        {
             continue;
         }
         let Some(mesh) = meshes.get(&mesh.0) else {
@@ -293,10 +311,15 @@ fn advance(
         } else {
             None
         };
-        if admission.admits(
-            positions, normals, transform, camera, scale, clipping, &mut clip,
-        ) && let Some(state) = images.states.get_mut(&binding.key)
-        {
+        let admitted = match admission {
+            Admission::Model(model) => model.admits(
+                positions, normals, transform, camera, scale, clipping, &mut clip,
+            ),
+            Admission::Flat(flat) => {
+                flat.admits(positions, transform, camera, scale, clipping, &mut clip)
+            }
+        };
+        if admitted && let Some(state) = images.states.get_mut(&binding.key) {
             state.playback.request(now, state.count, state.delay);
         }
     }
@@ -389,7 +412,16 @@ mod tests {
         )
         .with_inserted_attribute(
             Mesh::ATTRIBUTE_POSITION,
-            vec![[-0.1, -0.1, 0.0], [0.1, -0.1, 0.0], [0.0, 0.1, 0.0]],
+            vec![
+                [-0.1, -0.1, 0.0],
+                [0.1, -0.1, 0.0],
+                [0.1, 0.1, 0.0],
+                [-0.1, 0.1, 0.0],
+            ],
+        )
+        .with_inserted_attribute(
+            Mesh::ATTRIBUTE_UV_0,
+            vec![[0., 1.], [1., 1.], [1., 0.], [0., 0.]],
         );
         let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let material = SceneMaterial {
@@ -449,8 +481,11 @@ mod tests {
                     .add(material.clone())
             })
             .collect();
-        let nodes: Vec<_> = materials.iter().map(|material| {
+        let nodes: Vec<_> = materials.iter().enumerate().map(|(index, material)| {
             let admission = admission::Model::parse(r#"{"rgpre_admission":{"version":1,"radius_fixed":256,"polygons":[{"vertices":[0,1,2],"normal":[0,0,1]}]}}"#).unwrap().unwrap();
+            let admission = if index == 0 { Admission::Model(admission) } else {
+                Admission::Flat(admission::Flat::from_mesh(app.world().resource::<Assets<Mesh>>().get(&mesh).unwrap(), 2.0).unwrap())
+            };
             app.world_mut().spawn((Binding { key: "a00000".into(), frames: frames.clone() }, admission, Mesh3d(mesh.clone()), GlobalTransform::from_translation(Vec3::new(0.0,0.0,-1.0)), InheritedVisibility::VISIBLE, MeshMaterial3d(material.clone()))).id()
         }).collect();
         app.world_mut().spawn((
@@ -526,7 +561,7 @@ mod tests {
         app.update();
         check(&app, 3);
         app.world_mut()
-            .entity_mut(nodes[0])
+            .entity_mut(nodes[1])
             .insert(InheritedVisibility::VISIBLE);
         app.update();
         check(&app, 0);
