@@ -269,3 +269,9 @@ It consumes one shared random draw even at zero, preserves current offsets and
 timer state, and retains the low byte for later world loads. Initial sky creation
 still chooses an independent random direction; complete session random ordering
 remains unverified.
+
+**Verified:** terrain and model filtering preserve original four-bit vertical
+weights after the export reverses image rows, following the published
+[filter orientation rule](https://github.com/michidk/redguard-preservation/commit/e4408c6a886c2336cd960ff2a4bc5eb4f6200098).
+The production sampler matches compiled-original interpolation on synthetic
+wrapped texture samples. Fixed-point perspective setup remains incomplete.

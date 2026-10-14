@@ -6,7 +6,8 @@ fn sample_encoded(uv: vec2<f32>, point: bool) -> vec3<f32> {
     if point { return round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, uv, 0.0).rgb) * 255.0) / 255.0; }
     let size = vec2<f32>(textureDimensions(base_color_texture));
     let texel = uv * size - vec2(0.5);
-    let fraction = floor(fract(texel) * 16.0) / 16.0;
+    // Exported images reverse rows, so original downward V rounding reverses too.
+    let fraction = vec2(floor(fract(texel.x) * 16.0), ceil(fract(texel.y) * 16.0)) / 16.0;
     let origin = floor(texel) + vec2(0.5);
     let a = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, origin / size, 0.0).rgb) * 255.0);
     let b = round(linear_to_srgb(textureSampleLevel(base_color_texture, base_color_sampler, (origin + vec2(1.0, 0.0)) / size, 0.0).rgb) * 255.0);
