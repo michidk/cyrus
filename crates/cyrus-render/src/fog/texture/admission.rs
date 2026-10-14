@@ -73,20 +73,20 @@ impl Flat {
 }
 
 #[derive(Deserialize)]
-pub(super) struct Model {
+pub(in crate::fog) struct Model {
     version: u32,
-    radius_fixed: u32,
-    polygons: Vec<Polygon>,
+    pub(in crate::fog) radius_fixed: u32,
+    pub(in crate::fog) polygons: Vec<Polygon>,
 }
 
 #[derive(Deserialize)]
-struct Polygon {
-    vertices: Option<Vec<usize>>,
-    normal: Option<[f32; 3]>,
+pub(in crate::fog) struct Polygon {
+    pub(in crate::fog) vertices: Option<Vec<usize>>,
+    pub(in crate::fog) normal: Option<[f32; 3]>,
 }
 
 impl Model {
-    pub(super) fn parse(extras: &str) -> anyhow::Result<Option<Self>> {
+    pub(in crate::fog) fn parse(extras: &str) -> anyhow::Result<Option<Self>> {
         #[derive(Deserialize)]
         struct Extras {
             rgpre_admission: Option<Model>,
@@ -117,7 +117,7 @@ impl Model {
         Ok(model)
     }
 
-    pub(super) fn validate(&self, positions: &[[f32; 3]]) -> anyhow::Result<()> {
+    pub(in crate::fog) fn validate(&self, positions: &[[f32; 3]]) -> anyhow::Result<()> {
         for (face, polygon) in self.polygons.iter().enumerate() {
             let vertices = polygon
                 .vertices

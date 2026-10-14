@@ -84,6 +84,11 @@ impl Vertex {
 }
 
 impl Preparation {
+    /// Surviving camera-space corners from the most recent successful admission.
+    pub(crate) fn polygon(&self) -> &[Vertex] {
+        &self.polygon
+    }
+
     /// Test original pre-raster admission; coincident corners still count.
     pub(crate) fn admits(
         &mut self,

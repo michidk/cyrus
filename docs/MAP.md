@@ -149,6 +149,7 @@ module where it is defined and regenerate.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
 - `src/flat.rs` — Camera-facing MPSF geometry from preservation's placed-flat export contract.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
+- `src/fog/clipping.rs` — Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.

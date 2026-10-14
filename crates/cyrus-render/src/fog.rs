@@ -1,4 +1,5 @@
 //! Documented Glide fog and clipping for exported scene materials.
+mod clipping;
 mod compositing;
 mod texture;
 pub use texture::{TextureAnimations, TextureFrame};
@@ -122,7 +123,7 @@ struct FogExtension {
     direction: Vec4,
 }
 
-#[derive(Asset, TypePath, AsBindGroup, Clone)]
+#[derive(Asset, TypePath, AsBindGroup, Clone, PartialEq)]
 #[bind_group_data(ModelKey)]
 struct ModelExtension {
     #[uniform(100)]
@@ -180,6 +181,7 @@ pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
         texture::register(app);
+        clipping::register(app);
         compositing::register(app);
         load_shader_library!(app, "glide_fog.wesl");
         load_shader_library!(app, "scene_shading.wesl");

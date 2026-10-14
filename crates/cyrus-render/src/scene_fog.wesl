@@ -47,7 +47,10 @@ fn vertex(raw: Vertex) -> ModelVertex {
     tint = 1.0;
     out.retained_solid = u32(vertex.color.a);
 }
-    color = apply_local_lights(color, vertex.position, vertex.normal, transform);
+    // Prepared model RGB has already received source-corner lighting and clipping.
+    if vertex.uv_b.x >= 0.0 {
+        color = apply_local_lights(color, vertex.position, vertex.normal, transform);
+    }
     // Cancel perspective weighting for screen-linear vertex RGB, including WebGL.
     out.color = clamp(color, vec3(0.0), vec3(255.0)) * (tint / 255.0) * out.position.w;
     out.instance_index = raw.instance_index;

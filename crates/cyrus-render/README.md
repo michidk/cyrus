@@ -88,6 +88,19 @@ and combined with encoded texture colors before fog. The fixed Bevy directional
 light and model PBR response are removed. Mesh transforms and explicitly selected
 animation frames feed the same shader on native and browser builds.
 
+**Verified:** ordinary ROB models clip lit, unweighted RGB and UV in camera
+space before projection, following the published
+[model clipping rule](https://github.com/michidk/redguard-preservation/commit/dd8c5f8b10a0cdaeaaa33f0aedcb5a177a98ed2a).
+Separate draw meshes preserve the source topology used by animation and texture
+admission. Generated flats retain their separate rendering path.
+Matched 640×480 native/browser ISLAND captures reduce shoreline-region mean RGB
+error from 3.86 to 2.05 against the saved original viewpoint and prior-version
+control. Sky phase and the selected foam frame are held; the original water
+field is not synchronized. The original capture follows a book-menu return;
+these native/browser captures enter the world directly. Model projected
+snapping, fixed-point interpolation, transition parity and full pixel parity
+remain **Unknown**.
+
 Re-export worlds and player models for the `rgpre_lighting` primitive metadata
 and required environment model inputs. Invalid mesh lighting metadata hides the
 unsupported mesh and logs the world/mesh context with re-export instructions.
