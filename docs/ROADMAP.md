@@ -38,14 +38,15 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 ### Active assignments
 
-| Work | Session |
-| --- | --- |
-| Rendering comparisons, authored rendering and BELLTOWR generated-flat recovery | Codex, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
-| SOUP execution and script integration | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
-| Menu save/load slots and save-state capture | Codex, Implement Menu Save and Load, `t3/implement-savegame-menu` |
+| Work | Status | Session |
+| --- | --- | --- |
+| Rendering fidelity: residual START shading, model normals and sampling comparisons | In progress | Codex, Improve Rendering Fidelity, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
+| SOUP integration: dialogue speech/skip input, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| Surface sound comparison: grounded walking cues and release cleanup | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
-SOUP owns remaining animation and script scheduling. Sound and HUD sessions have
-ended; their remaining work and other unlisted tasks are unassigned.
+Save/load and remaining HUD work are unassigned. The save/load session ended with
+an unfinished prototype; it is not active work. Controller implementation remains
+parked; the surface session compares bounded supplied-tick behavior.
 
 ## Resource coverage
 
