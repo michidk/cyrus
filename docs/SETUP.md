@@ -349,6 +349,29 @@ writes saves); `dev/scripts/run-retro.sh` makes one under `magic/retro-run/` and
 copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
 
+## Logs
+
+The game and the viewer write to the console (stderr) and to a daily log file,
+each with its own filter in `tracing` syntax. The file is
+`cyrus-config/logs/<application>.<UTC date>.log` (gitignored, never in the
+install), unbuffered and plain text, and the newest seven are kept. It records
+the version, platform, command line and install path at startup, state changes,
+the fidelity modes, world preparation with timings, control commands at
+`debug`, errors, and panics with a backtrace. Attach it to a bug report; it
+contains local paths but no game data.
+
+| Option | Environment | Default | Meaning |
+| --- | --- | --- | --- |
+| `--log <FILTER>` | `RUST_LOG` | `info` | console filter, for example `warn` or `info,cyrus_game=debug` |
+| `--log-file <FILTER>` | `CYRUS_LOG_FILE` | `info,cyrus=debug` | file filter; `off` disables the file |
+| `--log-dir <DIR>` | `CYRUS_LOG_DIR` | `cyrus-config/logs` | directory of the daily files |
+
+Control polling and script steps are never logged, and no per-frame system logs
+except once per failure. Expected, high-volume dependency messages (empty-mesh
+warnings from the renderer, the importer's per-section progress) are filtered out;
+set `RUST_LOG`, for example `RUST_LOG=rgpre=info`, to see them. The browser build
+logs to the browser console only.
+
 ## Driving the game from an agent
 
 The game listens on `127.0.0.1:7117` (`--control`, `CYRUS_CONTROL_ADDR`, or

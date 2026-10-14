@@ -23,6 +23,8 @@ struct Args {
     source: cyrus_app::launch::InstallArgs,
     #[command(flatten)]
     launch: cyrus_app::launch::GameOptions,
+    #[command(flatten)]
+    log: cyrus_app::logging::LogArgs,
     /// No window, no renderer: preload, scene export and the control server only.
     #[arg(long)]
     headless: bool,
@@ -48,6 +50,16 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let mut app = App::new();
+    // First, so the export and audit modes log too, and a failure reaches the log file.
+    let logging = args.log.plugin(&mut app, "cyrus");
+    app.add_plugins(logging);
+    cyrus_app::logging::log_panics();
+    args.log.announce("cyrus");
+    run(args, app).inspect_err(|error| error!("fatal: {error:#}"))
+}
+
+fn run(args: Args, mut app: App) -> anyhow::Result<()> {
     let install = if args.audit_worlds
         || args.headless
         || args.list_worlds
@@ -132,7 +144,6 @@ fn main() -> anyhow::Result<()> {
             .unwrap_or_else(|| settings.control_addr.clone()),
     );
 
-    let mut app = App::new();
     if !args.headless
         && let Some(view) = args.launch.view
     {
@@ -145,13 +156,16 @@ fn main() -> anyhow::Result<()> {
     if args.headless {
         app.add_plugins((
             MinimalPlugins,
-            bevy::log::LogPlugin::default(),
             bevy::state::app::StatesPlugin,
             bevy::input::InputPlugin,
             bevy::asset::AssetPlugin::default(),
         ));
     } else {
-        app.add_plugins(DefaultPlugins.set(cyrus_app::window("cyrus")));
+        app.add_plugins(
+            DefaultPlugins
+                .set(cyrus_app::window("cyrus"))
+                .disable::<bevy::log::LogPlugin>(),
+        );
     }
     app.add_plugins((
         cyrus_world::animation::AnimationPlugin,

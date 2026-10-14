@@ -25,6 +25,7 @@ enum Message {
 struct Preparation {
     name: String,
     result: Mutex<mpsc::Receiver<Message>>,
+    started: std::time::Instant,
 }
 
 #[derive(Resource)]
@@ -76,6 +77,7 @@ fn load_requested(
     commands.remove_resource::<SceneLoadError>();
     commands.remove_resource::<PreparationProgress>();
     commands.insert_resource(LastAttempt(name.clone()));
+    info!("world {name}: preparing");
     let install = install.clone();
     let requested = name.clone();
     let (sender, receiver) = mpsc::channel();
@@ -101,12 +103,13 @@ fn load_requested(
             commands.insert_resource(Preparation {
                 name,
                 result: Mutex::new(receiver),
+                started: std::time::Instant::now(),
             });
         }
         Err(error) => {
-            commands.insert_resource(SceneLoadError(format!(
-                "World {name} preparation worker: {error}"
-            )));
+            let error = format!("World {name} preparation worker: {error}");
+            error!("{error}");
+            commands.insert_resource(SceneLoadError(error));
         }
     }
 }
@@ -125,6 +128,7 @@ fn finish(
     let result = loop {
         match pending.result.lock().unwrap().try_recv() {
             Ok(Message::Stage(done, total, label)) => {
+                debug!("world {}: {label} ({done}/{total})", pending.name);
                 commands.insert_resource(PreparationProgress { done, total, label });
             }
             Ok(Message::Done(result)) => break result,
@@ -136,6 +140,7 @@ fn finish(
     };
     commands.remove_resource::<Preparation>();
     if pending.name != request.0.to_ascii_uppercase() {
+        debug!("world {}: superseded by a newer request", pending.name);
         return;
     }
     let result = result.and_then(|world| {
@@ -151,6 +156,11 @@ fn finish(
     });
     match result {
         Ok(world) => {
+            info!(
+                "world {}: prepared as world {world} in {:.1?}",
+                pending.name,
+                pending.started.elapsed()
+            );
             let mut prepared = PreparedWorld::from_cache(pending.name.clone(), &assets);
             for path in [
                 &prepared.player_path,

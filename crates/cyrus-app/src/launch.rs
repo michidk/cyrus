@@ -21,6 +21,8 @@ impl InstallArgs {
             path.as_deref(),
             std::path::Path::new(crate::native_install::LOCATION),
         )
+        .inspect(|install| bevy::log::info!("game files: {}", install.root.display()))
+        .inspect_err(|error| bevy::log::warn!("game files not found: {error:#}"))
     }
     /// Inserts the resolved install, or shows the picker in the application's egui context.
     /// Call after installing the shared EguiPlugin. Cancel exits this application.

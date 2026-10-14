@@ -17,6 +17,10 @@ Small presentation and launch helpers shared by the game and viewer.
   launch names and validation used by both CLI and URL parameters.
   The game's optional `view` inspection pose also accepts menu entry without
   `scene`; the rendering host applies it when the first world is framed.
+- `logging::LogArgs` (native only) defines `--log`, `--log-file` and `--log-dir`.
+  `plugin()` returns the Bevy `LogPlugin` with a console layer and a daily rotating
+  file layer under `cyrus-config/logs`, each with its own filter; `announce()` logs
+  the startup facts and `log_panics()` routes panics into the log. See `docs/SETUP.md`.
 - `browser_source` reads the validated install/cache URLs from the shared bootstrap.
 - `register_cache` registers the shared `cache://` asset source before Bevy's
   `AssetPlugin` starts.

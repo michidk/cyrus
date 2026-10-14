@@ -151,6 +151,17 @@ fn handle(
         .collect();
     while let Ok(Pending { request, reply }) = rx.try_recv() {
         let id = request.id;
+        // Polling and per-step script commands arrive by the thousand; never log them.
+        if !matches!(
+            request.cmd,
+            Command::Ping
+                | Command::State
+                | Command::Scripts { .. }
+                | Command::BindScriptAnimation { .. }
+                | Command::StepScript { .. }
+        ) {
+            debug!("control #{id}: {:?}", request.cmd);
+        }
         let result = match request.cmd {
             Command::Ping => Ok(json!("pong")),
             Command::Cheat { name, value } => cheats.execute(&name, value)
@@ -492,7 +503,10 @@ fn handle(
         };
         let _ = reply.send(match result {
             Ok(v) => Response::ok(id, v),
-            Err(e) => Response::err(id, e),
+            Err(e) => {
+                debug!("control #{id}: rejected: {e}");
+                Response::err(id, e)
+            }
         });
     }
 }

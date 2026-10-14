@@ -44,6 +44,10 @@ fn main() {
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
                 ..default()
+            })
+            .set(bevy::log::LogPlugin {
+                filter: cyrus_app::log_filter(),
+                ..default()
             }),
     )
     .insert_resource(Fidelity {

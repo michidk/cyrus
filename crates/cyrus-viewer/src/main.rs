@@ -24,9 +24,15 @@ fn main() -> anyhow::Result<()> {
         source: cyrus_app::launch::InstallArgs,
         #[command(flatten)]
         selection: cyrus_app::launch::ViewerOptions,
+        #[command(flatten)]
+        log: cyrus_app::logging::LogArgs,
     }
     let args = Args::parse();
-    let mut app = application()?;
+    let mut app = App::new();
+    let logging = args.log.plugin(&mut app, "cyrus-viewer");
+    let mut app = application(app, logging)?;
+    cyrus_app::logging::log_panics();
+    args.log.announce("cyrus-viewer");
     args.source.select(&mut app);
     app.insert_resource(args.selection)
         .add_systems(Update, loading::initial_selection.after(loading::poll));
@@ -37,11 +43,14 @@ fn main() -> anyhow::Result<()> {
 fn main() {
     cyrus_app::launch::from_query::<cyrus_app::launch::ViewerOptions>()
         .expect("validated viewer URL options");
-    application().expect("viewer setup").run();
+    let log = bevy::log::LogPlugin {
+        filter: cyrus_app::log_filter(),
+        ..default()
+    };
+    application(App::new(), log).expect("viewer setup").run();
 }
 
-fn application() -> anyhow::Result<App> {
-    let mut app = App::new();
+fn application(mut app: App, log: bevy::log::LogPlugin) -> anyhow::Result<App> {
     #[cfg(not(target_arch = "wasm32"))]
     cyrus_app::register_cache(&mut app)?;
     #[cfg(target_arch = "wasm32")]
@@ -52,7 +61,8 @@ fn application() -> anyhow::Result<App> {
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
                 ..default()
-            }),
+            })
+            .set(log),
     )
     .insert_resource(ClearColor(Color::srgb(0.055, 0.073, 0.095)))
     .add_plugins((

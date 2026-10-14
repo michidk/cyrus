@@ -5,6 +5,8 @@ pub use bevy_egui;
 pub mod launch;
 pub mod loading;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod logging;
+#[cfg(not(target_arch = "wasm32"))]
 mod native_install;
 /// Register before AssetPlugin; native paths are independent of the executable location.
 pub fn register_cache(app: &mut App) -> anyhow::Result<()> {
@@ -19,6 +21,17 @@ pub fn register_cache(app: &mut App) -> anyhow::Result<()> {
     let path = browser_source("cyrus-cache")?;
     app.register_asset_source("cache", AssetSourceBuilder::platform_default(&path, None));
     Ok(())
+}
+
+/// Bevy's default log filter plus dependency messages that are expected here and numerous:
+/// the renderer warns about every empty mesh, which the exported worlds contain by the
+/// thousand, and the preservation importer reports each section of each file at info level.
+/// `RUST_LOG` can still turn either back on.
+pub fn log_filter() -> String {
+    format!(
+        "{},bevy_render::mesh::allocator=error,rgpre=warn",
+        bevy::log::DEFAULT_FILTER
+    )
 }
 
 pub fn window(title: &str) -> WindowPlugin {
