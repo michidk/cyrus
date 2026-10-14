@@ -117,6 +117,12 @@ from departed worlds do not trigger new GPU uploads.
 
 The Lighting fidelity area defaults to Faithful. Modern lighting is a placeholder
 that reuses Faithful results. Existing Water and Fog switches remain independent.
+**Verified:** Faithful terrain maps the export's logical tile corners to the
+original [inset texture range](https://github.com/michidk/redguard-preservation/blob/aa70734/docs/engine/terrain-lighting.md#texture-coordinates-and-setup)
+before clipping. U spans `1/256` to `254/256`. The export's vertically flipped
+images require V endpoints `2/256` and `255/256`. Modern lighting shares this
+terrain preparation.
+
 **Unknown:** full pixel parity and remaining texture-filtering and combiner precision.
 **Verified:** preservation's [dirty-normal admission rules](https://github.com/michidk/redguard-preservation/blob/ebd7d9e/docs/engine/water.md#dirty-normals-and-retained-lighting)
 explain both retained edge normals in the captured original water update.

@@ -30,6 +30,13 @@ impl Source {
         if uv.len() != vertex_count || uv.iter().flatten().any(|v| !v.is_finite()) {
             return Err("invalid terrain texture coordinates");
         }
+        // Export UVs identify tile corners in vertically flipped images.
+        // Convert Glide's inset range before clipping, including the inverted V endpoints.
+        // https://github.com/michidk/redguard-preservation/blob/aa70734/docs/engine/terrain-lighting.md#texture-coordinates-and-setup
+        let uv = uv
+            .into_iter()
+            .map(|[u, v]| [(1.0 + u * 253.0) / 256.0, (2.0 + v * 253.0) / 256.0])
+            .collect();
         let indices: Vec<_> = mesh
             .indices()
             .map(|indices| indices.iter().collect())
@@ -238,7 +245,10 @@ mod tests {
             RenderAssetUsages::MAIN_WORLD,
         )
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, local.to_vec())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0., 0.]; 4])
+        .with_inserted_attribute(
+            Mesh::ATTRIBUTE_UV_0,
+            vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]],
+        )
         .with_inserted_indices(Indices::U32(vec![0, 3, 1, 3, 0, 2]));
         let mut source = Source::new(&mesh, 4).unwrap();
         let mut preparation = Preparation::default();
@@ -277,6 +287,18 @@ mod tests {
         assert!(!check(-10., 1000., [0, 0], [640., 480.]).texture_admitted);
         assert!(!check(10., 50., [0, 0], [640., 480.]).texture_admitted);
         assert!(!check(10., 1000., [100, 100], [640., 480.]).texture_admitted);
+        assert!(check(10., 1000., [0, 0], [640., 480.]).visible);
+        assert_eq!(
+            source.prepared.attribute(Mesh::ATTRIBUTE_UV_0),
+            Some(&VertexAttributeValues::Float32x2(vec![
+                [0.00390625, 0.0078125],
+                [0.9921875, 0.99609375],
+                [0.9921875, 0.0078125],
+                [0.9921875, 0.99609375],
+                [0.00390625, 0.0078125],
+                [0.00390625, 0.99609375],
+            ]))
+        );
     }
 
     #[test]
