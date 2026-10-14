@@ -15,7 +15,9 @@ import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
 import package::model_lights::{apply_local_lights, model, compositing};
-import package::sampling::sample_encoded;
+import package::sampling::{sample_encoded, matches_chroma};
+import constants::MATERIAL_BIND_GROUP;
+@group(MATERIAL_BIND_GROUP) @binding(104) var<uniform> chroma_key: vec4<f32>;
 
 
 struct ModelVertex {
@@ -71,10 +73,18 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
 @if(VERTEX_OUTPUT_INSTANCE_INDEX)
     surface.instance_index = in.instance_index;
     let input = pbr_input_from_standard_material(surface, is_front);
-    let base = alpha_discard(input.material.flags, input.material.alpha_cutoff, input.material.base_color);
+    var base = input.material.base_color;
+    if model.parameters.w < 0.0 {
+        base = alpha_discard(input.material.flags, input.material.alpha_cutoff, base);
+    } else {
+        base.a = 1.0;
+    }
     var texture_rgb = linear_to_srgb(base.rgb);
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
         texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u);
+    }
+    if chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, chroma_key.rgb) {
+        discard;
     }
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
     let color = srgb_to_linear(texture_rgb * (in.color * in.position.w));

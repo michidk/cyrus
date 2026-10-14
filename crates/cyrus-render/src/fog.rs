@@ -136,6 +136,8 @@ struct ModelExtension {
     lighting: Vec4,
     #[uniform(103)]
     compositing: Vec4,
+    #[uniform(104)]
+    chroma_key: Vec4,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -236,6 +238,7 @@ fn apply_scene_fog(
             &MeshMaterial3d<StandardMaterial>,
             &mut Mesh3d,
             Option<&bevy::gltf::GltfExtras>,
+            Option<&bevy::gltf::GltfMaterialExtras>,
         ),
         Without<RejectedLighting>,
     >,
@@ -334,7 +337,7 @@ fn apply_scene_fog(
         }
     }
     *previous = Some((request.0.id(), extension.clone()));
-    for (entity, handle, mut mesh, extras) in &mut entities {
+    for (entity, handle, mut mesh, extras, material_extras) in &mut entities {
         let Some(base) = materials.get(&handle.0) else {
             continue;
         };
@@ -376,6 +379,7 @@ fn apply_scene_fog(
             });
         let mut radius = 0;
         let mut attributes = None;
+        let mut chroma_key = Vec4::ZERO;
         if !terrain {
             let Some(original) = meshes.get(&mesh.0) else {
                 continue;
@@ -395,7 +399,16 @@ fn apply_scene_fog(
                     )?;
                     if flats.contains(entity) {
                         // The material sampling word uses point/chroma bits shared with ROB flags.
-                        attributes = Some(2);
+                        attributes = Some(3);
+                    }
+                    if attributes.is_some_and(|flags| flags & 2 != 0)
+                        && base.base_color_texture.is_some()
+                        && let Some(key) = crate::sampling::chroma_key(
+                            material_extras.map(|extras| extras.value.as_str()),
+                            &extras.value,
+                        )?
+                    {
+                        chroma_key = Vec3::from_array(key.map(f32::from)).extend(1.0);
                     }
                     crate::lighting::model_mesh(
                         original,
@@ -451,13 +464,14 @@ fn apply_scene_fog(
                 if flat.is_some() {
                     base.specular_transmission = 1.0;
                 }
-                // shortcut: chroma-enabled meshes retain alpha masking until texture-key provenance is recovered.
+                // Known opaque paths bypass the generic material alpha mask.
                 if attributes.is_some_and(|flags| flags & 2 == 0) {
                     base.alpha_mode = AlphaMode::Opaque;
                 }
                 fog_materials.add(SceneMaterial {
                     base,
                     extension: ModelExtension {
+                        chroma_key,
                         fog: extension,
                         compositing: Vec4::new(
                             flat.map_or(-1.0, |flat| f32::from(flat.alpha)),

@@ -18,3 +18,8 @@ fn sample_encoded(uv: vec2<f32>, point: bool) -> vec3<f32> {
     return (top + floor((bottom - top) * fraction.y)) / 255.0;
 }
 
+
+// The original compares filtered encoded RGB before vertex-light modulation.
+fn matches_chroma(rgb: vec3<f32>, key: vec3<f32>) -> bool {
+    return all(round(rgb * 255.0) == key);
+}

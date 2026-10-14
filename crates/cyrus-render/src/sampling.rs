@@ -1,4 +1,4 @@
-//! Selected ROB sampling attributes from preservation's positioned-model GLTF contract.
+//! ROB sampling attributes and effective palette keys from preservation's GLTF contract.
 
 pub(super) fn attributes<'a>(extras: impl Iterator<Item = &'a str>) -> anyhow::Result<Option<u8>> {
     for value in extras {
@@ -25,9 +25,75 @@ pub(super) fn attributes<'a>(extras: impl Iterator<Item = &'a str>) -> anyhow::R
     anyhow::bail!("missing model render metadata")
 }
 
+/// Effective palette-zero bytes from preservation's textured-material export contract.
+pub(super) fn chroma_key(extras: Option<&str>, geometry: &str) -> anyhow::Result<Option<[u8; 3]>> {
+    #[derive(serde::Deserialize)]
+    struct Lighting {
+        solid_rgb: Option<[u8; 3]>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Geometry {
+        rgpre_lighting: Lighting,
+    }
+    if serde_json::from_str::<Geometry>(geometry)?
+        .rgpre_lighting
+        .solid_rgb
+        .is_some()
+    {
+        return Ok(None);
+    }
+    let extras = extras.ok_or_else(|| anyhow::anyhow!("missing texture-key metadata"))?;
+
+    #[derive(serde::Deserialize)]
+    struct Texture {
+        version: u32,
+        chroma_key_rgb: [u8; 3],
+    }
+    #[derive(serde::Deserialize)]
+    struct Extras {
+        rgpre_texture: Texture,
+    }
+    let texture = serde_json::from_str::<Extras>(extras)?.rgpre_texture;
+    anyhow::ensure!(
+        texture.version == 1,
+        "unsupported texture-key metadata version"
+    );
+    Ok(Some(texture.chroma_key_rgb))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn texture_keys_preserve_all_palette_bytes_and_reject_missing_provenance() {
+        assert_eq!(
+            chroma_key(
+                Some(r#"{"rgpre_texture":{"version":1,"chroma_key_rgb":[17,128,255]}}"#),
+                r#"{"rgpre_lighting":{"solid_rgb":null}}"#
+            )
+            .unwrap(),
+            Some([17, 128, 255])
+        );
+        for value in [
+            r#"{}"#,
+            r#"{"rgpre_texture":{"version":2,"chroma_key_rgb":[0,0,0]}}"#,
+            r#"{"rgpre_texture":{"version":1,"chroma_key_rgb":[0,0]}}"#,
+            r#"{"rgpre_texture":{"version":1,"chroma_key_rgb":[0,0,256]}}"#,
+        ] {
+            assert!(chroma_key(Some(value), r#"{"rgpre_lighting":{"solid_rgb":null}}"#).is_err());
+        }
+    }
+
+    #[test]
+    fn authored_solid_faces_do_not_require_texture_keys_for_palette_texture_exports() {
+        assert_eq!(
+            chroma_key(None, r#"{"rgpre_lighting":{"solid_rgb":[0,0,0]}}"#).unwrap(),
+            None
+        );
+        assert!(chroma_key(None, r#"{"rgpre_lighting":{"solid_rgb":null}}"#).is_err());
+        assert!(chroma_key(None, r#"{"rgpre_lighting":{"solid_rgb":[0]}}"#).is_err());
+    }
 
     #[test]
     fn node_attributes_distinguish_absent_provenance_from_zero_flags() {

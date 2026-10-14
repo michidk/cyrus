@@ -73,9 +73,14 @@ attributes; non-chroma models are opaque. Instances sharing a source material
 retain separate flag settings. Re-export worlds for required version-1
 `rgpre_render` node metadata. Standalone and generated models explicitly retain
 absent ROB provenance and their previous sampling. **Unknown:** standalone-model
-sampling defaults and texture-specific key conversion. Placed flats select point
-sampling. Chroma-enabled models
-still use alpha masking, so filtered chroma rejection remains unsupported.
+sampling defaults. Placed flats select point sampling.
+**Verified:** known ROB and placed-flat paths compare filtered encoded RGB with
+the effective palette-zero RGB before vertex lighting, following preservation's
+[texture-key contract](https://github.com/michidk/redguard-preservation/commit/7d7c0f38a7fc30dcfd93c4f045df581673e42902).
+They do not use interpolated texture alpha as a cutoff. Solid-color faces bypass
+the texture-key test. Required version-1 `rgpre_texture` material metadata retains
+the selected key; missing or malformed metadata rejects the affected mesh with
+re-export instructions. Standalone/generated model defaults remain **Unknown**.
 
 **Verified:** model ambient/directional shading follows preservation's
 [model-lighting rules](https://github.com/michidk/redguard-preservation/blob/feat/model-lighting/docs/engine/model-lighting.md).

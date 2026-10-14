@@ -473,6 +473,7 @@ mod tests {
 
     fn material() -> ModelExtension {
         ModelExtension {
+            chroma_key: Vec4::ZERO,
             fog: super::super::FogExtension {
                 ambient: Vec4::ZERO,
                 directional: Vec4::ZERO,
