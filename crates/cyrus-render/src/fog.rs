@@ -569,7 +569,7 @@ mod tests {
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
         let mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
         let extras = bevy::gltf::GltfExtras {
-            value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":4,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
+            value: r#"{"rgpre_render":{"version":1,"rob_attributes":null},"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}}"#.into(),
         };
         let first = app
             .world_mut()

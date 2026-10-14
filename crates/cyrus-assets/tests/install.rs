@@ -188,7 +188,7 @@ fn world_exports_include_declared_terrain_and_textures() {
                 .unwrap()
             {
                 let lighting = &primitive["extras"]["rgpre_lighting"];
-                assert_eq!(lighting["version"], 4, "{name}: {}", node["name"]);
+                assert_eq!(lighting["version"], 5, "{name}: {}", node["name"]);
                 let position = primitive["attributes"]["POSITION"].as_u64().unwrap() as usize;
                 assert_eq!(
                     lighting["vertices"].as_array().unwrap().len() as u64,
