@@ -107,7 +107,9 @@ the original follow-camera target is implemented.
 
 Terrain prepares private triangles after wave updates and camera projection.
 It clips camera-space position, RGB and UV together, snaps projected vertices,
-and sends each fan triangle's fixed color coefficients to the shared shader.
+and sends each fan triangle's fixed color and texture coefficients to the shared
+shader. Original texture coordinates survive clipping before perspective weighting;
+the shader evaluates signed fixed-point planes using pairs of 32-bit words.
 Camera movement, viewport changes and clipping-range edits rebuild these meshes;
 shared source assets remain unchanged. The encoded texture combiner consumes
 integer lighting channels before scene fog, following preservation's
@@ -274,4 +276,9 @@ remains unverified.
 weights after the export reverses image rows, following the published
 [filter orientation rule](https://github.com/michidk/redguard-preservation/commit/e4408c6a886c2336cd960ff2a4bc5eb4f6200098).
 The production sampler matches compiled-original interpolation on synthetic
-wrapped texture samples. Fixed-point perspective setup remains incomplete.
+wrapped texture samples. Prepared terrain uses the published
+[fixed-plane and reciprocal contract](https://github.com/michidk/redguard-preservation/blob/837f22c/docs/engine/terrain-lighting.md)
+and selects four-bit texture samples in integers before float normalization and
+row reversal. Modern water adds its existing ripples after this selection.
+Original-instruction comparisons cover CPU setup; Vulkan checks cover the
+production shader arithmetic. Full pixel parity remains unverified.

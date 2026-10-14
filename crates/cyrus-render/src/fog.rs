@@ -79,6 +79,12 @@ impl MaterialExtension for TerrainExtension {
                 crate::terrain::RED.at_shader_location(9),
                 crate::terrain::GREEN.at_shader_location(10),
                 crate::terrain::BLUE.at_shader_location(11),
+                // Prepared terrain removes tangents, leaving location 4 available.
+                crate::terrain::TEXTURE[0].at_shader_location(4),
+                crate::terrain::TEXTURE[1].at_shader_location(12),
+                crate::terrain::TEXTURE[2].at_shader_location(13),
+                crate::terrain::TEXTURE[3].at_shader_location(14),
+                crate::terrain::TEXTURE[4].at_shader_location(15),
             ])?;
             descriptor.vertex.buffers[0]
                 .attributes
@@ -138,6 +144,7 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "scene_shading.wesl");
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
+        load_shader_library!(app, "terrain_texture.wesl");
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()

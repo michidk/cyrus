@@ -10,6 +10,8 @@ import bevy_render::color_operations::srgb_to_linear;
 import package::scene_shading::{fog, scene_color};
 import package::glide_fog::blend_fog;
 import package::sampling::sample_encoded;
+import package::terrain_texture::terrain_texture_uv;
+import bevy_pbr::render::pbr_bindings::base_color_texture;
 
 struct TerrainVertex {
     @builtin(position) position: vec4<f32>,
@@ -27,6 +29,16 @@ struct TerrainVertex {
     @location(8) @interpolate(flat) blue: vec4<i32>,
 @if(PREPARED_TERRAIN)
     @location(9) depth: f32,
+@if(PREPARED_TERRAIN)
+    @location(10) @interpolate(flat) texture0: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(11) @interpolate(flat) texture1: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(12) @interpolate(flat) texture2: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(13) @interpolate(flat) texture3: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(14) @interpolate(flat) texture4: vec4<u32>,
 };
 
 @vertex
@@ -39,6 +51,16 @@ fn vertex(raw: Vertex,
     @location(10) green: vec4<i32>,
 @if(PREPARED_TERRAIN)
     @location(11) blue: vec4<i32>,
+@if(PREPARED_TERRAIN)
+    @location(4) texture0: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(12) texture1: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(13) texture2: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(14) texture3: vec4<u32>,
+@if(PREPARED_TERRAIN)
+    @location(15) texture4: vec4<u32>,
 ) -> TerrainVertex {
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
@@ -53,6 +75,11 @@ fn vertex(raw: Vertex,
     out.green = green;
     out.blue = blue;
     out.depth = projected.z * 20.0;
+    out.texture0 = texture0;
+    out.texture1 = texture1;
+    out.texture2 = texture2;
+    out.texture3 = texture3;
+    out.texture4 = texture4;
 }
     out.normal = mesh_functions::mesh_normal_local_to_world(vertex.normal, raw.instance_index);
     out.uv = vertex.uv;
@@ -85,6 +112,10 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     surface.world_position = in.world_position;
     surface.world_normal = in.normal;
     surface.uv = in.uv;
+@if(PREPARED_TERRAIN) {
+    let pixel = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
+    surface.uv = terrain_texture_uv(in.texture0, in.texture1, in.texture2, in.texture3, in.texture4, pixel, textureDimensions(base_color_texture));
+}
 @if(VERTEX_COLORS)
     surface.color = vec4(1.0);
 @if(VERTEX_OUTPUT_INSTANCE_INDEX)

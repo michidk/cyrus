@@ -15,6 +15,15 @@ pub(super) const GREEN: MeshVertexAttribute =
 pub(super) const BLUE: MeshVertexAttribute =
     MeshVertexAttribute::new("Terrain_Blue", 83004, VertexFormat::Sint32x4);
 
+/// Packed low/high words of nine signed texture-plane coefficients.
+pub(super) const TEXTURE: [MeshVertexAttribute; 5] = [
+    MeshVertexAttribute::new("Terrain_Texture0", 83005, VertexFormat::Uint32x4),
+    MeshVertexAttribute::new("Terrain_Texture1", 83006, VertexFormat::Uint32x4),
+    MeshVertexAttribute::new("Terrain_Texture2", 83007, VertexFormat::Uint32x4),
+    MeshVertexAttribute::new("Terrain_Texture3", 83008, VertexFormat::Uint32x4),
+    MeshVertexAttribute::new("Terrain_Texture4", 83009, VertexFormat::Uint32x4),
+];
+
 pub(super) struct Source {
     pub prepared: Mesh,
     uv: Vec<[f32; 2]>,
@@ -31,11 +40,11 @@ impl Source {
             return Err("invalid terrain texture coordinates");
         }
         // Export UVs identify tile corners in vertically flipped images.
-        // Convert Glide's inset range before clipping, including the inverted V endpoints.
+        // Keep original coordinates through clipping and fixed-point texture setup.
         // https://github.com/michidk/redguard-preservation/blob/aa70734/docs/engine/terrain-lighting.md#texture-coordinates-and-setup
         let uv = uv
             .into_iter()
-            .map(|[u, v]| [(1.0 + u * 253.0) / 256.0, (2.0 + v * 253.0) / 256.0])
+            .map(|[u, v]| [1.0 + u * 253.0, 254.0 - v * 253.0])
             .collect();
         let indices: Vec<_> = mesh
             .indices()
@@ -157,6 +166,13 @@ pub(super) fn update(
     let mut red = take4i(mesh, RED);
     let mut green = take4i(mesh, GREEN);
     let mut blue = take4i(mesh, BLUE);
+    let mut texture = TEXTURE.map(|attribute| match mesh.remove_attribute(attribute) {
+        Some(VertexAttributeValues::Uint32x4(mut values)) => {
+            values.clear();
+            values
+        }
+        _ => Vec::new(),
+    });
     for &triangle in &source.triangles {
         if !triangle
             .iter()
@@ -189,10 +205,23 @@ pub(super) fn update(
         }
         preparation.triangles(vertices, view.clipping, view.viewport, |triangle| {
             let [r, g, b] = triangle.planes;
+            let mut words = [0; 20];
+            for (value, pair) in triangle
+                .texture
+                .into_iter()
+                .flatten()
+                .zip(words.as_chunks_mut::<2>().0)
+            {
+                pair.copy_from_slice(&[value as u32, (value >> 32) as u32]);
+            }
             for vertex in triangle.vertices {
                 positions.push(vertex.vertex.local);
                 normals.push(vertex.vertex.normal);
-                uv.push(vertex.vertex.uv);
+                let [s, t] = vertex.vertex.uv;
+                uv.push([s / 256.0, 1.0 - t / 256.0]);
+                for (values, chunk) in texture.iter_mut().zip(words.as_chunks::<4>().0) {
+                    values.push(*chunk);
+                }
                 water.push([vertex.vertex.water, 0.0]);
                 projected.push([
                     vertex.screen[0],
@@ -218,6 +247,9 @@ pub(super) fn update(
     mesh.insert_attribute(RED, red);
     mesh.insert_attribute(GREEN, green);
     mesh.insert_attribute(BLUE, blue);
+    for (attribute, values) in TEXTURE.into_iter().zip(texture) {
+        mesh.insert_attribute(attribute, values);
+    }
     Prepared {
         visible,
         texture_admitted,

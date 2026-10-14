@@ -1,6 +1,6 @@
-//! Camera-space clipping and fixed terrain color planes from preservation's Glide contract.
+//! Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
 //!
-//! See <https://github.com/michidk/redguard-preservation/blob/449ba2a/docs/engine/terrain-lighting.md>.
+//! See <https://github.com/michidk/redguard-preservation/blob/837f22c/docs/engine/terrain-lighting.md>.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Vertex {
@@ -8,6 +8,7 @@ pub(crate) struct Vertex {
     pub camera: [f32; 3],
     /// Encoded channels in 0..=255, before fixed-point setup.
     pub rgb: [f32; 3],
+    /// Original Glide coordinates, before perspective weighting or export row reversal.
     pub uv: [f32; 2],
     pub local: [f32; 3],
     pub normal: [f32; 3],
@@ -26,6 +27,8 @@ pub(super) struct Triangle {
     pub vertices: [Projected; 3],
     /// Each channel stores the adjusted start, X gradient, and Y gradient.
     pub planes: [[i32; 3]; 3],
+    /// S/W, T/W and W: adjusted start, X gradient, Y gradient, with 32 fractional bits.
+    pub texture: [[i64; 3]; 3],
     pub anchor: [i32; 2],
 }
 
@@ -140,12 +143,8 @@ impl Preparation {
         let mut b = project(self.polygon[1], viewport);
         for &vertex in &self.polygon[2..] {
             let c = project(vertex, viewport);
-            if let Some((planes, anchor)) = color_planes([a, b, c]) {
-                emit(Triangle {
-                    vertices: [a, b, c],
-                    planes,
-                    anchor,
-                });
+            if let Some(triangle) = prepare_triangle([a, b, c]) {
+                emit(triangle);
             }
             b = c;
         }
@@ -172,7 +171,7 @@ fn signed24(value: f32) -> i32 {
     ((integer as i32) << 8) >> 8
 }
 
-fn color_planes(vertices: [Projected; 3]) -> Option<([[i32; 3]; 3], [i32; 2])> {
+fn prepare_triangle(vertices: [Projected; 3]) -> Option<Triangle> {
     let [a, b, c] = vertices.map(|v| v.screen[1]);
     let order = if a < b {
         if b <= c {
@@ -199,16 +198,37 @@ fn color_planes(vertices: [Projected; 3]) -> Option<([[i32; 3]; 3], [i32; 2])> {
     let ab = ab.map(|v| f64::from((v / determinant) as f32));
     let bc = bc.map(|v| f64::from((v / determinant) as f32));
     let anchor = a.screen.map(|v| ((v * 16.0) as i32 as i16) as i32);
+    let gradient = |values: [f32; 3]| {
+        let lab = f64::from(values[0]) - f64::from(values[1]);
+        let lbc = f64::from(values[1]) - f64::from(values[2]);
+        [
+            values[0],
+            (lab * bc[1] - lbc * ab[1]) as f32,
+            (lbc * ab[0] - lab * bc[0]) as f32,
+        ]
+    };
+    let subpixel = anchor.map(|v| i64::from(8 - (v & 15)));
     let planes = std::array::from_fn(|i| {
-        let lab = f64::from(a.vertex.rgb[i]) - f64::from(b.vertex.rgb[i]);
-        let lbc = f64::from(b.vertex.rgb[i]) - f64::from(c.vertex.rgb[i]);
-        let dx = signed24((lab * bc[1] - lbc * ab[1]) as f32);
-        let dy = signed24((lbc * ab[0] - lab * bc[0]) as f32);
-        let start = signed24(a.vertex.rgb[i]);
-        let subpixel = ((8 - (anchor[0] & 15)) * dx + (8 - (anchor[1] & 15)) * dy) >> 4;
-        [start + subpixel, dx, dy]
+        let [start, dx, dy] = gradient([a, b, c].map(|v| v.vertex.rgb[i])).map(signed24);
+        let adjustment = (subpixel[0] * i64::from(dx) + subpixel[1] * i64::from(dy)) >> 4;
+        [start + adjustment as i32, dx, dy]
     });
-    Some((planes, anchor.map(|v| v >> 4)))
+    let attributes = [a, b, c].map(|v| {
+        let w = 1.0 / v.vertex.camera[2];
+        [v.vertex.uv[0] * w, v.vertex.uv[1] * w, w]
+    });
+    let texture = std::array::from_fn(|i| {
+        let [start, dx, dy] = gradient(attributes.map(|v| v[i]))
+            .map(|v| (f64::from(v) * 4294967296.0).trunc() as i64);
+        let adjustment = (subpixel[0] * dx + subpixel[1] * dy) >> 4;
+        [start + adjustment, dx, dy]
+    });
+    Some(Triangle {
+        vertices,
+        planes,
+        texture,
+        anchor: anchor.map(|v| v >> 4),
+    })
 }
 
 #[cfg(test)]
@@ -264,14 +284,42 @@ mod tests {
                 Projected {
                     screen,
                     vertex: Vertex {
+                        camera: [0.0, 0.0, 8.0],
                         rgb: [light; 3],
                         ..Default::default()
                     },
                 }
             });
-        let (planes, anchor) = color_planes(vertices).unwrap();
-        assert_eq!(anchor, [4, 0]);
-        assert_eq!(planes, [[1_240_576, 261_120, 131_072]; 3]);
+        let triangle = prepare_triangle(vertices).unwrap();
+        assert_eq!(triangle.anchor, [4, 0]);
+        assert_eq!(triangle.planes, [[1_240_576, 261_120, 131_072]; 3]);
+    }
+
+    #[test]
+    fn texture_planes_keep_original_units_and_adjust_the_top_edge_anchor() {
+        let vertices = [
+            ([-8.0, -8.0, 8.0], [1.0, 1.0]),
+            ([0.0, -8.0, 8.0], [254.0, 1.0]),
+            ([-8.0, 0.0, 8.0], [1.0, 254.0]),
+        ]
+        .map(|(camera, uv)| Vertex {
+            camera,
+            uv,
+            ..Default::default()
+        });
+        let mut triangles = Vec::new();
+        Preparation::default()
+            .triangles(vertices, [7.0, 3800.0], [8.0, 8.0], |t| triangles.push(t));
+        assert_eq!(triangles.len(), 1);
+        assert_eq!(triangles[0].anchor, [4, 0]);
+        assert_eq!(
+            triangles[0].texture,
+            [
+                [153_343_754_240, 33_957_085_184, 0],
+                [17_515_413_504, 0, 33_957_085_184],
+                [536_870_912, 0, 0],
+            ]
+        );
     }
 
     #[test]

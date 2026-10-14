@@ -161,7 +161,7 @@ module where it is defined and regenerate.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/terrain.rs` — Private terrain mesh preparation after camera projection and wave updates.
-- `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color planes from preservation's Glide contract.
+- `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
