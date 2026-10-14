@@ -48,7 +48,7 @@ platform boundaries. Audible parity requires a separate original-game comparison
 
 ## Surface-audio comparison
 
-`cargo run -p cyrus-audio --example surface_audio -- INSTALL PLAYER_CACHE RGM FIXTURE_JSON`
+`cargo run -p cyrus-audio --example surface_audio -- INSTALL PLAYER_CACHE RGM_OR_ANIMATION_CACHE FIXTURE_JSON`
 runs the production static ground query, CYRUS animation interpreter and mixer
 without a window or audio device. It reads the install and cache without writing
 them. CYRUS uses the player channel range. Supply a `.player` cache exported
@@ -73,10 +73,34 @@ surface, authored effect/rate offset for Play, newly started PCM target candidat
 and playback speed, plus remaining channels after cleanup. Target identification
 compares the actual mixer PCM with every installed bank entry. Identical samples
 remain ambiguous rather than selecting an arbitrary effect ID.
+For admitted grounded movement, pass a complete `.animations` cache from the same
+world instead of the RGM, and set the case's `grounded` field to true and `group`
+to zero. Optional `entry_ticks` supplies nominal ticks for player animation
+initialization, defaulting to zero. Each step also requires
+`movement: {"frame_scale": 256, "walk": true}`. Movement scale retains eight
+fractional bits and is independent of nominal `ticks`; `walk` admits forward
+movement. Supply measured inputs rather than deriving them from host durations.
+The first step supplies the starting position and heading. Every subsequent step
+must supply the exact position and heading left by the previous update; a mismatch
+reports the case and step instead of teleporting the player.
+
+Grounded cases initialize player animation, advance the ordinary animation stage,
+select candidates with the current model's installed radius, then run the public
+grounded movement and body/ground response. Reports include input and final pose,
+timing inputs, frame/group state and ordered cues tagged by emitting stage. Each
+cue retains its surface at that stage. This exposes the distinction between
+ordinary animation before support assignment and a forward request after it.
+Like the player runtime, these cues omit a position snapshot and use the final
+scene transform; `captured_position_q8` is null. The listener stays at the case's
+starting position. This tests PCM selection and requested rate, not original
+camera/listener placement, audible output or automatic keyboard admission.
+Dynamic support, airborne/weapon policy and remaining actor-update stages are
+outside the admitted grounded path.
+
 The omitted audio backend cannot finish samples naturally. Keep cases short enough
 to avoid filling the channel pool; remaining-channel counts test explicit cleanup,
 not sample-duration parity. Candidate selection uses the documented no-active-model
-radius, so this probe does not establish current-model candidate admission.
+radius in the default static probe. Grounded cases require current-model radii.
 
 `python3 dev/scripts/compare-surface-audio.py CYRUS_REPORT ORIGINAL_REPORT` compares
 version-1 reports, including ordered events and cleanup. The original report must
