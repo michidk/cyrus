@@ -25,6 +25,9 @@ palette RGB through preservation metadata; old lighting caches require re-export
 Positioned world nodes retain selected ROB render attributes separately from shared
 mesh geometry; standalone and generated models retain null ROB provenance. Re-export
 worlds for version-1 `rgpre_render` metadata. Native effects and exported audio are WAV bytes, never a Bevy audio handle.
+Placed MPSF nodes retain preservation's `rgpre_flat` source-image dimensions, scale
+and drawing attributes. Re-export worlds before using the renderer's flat geometry.
+Standalone player exports retain no flat metadata.
 Sound banks require validated SURFACE.INI rows from preservation PR #65. Shared
 preparation exports them for the browser, and native audio reads the same parser.
 Older sound-bank metadata must be re-exported; malformed row sizes are rejected.

@@ -152,7 +152,7 @@ impl Plugin for FogPlugin {
                 MaterialPlugin::<SceneMaterial>::default(),
                 MaterialPlugin::<TerrainMaterial>::default(),
             ))
-            .add_systems(Update, apply_scene_fog);
+            .add_systems(Update, apply_scene_fog.after(crate::flat::PrepareFlats));
     }
 }
 
@@ -189,9 +189,10 @@ fn apply_scene_fog(
         Query<&MeshMaterial3d<SceneMaterial>>,
         Query<&MeshMaterial3d<TerrainMaterial>>,
         Query<&bevy::gltf::GltfExtras>,
+        Query<&crate::flat::Flat>,
     ),
 ) {
-    let (mut previous, mut lights, mut images, scene_handles, terrain_handles, node_extras) =
+    let (mut previous, mut lights, mut images, scene_handles, terrain_handles, node_extras, flats) =
         runtime;
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
@@ -336,7 +337,16 @@ fn apply_scene_fog(
                     )
                 });
             match prepared {
-                Ok((private, bound)) => {
+                Ok((mut private, bound)) => {
+                    if let Some(brightness) =
+                        flats.get(entity).ok().and_then(|flat| flat.brightness)
+                        && let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) =
+                            private.attribute_mut(Mesh::ATTRIBUTE_UV_1)
+                    {
+                        for value in uv {
+                            value[0] = f32::from(brightness);
+                        }
+                    }
                     mesh.0 = meshes.add(private);
                     radius = bound;
                 }

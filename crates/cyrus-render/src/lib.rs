@@ -4,6 +4,7 @@ pub mod camera;
 pub mod console;
 mod console_environment;
 pub mod environment;
+mod flat;
 pub mod fog;
 pub mod hud;
 pub mod lighting;
@@ -20,6 +21,7 @@ use bevy::prelude::*;
 pub struct WorldRenderPlugin;
 impl Plugin for WorldRenderPlugin {
     fn build(&self, app: &mut App) {
+        flat::register(app);
         app.add_plugins((
             camera::CameraPlugin,
             console::ConsoleRenderPlugin,

@@ -67,8 +67,9 @@ Models with ROB provenance select point or encoded bilinear sampling from those
 attributes; non-chroma models are opaque. Instances sharing a source material
 retain separate flag settings. Re-export worlds for required version-1
 `rgpre_render` node metadata. Standalone and generated models explicitly retain
-absent ROB provenance and their previous sampling. **Unknown:** their original
-sampling defaults and texture-specific key conversion. Chroma-enabled models
+absent ROB provenance and their previous sampling. **Unknown:** standalone-model
+sampling defaults and texture-specific key conversion. Placed-flat point sampling
+is recovered but not integrated. Chroma-enabled models
 still use alpha masking, so filtered chroma rejection remains unsupported.
 
 **Verified:** model ambient/directional shading follows preservation's
@@ -104,6 +105,18 @@ actor lighting overrides and complete original-game pixel parity.
 static wall and table lighting. Color/filtering differences remain; the candle
 appearance also differs. The inspection camera supplies region selection until
 the original follow-camera target is implemented.
+
+Placed MPSF flats use private, centered camera-facing meshes sized from exported
+source-image dimensions and scale. **Verified:** preservation's
+[flat drawing and export contract](https://github.com/michidk/redguard-preservation/blob/2a44319/docs/engine/model-lighting.md)
+supplies the geometry and alpha-dependent face brightness. Re-export worlds for
+`rgpre_flat` metadata. Centered flags 1 and 3 and unreduced images up to 64 texels
+per dimension are supported. Larger-texture reduction remains unsupported.
+**Verified:** matched 640×480 BELLTOWR native/browser captures replace the oversized
+inverted triangles with a small upright flame at the original sample's location;
+the previous geometry fails the measured flame-region comparison. The flame is
+still brighter. Constant-alpha compositing, flat-specific sampling and animation
+admission remain unsupported; synchronized phase and full pixel parity are **Unknown**.
 
 Terrain prepares private triangles after wave updates and camera projection.
 It clips camera-space position, RGB and UV together, snaps projected vertices,

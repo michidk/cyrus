@@ -147,6 +147,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Installed paper and bitmap-font presentation for the shared console editor.
 - `src/console_environment.rs` — Original sky-plane and wave console controls, owned by world presentation.
 - `src/environment.rs` — Cached environment inputs shared by native and browser builds.
+- `src/flat.rs` — Camera-facing MPSF geometry from preservation's placed-flat export contract.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
