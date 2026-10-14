@@ -158,7 +158,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] New Game and temporary Load enter the installed starting world behind artwork and dependency readiness. Original-style world-entry progress text is implemented.
 - [x] Compare settled startup title, Options/Display layout and native loading-bar presentation with the original; verify native/browser startup skipping and subtitle persistence across restart/reload. Full pixel and timing parity remain **Unknown**.
 - [ ] Complete splash, camera clipping, book-transition timing, loading-artwork and audible comparisons.
-- [ ] Verify browser movie cancellation/download failures, seeking and A/V sync.
+- [x] Browser Movies acceptance. **Verified:** maintainer playtest. Keyframe seeking remains unsupported.
 - [ ] Complete New Game initialization, save slots/thumbnails, overwrite/delete, Continue/pause and progression movie unlocks as gameplay state becomes available.
 - [ ] Support mouse/joystick rebinding. **Verified:** the original book menu has no pointer label selection.
 
