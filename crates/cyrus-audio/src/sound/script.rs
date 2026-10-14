@@ -494,6 +494,40 @@ pub struct ScriptSounds<'w, 's> {
 }
 
 impl ScriptSounds<'_, '_> {
+    /// Advance the explicit game-owned maintenance timer before object updates.
+    /// The caller owns player-controller inhibition and world-entry resets.
+    /// A successful reset releases RTX payloads, clears dialogue, stops the shared
+    /// sample pool, then releases walk-node reservations. Partial failure is sticky
+    /// in `maintenance`; no reset flag may be supplied to scripts after an error.
+    pub fn maintain_sound(
+        &mut self,
+        maintenance: &mut cyrus_game::script::SoundMaintenance,
+        nominal_ticks: u32,
+        world: &mut cyrus_game::script::ScriptWorld,
+        cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
+    ) -> anyhow::Result<bool> {
+        use cyrus_game::script::SoundResetStage;
+        maintenance.advance(nominal_ticks, &mut |stage| {
+            match stage {
+                SoundResetStage::ReleaseRtx => cache.reset(self)?,
+                SoundResetStage::ClearDialogue => {
+                    anyhow::Context::context(
+                        world.globals_mut().dialogue_mut(),
+                        "sound reset: dialogue records unavailable",
+                    )?
+                    .reset_active_lines();
+                }
+                SoundResetStage::StopSamples => {
+                    self.frame.channels.stop_all(&mut self.frame.commands);
+                }
+                SoundResetStage::ClearNodeReservations => {
+                    world.clear_walk_node_reservations()?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     /// Start one loaded RTX voice on the shared sample allocator. The caller owns
     /// the cache entry and must remember the returned slot; text is not formatted
     /// or presented here. Missing dependencies fail before sample allocation.
@@ -958,6 +992,143 @@ impl cyrus_assets::sound::DialogueSamples for ScriptSounds<'_, '_> {
 mod dialogue_tests {
     use super::*;
     use cyrus_assets::sound::DialogueSamples;
+
+    fn maintenance_world(navigation: bool) -> cyrus_game::script::ScriptWorld {
+        use cyrus_assets::{animation::Animations, script::Scripts};
+        let mut scripts: Scripts = serde_json::from_value(serde_json::json!({
+            "version":11,"world":7,"content_id":"","actor_pool_capacity":32,
+            "player_distance_override":false,
+            "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,
+                "use_smooth_fps":true,"use_smooth_divisor":true},
+            "updates":{"task_system":true,"animation_system":true,
+                "disable_slaves":false,"disable_master_slaves":false},
+            "dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,
+                "max_text_width":500,"menu_traverse_delay":4,"print_text":true,
+                "use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},
+            "definition":{"functions":[{"name":"NullFunction","param_count":0,
+                "kind":"function"}],"flags":[],"references":[],"attributes":[]},
+            "actors":{},"unsupported":{},
+            "instances":[]
+        }))
+        .unwrap();
+        scripts.instances = (0..2)
+            .map(|index| cyrus_assets::script::Instance {
+                object_id: index,
+                actor: "SCRIPTLESS".into(),
+                object_type: 1,
+                active: 1,
+                model_name: String::new(),
+                model_mode: 0,
+                map_position: [0; 3],
+                angles: [0; 3],
+            })
+            .collect();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = cyrus_game::script::ScriptWorld::prepare(&scripts, 1).unwrap();
+        if navigation {
+            world
+                .prepare_navigation(&Animations {
+                    version: 2,
+                    world: 7,
+                    metadata: serde_json::json!({"script_content_id":scripts.content_id,
+                    "walk_node_maps":[{"node_count":1,"walk_nodes":[{}]}]}),
+                    sections: Default::default(),
+                    models: Default::default(),
+                    unsupported: Default::default(),
+                })
+                .unwrap();
+        }
+        let actor = world.id(0).unwrap();
+        world
+            .globals_mut()
+            .dialogue_mut()
+            .unwrap()
+            .begin_line(actor, "Retained text".into(), Some(0), 100)
+            .unwrap();
+        world
+    }
+
+    #[test]
+    fn maintenance_cleans_live_owners_only_after_the_threshold() {
+        let mut game = maintenance_world(true);
+        let first = game.id(0).unwrap();
+        let second = game.id(1).unwrap();
+        assert!(game.reserve_walk_node(first, 0, 0).unwrap());
+        assert!(!game.reserve_walk_node(second, 0, 0).unwrap());
+        let mut audio = World::new();
+        audio.init_resource::<SoundEffects>();
+        let mut channels = Channels::default();
+        channels.samples.start(0, None, None).unwrap().unwrap();
+        channels.samples.start(1, None, None).unwrap().unwrap();
+        audio.insert_resource(channels);
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let slot = cache
+            .load(*b"TEST", |_| {
+                Ok(super::super::dialogue::DialogueClip {
+                    entry: cyrus_assets::sound::DialogueEntry {
+                        version: 1,
+                        label: *b"TEST",
+                        text: "Cached text".into(),
+                        text_lifetime: 100,
+                        voice: None,
+                    },
+                    audio: None,
+                })
+            })
+            .unwrap();
+        let mut timer = cyrus_game::script::SoundMaintenance::default();
+        let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
+        {
+            let mut sounds = state.get_mut(&mut audio).unwrap();
+            assert!(
+                !sounds
+                    .maintain_sound(&mut timer, 1400, &mut game, &mut cache)
+                    .unwrap()
+            );
+            assert!(game.globals().dialogue().unwrap().waiting());
+            assert!(cache.payload(slot).is_some());
+            assert!(sounds.playing(0).unwrap() && sounds.playing(1).unwrap());
+            assert!(
+                sounds
+                    .maintain_sound(&mut timer, 1, &mut game, &mut cache)
+                    .unwrap()
+            );
+            assert!(!sounds.playing(0).unwrap() && !sounds.playing(1).unwrap());
+        }
+        assert!(!game.globals().dialogue().unwrap().waiting());
+        assert!(cache.payload(slot).is_none());
+        assert!(game.reserve_walk_node(second, 0, 0).unwrap());
+        assert!(timer.reset().unwrap());
+    }
+
+    #[test]
+    fn maintenance_missing_navigation_retains_partial_failure() {
+        let mut game = maintenance_world(false);
+        let mut audio = World::new();
+        audio.init_resource::<SoundEffects>();
+        let mut channels = Channels::default();
+        channels.samples.start(0, None, None).unwrap().unwrap();
+        audio.insert_resource(channels);
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let mut timer = cyrus_game::script::SoundMaintenance::default();
+        let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
+        let mut sounds = state.get_mut(&mut audio).unwrap();
+        let error = sounds
+            .maintain_sound(&mut timer, 1401, &mut game, &mut cache)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("ClearNodeReservations: walk-node navigation not prepared"));
+        assert!(!game.globals().dialogue().unwrap().waiting());
+        assert!(!sounds.playing(0).unwrap());
+        assert!(timer.reset().is_err());
+        assert_eq!(
+            sounds
+                .maintain_sound(&mut timer, 0, &mut game, &mut cache)
+                .unwrap_err()
+                .to_string(),
+            error
+        );
+    }
 
     #[derive(Resource, Default)]
     struct Observation {

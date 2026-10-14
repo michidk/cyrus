@@ -635,8 +635,9 @@ requests RTX release, dialogue cleanup, sample stopping and walk-node reservatio
 clearing in preservation order. It exposes a reset only after successful cleanup;
 a failed stage retains a contextual error and prevents another update from
 silently completing a partial reset. Menu, WaitOnDialog and lockout inputs remain
-explicit. Automatic scheduling has not installed the complete RTX/dialogue owners,
-so ambient tasks still report missing reset input.
+explicit. The audio adapter connects these cleanup stages to their live owners for explicit
+maintenance. Automatic scheduling still lacks player-controller inhibition
+admission, so ambient tasks report missing reset input.
 
 Navigation preparation retains cleared ownership bytes for every authored WDNM
 map and node. Logical actors acquire or release reservations using their runtime

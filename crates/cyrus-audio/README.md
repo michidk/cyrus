@@ -40,6 +40,12 @@ actor's remembered slot in cue order, including an absent slot. Restore neither
 stops newer samples nor restarts old ones. Subsequent animation cleanup uses the
 restored reusable slot. Snapshots expire with the bound actor.
 
+`ScriptSounds::maintain_sound` executes the explicit game-owned maintenance
+counter against the live RTX cache, dialogue records, shared sample pool and
+walk-node reservations in preservation order. Cleanup failure remains sticky in
+the counter. The caller owns player-controller inhibition and world-entry reset;
+this adapter does not enable automatic maintenance or controller admission.
+
 RTX preparation returns an explicit pending result while an entry or its audio
 dependency loads. RTXp retains its task without replacing dialogue records or
 allocating a sample, then starts the prepared line once. A cache hit reuses the
