@@ -42,7 +42,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | Rendering fidelity: residual START shading, model normals and sampling comparisons | In progress | Codex, Improve Rendering Fidelity, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
 | SOUP integration: dialogue speech/skip input, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
-| Surface sound comparison: listener gain and audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
+| Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
 Save/load and remaining HUD integration are unassigned. The save/load session ended with
 an unfinished prototype; it is not active work. Controller implementation remains
@@ -155,7 +155,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 - [x] Shared native/browser effects, music, animation cues and script sound ownership/cleanup with synchronous channel feedback.
 - [x] Installed SURFACE.INI remapping and supported ground-derived actor surfaces. **Verified:** [grounded surface-cue comparison](https://github.com/michidk/cyrus/commit/4f66c96). Complete player traversal and audible parity remain open.
-  **Verified:** native effect selection from captured surfaces, playback with rate offset 0 Hz and cleanup pass for known zero, sand, wood and rock; original live Stop and group-replacement Forget also pass. [Cleanup evidence](https://github.com/michidk/redguard-decomp/tree/b5752668b4fab7c8d8e9281ab4e83452ae2899ef/research/supplements/2026-10-14-surface-audio-acceptance). **Unknown:** measured wood listener gain and original waveform/duration parity.
+  **Verified:** native effect selection from captured surfaces, playback with rate offset 0 Hz and cleanup pass for known zero, sand, wood and rock; original live Stop and group-replacement Forget also pass. [Cleanup evidence](https://github.com/michidk/redguard-decomp/tree/b5752668b4fab7c8d8e9281ab4e83452ae2899ef/research/supplements/2026-10-14-surface-audio-acceptance). **Verified:** [measured wood listener gain](https://github.com/michidk/redguard-decomp/tree/713e336548bf1438e1c9b9666b1cb4ea8f7cb55c/research/supplements/2026-10-14-surface-audio-acceptance/measured-wood-listener) matches decoded output, with native sample selection and rate checks. **Unknown:** original waveform/duration parity.
 - [x] Installed HUD elements, activation prompts and persistent F8/Tab/F7 preferences. Placed-player heading/world and script-actor health/type feed the HUD.
 - [x] Native restart and browser reload acceptance for F8/Tab/F7 preferences, including restored candle visibility and subsequent toggle notices. **Verified:** native health-number placement matches the original at 640×480; both builds cycle starting items and display the installed gold count of 53. Complete pixel parity remains open.
 - [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
