@@ -5,7 +5,9 @@
 //! Entering a world whose `WORLD.INI` `world_redbook` is a positive track
 //! number starts that track unless it is already playing, so worlds sharing a
 //! track keep it running. A missing entry (or `-1`) keeps the current track;
-//! `0` or another negative value stops the music. The startup book menu
+//! `0` or another negative value stops the music. A different track stops the
+//! playing one when the world request begins, so the loading screen is silent,
+//! and the new track starts once the world is prepared. The startup book menu
 //! restarts track 2 from its beginning. A track repeats until another one
 //! starts. `SYSTEM.INI` `redbook` disables music.
 //!
@@ -18,7 +20,8 @@
 //! The Music slider writes `trunc(slider × 12.8)` through the same call, so
 //! slider 1–9 sets a level, 10–20 are ignored by the drive, and 0 pauses the
 //! CD until the slider leaves 0 (preservation `docs/engine/menu.md`). A movie
-//! pauses the CD and it resumes where it was (preservation `docs/engine/music.md`).
+//! pauses the CD from its request until it ends, and the CD then resumes where
+//! it was (preservation `docs/engine/music.md`).
 //!
 //! Unsupported: credits and won-game music (those screens do not exist yet).
 
@@ -31,7 +34,7 @@ use cyrus_assets::install::GameInstall;
 #[cfg(not(target_arch = "wasm32"))]
 use cyrus_assets::music::{cue_path, read_track, world_track};
 use cyrus_assets::sound::SoundSettings;
-use cyrus_world::lifecycle::CurrentScene;
+use cyrus_world::lifecycle::{CurrentScene, SceneRequest};
 
 pub struct MusicPlugin;
 
@@ -42,6 +45,7 @@ impl Plugin for MusicPlugin {
             .add_systems(
                 Update,
                 (
+                    stop_for_world_entry.run_if(resource_exists_and_changed::<SceneRequest>),
                     start_world_track.run_if(
                         resource_changed::<CurrentScene>
                             .or_else(resource_exists_and_changed::<SoundSettings>),
@@ -138,6 +142,44 @@ fn start_menu_track(
     }
 }
 
+fn stop_track(
+    commands: &mut Commands,
+    music: &mut Music,
+    playing: &Query<Entity, With<MusicPlayer>>,
+) {
+    for entity in playing {
+        commands.entity(entity).despawn();
+    }
+    music.track = None;
+    music.load = None;
+}
+
+/// A world load stops the CD when it begins, ahead of the loading screen, if the
+/// world names a different track; the new track starts once the world is prepared.
+fn stop_for_world_entry(
+    mut commands: Commands,
+    #[cfg(not(target_arch = "wasm32"))] install: Option<Res<GameInstall>>,
+    #[cfg(target_arch = "wasm32")] bank: Option<Res<cyrus_assets::sound::MusicSettings>>,
+    request: Res<SceneRequest>,
+    mut music: ResMut<Music>,
+    playing: Query<Entity, With<MusicPlayer>>,
+) {
+    #[cfg(not(target_arch = "wasm32"))]
+    let value = install.and_then(|install| world_track(&install, &request.0).ok());
+    // shortcut: the browser knows a world's track only by numeric WORLD.INI ID; other names stop at commit.
+    #[cfg(target_arch = "wasm32")]
+    let value = bank.and_then(|bank| {
+        let world = request.0.parse::<u32>().ok()?;
+        bank.world_tracks.get(&world).copied()
+    });
+    if let Some(value) = value
+        && value != -1
+        && u32::try_from(value).ok() != music.track
+    {
+        stop_track(&mut commands, &mut music, &playing);
+    }
+}
+
 fn start_world_track(
     mut commands: Commands,
     #[cfg(not(target_arch = "wasm32"))] install: Option<Res<GameInstall>>,
@@ -171,11 +213,7 @@ fn start_world_track(
     if value == -1 || u32::try_from(value).ok() == music.track {
         return;
     }
-    for entity in &playing {
-        commands.entity(entity).despawn();
-    }
-    music.track = None;
-    music.load = None;
+    stop_track(&mut commands, &mut music, &playing);
     if let Ok(track @ 1..) = u32::try_from(value) {
         #[cfg(not(target_arch = "wasm32"))]
         request(&install, &mut music, track);
@@ -281,6 +319,30 @@ mod tests {
         app.insert_resource(settings);
         app.update();
         assert_eq!(app.world().resource::<Music>().gain, 128.0 / 255.0);
+    }
+
+    #[test]
+    fn stopping_ends_the_playing_track_and_forgets_it() {
+        let mut app = App::new();
+        app.init_resource::<Music>().add_systems(
+            Update,
+            |mut commands: Commands,
+             mut music: ResMut<Music>,
+             playing: Query<Entity, With<MusicPlayer>>| {
+                stop_track(&mut commands, &mut music, &playing)
+            },
+        );
+        app.world_mut().resource_mut::<Music>().track = Some(2);
+        app.world_mut().spawn(MusicPlayer);
+        app.update();
+        assert_eq!(app.world().resource::<Music>().track, None);
+        assert!(
+            app.world_mut()
+                .query::<&MusicPlayer>()
+                .iter(app.world())
+                .next()
+                .is_none()
+        );
     }
 
     #[test]

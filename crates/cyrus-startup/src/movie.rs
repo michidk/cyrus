@@ -216,6 +216,8 @@ fn drive(
             MovieRequest::NewGame => 0,
         };
         playback.new_game = matches!(request, MovieRequest::NewGame);
+        // The CD pauses from the request, not the first frame, and resumes when the movie ends.
+        commands.spawn(CinematicAudio);
         menu.movie = Some(MovieStatus {
             name: String::new(),
             frame: 0,
@@ -268,6 +270,9 @@ fn drive(
                 playback.playing = Some(playing);
             }
             Err(error) => {
+                for entity in &audio_players {
+                    commands.entity(entity).despawn();
+                }
                 playback.new_game = false;
                 menu.movie = None;
                 menu.unavailable = Some(format!("Movie unavailable: {error:#}"));
@@ -443,10 +448,7 @@ fn drive(
                 ));
             }
             #[cfg(target_arch = "wasm32")]
-            {
-                playing.decoder.frames.get_mut().unwrap().start();
-                commands.spawn(CinematicAudio);
-            }
+            playing.decoder.frames.get_mut().unwrap().start();
             playing.audio_started = true;
         }
     }
