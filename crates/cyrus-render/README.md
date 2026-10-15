@@ -384,3 +384,13 @@ font_sel alpha for other records, and the fixed 640×480 subtitle band,
 without wrapping again or advancing lifetime. The sound subtitle preference
 controls visibility. Automatic dialogue update
 and source scheduling remain separate game/audio work.
+
+Ordinary prepared models retain source-pixel UVs through clipping and submit fixed
+texture planes. Their shader samples the original reduced allocation with
+palette-zero padding and wrapping, using preservation's
+[texture layout](https://github.com/michidk/redguard-preservation/commit/85afd92)
+and [address selection](https://github.com/michidk/redguard-preservation/commit/955cc9f)
+rules. Source images and shared animation frame handles remain unchanged.
+Re-export environments for texture reduction settings and model GLBs for
+`rgpre_texcoords` metadata. Missing metadata hides the affected model with a
+contextual error. Generated flats retain their separate coordinate path.

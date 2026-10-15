@@ -375,7 +375,13 @@ pub(crate) fn prepare(
         })
         .transpose()?;
     let (prelighting, object_lights) = model_lights(source, entry, &system)?;
+    let texture_scale = rgpre::import::system_ini::SystemIni::parse(&system)?
+        .glide
+        .text_scale
+        .unwrap_or([4, 2]);
+    rgpre::import::bsi::GlideTextureLayout::new([1, 1], Some(texture_scale))?;
     let environment = Environment {
+        texture_scale,
         prelighting,
         object_lights,
         model_lighting,

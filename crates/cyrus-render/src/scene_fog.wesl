@@ -15,9 +15,15 @@ import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
 import package::model_lights::{apply_local_lights, model, compositing};
-import package::sampling::{sample_encoded, matches_chroma, color_channel};
+import package::sampling::{sample_encoded, sample_model, matches_chroma, color_channel};
 import constants::MATERIAL_BIND_GROUP;
+import package::terrain_texture::texture_coordinates;
 @group(MATERIAL_BIND_GROUP) @binding(104) var<uniform> chroma_key: vec4<f32>;
+struct ModelTexture {
+    allocation: vec4<u32>,
+    scale: vec4<f32>,
+};
+@group(MATERIAL_BIND_GROUP) @binding(105) var<uniform> model_texture: ModelTexture;
 
 
 struct ModelVertex {
@@ -34,18 +40,38 @@ struct ModelVertex {
     @location(7) @interpolate(flat) green: vec4<i32>,
 @if(PREPARED_MODEL)
     @location(8) @interpolate(flat) blue: vec4<i32>,
+@if(PREPARED_MODEL)
+    @location(9) @interpolate(flat) texture_a: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(10) @interpolate(flat) texture_b: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(11) @interpolate(flat) texture_c: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(12) @interpolate(flat) texture_d: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(13) @interpolate(flat) texture_e: vec4<u32>,
 };
 
 @vertex
 fn vertex(raw: Vertex,
 @if(PREPARED_MODEL)
-    @location(8) projected: vec4<f32>,
+    @location(6) projected: vec4<f32>,
 @if(PREPARED_MODEL)
-    @location(9) red: vec4<i32>,
+    @location(7) red: vec4<i32>,
 @if(PREPARED_MODEL)
-    @location(10) green: vec4<i32>,
+    @location(8) green: vec4<i32>,
 @if(PREPARED_MODEL)
-    @location(11) blue: vec4<i32>,
+    @location(9) blue: vec4<i32>,
+@if(PREPARED_MODEL)
+    @location(10) texture_a: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(11) texture_b: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(12) texture_c: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(13) texture_d: vec4<u32>,
+@if(PREPARED_MODEL)
+    @location(14) texture_e: vec4<u32>,
 ) -> ModelVertex {
     let vertex = decompress_vertex(raw, raw.instance_index);
     let transform = mesh_functions::get_world_from_local(raw.instance_index);
@@ -56,6 +82,11 @@ fn vertex(raw: Vertex,
     out.red = red;
     out.green = green;
     out.blue = blue;
+    out.texture_a = texture_a;
+    out.texture_b = texture_b;
+    out.texture_c = texture_c;
+    out.texture_d = texture_d;
+    out.texture_e = texture_e;
     out.position = view.clip_from_view * vec4(0.0, 0.0, -projected.z, 1.0);
     out.position.x = (projected.x / view.viewport.z * 2.0 - 1.0) * out.position.w;
     out.position.y = (1.0 - projected.y / view.viewport.w * 2.0) * out.position.w;
@@ -106,6 +137,13 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
         texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u);
     }
+@if(PREPARED_MODEL) {
+    if model_texture.allocation.x != 0u {
+        let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
+        let coordinate = texture_coordinates(in.texture_a, in.texture_b, in.texture_c, in.texture_d, in.texture_e, offset);
+        texture_rgb = sample_model(coordinate, model_texture.allocation, u32(model_texture.scale.z), (u32(model.parameters.w) & 1u) != 0u, chroma_key.rgb);
+    }
+}
     if chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, chroma_key.rgb) {
         discard;
     }

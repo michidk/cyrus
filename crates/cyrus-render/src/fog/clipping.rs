@@ -25,6 +25,7 @@ pub(super) const PROJECTED: MeshVertexAttribute =
 struct Source {
     draw: Entity,
     polygons: Model,
+    pixels: Option<Vec<[f32; 2]>>,
     previous: Option<(Mat4, Mat4, Vec2, AssetId<Mesh>, ModelExtension, Vec2)>,
 }
 
@@ -77,7 +78,7 @@ fn bind(
         let Some(mesh) = meshes.get(&mesh.0) else {
             continue;
         };
-        let parsed = (|| -> anyhow::Result<Model> {
+        let parsed = (|| -> anyhow::Result<(Model, Option<Vec<[f32; 2]>>)> {
             let model = Model::parse(&extras.value)?
                 .ok_or_else(|| anyhow::anyhow!("missing authored polygons"))?;
             let Some(VertexAttributeValues::Float32x3(positions)) =
@@ -86,13 +87,24 @@ fn bind(
                 anyhow::bail!("missing model positions");
             };
             model.validate(positions)?;
-            Ok(model)
+            let pixels = if material_asset.extension.texture_layout.x != 0 {
+                Some(crate::sampling::pixel_coordinates(
+                    &extras.value,
+                    positions.len(),
+                )?)
+            } else {
+                None
+            };
+            Ok((model, pixels))
         })();
         commands.entity(entity).insert(Inspected);
-        let polygons = match parsed {
+        let (polygons, pixels) = match parsed {
             Ok(model) => model,
             Err(error) => {
-                error!("model {entity:?}: camera clipping unavailable: {error}");
+                error!(
+                    "model {entity:?}: camera clipping unavailable: {error}; re-export the world"
+                );
+                commands.entity(entity).insert(Visibility::Hidden);
                 continue;
             }
         };
@@ -114,6 +126,7 @@ fn bind(
             Source {
                 draw,
                 polygons,
+                pixels,
                 previous: None,
             },
         ));
@@ -204,6 +217,7 @@ fn prepare(
         let result = draw_mesh(
             original,
             &source.polygons,
+            source.pixels.as_deref(),
             key.1,
             camera,
             scale,
@@ -354,6 +368,7 @@ fn light_colors(
 fn draw_mesh(
     original: &Mesh,
     model: &Model,
+    pixels: Option<&[[f32; 2]]>,
     transform: Mat4,
     camera: Mat4,
     scale: Vec2,
@@ -382,6 +397,10 @@ fn draw_mesh(
         normals.len() == positions.len() && uv.len() == positions.len(),
         "vertex attribute count mismatch"
     );
+    ensure!(
+        pixels.is_none_or(|p| p.len() == positions.len()),
+        "original texture coordinate count mismatch"
+    );
     let camera_from_local = camera.inverse() * transform;
     let center = camera_from_local.transform_point3(Vec3::ZERO) * 20.0;
     if super::texture::admission::classify(
@@ -399,6 +418,7 @@ fn draw_mesh(
             Vec::new(),
             Vec::new(),
             Default::default(),
+            Default::default(),
         ));
     }
     let colors = light_colors(original, transform, material, lights)?;
@@ -411,6 +431,7 @@ fn draw_mesh(
     let mut output_colors = Vec::new();
     let mut projected = Vec::new();
     let mut color_planes: [Vec<[i32; 4]>; 3] = Default::default();
+    let mut texture_planes: [Vec<[u32; 4]>; 5] = Default::default();
     for polygon in &model.polygons {
         let indices = polygon
             .vertices
@@ -438,7 +459,12 @@ fn draw_mesh(
                     camera: [point.x * scale.x, -point.y * scale.y, -point.z],
                     local: positions[i],
                     normal: normals[i],
-                    uv: uv[i],
+                    uv: pixels.map_or(uv[i], |p| {
+                        [
+                            p[i][0] * material.texture_scale.x,
+                            p[i][1] * material.texture_scale.y,
+                        ]
+                    }),
                     rgb: [colors[i][0], colors[i][1], colors[i][2]],
                     ..default()
                 }
@@ -455,7 +481,19 @@ fn draw_mesh(
             let Some(triangle) = crate::terrain::prepare_triangle(vertices) else {
                 continue;
             };
+            let mut words = [0; 20];
+            for (value, pair) in triangle
+                .texture
+                .into_iter()
+                .flatten()
+                .zip(words.as_chunks_mut::<2>().0)
+            {
+                pair.copy_from_slice(&[value as u32, (value >> 32) as u32]);
+            }
             for vertex in triangle.vertices {
+                for (values, chunk) in texture_planes.iter_mut().zip(words.as_chunks::<4>().0) {
+                    values.push(*chunk);
+                }
                 let v = vertex.vertex;
                 let screen = vertex.screen;
                 for (channel, values) in color_planes.iter_mut().enumerate() {
@@ -483,6 +521,7 @@ fn draw_mesh(
         output_colors,
         projected,
         color_planes,
+        texture_planes,
     ))
 }
 
@@ -493,6 +532,7 @@ fn prepared_mesh(
     output_colors: Vec<[f32; 4]>,
     projected: Vec<[f32; 4]>,
     color_planes: [Vec<[i32; 4]>; 3],
+    texture_planes: [Vec<[u32; 4]>; 5],
 ) -> Mesh {
     let count = output_positions.len();
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, default());
@@ -512,6 +552,9 @@ fn prepared_mesh(
     {
         mesh.insert_attribute(attribute, values);
     }
+    for (attribute, values) in crate::terrain::TEXTURE.into_iter().zip(texture_planes) {
+        mesh.insert_attribute(attribute, values);
+    }
     mesh
 }
 
@@ -522,6 +565,8 @@ mod tests {
     fn material() -> ModelExtension {
         ModelExtension {
             chroma_key: Vec4::ZERO,
+            texture_layout: UVec4::ZERO,
+            texture_scale: Vec4::ZERO,
             fog: super::super::FogExtension {
                 ambient: Vec4::ZERO,
                 directional: Vec4::ZERO,
@@ -573,6 +618,7 @@ mod tests {
         let draw = draw_mesh(
             &source,
             &model(),
+            None,
             Mat4::IDENTITY,
             Mat4::IDENTITY,
             Vec2::ONE,
@@ -611,6 +657,7 @@ mod tests {
         let draw = draw_mesh(
             &moved,
             &model(),
+            None,
             Mat4::IDENTITY,
             Mat4::IDENTITY,
             Vec2::ONE,
@@ -624,6 +671,45 @@ mod tests {
         assert_eq!(draw.count_vertices(), 3);
         assert_eq!(moved.count_vertices(), 3);
     }
+    #[test]
+    fn clipped_model_uses_source_pixels_before_texture_setup() {
+        let mut source = mesh();
+        source.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[99.0, -77.0]; 3]);
+        let mut material = material();
+        material.texture_layout = UVec4::new(64, 64, 1, 1);
+        material.texture_scale = Vec4::new(4.0, 4.0, 2.0, 0.0);
+        let pixels = [[0.0, 0.0], [64.0, 0.0], [0.0, 64.0]];
+        let draw = draw_mesh(
+            &source,
+            &model(),
+            Some(&pixels),
+            Mat4::IDENTITY,
+            Mat4::IDENTITY,
+            Vec2::ONE,
+            [640.0, 480.0],
+            &material,
+            &Image::default(),
+            false,
+            &mut Preparation::default(),
+        )
+        .unwrap();
+        let Some(VertexAttributeValues::Float32x2(uv)) = draw.attribute(Mesh::ATTRIBUTE_UV_0)
+        else {
+            panic!("missing clipped texture coordinates")
+        };
+        assert_eq!(uv[0][0], 0.0);
+        assert!((uv[0][1] - 85.333336).abs() < 0.00002);
+        assert_eq!(draw.count_vertices(), 6);
+        for attribute in crate::terrain::TEXTURE {
+            let Some(VertexAttributeValues::Uint32x4(planes)) = draw.attribute(attribute) else {
+                panic!("missing fixed texture plane")
+            };
+            assert_eq!(planes.len(), 6);
+            assert_eq!(planes[0], planes[1]);
+            assert_eq!(planes[1], planes[2]);
+        }
+    }
+
     #[test]
     fn prepared_model_projects_on_the_original_sixteenth_pixel_grid() {
         let mut source = mesh();
@@ -642,6 +728,7 @@ mod tests {
             let draw = draw_mesh(
                 &source,
                 &model(),
+                None,
                 Mat4::IDENTITY,
                 Mat4::IDENTITY,
                 Vec2::ONE,
@@ -678,6 +765,7 @@ mod tests {
         let draw = draw_mesh(
             &source,
             &model(),
+            None,
             Mat4::IDENTITY,
             Mat4::IDENTITY,
             Vec2::ONE,

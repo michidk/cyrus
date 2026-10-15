@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 /// Per-world rendering inputs extracted from WORLD.INI and the installed assets.
 pub struct Environment {
+    /// SYSTEM.INI 256-size and 128-size texture reduction factors, in that order.
+    pub texture_scale: [i32; 2],
     /// Decoded Glide BSI sky and its plane parameters, if the world declares a sky.
     pub sky: Option<SkyImage>,
     /// Glide fog and clear color as encoded RGB bytes.

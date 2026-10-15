@@ -264,6 +264,7 @@ mod tests {
 
     fn environment() -> Environment {
         Environment {
+            texture_scale: [1, 1],
             sky: Some(crate::environment::SkyImage {
                 width: 1,
                 height: 1,

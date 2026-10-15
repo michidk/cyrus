@@ -570,6 +570,8 @@ mod tests {
             },
             extension: super::super::ModelExtension {
                 chroma_key: Vec4::ZERO,
+                texture_layout: UVec4::ZERO,
+                texture_scale: Vec4::ZERO,
                 compositing: Vec4::new(-1.0, 0.0, 0.0, 0.0),
                 fog: super::super::FogExtension {
                     color: Vec4::ZERO,

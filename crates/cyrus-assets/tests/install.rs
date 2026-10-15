@@ -250,9 +250,13 @@ fn world_exports_include_declared_terrain_and_textures() {
                     .iter()
                     .all(|light| light.radius > 0)
             );
-            let mut old = serde_json::to_value(&environment).unwrap();
-            old.as_object_mut().unwrap().remove("object_lights");
-            assert!(serde_json::from_value::<cyrus_assets::environment::Environment>(old).is_err());
+            for required in ["object_lights", "texture_scale"] {
+                let mut old = serde_json::to_value(&environment).unwrap();
+                old.as_object_mut().unwrap().remove(required);
+                assert!(
+                    serde_json::from_value::<cyrus_assets::environment::Environment>(old).is_err()
+                );
+            }
             assert!(!environment.prelighting.instances.is_empty());
             assert!(
                 environment

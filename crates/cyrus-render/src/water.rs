@@ -473,6 +473,7 @@ mod tests {
         let mut selected = vec![false; 40 * 40];
         selected[20 * 40 + 20] = true;
         let environment = environments.add(Environment {
+            texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -627,6 +628,7 @@ mod tests {
         };
         water.animated_vertices[12] = true;
         let environment = Environment {
+            texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -755,6 +757,7 @@ mod tests {
             .id();
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
             model_lighting: Default::default(),
@@ -888,6 +891,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                texture_scale: [1, 1],
                 object_lights: Vec::new(),
                 prelighting: Default::default(),
                 model_lighting: Default::default(),
@@ -910,6 +914,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                texture_scale: [1, 1],
                 object_lights: Vec::new(),
                 prelighting: Default::default(),
                 model_lighting: Default::default(),

@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+redguard-preservation.workspace = true
 cyrus-console.workspace = true
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
@@ -25,4 +26,3 @@ cyrus-audio.workspace = true
 cyrus-script.workspace = true
 cyrus-collision.workspace = true
 toml.workspace = true
-redguard-preservation.workspace = true

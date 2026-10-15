@@ -138,6 +138,10 @@ struct ModelExtension {
     compositing: Vec4,
     #[uniform(104)]
     chroma_key: Vec4,
+    #[uniform(105)]
+    texture_layout: UVec4,
+    #[uniform(105)]
+    texture_scale: Vec4,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -166,10 +170,15 @@ impl MaterialExtension for ModelExtension {
                 fragment.shader_defs.push("PREPARED_MODEL".into());
             }
             let extra = layout.0.get_layout(&[
-                clipping::PROJECTED.at_shader_location(8),
-                crate::terrain::RED.at_shader_location(9),
-                crate::terrain::GREEN.at_shader_location(10),
-                crate::terrain::BLUE.at_shader_location(11),
+                clipping::PROJECTED.at_shader_location(6),
+                crate::terrain::RED.at_shader_location(7),
+                crate::terrain::GREEN.at_shader_location(8),
+                crate::terrain::BLUE.at_shader_location(9),
+                crate::terrain::TEXTURE[0].at_shader_location(10),
+                crate::terrain::TEXTURE[1].at_shader_location(11),
+                crate::terrain::TEXTURE[2].at_shader_location(12),
+                crate::terrain::TEXTURE[3].at_shader_location(13),
+                crate::terrain::TEXTURE[4].at_shader_location(14),
             ])?;
             descriptor.vertex.buffers[0]
                 .attributes
@@ -395,6 +404,15 @@ fn apply_scene_fog(
         let mut radius = 0;
         let mut attributes = None;
         let mut chroma_key = Vec4::ZERO;
+        let mut texture_layout = UVec4::ZERO;
+        let mut texture_scale = Vec4::ZERO;
+        if base
+            .base_color_texture
+            .as_ref()
+            .is_some_and(|image| !images.contains(image))
+        {
+            continue;
+        }
         if !terrain {
             let Some(original) = meshes.get(&mesh.0) else {
                 continue;
@@ -416,14 +434,36 @@ fn apply_scene_fog(
                         // The material sampling word uses point/chroma bits shared with ROB flags.
                         attributes = Some(3);
                     }
-                    if attributes.is_some_and(|flags| flags & 2 != 0)
+                    if attributes.is_some()
                         && base.base_color_texture.is_some()
                         && let Some(key) = crate::sampling::chroma_key(
                             material_extras.map(|extras| extras.value.as_str()),
                             &extras.value,
                         )?
                     {
-                        chroma_key = Vec3::from_array(key.map(f32::from)).extend(1.0);
+                        chroma_key =
+                            Vec3::from_array(key.map(f32::from))
+                                .extend(
+                                    u8::from(attributes.is_some_and(|flags| flags & 2 != 0)) as f32
+                                );
+                        if !flats.contains(entity) && attributes.is_some_and(|flags| flags & 4 == 0)
+                        {
+                            let image = images
+                                .get(base.base_color_texture.as_ref().unwrap())
+                                .unwrap();
+                            let layout = rgpre::import::bsi::GlideTextureLayout::new(
+                                [
+                                    u16::try_from(image.width())?,
+                                    u16::try_from(image.height())?,
+                                ],
+                                Some(environment.texture_scale),
+                            )?;
+                            let [w, h] = layout.allocation_dimensions().map(u32::from);
+                            let [x, y] = layout.sampling_stride().map(u32::from);
+                            texture_layout = UVec4::new(w, h, x, y);
+                            let [u, v] = layout.coordinate_scale();
+                            texture_scale = Vec4::new(u, v, layout.sampling_level() as f32, 0.0);
+                        }
                     }
                     crate::lighting::model_mesh(
                         original,
@@ -487,6 +527,8 @@ fn apply_scene_fog(
                     base,
                     extension: ModelExtension {
                         chroma_key,
+                        texture_layout,
+                        texture_scale,
                         fog: extension,
                         compositing: Vec4::new(
                             flat.map_or(-1.0, |flat| f32::from(flat.alpha)),
@@ -531,6 +573,7 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
+            texture_scale: [1, 1],
             object_lights: vec![cyrus_assets::environment::LocalLight {
                 position: [512, 0, 512],
                 radius: 100,

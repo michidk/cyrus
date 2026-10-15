@@ -61,9 +61,48 @@ pub(super) fn chroma_key(extras: Option<&str>, geometry: &str) -> anyhow::Result
     Ok(Some(texture.chroma_key_rgb))
 }
 
+/// Original pixel-space pairs from the preservation GLB export, before row reversal.
+pub(super) fn pixel_coordinates(extras: &str, count: usize) -> anyhow::Result<Vec<[f32; 2]>> {
+    #[derive(serde::Deserialize)]
+    struct Coordinates {
+        version: u32,
+        pixels: Vec<[f32; 2]>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Extras {
+        rgpre_texcoords: Coordinates,
+    }
+    let coordinates = serde_json::from_str::<Extras>(extras)?.rgpre_texcoords;
+    anyhow::ensure!(
+        coordinates.version == 1,
+        "unsupported original texture coordinate version"
+    );
+    anyhow::ensure!(
+        coordinates.pixels.len() == count,
+        "original texture coordinate count mismatch"
+    );
+    anyhow::ensure!(
+        coordinates.pixels.iter().flatten().all(|v| v.is_finite()),
+        "non-finite original texture coordinate"
+    );
+    Ok(coordinates.pixels)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn original_pixels_preserve_signed_fractional_coordinates_and_reject_stale_exports() {
+        assert_eq!(pixel_coordinates(r#"{"rgpre_texcoords":{"version":1,"pixels":[[-1.0625,2047.9375],[2.0625,-2048]]}}"#, 2).unwrap(), vec![[-1.0625,2047.9375],[2.0625,-2048.0]]);
+        for extras in [
+            r#"{}"#,
+            r#"{"rgpre_texcoords":{"version":2,"pixels":[[0,0]]}}"#,
+            r#"{"rgpre_texcoords":{"version":1,"pixels":[]}}"#,
+        ] {
+            assert!(pixel_coordinates(extras, 1).is_err());
+        }
+    }
 
     #[test]
     fn texture_keys_preserve_all_palette_bytes_and_reject_missing_provenance() {

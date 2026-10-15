@@ -48,12 +48,16 @@ fn perspective_coordinate(value: vec2<u32>, reciprocal: vec2<u32>) -> i32 {
     return bitcast<i32>((product.x >> 29u) | (product.y << 3u));
 }
 
-fn terrain_texture_uv(a: vec4<u32>, b: vec4<u32>, c: vec4<u32>, d: vec4<u32>, e: vec4<u32>, pixel: vec2<i32>, size: vec2<u32>) -> vec2<f32> {
+fn texture_coordinates(a: vec4<u32>, b: vec4<u32>, c: vec4<u32>, d: vec4<u32>, e: vec4<u32>, pixel: vec2<i32>) -> vec2<i32> {
     let s = texture_plane(a.xy, a.zw, b.xy, pixel);
     let t = texture_plane(b.zw, c.xy, c.zw, pixel);
     let w = texture_plane(d.xy, d.zw, e.xy, pixel);
     let reciprocal = texture_reciprocal(w.x);
-    let coordinate = vec2(perspective_coordinate(s, reciprocal), perspective_coordinate(t, reciprocal));
+    return vec2(perspective_coordinate(s, reciprocal), perspective_coordinate(t, reciprocal));
+}
+
+fn terrain_texture_uv(a: vec4<u32>, b: vec4<u32>, c: vec4<u32>, d: vec4<u32>, e: vec4<u32>, pixel: vec2<i32>, size: vec2<u32>) -> vec2<f32> {
+    let coordinate = texture_coordinates(a, b, c, d, e, pixel);
     // Select the four-bit sample before converting to float. Glide has 256
     // coordinate units and 18 fractional bits; exported images reverse rows.
     let shift = vec2(22u) - (vec2(31u) - countLeadingZeros(size));

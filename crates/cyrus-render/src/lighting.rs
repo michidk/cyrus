@@ -196,6 +196,7 @@ mod tests {
     fn static_instances_bake_private_colors_from_authored_engine_coordinates() {
         use cyrus_assets::environment::{LocalLight, ModelLighting, Prelighting};
         let environment = Environment {
+            texture_scale: [1, 1],
             sky: None,
             background: [0; 3],
             clipping: [7.0, 3800.0],
