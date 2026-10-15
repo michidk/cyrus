@@ -80,8 +80,8 @@ removal traverses dependencies only while the source retains a nonzero count.
 Empty-selection fallback runs before the admitted count increment and assigns the
 selected logical player's weapon attribute synchronously. Routed acquisition does
 not assign the receiving NPC. Explicit `check_player_weapon` validates current
-item ownership/type and applies shared weapon cleanup; automatic invocation awaits
-complete standalone player initialization. These rules follow preservation's
+item ownership/type and applies shared weapon cleanup. Ordinary scene updates run
+this check after player-role animation initialization, before actor traversal. These rules follow preservation's
 [selection and weapon contracts](https://github.com/michidk/redguard-preservation/blob/main/docs/config/item-ini.md#empty-selection-fallback).
 Cyclic effect traversal reports a contextual error. The renderer reads the installed Activate/Attack binding
 and current logical-player control, surface, animation and attribute state.
@@ -161,8 +161,8 @@ The upright orientation helper reuses the original movement rotation table.
 Callers still supply eligibility, actor orientation, candidates,
 surface policy, and shared support state. Falling, water/lava transitions and
 special movement states remain unsupported. Gameplay does not yet drive this
-update; production timing, actor initialization and player mesh binding remain
-incomplete.
+update; production controller timing and the remaining player lifecycle stay
+unsupported.
 
 Scene inspection places the player at available marker zero once the world's
 `.animations` and `.player` data match, using preservation's exact map coordinates. `MarkerEntry`
@@ -184,6 +184,13 @@ default group zero, makes both ordinary setup requests, then forces the default.
 It retains the selected file frame for presentation, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 This explicit entry API does not choose a production clock or enable locomotion.
+The ordinary scene host initializes CYRUS then GREMLIN after map animation setup,
+using the existing shared ticks and capturing marker coordinates before settling
+for initialization sounds. Both roles retain their attribute-controlled combat
+association. GREMLIN remains excluded from ordinary updates; the selected player's
+scene binding supplies its initial mesh frame without a controller tick.
+Initialization failures remain sticky, and world replacement discards old role
+bindings. This follows preservation's [role setup order](https://github.com/michidk/redguard-preservation/commit/e0a680f32ecee9f22a410cda297e306a700d37f9).
 
 Grounded animation sound callbacks retain the surface and local Q8 position at
 command execution. The runtime converts Play coordinates into the checked i32
@@ -287,8 +294,9 @@ walk-node cleanup remain unsupported.
 These contracts follow preservation's
 [attribute rules](https://github.com/michidk/redguard-preservation/blob/ca28d9d/docs/engine/SOUP.md#attribute-reads-and-writes).
 `ScriptActor::attributes` exposes the prepared inspection bytes. Complete actor
-initialization and live player attribute state remain pending. Walking and SOUP
-share logical-player playback; player-role lifecycle remains unestablished.
+lifecycle and remaining live player attribute effects remain pending. Walking and
+SOUP share logical-player playback; scene entry now constructs player-role
+animation and combat state, without enabling automatic locomotion.
 Flag numeric values and latches
 remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage

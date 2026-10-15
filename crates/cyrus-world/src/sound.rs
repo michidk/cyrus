@@ -31,6 +31,11 @@ pub enum SoundCue {
     },
 }
 
+/// Animation cues use the player sample range even without the controlled-player
+/// component. The scene owner supplies this for a separately initialized player role.
+#[derive(Component)]
+pub struct PlayerAnimationSource;
+
 /// The SURFACE.INI surface type of the face an actor stands on (preservation
 /// `docs/engine/sound.md`), set by the code that knows the ground; 0 means no remap.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]

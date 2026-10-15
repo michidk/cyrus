@@ -341,6 +341,7 @@ pub struct OrdinarySoundExecutor(pub fn(&mut World));
 pub struct OrdinaryContext<'w, 's> {
     prepared: OrdinaryAssets<'w>,
     hud: Option<Res<'w, super::super::ScriptHud>>,
+    entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
     actors: ResMut<'w, ScriptActors>,
     clock: Option<Res<'w, SimulationClock>>,
     random: ResMut<'w, crate::random::EngineRandom>,
@@ -442,6 +443,7 @@ pub fn run_ordinary(
     let OrdinaryContext {
         prepared,
         hud,
+        entry,
         mut actors,
         clock,
         mut random,
@@ -556,9 +558,75 @@ pub fn run_ordinary(
         };
         emit(cue)
     };
-    let preparation = world
-        .prepare_ordinary_models(data, timing.nominal_ticks, &mut send_sound)
-        .and_then(|()| world.refresh_automatic_models(data, view.position));
+    let preparation = (|| -> anyhow::Result<()> {
+        world.prepare_ordinary_models(data, timing.nominal_ticks, &mut send_sound)?;
+        if players.single().is_ok()
+            && world
+                .actors
+                .iter()
+                .any(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+        {
+            for index in 0..world.actors.len() {
+                if !matches!(
+                    world.actors[index].source,
+                    super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+                ) {
+                    continue;
+                }
+                let id = world.id(index)?;
+                if !world.actors[index].animation_initialized() {
+                    let entry = entry.as_ref().ok_or_else(|| {
+                        anyhow::anyhow!("player role initialization: marker entry unavailable")
+                    })?;
+                    let (spawn, _) = crate::player::placement::placement(data, **entry)?;
+                    let mut position = [0; 3];
+                    for (axis, value) in spawn.position.into_iter().enumerate() {
+                        position[axis] = i32::try_from(value).map_err(|_| {
+                            anyhow::anyhow!(
+                                "player role initialization axis {axis}: Q8 position outside i32"
+                            )
+                        })?;
+                    }
+                    let surface = world.actors[index].surface;
+                    world.initialize_player_animation(
+                        id,
+                        data,
+                        timing.nominal_ticks,
+                        &mut |sound| {
+                            let position = matches!(
+                                sound,
+                                cyrus_world::animation::AnimationSound::Play { .. }
+                            )
+                            .then_some(position);
+                            send_sound(
+                                id,
+                                super::super::ScriptSound::Animation {
+                                    sound,
+                                    surface,
+                                    position,
+                                },
+                            )
+                        },
+                    )?;
+                }
+            }
+            if let Some(hud) = hud.as_ref()
+                && let Some(index) = world
+                    .actors
+                    .iter()
+                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+            {
+                world.check_player_weapon(
+                    world.id(index)?,
+                    hud,
+                    false,
+                    timing.nominal_ticks,
+                    &mut send_sound,
+                )?;
+            }
+        }
+        world.refresh_automatic_models(data, view.position)
+    })();
     if let Err(error) = preparation {
         actors.error = Some(format!("automatic model presentation: {error:#}"));
         return;

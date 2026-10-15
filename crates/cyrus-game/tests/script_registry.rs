@@ -2972,6 +2972,16 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
             },
         },
     );
+    for (name, origin) in [("CYRUS", 1000), ("GREMLIN", 2000)] {
+        let mut role = scripts.actors["LOGIC"].clone();
+        role.namespace = Some(name.into());
+        role.code_origin = origin;
+        role.instances = 1;
+        role.instance_variables.truncate(1);
+        role.attributes.insert("attr_14".into(), 1);
+        role.attributes.insert("attr_23".into(), 1);
+        scripts.actors.insert(name.into(), role);
+    }
     scripts.content_id = scripts.content_identity().unwrap();
     let mut data = Animations {
         version: 2,
@@ -3002,7 +3012,59 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
             normals: vec![vec![]; 14],
         },
     );
+    data.metadata["markers"] = serde_json::json!([
+        {"map_position":[10,20,30],"position":[0,0,0],"reserved":1}
+    ]);
+    for (name, effect) in [("CYRUS", 9), ("GREMLIN", 10)] {
+        data.metadata["actors"].as_array_mut().unwrap().push(serde_json::json!({
+            "script_name":name,"raan_entries":[{"file_path":"LOGIC.3D","frame_count":14}],
+            "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":4,"sound_param":effect,"volume_shift":0},
+                    {"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":2},{"opcode":2,"value":0}]}]
+        }));
+    }
+    let mut hud_asset = cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: [(
+            1,
+            cyrus_assets::hud::InventoryItem {
+                weapon: true,
+                count: 1,
+                total: 1,
+                player_max: 1,
+                ..Default::default()
+            },
+        )]
+        .into(),
+        start_items: vec![],
+        items: vec![],
+        selected: Some(1),
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+    };
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
     let mut app = App::new();
+    app.insert_resource(hud);
     app.add_plugins((MinimalPlugins, StatesPlugin, AssetPlugin::default()))
         .init_state::<AppState>()
         .init_asset::<Scripts>()
@@ -3010,6 +3072,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         .init_asset::<cyrus_game::player::data::PlayerScene>()
         .add_message::<AnimationTick>()
         .add_message::<cyrus_world::sound::SoundCue>()
+        .init_resource::<cyrus_game::player::placement::MarkerEntry>()
         .add_plugins(ScriptPlugin);
     let scripts = app
         .world_mut()
@@ -3061,6 +3124,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         .world_mut()
         .spawn((
             cyrus_game::player::Player,
+            Transform::default(),
             cyrus_game::player::placement::PlayerPose {
                 position: [256, 512, 768],
                 heading: 0,
@@ -3095,6 +3159,60 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         .set(AppState::InGame);
     app.update();
     let first = snapshot(&app);
+    let role_snapshot = |app: &App| {
+        app.world()
+            .resource::<ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .inspect(2, 2)
+    };
+    let mut initial_roles = role_snapshot(&app);
+    assert_eq!(initial_roles["actors"][0]["attributes"][23], 1);
+    assert_eq!(initial_roles["actors"][1]["attributes"][23], 1);
+    assert_eq!(initial_roles["actors"][0]["animation"]["frame"], 1);
+    assert_eq!(initial_roles["actors"][1]["animation"]["frame"], 1);
+    let presented = app
+        .world()
+        .get::<cyrus_world::animation::AnimationPose>(player)
+        .unwrap();
+    assert_eq!((presented.model.as_str(), presented.frame), ("LOGIC", 1));
+    let world = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .unwrap();
+    assert!(world.actors()[2].control_state().unwrap().combat.is_some());
+    assert!(
+        world.actors()[3]
+            .control_state()
+            .unwrap()
+            .object_update_excluded
+    );
+    let cues: Vec<_> = app
+        .world_mut()
+        .resource_mut::<Messages<cyrus_world::sound::SoundCue>>()
+        .drain()
+        .collect();
+    let effects: Vec<_> = cues
+        .iter()
+        .filter(|cue| matches!(cue, cyrus_world::sound::SoundCue::Animation { .. }))
+        .map(|cue| match cue {
+            cyrus_world::sound::SoundCue::Animation {
+                actor,
+                sound: cyrus_world::animation::AnimationSound::Play { effect, .. },
+                surface: Some(0),
+                position: Some([2560, 5120, 7680]),
+            } => (*actor, *effect),
+            _ => panic!("unexpected initialization cue: {cue:?}"),
+        })
+        .collect();
+    assert_eq!(effects.len(), 2);
+    assert_eq!(effects[0], (player, 9));
+    assert_eq!(effects[1].1, 10);
+    assert_ne!(effects[1].0, player);
+    let alternate = effects[1].0;
     assert_eq!(
         app.world()
             .resource::<ScriptActors>()
@@ -3113,8 +3231,20 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     assert_eq!(first["actors"][0]["failure"], serde_json::Value::Null);
     assert_eq!(first["actors"][0]["locals"], serde_json::json!([5]));
     assert!(first["actors"][0]["animation"]["frame"].is_number());
+    hud_asset.inventory.get_mut(&1).unwrap().count = 0;
+    let unowned_hud = cyrus_game::script::ScriptHud::default();
+    unowned_hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
+    app.insert_resource(unowned_hud);
     app.update();
     let next = snapshot(&app);
+    initial_roles["actors"][0]["attributes"][23] = serde_json::json!(0);
+    assert_eq!(role_snapshot(&app)["actors"], initial_roles["actors"]);
+    assert!(
+        app.world_mut()
+            .resource_mut::<Messages<cyrus_world::sound::SoundCue>>()
+            .drain()
+            .all(|cue| !matches!(cue, cyrus_world::sound::SoundCue::Animation { .. }))
+    );
     assert_eq!(
         app.world()
             .resource::<ScriptActors>()
@@ -3241,6 +3371,14 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     app.insert_resource(replacement);
     app.update();
     let replaced = snapshot(&app);
+    assert!(app.world().get_entity(alternate).is_err());
+    assert_eq!(
+        app.world_mut()
+            .query::<&cyrus_game::script::ScriptBinding>()
+            .iter(app.world())
+            .count(),
+        2
+    );
     assert_ne!(replaced["generation"], first["generation"]);
     assert_eq!(
         app.world()
@@ -3278,6 +3416,20 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
             expected
         );
     }
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    assert_eq!(
+        app.world_mut()
+            .query::<&cyrus_world::sound::PlayerAnimationSource>()
+            .iter(app.world())
+            .count(),
+        0
+    );
+    assert!(
+        app.world()
+            .get::<cyrus_game::script::ScriptBinding>(player)
+            .is_none()
+    );
 }
 
 #[test]

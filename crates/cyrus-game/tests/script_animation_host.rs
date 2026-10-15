@@ -3203,3 +3203,70 @@ fn selected_player_weapon_validation_uses_type_ownership_animation_and_shell() {
         assert!(cues.is_empty());
     }
 }
+
+#[test]
+fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_entry() {
+    for combat in [false, true] {
+        let mut data = scripts(vec![Operation::End { target: 0 }]);
+        for (name, origin) in [("CYRUS", 200), ("GREMLIN", 300)] {
+            let mut role = data.actors["OTHER"].clone();
+            role.namespace = Some(name.into());
+            role.code_origin = origin;
+            role.attributes.insert("attr_14".into(), u8::from(combat));
+            data.actors.insert(name.into(), role);
+        }
+        data.content_id = data.content_identity().unwrap();
+        let mut animation = animations(&data, false);
+        animation.metadata["actors"] = json!(["CYRUS", "GREMLIN"].map(|name| json!({
+            "script_name":name,"animation_groups":[{"group_index":0,"anim_type":0,"anim_id":1,
+                "commands":[{"opcode":4,"sound_param":9,"volume_shift":0},
+                    {"opcode":0,"frame_reference":3},{"opcode":0,"frame_reference":4},{"opcode":2,"value":0}]}]
+        })));
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let mut sounds = Vec::new();
+        for index in [2, 3] {
+            let id = world.id(index).unwrap();
+            world
+                .initialize_player_animation(id, &animation, 1, &mut |sound| {
+                    sounds.push(sound);
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(world.animation_frame(id).unwrap(), Some(3));
+            assert_eq!(world.actor_surface(id).unwrap(), 0);
+            let control = world.actors()[index].control_state().unwrap();
+            assert_eq!(control.combat.is_some(), combat);
+            assert_eq!(control.combat_death_default, combat.then_some(0));
+            assert_eq!(control.object_update_excluded, index == 3);
+            assert!(
+                world
+                    .initialize_player_animation(id, &animation, 1, &mut |_| panic!(
+                        "replayed entry"
+                    ))
+                    .is_err()
+            );
+        }
+        assert_eq!(sounds.len(), 2);
+        let mut failed = ScriptWorld::prepare(&data, 8).unwrap();
+        let id = failed.id(2).unwrap();
+        let error = failed
+            .initialize_player_animation(id, &animation, 1, &mut |_| {
+                anyhow::bail!("sample unavailable")
+            })
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("sample unavailable"));
+        assert!(
+            failed.actors()[2]
+                .animation_failure()
+                .unwrap()
+                .contains("sample unavailable")
+        );
+        assert!(
+            failed
+                .initialize_player_animation(id, &animation, 1, &mut |_| panic!(
+                    "retried failed sound"
+                ))
+                .is_err()
+        );
+    }
+}

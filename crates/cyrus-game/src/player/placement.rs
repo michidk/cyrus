@@ -71,8 +71,17 @@ pub fn initial_animation(
     nominal_ticks: u32,
     sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
 ) -> anyhow::Result<(ActorAnimation, Option<u32>)> {
+    initial_role_animation(data, "CYRUS", nominal_ticks, sounds)
+}
+
+pub(crate) fn initial_role_animation(
+    data: &Animations,
+    actor: &str,
+    nominal_ticks: u32,
+    sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+) -> anyhow::Result<(ActorAnimation, Option<u32>)> {
     let (mut animation, mut frame) =
-        ActorAnimation::initialize(data, "CYRUS", nominal_ticks, sounds)?;
+        ActorAnimation::initialize(data, actor, nominal_ticks, sounds)?;
     frame = animation
         .force_request_with_sounds(0, 0, nominal_ticks, sounds)?
         .or(frame);
@@ -94,7 +103,10 @@ pub(super) struct AppliedEntry {
     marker: MarkerEntry,
 }
 
-fn placement(data: &Animations, entry: MarkerEntry) -> anyhow::Result<(PlayerPose, Vec3)> {
+pub(crate) fn placement(
+    data: &Animations,
+    entry: MarkerEntry,
+) -> anyhow::Result<(PlayerPose, Vec3)> {
     let context = format!("world {} marker {}", data.world, entry.marker);
     let marker = data.metadata["markers"]
         .as_array()

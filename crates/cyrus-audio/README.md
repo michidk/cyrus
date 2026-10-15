@@ -28,6 +28,10 @@ same message cursor, so commands are consumed once. Immediate ordinary script
 commands and ambient polling use one live sixteen-slot channel pool. Backend
 completion identifies an individual start; animation and ambient handles identify
 a reusable slot and control its current occupant.
+`PlayerAnimationSource` admits the player sample range for a separately initialized
+player role without making that entity the controlled player. Scene entry uses it
+for GREMLIN's temporary selection during setup; its remembered slot stays separate
+from CYRUS.
 SOUP `StopAllSounds` stops the shared pool in command order, across owners and
 unowned effects. It retains remembered slot handles and does not stop CD music.
 `CinematicAudio` marks cinematic playback and pauses CD music. Browser startup

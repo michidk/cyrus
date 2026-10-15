@@ -646,3 +646,30 @@ fn remapped_target_retains_its_pcm_width_through_production_playback() {
         vec![16128.0 / 32768.0; 8]
     );
 }
+
+#[test]
+fn separately_initialized_player_role_uses_player_samples_without_becoming_controlled() {
+    for (player_source, expected) in [(false, 10), (true, 11)] {
+        let (mut app, actor) = fixture();
+        for _ in 0..10 {
+            let other = app
+                .world_mut()
+                .spawn((GlobalTransform::from_translation(Vec3::Z), SoundSurface(7)))
+                .id();
+            play(&mut app, other, 200);
+        }
+        assert_eq!(playing(&mut app), 10);
+        if player_source {
+            app.world_mut()
+                .entity_mut(actor)
+                .insert(cyrus_world::sound::PlayerAnimationSource);
+        }
+        assert!(
+            app.world()
+                .get::<cyrus_game::player::Player>(actor)
+                .is_none()
+        );
+        play(&mut app, actor, 200);
+        assert_eq!(playing(&mut app), expected);
+    }
+}

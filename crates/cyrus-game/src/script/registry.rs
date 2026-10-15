@@ -1050,6 +1050,55 @@ impl ScriptWorld {
         );
         Ok(index)
     }
+    /// Construct a standalone player role's animation and combat association once.
+    /// The caller owns entry position/surface snapshots for synchronous sounds and
+    /// supplies the existing nominal ticks. This does not advance player controls.
+    pub fn initialize_player_animation(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        ticks: u32,
+        sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.validate_animation_binding(id, data)?;
+        let actor = &mut self.actors[index];
+        anyhow::ensure!(
+            matches!(
+                actor.source,
+                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+            ),
+            "world {} instance {index}: player initialization requires a standalone player role",
+            self.world
+        );
+        let control = actor
+            .control
+            .as_mut()
+            .expect("player role has allocation state");
+        control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
+        control.combat = (actor.attributes[14] != 0).then(super::CombatControlState::default);
+        match crate::player::placement::initial_role_animation(data, actor.name(), ticks, sounds) {
+            Ok((playback, frame)) => {
+                actor.animation = Some(ScriptAnimation { playback, frame });
+                if matches!(actor.source, ScriptActorSource::AlternatePlayer) {
+                    actor
+                        .control
+                        .as_mut()
+                        .expect("player role has allocation state")
+                        .object_update_excluded = true;
+                }
+                Ok(())
+            }
+            Err(error) => {
+                let message = format!(
+                    "world {} instance {index} player initialization: {error:#}",
+                    self.world
+                );
+                actor.animation_failure = Some(message.clone());
+                anyhow::bail!(message)
+            }
+        }
+    }
+
     /// The admitted player stage and SOUP share this playback and selected file frame.
     pub(crate) fn player_animation(
         &mut self,
@@ -1070,22 +1119,13 @@ impl ScriptWorld {
             "world {} player animation/script cache generation mismatch; re-export the world",
             self.world
         );
-        let actor = &mut self.actors[index];
-        if let Some(error) = actor.failure() {
+        if let Some(error) = self.actors[index].failure() {
             anyhow::bail!("world {} player: {error}", self.world);
         }
-        if actor.animation.is_none() {
-            match crate::player::placement::initial_animation(data, ticks, sounds) {
-                Ok((playback, frame)) => {
-                    actor.animation = Some(ScriptAnimation { playback, frame })
-                }
-                Err(error) => {
-                    actor.animation_failure = Some(format!("{error:#}"));
-                    return Err(error);
-                }
-            }
+        if self.actors[index].animation.is_none() {
+            self.initialize_player_animation(id, data, ticks, sounds)?;
         }
-        Ok(actor
+        Ok(self.actors[index]
             .animation
             .as_mut()
             .expect("player animation initialized"))

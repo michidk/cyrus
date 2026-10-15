@@ -16,8 +16,8 @@ struct SoundFrame<'w, 's> {
         's,
         (
             &'static GlobalTransform,
-            Option<&'static SoundSurface>,
             Has<cyrus_game::player::Player>,
+            Has<cyrus_world::sound::PlayerAnimationSource>,
         ),
     >,
     bindings: Query<'w, 's, (Entity, &'static cyrus_game::script::ScriptBinding)>,
@@ -307,7 +307,7 @@ impl SoundFrame<'_, '_> {
                         rate_offset_hz,
                     } => {
                         channels.animation.remove(actor);
-                        let Ok((transform, _, is_player)) = actors.get(*actor) else {
+                        let Ok((transform, is_player, player_source)) = actors.get(*actor) else {
                             warn_once!("sound: animation cue for {actor} without a transform");
                             continue;
                         };
@@ -369,7 +369,7 @@ impl SoundFrame<'_, '_> {
                                 volume,
                                 pan: Some(pan),
                                 speed: playback_speed(effect.sample_rate, *rate_offset_hz),
-                                start_index: if is_player { 0 } else { 6 },
+                                start_index: if is_player || player_source { 0 } else { 6 },
                             },
                         );
                         channels.start = 6;

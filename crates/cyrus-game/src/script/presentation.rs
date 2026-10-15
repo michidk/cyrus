@@ -32,6 +32,15 @@ impl ScriptScene {
 #[derive(Component)]
 pub(super) struct SceneActorBound;
 
+#[derive(Component)]
+pub(super) struct StandaloneRole;
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct RoleBindings<'w, 's> {
+    players: Query<'w, 's, (Entity, Option<&'static ScriptBinding>), With<crate::player::Player>>,
+    roles: Query<'w, 's, (Entity, Option<&'static ScriptBinding>), With<StandaloneRole>>,
+}
+
 pub(super) fn bind_scene(
     mut commands: Commands,
     actors: Res<ScriptActors>,
@@ -39,10 +48,61 @@ pub(super) fn bind_scene(
     mut roots: Query<(Entity, &mut ScriptScene)>,
     children: Query<&Children>,
     nodes: Query<&Name, (Without<ScriptBinding>, Without<SceneActorBound>)>,
+    role_bindings: RoleBindings,
 ) {
+    let RoleBindings { players, roles } = role_bindings;
     let Some(world) = &actors.current else {
+        for (entity, _) in &roles {
+            commands.entity(entity).despawn();
+        }
         return;
     };
+    for (entity, binding) in &roles {
+        if binding.is_none_or(|binding| {
+            binding.actor.generation != world.generation() || binding.source != request.0
+        }) {
+            commands.entity(entity).despawn();
+        }
+    }
+    if let Ok((player, binding)) = players.single() {
+        for (index, actor) in world.actors().iter().enumerate() {
+            let id = ScriptActorId {
+                generation: world.generation(),
+                index,
+            };
+            match actor.source {
+                super::ScriptActorSource::Player => {
+                    if binding
+                        .is_none_or(|binding| binding.actor != id || binding.source != request.0)
+                    {
+                        commands.entity(player).insert(ScriptBinding {
+                            actor: id,
+                            source: request.0.clone(),
+                        });
+                    }
+                }
+                super::ScriptActorSource::AlternatePlayer
+                    if !roles.iter().any(|(_, binding)| {
+                        binding.is_some_and(|binding| {
+                            binding.actor == id && binding.source == request.0
+                        })
+                    }) =>
+                {
+                    commands.spawn((
+                        StandaloneRole,
+                        cyrus_world::sound::PlayerAnimationSource,
+                        ScriptBinding {
+                            actor: id,
+                            source: request.0.clone(),
+                        },
+                        Transform::default(),
+                        ChildOf(player),
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
     for (root, mut scene) in &mut roots {
         if scene.source != request.0 {
             continue;
