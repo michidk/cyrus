@@ -43,7 +43,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| SOUP integration: item fallback/weapon validation, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| SOUP integration: standalone player initialization, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
 Save/load and remaining HUD integration are unassigned.
@@ -64,7 +64,7 @@ or fidelity across every world and palette.
 | SFX, RTX, CD audio | Effects, speech, subtitles, channels, music, preferences and surface remaps | Complete automatic triggers, moving emitters, nonplayer ground updates and audible parity |
 | SOUP | Portable VM, logical actors, supported ordinary updates and explicit hosts | Remaining actor stages, native services, lifecycle, synchronization and persistence |
 | MENU.INI, KEYS.INI | Data-driven menu, keyboard navigation, settings, rebinding and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie unlocks |
-| ITEM.INI, COMBAT.INI | Shared script/HUD ownership, recursive acquisition/removal, startup counts and compass use | Pickups, remaining item use, weapon fallback, resets, saves and combat |
+| ITEM.INI, COMBAT.INI | Shared script/HUD ownership, recursive acquisition/removal, startup counts and compass use | Pickups, remaining item use, automatic weapon validation, resets, saves and combat |
 | SMK | Streamed native/browser video, first-track audio and skip/subtitle rules | Original comparison, A/V sync and hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Image inspection and authored-rate ANM playback | Game cursor and palette cycling |
 | CHT, CPF | Cheat and console parsing, local persistence and supported commands | Remaining gameplay effects, commands and console fidelity |
@@ -218,7 +218,8 @@ Requires the player controller.
 
 - [ ] Production interaction with one eligible target, including overlapping pickups and removed objects on revisits.
 - [x] Recursive ITEM.INI prerequisites, ordered add/drop-add effects, removal dependencies/flags and shared startup acquisitions. **Verified:** nine behavioral checks include installed startup counts; reversed drop order and post-effect cap recomputation fail the corresponding tests. Full gates and isolated dependency consumers pass.
-- [ ] Complete pickups, remaining item-use handlers, weapon fallback, inventory-screen candle rules, resets and save integration.
+- [x] Empty-selection acquisition fallback and explicit selected-player weapon validation. **Verified:** headless host checks cover fallback order, first-unit admission, selected-player assignment and validity gates; installed HUD export retains weapon classification. Moving fallback after count increment fails the negative control. Full installed gates and browser check pass. Automatic validation awaits standalone player initialization.
+- [ ] Complete pickups, remaining item-use handlers, automatic weapon validation, inventory-screen candle rules, resets and save integration.
 - [ ] Dialogue choices, disabled choices, synchronized speech/subtitles/animation and results returned to waiting scripts.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
 - [ ] Authored world transitions and old sound/script/transient cleanup.

@@ -4,7 +4,7 @@ use anyhow::Context;
 use rgpre::import::{
     fnt::parse_fnt,
     gxa::parse_gxa_file,
-    item_ini::ItemIni,
+    item_ini::{ItemIni, ItemType},
     keys_ini::KeysIni,
     rtx::{RtxEntry, parse_rtx_file},
     system_ini::SystemIni,
@@ -90,7 +90,7 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        10u32,
+        11u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
@@ -224,6 +224,7 @@ pub(crate) fn prepare(
         inventory.insert(
             id,
             InventoryItem {
+                weapon: matches!(item.item_type, Some(ItemType::Weapon)),
                 count,
                 total: unsigned(item.total, "total")?,
                 player_max: unsigned(item.player_max, "player_max")?,

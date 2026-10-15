@@ -364,6 +364,35 @@ impl ScriptWorld {
         )
     }
 
+    /// Validate the selected player's assigned item against current shared ownership.
+    /// Called before ordinary traversal by an owner with established player state.
+    /// Closed inventory leaves the actor untouched; a failed validity check clears
+    /// the weapon attribute and applies the shared cleanup, without item acquisition.
+    pub fn check_player_weapon(
+        &mut self,
+        selected_player: ScriptActorId,
+        hud: &crate::script::ScriptHud,
+        shell_execution: bool,
+        nominal_ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        if !hud.inventory_ready()? {
+            return Ok(());
+        }
+        let index = self.resolve(selected_player)?;
+        let actor = &self.actors[index];
+        let weapon = actor.attributes[23];
+        if actor.animation.is_none()
+            || shell_execution
+            || weapon == 0
+            || !hud.owned_weapon(weapon)?
+        {
+            self.actors[index].attributes[23] = 0;
+            self.cleanup_actor_weapon(selected_player, selected_player, nominal_ticks, sounds)?;
+        }
+        Ok(())
+    }
+
     /// Clear an admitted receiver's weapon and motion state. Selected draw/sheath
     /// playback restores its stored default, with immediate commands at nominal ticks.
     pub fn cleanup_actor_weapon(

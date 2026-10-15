@@ -77,6 +77,12 @@ ITEM.INI definitions. `AddItem`, `DropItem`, `HaveItem` and `SelectItem` use tha
 Startup acquisitions use the same recursive prerequisite and ordered drop/add
 rules as script requests. Admitted quantities remain fixed across nested effects;
 removal traverses dependencies only while the source retains a nonzero count.
+Empty-selection fallback runs before the admitted count increment and assigns the
+selected logical player's weapon attribute synchronously. Routed acquisition does
+not assign the receiving NPC. Explicit `check_player_weapon` validates current
+item ownership/type and applies shared weapon cleanup; automatic invocation awaits
+complete standalone player initialization. These rules follow preservation's
+[selection and weapon contracts](https://github.com/michidk/redguard-preservation/blob/main/docs/config/item-ini.md#empty-selection-fallback).
 Cyclic effect traversal reports a contextual error. The renderer reads the installed Activate/Attack binding
 and current logical-player control, surface, animation and attribute state.
 Explicit activation inputs remain available for inspection. Receiving a compass

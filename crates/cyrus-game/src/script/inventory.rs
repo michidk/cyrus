@@ -17,17 +17,17 @@ impl Inventory {
     pub fn new(hud: &HudAsset) -> Result<Self> {
         let mut inventory = Self {
             items: hud.inventory.clone(),
-            selected: hud
-                .selected
-                .or_else(|| hud.inventory.keys().next().copied()),
+            selected: hud.inventory.keys().next().copied(),
         };
-        if let Some(id) = inventory.selected {
-            inventory.count(id).context("ITEM.INI start_item_select")?;
-        }
         for &id in &hud.start_items {
             inventory
-                .add(id, 1)
+                .add(id, 1, &mut |_| {
+                    anyhow::bail!("startup acquisition has no initial item record")
+                })
                 .with_context(|| format!("ITEM.INI start_item_list item {id}"))?;
+        }
+        if let Some(id) = hud.selected {
+            inventory.select(id).context("ITEM.INI start_item_select")?;
         }
         Ok(inventory)
     }
@@ -48,8 +48,40 @@ impl Inventory {
             .with_context(|| format!("ITEM.INI item {id}: definition absent"))?
             .count)
     }
-    pub fn add(&mut self, id: u16, amount: i32) -> Result<()> {
-        self.acquire(id, amount, &mut Vec::new())
+    pub fn add(
+        &mut self,
+        id: u16,
+        amount: i32,
+        assign_weapon: &mut dyn FnMut(u8) -> Result<()>,
+    ) -> Result<()> {
+        self.acquire(id, amount, &mut Vec::new(), assign_weapon)
+    }
+
+    pub fn owned_weapon(&self, id: u8) -> bool {
+        self.items
+            .get(&u16::from(id))
+            .is_some_and(|item| item.weapon && item.count > 0)
+    }
+
+    fn repair_empty_selection(
+        &mut self,
+        assign_weapon: &mut dyn FnMut(u8) -> Result<()>,
+    ) -> Result<()> {
+        if self.selected.is_some() {
+            return Ok(());
+        }
+        let candidate = self.items.contains_key(&1).then_some(1).or_else(|| {
+            self.items
+                .iter()
+                .find(|(_, item)| item.count != 0 && item.weapon)
+                .or_else(|| self.items.iter().find(|(_, item)| item.count != 0))
+                .map(|(&id, _)| id)
+        });
+        if let Some(id) = candidate {
+            assign_weapon(id as u8)?;
+            self.selected = Some(id);
+        }
+        Ok(())
     }
 
     fn requirements(&self, id: u16, path: &mut Vec<u16>) -> Result<bool> {
@@ -72,7 +104,13 @@ impl Inventory {
         Ok(true)
     }
 
-    fn acquire(&mut self, id: u16, amount: i32, path: &mut Vec<u16>) -> Result<()> {
+    fn acquire(
+        &mut self,
+        id: u16,
+        amount: i32,
+        path: &mut Vec<u16>,
+        assign_weapon: &mut dyn FnMut(u8) -> Result<()>,
+    ) -> Result<()> {
         let item = self
             .items
             .get(&id)
@@ -96,10 +134,11 @@ impl Inventory {
                 .with_context(|| format!("ITEM.INI drop_add_item_list[{id}] item {other}"))?;
         }
         for other in adds {
-            self.acquire(other, 1, path)
+            self.acquire(other, 1, path, assign_weapon)
                 .with_context(|| format!("ITEM.INI add_item_list[{id}] item {other}"))?;
         }
         path.pop();
+        self.repair_empty_selection(assign_weapon)?;
         let item = self.items.get_mut(&id).expect("validated item");
         item.count = item
             .count

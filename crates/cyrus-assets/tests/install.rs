@@ -627,6 +627,9 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     assert_eq!(data["start_items"], serde_json::json!([1, 2, 4, 18]));
     assert_eq!(data["inventory"]["0"]["count"], 0);
     assert_eq!(data["inventory"]["0"]["player_max"], 1);
+    assert_eq!(data["inventory"]["0"]["weapon"], false);
+    assert_eq!(data["inventory"]["1"]["weapon"], true);
+    assert_eq!(data["inventory"]["45"]["weapon"], false);
     assert!(
         data["items"]
             .as_array()

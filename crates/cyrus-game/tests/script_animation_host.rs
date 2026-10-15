@@ -2619,13 +2619,13 @@ fn inventory_requires_recursive_owned_prerequisites_before_any_effect() {
     asset.inventory.get_mut(&1).unwrap().drop_add_items = vec![4];
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud.add_item(1, 3).unwrap();
+    hud.add_item(1, 3, &mut |_| Ok(())).unwrap();
     assert_eq!(
         hud.inventory(None).unwrap().counts,
         [(1, 0), (2, 1), (3, 0), (4, 2)].into()
     );
-    hud.add_item(3, 1).unwrap();
-    hud.add_item(1, 3).unwrap();
+    hud.add_item(3, 1, &mut |_| Ok(())).unwrap();
+    hud.add_item(1, 3, &mut |_| Ok(())).unwrap();
     assert_eq!(
         hud.inventory(None).unwrap().counts,
         [(1, 3), (2, 1), (3, 1), (4, 1)].into()
@@ -2643,7 +2643,7 @@ fn inventory_effects_run_once_in_authored_order_with_drop_before_recursive_add()
     asset.inventory.get_mut(&5).unwrap().required_items = vec![6];
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud.add_item(1, 9).unwrap();
+    hud.add_item(1, 9, &mut |_| Ok(())).unwrap();
     assert_eq!(
         hud.inventory(None).unwrap().counts,
         [(1, 9), (2, 0), (3, 0), (4, 1), (5, 2), (6, 1)].into()
@@ -2661,7 +2661,7 @@ fn inventory_retains_admitted_quantity_when_effects_remove_source() {
     asset.inventory.get_mut(&2).unwrap().drop_add_items = vec![1];
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud.add_item(1, 10).unwrap();
+    hud.add_item(1, 10, &mut |_| Ok(())).unwrap();
     assert_eq!(hud.inventory(None).unwrap().counts, [(1, 4), (2, 1)].into());
 }
 
@@ -2797,12 +2797,12 @@ fn inventory_drop_list_preserves_authored_order_and_zero_admission_skips_effects
     asset.inventory.get_mut(&3).unwrap().flags = 1;
     let hud = ScriptHud::default();
     hud.configure(&asset, &Preferences::default());
-    hud.add_item(1, 1).unwrap();
+    hud.add_item(1, 1, &mut |_| Ok(())).unwrap();
     assert_eq!(
         hud.inventory(None).unwrap().counts,
         [(1, 1), (2, 1), (3, 0), (4, 0)].into()
     );
-    hud.add_item(1, 9).unwrap();
+    hud.add_item(1, 9, &mut |_| Ok(())).unwrap();
     assert_eq!(
         hud.inventory(None).unwrap().counts,
         [(1, 1), (2, 1), (3, 0), (4, 0)].into()
@@ -3012,4 +3012,194 @@ fn hand_item_distinguishes_closed_unknown_and_invalid_inventory() {
         )
         .unwrap_err();
     assert!(format!("{error:#}").contains("inventory initialization"));
+}
+
+#[test]
+fn acquisition_repairs_empty_selection_before_count_and_assigns_literal_fallback() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    for (has_one, weapon, expected) in [
+        (true, true, Some(1)),
+        (false, true, Some(4)),
+        (false, false, Some(2)),
+    ] {
+        let mut asset = inventory_fixture(&[(2, 1), (4, 1), (9, 0)]);
+        asset.selected = Some(9);
+        for item in asset.inventory.values_mut() {
+            item.hidden = true;
+        }
+        asset.inventory.get_mut(&4).unwrap().weapon = weapon;
+        if has_one {
+            asset.inventory.insert(
+                1,
+                cyrus_assets::hud::InventoryItem {
+                    count: 0,
+                    total: 1,
+                    player_max: 1,
+                    hidden: true,
+                    weapon: false,
+                    ..Default::default()
+                },
+            );
+        }
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        assert_eq!(hud.inventory(None).unwrap().selected, None);
+        let mut assignments = Vec::new();
+        hud.add_item(9, 1, &mut |id| {
+            assignments.push(id);
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(assignments, [expected.unwrap()]);
+        assert_eq!(hud.inspect()["inventory"]["selected"], expected.unwrap());
+        assert_eq!(hud.inspect()["inventory"]["counts"]["9"], 1);
+    }
+    let mut asset = inventory_fixture(&[(9, 0)]);
+    asset.selected = Some(9);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(hud.inventory(None).unwrap().selected, None);
+    let mut assignments = Vec::new();
+    hud.add_item(9, 1, &mut |id| {
+        assignments.push(id);
+        Ok(())
+    })
+    .unwrap();
+    assert!(assignments.is_empty());
+    assert!(hud.inspect()["inventory"]["selected"].is_null());
+    hud.add_item(9, 1, &mut |id| {
+        assignments.push(id);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(assignments, [9]);
+    assert_eq!(hud.inspect()["inventory"]["selected"], 9);
+}
+
+#[test]
+fn acquisition_keeps_existing_selection_and_rejects_unavailable_fallback_owner() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let asset = inventory_fixture(&[(1, 0), (9, 0)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud.select_item(9).unwrap();
+    hud.add_item(1, 1, &mut |_| anyhow::bail!("unexpected assignment"))
+        .unwrap();
+    assert_eq!(hud.active_item().unwrap(), 9);
+    hud_call(Some(&hud), "DropItem", &[1, 1]).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().selected, None);
+    let error = hud
+        .add_item(9, 1, &mut |_| anyhow::bail!("selected player unavailable"))
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("selected player unavailable"));
+    assert_eq!(hud.inspect()["inventory"]["counts"]["9"], 0);
+}
+
+#[test]
+fn routed_acquisition_fallback_assigns_selected_player_not_receiver() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    let mut data = scripts(vec![
+        Operation::ObjectCall {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Function,
+                target: Object::Named { string: 0 },
+                function: "AddItem".into(),
+                arguments: vec![Value::Integer { value: 9 }, Value::Integer { value: 1 }],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "AddItem".into(),
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    let mut player = data.actors["OTHER"].clone();
+    player.namespace = Some("CYRUS".into());
+    player.code_origin = 200;
+    player.attributes.insert("attr_23".into(), 7);
+    data.actors.insert("CYRUS".into(), player);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    let hud = ScriptHud::default();
+    hud.configure(
+        &inventory_fixture(&[(1, 0), (9, 0)]),
+        &Preferences::default(),
+    );
+    assert_eq!(hud.inventory(None).unwrap().selected, None);
+    world
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            ScriptInputs {
+                hud: Some(&hud),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[0].attributes()[23], 0);
+    assert_eq!(world.actors()[1].attributes()[23], 0);
+    assert_eq!(world.actors()[2].attributes()[23], 1);
+    assert_eq!(hud.active_item().unwrap(), 1);
+    assert_eq!(hud.inspect()["inventory"]["counts"]["9"], 1);
+}
+
+#[test]
+fn selected_player_weapon_validation_uses_type_ownership_animation_and_shell() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    for (bound, shell, defined, weapon, count, assigned, expected) in [
+        (true, false, true, true, 1, 1, 1),
+        (true, false, true, false, 1, 1, 0),
+        (true, false, true, true, 0, 1, 0),
+        (true, false, false, true, 1, 1, 0),
+        (false, false, true, true, 1, 1, 0),
+        (true, true, true, true, 1, 1, 0),
+        (true, false, true, true, 1, 0, 0),
+    ] {
+        let mut data = scripts(vec![Operation::End { target: 0 }]);
+        let mut player = data.actors["OTHER"].clone();
+        player.namespace = Some("CYRUS".into());
+        player.code_origin = 200;
+        player.attributes.insert("attr_23".into(), assigned);
+        data.actors.insert("CYRUS".into(), player);
+        data.actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .attributes
+            .insert("attr_23".into(), 7);
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        let selected = world.id(2).unwrap();
+        if bound {
+            let mut animation = animations(&data, false);
+            animation.metadata["actors"][0]["script_name"] = json!("CYRUS");
+            world.bind_animation(selected, &animation, 1).unwrap();
+        }
+        let mut asset = inventory_fixture(&[(1, count)]);
+        asset.inventory.get_mut(&1).unwrap().weapon = weapon;
+        asset.inventory.get_mut(&1).unwrap().hidden = true;
+        if !defined {
+            asset.inventory.clear();
+            asset.selected = None;
+        }
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        let mut cues = Vec::new();
+        world
+            .check_player_weapon(selected, &hud, shell, 0, &mut |id, cue| {
+                cues.push((id, cue));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(world.actors()[selected.index].attributes()[23], expected);
+        assert_eq!(world.actors()[0].attributes()[23], 7);
+        assert!(cues.is_empty());
+    }
 }

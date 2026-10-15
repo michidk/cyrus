@@ -71,6 +71,8 @@ pub struct HudItem {
 /// Portable acquisition inputs decoded from ITEM.INI by preservation.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct InventoryItem {
+    /// Installed type code one; other item types do not pass weapon validation.
+    pub weapon: bool,
     /// Configured player_total, before ordered startup acquisitions.
     pub count: u32,
     pub total: u32,

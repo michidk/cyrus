@@ -1637,9 +1637,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         }
     }
 
-    fn player_dialogue_call(&self) -> super::tasks::PlayerDialogueCall<'input> {
-        let player = self
-            .inputs
+    fn selected_player(&self) -> Option<ScriptActorId> {
+        self.inputs
             .activation
             .map(|inputs| inputs.player)
             .or_else(|| {
@@ -1650,10 +1649,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         generation: self.generation,
                         index,
                     })
-            });
+            })
+    }
+
+    fn player_dialogue_call(&self) -> super::tasks::PlayerDialogueCall<'input> {
         super::tasks::PlayerDialogueCall {
             source: self.inputs.dialogue_source,
-            player,
+            player: self.selected_player(),
             reset: self.inputs.sound_reset,
         }
     }
@@ -1767,6 +1769,33 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 &mut emit,
             )?;
             return Ok(CallResult::CompleteWithoutValue);
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("AddItem") {
+            let [item, amount] = arguments else {
+                anyhow::bail!("AddItem requires two arguments")
+            };
+            let hud = self
+                .inputs
+                .hud
+                .context("AddItem inventory host unavailable")?;
+            if !hud.inventory_ready()? {
+                return Ok(CallResult::Complete(0));
+            }
+            let item =
+                u16::try_from(item.integer()?).context("AddItem item ID outside u16 range")?;
+            let player = self.selected_player();
+            let generation = self.generation;
+            let actors = &mut self.actors;
+            hud.add_item(item, amount.integer()?, &mut |weapon| {
+                let player = player.context("AddItem fallback selected player unavailable")?;
+                anyhow::ensure!(
+                    player.generation == generation && player.index < actors.len(),
+                    "AddItem fallback selected player identity is stale"
+                );
+                actors[player.index].attributes[23] = weapon;
+                Ok(())
+            })?;
+            return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("ActiveItem") {
             anyhow::ensure!(arguments.is_empty(), "ActiveItem requires no arguments");

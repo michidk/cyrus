@@ -115,7 +115,14 @@ impl ScriptHud {
     }
 
     /// Apply installed recursive prerequisites and ordered acquisition effects.
-    pub fn add_item(&self, id: u16, amount: i32) -> Result<()> {
+    /// Empty-selection repair calls the selected-player assignment before count increment.
+    /// The callback must not reenter this HUD, whose inventory lock remains held.
+    pub fn add_item(
+        &self,
+        id: u16,
+        amount: i32,
+        assign_weapon: &mut dyn FnMut(u8) -> Result<()>,
+    ) -> Result<()> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
         if let Some(error) = &state.inventory_error {
             anyhow::bail!("inventory initialization: {error}");
@@ -124,7 +131,7 @@ impl ScriptHud {
             .inventory
             .as_mut()
             .context("installed inventory data unavailable")?
-            .add(id, amount)
+            .add(id, amount, assign_weapon)
     }
 
     /// Selected record ID, independent of ownership or visibility; zero when closed.
@@ -146,6 +153,17 @@ impl ScriptHud {
             anyhow::bail!("inventory initialization: {error}");
         }
         Ok(state.inventory.is_some())
+    }
+
+    pub(super) fn owned_weapon(&self, id: u8) -> Result<bool> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .is_some_and(|items| items.owned_weapon(id)))
     }
 
     pub(super) fn validate_item(&self, id: u16) -> Result<()> {
@@ -199,7 +217,6 @@ impl ScriptHud {
             "ShowBitmap",
             "UnShowBitmap",
             "AddLog",
-            "AddItem",
             "DropItem",
             "HaveItem",
             "SelectItem",
@@ -210,13 +227,11 @@ impl ScriptHud {
 
     pub(super) fn call(&self, function: &str, arguments: &[Argument]) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
-        if ["AddItem", "DropItem", "HaveItem", "SelectItem"]
+        if ["DropItem", "HaveItem", "SelectItem"]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
         {
-            let expected = if function.eq_ignore_ascii_case("AddItem")
-                || function.eq_ignore_ascii_case("DropItem")
-            {
+            let expected = if function.eq_ignore_ascii_case("DropItem") {
                 2
             } else {
                 1
@@ -245,9 +260,7 @@ impl ScriptHud {
                 return i32::try_from(items.count(id)?)
                     .context("item count outside script integer range");
             }
-            if function.eq_ignore_ascii_case("AddItem") {
-                items.add(id, arguments[1].integer()?)?;
-            } else if function.eq_ignore_ascii_case("DropItem") {
+            if function.eq_ignore_ascii_case("DropItem") {
                 items.remove(id, arguments[1].integer()?)?;
             } else {
                 items.select(id)?;

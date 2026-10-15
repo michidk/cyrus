@@ -242,4 +242,6 @@ definitions and unhidden artwork, including items not yet owned. Initial counts
 and ordered starting acquisitions remain separate installed inputs; gameplay
 applies startup and subsequent acquisition through the same owner. Ordered
 prerequisites, drop/add dependencies and removal flags travel with each definition.
-Re-export older HUD caches for the required inventory metadata.
+HUD metadata retains whether each installed item has type one for shared weapon
+validation and selection fallback. Re-export older HUD caches for the required
+inventory metadata.
