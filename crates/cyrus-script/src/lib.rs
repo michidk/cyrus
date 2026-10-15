@@ -1,4 +1,5 @@
 //! Explicit SOUP invocation, continuations and values from preservation's engine contract.
+pub mod persistence;
 pub mod program;
 mod routing;
 mod tasks;

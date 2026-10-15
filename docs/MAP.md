@@ -205,6 +205,7 @@ module where it is defined and regenerate.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 
+- `src/persistence.rs` — Validated VM snapshots; game hosts restore actor identities and native task state separately.
 - `src/program.rs` — Portable SOUP instructions, definitions and validation before host side effects.
 - `src/program/validation.rs` — Validate portable operands before a script can issue host side effects.
 - `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.

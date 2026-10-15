@@ -54,6 +54,25 @@ The default host rejects non-Me routing. `State` is serializable for inspection;
 serialization alone is not a save/load implementation. Production task tokens
 must remain bound to their owning actor and world generation.
 
+`Runtime::snapshot` captures complete VM state and the exact owning/foreign
+programs used by its tasks. `Runtime::from_snapshot` builds a replacement VM
+without invoking native services or scripts. It validates program content,
+continuation and return cursors, local counts, task source/operand identities,
+blocking kinds, and unique saved tokens. Every saved token requires an explicit,
+unique replacement token prepared by the host. `Snapshot::task_tokens` exposes
+those saved tokens in slot order. Slot holes, pause state, counters and sticky
+failures are retained. Source programs are included for exact compatibility,
+including their strings and initial locals, without an asset or hashing dependency.
+
+**Verified:** headless public-interface tests resume waits and subroutines without
+reissuing native calls, retain both continuations and saved return values, poll
+foreign tasks after rebinding, preserve paused/wrapping counters, and reject
+malformed state or changed code without altering the live VM. This is a VM
+restore boundary, not a complete game save. The owning game host must validate
+actor/world identity and restore globals, RNG, animation, native task state and
+all other gameplay state before committing the replacement world. Native/browser
+storage, original-save import and full game restoration remain unsupported.
+
 Run `cargo test -p cyrus-script`. New handlers belong to `cyrus-game`; format and
 engine discoveries belong to preservation.
 

@@ -216,6 +216,7 @@ Requires the player controller.
 - [ ] Authored world transitions and old sound/script/transient cleanup.
 - [ ] Pause/resume of simulation and audio; original save-slot menus.
 - [x] Publish [original inventory save records](https://github.com/michidk/redguard-preservation/compare/main...feat/save-inventory) and direct restoration rules. **Verified:** original instructions, typed codec tests, two original save-slot round trips and a rejected wrong-endian control. Runtime restoration remains open.
+- [x] Validated VM snapshot/restore with exact source compatibility and task-token rebinding. **Verified:** headless resume, foreign-task, pause/counter and malformed-state checks. Complete actor/world snapshots and storage remain open.
 - [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. Share storage operations with cheats where appropriate; format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,
