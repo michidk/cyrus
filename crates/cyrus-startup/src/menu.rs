@@ -238,7 +238,7 @@ pub(super) fn drive(
             .collect();
         menu.repeat_seconds = book.repeat_seconds;
         menu.motion = Some(BookMotion::opening(std::array::from_fn(|i| {
-            book.models[i].frames.len() - 1
+            book.models[i].frames.len()
         })));
         menu.open(book, 0);
         menu.blink_on = true;

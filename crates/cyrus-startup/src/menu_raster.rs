@@ -112,7 +112,9 @@ fn project(book: &MenuAsset, pose: &BookPose) -> Vec<MenuFace> {
                 .corners
                 .iter()
                 .map(|corner| {
-                    let point = model.frames[pose.frames[index]][corner.vertex];
+                    // A forward turn ends one past the last authored frame, which shows the last pose.
+                    let point = model.frames[pose.frames[index].min(model.frames.len() - 1)]
+                        [corner.vertex];
                     let x = model.position[0] - point[0] - pose.camera[0];
                     let y = model.position[1] + point[1] - pose.camera[1];
                     let z = model.position[2] + pose.depth[index] - point[2] - pose.camera[2];

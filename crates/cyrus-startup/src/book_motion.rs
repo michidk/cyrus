@@ -1,4 +1,6 @@
 //! Authored book turns and camera requests from preservation's engine/menu.md.
+//! Forward turns target each model's frame count, one past its last authored frame
+//! (redguard-preservation PR #81).
 use std::collections::VecDeque;
 
 #[derive(Clone, Default)]
@@ -11,7 +13,7 @@ pub(super) struct BookPose {
 
 pub(super) struct BookMotion {
     pub pose: BookPose,
-    last: [usize; 5],
+    frame_counts: [usize; 5],
     turns: [Option<Turn>; 5],
     camera: VecDeque<CameraMove>,
 }
@@ -32,13 +34,13 @@ struct CameraMove {
 }
 
 impl BookMotion {
-    pub fn opening(last: [usize; 5]) -> Self {
+    pub fn opening(frame_counts: [usize; 5]) -> Self {
         let mut motion = Self {
             pose: BookPose {
                 camera: [-4.0, -100.0, 240.0],
                 ..BookPose::default()
             },
-            last,
+            frame_counts,
             turns: std::array::from_fn(|_| None),
             camera: VecDeque::new(),
         };
@@ -87,7 +89,7 @@ impl BookMotion {
         match (from, to) {
             (0, 3) => {
                 self.sweep([336.0, 0.0, 0.0]);
-                self.turn(1, self.last[1], 4);
+                self.turn(1, self.frame_counts[1], 4);
             }
             (3, 0) => {
                 self.sweep([0.0; 3]);
@@ -95,8 +97,8 @@ impl BookMotion {
             }
             (0, 4) => {
                 self.sweep([0.0; 3]);
-                self.turn(1, self.last[1], 3);
-                self.turn(3, self.last[3], 5);
+                self.turn(1, self.frame_counts[1], 3);
+                self.turn(3, self.frame_counts[3], 5);
             }
             (4, 0) => {
                 self.sweep([0.0; 3]);
@@ -108,7 +110,7 @@ impl BookMotion {
             (5 | 6, 4) => self.request([0.0; 3], 0, 0.15),
             (4, 7) => {
                 self.sweep([0.0; 3]);
-                self.turn(4, self.last[4], 4);
+                self.turn(4, self.frame_counts[4], 4);
             }
             (7, 4) => {
                 self.sweep([0.0; 3]);
@@ -129,7 +131,7 @@ impl BookMotion {
         self.request([232.0, 284.0, -96.0], -152, 0.15);
         self.request([232.0, 284.0, -96.0], 0, 0.12);
         self.request([408.0, 0.0, 0.0], 152, 0.15);
-        self.turn(0, self.last[0], 2);
+        self.turn(0, self.frame_counts[0], 2);
     }
 
     /// Advances one presentation update and dispatches installed effect indices.
@@ -200,7 +202,7 @@ mod tests {
     use super::*;
 
     fn settled() -> BookMotion {
-        let mut motion = BookMotion::opening([8, 8, 0, 8, 8]);
+        let mut motion = BookMotion::opening([9, 9, 0, 9, 9]);
         while motion.tick(|_| {}) {}
         motion
     }
@@ -217,7 +219,7 @@ mod tests {
 
     #[test]
     fn book_cues_follow_delayed_starts_and_cover_frame_crossings_once() {
-        let mut motion = BookMotion::opening([8, 8, 0, 8, 8]);
+        let mut motion = BookMotion::opening([9, 9, 0, 9, 9]);
         assert!(cues(&mut motion).is_empty());
         for (from, to, expected) in [
             (0, 3, vec![(4, 66)]),
@@ -237,9 +239,29 @@ mod tests {
         }
         motion.close();
         assert_eq!(cues(&mut motion), [(9, 65)]);
-        assert_eq!(motion.pose.frames[0], 8);
+        assert_eq!(motion.pose.frames[0], 9);
         motion.turn(0, 0, 2);
-        assert_eq!(cues(&mut motion), [(10, 64)]);
+        assert_eq!(cues(&mut motion), [(11, 64)]);
+    }
+
+    #[test]
+    fn options_return_turns_one_update_longer_than_its_authored_frames() {
+        let mut motion = settled();
+        motion.navigate(0, 4).unwrap();
+        while motion.tick(|_| {}) {}
+        motion.navigate(4, 0).unwrap();
+        let mut last_page_update = 0;
+        for update in 1..=64 {
+            let before = motion.pose.frames;
+            if !motion.tick(|_| {}) {
+                break;
+            }
+            if motion.pose.frames != before {
+                last_page_update = update;
+            }
+        }
+        // Delay five, then nine steps from the frame-count index.
+        assert_eq!(last_page_update, 14);
     }
 
     #[test]
@@ -256,7 +278,7 @@ mod tests {
 
     #[test]
     fn opening_samples_truncate_and_settle_on_the_sixth_update() {
-        let mut motion = BookMotion::opening([8, 8, 0, 8, 8]);
+        let mut motion = BookMotion::opening([9, 9, 0, 9, 9]);
         assert!(motion.tick(|_| {}));
         assert_eq!(motion.pose.camera, [-3.0, -84.0, 203.0]);
         for _ in 0..5 {
@@ -277,7 +299,7 @@ mod tests {
             motion.tick(|_| {});
         }
         assert_eq!(motion.pose.frames[1], 0);
-        for frame in 1..=8 {
+        for frame in 1..=9 {
             motion.tick(|_| {});
             assert_eq!(motion.pose.frames[1], frame);
             assert_eq!(motion.pose.depth[1], if frame < 4 { 0.0 } else { 4.0 });
@@ -299,7 +321,7 @@ mod tests {
             motion.navigate(from, to).unwrap();
             while motion.tick(|_| {}) {}
         }
-        assert_eq!(motion.pose.frames, [0, 8, 0, 8, 8]);
+        assert_eq!(motion.pose.frames, [0, 9, 0, 9, 9]);
         assert_eq!(motion.pose.depth, [0.0, 4.0, 0.0, 0.0, -4.0]);
         for (from, to) in [(7, 4), (4, 0)] {
             motion.navigate(from, to).unwrap();
@@ -309,7 +331,7 @@ mod tests {
         assert_eq!(motion.pose.depth, [0.0; 5]);
         motion.close();
         while motion.tick(|_| {}) {}
-        assert_eq!(motion.pose.frames, [8, 0, 0, 0, 0]);
+        assert_eq!(motion.pose.frames, [9, 0, 0, 0, 0]);
         assert_eq!(motion.pose.camera, [408.0, 0.0, 0.0]);
         assert_eq!(motion.pose.pitch, 0);
     }
