@@ -419,3 +419,11 @@ a zero-alpha sun control raises sun error to 25.035 while leaving clouds identic
 Matching browser direct entry averages 0.022 and 0.299. The browser debug world
 picker reloads the page and clears the inspection pose, so it does not establish
 an in-process menu transition. Browser coastal menu-entry parity remains **Unknown**.
+
+**Verified:** a retained zero-speed ISLAND shoreline view separates texture-state
+differences from backend differences. Holding all four visible animated terrain
+images to the same recorded frame gives native/browser mean RGB differences
+below 0.003 in water, edge and land regions, with maximum channel difference one.
+An eight-frame browser sweep changes original-relative water error from 1.715 to
+10.088 while dry-land error stays 1.404. Original per-image indices were not
+recorded; selecting the lowest error does not establish matching phase or parity.
