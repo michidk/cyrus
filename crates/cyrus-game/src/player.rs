@@ -1,5 +1,6 @@
 //! Player state, input and deterministic controller rules.
 pub mod contact;
+pub mod controller;
 pub mod data;
 pub mod definition;
 pub mod grounded;

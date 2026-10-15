@@ -117,6 +117,7 @@ module where it is defined and regenerate.
 - `src/logbook.rs` — Explicit logbook text layout and scrolling, independent of screen presentation.
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
+- `src/player/controller.rs` — Pure ordinary sheathed-ground controller dispatch.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
 - `src/player/definition.rs` — Player attributes and upright collision bounds from preservation's RGM metadata.
 - `src/player/grounded.rs` — Composed static ground queries from preservation's ordinary player update rules.

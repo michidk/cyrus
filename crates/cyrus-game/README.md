@@ -31,6 +31,13 @@ of camera transforms.
 
 Ground-turn, walking startup, wall response and forward support admission are
 explicit deterministic APIs. Automatic player locomotion and complete actor eligibility remain unsupported.
+`player::controller::select_sheathed_action` selects an action for a caller-admitted
+ordinary sheathed-ground state. It requires known lockout, dialogue, topic-menu
+and walk-toggle values and Faithful held-key input. It returns early dispatch,
+idle, forward walk or forward run without mutating the actor. Unsupported
+composite inputs report errors. The caller still owns helper admission,
+animation continuation and late ground response; the selector does not enable
+automatic keyboard updates.
 Supported ordinary map actors use the shared simulation clock. See
 [SETUP](../../docs/SETUP.md) and [ROADMAP](../../docs/ROADMAP.md).
 

@@ -10,7 +10,7 @@ specification. No multiplayer or new content.
 | Foundations | Done | Install loading, world exports, browser viewer and development tools |
 | 0. Development tooling | Done | Build, run, drive and compare both games |
 | 1. Complete world playback | In progress | Render, animate, sound and execute every required world script |
-| 2. Player controller | Parked at user request | Original movement, camera and collision |
+| 2. Player controller | Bounded walking integration | Original movement, camera and collision |
 | 3. Interaction and persistence | Later | Dialogue, inventory, scripted cameras, transitions and saves |
 | 4. Complete gameplay | Later | Quests, combat and remaining gameplay services |
 | 5. Full-game fidelity | Later | A verified new-game-to-ending playthrough |
@@ -33,8 +33,8 @@ activation prompt/item timing against the original.
   synchronized texture playback. Verify sky, sun and water across menu transitions.
 - Complete automatic sound triggers and moving emitters. Surface remapping exists.
 - Connect remaining gameplay state to the HUD and verify its timing and presentation.
-- Compare original, native and browser behavior and audible output. Keep controller
-  work parked until requested.
+- Compare original, native and browser behavior and audible output. Verify the
+  selected-player idle/walk/release path before extending the controller.
 
 The [SOUP completion checklist](plans/2026-10-12-soup-completion.md) owns detailed
 script dependencies. [MAP.md](MAP.md) owns module boundaries;
@@ -46,10 +46,10 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | Save/load: original persistence contracts and safe native/browser restoration | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
 | SOUP integration: automatic combat, dialogue, lifecycle and remaining script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
-| Surface sound comparison: audible waveform/duration | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping` |
+| Surface sound acceptance and bounded player dispatch; SOUP owns the automatic adapter | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping`; `magic/artifacts/2026-10-15-player-admission/` |
 
 Remaining HUD integration is unassigned.
-Controller implementation remains parked.
+The bounded idle/walk/release controller integration is active. Complete controller implementation remains open.
 
 ## Resource coverage
 
