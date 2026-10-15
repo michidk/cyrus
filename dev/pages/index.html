@@ -68,6 +68,9 @@
     .download-grid { gap: 10px; }
     .download-link { padding: 12px; }
   }
+  .shots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .shots img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 3px; }
+  @media (max-width: 720px) { .shots { grid-template-columns: 1fr; } }
   ul { padding-left: 1.2em; margin: 0; }
   li { margin: 4px 0; }
   a { color: var(--red); }
@@ -133,6 +136,13 @@
       <a class="button" href="viewer/">Open asset viewer</a>
     </div>
   </section>
+
+  <h2>Inside the asset viewer</h2>
+  <div class="shots">
+    <a href="viewer-model.webp"><img src="viewer-model.webp" width="1280" height="800" loading="lazy" alt="Asset viewer showing a textured character model with orbit controls and mesh statistics"></a>
+    <a href="viewer-world.webp"><img src="viewer-world.webp" width="1280" height="800" loading="lazy" alt="Asset viewer showing the Stros M'Kai island world with terrain and placed models"></a>
+    <a href="viewer-font.webp"><img src="viewer-font.webp" width="1280" height="800" loading="lazy" alt="Asset viewer showing a bitmap font specimen and its glyph atlas"></a>
+  </div>
 
   <h2>What works today</h2>
   <ul>

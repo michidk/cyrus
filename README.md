@@ -81,6 +81,10 @@ run `cargo run -p cyrus-viewer -- --install /path/to/Redguard`. See the
 [viewer guide](crates/cyrus-viewer/README.md) for previews, controls, and browser
 setup. The viewer uses a modern inspection interface and generic rendering.
 
+| Model | World | Font |
+| --- | --- | --- |
+| ![Textured character model](dev/pages/viewer-model.webp) | ![Island world overview](dev/pages/viewer-world.webp) | ![Bitmap font specimen](dev/pages/viewer-font.webp) |
+
 ## Faithful by default
 
 Faithful mode aims to reproduce what the player experiences: visuals, audio,
