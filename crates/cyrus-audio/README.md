@@ -10,8 +10,11 @@ decoder. A volume/pan update affects subsequent stereo frames without restarting
 the sample. One-shots retain their start gains unless explicitly updated.
 Original PCM width is retained through native and browser preparation. The decoder
 applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
-integer rounding before backend resampling. Volume and pan updates keep the
-sample's original width and apply together at stereo-frame boundaries.
+integer rounding before backend resampling. Rodio queue conversion starts after
+the first source sample establishes its channels and effective rate. Exact decoder
+size hints retain the complete resampling span, including a pending right channel.
+The vendored dependency fix is documented in `dev/vendor/rodio/README.md`.
+Volume and pan updates keep the sample's original width and apply together at stereo-frame boundaries.
 
 Hosts supply an optional `AudioListener` in Bevy world space. Native and browser
 game hosts schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`;

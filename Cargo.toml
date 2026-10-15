@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-exclude = ["dev/vendor/smk"]
+exclude = ["dev/vendor/smk", "dev/vendor/rodio"]
 # cyrus-web only matters for `just web`; keep day-to-day builds and tests lean.
 default-members = ["crates/cyrus-assets", "crates/cyrus-world", "crates/cyrus-collision", "crates/cyrus-script", "crates/cyrus-render", "crates/cyrus", "crates/cyrus-game", "crates/cyrus-console", "crates/cyrus-control", "crates/cyrus-mcp", "crates/cyrus-text", "crates/cyrus-media", "crates/cyrus-audio", "crates/cyrus-startup"]
 
@@ -34,6 +34,9 @@ cyrus-assets = { path = "crates/cyrus-assets" }
 cyrus-script = { path = "crates/cyrus-script" }
 cyrus-game = { path = "crates/cyrus-game" }
 cyrus-text = { path = "crates/cyrus-text" }
+
+[patch.crates-io]
+rodio = { path = "dev/vendor/rodio" }
 
 # The inspector's Bevy 0.20 port uses an egui fork; share our released adapter instead.
 [patch."https://github.com/taboky-dev/bevy_egui.git"]

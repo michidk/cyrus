@@ -1057,12 +1057,28 @@ impl Iterator for PannedDecoder {
         self.channel = (self.channel + 1) % self.inner.channels().get();
         Some(self.frame_scale.apply(sample, channel))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        use bevy::audio::Source;
+        let (lower, upper) = self.inner.size_hint();
+        if self.inner.channels().get() == 1 {
+            let pending = usize::from(self.right.is_some());
+            (
+                lower.saturating_mul(2).saturating_add(pending),
+                upper.and_then(|n| n.checked_mul(2)?.checked_add(pending)),
+            )
+        } else {
+            (lower, upper)
+        }
+    }
 }
 
 impl bevy::audio::Source for PannedDecoder {
     fn current_span_len(&self) -> Option<usize> {
         let channels = usize::from(self.inner.channels().get());
-        self.inner.current_span_len().map(|n| n * 2 / channels)
+        self.inner
+            .current_span_len()
+            .map(|n| n * 2 / channels + usize::from(self.right.is_some()))
     }
     fn channels(&self) -> bevy::audio::ChannelCount {
         bevy::audio::ChannelCount::new(2).unwrap()

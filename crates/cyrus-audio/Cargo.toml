@@ -16,6 +16,7 @@ serde_json.workspace = true
 cyrus-assets = { workspace = true, features = ["native"] }
 
 [dev-dependencies]
+rodio = { version = "=0.22.2", default-features = false }
 redguard-preservation.workspace = true
 cyrus-collision.workspace = true
 serde.workspace = true
