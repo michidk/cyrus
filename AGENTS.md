@@ -188,6 +188,13 @@ untracked working memory. Each crate has a `README.md` with its commands.
 
 ## References and playtesting
 
+The user authorizes agents to create their own rendering verification previews
+and restart them as often as needed, without asking for each run. Reuse each
+session's existing names, register its owning thread, and leave other sessions'
+previews alone. Routine agent cleanup does not revoke this authorization.
+A later explicit user instruction to keep a named preview stopped takes
+precedence; do not create a replacement to evade it.
+
 Default windowed and browser launches play the installed Windows Glide 3dfx splash and title,
 then stop at the book menu. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
