@@ -23,8 +23,8 @@ commits and implementation docs.
 
 ## Next work
 
-Next unassigned task: implement installed ITEM.INI required-item checks and
-add/drop-add lists through the shared inventory.
+Current inventory task: the SOUP session owns installed ITEM.INI required-item
+checks and add/drop-add lists. Logbook navigation is the next independent HUD task.
 
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
@@ -43,11 +43,12 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
+| Logbook navigation and installed presentation | In progress | Codex, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-logbook-navigation/` |
 | Rendering fidelity: residual START shading, model normals and sampling comparisons | In progress | Codex, Improve Rendering Fidelity, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
-| SOUP integration: dialogue speech/skip input, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| SOUP integration: inventory acquisition rules, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
-Inventory acquisition, save/load and remaining HUD integration are unassigned.
+Save/load and remaining HUD integration are unassigned.
 Controller implementation remains parked.
 
 ## Resource coverage
