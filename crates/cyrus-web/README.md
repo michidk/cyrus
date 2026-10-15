@@ -7,6 +7,8 @@ selection and localStorage preferences; it has no native control port.
 Shared document storage preserves the accepted value when a write exceeds the
 browser quota, and distinguishes missing records from read failures. Complete
 gameplay save restoration and capacity for visited-world state remain open.
+Read/write errors identify the document key and retain the browser's reason,
+including denied access to local storage.
 
 ```sh
 just web-build
