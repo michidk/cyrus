@@ -8,6 +8,10 @@ const QUEUE_CAPACITY: usize = 8;
 /// Constructor-owned combat state, separate from animation and death-default selection.
 #[derive(Debug, Serialize)]
 pub struct CombatControlState {
+    /// Authored attack indices; empty slots do not terminate selection.
+    pub attack_indices: [Option<u8>; 9],
+    /// Authored defense indices, ending at the first zero attribute.
+    pub defense_indices: [Option<u8>; 4],
     pub target: Option<ScriptActorId>,
     pub flags: u8,
     pub action: i32,
@@ -20,6 +24,8 @@ pub struct CombatControlState {
 impl Default for CombatControlState {
     fn default() -> Self {
         Self {
+            attack_indices: [None; 9],
+            defense_indices: [None; 4],
             target: None,
             flags: 0,
             action: -1,
@@ -27,6 +33,28 @@ impl Default for CombatControlState {
             taunt_cache: None,
             taunt_dialogue: Some(0),
             taunt_active: 0,
+        }
+    }
+}
+
+impl CombatControlState {
+    /// Bind authored slots following preservation's COMBAT.INI actor move selection.
+    pub(crate) fn from_attributes(attributes: &[u8]) -> Self {
+        let attack_indices = std::array::from_fn(|slot| {
+            let index = attributes[70 + slot];
+            (index != 0).then_some(index)
+        });
+        let mut defense_indices = [None; 4];
+        for (slot, &index) in attributes[79..83].iter().enumerate() {
+            if index == 0 {
+                break;
+            }
+            defense_indices[slot] = Some(index);
+        }
+        Self {
+            attack_indices,
+            defense_indices,
+            ..Self::default()
         }
     }
 }

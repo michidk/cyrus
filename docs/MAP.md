@@ -55,6 +55,7 @@ module where it is defined and regenerate.
 - `src/runtime/prepare.rs` — Format adapters use preservation parsers and exporters, never binary layout knowledge.
 - `src/scene.rs` — Native scene export and installed world selection.
 - `src/script.rs` — World script caches and validated installed clock/update settings.
+- `src/script/combat.rs` — Prepared combat attacks with authored omissions retained explicitly.
 - `src/script/inventory.rs` — Static SOUP census; occurrence counts do not establish runtime support or reachability.
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.

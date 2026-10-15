@@ -253,6 +253,7 @@ pub struct ScriptWorld {
     activation: super::ActivationState,
     globals: super::GameplayGlobals,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
+    combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
@@ -264,6 +265,35 @@ pub struct ScriptWorld {
     surface_veto: Option<bool>,
 }
 impl ScriptWorld {
+    /// Resolve a retained zero-based actor attack slot against the shared installed table.
+    /// Empty authored slots return `None`; missing initialization or definitions are errors.
+    pub fn combat_attack(
+        &self,
+        id: ScriptActorId,
+        slot: usize,
+    ) -> Result<Option<&cyrus_assets::script::combat::Attack>> {
+        let actor = &self.actors[self.resolve(id)?];
+        let context = || format!("world {} actor {} attack slot {slot}", self.world, id.index);
+        let combat = actor
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .with_context(|| format!("{}: combat uninitialized", context()))?;
+        let index = combat
+            .attack_indices
+            .get(slot)
+            .with_context(|| format!("{}: slot outside authored list", context()))?;
+        index
+            .map(|index| {
+                self.combat_attacks
+                    .get(usize::from(index))
+                    .with_context(|| {
+                        format!("{}: attack{index:02} definition unavailable", context())
+                    })
+            })
+            .transpose()
+    }
+
     /// Send an addressed combat message using the receiver's authored class.
     /// A zero code has no effect; nonzero messages require live logical identities.
     pub fn send_combat_message(
@@ -533,6 +563,7 @@ impl ScriptWorld {
                 .collect(),
             actors,
             task_calls,
+            combat_attacks: scripts.combat_attacks.clone(),
             names,
             actor_lists: None,
             markers: None,
@@ -920,7 +951,8 @@ impl ScriptWorld {
                     .control
                     .as_mut()
                     .expect("allocated map control")
-                    .combat = (actor.attributes[14] != 0).then(super::CombatControlState::default);
+                    .combat = (actor.attributes[14] != 0)
+                    .then(|| super::CombatControlState::from_attributes(&actor.attributes));
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 Ok(())
             }
@@ -1075,7 +1107,8 @@ impl ScriptWorld {
             .as_mut()
             .expect("player role has allocation state");
         control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
-        control.combat = (actor.attributes[14] != 0).then(super::CombatControlState::default);
+        control.combat = (actor.attributes[14] != 0)
+            .then(|| super::CombatControlState::from_attributes(&actor.attributes));
         match crate::player::placement::initial_role_animation(data, actor.name(), ticks, sounds) {
             Ok((playback, frame)) => {
                 actor.animation = Some(ScriptAnimation { playback, frame });

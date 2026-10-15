@@ -27,7 +27,7 @@ collision/combat/intro services and complete all-world acceptance remain open.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
-  metadata, and decoded programs. The current draft script cache is version 12, programs are
+  metadata, and decoded programs. The current draft script cache is version 13, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
@@ -103,10 +103,11 @@ all missing host commands and cannot measure gameplay completeness.
   stage 5 owns full-game verification. The active SOUP task owns the remaining implementation checklist.
 - [Method](../METHOD.md): original-game evidence and reproducible comparisons.
 
-**Verified:** the roadmap records unresolved production invocation pacing and parks the
-player controller at the user's request. This plan does not resume that work.
-Script research, explicit host integration, and world inspection can proceed;
-player-dependent acceptance remains a separate dependency.
+**Verified:** complete automatic keyboard locomotion remains unavailable. The
+authorized controller integration uses the selected actor's ordinary native-hook
+stage and shared clock. The controller module owns pure input selection; the
+registry owns actor state, spatial initialization and execution. Explicit walking
+replays do not establish automatic keyboard acceptance.
 
 ## Ordered implementation checklist
 

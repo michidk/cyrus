@@ -1,4 +1,5 @@
 //! World script caches and validated installed clock/update settings.
+pub mod combat;
 pub mod inventory;
 use anyhow::Context;
 use cyrus_script::program::{Call, Definition, Program};
@@ -230,6 +231,8 @@ pub struct Instance {
 #[derive(bevy::prelude::Asset, bevy::prelude::TypePath, Debug, Clone, Serialize, Deserialize)]
 pub struct Scripts {
     pub version: u32,
+    /// Contiguous installed attack table, shared by all combat-capable actors.
+    pub combat_attacks: Vec<combat::Attack>,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
     pub dialogue: DialogueSettings,
@@ -250,6 +253,7 @@ impl Scripts {
     pub fn content_identity(&self) -> anyhow::Result<String> {
         let bytes = serde_json::to_vec(&(
             self.version,
+            &self.combat_attacks,
             &self.clock,
             &self.updates,
             &self.dialogue,
@@ -265,7 +269,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 12,
+            self.version == 13,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

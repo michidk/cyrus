@@ -80,7 +80,9 @@ pub fn prepare_source(
         for (key, value) in attribute_keys.into_iter().zip(initialized) {
             attributes.insert(key, value);
         }
-        if attributes.get("attr_num_taunts").copied().unwrap_or(0) != 0 && combat.is_none() {
+        if (initialized[14] != 0 || attributes.get("attr_num_taunts").copied().unwrap_or(0) != 0)
+            && combat.is_none()
+        {
             combat = Some(
                 rgpre::import::combat_ini::CombatIni::parse(&crate::preparation::text(
                     assets_source,
@@ -185,7 +187,13 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 12,
+        version: 13,
+        combat_attacks: combat
+            .as_ref()
+            .map(crate::script::combat::prepare)
+            .transpose()
+            .with_context(|| format!("world {world} combat attacks"))?
+            .unwrap_or_default(),
         player_distance_override,
         clock,
         updates,

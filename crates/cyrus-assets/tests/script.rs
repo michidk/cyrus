@@ -4,7 +4,8 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 12,
+        version: 13,
+        combat_attacks: vec![],
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -67,6 +68,29 @@ fn content_identity_rejects_changed_programs_and_defaults() {
             .contains("identity mismatch")
     );
 }
+#[test]
+fn combat_motion_metadata_participates_in_cache_identity() {
+    let mut scripts = cache();
+    scripts.combat_attacks.push(combat::Attack {
+        is_combo: true,
+        motions: vec![],
+        min_range: 65535,
+        max_range: -1,
+    });
+    scripts.content_id = scripts.content_identity().unwrap();
+    let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(decoded.combat_attacks, scripts.combat_attacks);
+    scripts.combat_attacks[0].max_range = 0;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
+}
+
 #[test]
 fn portable_script_records_round_trip_with_the_same_identity() {
     let mut scripts = cache();
@@ -261,6 +285,17 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
                 usize::from(attribute(85)),
                 "{name}: authored combat taunt count"
             );
+            if attribute(14) != 0 {
+                assert_eq!(
+                    scripts.combat_attacks.len(),
+                    89,
+                    "{name}: installed attack table"
+                );
+                assert_eq!(scripts.combat_attacks[0].motions[0].animation_group, 102);
+                assert_eq!(scripts.combat_attacks[0].motions[0].min_range, 12001);
+                assert_eq!(scripts.combat_attacks[0].motions[0].max_range, 20000);
+                assert_eq!(scripts.combat_attacks[0].motions[0].arc_center, None);
+            }
             taunts += actor.combat_taunts.len();
             assert_eq!(attribute(115), attribute(6), "{name}: reserved weight");
             assert_eq!(attribute(119), attribute(1), "{name}: reserved collision");
@@ -524,7 +559,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 12);
+    assert_eq!(scripts.version, 13);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());

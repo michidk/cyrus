@@ -74,7 +74,8 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 12,
+        version: 13,
+        combat_attacks: vec![],
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -8580,65 +8581,124 @@ fn ordinary_stable_response_restores_snapshot_and_consumes_one_shared_heading_dr
 
 #[test]
 fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
-    let mut scripts = cache();
-    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
-    let actor = scripts.actors.get_mut("LOGIC").unwrap();
-    actor.attributes.extend([
-        ("attr_1".into(), 1),
-        ("attr_14".into(), 1),
-        ("attr_119".into(), 7),
-    ]);
-    for instance in &mut scripts.instances {
-        instance.object_type = 1;
-    }
-    scripts.content_id = scripts.content_identity().unwrap();
-    let data = cyrus_assets::animation::Animations {
-        version: 2,
-        world: scripts.world,
-        metadata: serde_json::json!({"script_content_id": scripts.content_id,
+    for (capable, defenses, expected_defenses) in [
+        (1, [1, 0, 3, 0], [Some(1), None, None, None]),
+        (1, [1, 2, 3, 4], [Some(1), Some(2), Some(3), Some(4)]),
+        (1, [0, 2, 3, 4], [None; 4]),
+        (0, [1, 2, 3, 4], [None; 4]),
+    ] {
+        let mut scripts = cache();
+        scripts.combat_attacks = (0..57)
+            .map(|index| cyrus_assets::script::combat::Attack {
+                is_combo: true,
+                motions: vec![],
+                min_range: 65535,
+                max_range: index,
+            })
+            .collect();
+        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.attributes.extend([
+            ("attr_1".into(), 1),
+            ("attr_14".into(), capable),
+            ("attr_119".into(), 7),
+            ("attr_70".into(), 54),
+            ("attr_72".into(), 56),
+            ("attr_78".into(), 64),
+            ("attr_79".into(), defenses[0]),
+            ("attr_80".into(), defenses[1]),
+            ("attr_81".into(), defenses[2]),
+            ("attr_82".into(), defenses[3]),
+        ]);
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id": scripts.content_id,
             "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
                 "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
                     "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}]}]}),
-        sections: Default::default(),
-        models: Default::default(),
-        unsupported: Default::default(),
-    };
-    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-    let first = world.id(0).unwrap();
-    let second = world.id(1).unwrap();
-    world
-        .initialize_map_animation(first, &data, 1, &mut |_, _| Ok(()))
-        .unwrap();
-    let combat = world.actors()[0]
-        .control_state()
-        .unwrap()
-        .combat
-        .as_ref()
-        .unwrap();
-    assert_eq!(
-        (combat.target, combat.flags, combat.action, combat.cooldown),
-        (None, 0, -1, 0)
-    );
-    world.maintain_map_combat(first, 1, false, true).unwrap();
-    assert_eq!(world.actors()[0].attributes()[1], 1);
-    world.maintain_map_combat(first, 1, false, false).unwrap();
-    assert_eq!(world.actors()[0].attributes()[1], 7);
-    world.send_combat_message(second, first, 0xd001).unwrap();
-    let error = world
-        .maintain_map_combat(first, 1, false, false)
-        .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("combat message 53249 from actor 1 unsupported")
-    );
-    assert_eq!(world.consume_combat_message(first).unwrap(), None);
-    let stale = cyrus_game::script::ScriptActorId {
-        generation: 2,
-        index: 0,
-    };
-    assert!(world.send_combat_message(second, stale, 1).is_err());
-    world.send_combat_message(stale, stale, 0).unwrap();
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let first = world.id(0).unwrap();
+        let second = world.id(1).unwrap();
+        world
+            .initialize_map_animation(first, &data, 1, &mut |_, _| Ok(()))
+            .unwrap();
+        if capable == 0 {
+            assert!(world.actors()[0].control_state().unwrap().combat.is_none());
+            continue;
+        }
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.target, combat.flags, combat.action, combat.cooldown),
+            (None, 0, -1, 0)
+        );
+        assert_eq!(
+            combat.attack_indices,
+            [
+                Some(54),
+                None,
+                Some(56),
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(64)
+            ]
+        );
+        assert_eq!(combat.defense_indices, expected_defenses);
+        assert_eq!(
+            world.combat_attack(first, 0).unwrap().unwrap().max_range,
+            54
+        );
+        assert!(world.combat_attack(first, 1).unwrap().is_none());
+        assert_eq!(
+            world.combat_attack(first, 2).unwrap().unwrap().max_range,
+            56
+        );
+        assert!(
+            world
+                .combat_attack(first, 8)
+                .unwrap_err()
+                .to_string()
+                .contains("attack64 definition unavailable")
+        );
+        assert!(world.combat_attack(first, 9).is_err());
+        assert!(world.combat_attack(second, 0).is_err());
+        world.maintain_map_combat(first, 1, false, true).unwrap();
+        assert_eq!(world.actors()[0].attributes()[1], 1);
+        world.maintain_map_combat(first, 1, false, false).unwrap();
+        assert_eq!(world.actors()[0].attributes()[1], 7);
+        world.send_combat_message(second, first, 0xd001).unwrap();
+        let error = world
+            .maintain_map_combat(first, 1, false, false)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("combat message 53249 from actor 1 unsupported")
+        );
+        assert_eq!(world.consume_combat_message(first).unwrap(), None);
+        let stale = cyrus_game::script::ScriptActorId {
+            generation: 2,
+            index: 0,
+        };
+        assert!(world.send_combat_message(second, stale, 1).is_err());
+        world.send_combat_message(stale, stale, 0).unwrap();
+    }
 }
 
 #[test]

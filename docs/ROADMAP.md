@@ -130,6 +130,7 @@ change visible output. Revisit only with a demonstrated fidelity or performance 
 - [x] Shared explicit hosts for attributes, flags, waits, routing, activation, spatial transforms, movement/rotation and player queries.
 - [x] Shared clock and random arithmetic, ordinary actor ordering, native-hook dispatch and supported automatic traversal.
 - [x] Initial actor collision shapes, ordered static/live/transient candidates and live static-model support geometry.
+- [x] Shared combat attack metadata and actor attack/defense bindings. **Verified:** installed export and public-interface tests cover contiguous definitions, ordered combo motions, sparse attack slots, defense-prefix termination and contextual missing-definition errors. Omitted numeric fields remain absent. Combat decisions and actor-specific motion timing remain open.
 
 **Verified:** native New Game advances START sharks without debug stepping.
 **Verified:** the current draft plays New Game Introduction before world loading;
