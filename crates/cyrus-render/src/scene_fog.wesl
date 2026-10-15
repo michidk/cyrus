@@ -15,7 +15,7 @@ import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
 import package::model_lights::{apply_local_lights, model, compositing};
-import package::sampling::{sample_encoded, sample_model, matches_chroma, color_channel};
+import package::sampling::{sample_encoded, sample_flat, sample_model, matches_chroma, color_channel};
 import constants::MATERIAL_BIND_GROUP;
 import package::terrain_texture::texture_coordinates;
 @group(MATERIAL_BIND_GROUP) @binding(104) var<uniform> chroma_key: vec4<f32>;
@@ -137,6 +137,10 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     var texture_key = chroma_key.rgb;
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
         texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u, false);
+        if compositing.x >= 0.0 {
+            texture_rgb = sample_flat(surface.uv);
+            texture_key = vec3(0.0);
+        }
     }
 @if(PREPARED_MODEL) {
     if model_texture.allocation.x != 0u {

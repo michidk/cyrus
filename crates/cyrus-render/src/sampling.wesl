@@ -25,6 +25,14 @@ fn sample_encoded(uv: vec2<f32>, point: bool, world_palette: bool) -> vec3<f32> 
     return (top + floor((bottom - top) * fraction.y)) / 255.0;
 }
 
+// Placed flats point-sample the converted world palette; exported alpha marks index zero.
+// https://github.com/michidk/redguard-preservation/commit/fe530cc
+fn sample_flat(uv: vec2<f32>) -> vec3<f32> {
+    let texel = textureSampleLevel(base_color_texture, base_color_sampler, uv, 0.0);
+    let rgb = round(linear_to_srgb(texel.rgb) * 255.0);
+    return select(floor(rgb / 4.0) * 4.0, vec3(0.0), texel.a == 0.0) / 255.0;
+}
+
 
 // The original compares filtered encoded RGB before vertex-light modulation.
 fn matches_chroma(rgb: vec3<f32>, key: vec3<f32>) -> bool {

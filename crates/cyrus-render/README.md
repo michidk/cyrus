@@ -449,3 +449,11 @@ below 0.003 in water, edge and land regions, with maximum channel difference one
 An eight-frame browser sweep changes original-relative water error from 1.715 to
 10.088 while dry-land error stays 1.404. Original per-image indices were not
 recorded; selecting the lowest error does not establish matching phase or parity.
+
+**Verified:** placed flats point-sample the converted world palette and reject
+black index-zero texels using the published [palette ownership rule](https://github.com/michidk/redguard-preservation/commit/fe530cc).
+All five held BELLTOWR flame frames improve against the retained original and
+an isolated old-sampler control. Frame 2 mean RGB error is 0.733 native and
+0.725 browser, versus 0.837 for the control. Wall/table pixels are unchanged
+by this correction. Original flame phase, cadence and full parity remain
+**Unknown**. Standalone actor sampling eligibility remains separate.
