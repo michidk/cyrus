@@ -3,6 +3,7 @@ pub mod cheats;
 pub mod clock;
 pub mod console;
 pub mod fidelity;
+pub mod logbook;
 pub mod player;
 pub mod preferences;
 pub mod random;

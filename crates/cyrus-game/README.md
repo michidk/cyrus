@@ -704,3 +704,14 @@ Repeated entry retains existing combat state without selecting another taunt.
 Weapon cleanup publishes a candle reset and the HUD reads known logical weapon
 state before supplied activation snapshots. Standalone weapon initialization,
 automatic combat admission and complete combat gameplay remain unsupported.
+
+`logbook::Logbook` supplies explicit reading layout and navigation from accepted,
+separated text entries. It preserves authored style bytes, byte-based word
+breaks, original line spacing, newest-entry positioning and ordered scroll input.
+**Verified:** public headless tests cover layout, ordinary/page scrolling,
+Home/End, simultaneous controls, bounds and close behavior against
+[preservation rules](https://github.com/michidk/redguard-preservation/blob/f45646a/docs/engine/hud.md#logbook-reading-layout-and-navigation).
+The full reading screen, installed key dispatch, pause ownership, paper and 3D
+scroll presentation remain unsupported. Existing `ScriptHud::entries` retains
+accepted text and local-state errors; callers must decode physical line separators
+before constructing a reading session.

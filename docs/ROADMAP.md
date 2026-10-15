@@ -23,6 +23,9 @@ commits and implementation docs.
 
 ## Next work
 
+Next independent HUD task: build the installed logbook reading screen on the
+shared layout/navigation core.
+
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
 - Resolve remaining terrain/model shading differences, actor prelighting and
@@ -40,7 +43,6 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| Logbook navigation and installed presentation | In progress | Codex, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-logbook-navigation/` |
 | Rendering fidelity: residual START shading, model normals and sampling comparisons | In progress | Codex, Improve Rendering Fidelity, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
 | SOUP integration: dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
@@ -170,6 +172,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Shared inventory and production actor inputs are connected below; save restore remains open.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
 - [x] Shared script/HUD inventory, capped `AddItem`, `HaveItem`, `SelectItem` and compass use from logical-player state. **Verified:** headless script and HUD checks cover acquisition, live counts/selection, surface gates and world/HUD replacement; installed export checks cover all item artwork. New-game/death resets, saves and original timing comparison remain open.
+- [x] Explicit logbook layout/navigation core. **Verified:** five public headless tests cover byte-based wrapping, entry spacing, newest-text positioning, ordered scrolling, bounds and close behavior. Installed key dispatch, pause ownership, paper and 3D scroll presentation remain open.
 - [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.

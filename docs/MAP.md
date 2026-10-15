@@ -112,6 +112,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Game-owned console availability and cheat command handlers.
 - `src/console/cheats.rs` — Cheat assignment and reports; cyrus-console owns input and numeric parsing.
 - `src/fidelity.rs` — The fidelity switch. Every behaviour that may deviate from the original game
+- `src/logbook.rs` — Explicit logbook text layout and scrolling, independent of screen presentation.
 - `src/player.rs` — Player state, input and deterministic controller rules.
 - `src/player/contact.rs` — Ordinary grounded body response from preservation's engine/player.md.
 - `src/player/data.rs` — Player-owned scene inputs shared by native and browser runtimes.
