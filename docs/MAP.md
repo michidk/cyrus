@@ -159,6 +159,7 @@ module where it is defined and regenerate.
 - `src/script/registry/slope.rs` — Ordinary slope response follows preservation's player engine rules.
 - `src/script/registry/transition.rs` — Obstacle motion transitions follow preservation's ordinary forward wrapper.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
+- `src/script/registry/weapon.rs` — Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
 - `src/script/sound.rs` — Immediate script sound commands follow preservation's channel ownership rules.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.

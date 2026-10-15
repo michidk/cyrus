@@ -55,92 +55,20 @@ impl ScriptWorld {
         animation_admitted: bool,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<i32> {
-        let result = (|| {
-            let index = self.resolve(id)?;
-            let actor = &mut self.actors[index];
-            let combat = actor
-                .control
-                .as_mut()
-                .and_then(|control| control.combat.as_mut())
-                .with_context(|| {
-                    format!(
-                        "world {} instance {index}: combat taunt state unavailable",
-                        self.world
-                    )
-                })?;
-            let dialogue = self
-                .globals
-                .dialogue
-                .as_mut()
-                .context("combat taunt dialogue records unavailable")?;
-            let settings = dialogue.settings().clone();
-            if taunt.label != [0; 4] {
-                let group = if animation_admitted && taunt.animation != 0 {
-                    let group = u16::try_from(taunt.animation)
-                        .context("combat taunt animation outside unsigned range")?;
-                    anyhow::ensure!(
-                        group <= i16::MAX as u16,
-                        "combat taunt signed animation group unsupported"
-                    );
-                    actor
-                        .animation
-                        .as_ref()
-                        .context("combat taunt animation not prepared")?;
-                    Some(group)
-                } else {
-                    None
-                };
-                let text_width = settings.print_text.then_some(settings.max_text_width);
-                playback.prepare(taunt.label, settings.use_speech, text_width)?;
-                playback.release(&mut combat.taunt_cache)?;
-                if settings.print_text && dialogue.line_active(combat.taunt_dialogue) {
-                    dialogue.clear_line(combat.taunt_dialogue);
-                }
-                let cache = playback.load(taunt.label)?;
-                combat.taunt_cache = Some(cache);
-                let line = playback.present(cache, settings.use_speech, text_width)?;
-                if settings.print_text {
-                    anyhow::ensure!(
-                        line.sample.is_none_or(|sample| sample < 16),
-                        "combat taunt source returned invalid sample slot"
-                    );
-                    combat.taunt_dialogue =
-                        dialogue.begin_line(id, line.text, line.sample, line.lifetime);
-                }
-                if let Some(group) = group {
-                    let position = super::animation_sound_position(self.spatial.as_ref(), index);
-                    let surface = actor.surface;
-                    let animation = actor.animation.as_mut().expect("prepared taunt animation");
-                    let frame = animation.playback.request_with_sounds(
-                        group,
-                        0,
-                        nominal_ticks,
-                        &mut |sound| {
-                            sounds(
-                                id,
-                                crate::script::ScriptSound::Animation {
-                                    sound,
-                                    surface,
-                                    position,
-                                },
-                            )
-                        },
-                    )?;
-                    animation.frame = frame.or(animation.frame);
-                }
-            }
-            if !settings.print_text {
-                return Ok(0);
-            }
-            combat.taunt_active = i32::from(dialogue.line_active(combat.taunt_dialogue));
-            Ok(combat.taunt_active)
-        })();
-        result.with_context(|| {
-            format!(
-                "world {} instance {} combat taunt presentation",
-                self.world, id.index
-            )
-        })
+        let index = self.resolve(id)?;
+        let position = super::animation_sound_position(self.spatial.as_ref(), index);
+        present_taunt(
+            &mut self.actors[index],
+            &mut self.globals,
+            self.world,
+            id,
+            position,
+            taunt,
+            playback,
+            nominal_ticks,
+            animation_admitted,
+            sounds,
+        )
     }
 
     /// Snapshot active speakers for the synchronous audio adapter. Positions are
@@ -194,4 +122,102 @@ impl ScriptWorld {
             )
             .with_context(|| format!("world {} dialogue update", self.world))
     }
+}
+
+#[allow(clippy::too_many_arguments)] // Shared receiver state and synchronous presentation dependencies.
+pub(super) fn present_taunt(
+    actor: &mut ScriptActor,
+    globals: &mut crate::script::GameplayGlobals,
+    world: u32,
+    id: ScriptActorId,
+    position: Option<[i32; 3]>,
+    taunt: &cyrus_assets::script::CombatTaunt,
+    playback: &mut dyn crate::script::CombatTauntPlayback,
+    nominal_ticks: u32,
+    animation_admitted: bool,
+    sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+) -> Result<i32> {
+    let index = id.index;
+    let result = (|| {
+        let combat = actor
+            .control
+            .as_mut()
+            .and_then(|control| control.combat.as_mut())
+            .with_context(|| {
+                format!(
+                    "world {} instance {index}: combat taunt state unavailable",
+                    world
+                )
+            })?;
+        let dialogue = globals
+            .dialogue
+            .as_mut()
+            .context("combat taunt dialogue records unavailable")?;
+        let settings = dialogue.settings().clone();
+        if taunt.label != [0; 4] {
+            let group = if animation_admitted && taunt.animation != 0 {
+                let group = u16::try_from(taunt.animation)
+                    .context("combat taunt animation outside unsigned range")?;
+                anyhow::ensure!(
+                    group <= i16::MAX as u16,
+                    "combat taunt signed animation group unsupported"
+                );
+                actor
+                    .animation
+                    .as_ref()
+                    .context("combat taunt animation not prepared")?;
+                Some(group)
+            } else {
+                None
+            };
+            let text_width = settings.print_text.then_some(settings.max_text_width);
+            playback.prepare(taunt.label, settings.use_speech, text_width)?;
+            playback.release(&mut combat.taunt_cache)?;
+            if settings.print_text && dialogue.line_active(combat.taunt_dialogue) {
+                dialogue.clear_line(combat.taunt_dialogue);
+            }
+            let cache = playback.load(taunt.label)?;
+            combat.taunt_cache = Some(cache);
+            let line = playback.present(cache, settings.use_speech, text_width)?;
+            if settings.print_text {
+                anyhow::ensure!(
+                    line.sample.is_none_or(|sample| sample < 16),
+                    "combat taunt source returned invalid sample slot"
+                );
+                combat.taunt_dialogue =
+                    dialogue.begin_line(id, line.text, line.sample, line.lifetime);
+            }
+            if let Some(group) = group {
+                let surface = actor.surface;
+                let animation = actor.animation.as_mut().expect("prepared taunt animation");
+                let frame = animation.playback.request_with_sounds(
+                    group,
+                    0,
+                    nominal_ticks,
+                    &mut |sound| {
+                        sounds(
+                            id,
+                            crate::script::ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    },
+                )?;
+                animation.frame = frame.or(animation.frame);
+            }
+        }
+        if !settings.print_text {
+            return Ok(0);
+        }
+        combat.taunt_active = i32::from(dialogue.line_active(combat.taunt_dialogue));
+        Ok(combat.taunt_active)
+    })();
+    result.with_context(|| {
+        format!(
+            "world {} instance {} combat taunt presentation",
+            world, id.index
+        )
+    })
 }

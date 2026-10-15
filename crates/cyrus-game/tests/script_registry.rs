@@ -9334,7 +9334,7 @@ fn ordered_combat_taunts_share_rng_skip_ineligible_labels_and_fall_back_only_for
 #[test]
 fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
     use cyrus_game::script::{CombatTauntPlayback, DialogueLine, ScriptActorId};
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     struct Playback {
         events: Vec<&'static str>,
         fail: Option<&'static str>,
@@ -9395,9 +9395,37 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
             .unwrap()
             .attributes
             .insert("attr_14".into(), 1);
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .combat_taunts
+            .push(CombatTaunt {
+                trigger: 0,
+                label: *b"TEST",
+                animation: 159,
+            });
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_num_taunts".into(), 1);
         for instance in &mut scripts.instances {
             instance.object_type = 1;
         }
+        scripts.definition.functions.push(Function {
+            name: "beginCombat".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(Call {
+            function_id: 1,
+            function: "beginCombat".into(),
+            target: Object::Me,
+            kind: CallKind::Function,
+            arguments: vec![],
+        });
         scripts.content_id = scripts.content_identity().unwrap();
         let data = cyrus_assets::animation::Animations {
             version: 2,
@@ -9566,4 +9594,439 @@ fn combat_taunt_presentation_owns_cache_dialogue_animation_and_active_result() {
             .is_err()
     );
     assert!(playback.events.is_empty());
+    let (mut entry, id) = fixture(true, true);
+    let mut playback = Playback::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    entry
+        .begin_actor_combat(
+            id,
+            cyrus_game::script::CombatEntryInputs {
+                weapon: cyrus_game::script::WeaponInputs {
+                    selected_player: id,
+                    item_system_ready: true,
+                    shell_execution: false,
+                },
+                nominal_ticks: 0,
+                taunt_animation_admitted: true,
+                selected_player_death_override: false,
+            },
+            &mut random,
+            &mut playback,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(playback.events, ["prepare", "release", "load", "present"]);
+    assert_eq!(random.state(), 1103527590);
+    assert_eq!(entry.animation_frame(id).unwrap(), Some(42));
+    let control = entry.actors()[id.index].control_state().unwrap();
+    assert_eq!(
+        (
+            control.death_selector,
+            control.living_state,
+            control.weapon_drawn
+        ),
+        (6, 0, true)
+    );
+    assert_eq!(control.combat.as_ref().unwrap().taunt_active, 1);
+    #[derive(Debug)]
+    struct Source<'a>(std::cell::RefCell<&'a mut Playback>);
+    impl cyrus_game::script::CombatTauntSource for Source<'_> {
+        fn with_playback(
+            &self,
+            update: &mut dyn FnMut(&mut dyn CombatTauntPlayback) -> anyhow::Result<()>,
+        ) -> anyhow::Result<()> {
+            update(&mut **self.0.borrow_mut())
+        }
+    }
+    let (mut native, id) = fixture(true, true);
+    let mut playback = Playback::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    let source = Source(std::cell::RefCell::new(&mut playback));
+    let inputs = cyrus_game::script::ScriptInputs {
+        nominal_ticks: Some(0),
+        combat_entry: Some(cyrus_game::script::CombatEntryInputs {
+            weapon: cyrus_game::script::WeaponInputs {
+                selected_player: id,
+                item_system_ready: true,
+                shell_execution: false,
+            },
+            nominal_ticks: 0,
+            taunt_animation_admitted: true,
+            selected_player_death_override: false,
+        }),
+        combat_taunts: Some(&source),
+        ..Default::default()
+    };
+    native
+        .advance(
+            id,
+            cyrus_game::script::ScriptStage::NativeHook,
+            inputs,
+            Some(&mut |_, _| Ok(())),
+            Some(&mut random),
+            0,
+        )
+        .unwrap();
+    assert_eq!(random.state(), 1103527590);
+    assert_eq!(native.animation_frame(id).unwrap(), Some(42));
+    native
+        .advance(
+            id,
+            cyrus_game::script::ScriptStage::NativeHook,
+            inputs,
+            None,
+            None,
+            0,
+        )
+        .unwrap();
+    assert_eq!(
+        source.0.borrow().events,
+        ["prepare", "release", "load", "present"]
+    );
+    let (mut overridden, id) = fixture(true, true);
+    let mut playback = Playback::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    overridden
+        .begin_actor_combat(
+            id,
+            cyrus_game::script::CombatEntryInputs {
+                weapon: cyrus_game::script::WeaponInputs {
+                    selected_player: id,
+                    item_system_ready: true,
+                    shell_execution: false,
+                },
+                nominal_ticks: 0,
+                taunt_animation_admitted: true,
+                selected_player_death_override: true,
+            },
+            &mut random,
+            &mut playback,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(
+        overridden.actors()[id.index]
+            .control_state()
+            .unwrap()
+            .death_selector,
+        6
+    );
+    assert_eq!(overridden.animation_frame(id).unwrap(), Some(10));
+    assert!(playback.events.is_empty());
+    assert_eq!(
+        random.state(),
+        1,
+        "selected death override suppresses taunt RNG only"
+    );
+}
+
+#[test]
+fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effects() {
+    use cyrus_game::script::{CombatEntryInputs, CombatTauntPlayback, DialogueLine, WeaponInputs};
+    struct NoTaunt;
+    impl CombatTauntPlayback for NoTaunt {
+        fn prepare(&mut self, _: [u8; 4], _: bool, _: Option<u32>) -> anyhow::Result<()> {
+            anyhow::bail!("unexpected taunt")
+        }
+        fn release(&mut self, _: &mut Option<usize>) -> anyhow::Result<()> {
+            anyhow::bail!("unexpected taunt")
+        }
+        fn load(&mut self, _: [u8; 4]) -> anyhow::Result<usize> {
+            anyhow::bail!("unexpected taunt")
+        }
+        fn present(&mut self, _: usize, _: bool, _: Option<u32>) -> anyhow::Result<DialogueLine> {
+            anyhow::bail!("unexpected taunt")
+        }
+    }
+    for has_draw_group in [false, true] {
+        for authored_weapon in [0, 1] {
+            for selected in [false, true] {
+                let mut scripts = cache();
+                scripts.definition.attributes = (0..128).map(|i| format!("attr_{i}")).collect();
+                let actor = scripts.actors.get_mut("LOGIC").unwrap();
+                actor.attributes.insert("attr_14".into(), 1);
+                actor.attributes.insert("attr_23".into(), authored_weapon);
+                for instance in &mut scripts.instances {
+                    instance.object_type = 1;
+                }
+                scripts.content_id = scripts.content_identity().unwrap();
+                let mut groups = vec![
+                    serde_json::json!({"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}),
+                ];
+                if has_draw_group {
+                    groups.push(
+                        serde_json::json!({"group_index":91,"anim_id":2,"anim_type":0,
+                        "commands":[{"opcode":4,"sound_param":-17,"volume_shift":0},
+                        {"opcode":0,"frame_reference":91},{"opcode":2,"value":0}]}),
+                    );
+                }
+                let data = cyrus_assets::animation::Animations {
+                    version: 2,
+                    world: scripts.world,
+                    metadata: serde_json::json!({"script_content_id":scripts.content_id,
+                        "actors":[{"script_name":"LOGIC","model_load_path":"animation_table","animation_groups":groups}]}),
+                    sections: Default::default(),
+                    models: Default::default(),
+                    unsupported: Default::default(),
+                };
+                let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+                let id = world.id(0).unwrap();
+                let player = world.id(if selected { 0 } else { 1 }).unwrap();
+                world
+                    .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+                    .unwrap();
+                world.set_actor_surface(id, 7).unwrap();
+                let inputs = CombatEntryInputs {
+                    weapon: WeaponInputs {
+                        selected_player: player,
+                        item_system_ready: true,
+                        shell_execution: false,
+                    },
+                    nominal_ticks: 0,
+                    taunt_animation_admitted: true,
+                    selected_player_death_override: false,
+                };
+                if has_draw_group && authored_weapon != 0 && selected {
+                    let mut failed = ScriptWorld::prepare(&scripts, 7).unwrap();
+                    failed
+                        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+                        .unwrap();
+                    let mut random = cyrus_game::random::EngineRandom::from_state(123);
+                    assert!(
+                        failed
+                            .begin_actor_combat(
+                                id,
+                                inputs,
+                                &mut random,
+                                &mut NoTaunt,
+                                &mut |_, _| anyhow::bail!("injected cue failure")
+                            )
+                            .is_err()
+                    );
+                    assert!(
+                        failed.actors()[0]
+                            .failure()
+                            .unwrap()
+                            .contains("injected cue failure")
+                    );
+                    assert!(
+                        failed
+                            .begin_actor_combat(
+                                id,
+                                inputs,
+                                &mut random,
+                                &mut NoTaunt,
+                                &mut |_, _| Ok(())
+                            )
+                            .is_err(),
+                        "failed combat entry must not become an already-six success"
+                    );
+                }
+                let mut random = cyrus_game::random::EngineRandom::from_state(123);
+                let mut cues = Vec::new();
+                world
+                    .begin_actor_combat(
+                        id,
+                        inputs,
+                        &mut random,
+                        &mut NoTaunt,
+                        &mut |receiver, sound| {
+                            cues.push((receiver, sound));
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                let drawing = has_draw_group && authored_weapon != 0;
+                let control = world.actors()[0].control_state().unwrap();
+                assert_eq!(
+                    (
+                        control.death_selector,
+                        control.living_state,
+                        control.weapon_drawn
+                    ),
+                    (6, if drawing { 20 } else { 0 }, !drawing)
+                );
+                assert_eq!(control.script_control, if selected { 0 } else { 2 });
+                assert_eq!(control.combat.as_ref().unwrap().flags, 4);
+                assert_eq!(
+                    world.animation_frame(id).unwrap(),
+                    Some(if drawing { 91 } else { 10 })
+                );
+                assert_eq!(random.state(), 123, "no taunt consumes no random draw");
+                let count = cues.len();
+                assert_eq!(count, usize::from(drawing));
+                world
+                    .begin_actor_combat(
+                        id,
+                        inputs,
+                        &mut random,
+                        &mut NoTaunt,
+                        &mut |receiver, sound| {
+                            cues.push((receiver, sound));
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(
+                    cues.len(),
+                    count,
+                    "already in combat does not repeat entry cues"
+                );
+                world
+                    .cleanup_actor_weapon(id, player, 0, &mut |_, _| Ok(()))
+                    .unwrap();
+                let control = world.actors()[0].control_state().unwrap();
+                assert_eq!(
+                    (
+                        control.death_selector,
+                        control.living_state,
+                        control.motion_direction,
+                        control.weapon_drawn
+                    ),
+                    (6, 0, 0, false)
+                );
+                assert_eq!(
+                    control.combat.as_ref().unwrap().flags,
+                    if drawing { 4 } else { 0 },
+                    "already-clear drawn flag preserves combat flag"
+                );
+                assert_eq!(
+                    world.animation_frame(id).unwrap(),
+                    Some(if drawing && !selected { 91 } else { 10 })
+                );
+                assert_eq!(
+                    world.globals_mut().take_candle_show_request(),
+                    selected && !drawing
+                );
+                assert!(!world.globals_mut().take_candle_show_request());
+                world
+                    .cleanup_actor_weapon(id, player, 0, &mut |_, _| Ok(()))
+                    .unwrap();
+                assert!(
+                    !world.globals_mut().take_candle_show_request(),
+                    "already clear does not reveal candle"
+                );
+                let stale = cyrus_game::script::ScriptActorId {
+                    generation: 6,
+                    ..player
+                };
+                assert!(
+                    world
+                        .cleanup_actor_weapon(id, stale, 0, &mut |_, _| Ok(()))
+                        .is_err()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts() {
+    use cyrus_game::script::{CombatEntryInputs, ScriptInputs, ScriptStage, WeaponInputs};
+    for expression in [false, true] {
+        let call = Call {
+            function_id: 4,
+            function: "beginCombat".into(),
+            target: Object::Me,
+            kind: CallKind::Function,
+            arguments: vec![],
+        };
+        let operation = if expression {
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(call.clone()),
+                    },
+                    rest: vec![],
+                },
+            }
+        } else {
+            Operation::Call { call: call.clone() }
+        };
+        let mut scripts = wait_cache(vec![
+            operation,
+            Operation::Call { call },
+            set_flag(42),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.push(Function {
+            name: "beginCombat".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.definition.attributes = (0..128).map(|i| format!("attr_{i}")).collect();
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_14".into(), 1);
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 19).unwrap();
+        let id = world.id(0).unwrap();
+        let player = world.id(1).unwrap();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id": scripts.content_id,
+                "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}]}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        world
+            .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        let admission = CombatEntryInputs {
+            weapon: WeaponInputs {
+                selected_player: player,
+                item_system_ready: true,
+                shell_execution: false,
+            },
+            nominal_ticks: 0,
+            taunt_animation_admitted: false,
+            selected_player_death_override: false,
+        };
+        let inputs = ScriptInputs {
+            combat_entry: Some(admission),
+            nominal_ticks: Some(0),
+            ..Default::default()
+        };
+        let result = world.advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 100);
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                control.death_selector,
+                control.script_control,
+                control.weapon_drawn
+            ),
+            (6, 2, true)
+        );
+        assert_eq!(control.combat.as_ref().unwrap().flags, 4);
+        assert_eq!(world.actors()[1].control_state().unwrap().death_selector, 0);
+        if expression {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(error.contains("numeric"), "{error}");
+            assert_ne!(world.flags(), [42]);
+            assert!(
+                world
+                    .advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 100)
+                    .is_err()
+            );
+        } else {
+            result.unwrap();
+            assert_eq!(
+                world.flags(),
+                [42],
+                "statement continues after the resultless effect"
+            );
+        }
+    }
 }

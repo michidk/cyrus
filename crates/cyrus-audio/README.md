@@ -162,6 +162,11 @@ speech dependencies before releasing old ownership, restarts cached samples,
 and formats text only when requested. Speech can start without a text record;
 text-only presentation requires no audio dependency. This synchronous adapter
 does not admit combat or preload candidates for script functions.
+`with_combat_taunt_source` lends a prepared clip catalogue to synchronous SOUP
+combat dispatch. The game selects the label once through shared RNG, then the
+source checks its payload before releasing existing ownership. An absent label
+fails without stopping the retained voice. Catalogue loading and combat admission
+remain caller responsibilities.
 
 Per-label dialogue assets use `sound::dialogue::DialogueClip` and the shared
 `cache://dialogue/<key>.dialogue` loader, with an optional generated WAV dependency.

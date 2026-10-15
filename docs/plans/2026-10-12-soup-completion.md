@@ -54,7 +54,11 @@ collision/combat/intro services and complete all-world acceptance remain open.
   task-system switch suppresses that stage; ordinary-hook admission distinguishes
   paused slots from all unpaused tasks, including multitasks. Task bypass
   preserves the entry gate but skips polling and the main blocking-slot gate.
-  Production eligibility, native-hook gating and combat remain separate.
+  Caller-admitted `beginCombat` now shares authoritative weapon cleanup/draw,
+  lifecycle entry and ordered taunt presentation with explicit world calls.
+  It completes without a portable numeric result. Prepared taunt catalogue,
+  selected identity and admission inputs remain explicit; automatic combat
+  eligibility and complete combat gameplay remain separate.
 - The registry host combines PushAnimation, waits, attributes, and flags on one
   logical actor. Native task tokens are shared, including routed receiver tasks.
   The standalone animation adapter reuses that task handler. Explicit animation,

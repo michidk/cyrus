@@ -18,6 +18,7 @@ mod separate;
 pub(super) mod slope;
 pub(super) mod transition;
 pub(super) mod vertical;
+mod weapon;
 use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
 use cyrus_assets::{
@@ -30,6 +31,7 @@ use cyrus_script::{
 use cyrus_world::lifecycle::PreparedWorld;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+pub use weapon::{CombatEntryInputs, WeaponInputs};
 
 /// Runtime identity is independent of render nodes and original object-name lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -92,6 +94,9 @@ pub struct ScriptInputs<'a> {
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
     pub ambient_sound: Option<&'a dyn cyrus_world::sound::AmbientSoundDriver>,
+    /// Caller-admitted weapon and taunt gates for synchronous beginCombat.
+    pub combat_entry: Option<CombatEntryInputs>,
+    pub combat_taunts: Option<&'a dyn super::CombatTauntSource>,
     pub dialogue_source: Option<&'a dyn super::DialogueSource>,
     /// Explicit shared sample-reset flag from the owning engine update.
     pub sound_reset: Option<bool>,
@@ -115,6 +120,8 @@ pub struct ActorControlState {
     pub death_response: u8,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: u8,
+    /// Allocator-zero companion motion byte; weapon cleanup clears it with draw/sheath state.
+    pub motion_companion: u8,
     /// Allocator-zeroed runtime motion bytes, independent of animation groups.
     pub sliding_state: u8,
     pub falling_state: u8,
@@ -416,6 +423,7 @@ impl ScriptWorld {
                         death_selector: 0,
                         death_response: 0,
                         living_state: 0,
+                        motion_companion: 0,
                         sliding_state: 0,
                         falling_state: 0,
                         queued_motion: 0,
@@ -756,24 +764,7 @@ impl ScriptWorld {
             "world {} instance {index}: combat taunt type {trigger} requires timed selection",
             self.world
         );
-        let actor = &self.actors[index];
-        let mut requested = trigger;
-        loop {
-            let mut selected = None;
-            for taunt in &actor.combat_taunts {
-                if taunt.trigger != requested || taunt.label == [0; 4] {
-                    continue;
-                }
-                selected = Some(taunt);
-                if 4 * random.draw() / 32767 == 1 {
-                    break;
-                }
-            }
-            if selected.is_some() || requested != 6 {
-                return Ok(selected);
-            }
-            requested = 2;
-        }
+        Ok(select_combat_taunt(&self.actors[index], trigger, random))
     }
 
     /// Read stored actor surface state; unsupported object paths have no established value.
@@ -1239,6 +1230,7 @@ impl ScriptWorld {
             false
         };
         let mut host = GameHost {
+            world: self.world,
             index,
             generation: self.generation,
             actors: &mut self.actors,
@@ -1598,6 +1590,7 @@ pub(super) fn prepare(
 }
 
 struct GameHost<'a, 'sound, 'input, 'random> {
+    world: u32,
     map_updates: &'a mut Vec<usize>,
     activation: &'a mut super::ActivationState,
     globals: &'a mut super::GameplayGlobals,
@@ -1737,6 +1730,38 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
+            anyhow::ensure!(arguments.is_empty(), "beginCombat requires no arguments");
+            let inputs = self
+                .inputs
+                .combat_entry
+                .context("beginCombat admission unavailable")?;
+            anyhow::ensure!(
+                inputs.weapon.selected_player.generation == self.generation
+                    && inputs.weapon.selected_player.index < self.actors.len(),
+                "beginCombat selected actor belongs to an expired or absent world"
+            );
+            let position = animation_sound_position(self.spatial.as_deref(), self.index);
+            let mut receiver = weapon::CombatReceiver::new(
+                &mut self.actors[self.index],
+                self.globals,
+                self.world,
+                id,
+                position,
+            )?;
+            let mut emit = |actor, sound| {
+                self.sounds
+                    .as_deref_mut()
+                    .context("beginCombat sound emitter unavailable")?(actor, sound)
+            };
+            receiver.begin(
+                inputs,
+                self.random.as_deref_mut(),
+                self.inputs.combat_taunts,
+                &mut emit,
+            )?;
+            return Ok(CallResult::CompleteWithoutValue);
+        }
         if kind == CallKind::Function && super::ScriptHud::handles(function) {
             let hud = self.inputs.hud.context("script HUD host unavailable")?;
             return Ok(CallResult::Complete(hud.call(function, arguments)?));
@@ -2200,4 +2225,28 @@ pub(super) fn clear_unprepared(
     actors.requested = None;
     actors.error = None;
     *status = super::ScriptStatus::NotRequested;
+}
+
+fn select_combat_taunt<'a>(
+    actor: &'a ScriptActor,
+    trigger: u8,
+    random: &mut crate::random::EngineRandom,
+) -> Option<&'a CombatTaunt> {
+    let mut requested = trigger;
+    loop {
+        let mut selected = None;
+        for taunt in &actor.combat_taunts {
+            if taunt.trigger != requested || taunt.label == [0; 4] {
+                continue;
+            }
+            selected = Some(taunt);
+            if 4 * random.draw() / 32767 == 1 {
+                break;
+            }
+        }
+        if selected.is_some() || requested != 6 {
+            return selected;
+        }
+        requested = 2;
+    }
 }

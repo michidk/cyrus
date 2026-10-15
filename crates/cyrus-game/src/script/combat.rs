@@ -47,6 +47,15 @@ pub trait CombatTauntPlayback {
     ) -> Result<super::DialogueLine>;
 }
 
+/// Borrow prepared shared-sample taunt services for one synchronous native call.
+/// Implementations must not retain the callback or reselect a taunt during loading.
+pub trait CombatTauntSource: std::fmt::Debug {
+    fn with_playback(
+        &self,
+        update: &mut dyn FnMut(&mut dyn CombatTauntPlayback) -> Result<()>,
+    ) -> Result<()>;
+}
+
 /// Logical identities retain sender and addressed receiver across queue operations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct CombatMessage {

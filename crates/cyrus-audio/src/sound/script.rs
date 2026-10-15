@@ -689,6 +689,23 @@ impl ScriptSounds<'_, '_> {
         })
     }
 
+    /// Lend a prepared catalogue to synchronous SOUP combat dispatch. Selection
+    /// consumes game RNG inside the call; missing labels fail before cache release.
+    pub fn with_combat_taunt_source<R>(
+        &mut self,
+        cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
+        clips: &[super::dialogue::DialogueClip],
+        hud: Option<&cyrus_assets::hud::HudAsset>,
+        update: impl FnOnce(&dyn cyrus_game::script::CombatTauntSource) -> R,
+    ) -> R {
+        let source = PreparedCombatTauntSource {
+            state: RefCell::new((self, cache)),
+            clips,
+            hud,
+        };
+        update(&source)
+    }
+
     /// Lend a cache-backed source to one game-owned script invocation. The
     /// prepared-entry reader may resolve loaded native or browser assets; it must
     /// return Pending while dependencies load. No borrowed owner escapes.
@@ -901,6 +918,85 @@ impl cyrus_game::script::CombatTauntPlayback for PreparedCombatTaunt<'_, '_, '_>
             sample: start.sample,
             lifetime: start.lifetime,
         })
+    }
+}
+
+struct PreparedCombatTauntSource<'a, 'w, 's> {
+    state: RefCell<(
+        &'a mut ScriptSounds<'w, 's>,
+        &'a mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
+    )>,
+    clips: &'a [super::dialogue::DialogueClip],
+    hud: Option<&'a cyrus_assets::hud::HudAsset>,
+}
+impl std::fmt::Debug for PreparedCombatTauntSource<'_, '_, '_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PreparedCombatTauntSource")
+    }
+}
+impl cyrus_game::script::CombatTauntSource for PreparedCombatTauntSource<'_, '_, '_> {
+    fn with_playback(
+        &self,
+        update: &mut dyn FnMut(
+            &mut dyn cyrus_game::script::CombatTauntPlayback,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        update(&mut CatalogueCombatTaunt {
+            source: self,
+            clip: None,
+        })
+    }
+}
+struct CatalogueCombatTaunt<'a, 'b, 'w, 's> {
+    source: &'a PreparedCombatTauntSource<'b, 'w, 's>,
+    clip: Option<&'b super::dialogue::DialogueClip>,
+}
+impl CatalogueCombatTaunt<'_, '_, '_, '_> {
+    fn with_prepared<R>(
+        &mut self,
+        update: impl FnOnce(&mut PreparedCombatTaunt<'_, '_, '_>) -> anyhow::Result<R>,
+    ) -> anyhow::Result<R> {
+        let clip = anyhow::Context::context(self.clip, "combat taunt catalogue not prepared")?;
+        let mut state = self
+            .source
+            .state
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("combat taunt audio source already borrowed"))?;
+        let (sounds, cache) = &mut *state;
+        update(&mut PreparedCombatTaunt {
+            sounds,
+            cache,
+            clip,
+            hud: self.source.hud,
+        })
+    }
+}
+impl cyrus_game::script::CombatTauntPlayback for CatalogueCombatTaunt<'_, '_, '_, '_> {
+    fn prepare(&mut self, label: [u8; 4], speech: bool, width: Option<u32>) -> anyhow::Result<()> {
+        self.clip = Some(
+            self.source
+                .clips
+                .iter()
+                .find(|clip| clip.entry.label == label)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("combat taunt {:?} missing from prepared catalogue", label)
+                })?,
+        );
+        self.with_prepared(|playback| playback.prepare(label, speech, width))
+    }
+    fn release(&mut self, retained: &mut Option<usize>) -> anyhow::Result<()> {
+        self.with_prepared(|playback| playback.release(retained))
+    }
+    fn load(&mut self, label: [u8; 4]) -> anyhow::Result<usize> {
+        self.with_prepared(|playback| playback.load(label))
+    }
+    fn present(
+        &mut self,
+        index: usize,
+        speech: bool,
+        width: Option<u32>,
+    ) -> anyhow::Result<cyrus_game::script::DialogueLine> {
+        self.with_prepared(|playback| playback.present(index, speech, width))
     }
 }
 
@@ -1583,6 +1679,73 @@ mod dialogue_tests {
         );
         assert_eq!(sounds.frame.channels.samples.status(Some(0)), 2);
         assert_eq!(cache.sample(next), None);
+    }
+
+    fn catalogue_taunt(mut sounds: ScriptSounds, clip: Res<LoadedDialogue>) {
+        let hud = dialogue_test_hud();
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let mut retained = None;
+        sounds.with_combat_taunt_source(
+            &mut cache,
+            std::slice::from_ref(&clip.0),
+            Some(&hud),
+            |source| {
+                source
+                    .with_playback(&mut |playback| {
+                        playback.prepare(*b"TEST", true, Some(150))?;
+                        let index = playback.load(*b"TEST")?;
+                        let line = playback.present(index, true, Some(150))?;
+                        assert_eq!((line.text.as_str(), line.sample), ("Hi", Some(0)));
+                        retained = Some(index);
+                        Ok(())
+                    })
+                    .unwrap();
+            },
+        );
+        let entity = sounds.frame.channels.playing.values().next().unwrap().sound;
+        sounds.with_combat_taunt_source(&mut cache, &[], Some(&hud), |source| {
+            assert!(
+                source
+                    .with_playback(&mut |playback| {
+                        playback.prepare(*b"MISS", true, Some(150))?;
+                        playback.release(&mut retained)
+                    })
+                    .is_err()
+            );
+        });
+        assert!(retained.is_some());
+        assert_eq!(sounds.frame.channels.samples.status(Some(0)), 4);
+        assert_eq!(
+            sounds.frame.channels.playing.values().next().unwrap().sound,
+            entity
+        );
+        let mut other = clip.0.clone();
+        other.entry.label = *b"NEXT";
+        other.entry.text = "Next".into();
+        sounds.with_combat_taunt_source(
+            &mut cache,
+            &[clip.0.clone(), other],
+            Some(&hud),
+            |source| {
+                source
+                    .with_playback(&mut |playback| {
+                        playback.prepare(*b"NEXT", false, Some(150))?;
+                        playback.release(&mut retained)?;
+                        let index = playback.load(*b"NEXT")?;
+                        let line = playback.present(index, false, Some(150))?;
+                        assert_eq!((line.text.as_str(), line.sample), ("Next", None));
+                        Ok(())
+                    })
+                    .unwrap();
+            },
+        );
+    }
+
+    #[test]
+    fn combat_catalogue_selects_prepared_label_and_rejects_missing_before_release() {
+        let mut world = dialogue_test_world();
+        world.run_system_cached(catalogue_taunt).unwrap();
+        assert!(world.resource::<Channels>().playing.is_empty());
     }
 
     fn dialogue_test_world() -> World {

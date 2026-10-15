@@ -122,8 +122,19 @@ pub struct GameplayGlobals {
     lockout: Option<u16>,
     menu_state: u16,
     highlighted_choice: Option<String>,
+    candle_show_requested: bool,
 }
 impl GameplayGlobals {
+    /// Consume an explicit selected-player weapon transition's 25-tick candle reset.
+    /// This is independent of whether the projected drawn flag changed.
+    pub fn take_candle_show_request(&mut self) -> bool {
+        std::mem::take(&mut self.candle_show_requested)
+    }
+
+    pub(super) fn request_candle_show(&mut self) {
+        self.candle_show_requested = true;
+    }
+
     /// Retained SOUP topic-menu state, distinct from the startup book menu and
     /// dialogue state. Engine initialization starts it at zero; world replacement
     /// retains it. See preservation engine/sound.md.

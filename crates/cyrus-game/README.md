@@ -683,3 +683,15 @@ skip uses the configured key_a before Modern movement interpretation; joystick
 input remains unsupported. Ordinary RTX creation, topic-menu processing and the
 complete automatic maintenance owner remain unsupported, so story progression
 is not yet established.
+
+Caller-admitted `beginCombat` native calls synchronously enter lifecycle six,
+apply authoritative weapon draw/cleanup rules, set combat state and select a
+type-zero taunt through shared RNG. The statement has no supported numeric
+result. Explicit world APIs reuse these rules. Selected identity, item/shell
+state, nominal ticks and taunt-animation admission remain caller inputs.
+Prepared taunt services must own all selected payload dependencies before cache
+replacement; missing services fail contextually rather than inventing success.
+Repeated entry retains existing combat state without selecting another taunt.
+Weapon cleanup publishes a candle reset and the HUD reads known logical weapon
+state before supplied activation snapshots. Standalone weapon initialization,
+automatic combat admission and complete combat gameplay remain unsupported.

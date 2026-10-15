@@ -124,7 +124,7 @@ pub struct HudState {
     show_timer: u32,
     /// Caller-supplied activation lockout, retaining all 16 bits.
     pub lockout: u16,
-    /// Sword drawn; use [`HudState::set_sword_drawn`]. *Unwired*.
+    /// Selected player weapon state, projected from the logical actor when known.
     pub sword_drawn: bool,
     /// Selected script player attribute 105 when activation inputs are supplied.
     pub player_type: u8,
@@ -226,6 +226,11 @@ impl HudState {
             self.show_timer = SHOW_TICKS;
         }
         self.sword_drawn = drawn;
+    }
+
+    /// An explicit weapon cleanup resets the timer even without a flag transition.
+    pub fn show_candle(&mut self) {
+        self.show_timer = SHOW_TICKS;
     }
 
     /// A new logbook entry plays the scroll icon once unless it is already playing.
@@ -598,12 +603,33 @@ fn update(
                 .is_some_and(|settings| settings.subtitles)
         })
         .map(|(slot, text)| (slot, text.to_owned()));
-    let world = actors.as_mut().and_then(|actors| actors.current.as_mut());
+    let mut world = actors.as_mut().and_then(|actors| actors.current.as_mut());
+    if world
+        .as_mut()
+        .is_some_and(|world| world.globals_mut().take_candle_show_request())
+    {
+        state.show_candle();
+    }
     let activation = activation.as_deref().filter(|inputs| {
         world
             .as_ref()
             .is_some_and(|world| world.generation() == inputs.player.generation)
     });
+    if let Some(drawn) = activation.and_then(|inputs| {
+        world
+            .as_ref()
+            .and_then(|world| world.actors().get(inputs.player.index))
+            .and_then(|actor| actor.control_state())
+            .map(|control| control.weapon_drawn)
+            .or_else(|| {
+                inputs
+                    .actors
+                    .get(&inputs.player.index)
+                    .map(|actor| actor.weapon_drawn)
+            })
+    }) {
+        state.set_sword_drawn(drawn);
+    }
     state.lockout = world
         .as_ref()
         .and_then(|world| world.globals().lockout())
@@ -880,6 +906,11 @@ mod tests {
         state.show_timer = SHOW_PINNED;
         state.set_health(70);
         assert_eq!(state.show_timer, SHOW_PINNED, "a pinned timer is kept");
+        state.show_candle();
+        assert_eq!(
+            state.show_timer, SHOW_TICKS,
+            "explicit weapon reset replaces the pin"
+        );
         state.logbook_entry();
         for _ in 0..31 {
             state.advance_frame();

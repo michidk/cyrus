@@ -7,7 +7,9 @@ pub use activation::{
 mod animation;
 mod attributes;
 mod combat;
-pub use combat::{CombatControlState, CombatMessage, CombatMessages, CombatTauntPlayback};
+pub use combat::{
+    CombatControlState, CombatMessage, CombatMessages, CombatTauntPlayback, CombatTauntSource,
+};
 mod dialogue;
 pub use dialogue::{
     DialogueEffects, DialogueLine, DialoguePlayback, DialogueSource, DialogueState,
@@ -66,8 +68,8 @@ pub use cyrus_script::Thread;
 pub use playback::ScriptedPlayback;
 pub use presentation::{ScriptBinding, ScriptScene};
 pub use registry::{
-    ActorControlState, ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs,
-    ScriptStage, ScriptWorld,
+    ActorControlState, CombatEntryInputs, ScriptActor, ScriptActorId, ScriptActorSource,
+    ScriptActors, ScriptInputs, ScriptStage, ScriptWorld, WeaponInputs,
 };
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
