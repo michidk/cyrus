@@ -58,7 +58,16 @@ quantized shading normals follow preservation's
 Native export retains the per-world inputs in `.environment`; native and browser
 playback shade private terrain meshes, including displaced water. Terrain uses
 screen-linear vertex RGB and texture modulation before the existing scene fog,
-without Bevy PBR or tone mapping. Terrain sampling uses encoded palette channels,
+without Bevy PBR or tone mapping. **Verified:** terrain texels use the world's six-bit palette conversion before
+filtering, following the [published COL upload rule](https://github.com/michidk/redguard-preservation/commit/395e6693514482fb4a8c8881d5998843efee3542).
+Generic exported images retain their original colors. **Unknown:** model texture
+palette selection; model sampling retains its prior behavior.
+**Verified:** measured ISLAND original/native/browser captures with frozen sky
+and waves and held per-image frames reduce shoreline mean RGB error from 1.281
+to about 0.096 and land error from 1.405 to about 0.030. A control restoring only
+the old sampler reproduces the previous error. Native/browser region differences
+stay below 0.003. Full pixel parity and real-time cadence remain **Unknown**.
+Terrain sampling uses encoded palette channels,
 four-bit subtexel fractions and integer interpolation, following preservation
 [terrain filtering](https://github.com/michidk/redguard-preservation/blob/1ded24c/docs/engine/terrain-lighting.md#texture-combination)
 and [software Voodoo filtering](https://github.com/michidk/redguard-preservation/blob/e604d9c/docs/engine/sky.md).

@@ -135,7 +135,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     }
     var texture_rgb = linear_to_srgb(base.rgb);
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
-        texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u);
+        texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u, false);
     }
 @if(PREPARED_MODEL) {
     if model_texture.allocation.x != 0u {

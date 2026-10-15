@@ -126,11 +126,11 @@ fn fragment(in: TerrainVertex, @builtin(front_facing) is_front: bool) -> Fragmen
     // Terrain lighting modulates encoded texture RGB before scene fog.
     var encoded: vec3<f32>;
 @if(!PREPARED_TERRAIN)
-    encoded = sample_encoded(surface.uv, false) * (in.color * in.position.w);
+    encoded = sample_encoded(surface.uv, false, true) * (in.color * in.position.w);
 @if(PREPARED_TERRAIN) {
     let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
     let light = vec3(color_channel(in.red, offset), color_channel(in.green, offset), color_channel(in.blue, offset));
-    encoded = floor(round(sample_encoded(surface.uv, false) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
+    encoded = floor(round(sample_encoded(surface.uv, false, true) * 255.0) * (light + vec3(1.0)) / 256.0) / 255.0;
 }
     var color = srgb_to_linear(encoded);
     if water_weight > 0.0 {
