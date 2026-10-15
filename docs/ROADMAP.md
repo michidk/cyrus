@@ -23,6 +23,9 @@ commits and implementation docs.
 
 ## Next work
 
+Next unassigned task: implement installed ITEM.INI required-item checks and
+add/drop-add lists through the shared inventory.
+
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
 - Resolve remaining terrain/model shading differences, actor prelighting and
@@ -44,9 +47,8 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | SOUP integration: dialogue speech/skip input, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
-Save/load and remaining HUD integration beyond shared inventory are unassigned. The save/load session ended with
-an unfinished prototype; it is not active work. Controller implementation remains
-parked; the surface session compares bounded supplied-tick behavior.
+Inventory acquisition, save/load and remaining HUD integration are unassigned.
+Controller implementation remains parked.
 
 ## Resource coverage
 
@@ -211,7 +213,8 @@ transitions in native and browser builds.
 Requires the player controller.
 
 - [ ] Production interaction with one eligible target, including overlapping pickups and removed objects on revisits.
-- [ ] Complete inventory acquisition side effects, pickups, remaining use handlers, inventory-screen candle rules, resets and save integration. Script/HUD counts, selection and compass use already share session ownership.
+- [ ] Complete installed inventory acquisition rules: required-item checks and add/drop-add lists. Script/HUD counts, selection and compass use already share session ownership.
+- [ ] Complete pickups, remaining item-use handlers, inventory-screen candle rules, resets and save integration.
 - [ ] Dialogue choices, disabled choices, synchronized speech/subtitles/animation and results returned to waiting scripts.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
 - [ ] Authored world transitions and old sound/script/transient cleanup.
