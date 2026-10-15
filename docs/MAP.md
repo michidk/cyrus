@@ -197,12 +197,14 @@ module where it is defined and regenerate.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
+- `src/fog/texture/checkpoint.rs` — Replacement of shared texture timelines against an independently prepared image census.
 - `src/fog/texture/frames.rs` — Retain authored texture frames during the original GLTF decode.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
 - `src/lighting/runtime.rs` — Active authored object lights and quantized distance tables for model shaders.
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
+- `src/presentation_clock.rs` — Presentation time continuation rebased independently of the host real-time epoch.
 - `src/sampling.rs` — ROB sampling attributes and effective palette keys from preservation's GLTF contract.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
@@ -210,6 +212,7 @@ module where it is defined and regenerate.
 - `src/terrain.rs` — Private terrain mesh preparation after camera projection and wave updates.
 - `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
+- `src/water/checkpoint.rs` — Off-live replacement of terrain history and its projected mesh presentation.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 

@@ -31,6 +31,9 @@ pub(super) struct Source {
 }
 
 impl Source {
+    pub(super) fn fingerprint(&self) -> anyhow::Result<[u8; 32]> {
+        Ok(*blake3::hash(&serde_json::to_vec(&(&self.uv, &self.triangles))?).as_bytes())
+    }
     pub fn new(mesh: &Mesh, vertex_count: usize) -> Result<Self, &'static str> {
         let uv = match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
             Some(VertexAttributeValues::Float32x2(uv)) => uv.clone(),
@@ -62,7 +65,7 @@ impl Source {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(super) struct View {
     pub camera_from_local: Mat4,
     pub scale: Vec2,
@@ -72,7 +75,7 @@ pub(super) struct View {
 
 /// Camera-centered draw/admission window from preservation's water terrain rules.
 /// Coordinates are raw WLD columns/rows; positive engine Z reverses rows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(super) struct Window {
     center: [i32; 2],
     side: usize,
@@ -80,6 +83,24 @@ pub(super) struct Window {
 }
 
 impl Window {
+    pub(super) fn validate(self, side: usize) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.side == side && side > 0 && side <= i32::MAX as usize,
+            "terrain window grid differs"
+        );
+        anyhow::ensure!(
+            self.radius >= 16 && self.radius < i32::MAX,
+            "terrain window radius invalid"
+        );
+        for center in self.center {
+            anyhow::ensure!(
+                ((side - 1) as i32).checked_sub(center).is_some()
+                    && 0_i32.checked_sub(center).is_some(),
+                "terrain window center overflows admission"
+            );
+        }
+        Ok(())
+    }
     pub fn new(camera_local: Vec3, side: usize) -> Self {
         let engine_x = -camera_local.x * 20.0;
         let engine_z = camera_local.z * 20.0 + side as f32 * 256.0;
@@ -118,7 +139,7 @@ pub(super) struct Grid<'a> {
 
 /// Original texture admission, independent of projected area and raster visibility.
 #[derive(Component, Default)]
-pub(crate) struct TextureAdmission(pub bool);
+pub struct TextureAdmission(pub bool);
 
 pub(super) struct Prepared {
     pub visible: bool,

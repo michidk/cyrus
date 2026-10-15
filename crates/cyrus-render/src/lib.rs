@@ -9,14 +9,17 @@ pub mod fog;
 pub mod hud;
 pub mod lighting;
 pub mod player_model;
+pub mod presentation_clock;
 mod sampling;
 pub mod script_transform;
 mod sky;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod subtitles;
 mod terrain;
+pub use terrain::TextureAdmission as TerrainTextureAdmission;
 mod water;
 use bevy::prelude::*;
+pub use water::{TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot, WaterPlayback};
 /// Shared world presentation for native and browser hosts.
 pub struct WorldRenderPlugin;
 impl Plugin for WorldRenderPlugin {

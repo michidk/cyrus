@@ -2,7 +2,7 @@
 mod clipping;
 mod compositing;
 mod texture;
-pub use texture::{TextureAnimations, TextureFrame};
+pub use texture::{TextureAnimations, TextureFrame, TexturePlaybackSnapshot};
 
 use crate::camera::ViewCamera;
 use crate::environment::EnvironmentRequest;

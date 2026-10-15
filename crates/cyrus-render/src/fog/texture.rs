@@ -1,6 +1,8 @@
 //! Demand-driven texture frames from preservation's texture-animation contract.
 pub(super) mod admission;
+mod checkpoint;
 mod frames;
+pub use checkpoint::TexturePlaybackSnapshot;
 
 use super::{SceneMaterial, TerrainMaterial};
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
@@ -83,6 +85,7 @@ impl ImageState {
 pub struct TextureAnimations {
     environment: Option<AssetId<Environment>>,
     states: HashMap<String, ImageState>,
+    restored_binding: bool,
 }
 
 /// Observed zero-based image frame and inspection state, sorted by canonical image name.
@@ -173,7 +176,8 @@ fn bind(
         Without<Inspected>,
     >,
 ) {
-    if images.environment != Some(request.0.id()) || request.is_changed() {
+    let restored_binding = std::mem::take(&mut images.restored_binding);
+    if images.environment != Some(request.0.id()) || (request.is_changed() && !restored_binding) {
         images.environment = Some(request.0.id());
         images.states.clear();
     }
@@ -289,6 +293,7 @@ fn bind(
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn advance(
     time: Res<Time<Real>>,
+    clock: Option<Res<crate::presentation_clock::PresentationClock>>,
     distance: Res<super::RenderDistance>,
     fidelity: Res<Fidelity>,
     mut images: ResMut<TextureAnimations>,
@@ -323,7 +328,10 @@ fn advance(
     };
     let projection = projection.get_clip_from_view();
     let scale = Vec2::new(projection.x_axis.x, projection.y_axis.y);
-    let now = bios_tick(time.elapsed());
+    let now = bios_tick(crate::presentation_clock::PresentationClock::elapsed(
+        clock.as_deref(),
+        &time,
+    ));
     for (binding, admission, _) in &terrain {
         if admission.0
             && binding

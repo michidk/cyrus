@@ -141,12 +141,14 @@ impl Plugin for SkyPlugin {
 
 fn animate_sky(
     time: Res<Time<Real>>,
+    clock: Option<Res<crate::presentation_clock::PresentationClock>>,
     fidelity: Res<Fidelity>,
     mut reference: ResMut<SkyScrollSync>,
     mut skies: Query<(&mut Sky, &MeshMaterial3d<SkyMaterial>)>,
     mut materials: ResMut<Assets<SkyMaterial>>,
 ) {
-    let tick = (time.elapsed_secs_f64() * (1_193_182.0 / 65_536.0)).floor() as u64;
+    let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
+    let tick = (elapsed.as_secs_f64() * (1_193_182.0 / 65_536.0)).floor() as u64;
     let modern = u8::from(fidelity.mode(Area::Sky) == Mode::Modern) as f32;
     let modern_fog = u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32;
     let reference = if skies.is_empty() {

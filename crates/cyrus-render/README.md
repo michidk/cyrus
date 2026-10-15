@@ -390,6 +390,17 @@ requests for that image until resumed; selection preserves its deadline.
 World replacement clears the hold with the image timeline. Ordinary playback
 has no hold. Explicit gameplay frame requests remain unsupported.
 
+Texture and terrain playback expose opaque replacement snapshots for session
+assembly. Capture follows completed binding and deferred render writes, together
+with the presentation clock. Texture replacement validates the prepared image
+census and retains frames, deadlines and holds. Terrain replacement validates
+environment and mesh inputs, retains historical normals and admission, and
+returns private mesh replacements with explicit fresh entity bindings. Construction
+does not change live assets or advance playback. The session owns complete source
+validation and coordinated publication. **Verified:** headless continuation and
+rejection contracts compare retained state and visible mesh attributes across
+clock rebasing and camera changes. Native/browser save integration remains open.
+
 The HUD reads current logical-player health before advancing its candle animation.
 Candle animation uses a 60 Hz presentation timeline independently of host frame
 rate, following the published Glide retrace ceiling. Candle visibility, notices and activation prompt/item countdowns use

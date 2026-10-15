@@ -1,4 +1,6 @@
 //! Private terrain meshes, shading normals and wave playback from preservation.
+mod checkpoint;
+pub use checkpoint::{TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot};
 
 use crate::environment::EnvironmentRequest;
 use bevy::camera::primitives::MeshAabb;
@@ -23,8 +25,10 @@ struct TerrainMesh {
     view: Option<crate::terrain::View>,
 }
 
+/// Private terrain instances and history retained between presentation updates.
+/// Replacement APIs require independently prepared scene and environment inputs.
 #[derive(Resource, Default)]
-pub(crate) struct WaterPlayback {
+pub struct WaterPlayback {
     source: Option<AssetId<Environment>>,
     base: Vec<[f32; 3]>,
     terrain: Vec<TerrainMesh>,
@@ -98,6 +102,7 @@ pub(crate) fn animate_water(
     request: Res<EnvironmentRequest>,
     environments: Res<Assets<Environment>>,
     time: Res<Time<Real>>,
+    clock: Option<Res<crate::presentation_clock::PresentationClock>>,
     fidelity: Res<Fidelity>,
     mut playback: ResMut<WaterPlayback>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -252,7 +257,8 @@ pub(crate) fn animate_water(
         playback.window = Some(window);
         playback.dirty_normals = water.map_or_else(Vec::new, |w| dirty_normals(w, window));
     }
-    let ticks = (time.elapsed_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
+    let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
+    let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
     let mode = fidelity.mode(Area::Water);
     let update_grid = rebuild
         || playback.tick.is_none()
@@ -275,7 +281,7 @@ pub(crate) fn animate_water(
                 position[1] += match mode {
                     Mode::Faithful => displacement(water, vertex, ticks),
                     Mode::Modern => {
-                        modern_displacement(water, playback.base[vertex], time.elapsed_secs())
+                        modern_displacement(water, playback.base[vertex], elapsed.as_secs_f32())
                     }
                 };
             }

@@ -13,6 +13,7 @@ cyrus-game.workspace = true
 bevy = { workspace = true, features = ["default"] }
 cyrus-text.workspace = true
 anyhow.workspace = true
+blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 gltf = { version = "1.4", default-features = false, features = ["extras"] }
