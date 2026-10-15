@@ -187,7 +187,11 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 13,
+        version: 14,
+        in_combat_threshold: combat
+            .as_ref()
+            .and_then(|combat| combat.misc.in_combat_threshold)
+            .map(|value| value.wrapping_shl(8)),
         combat_attacks: combat
             .as_ref()
             .map(crate::script::combat::prepare)

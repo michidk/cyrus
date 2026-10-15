@@ -4,8 +4,9 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 13,
+        version: 14,
         combat_attacks: vec![],
+        in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -559,7 +560,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 13);
+    assert_eq!(scripts.version, 14);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -897,5 +898,23 @@ fn combat_taunt_records_participate_in_identity_and_require_the_complete_actor_l
             .unwrap_err()
             .to_string()
             .contains("script schema 11 unsupported")
+    );
+}
+
+#[test]
+fn fighting_threshold_is_retained_and_part_of_content_identity() {
+    let mut scripts = cache();
+    scripts.in_combat_threshold = Some(-256);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(decoded.in_combat_threshold, Some(-256));
+    scripts.in_combat_threshold = None;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
     );
 }

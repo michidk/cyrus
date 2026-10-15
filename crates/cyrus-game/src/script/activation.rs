@@ -166,6 +166,12 @@ impl GameplayGlobals {
         }
     }
 
+    pub(super) fn player_death_override(&self) -> Option<bool> {
+        self.controller_prelude
+            .as_ref()
+            .map(|state| state.override_active)
+    }
+
     /// Run only at the explicit standalone-player initializer, never merely on a
     /// world swap or save restore. The sound-maintenance owner resets separately.
     pub(super) fn initialize_player_controller(&mut self) {

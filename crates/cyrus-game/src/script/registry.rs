@@ -267,6 +267,7 @@ pub struct ScriptWorld {
     globals: super::GameplayGlobals,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
+    in_combat_threshold: Option<i32>,
     attribute_names: Vec<String>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
@@ -604,6 +605,7 @@ impl ScriptWorld {
             actors,
             task_calls,
             combat_attacks: scripts.combat_attacks.clone(),
+            in_combat_threshold: scripts.in_combat_threshold,
             attribute_names: scripts.definition.attributes.clone(),
             names,
             actor_lists: None,
@@ -1388,6 +1390,11 @@ impl ScriptWorld {
             generation: self.generation,
             actors: &mut self.actors,
             task_calls: &self.task_calls,
+            ordinary_actors: self
+                .actor_lists
+                .as_ref()
+                .and_then(|lists| lists.retained_selected()),
+            in_combat_threshold: self.in_combat_threshold,
             names: &self.names,
             flag_state: &mut self.flag_state,
             sounds,
@@ -1786,11 +1793,96 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     sounds: Option<&'sound mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
     random: Option<&'random mut crate::random::EngineRandom>,
     actors: &'a mut [ScriptActor],
+    ordinary_actors: Option<&'a [ScriptActorId]>,
+    in_combat_threshold: Option<i32>,
     task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
     names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    fn actor_is_dead(&self, index: usize) -> Result<bool> {
+        if self.selected_player()
+            == Some(ScriptActorId {
+                generation: self.generation,
+                index,
+            })
+            && self
+                .globals
+                .player_death_override()
+                .context("IsDead: selected-player override unavailable")?
+        {
+            return Ok(true);
+        }
+        Ok(self.actors[index]
+            .control
+            .as_ref()
+            .context("IsDead: actor death lifecycle unavailable")?
+            .death_selector
+            == 8)
+    }
+
+    fn fighting_position(&self, index: usize) -> Result<[i32; 3]> {
+        let actor = self
+            .spatial
+            .as_deref()
+            .context("isFighting: spatial owner unavailable")?
+            .actor(index)?;
+        if actor.parent.is_some() {
+            Ok(actor.query_pose()?.position)
+        } else {
+            Ok(actor.linked_position.unwrap_or(actor.local.position))
+        }
+    }
+
+    fn is_fighting(&self) -> Result<bool> {
+        let traversal = self
+            .ordinary_actors
+            .context("isFighting: ordinary traversal unavailable")?;
+        let receiver = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let mut nearest = None;
+        let mut bound = 65535;
+        for &candidate in traversal {
+            anyhow::ensure!(
+                candidate.generation == self.generation && candidate.index < self.actors.len(),
+                "isFighting: stale ordinary actor {candidate:?}"
+            );
+            if candidate == receiver {
+                continue;
+            }
+            let Some(combat) = self.actors[candidate.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+            else {
+                continue;
+            };
+            if combat.target != Some(receiver)
+                || combat.attacker_selection_state != 1
+                || self.actor_is_dead(candidate.index)?
+            {
+                continue;
+            }
+            let origin = self.fighting_position(self.index)?;
+            let position = self.fighting_position(candidate.index)?;
+            let differences = std::array::from_fn(|axis| position[axis].wrapping_sub(origin[axis]));
+            let distance = cyrus_collision::distance::rounded_distance(differences)?;
+            if distance < bound {
+                bound = distance;
+                nearest = Some(differences);
+            }
+        }
+        let Some([x, _, z]) = nearest else {
+            return Ok(false);
+        };
+        let threshold = self
+            .in_combat_threshold
+            .context("isFighting: installed combat threshold unavailable")?;
+        Ok(cyrus_collision::distance::rounded_distance([x, 0, z])? < threshold)
+    }
+
     fn ambient_call(&self) -> super::tasks::AmbientCall<'input> {
         let actor = &self.actors[self.index];
         let position = self.spatial.as_deref().and_then(|world| {
@@ -2164,13 +2256,63 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if function.eq_ignore_ascii_case("isDead") {
+        if ["IsHoldingWeapon", "IsDrawingSword", "IsSheathingSword"]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+        {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let control = self.actors[self.index]
+            let actor = &self.actors[self.index];
+            if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
+                return Ok(CallResult::Complete(1));
+            }
+            let ready = self
+                .inputs
+                .hud
+                .with_context(|| format!("{function}: inventory owner unavailable"))?
+                .inventory_ready()?;
+            if !ready || actor.animation.is_none() {
+                return Ok(CallResult::Complete(0));
+            }
+            let shell = self
+                .inputs
+                .shell_execution
+                .with_context(|| format!("{function}: shell context unavailable"))?;
+            let control = actor
                 .control
                 .as_ref()
-                .with_context(|| format!("{function}: receiver death lifecycle unavailable"))?;
-            return Ok(CallResult::Complete(i32::from(control.death_selector == 8)));
+                .with_context(|| format!("{function}: receiver control unavailable"))?;
+            let (holding, drawing, sheathing) = super::activation::weapon_predicates(
+                control.living_state,
+                actor
+                    .animation
+                    .as_ref()
+                    .map(|animation| super::ActivationAnimation {
+                        group: animation.playback.current_group(),
+                    }),
+                control.combat.is_some(),
+                control.weapon_drawn,
+                actor.attributes[110],
+                ready,
+                shell,
+            );
+            let result = if function.eq_ignore_ascii_case("IsHoldingWeapon") {
+                holding
+            } else if function.eq_ignore_ascii_case("IsDrawingSword") {
+                drawing
+            } else {
+                sheathing
+            };
+            return Ok(CallResult::Complete(i32::from(result)));
+        }
+        if function.eq_ignore_ascii_case("isFighting") {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            return Ok(CallResult::Complete(i32::from(self.is_fighting()?)));
+        }
+        if function.eq_ignore_ascii_case("isDead") {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            return Ok(CallResult::Complete(i32::from(
+                self.actor_is_dead(self.index)?,
+            )));
         }
         if function.eq_ignore_ascii_case("Rnd") || function.eq_ignore_ascii_case("QuickRnd") {
             let [operand] = arguments else {
@@ -2521,5 +2663,124 @@ fn select_combat_taunt<'a>(
             return selected;
         }
         requested = 2;
+    }
+}
+
+#[cfg(test)]
+mod fighting_tests {
+    use super::*;
+
+    fn query(
+        positions: &[[i32; 3]],
+        order: &[usize],
+        threshold: i32,
+        state: i32,
+        dead: bool,
+    ) -> bool {
+        let receiver = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let mut actors: Vec<_> = (0..=positions.len())
+            .map(|index| ScriptActor {
+                message_read: 0,
+                source: ScriptActorSource::Map(Instance {
+                    object_id: index as u32,
+                    actor: format!("ACTOR{index}"),
+                    object_type: 0,
+                    active: 0,
+                    model_name: String::new(),
+                    model_mode: 0,
+                    map_position: [0; 3],
+                    angles: [0; 3],
+                }),
+                runtime_identifier: None,
+                namespace: None,
+                native_hook: None,
+                combat_taunts: vec![],
+                runtime: None,
+                unavailable: None,
+                attributes: vec![0; 256],
+                control: Some(ActorControlState {
+                    combat: (index != 0).then_some(super::super::CombatControlState {
+                        target: Some(receiver),
+                        attacker_selection_state: state,
+                        ..Default::default()
+                    }),
+                    death_selector: if dead { 8 } else { 0 },
+                    ..Default::default()
+                }),
+                surface: Some(0),
+                model: Default::default(),
+                collision: None,
+                player_movement: None,
+                location_offsets: vec![],
+                tasks: Default::default(),
+                animation: None,
+                animation_failure: None,
+                update_failure: None,
+            })
+            .collect();
+        let mut spatial = super::super::spatial::SpatialWorld::prepare(&actors).unwrap();
+        for (index, &position) in positions.iter().enumerate() {
+            spatial.actor_mut(index + 1).unwrap().local.position = position;
+        }
+        let traversal: Vec<_> = order
+            .iter()
+            .map(|&index| ScriptActorId {
+                generation: 1,
+                index,
+            })
+            .collect();
+        let definition = cyrus_script::program::Definition {
+            functions: vec![],
+            flags: vec![],
+            references: vec![],
+            attributes: vec![],
+        };
+        let host = GameHost {
+            world: 1,
+            animation_system: true,
+            map_updates: &mut vec![],
+            activation: &mut Default::default(),
+            globals: &mut Default::default(),
+            spatial: Some(&mut spatial),
+            markers: None,
+            walk_map_count: None,
+            inputs: Default::default(),
+            index: 0,
+            generation: 1,
+            sounds: None,
+            random: None,
+            actors: &mut actors,
+            ordinary_actors: Some(&traversal),
+            in_combat_threshold: Some(threshold),
+            task_calls: &BTreeMap::new(),
+            names: &BTreeMap::new(),
+            flag_state: &mut super::super::flags::Flags::prepare(&definition).unwrap(),
+        };
+        host.is_fighting().unwrap()
+    }
+
+    #[test]
+    fn fighting_selection_preserves_order_and_uses_three_dimensions_before_horizontal_test() {
+        let positions = [[0, 10, 0], [10, 0, 0]];
+        assert!(query(&positions, &[1, 2], 5, 1, false));
+        assert!(!query(&positions, &[2, 1], 5, 1, false));
+        assert!(!query(&[[0, 11, 0], [10, 0, 0]], &[1, 2], 5, 1, false));
+        assert!(query(&[[0, 9, 0], [10, 0, 0]], &[2, 1], 5, 1, false));
+    }
+
+    #[test]
+    fn fighting_selection_checks_strict_bounds_exact_state_and_death() {
+        assert!(!query(&[[10, 0, 0]], &[1], 10, 1, false));
+        assert!(query(&[[10, 0, 0]], &[1], 11, 1, false));
+        assert!(!query(&[[65535, 0, 0]], &[1], 100000, 1, false));
+        assert!(query(&[[65534, 0, 0]], &[1], 100000, 1, false));
+        for state in [0, 2, -1] {
+            assert!(!query(&[[1, 0, 0]], &[1], 10, state, false));
+        }
+        assert!(!query(&[[1, 0, 0]], &[1], 10, 1, true));
+        assert!(!query(&[[1, 0, 0]], &[], 10, 1, false));
     }
 }

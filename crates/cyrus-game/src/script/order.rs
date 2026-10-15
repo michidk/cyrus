@@ -10,6 +10,7 @@ pub(super) struct ActorLists {
     separate_selected: Vec<ScriptActorId>,
     membership: BTreeMap<usize, [i32; 2]>,
     first: Option<[i32; 2]>,
+    traversal_prepared: bool,
     selected: Vec<ScriptActorId>,
 }
 
@@ -59,8 +60,13 @@ impl ActorLists {
             separate_selected: Vec::new(),
             membership,
             first: None,
+            traversal_prepared: false,
             selected: Vec::new(),
         })
+    }
+
+    pub(super) fn retained_selected(&self) -> Option<&[ScriptActorId]> {
+        self.traversal_prepared.then_some(self.selected.as_slice())
     }
 
     pub(super) fn separate_selected(&self) -> &[ScriptActorId] {
@@ -169,6 +175,7 @@ impl ActorLists {
                 .map(|&index| ScriptActorId { generation, index }),
         );
         self.first = Some(first);
+        self.traversal_prepared = true;
         Ok(&self.selected)
     }
 }

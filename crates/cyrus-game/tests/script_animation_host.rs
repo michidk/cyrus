@@ -72,8 +72,9 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 13,
+        version: 14,
         combat_attacks: vec![],
+        in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -3594,5 +3595,161 @@ fn inventory_snapshot_rejects_content_census_and_selection_mismatches() {
             serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
             saved
         );
+    }
+}
+
+#[test]
+fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attribute() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{ScriptHud, ScriptInputs},
+    };
+    for (name, attribute, group, hud_ready, shell, expected) in [
+        ("IsHoldingWeapon", 1, None, false, None, 1),
+        ("IsHoldingWeapon", 0, Some(1), true, Some(false), 0),
+        ("IsDrawingSword", 0, Some(91), true, Some(false), 1),
+        ("IsDrawingSword", 0, Some(91), true, Some(true), 0),
+        ("IsSheathingSword", 0, Some(129), true, Some(false), 1),
+        ("IsSheathingSword", 0, Some(91), true, Some(false), 0),
+        ("IsDrawingSword", 1, None, true, None, 0),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Assign {
+                destination: Place::Flag { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(Call {
+                            function_id: 3,
+                            kind: CallKind::Function,
+                            target: Object::Named { string: 0 },
+                            function: name.into(),
+                            arguments: vec![],
+                        }),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: name.into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        data.actors
+            .get_mut("OTHER")
+            .unwrap()
+            .attributes
+            .insert("attr_110".into(), attribute);
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        if let Some(group) = group {
+            let mut animation = animations(&data, false);
+            animation.metadata["actors"][1]["animation_groups"] = json!([{
+                "group_index":group,"anim_type":0,"anim_id":1,
+                "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+            }]);
+            let receiver = world.id(1).unwrap();
+            world.bind_animation(receiver, &animation, group).unwrap();
+            stage(&mut world, receiver, ScriptStage::Animation);
+        }
+        let hud = ScriptHud::default();
+        hud.configure(&inventory_fixture(&[(1, 1)]), &Preferences::default());
+        let before = world.actors()[1].attributes().to_vec();
+        world
+            .advance(
+                world.id(0).unwrap(),
+                BODY,
+                ScriptInputs {
+                    hud: hud_ready.then_some(&hud),
+                    shell_execution: shell,
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .unwrap();
+        assert!(
+            world.actors()[0].failure().is_none(),
+            "{name}: {:?}",
+            world.actors()[0].failure()
+        );
+        assert_eq!(
+            world.flags(),
+            [expected],
+            "{name}, group {group:?}, shell {shell:?}"
+        );
+        assert_eq!(world.actors()[1].attributes(), before);
+    }
+}
+
+#[test]
+fn fighting_query_rejects_unprepared_ordinary_traversal() {
+    use cyrus_game::script::ScriptInputs;
+    let mut data = scripts(vec![
+        Operation::Assign {
+            destination: Place::Flag { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 3,
+                        kind: CallKind::Function,
+                        target: Object::Named { string: 0 },
+                        function: "isFighting".into(),
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "isFighting".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let mut camera = data.actors["OTHER"].clone();
+    camera.code_origin = 200;
+    camera.namespace = Some("CAMERA".into());
+    data.actors.insert("CAMERA".into(), camera);
+    data.content_id = data.content_identity().unwrap();
+    for prepared in [false, true] {
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        if prepared {
+            let camera = world
+                .actors()
+                .iter()
+                .position(|actor| {
+                    matches!(actor.source, cyrus_game::script::ScriptActorSource::Camera)
+                })
+                .unwrap();
+            assert!(world.actors()[camera].control_state().is_none());
+            let camera = world.id(camera).unwrap();
+            assert!(world.ordinary_actors([0, 0]).unwrap().contains(&camera));
+        }
+        let result = world.advance(
+            world.id(0).unwrap(),
+            BODY,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        );
+        if prepared {
+            result.unwrap();
+            assert_eq!(world.flags(), [0]);
+        } else {
+            assert!(
+                format!("{:#}", result.unwrap_err()).contains("ordinary traversal unavailable")
+            );
+        }
     }
 }

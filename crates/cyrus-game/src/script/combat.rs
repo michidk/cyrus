@@ -18,6 +18,8 @@ pub struct CombatControlState {
     pub cooldown: u32,
     /// Selected maintenance phase, separate from the nominal-tick cooldown.
     pub maintenance_phase: i32,
+    /// Fighting-query eligibility state; exactly one admits the candidate.
+    pub attacker_selection_state: i32,
     /// Retained action indices; their broader selection semantics are unsupported.
     pub retained_action_indices: [i32; 2],
     /// Shared RTX cache index, distinct from the retained dialogue record.
@@ -35,6 +37,7 @@ impl Default for CombatControlState {
             action: -1,
             cooldown: 0,
             maintenance_phase: 0,
+            attacker_selection_state: 0,
             retained_action_indices: [-1; 2],
             taunt_cache: None,
             taunt_dialogue: Some(0),

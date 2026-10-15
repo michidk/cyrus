@@ -74,8 +74,9 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 13,
+        version: 14,
         combat_attacks: vec![],
+        in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -8871,6 +8872,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             (combat.target, combat.flags, combat.action, combat.cooldown),
             (None, 0, -1, 0)
         );
+        assert_eq!(combat.attacker_selection_state, 0);
         assert_eq!(
             combat.attack_indices,
             [

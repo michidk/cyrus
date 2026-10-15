@@ -233,6 +233,8 @@ pub struct Scripts {
     pub version: u32,
     /// Contiguous installed attack table, shared by all combat-capable actors.
     pub combat_attacks: Vec<combat::Attack>,
+    /// Installed fighting-query horizontal threshold in Q8 units, with wrapping conversion.
+    pub in_combat_threshold: Option<i32>,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
     pub dialogue: DialogueSettings,
@@ -254,6 +256,7 @@ impl Scripts {
         let bytes = serde_json::to_vec(&(
             self.version,
             &self.combat_attacks,
+            self.in_combat_threshold,
             &self.clock,
             &self.updates,
             &self.dialogue,
@@ -269,7 +272,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 13,
+            self.version == 14,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

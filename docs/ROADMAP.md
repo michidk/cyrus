@@ -205,6 +205,7 @@ Running, composite actions and the original follow camera remain incomplete.
 - [x] Explicit grounded walking/turning/support/wall response with shared player, script, animation and render poses.
 - [x] Bounded ordinary keyboard walking adapter with retained walk-mode state, controller prelude, selected-player phase-zero combat maintenance and shared sound-maintenance timing. **Verified:** synthetic scheduler and ordinary-stage contracts.
 - [ ] Complete installed idle/held-forward/release acceptance across zero, sand, wood and rock; preserved offline audio evidence does not establish this route.
+  Installed weapon/fighting queries now allow the selected-player script to reach movement. **Verified:** a headless ISLAND probe with explicit view context completes idle, held forward and release without selected-player failure. Other world actors still report unsupported services/queries; full traversal remains unaccepted. Fighting selection follows the [published ordered query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#fighting-query).
 - [ ] Establish complete eligibility/timing and compare fractional startup, steady movement, release, walls and ground updates.
 - [ ] Complete Faithful movement, turning, follow camera, jumping, gravity and quick actions. Recover sword, walk-mode and auto-defend rules before connecting them.
 - [ ] Complete slopes, steps, animated/dynamic collision, sliding, airborne/rollback response, ledges and moving platforms.
