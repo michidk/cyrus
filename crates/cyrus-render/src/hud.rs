@@ -22,8 +22,6 @@ pub struct HudPlugin;
 
 /// The player's fixed maximum and spawn health; no INI key sets it.
 const MAX_HEALTH: u8 = 100;
-/// Game ticks per second: 12 per 18 BIOS timer ticks (preservation player doc).
-const TICKS_PER_SECOND: f64 = 12.0 * 18.2065 / 18.0;
 /// Show timer values: a trigger shows the candle for 25 ticks; 50 pins it and never decays.
 const SHOW_TICKS: u32 = 25;
 const SHOW_PINNED: u32 = 50;
@@ -150,8 +148,6 @@ pub struct HudState {
     pub count: Option<u32>,
     #[serde(skip)]
     elapsed: f32,
-    #[serde(skip)]
-    ticks: f64,
     /// Edited bindings when present, else the installed ones; read on entering a world.
     #[serde(skip)]
     bindings: [u8; 15],
@@ -202,7 +198,6 @@ impl HudState {
             selected: hud.selected.or_else(|| hud.items.first().map(|i| i.id)),
             count: None,
             elapsed: 0.0,
-            ticks: 0.0,
             bindings: hud.bindings,
             frames,
             text: Vec::new(),
@@ -470,6 +465,7 @@ struct CompassInputs<'w, 's> {
     scenes: Option<Res<'w, Assets<PlayerScene>>>,
     suppressed: Option<Res<'w, cyrus_game::player::input::InputSuppressed>>,
     console: Option<Res<'w, cyrus_console::Console>>,
+    clock: Option<Res<'w, cyrus_game::clock::SimulationClock>>,
     logbook: Option<Res<'w, cyrus_game::logbook::LogbookScreen>>,
 }
 
@@ -558,6 +554,9 @@ fn update(
         });
         return;
     };
+    if compass.console.as_ref().is_some_and(|console| console.open) {
+        return;
+    }
     if compass
         .logbook
         .as_ref()
@@ -608,20 +607,6 @@ fn update(
             warn!("hud: {e:#}");
         }
     }
-
-    // Preservation HUD facts: Glide swaps at 60 Hz; keep that animation rate independent of rendering.
-    state.elapsed += time.delta_secs();
-    let period = 1.0 / 60.0;
-    while state.elapsed >= period {
-        state.elapsed -= period;
-        state.advance_frame();
-    }
-    if start_notification {
-        state.logbook_entry();
-    }
-    state.ticks += time.delta_secs_f64() * TICKS_PER_SECOND;
-    let ticks = state.ticks.floor() as u32;
-    state.ticks -= f64::from(ticks);
 
     let dialogue_text = actors
         .as_ref()
@@ -691,6 +676,22 @@ fn update(
         ),
         _ => false,
     };
+
+    // Preservation HUD facts: Glide swaps at 60 Hz; keep that animation rate independent of rendering.
+    state.elapsed += time.delta_secs();
+    let period = 1.0 / 60.0;
+    while state.elapsed >= period {
+        state.elapsed -= period;
+        state.advance_frame();
+    }
+    if start_notification {
+        state.logbook_entry();
+    }
+    let ticks = compass
+        .clock
+        .as_ref()
+        .filter(|clock| clock.is_changed())
+        .map_or(0, |clock| clock.step().nominal_ticks);
 
     // Candle.
     if state.sword_drawn && state.lockout == 0 {
@@ -1403,6 +1404,72 @@ mod tests {
         prepare_script(&mut app, &[]);
         app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
         app
+    }
+
+    #[test]
+    fn candle_uses_current_actor_health_on_the_first_transition_update() {
+        let mut app = compass_app();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_secs_f64(1.0 / 60.0),
+        ));
+        {
+            let mut state = app.world_mut().resource_mut::<HudState>();
+            state.health = 100;
+            state.candle.shown = Some(0);
+            state.elapsed = 0.0;
+        }
+        // The prepared actor has health zero; the number and snuff must change together.
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!(state.health, 0);
+        assert_eq!(state.candle.frame, 66);
+        app.update();
+        assert_eq!(app.world().resource::<HudState>().candle.frame, 67);
+    }
+
+    #[test]
+    fn hud_timers_follow_simulation_ticks_and_hold_in_the_console() {
+        let mut app = compass_app();
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::ZERO,
+        ));
+        let mut clock =
+            cyrus_game::clock::SimulationClock::new(cyrus_assets::script::ClockSettings {
+                normal_frame_rate: 12,
+                min_frame_rate: 6,
+                max_frame_rate: 300,
+                use_smooth_fps: true,
+                use_smooth_divisor: true,
+            })
+            .unwrap();
+        assert_eq!(clock.advance(0).nominal_ticks, 1);
+        app.insert_resource(clock);
+        {
+            let mut state = app.world_mut().resource_mut::<HudState>();
+            state.health = 100;
+            state.notices = [24, 24];
+        }
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!(state.show_timer, 24);
+        assert_eq!(state.notices, [23, 23]);
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!(state.show_timer, 24, "an old clock step is not replayed");
+        assert_eq!(state.notices, [23, 23]);
+        let candle = state.candle;
+        app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_secs(1),
+        ));
+        app.init_resource::<cyrus_console::Console>();
+        app.world_mut()
+            .resource_mut::<cyrus_console::Console>()
+            .open = true;
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!(state.candle, candle);
+        assert_eq!(state.show_timer, 24);
+        assert_eq!(state.notices, [23, 23]);
     }
 
     #[test]

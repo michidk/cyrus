@@ -390,6 +390,12 @@ requests for that image until resumed; selection preserves its deadline.
 World replacement clears the hold with the image timeline. Ordinary playback
 has no hold. Explicit gameplay frame requests remain unsupported.
 
+The HUD reads current logical-player health before advancing its candle animation.
+Candle animation uses a 60 Hz presentation timeline independently of host frame
+rate, following the published Glide retrace ceiling. Candle visibility, notices and activation prompt/item countdowns use
+the shared simulation clock's nominal ticks, including its startup warmup.
+The console suspends HUD animation, timers and toggle input.
+
 The HUD reads dialogue text selected by the game-owned record update.
 It uses installed REDSEL data, font_norm alpha for player record zero,
 font_sel alpha for other records, and the fixed 640×480 subtitle band,

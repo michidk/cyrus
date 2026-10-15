@@ -24,8 +24,8 @@ commits and implementation docs.
 
 ## Next work
 
-Next independent HUD task: compare candle cadence, health transitions and
-activation prompt/item timing against the original.
+Next independent HUD task: establish a matched production activation prompt/item
+interaction and compare remaining HUD layout and real-time candle cadence.
 
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
@@ -172,7 +172,8 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Shared script/HUD inventory, capped `AddItem`, `HaveItem`, `SelectItem` and compass use from logical-player state. **Verified:** headless script and HUD checks cover acquisition, live counts/selection, surface gates and world/HUD replacement; installed export checks cover all item artwork. New-game/death resets, saves and original timing comparison remain open.
 - [x] `ActiveItem` and receiver-owned `HandItem` services. **Verified:** headless VM tests cover selected hidden/unowned records, admission gates, full-ID lookup before byte assignment, routed receivers and unavailable host state; a truncation mutation is rejected. Initial held-item reconstruction and attachment geometry remain open.
 - [x] Shared logbook layout and native/browser reading screen. **Verified:** headless contracts, installed artwork export and native/browser input, scrolling and suspension checks. Scroll shading/filtering, other styles, editing and resets/saves remain open.
-- [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original.
+- [x] Compare original candle health restoration and flicker frame order and installed sabre-to-gold cycling. Correct stale-health animation ordering, use shared nominal ticks for HUD countdowns and suspend HUD updates in the console. **Verified:** original recordings identify healing frames 29,23,17,11,5,0 and the five-frame flicker loop; original/native item cycling displays gold count 53. The stale-order control fails the integrated health check.
+- [ ] Complete representative real-time candle cadence, all snuff intermediates, matched production activation prompt/item timing and remaining HUD layout against the original. **Unknown:** the slow software-emulated capture does not establish hardware cadence or complete prompt interaction parity.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
 
