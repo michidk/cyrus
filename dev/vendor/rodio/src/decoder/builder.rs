@@ -302,7 +302,10 @@ impl<R: Read + Seek + Send + Sync + 'static> DecoderBuilder<R> {
         }
 
         #[cfg(not(feature = "symphonia"))]
-        Err(DecoderError::UnrecognizedFormat)
+        {
+            drop(data);
+            Err(DecoderError::UnrecognizedFormat)
+        }
     }
 
     /// Creates a new decoder with previously configured settings.
@@ -323,10 +326,11 @@ impl<R: Read + Seek + Send + Sync + 'static> DecoderBuilder<R> {
     /// Returns `DecoderError::UnrecognizedFormat` if the audio format could not be determined
     /// or is not supported.
     pub fn build_looped(self) -> Result<LoopedDecoder<R>, DecoderError> {
-        let (decoder, settings) = self.build_impl()?;
+        let (decoder, _settings) = self.build_impl()?;
         Ok(LoopedDecoder {
             inner: Some(decoder),
-            settings,
+            #[cfg(feature = "symphonia")]
+            settings: _settings,
         })
     }
 }

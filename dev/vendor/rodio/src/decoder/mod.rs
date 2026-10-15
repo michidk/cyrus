@@ -102,6 +102,7 @@ pub struct LoopedDecoder<R: Read + Seek> {
     /// The underlying decoder implementation.
     inner: Option<DecoderImpl<R>>,
     /// Configuration settings for the decoder.
+    #[cfg(feature = "symphonia")]
     settings: Settings,
 }
 

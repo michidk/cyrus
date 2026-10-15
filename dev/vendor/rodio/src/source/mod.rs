@@ -6,8 +6,11 @@ use std::sync::Arc;
 use crate::{
     buffer::SamplesBuffer,
     common::{assert_error_traits, ChannelCount, SampleRate},
-    math, BitDepth, Float, Sample,
+    math, Float, Sample,
 };
+
+#[cfg(feature = "dither")]
+use crate::BitDepth;
 
 use dasp_sample::FromSample;
 

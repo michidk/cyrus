@@ -13,6 +13,9 @@ Cyrus retains decoded PCM size hints for the same reason. Queues use exact
 remaining lengths to expose source transitions after playback and idle silence.
 Finite silence reports its remaining span rather than its initial length.
 Two upstream doc-comment lines also have trailing whitespace removed.
+Feature-specific imports and loop settings are conditional, and rejected decoder
+input is explicitly dropped, so builds without dither or Symphonia pass strict
+warning checks.
 
 The public backend contracts are tested in
 `crates/cyrus-audio/tests/backend_queue.rs`. Remove this copy when a compatible
