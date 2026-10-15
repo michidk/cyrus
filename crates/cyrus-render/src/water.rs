@@ -169,7 +169,7 @@ pub(crate) fn animate_water(
             let Ok(VertexAttributeValues::Float32x3(positions)) =
                 mesh.try_attribute(Mesh::ATTRIBUTE_POSITION)
             else {
-                error!("water terrain {entity}: missing positions");
+                error_once!("water terrain {entity}: missing positions");
                 return;
             };
             let mut vertices = Vec::with_capacity(positions.len());
@@ -177,7 +177,7 @@ pub(crate) fn animate_water(
                 let x = (-position[0] / CELL_SIZE).round() as usize;
                 let row = (-position[2] / CELL_SIZE).round() as usize;
                 if x >= side || row >= side {
-                    error!("water terrain {entity}: vertex outside {}-wide grid", side);
+                    error_once!("water terrain {entity}: vertex outside {}-wide grid", side);
                     return;
                 }
                 let vertex = x + row * side;
@@ -187,7 +187,7 @@ pub(crate) fn animate_water(
             let source = match crate::terrain::Source::new(mesh, vertices.len()) {
                 Ok(source) => source,
                 Err(reason) => {
-                    error!(
+                    error_once!(
                         "water terrain {entity}, environment {:?}: {reason}",
                         request.0.id()
                     );

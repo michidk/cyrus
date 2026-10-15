@@ -689,7 +689,7 @@ fn update(
                     overlay
                 }
                 Err(error) => {
-                    warn!("HUD activation: {error:#}");
+                    warn_once!("HUD activation: {error:#}");
                     ActivationOverlay::Hidden
                 }
             }

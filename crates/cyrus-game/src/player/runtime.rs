@@ -286,7 +286,7 @@ pub(crate) fn step(
         }
         if let Err(error) = result {
             let error = format!("player step: {error:#}");
-            log::error!("{error}");
+            bevy::log::error_once!("{error}");
             runtime.error = Some(error);
         }
     }

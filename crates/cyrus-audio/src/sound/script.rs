@@ -98,7 +98,7 @@ impl SoundFrame<'_, '_> {
                                 (settings, listener),
                             );
                         } else {
-                            warn!(
+                            warn_once!(
                                 "queued script Sound effect {}: listener/settings unavailable",
                                 cue.effect
                             );
@@ -166,11 +166,13 @@ impl SoundFrame<'_, '_> {
                                     && binding.actor.index == *index
                             });
                             let Some((actor, _)) = nodes.next() else {
-                                warn!("script animation snapshot requires a scene binding");
+                                warn_once!("script animation snapshot requires a scene binding");
                                 continue;
                             };
                             if nodes.next().is_some() {
-                                warn!("script animation snapshot has ambiguous scene bindings");
+                                warn_once!(
+                                    "script animation snapshot has ambiguous scene bindings"
+                                );
                                 continue;
                             }
                             match state {
@@ -186,7 +188,7 @@ impl SoundFrame<'_, '_> {
                                         Some(None) => {
                                             channels.animation.remove(&actor);
                                         }
-                                        None => warn!(
+                                        None => warn_once!(
                                             "script animation restore requires a captured slot"
                                         ),
                                     }
@@ -222,7 +224,7 @@ impl SoundFrame<'_, '_> {
                                     (settings, listener),
                                 );
                             } else {
-                                warn!(
+                                warn_once!(
                                     "script Sound effect {effect}: listener/settings unavailable"
                                 );
                             }
@@ -269,7 +271,7 @@ impl SoundFrame<'_, '_> {
                             channels.stop_all(commands);
                         }
                         ScriptSound::Animation { .. } => {
-                            warn!("script animation sound requires a scene binding")
+                            warn_once!("script animation sound requires a scene binding")
                         }
                     }
                 }
@@ -306,7 +308,7 @@ impl SoundFrame<'_, '_> {
                     } => {
                         channels.animation.remove(actor);
                         let Ok((transform, _, is_player)) = actors.get(*actor) else {
-                            warn!("sound: animation cue for {actor} without a transform");
+                            warn_once!("sound: animation cue for {actor} without a transform");
                             continue;
                         };
                         let index = match surface {
@@ -345,7 +347,7 @@ impl SoundFrame<'_, '_> {
                         let (volume, pan) = match mixed {
                             Ok(mix) => mix,
                             Err(e) => {
-                                warn!("sound: effect {index}: {e}");
+                                warn_once!("sound: effect {index}: {e}");
                                 continue;
                             }
                         };
@@ -407,10 +409,10 @@ fn play_cues(
 // the post-animation drain. A second reader would replay earlier commands.
 pub(super) fn play_audio(world: &mut World) {
     if let Err(error) = world.run_system_cached(play_requests) {
-        error!("sound control consumer: {error}");
+        error_once!("sound control consumer: {error}");
     }
     if let Err(error) = world.run_system_cached(play_cues) {
-        error!("sound cue consumer: {error}");
+        error_once!("sound cue consumer: {error}");
     }
 }
 

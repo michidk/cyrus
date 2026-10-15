@@ -358,7 +358,7 @@ impl Channels {
         let (volume, pan) = match positional_q8(cue.position, settings, listener, cue.volume) {
             Ok(mix) => mix,
             Err(error) => {
-                warn!("script Sound effect {}: {error}", cue.effect);
+                warn_once!("script Sound effect {}: {error}", cue.effect);
                 return;
             }
         };
@@ -476,7 +476,7 @@ impl Channels {
         {
             Ok(reservation) => reservation?,
             Err(error) => {
-                error!("sound: {error}");
+                error_once!("sound: {error}");
                 return None;
             }
         };
@@ -688,7 +688,7 @@ fn play_requests(
                 position,
             } => {
                 let Some(effect) = effects.0.get(*index).and_then(Option::as_ref) else {
-                    warn!("sound: effect {index} is not loaded");
+                    warn_once!("sound: effect {index} is not loaded");
                     continue;
                 };
                 let (volume, pan) = match position {
@@ -698,7 +698,7 @@ fn play_requests(
                             settings.as_ref().and_then(|s| s.sound_distance),
                             listener.as_deref(),
                         ) else {
-                            warn!(
+                            warn_once!(
                                 "sound: effect {index}: no listener or SYSTEM.INI sound_distance"
                             );
                             continue;
@@ -706,7 +706,7 @@ fn play_requests(
                         match positional(*position, &listener.0, distance, 0) {
                             Ok((volume, pan)) => (volume, Some(pan)),
                             Err(e) => {
-                                warn!("sound: effect {index}: {e}");
+                                warn_once!("sound: effect {index}: {e}");
                                 continue;
                             }
                         }
@@ -734,7 +734,7 @@ fn play_requests(
                     continue;
                 }
                 let Some(clip) = speech.0.get(label) else {
-                    warn!("sound: voice clip {label} is not loaded");
+                    warn_once!("sound: voice clip {label} is not loaded");
                     continue;
                 };
                 channels.start(
