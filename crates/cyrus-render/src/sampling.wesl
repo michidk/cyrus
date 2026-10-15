@@ -46,7 +46,11 @@ fn model_texel(pixel: vec2<i32>, allocation: vec4<u32>, zero: vec3<f32>) -> vec3
     let size = textureDimensions(base_color_texture);
     if any(source >= size) { return zero; }
     let flipped = vec2<i32>(vec2(source.x, size.y - 1u - source.y));
-    return round(linear_to_srgb(textureLoad(base_color_texture, flipped, 0).rgb) * 255.0);
+    // World model textures share the converted COL table; exported alpha marks index zero.
+    // https://github.com/michidk/redguard-preservation/commit/fe530cc
+    let texel = textureLoad(base_color_texture, flipped, 0);
+    let rgb = round(linear_to_srgb(texel.rgb) * 255.0);
+    return select(floor(rgb / 4.0) * 4.0, zero, texel.a == 0.0);
 }
 
 fn sample_model(coordinate: vec2<i32>, allocation: vec4<u32>, level: u32, point: bool, zero: vec3<f32>) -> vec3<f32> {

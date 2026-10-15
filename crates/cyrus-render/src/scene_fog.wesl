@@ -134,6 +134,7 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
         base.a = 1.0;
     }
     var texture_rgb = linear_to_srgb(base.rgb);
+    var texture_key = chroma_key.rgb;
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
         texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u, false);
     }
@@ -141,10 +142,11 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     if model_texture.allocation.x != 0u {
         let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
         let coordinate = texture_coordinates(in.texture_a, in.texture_b, in.texture_c, in.texture_d, in.texture_e, offset);
-        texture_rgb = sample_model(coordinate, model_texture.allocation, u32(model_texture.scale.z), (u32(model.parameters.w) & 1u) != 0u, chroma_key.rgb);
+        texture_key = vec3(0.0);
+        texture_rgb = sample_model(coordinate, model_texture.allocation, u32(model_texture.scale.z), (u32(model.parameters.w) & 1u) != 0u, texture_key);
     }
 }
-    if chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, chroma_key.rgb) {
+    if chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, texture_key) {
         discard;
     }
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);

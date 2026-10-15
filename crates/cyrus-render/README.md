@@ -60,8 +60,9 @@ playback shade private terrain meshes, including displaced water. Terrain uses
 screen-linear vertex RGB and texture modulation before the existing scene fog,
 without Bevy PBR or tone mapping. **Verified:** terrain texels use the world's six-bit palette conversion before
 filtering, following the [published COL upload rule](https://github.com/michidk/redguard-preservation/commit/395e6693514482fb4a8c8881d5998843efee3542).
-Generic exported images retain their original colors. **Unknown:** model texture
-palette selection; model sampling retains its prior behavior.
+Generic exported images retain their original colors. Ordinary prepared models
+apply the same world palette conversion in their sampling path. Standalone and
+generated-flat palette handling remains **Unknown**.
 **Verified:** measured ISLAND original/native/browser captures with frozen sky
 and waves and held per-image frames reduce shoreline mean RGB error from 1.281
 to about 0.096 and land error from 1.405 to about 0.030. A control restoring only
@@ -397,8 +398,11 @@ without wrapping again or advancing lifetime. The sound subtitle preference
 controls visibility. Automatic dialogue update
 and source scheduling remain separate game/audio work.
 
-Ordinary prepared models retain source-pixel UVs through clipping and submit fixed
-texture planes. Their shader samples the original reduced allocation with
+**Verified:** ordinary prepared models retain source-pixel UVs through clipping and submit fixed
+texture planes. Their texture samples use the converted world COL palette before
+filtering, including black index-zero texels and allocation padding, following
+[preservation palette ownership](https://github.com/michidk/redguard-preservation/commit/fe530cc).
+Their shader samples the original reduced allocation with
 palette-zero padding and wrapping, using preservation's
 [texture layout](https://github.com/michidk/redguard-preservation/commit/85afd92)
 and [address selection](https://github.com/michidk/redguard-preservation/commit/955cc9f)
@@ -406,6 +410,15 @@ rules. Source images and shared animation frame handles remain unchanged.
 Re-export environments for texture reduction settings and model GLBs for
 `rgpre_texcoords` metadata. Missing metadata hides the affected model with a
 contextual error. Generated flats retain their separate coordinate path.
+
+**Verified:** matched 640×480 START captures use native New Game and browser menu
+Load entry, the measured camera, frozen sky/waves and a held water frame. The
+browser Load action starts the same fresh world; it does not restore a save.
+Converted model palette samples reduce lower-deck mean RGB error from 1.179 to
+0.038 against an isolated old-sampler control. Native/browser deck and rail
+differences stay below 0.002. Native BELLTOWR controls improve sampled wall and
+table colors; the measured ISLAND terrain regions are unchanged. Full pixel
+parity, original cadence and solid-face palette initialization remain **Unknown**.
 
 **Verified:** native and browser START New Game preserve the measured inspection
 view after the book menu and intro. At zero sky/wave speed, measured sky phase
