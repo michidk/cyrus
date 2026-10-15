@@ -2817,10 +2817,12 @@ version = "0.1.14"
 dependencies = [
  "anyhow",
  "bevy",
+ "blake3",
  "cyrus-assets",
  "cyrus-collision",
  "cyrus-game",
  "cyrus-world",
+ "hound",
  "redguard-preservation",
  "rodio",
  "serde",

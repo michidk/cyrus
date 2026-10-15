@@ -452,7 +452,7 @@ fn set_listener(app: &mut App, position_q8: [i32; 3], yaw: u16) -> Result<()> {
 /// Fit channel scaling to actual decoder PCM, including sample rounding.
 /// Uses up to 65,536 source frames. Silent or unsupported layouts have no slope.
 fn decoded_channel_gains(panned: &Panned) -> Option<[f32; 2]> {
-    let mut source = panned.source.decoder();
+    let mut source = panned.source().decoder();
     let channels = source.channels().get();
     if !matches!(channels, 1 | 2) {
         return None;
@@ -534,7 +534,7 @@ fn play(
             .get(&handle)
             .context("started PCM missing")?;
         let gains = decoded_channel_gains(panned);
-        let pcm = &panned.source.bytes;
+        let pcm = &panned.source().bytes;
         let targets: Vec<_> = bank
             .iter()
             .enumerate()
@@ -577,17 +577,13 @@ mod tests {
         let bytes =
             cyrus_assets::audio::pcm_wav(rgpre::import::sfx::AudioType::Mono8, 11025, &[200; 16])
                 .unwrap();
-        let panned = Panned {
-            source: AudioSource {
+        let panned = Panned::new(
+            AudioSource {
                 bytes: bytes.into(),
             },
-            gains: cyrus_audio::sound::PannedGains::new(
-                cyrus_audio::sound::PcmWidth::Eight,
-                32,
-                256,
-                32,
-            ),
-        };
+            cyrus_audio::sound::PannedGains::new(cyrus_audio::sound::PcmWidth::Eight, 32, 256, 32),
+        )
+        .unwrap();
         assert_eq!(
             decoded_channel_gains(&panned),
             Some([0.2578125, 0.12890625])
@@ -600,8 +596,8 @@ mod tests {
             .into_iter()
             .flat_map(i16::to_le_bytes)
             .collect();
-        let panned = Panned {
-            source: AudioSource {
+        let panned = Panned::new(
+            AudioSource {
                 bytes: cyrus_assets::audio::pcm_wav(
                     rgpre::import::sfx::AudioType::Mono16,
                     22050,
@@ -610,13 +606,14 @@ mod tests {
                 .unwrap()
                 .into(),
             },
-            gains: cyrus_audio::sound::PannedGains::new(
+            cyrus_audio::sound::PannedGains::new(
                 cyrus_audio::sound::PcmWidth::Sixteen,
                 112,
                 256,
                 64,
             ),
-        };
+        )
+        .unwrap();
         assert_eq!(decoded_channel_gains(&panned), Some([0.875, 0.875]));
     }
 

@@ -10,13 +10,15 @@ cyrus-assets.workspace = true
 cyrus-game.workspace = true
 cyrus-world.workspace = true
 anyhow.workspace = true
+serde.workspace = true
+blake3.workspace = true
+rodio = { version = "=0.22.2", default-features = false }
+hound = "3.5"
 serde_json.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 cyrus-assets = { workspace = true, features = ["native"] }
 
 [dev-dependencies]
-rodio = { version = "=0.22.2", default-features = false }
 redguard-preservation.workspace = true
 cyrus-collision.workspace = true
-serde.workspace = true

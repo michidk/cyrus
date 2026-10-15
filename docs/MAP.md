@@ -73,10 +73,12 @@ module where it is defined and regenerate.
 ## `cyrus-audio` — Effects, speech and CD music playback, independent of rendering and menu presentation.
 
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
+- `src/music/checkpoint.rs` — CD track decoder checkpoints and off-live music replacement construction.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 - `src/sound/dialogue.rs` — Portable, per-label dialogue assets and their audio dependencies.
 - `src/sound/samples.rs` — Synchronous sample-slot allocation; playback transport cannot own allocation order.
 - `src/sound/script.rs` — Scoped script feedback and queued native/browser cue consumption share Channels.
+- `src/sound/transport.rs` — Exact source-decoder continuation, separate from backend/device output buffers.
 - `src/sound_bank.rs` — The browser's effect source and the portable cue message every sound trigger sends.
 
 ## `cyrus-collision` — Terrain and authored static geometry queries.

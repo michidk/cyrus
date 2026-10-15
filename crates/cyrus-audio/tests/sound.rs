@@ -35,12 +35,13 @@ fn playing_decoder_applies_gain_updates_without_restarting_or_splitting_a_frame(
             256,
             0,
         );
-        let source = Panned {
-            source: AudioSource {
+        let source = Panned::new(
+            AudioSource {
                 bytes: pcm_wav(audio_type, 11025, &pcm).unwrap().into(),
             },
-            gains: gains.clone(),
-        };
+            gains.clone(),
+        )
+        .unwrap();
         let mut decoder = source.decoder();
         assert!(decoder.next().unwrap() > 0.0);
         gains.set(127, 256, 127);
@@ -665,7 +666,8 @@ fn positional_script_starts_include_silent_channels_and_owned_cleanup() {
         .resource::<Assets<Panned>>()
         .get(&handle)
         .unwrap();
-    assert!(source.decoder().all(|sample| sample == 0.0));
+    let samples: Vec<_> = source.decoder().take(48).collect();
+    assert_eq!(samples, vec![0.0; 48]);
 }
 
 #[test]
@@ -701,12 +703,13 @@ fn pcm_width_selects_original_gain_and_signed_rounding_before_stereo_output() {
             vec![14336, -14336, 224, -225],
         ),
     ] {
-        let source = Panned {
-            source: AudioSource {
+        let source = Panned::new(
+            AudioSource {
                 bytes: pcm_wav(kind, 22050, &samples).unwrap().into(),
             },
-            gains: PannedGains::new(kind.bits_per_sample().try_into().unwrap(), 112, 256, 64),
-        };
+            PannedGains::new(kind.bits_per_sample().try_into().unwrap(), 112, 256, 64),
+        )
+        .unwrap();
         let actual: Vec<_> = source
             .decoder()
             .map(|sample| (sample * 32768.0) as i32)
@@ -727,12 +730,13 @@ fn scalar_pan_rounds_the_coefficient_before_multiplying_each_sample() {
         .into_iter()
         .flat_map(i16::to_le_bytes)
         .collect();
-    let source = Panned {
-        source: AudioSource {
+    let source = Panned::new(
+        AudioSource {
             bytes: pcm_wav(AudioType::Mono16, 22050, &pcm).unwrap().into(),
         },
-        gains: PannedGains::new(PcmWidth::Sixteen, 112, 256, 32),
-    };
+        PannedGains::new(PcmWidth::Sixteen, 112, 256, 32),
+    )
+    .unwrap();
     // Original pan-table values 128 and64 produce integer coefficients112 and56.
     assert_eq!(
         source.decoder().collect::<Vec<_>>(),

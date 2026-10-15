@@ -642,7 +642,7 @@ fn remapped_target_retains_its_pcm_width_through_production_playback() {
         .get(&handle)
         .unwrap();
     assert_eq!(
-        audio.decoder().collect::<Vec<_>>(),
+        audio.decoder().take(8).collect::<Vec<_>>(),
         vec![16128.0 / 32768.0; 8]
     );
 }
@@ -672,4 +672,148 @@ fn separately_initialized_player_role_uses_player_samples_without_becoming_contr
         play(&mut app, actor, 200);
         assert_eq!(playing(&mut app), expected);
     }
+}
+
+#[test]
+fn production_loop_rechecks_gains_and_finite_cues_complete() {
+    use bevy::audio::{PlaybackMode, PlaybackSettings};
+    use cyrus_audio::sound::PannedGains;
+    for looping in [true, false] {
+        let (mut app, actor) = fixture();
+        app.world_mut().resource_mut::<SoundEffects>().0[1]
+            .as_mut()
+            .unwrap()
+            .looping = looping;
+        play(&mut app, actor, 200);
+        let (player, settings, gains) = app
+            .world_mut()
+            .query::<(&AudioPlayer<Panned>, &PlaybackSettings, &PannedGains)>()
+            .single(app.world())
+            .unwrap();
+        let source = app
+            .world()
+            .resource::<Assets<Panned>>()
+            .get(&player.0)
+            .unwrap();
+        let gains = gains.clone();
+        let mut decoder: Box<dyn Iterator<Item = f32>> = match settings.mode {
+            PlaybackMode::Loop => Box::new(source.decoder().repeat_infinite()),
+            _ => Box::new(source.decoder()),
+        };
+        assert!(decoder.by_ref().take(32).all(|sample| sample > 0.0));
+        if looping {
+            gains.set(0, 256, 64);
+            assert_eq!(decoder.take(64).collect::<Vec<_>>(), [0.0; 64]);
+        } else {
+            assert_eq!(decoder.next(), None);
+        }
+    }
+}
+
+#[test]
+fn malformed_transport_starts_do_not_exhaust_the_shared_sample_pool() {
+    let (mut app, actor) = fixture();
+    app.world_mut()
+        .entity_mut(actor)
+        .insert(cyrus_world::sound::PlayerAnimationSource);
+    let handle = app.world().resource::<SoundEffects>().0[1]
+        .as_ref()
+        .unwrap()
+        .audio
+        .clone();
+    let source = app
+        .world()
+        .resource::<Assets<AudioSource>>()
+        .get(&handle)
+        .unwrap()
+        .clone();
+    app.world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .get_mut(&handle)
+        .unwrap()
+        .bytes = vec![0; 4].into();
+    for _ in 0..20 {
+        play(&mut app, actor, 200);
+        assert_eq!(playing(&mut app), 0);
+    }
+    *app.world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .get_mut(&handle)
+        .unwrap() = source;
+    for count in 1..=16 {
+        play(&mut app, actor, 200);
+        assert_eq!(playing(&mut app), count);
+    }
+}
+
+#[test]
+fn installed_loop_pcm_updates_gains_and_reconstructs_through_the_headless_host() {
+    use cyrus_assets::{audio::sfx_path, install::GameInstall};
+    use cyrus_audio::sound::{PannedGains, PannedSnapshot, PcmWidth};
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (looping transport headless host)");
+        return;
+    };
+    let bank =
+        rgpre::import::sfx::parse_sfx_file(&std::fs::read(sfx_path(&install)).unwrap()).unwrap();
+    let effect = bank
+        .effects
+        .iter()
+        .find(|effect| effect.loop_flag != 0 && !effect.pcm_data.is_empty())
+        .unwrap();
+    let width: PcmWidth = effect.audio_type.bits_per_sample().try_into().unwrap();
+    let frames = effect.pcm_data.len()
+        / usize::from(effect.audio_type.bits_per_sample() / 8)
+        / usize::from(effect.audio_type.channels());
+    let (mut app, actor) = fixture();
+    let audio = app
+        .world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .add(AudioSource {
+            bytes: pcm_wav(effect.audio_type, effect.sample_rate, &effect.pcm_data)
+                .unwrap()
+                .into(),
+        });
+    let mut effects = app.world_mut().resource_mut::<SoundEffects>();
+    let target = effects.0[1].as_mut().unwrap();
+    target.audio = audio;
+    target.bits_per_sample = effect.audio_type.bits_per_sample();
+    target.sample_rate = effect.sample_rate;
+    target.looping = true;
+    play(&mut app, actor, 200);
+    let (player, gains) = app
+        .world_mut()
+        .query::<(&AudioPlayer<Panned>, &PannedGains)>()
+        .single(app.world())
+        .unwrap();
+    let transport = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&player.0)
+        .unwrap();
+    let mut decoder = transport.decoder();
+    let first_loop = decoder.by_ref().take(frames * 2).collect::<Vec<_>>();
+    assert_eq!(first_loop.len(), frames * 2);
+    assert!(first_loop.iter().any(|sample| *sample != 0.0));
+    gains.set(0, 256, 64);
+    assert!(
+        decoder
+            .by_ref()
+            .take(frames * 2)
+            .all(|sample| sample == 0.0)
+    );
+    gains.set(127, 256, 32);
+    decoder.next();
+    let snapshot: PannedSnapshot =
+        serde_json::from_slice(&serde_json::to_vec(&transport.snapshot().unwrap()).unwrap())
+            .unwrap();
+    let replacement = Panned::from_snapshot(transport.source().clone(), width, snapshot).unwrap();
+    let mut restored = replacement.decoder();
+    assert_eq!(
+        decoder.by_ref().take(1024).collect::<Vec<_>>(),
+        restored.by_ref().take(1024).collect::<Vec<_>>()
+    );
 }

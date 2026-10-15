@@ -1559,7 +1559,13 @@ mod dialogue_tests {
         world.insert_resource(SoundSettings::parse(""));
         let mut sources = Assets::<AudioSource>::default();
         let audio = sources.add(AudioSource {
-            bytes: vec![0; 4].into(),
+            bytes: cyrus_assets::audio::pcm_wav(
+                rgpre::import::sfx::AudioType::Mono16,
+                11025,
+                &[0, 64, 0, 64],
+            )
+            .unwrap()
+            .into(),
         });
         world.insert_resource(sources);
         world.init_resource::<Assets<Panned>>();
@@ -1922,7 +1928,13 @@ mod dialogue_tests {
         world.insert_resource(SoundSettings::parse(""));
         let mut sources = Assets::<AudioSource>::default();
         let audio = sources.add(AudioSource {
-            bytes: vec![0; 4].into(),
+            bytes: cyrus_assets::audio::pcm_wav(
+                rgpre::import::sfx::AudioType::Mono16,
+                11025,
+                &[0, 64, 0, 64],
+            )
+            .unwrap()
+            .into(),
         });
         world.insert_resource(sources);
         world.init_resource::<Assets<Panned>>();

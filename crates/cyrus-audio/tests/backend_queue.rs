@@ -8,12 +8,13 @@ fn source(rate: u32) -> Panned {
         .into_iter()
         .flat_map(i16::to_le_bytes)
         .collect();
-    Panned {
-        source: AudioSource {
+    Panned::new(
+        AudioSource {
             bytes: pcm_wav(AudioType::Mono16, rate, &pcm).unwrap().into(),
         },
-        gains: PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
-    }
+        PannedGains::new(PcmWidth::Sixteen, 127, 256, 64),
+    )
+    .unwrap()
 }
 
 #[test]

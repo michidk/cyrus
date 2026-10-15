@@ -499,10 +499,24 @@ impl Channels {
             ),
             Some((panned, source, pan)) => {
                 let gains = PannedGains::new(width, start.volume, master, pan);
-                let audio = panned.add(Panned {
-                    source: source.clone(),
-                    gains: gains.clone(),
-                });
+                let transport = match Panned::with_playback(
+                    source.clone(),
+                    gains.clone(),
+                    start.looping,
+                    start.speed,
+                ) {
+                    Ok(transport) => transport,
+                    Err(error) => {
+                        self.samples.finish(reservation);
+                        warn!(
+                            "sound: effect {:?}, audio {:?}: {error:#}",
+                            start.effect, start.audio
+                        );
+                        return None;
+                    }
+                };
+                let playback = transport.playback_settings();
+                let audio = panned.add(transport);
                 let sound = commands
                     .spawn((PlayingSound, AudioPlayer(audio), playback, gains.clone()))
                     .id();
@@ -858,7 +872,7 @@ fn distance_volume_q8(sound_distance: i32, distance: i64, offset: i32) -> Result
 pub use cyrus_assets::sound::slider_volume;
 
 /// Original integer PCM sample width, retained before Bevy converts samples to floats.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PcmWidth {
     Eight,
     Sixteen,
@@ -944,7 +958,7 @@ pub fn pan(angle: i32, yaw: i32) -> u8 {
     (64 + p) as u8
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum PcmScale {
     Eight { volume: i32, pan: [i32; 2] },
     Sixteen([i32; 2]),
@@ -963,6 +977,10 @@ impl PcmScale {
             },
             PcmWidth::Sixteen => Self::Sixteen(pan.map(|side| side * volume / 127)),
         }
+    }
+
+    fn valid(self, width: PcmWidth) -> bool {
+        (0..=127).any(|volume| (0..=127).any(|pan| Self::new(width, volume, 256, pan) == self))
     }
 
     fn apply(self, sample: f32, channel: usize) -> f32 {
@@ -1008,88 +1026,8 @@ impl PannedGains {
     }
 }
 
-/// An effect with shared left/right gains, decoded to stereo.
-#[derive(Asset, TypePath, Clone)]
-pub struct Panned {
-    pub source: AudioSource,
-    pub gains: PannedGains,
-}
-
-impl bevy::audio::Decodable for Panned {
-    type Decoder = PannedDecoder;
-    fn decoder(&self) -> PannedDecoder {
-        PannedDecoder {
-            inner: bevy::audio::Decodable::decoder(&self.source),
-            gains: self.gains.clone(),
-            frame_scale: self.gains.snapshot(),
-            right: None,
-            channel: 0,
-        }
-    }
-}
-
-pub struct PannedDecoder {
-    inner: <AudioSource as bevy::audio::Decodable>::Decoder,
-    gains: PannedGains,
-    frame_scale: PcmScale,
-    right: Option<f32>,
-    channel: u16,
-}
-
-impl Iterator for PannedDecoder {
-    type Item = bevy::audio::Sample;
-    fn next(&mut self) -> Option<Self::Item> {
-        use bevy::audio::Source;
-        if self.inner.channels().get() == 1 {
-            if let Some(right) = self.right.take() {
-                return Some(right);
-            }
-            let sample = self.inner.next()?;
-            let gains = self.gains.snapshot();
-            self.right = Some(gains.apply(sample, 1));
-            return Some(gains.apply(sample, 0));
-        }
-        let sample = self.inner.next()?;
-        if self.channel.is_multiple_of(2) {
-            self.frame_scale = self.gains.snapshot();
-        }
-        let channel = usize::from(self.channel % 2);
-        self.channel = (self.channel + 1) % self.inner.channels().get();
-        Some(self.frame_scale.apply(sample, channel))
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        use bevy::audio::Source;
-        let (lower, upper) = self.inner.size_hint();
-        if self.inner.channels().get() == 1 {
-            let pending = usize::from(self.right.is_some());
-            (
-                lower.saturating_mul(2).saturating_add(pending),
-                upper.and_then(|n| n.checked_mul(2)?.checked_add(pending)),
-            )
-        } else {
-            (lower, upper)
-        }
-    }
-}
-
-impl bevy::audio::Source for PannedDecoder {
-    fn current_span_len(&self) -> Option<usize> {
-        let channels = usize::from(self.inner.channels().get());
-        self.inner
-            .current_span_len()
-            .map(|n| n * 2 / channels + usize::from(self.right.is_some()))
-    }
-    fn channels(&self) -> bevy::audio::ChannelCount {
-        bevy::audio::ChannelCount::new(2).unwrap()
-    }
-    fn sample_rate(&self) -> bevy::audio::SampleRate {
-        self.inner.sample_rate()
-    }
-    fn total_duration(&self) -> Option<std::time::Duration> {
-        self.inner.total_duration()
-    }
-}
+mod transport;
+pub use transport::{Panned, PannedDecoder, PannedSnapshot};
 
 /// First `key=value` of `[section]` in INI text, matching section and key
 /// case-insensitively as the original does (preservation `docs/engine/menu.md`).
@@ -1110,7 +1048,13 @@ mod ambient_tests {
         let mut queue = CommandQueue::default();
         let mut sources = Assets::<AudioSource>::default();
         let audio = sources.add(AudioSource {
-            bytes: Vec::<u8>::new().into(),
+            bytes: cyrus_assets::audio::pcm_wav(
+                rgpre::import::sfx::AudioType::Mono8,
+                11025,
+                &[192; 8],
+            )
+            .unwrap()
+            .into(),
         });
         let effects = SoundEffects(vec![Some(Effect {
             bits_per_sample: 8,

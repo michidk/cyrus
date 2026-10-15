@@ -25,7 +25,7 @@
 //!
 //! Unsupported: credits and won-game music (those screens do not exist yet).
 
-use bevy::audio::{AudioPlayer, AudioSource, PlaybackSettings};
+use bevy::audio::{AudioPlayer, AudioSource};
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::tasks::{IoTaskPool, Task, futures::check_ready};
@@ -36,10 +36,16 @@ use cyrus_assets::music::{cue_path, read_track, world_track};
 use cyrus_assets::sound::SoundSettings;
 use cyrus_world::lifecycle::{CurrentScene, SceneRequest};
 
+mod checkpoint;
+pub use checkpoint::{MusicCandidate, MusicSnapshot, MusicTransport};
+
 pub struct MusicPlugin;
 
 impl Plugin for MusicPlugin {
     fn build(&self, app: &mut App) {
+        if app.is_plugin_added::<bevy::audio::AudioPlugin>() {
+            bevy::audio::AddAudioSource::add_audio_source::<MusicTransport>(app);
+        }
         app.init_resource::<Music>()
             .add_systems(OnEnter(cyrus_game::AppState::Menu), start_menu_track)
             .add_systems(
@@ -50,8 +56,8 @@ impl Plugin for MusicPlugin {
                         resource_changed::<CurrentScene>
                             .or_else(resource_exists_and_changed::<SoundSettings>),
                     ),
-                    finish_track,
                     apply_volume.run_if(resource_exists_and_changed::<SoundSettings>),
+                    finish_track,
                     pause_track,
                 )
                     .chain()
@@ -225,12 +231,14 @@ fn start_world_track(
 fn finish_track(
     mut commands: Commands,
     mut music: ResMut<Music>,
-    mut audio: Option<ResMut<Assets<AudioSource>>>,
+    #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
+    mut transports: Option<ResMut<Assets<MusicTransport>>>,
     settings: Option<Res<SoundSettings>>,
     playing: Query<Entity, With<MusicPlayer>>,
+    movie: Query<(), With<crate::CinematicAudio>>,
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
 ) {
-    let (Some(load), Some(audio)) = (music.load.as_mut(), audio.as_mut()) else {
+    let (Some(load), Some(transports)) = (music.load.as_mut(), transports.as_mut()) else {
         return;
     };
     #[cfg(not(target_arch = "wasm32"))]
@@ -243,7 +251,7 @@ fn finish_track(
             Err(format!("CD track {:?}: {error}", music.track))
         }
         Some(bevy::asset::LoadState::Loaded) => {
-            let Some(source) = audio.get(load).cloned() else {
+            let Some(source) = audio.as_ref().and_then(|audio| audio.get(load)).cloned() else {
                 return;
             };
             Ok(source)
@@ -258,12 +266,25 @@ fn finish_track(
             return error!("music: {e}");
         }
     };
+    let transport = match MusicTransport::new(source) {
+        Ok(transport) => transport,
+        Err(error) => {
+            music.track = None;
+            return error!("music: preparing playback transport: {error:#}");
+        }
+    };
     for entity in &playing {
         commands.entity(entity).despawn();
     }
-    let mut playback = PlaybackSettings::LOOP.with_volume(bevy::audio::Volume::Linear(music.gain));
-    playback.paused = settings.is_some_and(|s| s.redbook_volume == 0);
-    commands.spawn((MusicPlayer, AudioPlayer(audio.add(source)), playback));
+    let mut playback = transport
+        .playback_settings()
+        .with_volume(bevy::audio::Volume::Linear(music.gain));
+    playback.paused = !movie.is_empty() || settings.is_some_and(|s| s.redbook_volume == 0);
+    commands.spawn((
+        MusicPlayer,
+        AudioPlayer(transports.add(transport)),
+        playback,
+    ));
 }
 
 /// Applies a changed `redbook_volume`: accepted values set the drive level.
@@ -301,6 +322,155 @@ fn pause_track(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepared_music(source: AudioSource, volume: i32, cinematic: bool) -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::state::app::StatesPlugin,
+        ))
+        .init_state::<cyrus_game::AppState>()
+        .init_resource::<CurrentScene>()
+        .init_asset::<AudioSource>()
+        .init_asset::<MusicTransport>()
+        .insert_resource(GameInstall {
+            root: std::env::temp_dir().join("cyrus-absent-install"),
+        })
+        .add_plugins(MusicPlugin);
+        let mut settings = SoundSettings::parse("");
+        settings.redbook_volume = volume;
+        app.insert_resource(settings);
+        if cinematic {
+            app.world_mut().spawn(crate::CinematicAudio);
+        }
+        {
+            let mut music = app.world_mut().resource_mut::<Music>();
+            music.track = Some(2);
+            music.load = Some(IoTaskPool::get().spawn(async move { Ok(source) }));
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !app
+            .world()
+            .resource::<Music>()
+            .load
+            .as_ref()
+            .unwrap()
+            .is_finished()
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "music preparation did not finish"
+            );
+            std::thread::yield_now();
+        }
+        app.update();
+        assert!(app.world().resource::<Music>().load.is_none());
+        app
+    }
+
+    #[test]
+    fn pending_track_capture_does_not_poll_or_replace_the_load() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        let music = Music {
+            track: Some(2),
+            load: Some(IoTaskPool::get().spawn(std::future::pending())),
+            ..Music::default()
+        };
+        assert!(
+            music
+                .snapshot(&[])
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("preparation is in flight")
+        );
+        assert!(music.load.is_some());
+        assert_eq!(music.track, Some(2));
+    }
+
+    #[test]
+    fn production_music_preserves_linear_drive_gain_and_queued_pause() {
+        use bevy::audio::{Decodable, PlaybackMode, PlaybackSettings, Volume};
+        for (volume, cinematic) in [(0, false), (64, false), (200, false), (64, true)] {
+            let source = AudioSource {
+                bytes: cyrus_assets::audio::pcm_wav(
+                    rgpre::import::sfx::AudioType::Stereo16,
+                    44100,
+                    &[0, 64, 0, 192],
+                )
+                .unwrap()
+                .into(),
+            };
+            let mut app = prepared_music(source, volume, cinematic);
+            let (player, settings) = app.world_mut().query_filtered::<(&AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>().single(app.world()).unwrap();
+            assert!(matches!(settings.mode, PlaybackMode::Despawn));
+            assert_eq!(settings.paused, cinematic || volume == 0);
+            let expected_gain = redbook_gain(volume).unwrap_or(1.0);
+            assert!(matches!(settings.volume, Volume::Linear(gain) if gain == expected_gain));
+            let transport = app
+                .world()
+                .resource::<Assets<MusicTransport>>()
+                .get(&player.0)
+                .unwrap();
+            assert_eq!(
+                transport.decoder().take(6).collect::<Vec<_>>(),
+                [0.5, -0.5, 0.5, -0.5, 0.5, -0.5]
+            );
+            let music = app.world().resource::<Music>();
+            let saved = music.snapshot(&[(transport, settings.paused)]).unwrap();
+            let candidate = Music::from_snapshot(saved, Some(transport.source().clone())).unwrap();
+            let (_, restored_settings) = candidate.playback.unwrap();
+            assert_eq!(restored_settings.paused, cinematic || volume == 0);
+            assert_eq!(candidate.music.gain, expected_gain);
+        }
+    }
+
+    #[test]
+    fn installed_cd_track_reconstructs_through_the_production_headless_host() {
+        use bevy::audio::{Decodable, PlaybackSettings};
+        let root = std::env::var_os("REDGUARD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard")
+            });
+        let Ok(install) = GameInstall::locate(Some(&root)) else {
+            eprintln!("skipped: no install (CD decoder replacement headless host)");
+            return;
+        };
+        let source = AudioSource {
+            bytes: read_track(&cue_path(&install).unwrap(), 2).unwrap().into(),
+        };
+        let expected: Vec<_> = source.decoder().skip(1023).take(1024).collect();
+        assert_eq!(expected.len(), 1024);
+        let mut app = prepared_music(source, 64, false);
+        let (player, settings) = app
+            .world_mut()
+            .query_filtered::<(&AudioPlayer<MusicTransport>, &PlaybackSettings), With<MusicPlayer>>(
+            )
+            .single(app.world())
+            .unwrap();
+        let transport = app
+            .world()
+            .resource::<Assets<MusicTransport>>()
+            .get(&player.0)
+            .unwrap();
+        let mut live = transport.decoder();
+        assert_eq!(live.by_ref().take(1023).count(), 1023);
+        let saved = app
+            .world()
+            .resource::<Music>()
+            .snapshot(&[(transport, settings.paused)])
+            .unwrap();
+        let saved: MusicSnapshot =
+            serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
+        let candidate = Music::from_snapshot(saved, Some(transport.source().clone())).unwrap();
+        let (restored, settings) = candidate.playback.unwrap();
+        assert!(!settings.paused);
+        assert_eq!(restored.decoder().take(1024).collect::<Vec<_>>(), expected);
+        assert_eq!(live.take(1024).collect::<Vec<_>>(), expected);
+    }
 
     #[test]
     fn startup_waits_for_sound_settings_then_applies_volume() {
