@@ -1277,6 +1277,7 @@ impl ScriptWorld {
         };
         let mut host = GameHost {
             world: self.world,
+            animation_system: self.updates.animation_system,
             index,
             generation: self.generation,
             actors: &mut self.actors,
@@ -1637,6 +1638,7 @@ pub(super) fn prepare(
 
 struct GameHost<'a, 'sound, 'input, 'random> {
     world: u32,
+    animation_system: bool,
     map_updates: &'a mut Vec<usize>,
     activation: &'a mut super::ActivationState,
     globals: &'a mut super::GameplayGlobals,
@@ -1780,10 +1782,45 @@ impl Host for GameHost<'_, '_, '_, '_> {
         };
         if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
             anyhow::ensure!(arguments.is_empty(), "beginCombat requires no arguments");
-            let inputs = self
-                .inputs
-                .combat_entry
-                .context("beginCombat admission unavailable")?;
+            let inputs = match self.inputs.combat_entry {
+                Some(inputs) => inputs,
+                None => {
+                    let selected_player = self
+                        .selected_player()
+                        .context("beginCombat selected player unavailable")?;
+                    anyhow::ensure!(
+                        id != selected_player,
+                        "beginCombat selected-player death override unavailable"
+                    );
+                    let actor = &self.actors[self.index];
+                    anyhow::ensure!(
+                        actor.model.prepared,
+                        "beginCombat receiver model state unavailable"
+                    );
+                    CombatEntryInputs {
+                        weapon: WeaponInputs {
+                            selected_player,
+                            item_system_ready: self
+                                .inputs
+                                .hud
+                                .context("beginCombat inventory owner unavailable")?
+                                .inventory_ready()?,
+                            shell_execution: self
+                                .inputs
+                                .shell_execution
+                                .context("beginCombat shell context unavailable")?,
+                        },
+                        nominal_ticks: self
+                            .inputs
+                            .nominal_ticks
+                            .context("beginCombat nominal ticks unavailable")?,
+                        taunt_animation_admitted: self.animation_system
+                            && actor.animation.is_some()
+                            && actor.model.static_radius.is_none(),
+                        selected_player_death_override: false,
+                    }
+                }
+            };
             anyhow::ensure!(
                 inputs.weapon.selected_player.generation == self.generation
                     && inputs.weapon.selected_player.index < self.actors.len(),

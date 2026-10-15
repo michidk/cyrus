@@ -135,8 +135,12 @@ impl ScriptWorld {
                 self.snapshot_spatial(id)?;
                 self.actors[id.index].model.support = Default::default();
                 if self.actors[id.index].animation.is_some() {
-                    // No item-system owner is installed yet.
-                    self.select_map_animation_default(id, false, ticks, sounds)?;
+                    let items_ready = inputs
+                        .hud
+                        .map(super::super::ScriptHud::inventory_ready)
+                        .transpose()?
+                        .unwrap_or(false);
+                    self.select_map_animation_default(id, items_ready, ticks, sounds)?;
                     if self.updates.animation_system {
                         self.advance(
                             id,
@@ -406,6 +410,23 @@ impl OrdinaryContext<'_, '_> {
         self.actors.report_runtime_error(error);
     }
 
+    /// Nonzero begin-combat labels needed before synchronous ordinary calls run.
+    /// Preparation must not consume random draws or mutate actor/cache ownership.
+    pub fn combat_taunt_labels(&self) -> Vec<[u8; 4]> {
+        self.actors
+            .current
+            .as_ref()
+            .into_iter()
+            .flat_map(|world| world.actors.iter())
+            .filter(|actor| actor.placement().is_some())
+            .flat_map(|actor| &actor.combat_taunts)
+            .filter(|taunt| taunt.trigger == 0 && taunt.label != [0; 4])
+            .map(|taunt| taunt.label)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
     /// Current logical world identity, used to reject expired audio ownership.
     pub fn generation(&self) -> Option<u64> {
         self.actors.current.as_ref().map(ScriptWorld::generation)
@@ -422,7 +443,7 @@ pub(crate) fn step(world: &mut World) {
 }
 
 fn queued_step(context: OrdinaryContext, mut sounds: Option<ResMut<Messages<SoundCue>>>) {
-    run_ordinary(context, None, None, None, &mut |cue| {
+    run_ordinary(context, None, None, None, None, &mut |cue| {
         let sounds = sounds
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("ordinary sound consumer unavailable"))?;
@@ -438,6 +459,7 @@ pub fn run_ordinary(
     ambient_sound: Option<&dyn cyrus_world::sound::AmbientSoundDriver>,
     sound_reset: Option<bool>,
     dialogue_source: Option<&dyn super::super::DialogueSource>,
+    combat_taunts: Option<&dyn super::super::CombatTauntSource>,
     emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
 ) {
     let OrdinaryContext {
@@ -646,6 +668,7 @@ pub fn run_ordinary(
                 player_query,
                 ambient_sound,
                 dialogue_source,
+                combat_taunts,
                 sound_reset,
                 ..default()
             },

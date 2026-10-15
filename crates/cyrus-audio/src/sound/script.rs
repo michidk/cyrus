@@ -721,6 +721,7 @@ impl ScriptSounds<'_, '_> {
         let source = CachedDialogueSource {
             state: RefCell::new((self, cache, read)),
             hud,
+            taunts: &[],
         };
         update(&source)
     }
@@ -735,11 +736,13 @@ impl ScriptSounds<'_, '_> {
         hud: &cyrus_assets::hud::HudAsset,
         read: &mut dyn FnMut([u8; 4]) -> anyhow::Result<Poll<super::dialogue::DialogueClip>>,
         sound_reset: Option<bool>,
+        taunts: &[super::dialogue::DialogueClip],
     ) {
         let generation = context.generation();
         let source = CachedDialogueSource {
             state: RefCell::new((self, cache, read)),
             hud,
+            taunts,
         };
         let ambient = DialogueAmbient {
             source: &source,
@@ -749,6 +752,7 @@ impl ScriptSounds<'_, '_> {
             context,
             Some(&ambient),
             sound_reset,
+            Some(&source),
             Some(&source),
             &mut |cue| {
                 source
@@ -1012,6 +1016,7 @@ struct CachedDialogueSource<'a, 'w, 's> {
         DialogueReader<'a>,
     )>,
     hud: &'a cyrus_assets::hud::HudAsset,
+    taunts: &'a [super::dialogue::DialogueClip],
 }
 
 impl std::fmt::Debug for CachedDialogueSource<'_, '_, '_> {
@@ -1034,6 +1039,72 @@ impl cyrus_game::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
         sounds
             .cached_dialogue_line(cache, label, &mut **read, self.hud, text_width)
             .map(|line| line.map(Some))
+    }
+}
+
+impl cyrus_game::script::CombatTauntSource for CachedDialogueSource<'_, '_, '_> {
+    fn with_playback(
+        &self,
+        update: &mut dyn FnMut(
+            &mut dyn cyrus_game::script::CombatTauntPlayback,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        update(&mut CachedCombatTaunt {
+            source: self,
+            clip: None,
+        })
+    }
+}
+struct CachedCombatTaunt<'a, 'b, 'w, 's> {
+    source: &'a CachedDialogueSource<'b, 'w, 's>,
+    clip: Option<&'b super::dialogue::DialogueClip>,
+}
+impl CachedCombatTaunt<'_, '_, '_, '_> {
+    fn with_prepared<R>(
+        &mut self,
+        update: impl FnOnce(&mut PreparedCombatTaunt<'_, '_, '_>) -> anyhow::Result<R>,
+    ) -> anyhow::Result<R> {
+        let clip = anyhow::Context::context(self.clip, "combat taunt catalogue not prepared")?;
+        let mut state = self
+            .source
+            .state
+            .try_borrow_mut()
+            .map_err(|_| anyhow::anyhow!("combat taunt audio source already borrowed"))?;
+        let (sounds, cache, _) = &mut *state;
+        update(&mut PreparedCombatTaunt {
+            sounds,
+            cache,
+            clip,
+            hud: Some(self.source.hud),
+        })
+    }
+}
+impl cyrus_game::script::CombatTauntPlayback for CachedCombatTaunt<'_, '_, '_, '_> {
+    fn prepare(&mut self, label: [u8; 4], speech: bool, width: Option<u32>) -> anyhow::Result<()> {
+        self.clip = Some(
+            self.source
+                .taunts
+                .iter()
+                .find(|clip| clip.entry.label == label)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("combat taunt {:?} missing from prepared catalogue", label)
+                })?,
+        );
+        self.with_prepared(|playback| playback.prepare(label, speech, width))
+    }
+    fn release(&mut self, retained: &mut Option<usize>) -> anyhow::Result<()> {
+        self.with_prepared(|playback| playback.release(retained))
+    }
+    fn load(&mut self, label: [u8; 4]) -> anyhow::Result<usize> {
+        self.with_prepared(|playback| playback.load(label))
+    }
+    fn present(
+        &mut self,
+        index: usize,
+        speech: bool,
+        width: Option<u32>,
+    ) -> anyhow::Result<cyrus_game::script::DialogueLine> {
+        self.with_prepared(|playback| playback.present(index, speech, width))
     }
 }
 
@@ -1071,6 +1142,7 @@ pub(super) struct RuntimeDialogue {
     hud: Option<Handle<cyrus_assets::hud::HudAsset>>,
     cache: cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
     preparation: super::dialogue::DialoguePreparation,
+    taunts: Vec<super::dialogue::DialogueClip>,
 }
 
 #[derive(SystemParam)]
@@ -1104,9 +1176,11 @@ fn scoped_ordinary(
             hud,
             cache,
             preparation,
+            taunts,
         } = &mut *dialogue.runtime;
         if *prepared_generation != generation {
             preparation.clear();
+            taunts.clear();
             *prepared_generation = generation;
         }
         let hud_handle = hud.get_or_insert_with(|| server.load("cache://hud/overlay.hud"));
@@ -1127,13 +1201,30 @@ fn scoped_ordinary(
                 dialogue.install.as_deref(),
             )
         };
+        let mut ready = true;
+        for label in context.combat_taunt_labels() {
+            if taunts.iter().any(|clip| clip.entry.label == label) {
+                continue;
+            }
+            match read(label) {
+                Ok(Poll::Ready(clip)) => taunts.push(clip),
+                Ok(Poll::Pending) => ready = false,
+                Err(error) => {
+                    context.report_error(format!("ordinary combat taunt {label:?}: {error:#}"));
+                    return;
+                }
+            }
+        }
+        if !ready {
+            return;
+        }
         *ordinary_completed = true;
-        sounds.run_ordinary_with_dialogue(context, cache, hud, &mut read, None);
+        sounds.run_ordinary_with_dialogue(context, cache, hud, &mut read, None, taunts);
     } else {
         // Reset ownership remains with game maintenance; absent ownership is not
         // replaced by an assumed false flag.
         sounds.with_driver(generation, |driver, emit| {
-            cyrus_game::script::run_ordinary(context, Some(driver), None, None, emit);
+            cyrus_game::script::run_ordinary(context, Some(driver), None, None, None, emit);
         });
     }
 }
@@ -1747,6 +1838,64 @@ mod dialogue_tests {
     fn combat_catalogue_selects_prepared_label_and_rejects_missing_before_release() {
         let mut world = dialogue_test_world();
         world.run_system_cached(catalogue_taunt).unwrap();
+        assert!(world.resource::<Channels>().playing.is_empty());
+    }
+
+    fn shared_taunt_dialogue(mut sounds: ScriptSounds, clip: Res<LoadedDialogue>) {
+        use cyrus_game::script::{CombatTauntSource, DialogueSource, ScriptActorId};
+        let hud = dialogue_test_hud();
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let mut read = |label| {
+            assert_eq!(label, *b"TEST");
+            Ok(Poll::Ready(clip.0.clone()))
+        };
+        let source = CachedDialogueSource {
+            state: RefCell::new((&mut sounds, &mut cache, &mut read)),
+            hud: &hud,
+            taunts: std::slice::from_ref(&clip.0),
+        };
+        source
+            .with_playback(&mut |playback| {
+                playback.prepare(*b"TEST", true, Some(150))?;
+                let index = playback.load(*b"TEST")?;
+                let first = playback.present(index, true, Some(150))?;
+                assert_eq!(first.sample, Some(0));
+                // Nested host work shares the cache while the taunt invocation remains alive.
+                let Poll::Ready(Some(line)) = source.player_line(
+                    *b"TEST",
+                    ScriptActorId {
+                        generation: 1,
+                        index: 0,
+                    },
+                    150,
+                )?
+                else {
+                    panic!("prepared dialogue must be ready")
+                };
+                assert_eq!((line.text.as_str(), line.sample), ("Hi", Some(0)));
+                let mut retained = Some(index);
+                playback.release(&mut retained)?;
+                assert_eq!(retained, None);
+                assert_eq!(
+                    source
+                        .state
+                        .borrow()
+                        .0
+                        .frame
+                        .channels
+                        .samples
+                        .status(Some(0)),
+                    2
+                );
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn ordinary_taunt_and_nested_dialogue_share_cache_without_holding_a_borrow() {
+        let mut world = dialogue_test_world();
+        world.run_system_cached(shared_taunt_dialogue).unwrap();
         assert!(world.resource::<Channels>().playing.is_empty());
     }
 

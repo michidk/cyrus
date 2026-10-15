@@ -3270,3 +3270,68 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
         );
     }
 }
+
+#[test]
+fn ordinary_weapon_default_uses_shared_inventory_readiness() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{OrdinaryInputs, ScriptHud, ScriptInputs},
+    };
+    for (ready, expected) in [(false, 1), (true, 8)] {
+        let mut source = scripts(vec![Operation::End { target: 0 }]);
+        for placement in &mut source.instances {
+            placement.object_type = 1;
+            placement.active = 1;
+        }
+        for actor in source.actors.values_mut() {
+            actor.attributes.insert("attr_44".into(), 1);
+        }
+        source.content_id = source.content_identity().unwrap();
+        let mut data = animations(&source, false);
+        for actor in data.metadata["actors"].as_array_mut().unwrap() {
+            actor["animation_groups"] = json!([1, 8, 91].map(|group| json!({
+                "group_index":group,"anim_type":0,"anim_id":1,
+                "commands":[{"opcode":0,"frame_reference":group},{"opcode":2,"value":0}]
+            })));
+        }
+        let mut world = ScriptWorld::prepare(&source, 1).unwrap();
+        for index in 0..2 {
+            let id = world.id(index).unwrap();
+            world.bind_animation(id, &data, 91).unwrap();
+            stage(&mut world, id, ScriptStage::Animation);
+        }
+        let hud = ScriptHud::default();
+        if ready {
+            hud.configure(&hud_asset(), &Preferences::default());
+        }
+        world
+            .update_ordinary(
+                &data,
+                [0; 2],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        hud: Some(&hud),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    scene: None,
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        for index in 0..2 {
+            assert!(
+                world.actors()[index].failure().is_none(),
+                "{:?}",
+                world.actors()[index].failure()
+            );
+            assert_eq!(
+                world.animation_frame(world.id(index).unwrap()).unwrap(),
+                Some(expected)
+            );
+        }
+    }
+}

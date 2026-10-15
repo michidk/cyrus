@@ -172,8 +172,12 @@ does not admit combat or preload candidates for script functions.
 `with_combat_taunt_source` lends a prepared clip catalogue to synchronous SOUP
 combat dispatch. The game selects the label once through shared RNG, then the
 source checks its payload before releasing existing ownership. An absent label
-fails without stopping the retained voice. Catalogue loading and combat admission
-remain caller responsibilities.
+fails without stopping the retained voice. Ordinary dispatch prepares nonzero
+type-zero taunt labels before traversal and clears that catalogue when the world
+generation changes. Pending dependencies defer traversal; failed preparation
+reports a contextual error. Dialogue and taunts share the cache and sample pool,
+borrowing them per operation so synchronous animation cues can use the same pool.
+Combat admission belongs to the game host.
 
 Per-label dialogue assets use `sound::dialogue::DialogueClip` and the shared
 `cache://dialogue/<key>.dialogue` loader, with an optional generated WAV dependency.

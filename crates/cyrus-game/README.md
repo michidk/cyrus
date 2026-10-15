@@ -665,7 +665,7 @@ the explicit shared cache/dialogue/animation presentation path and returns the
 retained dialogue active flag, rather than its lifetime. The actor owns cache and
 dialogue indices independently. Playback dependencies must be ready before old
 ownership is released; the caller supplies the animation admission gate and
-nominal ticks. This still does not enable `beginCombat` or automatic combat.
+nominal ticks. Full combat decision-making remains unsupported.
 Selection follows preservation's
 [taunt rules](https://github.com/michidk/redguard-preservation/commit/fcc0314a02ce735185f064449802acee154f47c7).
 Shared class queues retain independent actor read cursors, addressed filtering
@@ -720,14 +720,17 @@ is not yet established.
 Caller-admitted `beginCombat` native calls synchronously enter lifecycle six,
 apply authoritative weapon draw/cleanup rules, set combat state and select a
 type-zero taunt through shared RNG. The statement has no supported numeric
-result. Explicit world APIs reuse these rules. Selected identity, item/shell
-state, nominal ticks and taunt-animation admission remain caller inputs.
+result. Explicit world APIs reuse these rules. Ordinary nonplayer calls derive
+admission from the selected actor, shared inventory readiness, supplied shell/tick
+state, animation-system switch and prepared receiver model. Selected-player calls
+still require explicit admission because their death override has no automatic
+owner.
 Prepared taunt services must own all selected payload dependencies before cache
 replacement; missing services fail contextually rather than inventing success.
 Repeated entry retains existing combat state without selecting another taunt.
 Weapon cleanup publishes a candle reset and the HUD reads known logical weapon
-state before supplied activation snapshots. Standalone weapon initialization,
-automatic combat admission and complete combat gameplay remain unsupported.
+state before supplied activation snapshots. Standalone entry validates the selected
+weapon against shared inventory. Complete combat gameplay remains unsupported.
 
 `logbook::Logbook` supplies explicit reading layout and navigation from accepted,
 separated text entries. It preserves authored style bytes, byte-based word

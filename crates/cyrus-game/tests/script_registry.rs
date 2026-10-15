@@ -10071,11 +10071,21 @@ fn combat_entry_and_weapon_cleanup_preserve_lifecycle_motion_and_selected_effect
 #[test]
 fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts() {
     use cyrus_game::script::{CombatEntryInputs, ScriptInputs, ScriptStage, WeaponInputs};
-    for expression in [false, true] {
+    for (expression, derived, selected_receiver) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (true, true, false),
+        (false, true, true),
+    ] {
         let call = Call {
             function_id: 4,
             function: "beginCombat".into(),
-            target: Object::Me,
+            target: if selected_receiver {
+                Object::Player
+            } else {
+                Object::Me
+            },
             kind: CallKind::Function,
             arguments: vec![],
         };
@@ -10089,12 +10099,18 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
                     rest: vec![],
                 },
             }
+        } else if selected_receiver {
+            Operation::ObjectCall { call: call.clone() }
         } else {
             Operation::Call { call: call.clone() }
         };
         let mut scripts = wait_cache(vec![
             operation,
-            Operation::Call { call },
+            if selected_receiver {
+                Operation::ObjectCall { call }
+            } else {
+                Operation::Call { call }
+            },
             set_flag(42),
             Operation::End { target: 0 },
         ]);
@@ -10112,6 +10128,9 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             .insert("attr_14".into(), 1);
         for instance in &mut scripts.instances {
             instance.object_type = 1;
+        }
+        if derived {
+            add_standalone_receivers(&mut scripts);
         }
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 19).unwrap();
@@ -10141,20 +10160,58 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
             taunt_animation_admitted: false,
             selected_player_death_override: false,
         };
+        let hud = cyrus_game::script::ScriptHud::default();
+        if derived {
+            let models = cyrus_collision::actor_models::ActorModelCollision::new(
+                &cyrus_assets::collision::ActorCollisionModels {
+                    object_count: 2,
+                    collision_flags: BTreeMap::from([(0, 0), (1, 0)]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            world.prepare_model_resources(&data, &models).unwrap();
+        }
         let inputs = ScriptInputs {
-            combat_entry: Some(admission),
+            combat_entry: (!derived).then_some(admission),
+            hud: Some(&hud),
+            shell_execution: Some(false),
             nominal_ticks: Some(0),
             ..Default::default()
         };
         let result = world.advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 100);
         let control = world.actors()[0].control_state().unwrap();
+        if selected_receiver {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(
+                error.contains("selected-player death override unavailable"),
+                "{error}"
+            );
+            assert_eq!(
+                (
+                    control.death_selector,
+                    control.script_control,
+                    control.weapon_drawn
+                ),
+                (0, 0, false)
+            );
+            assert_eq!(control.combat.as_ref().unwrap().flags, 0);
+            assert_ne!(world.flags(), [42]);
+            assert!(
+                world
+                    .advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 100)
+                    .is_err()
+            );
+            continue;
+        }
         assert_eq!(
             (
                 control.death_selector,
                 control.script_control,
                 control.weapon_drawn
             ),
-            (6, 2, true)
+            (6, 2, true),
+            "derived={derived} expression={expression} result={result:?}"
         );
         assert_eq!(control.combat.as_ref().unwrap().flags, 4);
         assert_eq!(world.actors()[1].control_state().unwrap().death_selector, 0);

@@ -137,8 +137,10 @@ a rebuilt native virtual-display run displayed INTRO.SMK, followed its installed
 skip points, and reached a ready starting world. A sustained 120-update native
 probe also confirms shark movement and Brennan animation-frame advancement.
 Browser acceptance remains open. The probe identifies missing shared sample-reset
-inputs on BOAT1 and WATERSND, and unsupported beginCombat on two pirates; these
-block full opening-story acceptance alongside remaining collision behavior.
+inputs on BOAT1 and WATERSND. A later native START probe confirms both pirates
+complete their authored wait, enter combat lifecycle six and select drawing
+group 91 through automatic dispatch. Their next state-specific ground response
+remains unsupported and blocks further opening-story acceptance.
 Explicit-stage tests and export coverage do not close automatic acceptance.
 
 - [x] Standalone player-role animation entry and initial mesh binding without a controller tick. **Verified:** headless scheduling checks cover ordered CYRUS/GREMLIN setup, marker-position cues, combat association, weapon validation, generation replacement and unload cleanup; omitting initialization fails the comparison. Installed entry-frame comparison, full installed gates and browser check pass. Automatic locomotion and complete player lifecycle remain open.
@@ -158,7 +160,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Installed HUD elements, activation prompts and persistent F8/Tab/F7 preferences. Placed-player heading/world and script-actor health/type feed the HUD.
 - [x] Native restart and browser reload acceptance for F8/Tab/F7 preferences, including restored candle visibility and subsequent toggle notices. **Verified:** native health-number placement matches the original at 640×480; both builds cycle starting items and display the installed gold count of 53. Complete pixel parity remains open.
 - [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
-- [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support and an explicit ordered reset adapter exist; automatic player-controller inhibition, topic execution and death/load resets remain open. Portable RTX preparation, the 20-entry cache, explicit combat-taunt cache replacement and shared-sample dialogue playback are implemented. Authored actor taunt lists, explicit ordered selection and prepared shared-sample presentation are implemented; explicit weapon draw/cleanup and synchronous resultless combat entry share authoritative actor state; complete eligibility, remaining weapon lifecycle and automatic combat invocation remain open. Full New Game story acceptance remains open.
+- [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support and an explicit ordered reset adapter exist; automatic player-controller inhibition, topic execution and death/load resets remain open. Portable RTX preparation, the 20-entry cache, explicit combat-taunt cache replacement and shared-sample dialogue playback are implemented. Authored actor taunt lists, explicit ordered selection and prepared shared-sample presentation are implemented; explicit weapon draw/cleanup and synchronous resultless combat entry share authoritative actor state; automatic nonplayer invocation now derives shared inventory and prepared-model admission and prepares taunt dependencies; complete eligibility and remaining weapon lifecycle remain open. Full New Game story acceptance remains open.
 - [x] Shared `ShowBitmap`/`UnShowBitmap` slots and `AddLog` persistence/notification dispatch. **Verified:** original-instruction acceptance checks, shared dispatch/render tests and native/browser START entry. Additional logbook styles/editing, save integration and original notification cadence remain open.
 - [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Shared inventory and production actor inputs are connected below; save restore remains open.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
