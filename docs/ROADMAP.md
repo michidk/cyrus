@@ -47,6 +47,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | Save/load: original persistence contracts and safe native/browser restoration | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
 | SOUP integration: automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| Startup comparisons: splash, camera clipping, book-transition timing, loading artwork and audio against the original | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-15-startup-comparison/` |
 
 Remaining rendering follow-ups and HUD integration are unassigned.
 The bounded idle/walk/release controller integration is active. Complete controller implementation remains open.
