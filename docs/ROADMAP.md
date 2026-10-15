@@ -46,6 +46,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | Rendering: controlled ISLAND water edges, residual sampling and transitions | In progress | Codex, Compare Water and Terrain Rendering, `t3/rendering-stage-one`; `magic/artifacts/2026-10-15-water-phase-recovery/` |
 | SOUP integration: standalone player initialization, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping` |
+| Unblocked console commands | In progress | Claude, Summarize Agent Work and Check Roadmap, `main` |
 
 Save/load and remaining HUD integration are unassigned.
 Controller implementation remains parked.
@@ -92,8 +93,13 @@ control and produces a repeatable comparison through SETUP commands.
 - [x] Native/browser CHT restore/save, import/export, cheat-name entry and assignments. `neversaydie` reaches automatic and explicit script queries.
 - [x] CPF preferences, log export, live SOUP flag commands and supported sky/wave controls.
 - [x] Input isolation, restart persistence, malformed-state protection and install immutability checks.
-- [ ] Connect remaining documented cheat effects as their gameplay owners become available. **Unknown:** `oddjob` behavior.
-- [ ] Implement remaining non-cheat commands, including object/marker editors and diagnostics, from preservation evidence.
+- [ ] Connect remaining documented cheat effects as their gameplay owners become available. **Unknown:** `oddjob` behavior. Blocked by owner:
+  - `magiccarpet`, `yeahbaby`, `moonraker`: player controller (parked).
+  - `drevil`, `goldfinger`: health, damage and death handling.
+  - `task`, `animation`, `drno`: SOUP actor task, animation and NPC update ownership.
+  - `nodemarker`: navigation node-map display.
+- [ ] Implement unblocked console commands from preservation evidence: `load`, `getmapmarker`, `setmarker`/`getmarker` (if REDGUARD.MRK is documented), `fxtexturelist`, `fxshowtexture`, `render`, `delay` and `cameradist`.
+- [ ] Implement owner-dependent console commands when their owners land: `item` and `object` (SOUP inventory/actors), `fxsun*`, `fxfog*` and `fxambient*` (rendering comparison), `playerdist`, remaining `show` topics and node/PUT editors. PVO commands are excluded at user request.
 
 ## 1. Complete world playback
 
