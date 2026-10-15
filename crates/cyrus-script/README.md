@@ -14,7 +14,7 @@ world/actor/instruction error. The core supplies no production clock or activati
 
 **Verified:** operand structure, cooperative invocation, End continuation, separate
 invocation cursors and actor return continuation, and integer operators follow preservation's
-[SOUP contract](https://github.com/michidk/redguard-preservation/blob/a2ee1f123c9961aac44c3e24193975fb030600df/docs/engine/SOUP.md).
+[SOUP contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md).
 Synthetic public-interface tests cover immediate statements, subroutines,
 shared locals, blocking completion, arithmetic, branches, and sticky failures.
 These tests do not establish complete game fidelity.

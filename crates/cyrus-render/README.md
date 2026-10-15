@@ -41,7 +41,7 @@ matching palettes, and the static plane projection follow preservation's
 `SYSTEM.INI`'s `sky_disable=1` suppresses the sky. Indoor worlds remove it.
 **Verified:** the Glide background uses `world_fogrgb`, including beyond the
 finite sky plane. Re-export old sidecars to replace their legacy background
-colors. The recovered background fact is [published for preservation review](https://github.com/michidk/redguard-preservation/compare/main...fix/glide-background-fill).
+colors. The recovered background fact is [published in preservation](https://github.com/michidk/redguard-preservation/pull/24).
 
 **Verified:** water uses preservation's [water documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/water.md):
 selected-corner mask, terrain-centered phase, quarter-shifted rotation table,
@@ -54,7 +54,7 @@ retain the preservation export's existing limitations.
 
 **Verified:** terrain ambient/directional inputs, coordinate conversion and
 quantized shading normals follow preservation's
-[terrain-lighting contract](https://github.com/michidk/redguard-preservation/blob/feat/terrain-lighting-inputs/docs/engine/terrain-lighting.md).
+[terrain-lighting contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/terrain-lighting.md).
 Native export retains the per-world inputs in `.environment`; native and browser
 playback shade private terrain meshes, including displaced water. Terrain uses
 screen-linear vertex RGB and texture modulation before the existing scene fog,
@@ -98,7 +98,7 @@ than treating every absent export attribute as zero. Later actor overrides and
 generated-model defaults remain **Unknown**.
 
 **Verified:** model ambient/directional shading follows preservation's
-[model-lighting rules](https://github.com/michidk/redguard-preservation/blob/feat/model-lighting/docs/engine/model-lighting.md).
+[model-lighting rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/model-lighting.md).
 Models use the installed world RGB, authored face brightness and normals, and
 solid-color tint. File-model brightness uses preservation's
 [stored-to-runtime conversion](https://github.com/michidk/redguard-preservation/commit/87a19a3c3a07f7b44d91fdcc808255201b4cd9de).
@@ -252,7 +252,7 @@ fade. Modern Sky is camera-centered; Modern Water adds smooth crossing waves,
 fine texture ripples, and view-dependent sheen while retaining the installed
 textures. Water, Fog, and Sky are independently switchable and default to
 Faithful. Re-export environments after this change.
-The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/fix/glide-background-fill/docs/engine/fog.md).
+The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
 framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
 shader arithmetic checks cover the dither matrix and fog boundaries.

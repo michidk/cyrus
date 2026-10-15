@@ -143,7 +143,7 @@ again to update).
   Use its names and behavior as research hints; never copy its code. The
   roadmap records the source review's limitations.
 
-References serve roadmap steps 0–3 (world playback, player controller,
+References serve roadmap stages 1–3 (world playback, player controller,
 interaction and persistence); they do not create a separate feature-parity goal.
 
 ## Playtesting

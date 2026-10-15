@@ -56,13 +56,13 @@ request priority. It retains synchronous sound dispatch and shared nominal ticks
 following [preservation's default selection rules](https://github.com/michidk/redguard-preservation/blob/d6e59584fb0fb5bc750e1c881cb386d4c9c690cc/docs/engine/animation.md#living-actor-default-selection).
 After an exit marker, a pending non-default can replace them on a later advance,
 with delays checked first. These rules are
-[published in preservation](https://github.com/michidk/redguard-preservation/blob/75cba23/docs/engine/animation.md#forward-type-one-transitions).
+[published in preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md#forward-type-one-transitions).
 `request_with_sounds`, `force_request_with_sounds`, and `advance_with_sounds` accept a synchronous handler for
 signed effect requests, rate offsets in hertz, End stops and replacement handle
 resets. The handler owns the original surface remapping, positional gains and
 channel allocation. Without it, sound commands still fail explicitly. Audible
 original walking cues and automatic runtime scheduling remain unverified. The
-[sound facts](https://github.com/michidk/redguard-preservation/blob/a0e7b16/docs/engine/sound.md#animation-playsound)
+[sound facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#animation-playsound)
 define this boundary.
 
 SOUP execution belongs to `cyrus-script`; game-owned hosts and explicit scripted

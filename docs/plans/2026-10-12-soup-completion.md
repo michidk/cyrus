@@ -263,8 +263,8 @@ distinction between model default and selected playback default. The
 ordinary map allocation state and the separate combat death default are now
 owned by the registry. Live map attribute-44 writes are supported; dead-actor
 reservation cleanup and standalone role writes remain unsupported. Corrected
-write guards and allocation defaults are published on the
-[preservation branch](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-living-default-selection).
+write guards and allocation defaults are published in
+[preservation's rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/animation.md#living-actor-default-selection).
 The installed TS_RP sequence still requires automatic default selection and scheduling.
 
 **Unknown:** faithful automatic host pacing, complete actor traversal/admission,

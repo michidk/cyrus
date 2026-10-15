@@ -69,7 +69,7 @@ session's 400-tag duplicate table. RTX text is retained in native
 `cyrus-config/logbook.json` or browser localStorage `cyrus-logbook`; malformed
 state and failed writes leave accepted entries unchanged and trigger no icon.
 **Verified:** tag acceptance and slot rules follow preservation's
-[script HUD contract](https://github.com/michidk/redguard-preservation/blob/docs/script-hud/docs/engine/hud.md).
+[script HUD contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#script-logbook-entries).
 
 **Verified:** `ScriptHud` also retains the compass display flag and consumed-use latch across
 world changes. A shared inventory owns live counts and selection from installed
@@ -87,7 +87,7 @@ Cyclic effect traversal reports a contextual error. The renderer reads the insta
 and current logical-player control, surface, animation and attribute state.
 Explicit activation inputs remain available for inspection. Receiving a compass
 does not enable it; a held accepted use toggles only once. Rules follow
-preservation's [inventory contract](https://github.com/michidk/redguard-preservation/commit/695ac1f).
+preservation's [inventory contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#inventory-ownership).
 `ActiveItem` reads the selected record without an ownership or visibility filter;
 `ActiveItem` and `HaveItem` return zero for a closed inventory. Missing hosts and failed initialization
 remain contextual errors. `HandItem` validates the full item ID, then records its
@@ -152,7 +152,7 @@ The caller still supplies admission, timing, orientation, view and collision pol
 no production clock or automatic keyboard-driven locomotion is enabled yet.
 
 The ordinary idle default comes from installed `attr_panic_group`, following
-[preservation](https://github.com/michidk/redguard-preservation/blob/976422b/docs/engine/player.md#ordinary-idle-animation-default).
+[preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-idle-animation-default).
 The forward probe uses installed bounds and walk distance with nearest-even
 integer rotation, following [preservation PR48](https://github.com/michidk/redguard-preservation/pull/48).
 Player caches retain authored frame-source model radii; candidate selection can
@@ -216,7 +216,7 @@ Headless assemblies without a view do not traverse actors automatically.
 `HideMe` and `ShowMe` retain receiver visibility without disabling its scripts or
 animation. Rendering observes that flag and refreshes static model transforms.
 **Verified:** logical return/continuation and mixed static-presentation tests follow
-[preservation's visibility rules](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-runtime-contracts).
+[preservation's visibility rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#object-visibility).
 Standalone player visibility lifecycle remains unsupported.
 
 `script::ScriptPlugin` also reports script cache preparation and advances explicitly
@@ -330,7 +330,7 @@ order, independently of MPOB object ids. Functions use receiver locals and
 attributes; tasks occupy receiver slots while the caller continues. Foreign tasks
 retain source instructions. Both runtimes are restored on errors, and failures
 remain sticky. These rules follow preservation's
-[SOUP contract](https://github.com/michidk/redguard-preservation/blob/1242ac1/docs/engine/SOUP.md).
+[SOUP contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md).
 This is fresh logical preparation. Player switching, variable references, scriptless
 receivers, later allocation/recycling, reentrant callbacks, automatic scheduling,
 progression and saves remain unsupported.
@@ -354,7 +354,7 @@ uses the unique scene binding; without a binding, inspection captures the intent
 `FlatSound`, `EndSound`, `EndMySound` and `EndMySounds` dispatch synchronously
 with the logical receiver identity, including actors without scene bindings.
 Control captures these commands and submits them to the sound consumer when present.
-Their zero results follow the [preservation sound contract](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-sound-results).
+Their zero results follow the [preservation sound contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/sound.md#soup-functions).
 Positional `Sound` uses the receiver's prepared Q8 position and bypasses
 animation surface remapping. Ambient sound, shell/code-object owners,
 `KillMe` and the script
@@ -734,7 +734,7 @@ separated text entries. It preserves authored style bytes, byte-based word
 breaks, original line spacing, newest-entry positioning and ordered scroll input.
 **Verified:** public headless tests cover layout, ordinary/page scrolling,
 Home/End, simultaneous controls, bounds and close behavior against
-[preservation rules](https://github.com/michidk/redguard-preservation/blob/f45646a/docs/engine/hud.md#logbook-reading-layout-and-navigation).
+[preservation rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-layout-and-navigation).
 Existing `ScriptHud::entries` retains accepted text and local-state errors;
 the screen decodes physical line separators before constructing a reading session.
 

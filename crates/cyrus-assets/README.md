@@ -147,7 +147,7 @@ Run viewer contracts with `cargo test -p cyrus-assets --features native -- --noc
 checks use `REDGUARD_DIR`, or the repository's test install link. They explicitly
 skip when neither is available. No game data is included in tests.
 
-The pinned preservation [runtime loading fixes](https://github.com/michidk/redguard-preservation/commit/8c7a3f0f2866976d2a5885706b3fb7f007f02697)
+The pinned preservation [runtime loading fixes](https://github.com/michidk/redguard-preservation/pull/51)
 keep terrain arrays off the WASM stack, support archive index reads, and expose
 texture bank resolution so models load only their referenced banks.
 
@@ -176,7 +176,7 @@ This lookup does not establish automatic actor or animation eligibility.
 
 `cheats` retains all CHT slots and names in a portable record. Its `parsers`
 adapter delegates binary decoding and encoding to preservation's
-[CHT writer](https://github.com/michidk/redguard-preservation/compare/main...feat/cht-writing).
+[CHT writer](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/CHT.md).
 The game core depends only on the record; host storage owns file access.
 
 `scene::export_scene_observing` runs the normal exporter with an optional audit
@@ -208,8 +208,8 @@ nonzero combat animation offsets. Taunts participate in script content identity.
 These records do not enable combat or load voice assets by themselves.
 Preparation uses preservation's validated per-header location parser; original
 home positions are assigned per instance by the game. Location offsets participate
-in script content identity. The parser increment is published on
-[the authored-location review branch](https://github.com/michidk/redguard-preservation/compare/main...feat/authored-location-offsets).
+in script content identity. The parser increment is documented in
+[preservation's RALC documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md#ralc-location-data).
 
 With `parsers`, `sound::dialogue` reads selected installed RTX ranges. Portable
 `sound::DialogueCache<T>` retains twenty owned payloads without parser

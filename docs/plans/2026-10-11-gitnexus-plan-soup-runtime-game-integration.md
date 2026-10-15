@@ -258,8 +258,8 @@ operands and use six actor-owned slots. Opcode 27 stops matching tasks; opcodes
 before comparison. Native arguments evaluate from last to first, while handlers
 receive authored argument order. Global flag helpers maintain typed numeric values
 and separate latches. Object-targeted tasks belong to the receiver and allow the
-caller to continue. These contracts are published on the preservation
-[contribution branch](https://github.com/michidk/redguard-preservation/compare/main...feat/soup-runtime-records).
+caller to continue. These contracts are published in the preservation
+[SOUP documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md).
 
 These corrections supersede the corresponding proposed VM and test behavior
 above. Implementation remains incremental; portable execution and inspection

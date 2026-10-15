@@ -42,7 +42,7 @@ The bottom-right red title label reports menu/HUD preparation, menu asset loadin
 and browser sound loading. Labels describe cyrus stages rather than original map IDs.
 **Verified:** the splash resource supplies 90 timed frames at 30 fps, followed by
 the authored fade. The cache regenerates when replacing the older DOS shield
-splash. The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
+splash. The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents the driver variants and DLL format. Splash rasterization uses
 supersampling; Glide edge coverage, floating-point approximations and pixel
 quantization need a hardware comparison before claiming pixel-exact rendering.
@@ -80,7 +80,7 @@ red bar and REDSEL percentage label. Progress counts completed loading stages.
 percentage without a right-hand status message. Shared native/browser presentation
 uses that layout and leaves the remaining artwork untouched. See preservation
 [startup rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md#world-loading-screen).
-The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...feat/menu-game-entry)
+The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/startup.md)
 supplies the entry parser and loading layout. Saves, full story/gameplay
 initialization and progression unlocks remain unavailable.
 
@@ -106,4 +106,4 @@ and simulation checkpoint. Existing audio continues. Native control state expose
 unchanged. Font styles other than normal 7 and selected 9, manual entry editing,
 new-game resets and save integration remain unsupported. Scroll lighting and
 pixel-exact filtering still need fidelity work. Rules follow the
-[preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...docs/logbook-screen).
+[preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).

@@ -46,9 +46,9 @@ World exports also write a `.player` sidecar containing installed movement
 settings, named CYRUS attributes and bounds, decoded terrain heights, and the
 water mask.
 The optional terrain texture grid retains packed image/rotation bytes for material
-queries using the [published coordinate rules](https://github.com/michidk/redguard-preservation/blob/b2ddb1b/docs/engine/player.md#terrain-material-lookup).
+queries using the [published coordinate rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#terrain-material-lookup).
 Old caches require re-export for these queries. Explicit selected-support surface
-queries apply the [generated terrain blend mask and water overrides](https://github.com/michidk/redguard-preservation/blob/94ea3ae/docs/engine/player.md#terrain-material-blend-coverage).
+queries apply the [generated terrain blend mask and water overrides](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#terrain-material-blend-coverage).
 They do not assign actor surface state or the shared movement veto. Terrain water
 height and buoyancy remain unsupported. Schema 2 also retains original static
 placement order, model polygons, ROB collision flags and ordered subobject face
@@ -72,18 +72,18 @@ body-contact buffers remain unsupported.
 Archive selection follows [preservation PR #38](https://github.com/michidk/redguard-preservation/pull/38);
 segment admission and traversal follow [PR #41](https://github.com/michidk/redguard-preservation/pull/41).
 Sphere model admission and forward slope/support selection follow the
-[published player facts](https://github.com/michidk/redguard-preservation/blob/2810574/docs/engine/player.md).
+[published player facts](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md).
 The caller supplies the retained surface veto after support-state updates;
 geometric support alone does not authorize forward movement.
 `primary_support` selects ordinary actor support without player fallback or
 shared history updates; a primary miss stays absent.
 When primary support is absent, the selected-player fallback uses the caller's
 support-history state and retains the actor's runtime Y at the first accepted
-non-side contact. This follows the [published fallback rules](https://github.com/michidk/redguard-preservation/blob/3c5be4a/docs/engine/player.md#selected-player-fallback-support).
+non-side contact. This follows the [published fallback rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#selected-player-fallback-support).
 Explicit selected-player queries also commit shared support history. Misses retain
 metadata, so they can reset the fallback timer; temporary forward probes retain
 those changes when position is restored. The caller supplies initial state and
-nominal ticks, following the [support-state rules](https://github.com/michidk/redguard-preservation/blob/ed296ed/docs/engine/player.md#support-query-misses).
+nominal ticks, following the [support-state rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#support-query-misses).
 Ground support reads only face-model candidates. Actor-style obstacle response
 remains unsupported.
 Startup support uses an actor-centered window and radius 1000, with a vertical

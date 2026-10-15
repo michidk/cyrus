@@ -206,7 +206,7 @@ reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
 the Windows Glide splash; the full DOS overlay contains the older shield logo.
-The [preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...fix/gog-splash-resource)
+The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents both paths. Enter, Space, or Escape advances startup.
 `--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--scene` loads
 a world directly. MCP `skip_startup` goes to the menu; `load_scene {name}` enters
