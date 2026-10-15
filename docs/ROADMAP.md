@@ -221,6 +221,7 @@ Requires the player controller.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
 - [ ] Authored world transitions and old sound/script/transient cleanup.
 - [ ] Pause/resume of simulation and audio; original save-slot menus.
+- [x] Publish [quick-save request and reserved-slot rules](https://github.com/michidk/redguard-preservation/commit/efb9deabefcb41665dfb3528bac38c16a8fb4a26). **Verified:** original caller/writer instructions and a rejected inverted-guard control. Complete save eligibility and runtime handlers remain open.
 - [x] Publish [original inventory save records](https://github.com/michidk/redguard-preservation/compare/main...feat/save-inventory) and direct restoration rules. **Verified:** original instructions, typed codec tests, two original save-slot round trips and a rejected wrong-endian control. Runtime restoration remains open.
 - [x] Validated VM snapshot/restore with exact source compatibility and task-token rebinding. **Verified:** headless resume, foreign-task, pause/counter and malformed-state checks. Complete actor/world snapshots and storage remain open.
 - [x] Complete animation playback snapshots with installed-source validation and effect-free restoration. **Verified:** headless resume, delay/loop/exit, sound-latch and malformed-state contracts. Game-owned frame/sound binding and complete actor/world restoration remain open.
