@@ -119,8 +119,8 @@ animation and polygon admission. Generated flats retain their separate path.
 outputs for synthetic clipped polygons. Prepared ordinary models also use the published
 [fixed color-gradient setup](https://github.com/michidk/redguard-preservation/commit/8e504c11309a9daf5cb33ac743d602ce4baf875e),
 including screen-Y anchor selection, subpixel adjustment and integer encoded
-texture modulation. Texture-coordinate interpolation, transition parity and
-full pixel parity remain **Unknown**.
+texture modulation. Fixed texture-coordinate sampling is described below;
+full pixel parity remains **Unknown**.
 
 Re-export worlds and player models for the `rgpre_lighting` primitive metadata
 and required environment model inputs. Invalid mesh lighting metadata hides the
@@ -394,3 +394,9 @@ rules. Source images and shared animation frame handles remain unchanged.
 Re-export environments for texture reduction settings and model GLBs for
 `rgpre_texcoords` metadata. Missing metadata hides the affected model with a
 contextual error. Generated flats retain their separate coordinate path.
+
+**Verified:** native and browser START New Game preserve the measured inspection
+view after the book menu and intro. At zero sky/wave speed, measured sky phase
+and held foam frame, browser deck, rail and sky pixels match direct entry.
+The original reference returned from its book menu. Residual shading, original
+water-field synchronization and complete transition parity remain **Unknown**.
