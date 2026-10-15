@@ -95,3 +95,17 @@ conversion remains a separate operation for queries that require it.
 ordinary collision rollback. Restoration retains the separately selected default
 and sticky failure. The game host validates actor generation and restores the
 selected frame; the audio host restores its remembered animation sample slot.
+
+`ActorAnimation::snapshot` captures complete playback state, including the default,
+pending request, counters, delays, exit/translation/sound latches and failures.
+`from_snapshot` builds a replacement after matching actor context and exact installed
+groups, validating selected groups and command cursors. It decodes immutable commands
+without executing them. Restoration makes no initialization requests or sound calls.
+The versioned snapshot is an internal format, not an original save record.
+
+**Verified:** headless serialization/resume contracts retain pending/default requests,
+finite loops, wrapped byte countdowns, delays, exit tails and sticky failures.
+Subsequent Stop/Forget cues retain the prior sound latch without replaying Play.
+Malformed state and changed sources reject without changing live playback. This does
+not restore a game world: the host must validate actor/world generation and bind its
+saved model frame and native sound slot before committing the replacement.

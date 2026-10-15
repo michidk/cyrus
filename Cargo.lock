@@ -3018,6 +3018,7 @@ dependencies = [
  "cyrus-assets",
  "log",
  "rustc_apfloat",
+ "serde",
  "serde_json",
 ]
 

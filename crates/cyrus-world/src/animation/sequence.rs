@@ -1,6 +1,7 @@
 //! Forward current-group playback from preservation's engine/animation.md.
 use super::Animations;
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 #[derive(Clone, Debug)]
@@ -52,7 +53,74 @@ pub struct FrameSequence {
     sound_requested: bool,
 }
 
+/// Mutable playback only; immutable commands and type come from matched installed groups.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct SequenceSnapshot {
+    command: usize,
+    speed: u8,
+    countdown: u8,
+    loops: u8,
+    exit_reached: bool,
+    ended: bool,
+    failure: Option<String>,
+    translation_suppressed: bool,
+    delay: u8,
+    sound_requested: bool,
+}
+
 impl FrameSequence {
+    pub(super) fn snapshot(&self) -> SequenceSnapshot {
+        SequenceSnapshot {
+            command: self.command,
+            speed: self.speed,
+            countdown: self.countdown,
+            loops: self.loops,
+            exit_reached: self.exit_reached,
+            ended: self.ended,
+            failure: self.failure.clone(),
+            translation_suppressed: self.translation_suppressed,
+            delay: self.delay,
+            sound_requested: self.sound_requested,
+        }
+    }
+
+    pub(super) fn from_snapshot(
+        context: String,
+        group: &serde_json::Value,
+        snapshot: SequenceSnapshot,
+    ) -> anyhow::Result<Self> {
+        let mut sequence = Self::from_group(context, group, 0, 0)?;
+        let count = sequence.commands.len();
+        // A final Delay advances past the table before waiting. Its next tick may
+        // advance once more before retaining an out-of-range failure.
+        anyhow::ensure!(
+            snapshot.command < count
+                || (snapshot.command == count && snapshot.delay != 0)
+                || (snapshot.failure.is_some() && snapshot.command <= count.saturating_add(1)),
+            "{} command {}: saved cursor outside group",
+            sequence.context,
+            snapshot.command
+        );
+        anyhow::ensure!(
+            !snapshot.ended
+                || matches!(sequence.commands.get(snapshot.command), Some(Command::End)),
+            "{} command {}: saved End state mismatch",
+            sequence.context,
+            snapshot.command
+        );
+        sequence.command = snapshot.command;
+        sequence.speed = snapshot.speed;
+        sequence.countdown = snapshot.countdown;
+        sequence.loops = snapshot.loops;
+        sequence.exit_reached = snapshot.exit_reached;
+        sequence.ended = snapshot.ended;
+        sequence.failure = snapshot.failure;
+        sequence.translation_suppressed = snapshot.translation_suppressed;
+        sequence.delay = snapshot.delay;
+        sequence.sound_requested = snapshot.sound_requested;
+        Ok(sequence)
+    }
+
     /// Selects an explicitly requested forward group and its finite loop countdown.
     /// This does not run the actor script or choose a default animation.
     pub fn from_asset(

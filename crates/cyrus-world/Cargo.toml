@@ -8,5 +8,6 @@ log.workspace = true
 bevy = { workspace = true, features = ["bevy_asset"] }
 cyrus-assets.workspace = true
 anyhow.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 rustc_apfloat = "0.2.3"

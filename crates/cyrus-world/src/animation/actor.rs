@@ -1,7 +1,8 @@
 //! Request arbitration and default fallback from preservation's engine/animation.md.
-use super::sequence::SoundDispatcher;
+use super::sequence::{SequenceSnapshot, SoundDispatcher};
 use super::{AnimationSound, Animations, FrameSequence};
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One actor's current, pending and explicitly supplied default group.
@@ -25,7 +26,89 @@ pub struct ActorAnimationCheckpoint {
     pending: Option<(u16, u8)>,
 }
 
+/// Complete, versioned playback state with exact installed group definitions.
+/// The game host saves actor/world identity, displayed frame and native sound slot
+/// alongside this snapshot, then validates and binds them before committing a restore.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActorAnimationSnapshot {
+    version: u32,
+    context: String,
+    groups: BTreeMap<u16, serde_json::Value>,
+    default: u16,
+    current: Option<(u16, SequenceSnapshot)>,
+    pending: Option<(u16, u8)>,
+    failure: Option<String>,
+}
+
 impl ActorAnimation {
+    /// Captures the entire receiver, including default, delays, sound latch and failures.
+    /// This does not advance commands or dispatch sounds, and is distinct from collision rollback.
+    pub fn snapshot(&self) -> ActorAnimationSnapshot {
+        ActorAnimationSnapshot {
+            version: 1,
+            context: self.context.clone(),
+            groups: self.groups.clone(),
+            default: self.default,
+            current: self
+                .current
+                .as_ref()
+                .map(|(group, sequence)| (*group, sequence.snapshot())),
+            pending: self.pending,
+            failure: self.failure.clone(),
+        }
+    }
+
+    /// Builds a complete replacement after matching actor context and exact installed groups.
+    /// No initialization requests, animation commands or sounds run. The caller restores the
+    /// displayed frame and sound binding with the same validated actor/world generation.
+    pub fn from_snapshot(
+        data: &Animations,
+        actor: &str,
+        snapshot: ActorAnimationSnapshot,
+    ) -> anyhow::Result<Self> {
+        let context = format!("world {} actor {actor} animation restore", data.world);
+        let restore = || -> anyhow::Result<Self> {
+            anyhow::ensure!(
+                snapshot.version == 1,
+                "unsupported snapshot version {}",
+                snapshot.version
+            );
+            let mut animation = Self::from_asset(data, actor, snapshot.default)?;
+            anyhow::ensure!(
+                animation.context == snapshot.context,
+                "actor context mismatch"
+            );
+            anyhow::ensure!(
+                animation.groups == snapshot.groups,
+                "installed group content mismatch"
+            );
+            if let Some((group, _)) = snapshot.pending {
+                anyhow::ensure!(
+                    animation.groups.contains_key(&group),
+                    "pending group {group}: absent"
+                );
+            }
+            if let Some((group, state)) = snapshot.current {
+                let metadata = animation
+                    .groups
+                    .get(&group)
+                    .with_context(|| format!("current group {group}: absent"))?;
+                animation.current = Some((
+                    group,
+                    FrameSequence::from_snapshot(
+                        format!("{} group {group}", animation.context),
+                        metadata,
+                        state,
+                    )?,
+                ));
+            }
+            animation.pending = snapshot.pending;
+            animation.failure = snapshot.failure;
+            Ok(animation)
+        };
+        restore().with_context(|| context)
+    }
+
     /// Save the post-advancement receiver without executing commands or audio.
     pub fn checkpoint(&self) -> anyhow::Result<ActorAnimationCheckpoint> {
         self.check_failure()?;
