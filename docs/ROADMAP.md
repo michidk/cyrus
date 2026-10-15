@@ -107,6 +107,8 @@ world playback remains unfinished.
 - [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky, fog and water exist; Modern lighting reuses Faithful results.
 - [x] Installed model lighting, static map-light baking, authored object lights and ROB filtering attributes.
 - [x] Finite terrain window, clipping, fixed-point texture sampling, fog and water-edge normal retention.
+- [x] Resizable World Inspector with a scrollable entity viewport. **Verified:** the egui pointer-drag regression checks that window and viewport bounds grow together without fitting the entire entity tree.
+- [x] Modern render distance expands terrain and water together. **Verified:** native v0.1.12 ISLAND captures at the same elevated view show extended terrain and river water at the default Modern distance; returning Fog to Faithful restores the original 3,800-unit view. Water remains Faithful during the check. Browser interaction and arbitrary distance edits were not rechecked.
 - [x] Sky phase controls, plane-crossing behavior, cloud coordinates and integer sun filtering/blending.
 - [x] Shared texture playback for terrain, ordinary archive models and MPSF flats; inspection holds for matched frames.
 - [x] Source-sized camera-facing flats with authored brightness, alpha blending, generated normals and submission order.
