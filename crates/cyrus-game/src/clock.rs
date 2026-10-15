@@ -1,6 +1,7 @@
 //! Shared nominal clock arithmetic; callers supply original-clock samples and invocation boundaries.
 use bevy::prelude::*;
 use cyrus_assets::script::ClockSettings;
+use serde::{Deserialize, Serialize};
 
 /// Convert a host monotonic duration to the standard PC BIOS timer units.
 /// Uses the same timer frequency as preservation's `docs/engine/water.md`.
@@ -9,13 +10,13 @@ pub fn bios_tick(elapsed: std::time::Duration) -> u32 {
 }
 
 /// Timing consumed by one complete actor update, including zero-tick updates.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClockStep {
     /// Movement scale in units of 1/256 nominal tick.
     pub frame_scale: u32,
     /// Whole animation and script ticks for this invocation.
     pub nominal_ticks: u32,
-    /// Whole increments of the separate 1/32 nominal-tick counter.
+    /// Whole increments of the finer counter, eight units per nominal tick.
     pub fine_ticks: u32,
 }
 
@@ -30,6 +31,28 @@ pub struct ClockCheckpoint {
     next_scale: u32,
     nominal_fraction: u32,
     fine_fraction: u32,
+}
+
+/// Complete Cyrus clock continuation, distinct from a partial menu checkpoint.
+///
+/// Retains settings, exposed timing, measurement and fractional state following
+/// preservation's `docs/formats/SAVEGAME.md#general-state-and-clock`.
+/// The host epoch is deliberately excluded; restoration requires a fresh BIOS
+/// baseline. This is not an original SAV record or its accumulator history.
+/// Deserialized values must pass `SimulationClock::from_snapshot` before use.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClockSnapshot {
+    version: u32,
+    settings: ClockSettings,
+    step: ClockStep,
+    remainder: i32,
+    frames: u32,
+    measured: u32,
+    smoothed: u32,
+    next_scale: u32,
+    nominal_fraction: u32,
+    fine_fraction: u32,
+    warmup: u8,
 }
 
 /// FPS-derived state, independent of rendering and platform clock acquisition.
@@ -54,6 +77,95 @@ pub struct SimulationClock {
 }
 
 impl SimulationClock {
+    /// Capture all retained simulation timing without advancing or rebasing it.
+    pub fn snapshot(&self) -> ClockSnapshot {
+        ClockSnapshot {
+            version: 1,
+            settings: self.settings,
+            step: self.step,
+            remainder: self.remainder,
+            frames: self.frames,
+            measured: self.measured,
+            smoothed: self.smoothed,
+            next_scale: self.next_scale,
+            nominal_fraction: self.nominal_fraction,
+            fine_fraction: self.fine_fraction,
+            warmup: self.warmup,
+        }
+    }
+
+    /// Validate a complete continuation and return a replacement clock.
+    ///
+    /// Saved settings take precedence over installation defaults. `bios_tick` is
+    /// the caller's current host baseline; time spent loading contributes no
+    /// synthetic update. Exposed timing remains unchanged until `advance`.
+    /// This does not establish a safe whole-game save/restore boundary.
+    pub fn from_snapshot(snapshot: ClockSnapshot, bios_tick: u32) -> anyhow::Result<Self> {
+        use anyhow::ensure;
+        ensure!(
+            snapshot.version == 1,
+            "clock snapshot version {} is unsupported",
+            snapshot.version
+        );
+        anyhow::Context::context(snapshot.settings.validate(), "clock snapshot settings")?;
+        ensure!(
+            (0..18).contains(&snapshot.remainder),
+            "clock snapshot remainder {} is outside 0..18",
+            snapshot.remainder
+        );
+        ensure!(
+            snapshot.warmup <= 12,
+            "clock snapshot warmup {} exceeds 12",
+            snapshot.warmup
+        );
+        ensure!(
+            snapshot.nominal_fraction < 256,
+            "clock snapshot nominal_fraction {} exceeds 255",
+            snapshot.nominal_fraction
+        );
+        ensure!(
+            snapshot.fine_fraction < 32,
+            "clock snapshot fine_fraction {} exceeds 31",
+            snapshot.fine_fraction
+        );
+        // Construction starts at 256; every later target is bounded by these settings.
+        let max_scale =
+            (snapshot.settings.normal_frame_rate * 256 / snapshot.settings.min_frame_rate).max(256);
+        ensure!(
+            snapshot.next_scale <= max_scale,
+            "clock snapshot next_scale {} exceeds {max_scale}",
+            snapshot.next_scale
+        );
+        ensure!(
+            snapshot.step.frame_scale <= max_scale,
+            "clock snapshot step.frame_scale {} exceeds {max_scale}",
+            snapshot.step.frame_scale
+        );
+        ensure!(
+            snapshot.step.nominal_ticks <= (max_scale + 255) >> 8,
+            "clock snapshot step.nominal_ticks {} exceeds scale bound",
+            snapshot.step.nominal_ticks
+        );
+        ensure!(
+            snapshot.step.fine_ticks <= (max_scale + 31) >> 5,
+            "clock snapshot step.fine_ticks {} exceeds scale bound",
+            snapshot.step.fine_ticks
+        );
+        Ok(Self {
+            settings: snapshot.settings,
+            step: snapshot.step,
+            baseline: bios_tick,
+            remainder: snapshot.remainder,
+            frames: snapshot.frames,
+            measured: snapshot.measured,
+            smoothed: snapshot.smoothed,
+            next_scale: snapshot.next_scale,
+            nominal_fraction: snapshot.nominal_fraction,
+            fine_fraction: snapshot.fine_fraction,
+            warmup: snapshot.warmup,
+        })
+    }
+
     /// Installed inputs remain fixed while one game's timing state is retained.
     pub fn settings(&self) -> ClockSettings {
         self.settings

@@ -34,6 +34,15 @@ explicit deterministic APIs. Automatic player locomotion and complete actor elig
 Supported ordinary map actors use the shared simulation clock. See
 [SETUP](../../docs/SETUP.md) and [ROADMAP](../../docs/ROADMAP.md).
 
+`SimulationClock::snapshot` captures complete timing, including settings, smoothing,
+warmup, measurement remainder, fractional carry and the exposed update step.
+`from_snapshot` validates it and returns a replacement rebased to the caller's
+current BIOS sample without advancing. The partial menu checkpoint stays separate.
+**Verified:** serialization/resume contracts cover epoch changes, warmup, smoothing,
+wrap/backward samples and rejected malformed state. Saved settings are retained,
+following [preservation's saved clock rules](https://github.com/michidk/redguard-preservation/compare/main...docs/save-clock-state).
+Original SAV import, whole-world restore and save-point admission remain unsupported.
+
 `SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
 validated installed clock settings and caller-supplied BIOS samples. Its twelve-update
 warmup, fractional carry, smoothing and suspension rebasing are independent of
