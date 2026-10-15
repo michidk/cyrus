@@ -29,6 +29,7 @@ pub struct ScriptHud(Mutex<State>);
 struct State {
     data: Option<(usize, BTreeMap<String, String>)>,
     inventory: Option<super::inventory::Inventory>,
+    inventory_error: Option<String>,
     powerups: [Option<(u8, u8)>; 2],
     next_slot: usize,
     seen: Vec<i32>,
@@ -52,7 +53,10 @@ impl ScriptHud {
         if state.data.is_some() {
             return;
         }
-        state.inventory = Some(super::inventory::Inventory::new(hud));
+        match super::inventory::Inventory::new(hud) {
+            Ok(inventory) => state.inventory = Some(inventory),
+            Err(error) => state.inventory_error = Some(format!("{error:#}")),
+        }
         state.data = Some((hud.powerup_sizes.len(), hud.labels.clone()));
         state.store = preferences.store();
         state.entries = Some(
@@ -74,11 +78,8 @@ impl ScriptHud {
 
     /// Installed script HUD inputs have been supplied by the host.
     pub fn ready(&self) -> bool {
-        self.0
-            .lock()
-            .expect("script HUD lock poisoned")
-            .data
-            .is_some()
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        state.data.is_some() && state.inventory_error.is_none()
     }
 
     /// Current slots and a consumed notification request. Rendering owns icon animation.
@@ -113,11 +114,13 @@ impl ScriptHud {
             .map(|items| items.view(cycle))
     }
 
-    /// Apply acquisition caps and refuse unsupported side effects before changing ownership.
+    /// Apply installed recursive prerequisites and ordered acquisition effects.
     pub fn add_item(&self, id: u16, amount: i32) -> Result<()> {
-        self.0
-            .lock()
-            .expect("script HUD lock poisoned")
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        state
             .inventory
             .as_mut()
             .context("installed inventory data unavailable")?
@@ -150,9 +153,10 @@ impl ScriptHud {
     pub fn inspect(&self) -> serde_json::Value {
         let state = self.0.lock().expect("script HUD lock poisoned");
         serde_json::json!({
-            "ready": state.data.is_some(),
+            "ready": state.data.is_some() && state.inventory_error.is_none(),
             "powerups": state.powerups,
             "compass_on": state.compass_on,
+            "inventory_error": state.inventory_error,
             "inventory": state.inventory.as_ref().map(super::inventory::Inventory::inspect),
             "logbook_entries": state.entries.as_ref().and_then(|entries| entries.as_ref().ok()).map(Vec::len),
             "logbook_error": state.entries.as_ref().and_then(|entries| entries.as_ref().err()),
@@ -165,6 +169,7 @@ impl ScriptHud {
             "UnShowBitmap",
             "AddLog",
             "AddItem",
+            "DropItem",
             "HaveItem",
             "SelectItem",
         ]
@@ -174,11 +179,13 @@ impl ScriptHud {
 
     pub(super) fn call(&self, function: &str, arguments: &[Argument]) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
-        if ["AddItem", "HaveItem", "SelectItem"]
+        if ["AddItem", "DropItem", "HaveItem", "SelectItem"]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
         {
-            let expected = if function.eq_ignore_ascii_case("AddItem") {
+            let expected = if function.eq_ignore_ascii_case("AddItem")
+                || function.eq_ignore_ascii_case("DropItem")
+            {
                 2
             } else {
                 1
@@ -187,8 +194,17 @@ impl ScriptHud {
                 arguments.len() == expected,
                 "{function} requires {expected} arguments"
             );
+            if function.eq_ignore_ascii_case("DropItem")
+                && state.inventory.is_none()
+                && state.inventory_error.is_none()
+            {
+                return Ok(0);
+            }
             let id = u16::try_from(arguments[0].integer()?)
                 .context("inventory item ID outside u16 range")?;
+            if let Some(error) = &state.inventory_error {
+                anyhow::bail!("inventory initialization: {error}");
+            }
             let items = state
                 .inventory
                 .as_mut()
@@ -199,6 +215,8 @@ impl ScriptHud {
             }
             if function.eq_ignore_ascii_case("AddItem") {
                 items.add(id, arguments[1].integer()?)?;
+            } else if function.eq_ignore_ascii_case("DropItem") {
+                items.remove(id, arguments[1].integer()?)?;
             } else {
                 items.select(id)?;
             }

@@ -623,7 +623,8 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
             )
         })
         .collect();
-    assert_eq!(items, [(1, 7, 1), (2, 26, 53), (4, 13, 6), (18, 24, 1)]);
+    assert_eq!(items, [(2, 26, 52), (4, 13, 5)]);
+    assert_eq!(data["start_items"], serde_json::json!([1, 2, 4, 18]));
     assert_eq!(data["inventory"]["0"]["count"], 0);
     assert_eq!(data["inventory"]["0"]["player_max"], 1);
     assert!(

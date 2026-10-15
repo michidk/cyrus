@@ -239,5 +239,7 @@ and cache identities are independent of the Rust module that owns each record.
 HUD preparation reads SYSTEM.INI's configured item database through preservation's
 typed ITEM.INI parser and exports all item
 definitions and unhidden artwork, including items not yet owned. Initial counts
-remain installed inputs; gameplay owns subsequent acquisition and selection.
+and ordered starting acquisitions remain separate installed inputs; gameplay
+applies startup and subsequent acquisition through the same owner. Ordered
+prerequisites, drop/add dependencies and removal flags travel with each definition.
 Re-export older HUD caches for the required inventory metadata.

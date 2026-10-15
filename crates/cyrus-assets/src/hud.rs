@@ -43,7 +43,9 @@ pub struct HudAsset {
     pub notices: [[String; 2]; 2],
     /// All installed item definitions, including hidden and unowned items.
     pub inventory: BTreeMap<u16, InventoryItem>,
-    /// Unhidden artwork in ID order; counts are the initial session counts.
+    /// Ordered one-unit acquisitions applied by the game after loading initial counts.
+    pub start_items: Vec<u16>,
+    /// Unhidden artwork in ID order; counts are the configured player totals.
     pub items: Vec<HudItem>,
     /// ITEM.INI `start_item_select`; live selection belongs to the game session.
     pub selected: Option<u16>,
@@ -67,12 +69,21 @@ pub struct HudItem {
 }
 
 /// Portable acquisition inputs decoded from ITEM.INI by preservation.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct InventoryItem {
+    /// Configured player_total, before ordered startup acquisitions.
     pub count: u32,
     pub total: u32,
     pub player_max: u32,
     pub hidden: bool,
-    /// Acquisition lists require additional gameplay services before they can run.
-    pub acquisition_effects: bool,
+    /// Drop clears the entire count when flag bit one is set.
+    pub flags: u32,
+    /// Each prerequisite must be owned and recursively satisfy its requirements.
+    pub required_items: Vec<u16>,
+    /// Authored order; each entry drops one unit before any add-list entry.
+    pub drop_add_items: Vec<u16>,
+    /// Authored order; each entry recursively acquires one unit per request.
+    pub add_items: Vec<u16>,
+    /// Recursively cleared only while the source retains a nonzero count.
+    pub remove_drop_items: Vec<u16>,
 }

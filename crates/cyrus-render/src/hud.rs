@@ -1032,6 +1032,7 @@ mod tests {
             auto_defend: true,
             notices: default(),
             inventory: BTreeMap::new(),
+            start_items: vec![],
             items: vec![],
             selected: None,
             bindings: [0; 15],
@@ -1328,7 +1329,7 @@ mod tests {
                         total: 10,
                         player_max: 10,
                         hidden: false,
-                        acquisition_effects: false,
+                        ..Default::default()
                     },
                 )
             })

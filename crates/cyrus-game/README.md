@@ -73,14 +73,19 @@ state and failed writes leave accepted entries unchanged and trigger no icon.
 
 **Verified:** `ScriptHud` also retains the compass display flag and consumed-use latch across
 world changes. A shared inventory owns live counts and selection from installed
-ITEM.INI definitions. `AddItem`, `HaveItem` and `SelectItem` use that owner;
-acquisition caps apply before mutation, and nonempty acquisition lists report
-unsupported services. The renderer reads the installed Activate/Attack binding
+ITEM.INI definitions. `AddItem`, `DropItem`, `HaveItem` and `SelectItem` use that owner.
+Startup acquisitions use the same recursive prerequisite and ordered drop/add
+rules as script requests. Admitted quantities remain fixed across nested effects;
+removal traverses dependencies only while the source retains a nonzero count.
+Cyclic effect traversal reports a contextual error. The renderer reads the installed Activate/Attack binding
 and current logical-player control, surface, animation and attribute state.
 Explicit activation inputs remain available for inspection. Receiving a compass
 does not enable it; a held accepted use toggles only once. Rules follow
 preservation's [inventory contract](https://github.com/michidk/redguard-preservation/commit/695ac1f).
-`state.script_hud.inventory` reports current ownership and selection.
+`state.script_hud.inventory` reports current ownership and selection;
+`inventory_error` retains initialization failures without publishing partial counts.
+Acquisition/removal rules follow preservation
+[ITEM.INI](https://github.com/michidk/redguard-preservation/blob/main/docs/config/item-ini.md).
 The renderer consumes accepted notification requests. Full logbook navigation,
 new-game/death resets and save-game integration remain unsupported.
 The retained SOUP topic-menu word starts at zero and changes through its native

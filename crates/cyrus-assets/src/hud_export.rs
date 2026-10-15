@@ -90,7 +90,7 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        9u32,
+        10u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
@@ -198,17 +198,28 @@ pub(crate) fn prepare(
             .with_context(|| format!("hud: {}: no {tag} text", rtx_path))
     };
     let atlas = parse_gxa_file(&atlas_bytes).with_context(|| format!("hud: {atlas_name}"))?;
-    let counts = starting_inventory(&definitions)
-        .with_context(|| format!("hud: {item_path} starting inventory"))?;
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
     for (id, item) in &definitions.items {
         let id =
             u16::try_from(*id).with_context(|| format!("hud: {item_path} item ID exceeds u16"))?;
-        let count = counts.get(&id).copied().unwrap_or(0);
+
         let unsigned = |value: Option<i32>, field: &str| -> anyhow::Result<u32> {
             u32::try_from(value.unwrap_or(0))
                 .with_context(|| format!("hud: {item_path} {field}[{id}] must be nonnegative"))
+        };
+        let count = unsigned(item.player_total, "player_total")?;
+        let list = |values: &Option<Vec<u32>>, field: &str| -> anyhow::Result<Vec<u16>> {
+            values
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|&value| {
+                    u16::try_from(value).with_context(|| {
+                        format!("hud: {item_path} {field}[{id}]: item {value} exceeds u16")
+                    })
+                })
+                .collect()
         };
         inventory.insert(
             id,
@@ -217,13 +228,11 @@ pub(crate) fn prepare(
                 total: unsigned(item.total, "total")?,
                 player_max: unsigned(item.player_max, "player_max")?,
                 hidden: item.hide.unwrap_or(false),
-                acquisition_effects: [
-                    &item.required_item_list,
-                    &item.add_item_list,
-                    &item.drop_add_item_list,
-                ]
-                .into_iter()
-                .any(|list| list.as_ref().is_some_and(|list| !list.is_empty())),
+                flags: item.flags.unwrap_or(0),
+                required_items: list(&item.required_item_list, "required_item_list")?,
+                drop_add_items: list(&item.drop_add_item_list, "drop_add_item_list")?,
+                add_items: list(&item.add_item_list, "add_item_list")?,
+                remove_drop_items: list(&item.remove_drop_item_list, "remove_drop_item_list")?,
             },
         );
         if item.hide.unwrap_or(false) {
@@ -278,6 +287,14 @@ pub(crate) fn prepare(
         ],
         items: artwork,
         inventory,
+        start_items: definitions
+            .settings
+            .start_item_list
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|&id| u16::try_from(id).context("hud: starting item ID exceeds u16"))
+            .collect::<anyhow::Result<_>>()?,
         selected,
         bindings: keys.control_codes(),
         font,
@@ -319,50 +336,6 @@ fn text<'a>(fields: &'a Fields, file: &str, section: &str, key: &str) -> anyhow:
         .get(&(section.to_owned(), key.to_owned()))
         .map(String::as_str)
         .with_context(|| format!("hud: {file} [{section}] {key} is missing"))
-}
-
-/// New-game counts by item ID, owned items only. Every item starts at `player_total[x]`;
-/// each `start_item_list` entry then adds one, capped by `total[x]` and `player_max[x]`.
-fn starting_inventory(ini: &ItemIni) -> anyhow::Result<BTreeMap<u16, u32>> {
-    let mut counts = BTreeMap::new();
-    for (&id, item) in &ini.items {
-        counts.insert(
-            u16::try_from(id).context("hud: ITEM.INI ID exceeds u16")?,
-            u32::try_from(item.player_total.unwrap_or(0))
-                .with_context(|| format!("hud: ITEM.INI player_total[{id}] must be nonnegative"))?,
-        );
-    }
-    for &id in ini.settings.start_item_list.as_deref().unwrap_or_default() {
-        let item = ini
-            .items
-            .get(&id)
-            .with_context(|| format!("hud: ITEM.INI starting item {id} undefined"))?;
-        anyhow::ensure!(
-            [
-                &item.required_item_list,
-                &item.add_item_list,
-                &item.drop_add_item_list
-            ]
-            .into_iter()
-            .all(|list| list.as_ref().is_none_or(Vec::is_empty)),
-            "hud: ITEM.INI starting item {id}: acquisition lists unsupported"
-        );
-        let count = counts
-            .get_mut(&u16::try_from(id)?)
-            .expect("validated item ID");
-        let room =
-            |value: Option<i32>, key: &str| -> anyhow::Result<u32> {
-                Ok(u32::try_from(
-                    value.with_context(|| format!("hud: ITEM.INI {key}[{id}] missing"))?,
-                )?
-                .saturating_sub(*count))
-            };
-        *count += room(item.total, "total")?
-            .min(room(item.player_max, "player_max")?)
-            .min(1);
-    }
-    counts.retain(|_, count| *count > 0);
-    Ok(counts)
 }
 
 /// `(section, key)` → value, lowercased names, `;` comments removed; the first occurrence wins.
@@ -451,23 +424,5 @@ mod tests {
         let error = format!("{error:#}");
         assert!(error.contains("alternate.ini"), "{error}");
         assert!(error.contains("player_total"), "{error}");
-    }
-
-    #[test]
-    fn starting_items_add_one_to_player_totals_within_their_caps() {
-        let fields = ItemIni::parse(
-            "[items]\nstart_item_list = 1, 2, 4\n\
-              player_total[1] = 0\ntotal[1] = 1\nplayer_max[1] = 1\n\
-              player_total[2] = 52\ntotal[2] = 1000000\nplayer_max[2] = 500\n\
-              player_total[3] = 0\n\
-              player_total[4] = 5\ntotal[4] = 5\nplayer_max[4] = 10\n\
-              player_total[5] = 2\n",
-        )
-        .unwrap();
-        let counts = starting_inventory(&fields).unwrap();
-        assert_eq!(counts, [(1, 1), (2, 53), (4, 5), (5, 2)].into());
-        let fields =
-            ItemIni::parse("[items]\nstart_item_list = 1\nadd_item_list[1] = 2\n").unwrap();
-        assert!(starting_inventory(&fields).is_err());
     }
 }

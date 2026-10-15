@@ -2316,6 +2316,7 @@ fn hud_asset() -> cyrus_assets::hud::HudAsset {
         auto_defend: false,
         notices: Default::default(),
         inventory: BTreeMap::new(),
+        start_items: vec![],
         items: vec![],
         selected: None,
         bindings: [0; 15],
@@ -2513,7 +2514,7 @@ fn full_logbook_tag_table_does_not_retain_new_tags() {
 }
 
 #[test]
-fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects() {
+fn inventory_scripts_share_counts_caps_selection_and_requirements() {
     use cyrus_assets::hud::InventoryItem;
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let mut asset = hud_asset();
@@ -2525,7 +2526,7 @@ fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects(
                 total: 1,
                 player_max: 1,
                 hidden: false,
-                acquisition_effects: false,
+                ..Default::default()
             },
         ),
         (
@@ -2535,7 +2536,7 @@ fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects(
                 total: 8,
                 player_max: 6,
                 hidden: false,
-                acquisition_effects: false,
+                ..Default::default()
             },
         ),
         (
@@ -2545,7 +2546,8 @@ fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects(
                 total: 1,
                 player_max: 1,
                 hidden: true,
-                acquisition_effects: false,
+                required_items: vec![3],
+                ..Default::default()
             },
         ),
         (
@@ -2555,7 +2557,8 @@ fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects(
                 total: 2,
                 player_max: 2,
                 hidden: false,
-                acquisition_effects: true,
+                required_items: vec![3],
+                ..Default::default()
             },
         ),
     ]
@@ -2577,7 +2580,7 @@ fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects(
     assert_eq!(hud.inventory(Some(true)).unwrap().selected, Some(0));
     assert_eq!(hud.inventory(Some(false)).unwrap().selected, Some(2));
     let error = hud_call(Some(&hud), "AddItem", &[4, 1]).unwrap_err();
-    assert!(format!("{error:#}").contains("acquisition lists"));
+    assert!(format!("{error:#}").contains("required_item_list cycle"));
     assert_eq!(hud.inventory(None).unwrap().counts[&4], 0);
     hud_call(Some(&hud), "SelectItem", &[4]).unwrap();
     assert_eq!(hud.inventory(None).unwrap().selected, Some(0));
@@ -2586,4 +2589,222 @@ fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects(
     // Reconfiguration on a new world cannot restore initial counts or selection.
     hud.configure(&asset, &Preferences::default());
     assert_eq!(hud.inventory(None).unwrap().counts[&0], 1);
+}
+
+fn inventory_fixture(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
+    let mut asset = hud_asset();
+    asset.inventory = counts
+        .iter()
+        .map(|&(id, count)| {
+            (
+                id,
+                cyrus_assets::hud::InventoryItem {
+                    count,
+                    total: 100,
+                    player_max: 100,
+                    ..Default::default()
+                },
+            )
+        })
+        .collect();
+    asset
+}
+
+#[test]
+fn inventory_requires_recursive_owned_prerequisites_before_any_effect() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(1, 0), (2, 1), (3, 0), (4, 2)]);
+    asset.inventory.get_mut(&1).unwrap().required_items = vec![2];
+    asset.inventory.get_mut(&2).unwrap().required_items = vec![3];
+    asset.inventory.get_mut(&1).unwrap().drop_add_items = vec![4];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud.add_item(1, 3).unwrap();
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(1, 0), (2, 1), (3, 0), (4, 2)].into()
+    );
+    hud.add_item(3, 1).unwrap();
+    hud.add_item(1, 3).unwrap();
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(1, 3), (2, 1), (3, 1), (4, 1)].into()
+    );
+}
+
+#[test]
+fn inventory_effects_run_once_in_authored_order_with_drop_before_recursive_add() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(1, 0), (2, 1), (3, 0), (4, 0), (5, 0), (6, 0)]);
+    asset.inventory.get_mut(&1).unwrap().drop_add_items = vec![2];
+    asset.inventory.get_mut(&1).unwrap().add_items = vec![3, 4, 5, 5];
+    asset.inventory.get_mut(&3).unwrap().required_items = vec![2];
+    asset.inventory.get_mut(&4).unwrap().add_items = vec![6];
+    asset.inventory.get_mut(&5).unwrap().required_items = vec![6];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud.add_item(1, 9).unwrap();
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(1, 9), (2, 0), (3, 0), (4, 1), (5, 2), (6, 1)].into()
+    );
+}
+
+#[test]
+fn inventory_retains_admitted_quantity_when_effects_remove_source() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(1, 4), (2, 0)]);
+    let source = asset.inventory.get_mut(&1).unwrap();
+    source.total = 5;
+    source.player_max = 5;
+    source.add_items = vec![2];
+    asset.inventory.get_mut(&2).unwrap().drop_add_items = vec![1];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud.add_item(1, 10).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().counts, [(1, 4), (2, 1)].into());
+}
+
+#[test]
+fn inventory_removal_traverses_only_remaining_owned_sources_and_honors_flags() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    for (source_count, flags, expected) in [
+        (2, 0, [1, 0, 0]),
+        (1, 0, [0, 2, 3]),
+        (2, 1, [0, 2, 3]),
+        (2, 2, [1, 0, 0]),
+        (2, 4, [1, 0, 0]),
+    ] {
+        let mut asset = inventory_fixture(&[(1, source_count), (2, 2), (3, 3)]);
+        asset.inventory.get_mut(&1).unwrap().flags = flags;
+        asset.inventory.get_mut(&1).unwrap().remove_drop_items = vec![2];
+        asset.inventory.get_mut(&2).unwrap().remove_drop_items = vec![3];
+        let hud = ScriptHud::default();
+        hud.configure(&asset, &Preferences::default());
+        hud_call(Some(&hud), "DropItem", &[1, 0]).unwrap();
+        assert_eq!(
+            hud_call(Some(&hud), "HaveItem", &[1]).unwrap(),
+            source_count as i32
+        );
+        hud_call(Some(&hud), "DropItem", &[1, 1]).unwrap();
+        let view = hud.inventory(None).unwrap();
+        assert_eq!(
+            [view.counts[&1], view.counts[&2], view.counts[&3]],
+            expected,
+            "flags {flags}, source {source_count}"
+        );
+    }
+    let mut asset = inventory_fixture(&[(1, 2), (2, 0), (3, 3)]);
+    asset.inventory.get_mut(&1).unwrap().remove_drop_items = vec![2];
+    asset.inventory.get_mut(&2).unwrap().remove_drop_items = vec![3];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud_call(Some(&hud), "DropItem", &[1, 1]).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().counts[&3], 3);
+}
+
+#[test]
+fn inventory_startup_uses_ordered_shared_acquisition_and_retains_initial_selection() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(0, 0), (1, 0), (2, 52), (4, 5), (18, 0)]);
+    asset.start_items = vec![1, 2, 4, 18];
+    asset.selected = Some(1);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(0, 0), (1, 1), (2, 53), (4, 6), (18, 1)].into()
+    );
+    let mut asset = inventory_fixture(&[(0, 0), (1, 1), (2, 0), (3, 0)]);
+    asset.start_items = vec![2, 1, 2, 2];
+    asset.inventory.get_mut(&1).unwrap().add_items = vec![3];
+    asset.inventory.get_mut(&2).unwrap().required_items = vec![3];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(hud.inspect()["inventory"]["selected"], 0);
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(0, 0), (1, 2), (2, 2), (3, 1)].into()
+    );
+}
+
+#[test]
+fn inventory_startup_reports_recursive_definition_errors_without_partial_inventory() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(1, 0), (2, 0)]);
+    asset.start_items = vec![1];
+    asset.inventory.get_mut(&1).unwrap().add_items = vec![2];
+    asset.inventory.get_mut(&2).unwrap().add_items = vec![1];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert!(hud.inventory(None).is_none());
+    assert!(!hud.ready());
+    let error = hud_call(Some(&hud), "AddItem", &[1, 1]).unwrap_err();
+    assert!(format!("{error:#}").contains("add_item_list cycle"));
+    assert!(
+        hud.inspect()["inventory_error"]
+            .as_str()
+            .unwrap()
+            .contains("start_item_list")
+    );
+}
+
+#[test]
+fn inventory_installed_startup_exports_seed_counts_and_acquires_through_shared_owner() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    if !root.is_dir() {
+        eprintln!("skipped: no install ({})", root.display());
+        return;
+    }
+    let install = cyrus_assets::install::GameInstall::locate(Some(&root)).unwrap();
+    let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("inventory-startup-test-{}", std::process::id()));
+    cyrus_assets::hud_export::export_hud(&install, &output).unwrap();
+    let asset: cyrus_assets::hud::HudAsset =
+        serde_json::from_slice(&std::fs::read(output.join("hud/overlay.hud")).unwrap()).unwrap();
+    assert_eq!(asset.start_items, [1, 2, 4, 18]);
+    assert_eq!(asset.inventory[&2].count, 52);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert!(hud.inspect()["inventory_error"].is_null());
+    let view = hud.inventory(None).unwrap();
+    let owned: BTreeMap<_, _> = view
+        .counts
+        .into_iter()
+        .filter(|(_, count)| *count > 0)
+        .collect();
+    assert_eq!(owned, [(1, 1), (2, 53), (4, 6), (18, 1)].into());
+    assert_eq!(view.selected, Some(1));
+    hud_call(Some(&hud), "AddItem", &[2, 3]).unwrap();
+    assert_eq!(hud_call(Some(&hud), "HaveItem", &[2]).unwrap(), 56);
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(hud.inventory(None).unwrap().counts[&2], 56);
+    std::fs::remove_dir_all(output).unwrap();
+}
+
+#[test]
+fn inventory_drop_list_preserves_authored_order_and_zero_admission_skips_effects() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(1, 0), (2, 2), (3, 2), (4, 1)]);
+    asset.inventory.get_mut(&1).unwrap().drop_add_items = vec![2, 3];
+    asset.inventory.get_mut(&1).unwrap().player_max = 1;
+    asset.inventory.get_mut(&2).unwrap().remove_drop_items = vec![3];
+    asset.inventory.get_mut(&3).unwrap().remove_drop_items = vec![4];
+    asset.inventory.get_mut(&3).unwrap().flags = 1;
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud.add_item(1, 1).unwrap();
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(1, 1), (2, 1), (3, 0), (4, 0)].into()
+    );
+    hud.add_item(1, 9).unwrap();
+    assert_eq!(
+        hud.inventory(None).unwrap().counts,
+        [(1, 1), (2, 1), (3, 0), (4, 0)].into()
+    );
 }

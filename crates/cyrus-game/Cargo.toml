@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 cyrus-console.workspace = true
 log.workspace = true
-bevy = { workspace = true, features = ["bevy_asset", "bevy_state", "keyboard"] }
+bevy = { workspace = true, features = ["bevy_log", "bevy_asset", "bevy_state", "keyboard"] }
 cyrus-assets.workspace = true
 cyrus-world.workspace = true
 cyrus-collision.workspace = true

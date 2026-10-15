@@ -14,16 +14,22 @@ pub(super) struct Inventory {
     selected: Option<u16>,
 }
 impl Inventory {
-    pub fn new(hud: &HudAsset) -> Self {
-        Self {
+    pub fn new(hud: &HudAsset) -> Result<Self> {
+        let mut inventory = Self {
             items: hud.inventory.clone(),
-            selected: hud.selected.or_else(|| {
-                hud.items
-                    .iter()
-                    .find(|item| item.count > 0)
-                    .map(|item| item.id)
-            }),
+            selected: hud
+                .selected
+                .or_else(|| hud.inventory.keys().next().copied()),
+        };
+        if let Some(id) = inventory.selected {
+            inventory.count(id).context("ITEM.INI start_item_select")?;
         }
+        for &id in &hud.start_items {
+            inventory
+                .add(id, 1)
+                .with_context(|| format!("ITEM.INI start_item_list item {id}"))?;
+        }
+        Ok(inventory)
     }
     pub fn inspect(&self) -> serde_json::Value {
         serde_json::json!({
@@ -39,22 +45,99 @@ impl Inventory {
             .count)
     }
     pub fn add(&mut self, id: u16, amount: i32) -> Result<()> {
+        self.acquire(id, amount, &mut Vec::new())
+    }
+
+    fn requirements(&self, id: u16, path: &mut Vec<u16>) -> Result<bool> {
+        anyhow::ensure!(
+            !path.contains(&id),
+            "ITEM.INI required_item_list cycle at item {id}: {path:?}"
+        );
+        path.push(id);
         let item = self
             .items
-            .get_mut(&id)
+            .get(&id)
+            .with_context(|| format!("ITEM.INI required item {id}: definition absent"))?;
+        for &required in &item.required_items {
+            if self.count(required)? == 0 || !self.requirements(required, path)? {
+                path.pop();
+                return Ok(false);
+            }
+        }
+        path.pop();
+        Ok(true)
+    }
+
+    fn acquire(&mut self, id: u16, amount: i32, path: &mut Vec<u16>) -> Result<()> {
+        let item = self
+            .items
+            .get(&id)
             .with_context(|| format!("AddItem({id}): ITEM.INI definition absent"))?;
-        let amount = u32::try_from(amount)
+        let admitted = u32::try_from(amount)
             .unwrap_or(0)
             .min(item.total.saturating_sub(item.count))
             .min(item.player_max.saturating_sub(item.count));
-        if amount == 0 {
+        if admitted == 0 || !self.requirements(id, &mut Vec::new())? {
             return Ok(());
         }
         anyhow::ensure!(
-            !item.acquisition_effects,
-            "AddItem({id}): ITEM.INI acquisition lists require unsupported item services"
+            !path.contains(&id),
+            "ITEM.INI add_item_list cycle at item {id}: {path:?}"
         );
-        item.count += amount;
+        let drops = item.drop_add_items.clone();
+        let adds = item.add_items.clone();
+        path.push(id);
+        for other in drops {
+            self.remove(other, 1)
+                .with_context(|| format!("ITEM.INI drop_add_item_list[{id}] item {other}"))?;
+        }
+        for other in adds {
+            self.acquire(other, 1, path)
+                .with_context(|| format!("ITEM.INI add_item_list[{id}] item {other}"))?;
+        }
+        path.pop();
+        let item = self.items.get_mut(&id).expect("validated item");
+        item.count = item
+            .count
+            .checked_add(admitted)
+            .with_context(|| format!("AddItem({id}): count exceeds u32"))?;
+        Ok(())
+    }
+
+    pub fn remove(&mut self, id: u16, amount: i32) -> Result<()> {
+        if amount <= 0 {
+            return Ok(());
+        }
+        let item = self
+            .items
+            .get_mut(&id)
+            .with_context(|| format!("DropItem({id}): ITEM.INI definition absent"))?;
+        item.count = item.count.saturating_sub(amount as u32);
+        if item.flags & 1 != 0 {
+            item.count = 0;
+        }
+        self.remove_dependents(id, &mut Vec::new())
+    }
+
+    fn remove_dependents(&mut self, id: u16, path: &mut Vec<u16>) -> Result<()> {
+        if self.count(id)? == 0 {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            !path.contains(&id),
+            "ITEM.INI remove_drop_item_list cycle at item {id}: {path:?}"
+        );
+        path.push(id);
+        let dependents = self.items[&id].remove_drop_items.clone();
+        for other in dependents {
+            self.remove_dependents(other, path)
+                .with_context(|| format!("ITEM.INI remove_drop_item_list[{id}] item {other}"))?;
+            self.items
+                .get_mut(&other)
+                .expect("validated dependent")
+                .count = 0;
+        }
+        path.pop();
         Ok(())
     }
     pub fn select(&mut self, id: u16) -> Result<()> {

@@ -23,9 +23,6 @@ commits and implementation docs.
 
 ## Next work
 
-Current inventory task: the SOUP session owns installed ITEM.INI required-item
-checks and add/drop-add lists. Logbook navigation is the next independent HUD task.
-
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
 - Resolve remaining terrain/model shading differences, actor prelighting and
@@ -45,7 +42,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | Logbook navigation and installed presentation | In progress | Codex, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-logbook-navigation/` |
 | Rendering fidelity: residual START shading, model normals and sampling comparisons | In progress | Codex, Improve Rendering Fidelity, `t3/rendering-stage-one`; `magic/artifacts/2026-10-14-full-sun/` |
-| SOUP integration: inventory acquisition rules, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| SOUP integration: dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
 Save/load and remaining HUD integration are unassigned.
@@ -66,7 +63,7 @@ or fidelity across every world and palette.
 | SFX, RTX, CD audio | Effects, speech, subtitles, channels, music, preferences and surface remaps | Complete automatic triggers, moving emitters, nonplayer ground updates and audible parity |
 | SOUP | Portable VM, logical actors, supported ordinary updates and explicit hosts | Remaining actor stages, native services, lifecycle, synchronization and persistence |
 | MENU.INI, KEYS.INI | Data-driven menu, keyboard navigation, settings, rebinding and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie unlocks |
-| ITEM.INI, COMBAT.INI | Shared script/HUD ownership, selection, capped acquisition and compass use | Acquisition side effects, pickups, remaining item use, resets, saves and combat |
+| ITEM.INI, COMBAT.INI | Shared script/HUD ownership, recursive acquisition/removal, startup counts and compass use | Pickups, remaining item use, weapon fallback, resets, saves and combat |
 | SMK | Streamed native/browser video, first-track audio and skip/subtitle rules | Original comparison, A/V sync and hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Image inspection and authored-rate ANM playback | Game cursor and palette cycling |
 | CHT, CPF | Cheat and console parsing, local persistence and supported commands | Remaining gameplay effects, commands and console fidelity |
@@ -172,7 +169,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Shared `ShowBitmap`/`UnShowBitmap` slots and `AddLog` persistence/notification dispatch. **Verified:** original-instruction acceptance checks, shared dispatch/render tests and native/browser START entry. Full logbook UI, save integration and original notification cadence remain open.
 - [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Shared inventory and production actor inputs are connected below; save restore remains open.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
-- [x] Shared script/HUD inventory, capped `AddItem`, `HaveItem`, `SelectItem` and compass use from logical-player state. **Verified:** headless script and HUD checks cover acquisition, live counts/selection, surface gates and world/HUD replacement; installed export checks cover all item artwork. Acquisition side effects, new-game/death resets, saves and original timing comparison remain open.
+- [x] Shared script/HUD inventory, capped `AddItem`, `HaveItem`, `SelectItem` and compass use from logical-player state. **Verified:** headless script and HUD checks cover acquisition, live counts/selection, surface gates and world/HUD replacement; installed export checks cover all item artwork. New-game/death resets, saves and original timing comparison remain open.
 - [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
@@ -216,8 +213,8 @@ transitions in native and browser builds.
 Requires the player controller.
 
 - [ ] Production interaction with one eligible target, including overlapping pickups and removed objects on revisits.
-- [ ] Complete installed inventory acquisition rules: required-item checks and add/drop-add lists. Script/HUD counts, selection and compass use already share session ownership.
-- [ ] Complete pickups, remaining item-use handlers, inventory-screen candle rules, resets and save integration.
+- [x] Recursive ITEM.INI prerequisites, ordered add/drop-add effects, removal dependencies/flags and shared startup acquisitions. **Verified:** nine behavioral checks include installed startup counts; reversed drop order and post-effect cap recomputation fail the corresponding tests. Full gates and isolated dependency consumers pass.
+- [ ] Complete pickups, remaining item-use handlers, weapon fallback, inventory-screen candle rules, resets and save integration.
 - [ ] Dialogue choices, disabled choices, synchronized speech/subtitles/animation and results returned to waiting scripts.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
 - [ ] Authored world transitions and old sound/script/transient cleanup.
