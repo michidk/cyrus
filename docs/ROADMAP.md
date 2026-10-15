@@ -23,8 +23,8 @@ commits and implementation docs.
 
 ## Next work
 
-Next independent HUD task: build the installed logbook reading screen on the
-shared layout/navigation core.
+Next independent HUD task: compare candle cadence, health transitions and
+activation prompt/item timing against the original.
 
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
@@ -43,8 +43,10 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| SOUP integration: standalone player initialization, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
-| Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
+| Logbook reading screen: installed keys, pause, paper, fonts and scroll presentation | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-logbook-screen/` |
+| Rendering: controlled ISLAND water edges, residual sampling and transitions | In progress | Codex, Compare Water and Terrain Rendering, `t3/rendering-stage-one`; `magic/artifacts/2026-10-15-water-phase-recovery/` |
+| SOUP integration: standalone player initialization, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| Surface sound comparison: audible waveform/duration | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping` |
 
 Save/load and remaining HUD integration are unassigned.
 Controller implementation remains parked.
