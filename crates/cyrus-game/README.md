@@ -75,6 +75,13 @@ accessing storage. An installed-data journal document has been verified through
 native publication and fresh-process reconstruction, including duplicate-tag and
 notification continuation. Inventory and complete session restoration remain separate.
 
+`DialogueState::snapshot` retains ordered records, formatted text, remaining
+lifetimes, skip latch and presentation selection. `from_snapshot` returns a
+replacement after validating installed settings and explicit actor/sample
+bindings, including inactive retained references. It starts no playback and
+issues no presentation or speaker effects. Audio reconstruction and committing
+the complete restored session remain host responsibilities.
+
 `SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
 validated installed clock settings and caller-supplied BIOS samples. Its twelve-update
 warmup, fractional carry, smoothing and suspension rebasing are independent of

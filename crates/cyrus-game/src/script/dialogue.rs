@@ -1,7 +1,28 @@
 //! Shared dialogue records follow preservation's engine/sound.md initialization.
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use cyrus_assets::script::DialogueSettings;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Complete ordered dialogue records for a Cyrus session, not an original SAV record.
+/// Restore matching actor and audio owners before constructing a replacement.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DialogueSnapshot {
+    version: u32,
+    settings: DialogueSettings,
+    records: Vec<SavedDialogueRecord>,
+    skip_latched: bool,
+    presented: Option<usize>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SavedDialogueRecord {
+    owner: Option<(u64, usize)>,
+    text: String,
+    active: bool,
+    sample: Option<u8>,
+    remaining: i32,
+}
 
 /// Dialogue ownership persists across logical world replacement.
 /// Speech creation and record updates require their own supported native handlers.
@@ -49,6 +70,140 @@ pub trait DialogueEffects: DialoguePlayback {
 }
 
 impl DialogueState {
+    /// Capture without advancing lifetimes, consuming input or touching playback.
+    pub fn snapshot(&self) -> DialogueSnapshot {
+        DialogueSnapshot {
+            version: 1,
+            settings: self.settings.clone(),
+            records: self
+                .records
+                .iter()
+                .map(|record| SavedDialogueRecord {
+                    owner: record.owner.map(|owner| (owner.generation, owner.index)),
+                    text: record.text.clone(),
+                    active: record.active,
+                    sample: record.sample,
+                    remaining: record.remaining,
+                })
+                .collect(),
+            skip_latched: self.skip_latched,
+            presented: self.presented,
+        }
+    }
+
+    /// Validate and return a separate owner without audio, presentation or actor effects.
+    ///
+    /// Bind every retained actor and sample reference, including inactive records.
+    /// Mappings must be injective; additional mappings from the session are allowed.
+    /// The host owns destination actor validity and reconstruction of the shared
+    /// sixteen-channel audio state. Commit only with that complete session candidate.
+    /// A presented index may reference a cleared record until the next update.
+    pub fn from_snapshot(
+        settings: &DialogueSettings,
+        snapshot: DialogueSnapshot,
+        actors: &[(super::ScriptActorId, super::ScriptActorId)],
+        samples: &BTreeMap<u8, u8>,
+    ) -> Result<Self> {
+        ensure!(
+            snapshot.version == 1,
+            "dialogue snapshot version {} is unsupported",
+            snapshot.version
+        );
+        settings.validate()?;
+        ensure!(
+            snapshot.settings == *settings,
+            "dialogue snapshot installed settings differ"
+        );
+        ensure!(
+            snapshot.records.len() == settings.max_dialog_lines as usize,
+            "dialogue snapshot record count {} differs from installed count {}",
+            snapshot.records.len(),
+            settings.max_dialog_lines
+        );
+        ensure!(
+            snapshot
+                .presented
+                .is_none_or(|index| index < snapshot.records.len()),
+            "dialogue snapshot presented index {:?} exceeds record count {}",
+            snapshot.presented,
+            snapshot.records.len()
+        );
+        let mut actor_bindings = BTreeMap::new();
+        let mut destinations = BTreeSet::new();
+        for &(saved, restored) in actors {
+            ensure!(
+                actor_bindings
+                    .insert((saved.generation, saved.index), restored)
+                    .is_none(),
+                "dialogue actor binding repeats saved actor {saved:?}"
+            );
+            ensure!(
+                destinations.insert((restored.generation, restored.index)),
+                "dialogue actor binding repeats restored actor {restored:?}"
+            );
+        }
+        let mut destinations = BTreeSet::new();
+        for (&saved, &restored) in samples {
+            ensure!(
+                saved < 16 && restored < 16,
+                "dialogue sample binding {saved}->{restored} exceeds sixteen channels"
+            );
+            ensure!(
+                destinations.insert(restored),
+                "dialogue sample binding repeats restored channel {restored}"
+            );
+        }
+        let records = snapshot
+            .records
+            .into_iter()
+            .enumerate()
+            .map(|(index, saved)| {
+                let prepare = || -> Result<DialogueRecord> {
+                    ensure!(
+                        !saved.active || saved.owner.is_some(),
+                        "active speaker unavailable"
+                    );
+                    let owner = saved
+                        .owner
+                        .map(|id| {
+                            actor_bindings
+                                .get(&id)
+                                .copied()
+                                .with_context(|| format!("speaker {id:?} binding unavailable"))
+                        })
+                        .transpose()?;
+                    let sample = saved
+                        .sample
+                        .map(|sample| {
+                            ensure!(
+                                sample < 16,
+                                "saved sample {sample} exceeds sixteen channels"
+                            );
+                            samples
+                                .get(&sample)
+                                .copied()
+                                .with_context(|| format!("sample {sample} binding unavailable"))
+                        })
+                        .transpose()?;
+                    Ok(DialogueRecord {
+                        owner,
+                        text: saved.text,
+                        active: saved.active,
+                        sample,
+                        remaining: saved.remaining,
+                    })
+                };
+                prepare().with_context(|| format!("dialogue snapshot record {index}"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self {
+            settings: snapshot.settings,
+            records,
+            skip_latched: snapshot.skip_latched,
+            presented: snapshot.presented,
+        })
+    }
+
     pub(super) fn new(settings: &DialogueSettings) -> Result<Self> {
         settings.validate()?;
         Ok(Self {

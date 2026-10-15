@@ -12,7 +12,8 @@ pub use combat::{
 };
 mod dialogue;
 pub use dialogue::{
-    DialogueEffects, DialogueLine, DialoguePlayback, DialogueSource, DialogueState,
+    DialogueEffects, DialogueLine, DialoguePlayback, DialogueSnapshot, DialogueSource,
+    DialogueState,
 };
 mod flags;
 pub use flags::GlobalFlagsSnapshot;
