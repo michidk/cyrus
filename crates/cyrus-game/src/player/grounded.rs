@@ -69,11 +69,6 @@ impl GroundedWalk {
         ) -> anyhow::Result<()>,
     ) -> anyhow::Result<Option<u32>> {
         let previous = self.position;
-        let definition = query
-            .scene
-            .definition
-            .as_ref()
-            .context("grounded update: player definition unavailable")?;
         let mut frame = None;
         let step = if input.walk {
             self.forward(
@@ -89,7 +84,41 @@ impl GroundedWalk {
         if let Some(step) = &step {
             frame = step.frame.or(frame);
         }
-        let mut accepted = step.is_some();
+        let accepted = self.continue_forward(
+            query,
+            &input.motion,
+            (shared.0, shared.1),
+            animation,
+            step.is_some(),
+        )?;
+        self.resolve_ground(
+            query,
+            previous,
+            &mut input.motion.heading,
+            shared.0,
+            shared.1,
+        )?;
+        self.startup.finish_update(accepted);
+        Ok(frame)
+    }
+
+    /// Continue the current walking group after the native hook and script stage.
+    /// An earlier accepted forward action suppresses continuation. This preserves a
+    /// pending idle request and leaves late collision and startup cleanup to the caller.
+    pub fn continue_forward(
+        &mut self,
+        query: &StaticGroundQuery<'_>,
+        input: &ForwardWalk,
+        shared: (&mut SupportHistory, &mut i32),
+        animation: &cyrus_world::animation::ActorAnimation,
+        accepted: bool,
+    ) -> anyhow::Result<bool> {
+        let definition = query
+            .scene
+            .definition
+            .as_ref()
+            .context("walking continuation: player definition unavailable")?;
+        let mut accepted = accepted;
         if !accepted && animation.current_group() == Some(20) {
             let probe = definition.forward_probe(self.position, query.rotation)?;
             if query
@@ -100,23 +129,15 @@ impl GroundedWalk {
                 let distance = self.startup.advance(
                     definition.forward_walk,
                     definition.forward_speed,
-                    input.motion.frame_scale,
+                    input.frame_scale,
                     !animation.translation_suppressed(),
                 );
                 self.position =
-                    super::motion::translate(self.position, input.motion.heading, distance as i64);
+                    super::motion::translate(self.position, input.heading, distance as i64);
                 accepted = true;
             }
         }
-        self.resolve_ground(
-            query,
-            previous,
-            &mut input.motion.heading,
-            shared.0,
-            shared.1,
-        )?;
-        self.startup.finish_update(accepted);
-        Ok(frame)
+        Ok(accepted)
     }
 
     /// Query post-movement contacts, assign ordinary support height, then resolve walls.

@@ -197,6 +197,77 @@ impl SpatialWorld {
         })
     }
 
+    pub fn initialize_player(
+        &mut self,
+        index: usize,
+        actor: &ScriptActor,
+        position: [i32; 3],
+        angles: [u16; 3],
+    ) -> Result<()> {
+        self.place_player(index, actor, position, angles, false)
+    }
+
+    pub fn place_player(
+        &mut self,
+        index: usize,
+        actor: &ScriptActor,
+        position: [i32; 3],
+        angles: [u16; 3],
+        replace: bool,
+    ) -> Result<()> {
+        let slot = self
+            .actors
+            .get_mut(index)
+            .context("player spatial slot absent")?;
+        ensure!(
+            replace || slot.is_none(),
+            "actor {index}: spatial state already initialized"
+        );
+        ensure!(
+            angles.iter().all(|angle| *angle < 2048),
+            "actor {index}: player angles outside wrapped range"
+        );
+        ensure!(
+            actor.attributes()[25] == 0 && actor.attributes()[26] == 0,
+            "actor {index}: attached player initialization unsupported"
+        );
+        let pose = Pose {
+            position,
+            angles,
+            matrix: Matrix::orientation(angles),
+        };
+        let initialized = slot.is_some();
+        *slot = Some(ActorSpatial {
+            local: pose,
+            locations: std::iter::once(position)
+                .chain(actor.location_offsets.iter().map(|offset| {
+                    std::array::from_fn(|axis| position[axis].wrapping_add(offset[axis]))
+                }))
+                .collect(),
+            effective: Some(pose),
+            previous_effective_position: None,
+            previous_local_position: position,
+            water_rollback_position: None,
+            angle_history: angles,
+            parent: None,
+            linked_position: None,
+            no_slave_rotation: actor.attributes()[33] != 0,
+            rotation_mode: actor.attributes()[28],
+        });
+        if !initialized {
+            self.order.push(index);
+        }
+        Ok(())
+    }
+
+    pub fn is_initialized(&self, index: usize) -> Result<bool> {
+        Ok(self
+            .actors
+            .get(index)
+            .with_context(|| format!("actor {index}: outside spatial registry"))?
+            .is_some())
+    }
+
     pub fn actor(&self, index: usize) -> Result<&ActorSpatial> {
         self.actors
             .get(index)

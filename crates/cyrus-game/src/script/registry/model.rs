@@ -128,9 +128,7 @@ impl ScriptWorld {
         );
         self.require_model_identity(data)?;
         ensure!(
-            self.actors[index]
-                .placement()
-                .is_some_and(|placement| placement.object_type == 1),
+            self.actors[index].ordinary_collision_role(),
             "world {} instance {index}: ordinary collision object path unavailable",
             self.world
         );
@@ -404,6 +402,34 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Prepare the selected standalone player's animated model owner without a
+    /// fictitious MPOB placement. Caller admission still owns presentation timing.
+    pub fn prepare_player_model_resources(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+    ) -> Result<()> {
+        self.require_model_identity(data)?;
+        let index = self.resolve(id)?;
+        ensure!(
+            matches!(self.actors[index].source, super::ScriptActorSource::Player),
+            "world {} instance {index}: selected player model required",
+            self.world
+        );
+        ensure!(
+            !self.actors[index].model.prepared,
+            "world {} instance {index}: model resources already prepared",
+            self.world
+        );
+        ensure!(
+            data.actor(self.actors[index].name())?["model_load_path"] == "animation_table",
+            "world {} selected player: animated model definition required",
+            self.world
+        );
+        self.actors[index].model.prepared = true;
+        Ok(())
+    }
+
     /// Refresh exactly the caller-admitted presentation traversal, before ordinary updates.
     /// Omitted actors retain their prior record. Hidden/update-excluded admitted actors lose it.
     /// This does not derive PVO admission, ordinary eligibility, or drawing submission.
@@ -453,7 +479,13 @@ impl ScriptWorld {
                     let Some(frame) = self.animation_frame(id)? else {
                         continue;
                     };
-                    Some(data.resolve_map_frame(index, frame)?)
+                    Some(
+                        if matches!(self.actors[index].source, super::ScriptActorSource::Player) {
+                            data.resolve_frame(self.actors[index].name(), frame)?
+                        } else {
+                            data.resolve_map_frame(index, frame)?
+                        },
+                    )
                 }
                 path => anyhow::bail!(
                     "world {} instance {index}: model path {path:?} unsupported",
@@ -512,7 +544,7 @@ impl ScriptWorld {
     /// Live ordinary-map inputs in caller-established traversal order. Current model
     /// records supply bounds; logical movement cannot silently refresh those bounds.
     /// An absent current model contributes no candidate and needs no collision metadata.
-    /// Present standalone player and special-object collision ownership remains unsupported.
+    /// The selected standalone player is excluded; other special-object paths remain unsupported.
     pub fn live_collision_inputs(
         &self,
         order: &[ScriptActorId],
@@ -522,6 +554,10 @@ impl ScriptWorld {
         for &id in order {
             let index = self.resolve(id)?;
             let actor = &self.actors[index];
+            // The designated player is excluded from ordinary live candidates.
+            if matches!(actor.source, super::ScriptActorSource::Player) {
+                continue;
+            }
             // Candidate admission rejects an absent current record before reading
             // model-path metadata or preparing any actor collision response.
             let Some(record) = actor.model.current.as_ref() else {

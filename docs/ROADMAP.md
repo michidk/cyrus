@@ -194,11 +194,16 @@ against repeatable original-game comparisons.
 
 ## 2. Player controller
 
-Parked at user request. Supplied-tick cores do not enable live locomotion or the
-original follow camera.
+Bounded sheathed forward walking is connected to the ordinary script stage.
+**Verified:** a synthetic headless keyboard route covers idle, held forward,
+release continuation, logical-to-presentation pose updates and an authored sound
+cue. **Unknown:** complete installed traversal and four-surface acceptance.
+Running, composite actions and the original follow camera remain incomplete.
 
 - [x] Installed keyboard bindings, marker placement, static/dry-ground settling and independent flycam.
 - [x] Explicit grounded walking/turning/support/wall response with shared player, script, animation and render poses.
+- [x] Bounded ordinary keyboard walking adapter with retained walk-mode state, controller prelude, selected-player phase-zero combat maintenance and shared sound-maintenance timing. **Verified:** synthetic scheduler and ordinary-stage contracts.
+- [ ] Complete installed idle/held-forward/release acceptance across zero, sand, wood and rock; preserved offline audio evidence does not establish this route.
 - [ ] Establish complete eligibility/timing and compare fractional startup, steady movement, release, walls and ground updates.
 - [ ] Complete Faithful movement, turning, follow camera, jumping, gravity and quick actions. Recover sword, walk-mode and auto-defend rules before connecting them.
 - [ ] Complete slopes, steps, animated/dynamic collision, sliding, airborne/rollback response, ledges and moving platforms.
@@ -230,6 +235,7 @@ Requires the player controller.
 - [x] Atomic global-flag value/latch snapshots with exact installed-schema validation. **Verified:** native-operation continuation, signed values, malformed-state rejection and installed-definition round trips. Cross-world retention, original SVGF import and whole-game restore remain open.
 - [x] Native-task replacement snapshots validated against VM calls and explicit token/service bindings. **Verified:** headless wait/motion continuation, allocator history, paused slots, malformed bindings and animation request/cue retention. Complete service-owner and actor/world restoration remain open.
 - [x] Journal replacement snapshots with exact installed-text validation. **Verified:** headless text/tag/notification continuation, failed-write suppression and malformed-state rejection without storage I/O; an installed-data document also survives native publication and fresh-process reconstruction, with truncated data rejected. Complete session restoration remains open.
+- [x] Inventory replacement snapshots retain counts, mutable limits, visibility and selection without acquisition replay. **Verified:** focused continuation and malformed-state contracts.
 - [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. Native byte replacement uses exclusive synced candidates. **Verified:** Linux writer interruption during partial candidate write, before sync and before rename preserves the accepted document across fresh-process reads; an early-truncation control fails. Complete session restoration, power-loss durability and browser storage capacity remain open. Format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,

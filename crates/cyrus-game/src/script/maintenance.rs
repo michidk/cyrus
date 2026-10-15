@@ -17,7 +17,7 @@ pub enum SoundResetStage {
 /// Shared world-loop timer and inhibition, distinct from book-menu presentation.
 /// Initial inhibition is cleared by engine initialization. World-loop entry resets
 /// only the signed nominal-tick counter. Cleanup failures stop further sampling.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize)]
 pub struct SoundMaintenance {
     ticks: i32,
     inhibited: bool,
@@ -26,6 +26,10 @@ pub struct SoundMaintenance {
 }
 
 impl SoundMaintenance {
+    pub(super) fn initialize_player(&mut self) {
+        self.inhibited = false;
+    }
+
     /// Restart the counter on world-loop entry without changing inhibition.
     /// This does not recover a failed cleanup or reset gameplay ownership.
     pub fn enter_world(&mut self) {
@@ -94,5 +98,19 @@ impl SoundMaintenance {
             bail!("{error}");
         }
         Ok(self.reset)
+    }
+}
+
+impl super::ScriptWorld {
+    /// Lend the session sound timer and world to synchronous host cleanup.
+    /// The timer, including partial-failure state, is restored on every Result path.
+    pub fn with_sound_maintenance<R>(
+        &mut self,
+        update: impl FnOnce(&mut Self, &mut SoundMaintenance) -> R,
+    ) -> R {
+        let mut maintenance = std::mem::take(&mut self.globals_mut().sound_maintenance);
+        let result = update(self, &mut maintenance);
+        self.globals_mut().sound_maintenance = maintenance;
+        result
     }
 }

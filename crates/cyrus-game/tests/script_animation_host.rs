@@ -3413,6 +3413,12 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
                     {"opcode":0,"frame_reference":3},{"opcode":0,"frame_reference":4},{"opcode":2,"value":0}]}]
         })));
         let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        assert!(
+            world
+                .globals_mut()
+                .prepare_player_controller(1, 0, 0, 0)
+                .is_err()
+        );
         let mut sounds = Vec::new();
         for index in [2, 3] {
             let id = world.id(index).unwrap();
@@ -3422,6 +3428,12 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
                     Ok(())
                 })
                 .unwrap();
+            assert_eq!(world.globals().lockout(), None);
+            let error = world
+                .globals_mut()
+                .prepare_player_controller(u32::MAX, 0, 0, 0)
+                .unwrap_err();
+            assert!(error.to_string().contains("lockout unavailable"));
             assert_eq!(world.animation_frame(id).unwrap(), Some(3));
             assert_eq!(world.actor_surface(id).unwrap(), 0);
             let control = world.actors()[index].control_state().unwrap();
@@ -3523,5 +3535,64 @@ fn ordinary_weapon_default_uses_shared_inventory_readiness() {
                 Some(expected)
             );
         }
+    }
+}
+
+#[test]
+fn inventory_snapshot_restores_direct_state_without_acquisition_or_selection_repair() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{Inventory, ScriptHud},
+    };
+    let mut asset = inventory_fixture(&[(1, 0), (2, 1), (65535, 0)]);
+    asset.start_items = vec![1];
+    asset.inventory.get_mut(&1).unwrap().add_items = vec![2];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    let mut saved = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+    saved["items"]["1"] =
+        serde_json::json!({"count": 77, "total": 2, "player_max": 3, "hidden": true});
+    saved["items"]["2"]["count"] = 0.into();
+    saved["items"]["65535"]["count"] = 9.into();
+    saved["selected"] = 2.into();
+    let replacement =
+        Inventory::from_snapshot(&asset, serde_json::from_value(saved.clone()).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(replacement.snapshot()).unwrap(), saved);
+    assert_eq!(hud.inventory(None).unwrap().counts[&1], 1);
+    assert_eq!(hud.inventory(None).unwrap().counts[&2], 2);
+}
+
+#[test]
+fn inventory_snapshot_rejects_content_census_and_selection_mismatches() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{Inventory, ScriptHud},
+    };
+    let asset = inventory_fixture(&[(1, 1), (2, 0)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    let saved = serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap();
+    for field in ["version", "selected", "definition", "missing", "extra"] {
+        let mut invalid = saved.clone();
+        match field {
+            "version" => invalid["version"] = 99.into(),
+            "selected" => invalid["selected"] = 3.into(),
+            "definition" => invalid["definitions"]["1"]["flags"] = 1.into(),
+            "missing" => {
+                invalid["items"].as_object_mut().unwrap().remove("2");
+            }
+            "extra" => {
+                invalid["items"]["3"] = invalid["items"]["2"].clone();
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            Inventory::from_snapshot(&asset, serde_json::from_value(invalid).unwrap()).is_err(),
+            "{field}"
+        );
+        assert_eq!(
+            serde_json::to_value(hud.snapshot_inventory().unwrap()).unwrap(),
+            saved
+        );
     }
 }

@@ -158,6 +158,7 @@ module where it is defined and regenerate.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
 - `src/script/registry/overlap.rs` — Selected ordinary actor spheres remain separate from body-query working shapes.
+- `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.

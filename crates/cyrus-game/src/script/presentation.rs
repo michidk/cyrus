@@ -141,19 +141,23 @@ pub(super) fn bind_scene(
     }
 }
 
+type PresentationNode = (
+    Entity,
+    &'static ScriptBinding,
+    Option<&'static AnimationPose>,
+    Option<&'static SoundSurface>,
+    Option<&'static mut crate::player::placement::PlayerPose>,
+    Option<&'static mut Transform>,
+);
+
 pub(super) fn apply(
     mut commands: Commands,
     actors: Res<ScriptActors>,
     request: Res<AnimationRequest>,
     assets: Res<Assets<Animations>>,
-    nodes: Query<(
-        Entity,
-        &ScriptBinding,
-        Option<&AnimationPose>,
-        Option<&SoundSurface>,
-    )>,
+    mut nodes: Query<PresentationNode>,
 ) {
-    for (entity, binding, pose, surface) in &nodes {
+    for (entity, binding, pose, surface, player_pose, transform) in &mut nodes {
         let world = actors.current.as_ref().filter(|world| {
             world.generation() == binding.actor.generation && binding.source == request.0
         });
@@ -163,6 +167,22 @@ pub(super) fn apply(
                 .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
             continue;
         };
+        if world
+            .actors()
+            .get(binding.actor.index)
+            .is_some_and(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+            && let (Some(mut player_pose), Some(mut transform), Ok(spatial)) =
+                (player_pose, transform, world.spatial(binding.actor))
+        {
+            let position = spatial.local.position.map(i64::from);
+            let delta = std::array::from_fn::<_, 3, _>(|axis| {
+                (position[axis] - player_pose.position[axis]) as f32
+                    / (256.0 * crate::ENGINE_UNIT_SCALE)
+            });
+            transform.translation += Vec3::new(-delta[0], -delta[1], delta[2]);
+            player_pose.position = position;
+            player_pose.heading = spatial.local.angles[1];
+        }
         match world.actor_surface(binding.actor).ok().map(SoundSurface) {
             Some(next) if surface != Some(&next) => {
                 commands.entity(entity).insert(next);

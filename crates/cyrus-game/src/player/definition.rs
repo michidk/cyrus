@@ -3,7 +3,7 @@ use anyhow::Context;
 use serde::Deserialize;
 
 /// Installed CYRUS definition. Extents are nonnegative map units in original axes.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PlayerDefinition {
     /// Ordinary sheathed idle default from `attr_panic_group`, per preservation player.md.
     pub ordinary_default_group: u8,

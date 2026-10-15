@@ -109,8 +109,9 @@ impl ScriptWorld {
         let selected = self.ordinary_actors(view)?.to_vec();
         for &id in &selected {
             let actor = &mut self.actors[id.index];
-            // Standalone player/camera stages have separate, not yet connected owners.
-            if actor.placement().is_none() {
+            let selected_player = matches!(actor.source, super::ScriptActorSource::Player)
+                && inputs.player_controller.is_some();
+            if actor.placement().is_none() && !selected_player {
                 continue;
             }
             if actor.failure().is_some() || actor.unavailable().is_some() {
@@ -132,6 +133,12 @@ impl ScriptWorld {
                 continue;
             }
             let result = (|| -> anyhow::Result<()> {
+                if selected_player {
+                    if !self.actors[id.index].model.prepared {
+                        self.prepare_player_model_resources(id, data)?;
+                    }
+                    self.begin_player_movement_update(id, ticks)?;
+                }
                 self.snapshot_spatial(id)?;
                 self.actors[id.index].model.support = Default::default();
                 if self.actors[id.index].animation.is_some() {
@@ -168,14 +175,44 @@ impl ScriptWorld {
                 } else {
                     None
                 };
-                self.advance(
-                    id,
-                    ScriptStage::OrdinaryHook,
-                    inputs,
-                    Some(sounds),
-                    Some(random),
-                    budget,
-                )?;
+                let player_query = if selected_player {
+                    Some(super::ground::OrdinaryGroundQuery {
+                        scene: scene
+                            .ok_or_else(|| anyhow::anyhow!("player collision scene unavailable"))?,
+                        animations: data,
+                        prepared: collision.as_ref().ok_or_else(|| {
+                            anyhow::anyhow!("player collision candidates unavailable")
+                        })?,
+                        distance: scene.unwrap().settings.post_collide_height,
+                        sidedness: false,
+                    })
+                } else {
+                    None
+                };
+                let player_timing = crate::clock::ClockStep {
+                    frame_scale: inputs.frame_scale.expect("validated frame scale"),
+                    nominal_ticks: ticks,
+                    fine_ticks: 0,
+                };
+                if let Some(query) = player_query {
+                    self.advance_player_controller(
+                        id,
+                        query,
+                        player_timing,
+                        inputs.player_controller.expect("admitted controller"),
+                        random,
+                        sounds,
+                    )?;
+                } else {
+                    self.advance(
+                        id,
+                        ScriptStage::OrdinaryHook,
+                        inputs,
+                        Some(sounds),
+                        Some(random),
+                        budget,
+                    )?;
+                }
                 let actor = &self.actors[id.index];
                 if self.updates.task_system
                     && !actor
@@ -183,8 +220,11 @@ impl ScriptWorld {
                         .as_ref()
                         .is_some_and(cyrus_script::Runtime::has_unpaused_task)
                 {
-                    let shell = inputs.activation.is_some_and(|input| input.shell_execution);
-                    let transition = inputs.activation.is_some_and(|input| {
+                    let shell = inputs
+                        .shell_execution
+                        .or_else(|| inputs.activation.map(|input| input.shell_execution))
+                        .unwrap_or(false);
+                    let transition = if let Some(input) = inputs.activation {
                         input.item_system_ready
                             && !shell
                             && input.actors.get(&input.player.index).is_some_and(|player| {
@@ -206,7 +246,37 @@ impl ScriptWorld {
                                     );
                                 drawing || sheathing
                             })
-                    });
+                    } else if !shell
+                        && inputs
+                            .hud
+                            .map(super::super::ScriptHud::inventory_ready)
+                            .transpose()?
+                            .unwrap_or(false)
+                    {
+                        self.actors
+                            .iter()
+                            .find(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                            .and_then(|actor| {
+                                actor.control.as_ref().map(|control| (actor, control))
+                            })
+                            .is_some_and(|(actor, control)| {
+                                let (_, drawing, sheathing) =
+                                    super::super::activation::weapon_predicates(
+                                        control.living_state,
+                                        actor.bound_animation_group().map(|group| {
+                                            super::super::ActivationAnimation { group }
+                                        }),
+                                        control.combat_death_default.is_some(),
+                                        control.weapon_drawn,
+                                        actor.attributes[110],
+                                        true,
+                                        shell,
+                                    );
+                                drawing || sheathing
+                            })
+                    } else {
+                        false
+                    };
                     self.maintain_map_combat(id, ticks, transition, shell)?;
                 }
                 self.advance(
@@ -217,6 +287,9 @@ impl ScriptWorld {
                     Some(random),
                     budget,
                 )?;
+                if let Some(query) = player_query {
+                    self.advance_player_walking(id, query, player_timing, true, sounds)?;
+                }
                 if self.actors[id.index].attributes[1] != 0 {
                     let collision = collision.ok_or_else(|| {
                         anyhow::anyhow!(
@@ -273,6 +346,9 @@ impl ScriptWorld {
                     self.refresh_transform(id)?;
                 }
                 self.retain_ordinary_water_position(id)?;
+                if selected_player {
+                    self.finish_player_movement_update(id)?;
+                }
                 Ok(())
             })();
             if let Err(error) = result {
@@ -291,7 +367,7 @@ impl ScriptWorld {
 
 pub(crate) fn sample_clock(
     time: Res<Time<Real>>,
-    actors: Res<ScriptActors>,
+    mut actors: ResMut<ScriptActors>,
     clock: Option<ResMut<SimulationClock>>,
     prepared: OrdinaryAssets,
     mut running: Local<bool>,
@@ -324,6 +400,12 @@ pub(crate) fn sample_clock(
                 clock.rebase(tick);
             }
             clock.advance(tick);
+            actors
+                .current
+                .as_mut()
+                .expect("clock readiness requires a world")
+                .globals
+                .advance_player_idle_clock(clock.measurement_intervals());
             commands.insert_resource(ClockSample(actors.current.as_ref().unwrap().generation()));
         }
     }
@@ -356,6 +438,10 @@ pub struct OrdinaryContext<'w, 's> {
     prepared: OrdinaryAssets<'w>,
     hud: Option<Res<'w, super::super::ScriptHud>>,
     entry: Option<Res<'w, crate::player::placement::MarkerEntry>>,
+    input: Option<Res<'w, crate::player::input::PlayerInput>>,
+    toggles: Option<Res<'w, crate::player::input::PlayerToggles>>,
+    fidelity: Option<Res<'w, crate::fidelity::Fidelity>>,
+    explicit: Option<Res<'w, crate::player::runtime::PlayerRuntime>>,
     actors: ResMut<'w, ScriptActors>,
     clock: Option<Res<'w, SimulationClock>>,
     random: ResMut<'w, crate::random::EngineRandom>,
@@ -476,6 +562,10 @@ pub fn run_ordinary(
         prepared,
         hud,
         entry,
+        input,
+        toggles,
+        fidelity,
+        explicit,
         mut actors,
         clock,
         mut random,
@@ -523,36 +613,6 @@ pub fn run_ordinary(
         return;
     }
     let timing = clock.step();
-    let player_query = match players.single() {
-        Ok(player) => {
-            let mut position = [0; 3];
-            for (axis, coordinate) in player.position.into_iter().enumerate() {
-                let Ok(coordinate) = i32::try_from(coordinate) else {
-                    actors.error = Some(format!(
-                        "world {} selected player position axis {axis}: outside Q8 i32 range",
-                        world.world
-                    ));
-                    return;
-                };
-                position[axis] = coordinate;
-            }
-            Some(super::super::QueryInputs {
-                player: Some(super::super::PlayerQuery {
-                    position,
-                    heading: player.heading,
-                }),
-                distance_override: Some(
-                    cheats
-                        .as_ref()
-                        .and_then(|cheats| cheats.distance_override().ok())
-                        .unwrap_or(world.player_distance_override),
-                ),
-                fallback_position: None,
-                linked_position: None,
-            })
-        }
-        Err(_) => None,
-    };
     // Ordinary world scheduling runs outside the separate shell-script context.
     if let Err(error) = world.flush_map_updates(view.position, false) {
         actors.error = Some(format!("automatic deferred movement: {error:#}"));
@@ -606,6 +666,26 @@ pub fn run_ordinary(
                     continue;
                 }
                 let id = world.id(index)?;
+                if matches!(world.actors[index].source, super::ScriptActorSource::Player)
+                    && !world
+                        .spatial
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("player spatial registry not prepared"))?
+                        .is_initialized(index)?
+                {
+                    let pose = players.single().map_err(|error| {
+                        anyhow::anyhow!("player spatial initialization: {error}")
+                    })?;
+                    let mut position = [0; 3];
+                    for (axis, value) in pose.position.into_iter().enumerate() {
+                        position[axis] = i32::try_from(value).map_err(|_| {
+                            anyhow::anyhow!(
+                                "player spatial initialization axis {axis}: Q8 position outside i32"
+                            )
+                        })?;
+                    }
+                    world.initialize_player_spatial(id, position, [0, pose.heading, 0])?;
+                }
                 if !world.actors[index].animation_initialized() {
                     let entry = entry.as_ref().ok_or_else(|| {
                         anyhow::anyhow!("player role initialization: marker entry unavailable")
@@ -663,6 +743,57 @@ pub fn run_ordinary(
         actors.error = Some(format!("automatic model presentation: {error:#}"));
         return;
     }
+    let player_query = (|| -> anyhow::Result<_> {
+        let Some(index) = world
+            .actors
+            .iter()
+            .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+        else {
+            return Ok(None);
+        };
+        if players.single().is_err() {
+            return Ok(None);
+        }
+        let pose = world.spatial(world.id(index)?)?.query_pose()?;
+        Ok(Some(super::super::QueryInputs {
+            player: Some(super::super::PlayerQuery {
+                position: pose.position,
+                heading: pose.angles[1],
+            }),
+            distance_override: Some(
+                cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.distance_override().ok())
+                    .unwrap_or(world.player_distance_override),
+            ),
+            fallback_position: None,
+            linked_position: None,
+        }))
+    })();
+    let player_query = match player_query {
+        Ok(query) => query,
+        Err(error) => {
+            actors.error = Some(format!("automatic selected-player query: {error:#}"));
+            return;
+        }
+    };
+    let player_controller = if !explicit
+        .as_ref()
+        .is_some_and(|runtime| runtime.explicit_updated)
+        && fidelity
+            .as_ref()
+            .is_some_and(|fidelity| fidelity.player_controller == crate::fidelity::Mode::Faithful)
+    {
+        input
+            .as_deref()
+            .zip(toggles.as_deref())
+            .map(|(held, toggles)| super::player::PlayerControllerInput {
+                held,
+                walk_mode: toggles.walk_mode,
+            })
+    } else {
+        None
+    };
     let result = world.update_ordinary(
         data,
         [view.position[0] >> 8, view.position[2] >> 8],
@@ -676,6 +807,7 @@ pub fn run_ordinary(
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),
                 player_query,
+                player_controller,
                 ambient_sound,
                 dialogue_source,
                 combat_taunts,

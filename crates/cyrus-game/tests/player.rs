@@ -203,6 +203,7 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
     use cyrus_assets::animation::Animations;
     use cyrus_game::player::data::{PlayerScene, PlayerSceneRequest};
     use cyrus_game::player::placement::MarkerEntry;
+    use cyrus_game::player::placement::PlayerEntrySupport;
     use cyrus_game::player::placement::PlayerPose;
     use cyrus_world::animation::AnimationRequest;
 
@@ -294,6 +295,10 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
         app.world().get::<Transform>(player).unwrap().translation,
         Vec3::new(-2040.8, 37.2, -1225.5998)
     );
+    assert_eq!(
+        app.world().get::<PlayerEntrySupport>(player),
+        Some(&PlayerEntrySupport::StaticSettled)
+    );
     // Entry is one-shot; later updates must not undo movement or ground settling.
     app.world_mut()
         .get_mut::<Transform>(player)
@@ -319,6 +324,11 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
     );
     app.world_mut().resource_mut::<MarkerEntry>().heading = 0;
     app.update();
+    assert!(matches!(
+        app.world().get::<PlayerEntrySupport>(player),
+        Some(PlayerEntrySupport::InspectionOnly(error))
+            if error.contains("water or terrain edge unsupported")
+    ));
     assert_eq!(
         app.world().get::<PlayerPose>(player).unwrap().position,
         [10_448_896, -178_944, 10_502_144]
@@ -330,6 +340,7 @@ fn marker_entry_waits_for_matching_world_data_and_settles_once() {
     app.world_mut().resource_mut::<MarkerEntry>().marker = 1;
     app.update();
     assert!(app.world().get::<PlayerPose>(player).is_none());
+    assert!(app.world().get::<PlayerEntrySupport>(player).is_none());
     app.world_mut().resource_mut::<MarkerEntry>().marker = 9;
     app.update();
     assert!(app.world().get::<PlayerPose>(player).is_none());

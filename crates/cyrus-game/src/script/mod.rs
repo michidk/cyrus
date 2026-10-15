@@ -20,7 +20,7 @@ mod hud;
 mod inventory;
 mod journal;
 pub use hud::{CompassUse, ScriptHud};
-pub use inventory::InventoryView;
+pub use inventory::{Inventory, InventorySnapshot, InventoryView};
 pub use journal::{Journal, JournalSnapshot};
 mod maintenance;
 mod markers;
@@ -39,6 +39,7 @@ pub use registry::model::{
 };
 pub use registry::obstacle::{OrdinaryForwardHit, OrdinaryObstacleQuery, ordinary_forward_hit};
 pub use registry::overlap::{OrdinaryOverlapMotion, OrdinaryOverlapPass, ordinary_overlap_motion};
+pub use registry::player::PlayerControllerInput;
 pub use registry::prevalidation::{OrdinaryGroundPrevalidation, ordinary_ground_prevalidation};
 pub use registry::queued::{OrdinaryQueuedAction, OrdinaryQueuedInputs, ordinary_queued_action};
 pub use registry::recovery::{OrdinaryRollbackSnapshot, OrdinaryStableRecoveryInputs};
@@ -127,6 +128,7 @@ impl Plugin for ScriptPlugin {
                 Update,
                 registry::ordinary::step
                     .in_set(OrdinaryUpdates)
+                    .after(crate::player::runtime::step)
                     .after(crate::clock::enter_world)
                     .after(crate::player::input::InputSample)
                     .after(presentation::bind_scene)

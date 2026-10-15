@@ -138,7 +138,7 @@ pub struct HudState {
     pub powerups: [Option<(u8, u8)>; 2],
     /// Logbook icon frame while it plays; see [`HudState::logbook_entry`].
     pub logbook_frame: Option<u8>,
-    /// Walk mode (Tab) and auto-defend (F7); the player does not consume them yet.
+    /// Display projections of the shared gameplay walk-mode and auto-defend toggles.
     pub walk_mode: bool,
     pub auto_defend: bool,
     /// Remaining ticks of the walk-mode and auto-defend notices.
@@ -492,7 +492,10 @@ fn update(
     assets: Res<AssetServer>,
     handle: Option<Res<HudHandle>>,
     data: Res<Assets<HudAsset>>,
-    state: Option<ResMut<HudState>>,
+    (state, toggles): (
+        Option<ResMut<HudState>>,
+        Option<ResMut<cyrus_game::player::input::PlayerToggles>>,
+    ),
     viewport: Query<Entity, With<HudViewport>>,
     mut sprites: Query<(&HudSprite, &mut ImageNode, &mut Node, &mut Visibility)>,
     text_layer: Query<Entity, With<HudText>>,
@@ -529,6 +532,15 @@ fn update(
             None
         });
         let mut state = HudState::new(hud, preferences, frames);
+        if let Some(toggles) = toggles.as_ref() {
+            state.walk_mode = toggles.walk_mode;
+            state.auto_defend = toggles.auto_defend;
+        } else {
+            commands.insert_resource(cyrus_game::player::input::PlayerToggles {
+                walk_mode: state.walk_mode,
+                auto_defend: state.auto_defend,
+            });
+        }
         if let Ok(Some(menu)) = preferences_store.menu() {
             state.bindings = menu.bindings;
         }
@@ -561,6 +573,9 @@ fn update(
     state.powerups = powerups;
     let start_notification = notification && state.logbook_frame.is_none();
 
+    let Some(mut toggles) = toggles else {
+        return;
+    };
     let state = &mut *state;
 
     // Fixed, non-configurable keys: F8 candle mode, Tab walk mode, F7 auto-defend.
@@ -572,15 +587,17 @@ fn update(
     for (notice, key) in [KeyCode::Tab, KeyCode::F7].into_iter().enumerate() {
         if keys.just_pressed(key) {
             let flag = if notice == 0 {
-                &mut state.walk_mode
+                &mut toggles.walk_mode
             } else {
-                &mut state.auto_defend
+                &mut toggles.auto_defend
             };
             *flag = !*flag;
             state.notices[notice] = NOTICE_TICKS;
             toggled = true;
         }
     }
+    state.walk_mode = toggles.walk_mode;
+    state.auto_defend = toggles.auto_defend;
     if toggled {
         let preferences = HudPreferences {
             candle_mode: state.candle_mode,
@@ -1385,6 +1402,32 @@ mod tests {
         prepare_script(&mut app, &[]);
         app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
         app
+    }
+
+    #[test]
+    fn gameplay_toggles_survive_hud_recreation_and_drive_its_projection() {
+        use cyrus_game::player::input::PlayerToggles;
+        let mut app = compass_app();
+        assert!(!app.world().resource::<PlayerToggles>().walk_mode);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Tab);
+        app.update();
+        assert!(app.world().resource::<PlayerToggles>().walk_mode);
+        assert!(app.world().resource::<HudState>().walk_mode);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .reset_all();
+        app.world_mut().remove_resource::<HudState>();
+        app.update();
+        assert!(app.world().resource::<PlayerToggles>().walk_mode);
+        assert!(app.world().resource::<HudState>().walk_mode);
+        app.world_mut().resource_mut::<PlayerToggles>().walk_mode = false;
+        app.world_mut().resource_mut::<PlayerToggles>().auto_defend = true;
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert!(!state.walk_mode);
+        assert!(state.auto_defend);
     }
 
     fn use_key(app: &mut App, held: bool) {

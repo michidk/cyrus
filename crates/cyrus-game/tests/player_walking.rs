@@ -439,7 +439,18 @@ fn composed_walk_translates_only_after_support_and_animation_admission() {
             emitted, expected,
             "walking cue captures assigned surface and position before translation"
         );
-        if !accepted {
+        if accepted {
+            let after_hook = walk.position;
+            assert!(
+                walk.continue_forward(&query, &input, (&mut history, &mut veto), &animation, true,)
+                    .unwrap()
+            );
+            assert_eq!(
+                walk.position, after_hook,
+                "continuation must not repeat hook movement"
+            );
+            assert_eq!(walk.startup.advance(8, 24, 256, true), 682);
+        } else {
             assert_eq!(walk.startup.advance(8, 24, 256, true), 512);
         }
     }
@@ -909,6 +920,15 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         app.world().get::<PlayerPose>(player).unwrap().position,
         [512 * 256, -64 * 256, 512 * 256 + 1194]
     );
+    {
+        let actors = app.world().resource::<cyrus_game::script::ScriptActors>();
+        let logical = actors.current.as_ref().unwrap().spatial(actor).unwrap();
+        assert_eq!(
+            logical.local.position,
+            [512 * 256, -64 * 256, 512 * 256 + 1194]
+        );
+        assert_eq!(logical.local.angles, [0, 0, 0]);
+    }
     let pose = app.world().get::<AnimationPose>(player).unwrap();
     assert_eq!((pose.model.as_str(), pose.frame), ("WALK", 1));
     assert_eq!(
@@ -920,6 +940,10 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
             < 1e-6
     );
     app.world_mut()
+        .get_mut::<PlayerPose>(player)
+        .unwrap()
+        .heading = 1024;
+    app.world_mut()
         .resource_mut::<Messages<GroundedTick>>()
         .write(tick(0, Mat3::IDENTITY));
     app.update();
@@ -928,6 +952,19 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
         512 * 256 + 2218
     );
     assert_eq!(app.world().get::<AnimationPose>(player).unwrap().frame, 1);
+    assert_eq!(app.world().get::<PlayerPose>(player).unwrap().heading, 0);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_game::script::ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .spatial(actor)
+            .unwrap()
+            .local
+            .position,
+        [512 * 256, -64 * 256, 512 * 256 + 2218]
+    );
     app.world_mut()
         .resource_mut::<Messages<GroundedTick>>()
         .write(tick(1, Mat3::from_cols_array(&[f32::NAN; 9])));
@@ -1014,6 +1051,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
                 cyrus_game::script::ScriptStage::Body(cyrus_script::Thread::Main),
                 cyrus_game::script::ScriptInputs {
                     nominal_ticks: Some(1),
+                    frame_scale: Some(256),
                     ..Default::default()
                 },
                 Some(&mut |_, _| Ok(())),

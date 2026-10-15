@@ -2,9 +2,8 @@
 use super::{
     Player,
     data::{PlayerScene, PlayerSceneRequest},
-    grounded::{self, ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery, SurfaceUpdate},
+    grounded::SurfaceUpdate,
     placement::{MarkerEntry, PlayerPose},
-    walk::WalkingStartup,
 };
 use crate::script::{ScriptActorId, ScriptActors, ScriptBinding};
 use anyhow::Context;
@@ -13,7 +12,6 @@ use bevy::prelude::{
     AssetId, Assets, Commands, Entity, Handle, Mat3, Message, MessageReader, Messages, Query, Res,
     ResMut, Resource, State, Transform, Vec3, With,
 };
-use cyrus_collision::ground::SupportHistory;
 use cyrus_world::{
     animation::{AnimationPose, AnimationRequest, Animations},
     sound::{SoundCue, SoundSurface},
@@ -54,17 +52,13 @@ struct Source {
     generation: u64,
 }
 
-struct Running {
-    walk: GroundedWalk,
-    history: SupportHistory,
-    veto: i32,
-}
-
-/// Retained selected-player simulation. Failure stops further steps until entry changes.
+/// Presentation-entry identity and failure for explicit player updates.
+/// Movement continuation belongs to the logical actor in ScriptWorld.
 #[derive(Resource, Default)]
 pub struct PlayerRuntime {
     source: Option<Source>,
-    running: Option<Running>,
+    entry_pending: bool,
+    pub(crate) explicit_updated: bool,
     pub error: Option<String>,
 }
 
@@ -86,6 +80,7 @@ pub(crate) fn step(
     mut players: Query<(Entity, Option<&mut PlayerPose>, &mut Transform), With<Player>>,
 ) {
     let (mut runtime, mut sounds) = simulation;
+    runtime.explicit_updated = false;
     let (state, marker) = entry;
     let Ok((entity, pose, mut transform)) = players.single_mut() else {
         *runtime = PlayerRuntime::default();
@@ -124,6 +119,7 @@ pub(crate) fn step(
     };
     if state.get() != &crate::AppState::InGame || runtime.source.as_ref() != Some(&source) {
         *runtime = PlayerRuntime::default();
+        runtime.entry_pending = true;
         commands
             .entity(entity)
             .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
@@ -145,6 +141,7 @@ pub(crate) fn step(
         if runtime.error.is_some() {
             continue;
         }
+        runtime.explicit_updated = true;
         let result = (|| -> anyhow::Result<()> {
             let scene = scenes
                 .get(&tick.source)
@@ -163,7 +160,6 @@ pub(crate) fn step(
                 "world {} player step: nonfinite rotation",
                 scene.world
             );
-            let initial_surface = world.actor_surface(tick.actor)?;
             let mut emit = |sound, surface, position: [i64; 3]| {
                 let captured_position = if matches!(
                     &sound,
@@ -188,88 +184,28 @@ pub(crate) fn step(
                     });
                 Ok(())
             };
-            if runtime.running.is_none() {
-                let definition = scene
-                    .definition
-                    .as_ref()
-                    .context("player step: definition unavailable")?;
-                runtime.running = Some(Running {
-                    walk: GroundedWalk {
-                        position: pose.position,
-                        surface: world.actor_surface(tick.actor)?,
-                        startup: WalkingStartup::new(definition.step_type)
-                            .context("player step: unsupported step type")?,
-                    },
-                    history: SupportHistory::new(0, 0),
-                    veto: 0,
-                });
-            }
-            let initial_position = runtime.running.as_ref().unwrap().walk.position;
-            let animation =
-                world.player_animation(tick.actor, data, tick.nominal_ticks, &mut |sound| {
-                    emit(sound, initial_surface, initial_position)
-                })?;
-            let running = runtime.running.as_mut().unwrap();
-            if let Some(frame) = grounded::advance_animation(
+            let presentation = world.explicit_grounded_step(
                 scene,
-                tick.nominal_ticks,
-                &mut running.history,
-                &mut animation.playback,
-                &mut |sound| emit(sound, running.walk.surface, running.walk.position),
-            )? {
-                animation.frame = Some(frame);
-            }
-            let mut frame = animation
-                .frame
-                .map(|frame| data.resolve_frame("CYRUS", frame))
-                .transpose()?;
-            let candidates = scene.candidates(
-                tick.view,
-                running.walk.position,
-                frame.as_ref().map(|frame| frame.model.as_str()),
-            )?;
-            let query = StaticGroundQuery {
-                scene,
-                candidates: &candidates,
-                rotation: tick.rotation,
-                collision_attribute: tick.collision_attribute,
-                alternate_collision: tick.alternate_collision,
-                sidedness: tick.sidedness,
-                surface_update: tick.surface_update,
-            };
-            let mut input = GroundedUpdate {
-                motion: ForwardWalk {
-                    heading: pose.heading,
-                    frame_scale: tick.frame_scale,
-                    nominal_ticks: tick.nominal_ticks,
-                },
-                walk: tick.walk,
-            };
-            if let Some(reference) = running.walk.move_grounded(
-                &query,
-                &mut input,
-                (&mut running.history, &mut running.veto),
-                &mut animation.playback,
+                data,
+                tick,
+                runtime.entry_pending.then_some(&*pose),
                 &mut emit,
-            )? {
-                animation.frame = Some(reference);
-                frame = Some(data.resolve_frame("CYRUS", reference)?);
-            }
+            )?;
+            runtime.entry_pending = false;
             let delta = std::array::from_fn::<_, 3, _>(|i| {
-                (running.walk.position[i] - pose.position[i]) as f32
+                (presentation.pose.position[i] - pose.position[i]) as f32
                     / (256.0 * crate::ENGINE_UNIT_SCALE)
             });
             transform.translation += Vec3::new(-delta[0], -delta[1], delta[2]);
-            pose.position = running.walk.position;
-            pose.heading = input.motion.heading;
-            if let Some(frame) = frame {
+            *pose = presentation.pose;
+            if let Some(frame) = presentation.frame {
                 commands.entity(entity).insert(AnimationPose {
                     model: frame.model,
                     frame: frame.frame,
                 });
             }
             commands.entity(entity).insert((
-                SoundSurface(running.walk.surface),
+                SoundSurface(presentation.surface),
                 ScriptBinding {
                     actor: tick.actor,
                     source: tick.animation.clone(),
@@ -277,13 +213,6 @@ pub(crate) fn step(
             ));
             Ok(())
         })();
-        // Surface assignment precedes transition effects, even when those effects fail.
-        if let Some(running) = &runtime.running
-            && let Err(error) = world.set_actor_surface(tick.actor, running.walk.surface)
-        {
-            runtime.error = Some(format!("player surface: {error:#}"));
-            continue;
-        }
         if let Err(error) = result {
             let error = format!("player step: {error:#}");
             bevy::log::error_once!("{error}");

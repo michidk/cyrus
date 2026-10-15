@@ -20,6 +20,14 @@ pub struct PlayerInput {
     pub walk: bool,
 }
 
+/// Retained gameplay toggles, initialized from installed HUD data or saved preferences.
+/// The HUD projects these values; world replacement must not reset them.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct PlayerToggles {
+    pub walk_mode: bool,
+    pub auto_defend: bool,
+}
+
 /// Keyboard bindings in up/down/left/right/a/b/c/d order. Empty until loaded.
 #[derive(Resource, Default)]
 pub struct PlayerBindings([Option<KeyCode>; 8]);

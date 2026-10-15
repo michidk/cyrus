@@ -29,8 +29,17 @@ sidecar path rather than depending on this game-owned asset. Inspection adapters
 set `InputSuppressed` before `InputSample`; player transforms remain independent
 of camera transforms.
 
+The logical player's mixed-candidate walking stage uses
+`begin_player_movement_update` before animation and
+`finish_player_movement_update` after late response. The shared update retains
+forward acceptance so continuation cannot move twice, and an update without
+accepted movement resets startup. The ordinary scheduler supplies Faithful held
+input and shared walk mode when their owners are present. Explicit GroundedTick
+updates exclude automatic player movement for that update. End-to-end keyboard
+walking acceptance remains unverified.
+
 Ground-turn, walking startup, wall response and forward support admission are
-explicit deterministic APIs. Automatic player locomotion and complete actor eligibility remain unsupported.
+explicit deterministic APIs. Complete actor eligibility remains unsupported.
 `player::controller::select_sheathed_action` selects an action for a caller-admitted
 ordinary sheathed-ground state. It requires known lockout, dialogue, topic-menu
 and walk-toggle values and Faithful held-key input. It returns early dispatch,
@@ -43,6 +52,15 @@ Supported ordinary map actors use the shared simulation clock. See
 
 `SimulationClock::snapshot` captures complete timing, including settings, smoothing,
 warmup, measurement remainder, fractional carry and the exposed update step.
+Snapshot version 2 also retains the last completed 18-BIOS-tick measurement
+interval count. `measurement_intervals` exposes that count independently of
+nominal ticks for the admitted normal-mode idle timer. Older snapshots are rejected.
+Automatic clock sampling applies these intervals once to an established player
+idle counter; suspended menu, console and logbook time does not advance it.
+An unknown initial counter remains unknown until a supported reset establishes it.
+Fresh `ScriptActors` sessions establish lockout and idle at zero, following
+preservation's player initialization rules. Isolated `ScriptWorld::prepare`
+does not establish a new session; world replacement retains the session globals.
 `from_snapshot` validates it and returns a replacement rebased to the caller's
 current BIOS sample without advancing. The partial menu checkpoint stays separate.
 **Verified:** serialization/resume contracts cover epoch changes, warmup, smoothing,
@@ -156,8 +174,9 @@ requesting the group again or replacing its pending idle request, following
 [preservation PR50](https://github.com/michidk/redguard-preservation/pull/50).
 `PlayerPlugin` consumes explicit `GroundedTick` messages on native and browser.
 Each message identifies the logical player in the current script-world generation.
-Walking retains movement/support state and uses that actor's shared animation and
-selected file frame. It advances animation before selecting static candidates by
+Walking retains startup/support state on the logical actor and uses its authoritative
+spatial pose, shared animation and selected file frame. Presentation-only heading
+changes do not redirect subsequent steps. It advances animation before selecting static candidates by
 the selected model radius, then updates `PlayerPose`, `Transform`, `AnimationPose`
 and `SoundSurface`. The player receives a `ScriptBinding`, so later SOUP requests
 also update its presentation. Stored surface belongs to the logical actor;
@@ -172,7 +191,14 @@ Stale asset requests and world identities are discarded. Walking errors stop
 stepping until entry changes; logical animation failures persist until world
 replacement. Marker changes do not create a second playback or reset script tasks.
 The caller still supplies admission, timing, orientation, view and collision policy;
-no production clock or automatic keyboard-driven locomotion is enabled yet.
+the automatic ordinary adapter uses the shared simulation clock and logical actor
+instead of generating GroundedTick messages.
+
+`GroundedWalk::continue_forward` exposes the post-script walking continuation
+without running late collision or resetting startup. An accepted earlier action
+suppresses a second translation. The explicit composed update uses the same method.
+`ScriptWorld::initialize_player_spatial` establishes a player role's generation-bound
+pose once; it does not settle ground or admit automatic controller execution.
 
 The ordinary idle default comes from installed `attr_panic_group`, following
 [preservation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ordinary-idle-animation-default).
@@ -183,9 +209,8 @@ resolve the radius by active model name. Missing named radii require re-export.
 The upright orientation helper reuses the original movement rotation table.
 Callers still supply eligibility, actor orientation, candidates,
 surface policy, and shared support state. Falling, water/lava transitions and
-special movement states remain unsupported. Gameplay does not yet drive this
-update; production controller timing and the remaining player lifecycle stay
-unsupported.
+special movement states remain unsupported. The ordinary adapter drives the
+admitted sheathed walking stages; full player lifecycle remains unfinished.
 
 Scene inspection places the player at available marker zero once the world's
 `.animations` and `.player` data match, using preservation's exact map coordinates. `MarkerEntry`
@@ -200,6 +225,9 @@ unsupported; this inspection placement does not enable gameplay. Inspection reta
 terrain/model support or the player definition is unavailable. Invalid markers
 still produce an entry error. Re-export older assets that lack
 `map_position`.
+`PlayerEntrySupport` distinguishes successful static settling from retained
+inspection placement and clears with an invalid or pending entry. Static settling
+alone does not establish dynamic support or controller eligibility.
 
 `placement::initial_animation` applies the selected-player entry requests with
 caller-supplied nominal ticks and a synchronous sound handler. It starts with
@@ -319,7 +347,8 @@ These contracts follow preservation's
 `ScriptActor::attributes` exposes the prepared inspection bytes. Complete actor
 lifecycle and remaining live player attribute effects remain pending. Walking and
 SOUP share logical-player playback; scene entry now constructs player-role
-animation and combat state, without enabling automatic locomotion.
+animation and combat state for the bounded ordinary walking adapter. Complete
+installed traversal remains unverified.
 `ScriptWorld::snapshot_flags` captures global values and latches with their ordered
 installed definitions. `restore_flags` validates the complete snapshot before
 replacing both values and latches, without executing scripts or native operations.
@@ -724,6 +753,15 @@ ownership is released; the caller supplies the animation admission gate and
 nominal ticks. Full combat decision-making remains unsupported.
 Selection follows preservation's
 [taunt rules](https://github.com/michidk/redguard-preservation/commit/fcc0314a02ce735185f064449802acee154f47c7).
+`player::input::PlayerToggles` retains walk mode and auto-defend across HUD
+recreation. The HUD initializes it from installed or saved settings and projects
+its values for display; ordinary controller admission remains a separate step.
+
+Selected-player ordinary combat retains entry inhibition, phase and both action
+indices. Fresh phase-zero maintenance restores the collision attribute, processes
+messages, resets nonzero action selectors and then applies the shared cooldown
+stage. Nonzero phases remain unsupported. Explicit scheduler shell state suppresses
+combat even when activation inputs are absent.
 Shared class queues retain independent actor read cursors, addressed filtering
 and eight-entry wrapping. Target/perception, combat messages, decision state 6
 and attacks remain explicitly unsupported. Queue reset ownership and complete
@@ -736,9 +774,11 @@ requests RTX release, dialogue cleanup, sample stopping and walk-node reservatio
 clearing in preservation order. It exposes a reset only after successful cleanup;
 a failed stage retains a contextual error and prevents another update from
 silently completing a partial reset. Menu, WaitOnDialog and lockout inputs remain
-explicit. The audio adapter connects these cleanup stages to their live owners for explicit
-maintenance. Automatic scheduling still lacks player-controller inhibition
-admission, so ambient tasks report missing reset input.
+explicit. Session globals retain the timer across world replacement, with its
+counter reset at world-loop entry. The audio adapter runs cleanup before ordinary
+traversal and supplies its reset result to ambient tasks. The controller samples
+inhibition after its conditional countdown and before pending actions. Missing
+service ownership and partial failures stop updates contextually.
 
 Navigation preparation retains cleared ownership bytes for every authored WDNM
 map and node. Logical actors acquire or release reservations using their runtime
@@ -802,3 +842,27 @@ input lock, and suspension through exit-key release. It restores the simulation
 checkpoint against the current real BIOS tick and resumes only the virtual clock
 it paused itself. `Logbook` retains text layout, scroll bounds and scroll-model
 rotation; startup supplies installed artwork and shared screen rendering.
+
+`ScriptHud::snapshot_inventory` captures all item records without selection repair.
+`Inventory::from_snapshot` validates the exact installed definitions and returns an
+opaque replacement for session candidate assembly. It directly restores counts,
+mutable limits, visibility and selection without startup acquisitions or weapon
+callbacks. This internal complete snapshot is separate from the original SVIT
+codec. Committing inventory with the rest of a restored session remains unfinished.
+
+The explicit standalone-player initializer also establishes preliminary controller
+state. `GameplayGlobals::prepare_player_controller` advances its unsigned nominal-tick
+countdowns in published order. Pending action and override execution remain
+unsupported and stop before ordinary dispatch. Preparing a logical world alone does
+not establish these controller values; save restore must retain them directly.
+
+Selected-player collision preparation accepts the standalone animated definition
+and logical pose without a map placement. Explicit model refresh resolves its
+actor-local frame, and ordinary support queries can retain live map actors as
+support. The selected player remains excluded from other actors' live candidate
+lists. This preparation does not itself admit automatic keyboard updates.
+
+The synthetic keyboard scheduler contract now exercises installed-style key sampling,
+ordinary sheathed forward dispatch, logical pose projection, authored sound delivery
+and release continuation. It sends no explicit grounded tick. Complete installed
+keyboard traversal and native/browser four-surface acceptance remain unverified.

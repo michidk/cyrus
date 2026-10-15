@@ -1218,8 +1218,23 @@ fn scoped_ordinary(
         if !ready {
             return;
         }
+        let reset = context.with_world_services(|world, ticks| {
+            world.with_sound_maintenance(|world, maintenance| {
+                sounds.maintain_sound(maintenance, ticks, world, cache)
+            })
+        });
+        let Some(reset) = reset else {
+            return;
+        };
+        let reset = match reset {
+            Ok(reset) => reset,
+            Err(error) => {
+                context.report_error(format!("ordinary sound maintenance: {error:#}"));
+                return;
+            }
+        };
         *ordinary_completed = true;
-        sounds.run_ordinary_with_dialogue(context, cache, hud, &mut read, None, taunts);
+        sounds.run_ordinary_with_dialogue(context, cache, hud, &mut read, Some(reset), taunts);
     } else {
         // Reset ownership remains with game maintenance; absent ownership is not
         // replaced by an assumed false flag.

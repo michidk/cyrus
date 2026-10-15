@@ -154,7 +154,8 @@ fn malformed_state_fails_before_replacing_the_live_clock() {
     let clock = SimulationClock::new(settings(true)).unwrap();
     let saved = encoded(&clock);
     for (field, invalid) in [
-        ("version", json!(2)),
+        ("version", json!(1)),
+        ("measurement_intervals", json!(u32::MAX)),
         ("remainder", json!(-1)),
         ("remainder", json!(18)),
         ("warmup", json!(13)),
@@ -221,4 +222,22 @@ fn extreme_valid_settings_and_zero_scale_can_resume() {
             assert_eq!(encoded(&resumed), encoded(&clock));
         }
     }
+}
+
+#[test]
+fn measurement_intervals_survive_restore_without_counting_suspended_time() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    assert_eq!(clock.measurement_intervals(), 0);
+    assert_eq!(clock.advance(17).nominal_ticks, 1);
+    assert_eq!(clock.measurement_intervals(), 0);
+    assert_eq!(clock.advance(55).nominal_ticks, 1);
+    assert_eq!(clock.measurement_intervals(), 3);
+    let mut resumed = restored(encoded(&clock), 1000).unwrap();
+    assert_eq!(resumed.measurement_intervals(), 3);
+    resumed.advance(1016);
+    assert_eq!(resumed.measurement_intervals(), 0);
+    resumed.advance(1017);
+    assert_eq!(resumed.measurement_intervals(), 1);
+    resumed.advance(1017);
+    assert_eq!(resumed.measurement_intervals(), 0);
 }

@@ -8,6 +8,7 @@ use cyrus_collision::{
 
 /// Caller-admitted ordinary support inputs in original map units.
 /// The distance is the original response stage's probe distance, not a default.
+#[derive(Clone, Copy)]
 pub struct OrdinaryGroundQuery<'a> {
     pub scene: &'a crate::player::data::PlayerScene,
     pub animations: &'a cyrus_assets::animation::Animations,
@@ -57,9 +58,7 @@ impl ScriptWorld {
         );
         let actor = &self.actors[index];
         ensure!(
-            actor
-                .placement()
-                .is_some_and(|placement| placement.object_type == 1),
+            actor.ordinary_collision_role(),
             "world {} instance {index}: ordinary collision object path unavailable",
             self.world
         );
@@ -67,6 +66,11 @@ impl ScriptWorld {
         let path = definition["model_load_path"]
             .as_str()
             .context("ordinary collision model path absent")?;
+        ensure!(
+            !matches!(actor.source, super::ScriptActorSource::Player) || path == "animation_table",
+            "world {} selected player: animated collision definition required",
+            self.world
+        );
         // Preservation omits negative primary indices from its sparse metadata.
         let primary = match definition.get("mpsz_bounds_primary") {
             None => -1,
@@ -293,7 +297,56 @@ impl ScriptWorld {
             .terrain
             .as_ref()
             .and_then(|terrain| terrain.sample(position.map(i64::from)));
-        let selected = probe.select(terrain, &contacts);
+        let mut selected = probe.select(terrain, &contacts);
+        if matches!(
+            self.actors[id.index].source,
+            super::ScriptActorSource::Player
+        ) {
+            let history = &self.actors[id.index]
+                .player_movement
+                .as_ref()
+                .context("selected ground query requires initialized movement history")?
+                .history;
+            if selected.is_none() {
+                let fallback = cyrus_collision::ground::FallbackProbe::new(
+                    position.map(i64::from),
+                    [0; 3],
+                    positive_y_extent,
+                    history.ticks() != 0,
+                )?;
+                selected = query.scene.static_collision.runtime_fallback_support(
+                    &query.prepared.candidates,
+                    models,
+                    &poses,
+                    &fallback,
+                    query.sidedness,
+                    (self.actors[id.index]
+                        .control
+                        .as_ref()
+                        .expect("validated control")
+                        .queued_motion
+                        == 24)
+                        .then_some(128),
+                )?;
+            }
+            let metadata = selected
+                .as_ref()
+                .map(|support| match support.source() {
+                    SupportSource::Actor { actor, .. } => self
+                        .actors
+                        .get(actor)
+                        .and_then(|actor| actor.model.collision_flags)
+                        .context("selected support live metadata unavailable"),
+                    source => query.scene.static_collision.support_metadata(source),
+                })
+                .transpose()?;
+            self.actors[id.index]
+                .player_movement
+                .as_mut()
+                .expect("validated history")
+                .history
+                .finish_query(metadata, true);
+        }
         if let Some(support) = &selected {
             let owner = match support.source() {
                 SupportSource::Model { model, .. } => super::model::ModelSupportOwners {

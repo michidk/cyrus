@@ -504,6 +504,7 @@ mod tests {
             }),
             model: Default::default(),
             collision: None,
+            player_movement: None,
             location_offsets: vec![],
             tasks: Default::default(),
             animation: Some(ScriptAnimation {

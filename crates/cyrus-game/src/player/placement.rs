@@ -23,6 +23,16 @@ pub struct PlayerPose {
     pub heading: u16,
 }
 
+/// Result of marker settling for this presentation entry. A retained inspection
+/// pose does not establish ground support or admit automatic player movement.
+#[derive(Component, Debug, PartialEq, Eq)]
+pub enum PlayerEntrySupport {
+    /// Static settling completed; dynamic support and controller guards remain separate.
+    StaticSettled,
+    /// The marker remains visible for inspection after unsupported settling.
+    InspectionOnly(String),
+}
+
 /// Marker placement must finish before presentation supplies an ordinary actor view.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerPlacement;
@@ -154,7 +164,9 @@ pub(super) fn enter_marker(
         return;
     };
     let (Some(scene_request), Some(scenes)) = scene else {
-        commands.entity(entity).remove::<PlayerPose>();
+        commands
+            .entity(entity)
+            .remove::<(PlayerPose, PlayerEntrySupport)>();
         return;
     };
     let key = AppliedEntry {
@@ -167,7 +179,9 @@ pub(super) fn enter_marker(
         return;
     }
     // Old-world coordinates must not be used while the next world's data is loading.
-    commands.entity(entity).remove::<PlayerPose>();
+    commands
+        .entity(entity)
+        .remove::<(PlayerPose, PlayerEntrySupport)>();
     let Some(data) = assets.get(&request.0) else {
         return;
     };
@@ -180,13 +194,17 @@ pub(super) fn enter_marker(
     match placement(data, *entry) {
         Ok((mut pose, mut position)) => {
             let initial_y = pose.position[1];
-            if let Err(error) = settle_static(scene, &mut pose) {
-                // shortcut: retain inspection marker until dynamic/water support is implemented.
-                error!("player settling unavailable; retaining marker: {error:#}");
-            }
+            let support = match settle_static(scene, &mut pose) {
+                Ok(()) => PlayerEntrySupport::StaticSettled,
+                Err(error) => {
+                    // shortcut: retain inspection marker until dynamic/water support is implemented.
+                    error!("player settling unavailable; retaining marker: {error:#}");
+                    PlayerEntrySupport::InspectionOnly(format!("{error:#}"))
+                }
+            };
             position.y -= (pose.position[1] - initial_y) as f32 / 5120.0;
             transform.translation = position;
-            commands.entity(entity).insert(pose);
+            commands.entity(entity).insert((pose, support));
         }
         Err(error) => error!("player entry: {error:#}"),
     }

@@ -80,6 +80,10 @@ shared history updates; a primary miss stays absent.
 When primary support is absent, the selected-player fallback uses the caller's
 support-history state and retains the actor's runtime Y at the first accepted
 non-side contact. This follows the [published fallback rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#selected-player-fallback-support).
+`runtime_fallback_support` applies the same secondary probe to retained static
+and live face candidates. Its result preserves the supporting actor or model and
+face, and does not inspect later candidates after an accepted contact. Runtime
+history and surface assignments remain host-owned.
 Explicit selected-player queries also commit shared support history. Misses retain
 metadata, so they can reset the fallback timer; temporary forward probes retain
 those changes when position is restored. The caller supplies initial state and
@@ -124,3 +128,8 @@ static/live face order and duplicates. Candidate-type exclusion precedes live
 pose resolution. The world integer adapter rounds points and scaled normals
 nearest-even without normalizing or changing rank, following preservation's
 [ordinary segment rules](https://github.com/michidk/redguard-preservation/blob/729dc5b/docs/engine/player.md#ordinary-forward-segment-response).
+
+`runtime_forward_support` composes mixed-candidate body clearance, optional slope
+rejection, primary support and fallback. `Blocked` skips support-state effects;
+`Queried(None)` is a completed miss whose retained history still needs updating.
+Body rejection stops at the first blocking contact before later candidate reads.

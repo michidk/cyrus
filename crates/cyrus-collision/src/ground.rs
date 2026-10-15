@@ -84,8 +84,7 @@ pub enum SelectedSupport {
     },
     /// Secondary sphere support retains the actor origin instead of using a plane height.
     Fallback {
-        model: usize,
-        face: usize,
+        source: SupportSource,
         normal: [i32; 3],
         actor_height: i64,
     },
@@ -96,10 +95,7 @@ impl SelectedSupport {
     pub fn source(&self) -> SupportSource {
         match self {
             Self::Primary { source, .. } => *source,
-            Self::Fallback { model, face, .. } => SupportSource::Model {
-                model: *model,
-                face: *face,
-            },
+            Self::Fallback { source, .. } => *source,
         }
     }
 

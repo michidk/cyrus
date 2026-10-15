@@ -52,8 +52,9 @@ and installed movement/terrain inputs in `.player`. Re-export for player schema 
 which adds authored static collision geometry and placement lists.
 Entry waits for both sidecars and settles against dry terrain and static models.
 Unavailable markers, unsupported terrain, and missing player definitions report a
-player-entry error. Dynamic ground support, locomotion and the original follow
-camera remain unsupported; use the independent debug flycam to inspect the world.
+player-entry error. Bounded sheathed forward walking uses the ordinary player
+update. Complete installed traversal, dynamic ground support and the original
+follow camera remain unverified; use the independent debug flycam for inspection.
 The game camera uses the original Glide horizontal field of view, including on
 viewport resize. Its inspection position is independent of the original follow
 camera; matching the projection alone does not establish a matched view.
@@ -419,14 +420,17 @@ and the player pose. Flycam starts disabled unless `--view` or `?view=` supplies
 an inspection pose. WASD moves it, right mouse looks,
 and Space/Shift moves up/down; its speed is adjustable in the same menu.
 Changing fidelity does not toggle flycam. Turning it off preserves the player
-position. Initial placement uses the installed player marker; locomotion and
-the original follow camera remain unsupported.
+position. Initial placement uses the installed player marker. The ordinary player
+update supports bounded sheathed forward walking; complete installed traversal
+and the original follow camera remain unfinished.
 
 Native player input reads `KEYS.INI` and its user overrides. The TCP/MCP `state`
 response reports held `player_input` actions and the separate `flycam` position.
 Direct browser scene launches load exported keyboard defaults and saved local
-Controls overrides. Re-export worlds to include the keyboard defaults. Locomotion
-remains unsupported.
+Controls overrides. Re-export worlds to include the keyboard defaults. The bounded
+walking adapter requires walk mode and admitted ordinary sheathed state; running
+and composite actions report unsupported. Headless inspection does not supply
+the camera view required for automatic ordinary traversal.
 
 ### Explicit SOUP inspection
 

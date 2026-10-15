@@ -11,6 +11,7 @@ pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
 pub(super) mod overlap;
+pub(super) mod player;
 pub(super) mod prevalidation;
 pub(super) mod queued;
 pub(super) mod recovery;
@@ -95,6 +96,8 @@ pub struct ScriptInputs<'a> {
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
+    /// Explicit selected-player keyboard admission for the ordinary traversal.
+    pub player_controller: Option<player::PlayerControllerInput<'a>>,
     pub ambient_sound: Option<&'a dyn cyrus_world::sound::AmbientSoundDriver>,
     /// Caller-admitted weapon and taunt gates for synchronous beginCombat.
     pub combat_entry: Option<CombatEntryInputs>,
@@ -129,6 +132,8 @@ pub struct ActorControlState {
     pub falling_state: u8,
     pub queued_motion: u8,
     pub motion_direction: u8,
+    /// Retained movement-helper classification, distinct from displacement direction.
+    pub motion_classification: u8,
     /// Allocator-zero directional-state bytes; low bits gate surface assignment.
     pub directional_state: [u8; 2],
     /// Retained directional motion bits, allocated as zero.
@@ -183,6 +188,7 @@ pub struct ScriptActor {
     surface: Option<u8>,
     model: model::ModelState,
     collision: Option<ground::OrdinaryCollisionShape>,
+    player_movement: Option<player::PlayerMovement>,
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
@@ -193,6 +199,13 @@ impl ScriptActor {
     pub fn name(&self) -> &str {
         self.source.name()
     }
+    fn ordinary_collision_role(&self) -> bool {
+        matches!(self.source, ScriptActorSource::Player)
+            || self
+                .placement()
+                .is_some_and(|placement| placement.object_type == 1)
+    }
+
     pub fn placement(&self) -> Option<&Instance> {
         match &self.source {
             ScriptActorSource::Map(placement) => Some(placement),
@@ -254,6 +267,7 @@ pub struct ScriptWorld {
     globals: super::GameplayGlobals,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
+    attribute_names: Vec<String>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
@@ -333,7 +347,7 @@ impl ScriptWorld {
         )
     }
 
-    /// Maintain an admitted nonplayer combat record using shared nominal ticks.
+    /// Maintain an admitted ordinary combat record using shared nominal ticks.
     /// Targeting, messages, decision state and attacks retain unsupported guards.
     /// The owner supplies the selected player's drawing/sheathing and shell gates.
     pub fn maintain_map_combat(
@@ -345,8 +359,9 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
-            self.actors[index].placement().is_some(),
-            "ordinary combat requires a map actor"
+            self.actors[index].placement().is_some()
+                || matches!(self.actors[index].source, ScriptActorSource::Player),
+            "ordinary combat requires a map actor or selected player"
         );
         if shell_execution {
             return Ok(());
@@ -359,11 +374,24 @@ impl ScriptWorld {
         let Some(combat) = control.combat.as_ref() else {
             return Ok(());
         };
-        if control.death_selector == 8 {
+        let selected = matches!(actor.source, ScriptActorSource::Player);
+        if selected
+            && self
+                .globals
+                .selected_combat_inhibition
+                .context("selected-player combat entry inhibition unavailable")?
+                != 0
+        {
+            return Ok(());
+        }
+        if !selected && control.death_selector == 8 {
             return Ok(());
         }
         anyhow::ensure!(
-            actor.attributes[116] != 0 || combat.flags & 4 == 0 || combat.target.is_none(),
+            selected
+                || actor.attributes[116] != 0
+                || combat.flags & 4 == 0
+                || combat.target.is_none(),
             "ordinary combat target/perception stage unsupported"
         );
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
@@ -379,10 +407,21 @@ impl ScriptWorld {
             .as_mut()
             .expect("admitted control");
         anyhow::ensure!(
-            control.death_selector != 6,
+            selected || control.death_selector != 6,
             "ordinary combat decision stage unsupported"
         );
         let combat = control.combat.as_mut().expect("admitted combat");
+        if selected {
+            anyhow::ensure!(
+                combat.maintenance_phase == 0,
+                "selected-player combat nonzero maintenance phase unsupported"
+            );
+            if combat.action != 0 {
+                combat.action = -1;
+                combat.retained_action_indices = [-1; 2];
+            }
+            // Both maintenance helpers with action -1 are inert in phase zero.
+        }
         if !player_weapon_transition {
             if combat.cooldown != 0 {
                 combat.cooldown = combat.cooldown.saturating_sub(ticks);
@@ -485,6 +524,7 @@ impl ScriptWorld {
                 animation: None,
                 model: Default::default(),
                 collision: None,
+                player_movement: None,
                 animation_failure: None,
                 update_failure: None,
                 attributes: (0..256)
@@ -564,6 +604,7 @@ impl ScriptWorld {
             actors,
             task_calls,
             combat_attacks: scripts.combat_attacks.clone(),
+            attribute_names: scripts.definition.attributes.clone(),
             names,
             actor_lists: None,
             markers: None,
@@ -751,6 +792,37 @@ impl ScriptWorld {
                 .with_context(|| format!("world {} spatial preparation", self.world))?,
         );
         Ok(())
+    }
+
+    /// Initialize a standalone player role's authoritative pose once per world generation.
+    /// The caller supplies established entry coordinates in Q8 and wrapped angles.
+    /// This does not settle ground, initialize animation, or run the controller.
+    pub fn initialize_player_spatial(
+        &mut self,
+        id: ScriptActorId,
+        position: [i32; 3],
+        angles: [u16; 3],
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        anyhow::ensure!(
+            matches!(
+                actor.source,
+                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+            ),
+            "world {} instance {index}: spatial player initialization requires a player role",
+            self.world
+        );
+        self.spatial
+            .as_mut()
+            .context("spatial state not prepared")?
+            .initialize_player(index, actor, position, angles)
+            .with_context(|| {
+                format!(
+                    "world {} instance {index}: player spatial initialization",
+                    self.world
+                )
+            })
     }
 
     /// Select an ordered combat taunt for an already admitted invocation.
@@ -1106,6 +1178,7 @@ impl ScriptWorld {
             .control
             .as_mut()
             .expect("player role has allocation state");
+        self.globals.initialize_player_controller();
         control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
         control.combat = (actor.attributes[14] != 0)
             .then(|| super::CombatControlState::from_attributes(&actor.attributes));
@@ -1545,13 +1618,26 @@ impl ScriptWorld {
     }
 }
 
-#[derive(Resource, Default)]
+/// Session owner. Default construction establishes fresh-session globals;
+/// replacing its current world preserves them rather than starting a new session.
+#[derive(Resource)]
 pub struct ScriptActors {
     pub current: Option<ScriptWorld>,
     generation: u64,
     requested: Option<Handle<Scripts>>,
     globals: super::GameplayGlobals,
     pub(super) error: Option<String>,
+}
+impl Default for ScriptActors {
+    fn default() -> Self {
+        Self {
+            current: None,
+            generation: 0,
+            requested: None,
+            globals: super::GameplayGlobals::new_session(),
+            error: None,
+        }
+    }
 }
 /// Animation commands capture the receiver's own local Q8 position.
 /// Unlike script Sound, they do not substitute linked or attached positions.
@@ -1672,6 +1758,7 @@ pub(super) fn prepare(
     match result {
         Ok(mut world) => {
             world.globals = std::mem::take(&mut actors.globals);
+            world.globals.sound_maintenance.enter_world();
             actors.current = Some(world);
         }
         Err(error) => {

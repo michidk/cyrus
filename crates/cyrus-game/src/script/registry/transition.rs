@@ -111,9 +111,7 @@ impl ScriptWorld {
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
         ensure!(
-            actor
-                .placement()
-                .is_some_and(|placement| placement.object_type == 1),
+            actor.ordinary_collision_role(),
             "world {} instance {index}: ordinary obstacle transition object path unavailable",
             self.world
         );

@@ -584,3 +584,131 @@ fn initial_collision_metadata_distinguishes_known_zero_missing_and_invalid_actor
     invalid.collision_flags.insert(2, 3);
     assert!(ActorModelCollision::new(&invalid).is_err());
 }
+
+#[test]
+fn live_player_fallback_retains_owner_fractional_height_and_first_contact() {
+    use cyrus_collision::{
+        candidates::{CollisionCandidates, FaceCandidate},
+        ground::FallbackProbe,
+    };
+    let statics = StaticCollision::new(&CollisionScene::default()).unwrap();
+    let models = actors();
+    let poses = BTreeMap::from([(42, ModelPose::new([0.0; 3], Mat3::IDENTITY).unwrap())]);
+    let first = FaceCandidate {
+        model: ModelInstance::Runtime(42),
+        owner: CandidateOwner::Actor(42),
+        collision_flags: 3,
+        candidate_type: 128,
+    };
+    let invalid = FaceCandidate {
+        model: ModelInstance::Runtime(99),
+        owner: CandidateOwner::Actor(99),
+        collision_flags: 3,
+        candidate_type: 128,
+    };
+    let candidates = CollisionCandidates {
+        faces: vec![first, invalid],
+        actors: vec![],
+    };
+    let position = [0, -24 * 256 + 17, 0];
+    let probe = FallbackProbe::new(position, [0; 3], 24, false).unwrap();
+    let support = statics
+        .runtime_fallback_support(&candidates, &models, &poses, &probe, false, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        support.source(),
+        SupportSource::Actor { actor: 42, face: 0 }
+    );
+    assert_eq!(support.actor_height(999, -99), position[1]);
+    assert!(
+        statics
+            .runtime_fallback_support(&candidates, &models, &poses, &probe, false, Some(128))
+            .unwrap()
+            .is_none()
+    );
+    let reversed = CollisionCandidates {
+        faces: vec![invalid, first],
+        actors: vec![],
+    };
+    assert!(
+        statics
+            .runtime_fallback_support(&reversed, &models, &poses, &probe, false, None)
+            .is_err()
+    );
+}
+
+#[test]
+fn runtime_forward_probe_orders_body_primary_and_fallback() {
+    use bevy::math::Vec3;
+    use cyrus_collision::{
+        candidates::{CollisionCandidates, FaceCandidate},
+        collision_mesh::BodyProbe,
+        collision_world::{RuntimeForwardQuery, RuntimeForwardSupport},
+        ground::{FallbackProbe, SelectedSupport},
+    };
+    let statics = StaticCollision::new(&CollisionScene::default()).unwrap();
+    let models = actors();
+    let poses = BTreeMap::from([(42, ModelPose::new([0.0; 3], Mat3::IDENTITY).unwrap())]);
+    let mut candidates = CollisionCandidates {
+        faces: vec![FaceCandidate {
+            model: ModelInstance::Runtime(42),
+            owner: CandidateOwner::Actor(42),
+            collision_flags: 3,
+            candidate_type: 0,
+        }],
+        actors: vec![],
+    };
+    let spheres = [(Vec3::ZERO, 4.0)];
+    for (y, slope, expected) in [
+        (-24, true, "primary"),
+        (-29, false, "fallback"),
+        (-1, true, "blocked"),
+    ] {
+        if expected == "blocked" {
+            candidates.faces.push(FaceCandidate {
+                model: ModelInstance::Runtime(99),
+                owner: CandidateOwner::Actor(99),
+                collision_flags: 0,
+                candidate_type: 0,
+            });
+        }
+        let position = [0, y * 256, 0];
+        let ground = GroundProbe::new(position, 24, 4).unwrap();
+        let fallback = FallbackProbe::new(position, [0; 3], 24, false).unwrap();
+        let result = statics
+            .runtime_forward_support(
+                &candidates,
+                &models,
+                &poses,
+                RuntimeForwardQuery {
+                    body: BodyProbe {
+                        position,
+                        rotation: Mat3::IDENTITY,
+                        spheres: &spheres,
+                        sidedness: false,
+                    },
+                    ground: &ground,
+                    terrain: None,
+                    fallback: &fallback,
+                    check_slope: slope,
+                    excluded_candidate_type: None,
+                },
+            )
+            .unwrap();
+        match expected {
+            "primary" => assert!(matches!(
+                result,
+                RuntimeForwardSupport::Queried(Some(SelectedSupport::Primary {
+                    source: SupportSource::Actor { actor: 42, face: 0 },
+                    ..
+                }))
+            )),
+            "fallback" => assert!(
+                matches!(result, RuntimeForwardSupport::Queried(Some(SelectedSupport::Fallback { source: SupportSource::Actor { actor:42, face:0 }, actor_height, .. })) if actor_height == position[1])
+            ),
+            "blocked" => assert_eq!(result, RuntimeForwardSupport::Blocked),
+            _ => unreachable!(),
+        }
+    }
+}

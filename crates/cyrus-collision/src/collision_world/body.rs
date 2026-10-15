@@ -66,6 +66,26 @@ impl RuntimeBodyContact {
 }
 
 impl StaticCollision {
+    pub(super) fn runtime_blocks_body(
+        &self,
+        candidates: &CollisionCandidates,
+        actors: &ActorModelCollision,
+        poses: &BTreeMap<usize, ModelPose>,
+        probe: &BodyProbe<'_>,
+        excluded_candidate_type: Option<u8>,
+    ) -> Result<bool> {
+        Ok(!self
+            .runtime_model_body_contacts(
+                candidates,
+                actors,
+                poses,
+                probe,
+                excluded_candidate_type,
+                Some(1),
+            )?
+            .is_empty())
+    }
+
     /// Collect static/live body contacts in retained candidate and model order.
     /// Returns after the sixteenth model contact, without inspecting later poses
     /// or appending terrain. This is separate from residual separation queries.

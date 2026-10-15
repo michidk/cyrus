@@ -9,13 +9,110 @@ pub struct InventoryView {
     pub counts: BTreeMap<u16, u32>,
 }
 
-pub(super) struct Inventory {
+/// Complete inventory continuation, separate from the original SVIT file codec.
+/// Installed definitions are retained to reject restoration against different content.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct InventorySnapshot {
+    version: u32,
+    definitions: BTreeMap<u16, InventoryItem>,
+    items: BTreeMap<u16, SavedItem>,
+    selected: Option<u16>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct SavedItem {
+    count: u32,
+    total: u32,
+    player_max: u32,
+    hidden: bool,
+}
+
+/// Opaque replacement inventory for whole-session candidate assembly.
+/// Construction from a snapshot never runs startup, acquisition or weapon callbacks.
+pub struct Inventory {
+    definitions: BTreeMap<u16, InventoryItem>,
     items: BTreeMap<u16, InventoryItem>,
     selected: Option<u16>,
 }
 impl Inventory {
-    pub fn new(hud: &HudAsset) -> Result<Self> {
+    /// Capture every item, including hidden, empty and final installed records.
+    pub fn snapshot(&self) -> InventorySnapshot {
+        InventorySnapshot {
+            version: 1,
+            definitions: self.definitions.clone(),
+            items: self
+                .items
+                .iter()
+                .map(|(&id, item)| {
+                    (
+                        id,
+                        SavedItem {
+                            count: item.count,
+                            total: item.total,
+                            player_max: item.player_max,
+                            hidden: item.hidden,
+                        },
+                    )
+                })
+                .collect(),
+            selected: self.selected,
+        }
+    }
+
+    /// Validate exact installed acquisition definitions and return an off-live replacement.
+    /// Mutable limits need not match installed limits or contain the saved count.
+    /// Selection may name an empty or hidden item and is not repaired during restoration.
+    pub fn from_snapshot(hud: &HudAsset, snapshot: InventorySnapshot) -> Result<Self> {
+        anyhow::ensure!(
+            snapshot.version == 1,
+            "inventory snapshot version {} is unsupported",
+            snapshot.version
+        );
+        anyhow::ensure!(
+            snapshot.definitions.keys().eq(hud.inventory.keys())
+                && snapshot.items.keys().eq(hud.inventory.keys()),
+            "inventory snapshot item census differs from ITEM.INI"
+        );
+        for (&id, installed) in &hud.inventory {
+            let saved = &snapshot.definitions[&id];
+            anyhow::ensure!(
+                saved.weapon == installed.weapon
+                    && saved.count == installed.count
+                    && saved.total == installed.total
+                    && saved.player_max == installed.player_max
+                    && saved.hidden == installed.hidden
+                    && saved.flags == installed.flags
+                    && saved.required_items == installed.required_items
+                    && saved.drop_add_items == installed.drop_add_items
+                    && saved.add_items == installed.add_items
+                    && saved.remove_drop_items == installed.remove_drop_items,
+                "inventory snapshot item {id}: installed definition differs"
+            );
+        }
+        if let Some(id) = snapshot.selected {
+            anyhow::ensure!(
+                hud.inventory.contains_key(&id),
+                "inventory snapshot selected item {id}: definition absent"
+            );
+        }
+        let mut items = hud.inventory.clone();
+        for (id, saved) in snapshot.items {
+            let item = items.get_mut(&id).expect("validated inventory census");
+            item.count = saved.count;
+            item.total = saved.total;
+            item.player_max = saved.player_max;
+            item.hidden = saved.hidden;
+        }
+        Ok(Self {
+            definitions: hud.inventory.clone(),
+            items,
+            selected: snapshot.selected,
+        })
+    }
+
+    pub(super) fn new(hud: &HudAsset) -> Result<Self> {
         let mut inventory = Self {
+            definitions: hud.inventory.clone(),
             items: hud.inventory.clone(),
             selected: hud.inventory.keys().next().copied(),
         };
@@ -31,24 +128,24 @@ impl Inventory {
         }
         Ok(inventory)
     }
-    pub fn selected(&self) -> Option<u16> {
+    pub(super) fn selected(&self) -> Option<u16> {
         self.selected
     }
 
-    pub fn inspect(&self) -> serde_json::Value {
+    pub(super) fn inspect(&self) -> serde_json::Value {
         serde_json::json!({
             "selected": self.selected,
             "counts": self.items.iter().map(|(&id, item)| (id, item.count)).collect::<BTreeMap<_, _>>(),
         })
     }
-    pub fn count(&self, id: u16) -> Result<u32> {
+    pub(super) fn count(&self, id: u16) -> Result<u32> {
         Ok(self
             .items
             .get(&id)
             .with_context(|| format!("ITEM.INI item {id}: definition absent"))?
             .count)
     }
-    pub fn add(
+    pub(super) fn add(
         &mut self,
         id: u16,
         amount: i32,
@@ -57,7 +154,7 @@ impl Inventory {
         self.acquire(id, amount, &mut Vec::new(), assign_weapon)
     }
 
-    pub fn owned_weapon(&self, id: u8) -> bool {
+    pub(super) fn owned_weapon(&self, id: u8) -> bool {
         self.items
             .get(&u16::from(id))
             .is_some_and(|item| item.weapon && item.count > 0)
@@ -147,7 +244,7 @@ impl Inventory {
         Ok(())
     }
 
-    pub fn remove(&mut self, id: u16, amount: i32) -> Result<()> {
+    pub(super) fn remove(&mut self, id: u16, amount: i32) -> Result<()> {
         if amount <= 0 {
             return Ok(());
         }
@@ -183,12 +280,12 @@ impl Inventory {
         path.pop();
         Ok(())
     }
-    pub fn select(&mut self, id: u16) -> Result<()> {
+    pub(super) fn select(&mut self, id: u16) -> Result<()> {
         self.count(id)?;
         self.selected = Some(id);
         Ok(())
     }
-    pub fn view(&mut self, cycle: Option<bool>) -> InventoryView {
+    pub(super) fn view(&mut self, cycle: Option<bool>) -> InventoryView {
         let valid: Vec<_> = self
             .items
             .iter()

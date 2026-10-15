@@ -17,6 +17,25 @@ use cyrus_assets::collision::CollisionScene;
 use cyrus_assets::collision::StaticPlacement;
 use std::collections::BTreeMap;
 
+/// Caller-admitted forward geometry. Body and ground probes share the proposed
+/// position; history and surface side effects remain with the game owner.
+pub struct RuntimeForwardQuery<'a> {
+    pub body: super::collision_mesh::BodyProbe<'a>,
+    pub ground: &'a GroundProbe,
+    pub terrain: Option<GroundSupport>,
+    pub fallback: &'a FallbackProbe,
+    pub check_slope: bool,
+    pub excluded_candidate_type: Option<u8>,
+}
+
+/// Early clearance rejection is distinct from a completed support-query miss.
+/// Only `Queried` permits the host's history and surface-state updates.
+#[derive(Debug, PartialEq)]
+pub enum RuntimeForwardSupport {
+    Blocked,
+    Queried(Option<SelectedSupport>),
+}
+
 struct Model {
     version: Option<[u8; 4]>,
     mesh: CollisionMesh,
@@ -501,8 +520,10 @@ impl StaticCollision {
                 self.body_contacts(&single, [0; 3], Mat3::IDENTITY, &sphere, sidedness)?
             {
                 let support = SelectedSupport::Fallback {
-                    model: contact.model,
-                    face: contact.face,
+                    source: SupportSource::Model {
+                        model: contact.model,
+                        face: contact.face,
+                    },
                     normal: contact
                         .normal
                         .to_array()
@@ -521,6 +542,105 @@ impl StaticCollision {
                 {
                     return Ok(Some(support));
                 }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Resolve forward geometry in body, slope, primary-support, fallback order.
+    /// A rejected body or steep slope does not execute the later support query.
+    pub fn runtime_forward_support(
+        &self,
+        candidates: &CollisionCandidates,
+        actors: &super::actor_models::ActorModelCollision,
+        poses: &BTreeMap<usize, super::collision_mesh::ModelPose>,
+        query: RuntimeForwardQuery<'_>,
+    ) -> anyhow::Result<RuntimeForwardSupport> {
+        let sidedness = query.body.sidedness;
+        if self.runtime_blocks_body(
+            candidates,
+            actors,
+            poses,
+            &query.body,
+            query.excluded_candidate_type,
+        )? {
+            return Ok(RuntimeForwardSupport::Blocked);
+        }
+        let contacts = self.runtime_ground_contacts(
+            candidates,
+            actors,
+            poses,
+            query.ground,
+            sidedness,
+            query.excluded_candidate_type,
+        )?;
+        if query.check_slope {
+            let slope = query
+                .ground
+                .slope_surface(query.terrain, &contacts)
+                .context("runtime forward query: missing slope surface; fallback unsupported")?;
+            if slope.classification() == 2 {
+                return Ok(RuntimeForwardSupport::Blocked);
+            }
+        }
+        if let Some(support) = query.ground.select(query.terrain, &contacts) {
+            return Ok(RuntimeForwardSupport::Queried(Some(support)));
+        }
+        self.runtime_fallback_support(
+            candidates,
+            actors,
+            poses,
+            query.fallback,
+            sidedness,
+            query.excluded_candidate_type,
+        )
+        .map(RuntimeForwardSupport::Queried)
+    }
+
+    /// Selected-player secondary support over retained static and live face candidates.
+    /// The first non-side contact wins. Query later models only after earlier misses,
+    /// and preserve the original actor height rather than using the contact plane.
+    pub fn runtime_fallback_support(
+        &self,
+        candidates: &CollisionCandidates,
+        actors: &super::actor_models::ActorModelCollision,
+        poses: &BTreeMap<usize, super::collision_mesh::ModelPose>,
+        probe: &FallbackProbe,
+        sidedness: bool,
+        excluded_candidate_type: Option<u8>,
+    ) -> anyhow::Result<Option<SelectedSupport>> {
+        let spheres = [(
+            Vec3::from_array(probe.center.map(|value| value as f32)),
+            probe.radius,
+        )];
+        for candidate in &candidates.faces {
+            let single = CollisionCandidates {
+                faces: vec![*candidate],
+                actors: Vec::new(),
+            };
+            let contacts = self.runtime_residual_body_contacts(
+                &single,
+                actors,
+                poses,
+                ResidualBodyQuery {
+                    probe: super::collision_mesh::BodyProbe {
+                        position: [0; 3],
+                        rotation: Mat3::IDENTITY,
+                        spheres: &spheres,
+                        sidedness,
+                    },
+                    excluded_candidate_type,
+                },
+            )?;
+            if let Some(contact) = contacts
+                .into_iter()
+                .find(|contact| contact.classification != 1)
+            {
+                return Ok(Some(SelectedSupport::Fallback {
+                    source: contact.source,
+                    normal: contact.normal,
+                    actor_height: probe.actor_height,
+                }));
             }
         }
         Ok(None)

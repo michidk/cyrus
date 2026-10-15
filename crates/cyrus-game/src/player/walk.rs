@@ -2,6 +2,7 @@
 //! `docs/engine/player.md`. Animation eligibility and collision are separate.
 
 /// Startup state for ordinary forward walking with `attr_step_type = 1`.
+#[derive(Clone, Copy)]
 pub struct WalkingStartup {
     phase: u8,
 }

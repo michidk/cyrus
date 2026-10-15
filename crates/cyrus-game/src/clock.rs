@@ -45,6 +45,7 @@ pub struct ClockSnapshot {
     version: u32,
     settings: ClockSettings,
     step: ClockStep,
+    measurement_intervals: u32,
     remainder: i32,
     frames: u32,
     measured: u32,
@@ -65,6 +66,7 @@ pub struct ClockSnapshot {
 pub struct SimulationClock {
     settings: ClockSettings,
     step: ClockStep,
+    measurement_intervals: u32,
     baseline: u32,
     remainder: i32,
     frames: u32,
@@ -80,9 +82,10 @@ impl SimulationClock {
     /// Capture all retained simulation timing without advancing or rebasing it.
     pub fn snapshot(&self) -> ClockSnapshot {
         ClockSnapshot {
-            version: 1,
+            version: 2,
             settings: self.settings,
             step: self.step,
+            measurement_intervals: self.measurement_intervals,
             remainder: self.remainder,
             frames: self.frames,
             measured: self.measured,
@@ -103,7 +106,7 @@ impl SimulationClock {
     pub fn from_snapshot(snapshot: ClockSnapshot, bios_tick: u32) -> anyhow::Result<Self> {
         use anyhow::ensure;
         ensure!(
-            snapshot.version == 1,
+            snapshot.version == 2,
             "clock snapshot version {} is unsupported",
             snapshot.version
         );
@@ -112,6 +115,10 @@ impl SimulationClock {
             (0..18).contains(&snapshot.remainder),
             "clock snapshot remainder {} is outside 0..18",
             snapshot.remainder
+        );
+        ensure!(
+            snapshot.measurement_intervals <= i32::MAX as u32 / 18,
+            "clock snapshot measurement_intervals exceeds signed remainder bound"
         );
         ensure!(
             snapshot.warmup <= 12,
@@ -154,6 +161,7 @@ impl SimulationClock {
         Ok(Self {
             settings: snapshot.settings,
             step: snapshot.step,
+            measurement_intervals: snapshot.measurement_intervals,
             baseline: bios_tick,
             remainder: snapshot.remainder,
             frames: snapshot.frames,
@@ -176,6 +184,13 @@ impl SimulationClock {
         self.step
     }
 
+    /// Completed 18-BIOS-tick measurement intervals from the last advance.
+    /// Independent of nominal ticks, including during warmup. The session owner
+    /// applies these to idle timing only in the admitted normal clock mode.
+    pub fn measurement_intervals(&self) -> u32 {
+        self.measurement_intervals
+    }
+
     pub fn new(settings: ClockSettings) -> anyhow::Result<Self> {
         settings.validate()?;
         Ok(Self {
@@ -185,6 +200,7 @@ impl SimulationClock {
                 nominal_ticks: 0,
                 fine_ticks: 0,
             },
+            measurement_intervals: 0,
             baseline: 0,
             remainder: 0,
             frames: 0,
@@ -245,6 +261,7 @@ impl SimulationClock {
             .max(0);
         self.baseline = bios_tick;
         let windows = self.remainder as u32 / 18;
+        self.measurement_intervals = windows;
         if let Some(measured) = self.frames.checked_div(windows) {
             self.measured = measured;
             self.frames = 0;

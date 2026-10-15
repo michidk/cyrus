@@ -89,6 +89,20 @@ impl ScriptHud {
         state.compass_on
     }
 
+    /// Capture inventory without repairing selection or running item effects.
+    /// The replacement belongs to the host's complete session candidate, not this live HUD.
+    pub fn snapshot_inventory(&self) -> Result<super::InventorySnapshot> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .context("installed inventory data unavailable")?
+            .snapshot())
+    }
+
     /// Repair exhausted selection and optionally cycle once through visible owned items.
     pub fn inventory(&self, cycle: Option<bool>) -> Option<super::InventoryView> {
         self.0
