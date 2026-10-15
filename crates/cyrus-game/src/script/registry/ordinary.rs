@@ -237,13 +237,23 @@ impl ScriptWorld {
                                 distance: scene.settings.post_collide_height,
                                 sidedness: false,
                             },
-                            (
+                            super::late::OrdinaryLateInputs {
                                 ticks,
-                                anyhow::Context::context(
-                                    inputs.frame_scale,
-                                    "ordinary frame scale unavailable",
-                                )?,
-                            ),
+                                weapon: inputs
+                                    .hud
+                                    .zip(inputs.shell_execution)
+                                    .zip(self.actors.iter().position(|actor| {
+                                        matches!(actor.source, super::ScriptActorSource::Player)
+                                    }))
+                                    .map(|((hud, shell_execution), index)| {
+                                        Ok::<_, anyhow::Error>(super::weapon::WeaponInputs {
+                                            selected_player: self.id(index)?,
+                                            item_system_ready: hud.inventory_ready()?,
+                                            shell_execution,
+                                        })
+                                    })
+                                    .transpose()?,
+                            },
                             &rollback,
                             super::recovery::OrdinaryStableRecoveryInputs {
                                 scene,

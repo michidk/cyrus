@@ -3,6 +3,11 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::ground::SelectedSupport;
 
+pub(super) struct OrdinaryLateInputs {
+    pub ticks: u32,
+    pub weapon: Option<super::weapon::WeaponInputs>,
+}
+
 impl ScriptWorld {
     fn assign_ordinary_support_surface(
         &mut self,
@@ -43,17 +48,17 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
-        timing: (u32, u32),
+        inputs: OrdinaryLateInputs,
         rollback: &super::recovery::OrdinaryRollbackSnapshot,
         recovery: super::recovery::OrdinaryStableRecoveryInputs<'_>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let (ticks, _) = timing;
+        let OrdinaryLateInputs { ticks, weapon } = inputs;
         let environment = super::transition::ObstacleEnvironment {
-            selected_player: None,
+            selected_player: weapon.map(|input| input.selected_player),
             auto_grab: false,
-            item_system_ready: false,
-            shell_execution: false,
+            item_system_ready: weapon.is_some_and(|input| input.item_system_ready),
+            shell_execution: weapon.is_some_and(|input| input.shell_execution),
             ticks,
         };
         let obstacle_query = || super::obstacle::OrdinaryObstacleQuery {
@@ -97,11 +102,23 @@ impl ScriptWorld {
         let support = self.query_ordinary_ground(id, ground_query())?;
         if mask & 4 != 0 {
             self.assign_ordinary_support_surface(id, query.scene, support.as_ref())?;
-            if !special {
+            let living_state = self.actors[id.index]
+                .control
+                .as_ref()
+                .expect("admitted ground control")
+                .living_state;
+            if matches!(living_state, 20 | 21) {
+                self.admit_actor_weapon_draw(
+                    id,
+                    weapon.context("combat ground weapon admission unavailable")?,
+                    ticks,
+                    sounds,
+                )?;
+            } else if !special {
                 let actor = &self.actors[id.index];
                 let control = actor.control.as_ref().expect("admitted late control");
                 ensure!(
-                    !matches!(control.living_state, 20 | 21 | 27..=32),
+                    !matches!(control.living_state, 27..=32),
                     "state-specific ground response owner unavailable"
                 );
                 ensure!(

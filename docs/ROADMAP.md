@@ -139,8 +139,9 @@ probe also confirms shark movement and Brennan animation-frame advancement.
 Browser acceptance remains open. The probe identifies missing shared sample-reset
 inputs on BOAT1 and WATERSND. A later native START probe confirms both pirates
 complete their authored wait, enter combat lifecycle six and select drawing
-group 91 through automatic dispatch. Their next state-specific ground response
-remains unsupported and blocks further opening-story acceptance.
+group 91 through automatic dispatch. Shared combat ground weapon admission now
+advances both actors to drawing frame 98 with group 8 pending; the next combat
+decision stage remains unsupported and blocks further opening-story acceptance.
 Explicit-stage tests and export coverage do not close automatic acceptance.
 
 - [x] Standalone player-role animation entry and initial mesh binding without a controller tick. **Verified:** headless scheduling checks cover ordered CYRUS/GREMLIN setup, marker-position cues, combat association, weapon validation, generation replacement and unload cleanup; omitting initialization fails the comparison. Installed entry-frame comparison, full installed gates and browser check pass. Automatic locomotion and complete player lifecycle remain open.

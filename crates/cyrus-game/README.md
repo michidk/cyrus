@@ -653,6 +653,12 @@ terrain body contacts, slope suppression/combat admissions, conditional stable
 recovery and special movement still fail contextually. This does not establish
 START intro playback or all-world acceptance.
 
+Ordinary living states 20 and 21 run shared weapon-draw admission after support
+and surface assignment, including its weapon cleanup branch. They do not run
+the ordinary height/falling response in the same stage. Required inventory,
+selected-player and shell inputs come from the shared host. This follows
+[preservation's combat ground dispatch](https://github.com/michidk/redguard-preservation/pull/76).
+
 Combat maintenance retains constructor-owned target, action, flags and cooldown
 separately from the death-animation default. The supported idle nonplayer stage
 restores collision attribute 1 from 119 and applies action/cooldown maintenance.

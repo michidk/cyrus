@@ -10234,3 +10234,148 @@ fn native_combat_entry_is_synchronous_resultless_and_idempotent_without_taunts()
         }
     }
 }
+
+#[test]
+fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
+    use cyrus_game::script::{
+        CombatEntryInputs, OrdinaryInputs, ScriptHud, ScriptInputs, WeaponInputs,
+    };
+    for shell_context in [Some(false), None] {
+        let mut scripts = wait_cache(vec![
+            Operation::Call {
+                call: Call {
+                    function_id: 4,
+                    function: "beginCombat".into(),
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    arguments: vec![],
+                },
+            },
+            set_flag(42),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.push(Function {
+            name: "beginCombat".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.definition.attributes = (0..128).map(|i| format!("attr_{i}")).collect();
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        for (index, value) in [(1, 4), (6, 64), (14, 1), (23, 7), (115, 64), (119, 4)] {
+            actor.attributes.insert(format!("attr_{index}"), value);
+        }
+        add_standalone_receivers(&mut scripts);
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+            instance.active = 1;
+            instance.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({
+                "script_content_id": scripts.content_id,
+                "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
+                    "ravc_count":0, "mpsz_bounds_primary":0, "raex":{"unknown_12":0},
+                    "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
+                    "animation_groups":([0,91].map(|group| serde_json::json!({
+                        "group_index":group,"anim_id":1,"anim_type":0,
+                        "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+                    }))) }],
+                "mpsz_entries":[{"total_extent":[2,2,2],"pos_extent":[1,1,1],
+                    "neg_extent":[1,1,1],"center_offset":[0,0,0]}]
+            }),
+            sections: Default::default(),
+            models: BTreeMap::from([(
+                "BODY".into(),
+                cyrus_assets::animation::AnimationModel {
+                    radius: Some(1.0),
+                    base_positions: vec![],
+                    base_normals: vec![],
+                    faces: vec![],
+                    encoding: "animated_i16".into(),
+                    positions: vec![vec![]],
+                    normals: vec![vec![]],
+                },
+            )]),
+            unsupported: Default::default(),
+        };
+        let models = cyrus_collision::actor_models::ActorModelCollision::new(
+            &cyrus_assets::collision::ActorCollisionModels {
+                object_count: 2,
+                collision_flags: BTreeMap::from([(0, 0), (1, 0)]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        world.prepare_model_resources(&data, &models).unwrap();
+        let player = world.id(2).unwrap();
+        let scene = ordinary_collision_scene(world.world, models);
+        let hud = ScriptHud::default();
+        world
+            .update_ordinary(
+                &data,
+                [10, 30],
+                OrdinaryInputs {
+                    scripts: ScriptInputs {
+                        nominal_ticks: Some(0),
+                        frame_scale: Some(256),
+                        hud: Some(&hud),
+                        shell_execution: shell_context,
+                        combat_entry: Some(CombatEntryInputs {
+                            weapon: WeaponInputs {
+                                selected_player: player,
+                                item_system_ready: true,
+                                shell_execution: false,
+                            },
+                            nominal_ticks: 0,
+                            taunt_animation_admitted: false,
+                            selected_player_death_override: false,
+                        }),
+                        ..Default::default()
+                    },
+                    scene: Some(&scene),
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        for index in 0..2 {
+            let actor = &world.actors()[index];
+            if shell_context.is_none() {
+                assert!(
+                    actor
+                        .failure()
+                        .unwrap()
+                        .contains("combat ground weapon admission unavailable")
+                );
+                continue;
+            }
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            let control = actor.control_state().unwrap();
+            assert_eq!(
+                (
+                    control.death_selector,
+                    control.living_state,
+                    control.combat.as_ref().unwrap().flags
+                ),
+                (6, 20, 4)
+            );
+            assert_eq!(
+                world
+                    .spatial(world.id(index).unwrap())
+                    .unwrap()
+                    .local
+                    .position,
+                [2560, 5120, 7680]
+            );
+            assert_eq!(world.actor_surface(world.id(index).unwrap()).unwrap(), 0);
+            assert_eq!(actor.attributes()[6], 64);
+        }
+        assert_eq!(world.flags(), [42]);
+    }
+}
