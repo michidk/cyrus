@@ -236,7 +236,8 @@ SOUP program types and operand/definition validation belong to
 owns world/actor cache metadata and loads the cache through Bevy. Serialization
 and cache identities are independent of the Rust module that owns each record.
 
-HUD preparation uses preservation's typed ITEM.INI parser and exports all item
+HUD preparation reads SYSTEM.INI's configured item database through preservation's
+typed ITEM.INI parser and exports all item
 definitions and unhidden artwork, including items not yet owned. Initial counts
 remain installed inputs; gameplay owns subsequent acquisition and selection.
 Re-export older HUD caches for the required inventory metadata.

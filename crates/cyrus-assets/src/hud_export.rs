@@ -7,6 +7,7 @@ use rgpre::import::{
     item_ini::ItemIni,
     keys_ini::KeysIni,
     rtx::{RtxEntry, parse_rtx_file},
+    system_ini::SystemIni,
 };
 use std::{
     collections::BTreeMap,
@@ -47,16 +48,27 @@ pub(crate) fn prepare(
     let read =
         |name: &str| crate::preparation::read(source, name).with_context(|| format!("hud: {name}"));
     let system = read("SYSTEM.INI")?;
-    let items = read("ITEM.INI")?;
+    let settings =
+        SystemIni::parse(std::str::from_utf8(&system).context("hud: SYSTEM.INI is not UTF-8")?)
+            .context("hud: SYSTEM.INI")?;
+    let item_path = settings
+        .system
+        .item_ini
+        .as_deref()
+        .context("hud: SYSTEM.INI [system] item_ini is missing")?;
+    let items = read(item_path)?;
+    let definitions = ItemIni::parse(
+        std::str::from_utf8(&items).with_context(|| format!("hud: {item_path} is not UTF-8"))?,
+    )
+    .with_context(|| format!("hud: {item_path}"))?;
     let keys = read("KEYS.INI")?;
     let worlds = read("WORLD.INI")?;
     let system_fields = ini_fields(&system, "SYSTEM.INI")?;
-    let definitions = ItemIni::parse(std::str::from_utf8(&items).context("hud: ITEM.INI UTF-8")?)?;
     let atlas_name = definitions
         .settings
         .bitmap_file
         .clone()
-        .context("hud: ITEM.INI bitmap_file missing")?;
+        .with_context(|| format!("hud: {item_path} bitmap_file missing"))?;
     let powerup_name = text(&system_fields, "SYSTEM.INI", "system", "game_bitmap")?.to_owned();
     let candle_bytes = read("system/SNUFF.GXA")?;
     let compass_bytes = read("system/COMPASS2.GXA")?;
@@ -78,7 +90,7 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        8u32,
+        9u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
@@ -186,15 +198,17 @@ pub(crate) fn prepare(
             .with_context(|| format!("hud: {}: no {tag} text", rtx_path))
     };
     let atlas = parse_gxa_file(&atlas_bytes).with_context(|| format!("hud: {atlas_name}"))?;
-    let counts = starting_inventory(&definitions)?;
+    let counts = starting_inventory(&definitions)
+        .with_context(|| format!("hud: {item_path} starting inventory"))?;
     let mut inventory = BTreeMap::new();
     let mut artwork = Vec::new();
     for (id, item) in &definitions.items {
-        let id = u16::try_from(*id).context("hud: ITEM.INI item ID exceeds u16")?;
+        let id =
+            u16::try_from(*id).with_context(|| format!("hud: {item_path} item ID exceeds u16"))?;
         let count = counts.get(&id).copied().unwrap_or(0);
         let unsigned = |value: Option<i32>, field: &str| -> anyhow::Result<u32> {
             u32::try_from(value.unwrap_or(0))
-                .with_context(|| format!("hud: ITEM.INI {field}[{id}] must be nonnegative"))
+                .with_context(|| format!("hud: {item_path} {field}[{id}] must be nonnegative"))
         };
         inventory.insert(
             id,
@@ -217,9 +231,9 @@ pub(crate) fn prepare(
         }
         let bitmap = item
             .bitmap
-            .with_context(|| format!("hud: ITEM.INI bitmap[{id}] missing"))?;
+            .with_context(|| format!("hud: {item_path} bitmap[{id}] missing"))?;
         let frame = atlas.frames.get(bitmap as usize).with_context(|| {
-            format!("hud: ITEM.INI bitmap[{id}] = {bitmap} is not in {atlas_name}")
+            format!("hud: {item_path} bitmap[{id}] = {bitmap} is not in {atlas_name}")
         })?;
         artwork.push(HudItem {
             id,
@@ -233,7 +247,7 @@ pub(crate) fn prepare(
         .start_item_select
         .map(u16::try_from)
         .transpose()
-        .context("hud: initial item ID exceeds u16")?;
+        .with_context(|| format!("hud: {item_path} initial item ID exceeds u16"))?;
 
     let font = cyrus_text::Font::from(&parse_fnt(&font_bytes).context("hud: fonts/REDSEL.FNT")?);
     let keys = KeysIni::parse(std::str::from_utf8(&keys).context("hud: KEYS.INI is not UTF-8")?)
@@ -390,6 +404,53 @@ mod tests {
         )
         .unwrap();
         assert_eq!(fields[&("items".into(), "start_item_select".into())], "1");
+    }
+
+    #[test]
+    fn preparation_reads_configured_item_database() {
+        use crate::source::{FileInfo, Manifest, ReadAssets};
+        struct Source {
+            manifest: Manifest,
+            files: BTreeMap<String, Vec<u8>>,
+        }
+        impl ReadAssets for Source {
+            fn manifest(&self) -> &Manifest {
+                &self.manifest
+            }
+            fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+                Ok(self.files[path][start as usize..start as usize + length].to_vec())
+            }
+        }
+        let files: BTreeMap<String, Vec<u8>> = [
+            (
+                "SYSTEM.INI".into(),
+                b"[system]\nitem_ini=alternate.ini\n".to_vec(),
+            ),
+            (
+                "alternate.ini".into(),
+                b"[items]\nplayer_total[1]=broken\n".to_vec(),
+            ),
+            ("ITEM.INI".into(), b"[items]\n".to_vec()),
+        ]
+        .into();
+        let source = Source {
+            manifest: Manifest {
+                files: files
+                    .iter()
+                    .map(|(path, bytes)| FileInfo {
+                        path: path.clone(),
+                        bytes: bytes.len() as u64,
+                        digest: "0".repeat(64),
+                    })
+                    .collect(),
+            },
+            files,
+        };
+        let mut output = BTreeMap::<String, Vec<u8>>::new();
+        let error = prepare(&source, &mut output).unwrap_err();
+        let error = format!("{error:#}");
+        assert!(error.contains("alternate.ini"), "{error}");
+        assert!(error.contains("player_total"), "{error}");
     }
 
     #[test]
