@@ -82,8 +82,16 @@ mod tests {
             installed
         );
         let path = store.directory.join("REDGUARD.CPF");
-        std::fs::create_dir(store.directory.join("REDGUARD.tmp")).unwrap();
+        let retained = root.join("retained");
+        std::fs::rename(&store.directory, &retained).unwrap();
+        std::fs::write(&store.directory, b"blocked state directory").unwrap();
         assert!(store.save(&Preferences::default()).is_err());
+        assert_eq!(
+            std::fs::read(&store.directory).unwrap(),
+            b"blocked state directory"
+        );
+        std::fs::remove_file(&store.directory).unwrap();
+        std::fs::rename(&retained, &store.directory).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), local.encode());
         std::fs::write(&path, b"bad").unwrap();
         let mut app = bevy::prelude::App::new();

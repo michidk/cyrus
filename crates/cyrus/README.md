@@ -37,6 +37,12 @@ scene preparation, debug world options and control-command application.
 `cyrus-control::server` handles TCP framing. Headless assembly omits the camera
 and audio backend; windowed assembly adds the shared presentation plugins.
 
+Native document storage writes an exclusively created sibling candidate, syncs
+its complete bytes, then publishes it with one rename. Failed publication leaves
+the accepted destination intact and cleans up only that write's candidate.
+Callers own document validation. This shared byte-storage boundary does not yet
+provide gameplay saves or full restoration after a restart.
+
 Shared browser/CLI options use exactly the same names:
 
 | CLI | Browser URL | Meaning |

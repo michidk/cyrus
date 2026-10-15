@@ -158,10 +158,16 @@ mod tests {
         let fixture = Fixture::new();
         let mut runtime = Cheats::new(fixture.store());
         runtime.execute("savecheats", None).unwrap();
-        std::fs::create_dir(fixture.0.join("local/REDGUARD.tmp")).unwrap();
+        let local = fixture.0.join("local");
+        let retained = fixture.0.join("retained");
+        std::fs::rename(&local, &retained).unwrap();
+        std::fs::write(&local, b"blocked state directory").unwrap();
         runtime.execute("neversaydie", Some(3)).unwrap();
         assert!(runtime.execute("savecheats", None).is_err());
         assert!(runtime.distance_override().unwrap());
+        assert_eq!(std::fs::read(&local).unwrap(), b"blocked state directory");
+        std::fs::remove_file(&local).unwrap();
+        std::fs::rename(&retained, &local).unwrap();
         assert_eq!(
             std::fs::read(fixture.0.join("local/REDGUARD.CHT")).unwrap(),
             vec![0; 256]
