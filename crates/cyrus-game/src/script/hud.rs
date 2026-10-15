@@ -4,7 +4,23 @@ use anyhow::{Context, Result};
 use bevy::prelude::Resource;
 use cyrus_assets::hud::HudAsset;
 use cyrus_script::Argument;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+
+/// Complete configured HUD state for a replacement session candidate.
+/// This Cyrus snapshot is not an original save record. Unconfigured state and
+/// retained initialization/load errors cannot be captured or silently repaired.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ScriptHudSnapshot {
+    version: u32,
+    frames: usize,
+    inventory: super::InventorySnapshot,
+    journal: super::JournalSnapshot,
+    powerups: [Option<(u8, u8)>; 2],
+    next_slot: usize,
+    compass_on: bool,
+    use_consumed: bool,
+}
 
 /// Result of the current item-use gates, before consuming the held-use latch.
 #[derive(Clone, Copy)]
@@ -41,6 +57,88 @@ impl std::fmt::Debug for ScriptHud {
 }
 
 impl ScriptHud {
+    /// Capture all configured state under one lock without consuming notifications.
+    /// Missing installed data or retained inventory/journal errors prevent capture.
+    pub fn snapshot(&self) -> Result<ScriptHudSnapshot> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("script HUD inventory initialization: {error}");
+        }
+        Ok(ScriptHudSnapshot {
+            version: 1,
+            frames: state
+                .data
+                .context("script HUD installed atlas unavailable")?,
+            inventory: state
+                .inventory
+                .as_ref()
+                .context("script HUD installed inventory unavailable")?
+                .snapshot(),
+            journal: state
+                .journal
+                .as_ref()
+                .context("script HUD journal unavailable")?
+                .snapshot()
+                .context("script HUD journal capture")?,
+            powerups: state.powerups,
+            next_slot: state.next_slot,
+            compass_on: state.compass_on,
+            use_consumed: state.use_consumed,
+        })
+    }
+
+    /// Validate before constructing an off-live replacement. Attaches storage
+    /// without I/O, startup acquisitions, item effects or notification consumption.
+    /// The host must also validate the complete session's installed asset identity.
+    pub fn from_snapshot(
+        hud: &HudAsset,
+        preferences: &Preferences,
+        snapshot: ScriptHudSnapshot,
+    ) -> Result<Self> {
+        anyhow::ensure!(
+            snapshot.version == 1,
+            "script HUD snapshot version {} is unsupported",
+            snapshot.version
+        );
+        anyhow::ensure!(
+            snapshot.frames == hud.powerup_sizes.len(),
+            "script HUD installed power-up atlas frame count differs"
+        );
+        anyhow::ensure!(
+            snapshot.next_slot < 2,
+            "script HUD next power-up slot {} is invalid",
+            snapshot.next_slot
+        );
+        for (slot, entry) in snapshot.powerups.iter().enumerate() {
+            if let Some((id, frame)) = entry {
+                anyhow::ensure!(
+                    *id <= 1 && usize::from(*frame) < snapshot.frames,
+                    "script HUD power-up slot {slot}: invalid id {id} or atlas frame {frame}"
+                );
+            }
+        }
+        if let [Some((_, first)), Some((_, second))] = snapshot.powerups {
+            anyhow::ensure!(
+                first != second,
+                "script HUD power-up slots repeat frame {first}"
+            );
+        }
+        let inventory = super::Inventory::from_snapshot(hud, snapshot.inventory)
+            .context("script HUD inventory replacement")?;
+        let journal = super::Journal::from_snapshot(hud, preferences, snapshot.journal)
+            .context("script HUD journal replacement")?;
+        Ok(Self(Mutex::new(State {
+            data: Some(snapshot.frames),
+            inventory: Some(inventory),
+            inventory_error: None,
+            powerups: snapshot.powerups,
+            next_slot: snapshot.next_slot,
+            journal: Some(journal),
+            compass_on: snapshot.compass_on,
+            use_consumed: snapshot.use_consumed,
+        })))
+    }
+
     /// Configure once from the installed atlas and RTX catalog, retaining local load errors.
     pub fn configure(&self, hud: &HudAsset, preferences: &Preferences) {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

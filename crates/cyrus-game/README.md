@@ -75,6 +75,14 @@ accessing storage. An installed-data journal document has been verified through
 native publication and fresh-process reconstruction, including duplicate-tag and
 notification continuation. Inventory and complete session restoration remain separate.
 
+`ScriptHud::snapshot` captures inventory, journal, compass state, held-use latch,
+power-up slots and replacement order under one lock. `from_snapshot` validates
+the components and returns a separate HUD without storage I/O, startup
+acquisitions or effects. Unconfigured state and retained initialization or
+journal-load errors prevent capture. The aggregate session owner must validate
+the installed asset identity before committing a replacement. These component
+APIs do not enable player-facing save/load.
+
 `DialogueState::snapshot` retains ordered records, formatted text, remaining
 lifetimes, skip latch and presentation selection. `from_snapshot` returns a
 replacement after validating installed settings and explicit actor/sample

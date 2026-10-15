@@ -3753,3 +3753,142 @@ fn fighting_query_rejects_unprepared_ordinary_traversal() {
         }
     }
 }
+
+#[test]
+fn hud_snapshot_replacement_preserves_continuation_without_io_or_startup() {
+    use cyrus_game::{
+        preferences::{PreferenceKey, PreferenceStore, Preferences},
+        script::{CompassUse, ScriptHud, ScriptHudSnapshot},
+    };
+    struct NoIo;
+    impl PreferenceStore for NoIo {
+        fn load(&self, key: PreferenceKey) -> anyhow::Result<Option<String>> {
+            assert!(matches!(key, PreferenceKey::Menu), "unexpected HUD load");
+            anyhow::bail!("unexpected load")
+        }
+        fn save(&self, _: PreferenceKey, _: &str) -> anyhow::Result<()> {
+            panic!("unexpected save")
+        }
+    }
+    let mut asset = inventory_fixture(&[(1, 0), (2, 1)]);
+    asset.start_items = vec![1];
+    asset.inventory.get_mut(&1).unwrap().add_items = vec![2];
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: None,
+        fail_save: false,
+        writes,
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    hud.select_item(1).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[1, 0]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[1, 1]).unwrap();
+    hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
+    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"TEST")]).unwrap();
+    assert!(hud.compass_input(true, CompassUse::Accepted));
+    let mut saved = serde_json::to_value(hud.snapshot().unwrap()).unwrap();
+    saved["inventory"]["items"]["1"]["count"] = 77.into();
+    saved["inventory"]["items"]["1"]["hidden"] = true.into();
+    // Menu preference loading happens before the replacement API is invoked.
+    let no_io = Preferences::new(NoIo);
+    let replacement = ScriptHud::from_snapshot(
+        &asset,
+        &no_io,
+        serde_json::from_value::<ScriptHudSnapshot>(saved.clone()).unwrap(),
+    )
+    .unwrap();
+    assert!(replacement.ready());
+    assert_eq!(
+        serde_json::to_value(replacement.snapshot().unwrap()).unwrap(),
+        saved
+    );
+    assert_eq!(
+        replacement.inventory(None).unwrap().counts,
+        [(1, 77), (2, 2)].into()
+    );
+    assert!(replacement.compass_input(true, CompassUse::Accepted));
+    replacement.compass_input(false, CompassUse::Blocked);
+    assert!(!replacement.compass_input(true, CompassUse::Accepted));
+    assert_eq!(
+        replacement.presentation(),
+        ([Some((0, 2)), Some((1, 1))], true)
+    );
+    assert!(!replacement.presentation().1);
+    hud_call(Some(&replacement), "ShowBitmap", &[1, 0]).unwrap();
+    assert_eq!(replacement.presentation().0, [Some((0, 2)), Some((1, 0))]);
+    assert!(
+        hud.presentation().1,
+        "replacement must not consume live notification"
+    );
+    assert_eq!(hud.inventory(None).unwrap().counts[&1], 1);
+}
+
+#[test]
+fn hud_snapshot_rejects_invalid_candidates_without_mutating_live_state() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let asset = inventory_fixture(&[(1, 1)]);
+    let preferences = Preferences::new(LogStore {
+        load: None,
+        fail_save: false,
+        writes: Default::default(),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let saved = serde_json::to_value(hud.snapshot().unwrap()).unwrap();
+    for (pointer, value) in [
+        ("/version", serde_json::json!(2)),
+        ("/frames", serde_json::json!(4)),
+        ("/next_slot", serde_json::json!(2)),
+        ("/powerups", serde_json::json!([[2, 0], null])),
+        ("/powerups", serde_json::json!([[0, 3], null])),
+        ("/powerups", serde_json::json!([[0, 1], [1, 1]])),
+        ("/inventory/version", serde_json::json!(2)),
+        ("/journal/version", serde_json::json!(2)),
+    ] {
+        let mut invalid = saved.clone();
+        *invalid.pointer_mut(pointer).unwrap() = value;
+        assert!(
+            ScriptHud::from_snapshot(
+                &asset,
+                &preferences,
+                serde_json::from_value(invalid).unwrap(),
+            )
+            .is_err(),
+            "accepted {pointer}"
+        );
+        assert_eq!(
+            serde_json::to_value(hud.snapshot().unwrap()).unwrap(),
+            saved
+        );
+    }
+    let mut changed = inventory_fixture(&[(1, 1)]);
+    changed.labels.insert("TEST".into(), "Changed".into());
+    assert!(ScriptHud::from_snapshot(&changed, &preferences, hud.snapshot().unwrap(),).is_err());
+}
+
+#[test]
+fn hud_snapshot_rejects_unconfigured_and_failed_local_state() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    assert!(hud.snapshot().is_err());
+    let asset = hud_asset();
+    let broken = Preferences::new(LogStore {
+        load: Some("malformed journal".into()),
+        fail_save: false,
+        writes: Default::default(),
+    });
+    hud.configure(&asset, &broken);
+    assert!(
+        hud.ready(),
+        "HUD readiness does not erase journal load errors"
+    );
+    assert!(hud.snapshot().unwrap_err().to_string().contains("journal"));
+    assert!(hud.entries().is_err());
+    let mut invalid = inventory_fixture(&[(1, 0)]);
+    invalid.start_items = vec![2];
+    let hud = ScriptHud::default();
+    hud.configure(&invalid, &broken);
+    assert!(!hud.ready());
+    assert!(hud.snapshot().is_err());
+}

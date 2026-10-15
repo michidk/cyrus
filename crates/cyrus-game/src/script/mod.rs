@@ -20,7 +20,7 @@ pub use flags::GlobalFlagsSnapshot;
 mod hud;
 mod inventory;
 mod journal;
-pub use hud::{CompassUse, ScriptHud};
+pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};
 pub use inventory::{Inventory, InventorySnapshot, InventoryView};
 pub use journal::{Journal, JournalSnapshot};
 mod maintenance;
