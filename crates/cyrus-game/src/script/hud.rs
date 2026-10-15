@@ -127,6 +127,37 @@ impl ScriptHud {
             .add(id, amount)
     }
 
+    /// Selected record ID, independent of ownership or visibility; zero when closed.
+    pub fn active_item(&self) -> Result<u16> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state
+            .inventory
+            .as_ref()
+            .and_then(super::inventory::Inventory::selected)
+            .unwrap_or(0))
+    }
+
+    pub(super) fn inventory_ready(&self) -> Result<bool> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        Ok(state.inventory.is_some())
+    }
+
+    pub(super) fn validate_item(&self, id: u16) -> Result<()> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        state
+            .inventory
+            .as_ref()
+            .context("installed inventory data unavailable")?
+            .count(id)?;
+        Ok(())
+    }
+
     /// Script selection accepts any defined ID; the item overlay repairs exhausted selection.
     pub fn select_item(&self, id: u16) -> Result<()> {
         self.0
@@ -194,7 +225,8 @@ impl ScriptHud {
                 arguments.len() == expected,
                 "{function} requires {expected} arguments"
             );
-            if function.eq_ignore_ascii_case("DropItem")
+            if (function.eq_ignore_ascii_case("DropItem")
+                || function.eq_ignore_ascii_case("HaveItem"))
                 && state.inventory.is_none()
                 && state.inventory_error.is_none()
             {

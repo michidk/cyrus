@@ -89,6 +89,8 @@ pub enum ScriptStage {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ScriptInputs<'a> {
     pub hud: Option<&'a super::ScriptHud>,
+    /// Caller-established shell context for item operations; absence is unknown.
+    pub shell_execution: Option<bool>,
     pub activation: Option<&'a super::ActivationInputs>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
@@ -156,6 +158,8 @@ pub struct ActorControlState {
     pub rope_attached: bool,
     pub torch_burning: u8,
     pub weapon_drawn: bool,
+    /// Low byte assigned by admitted HandItem; None leaves initial attachment state unestablished.
+    pub held_item: Option<u8>,
     pub object_update_excluded: bool,
     /// Presentation hidden state; this does not exclude script or animation updates.
     pub hidden: bool,
@@ -1763,6 +1767,32 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 &mut emit,
             )?;
             return Ok(CallResult::CompleteWithoutValue);
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("ActiveItem") {
+            anyhow::ensure!(arguments.is_empty(), "ActiveItem requires no arguments");
+            let selected = self
+                .inputs
+                .hud
+                .context("ActiveItem inventory host unavailable")?
+                .active_item()?;
+            return Ok(CallResult::Complete(i32::from(selected)));
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("HandItem") {
+            let [item] = arguments else {
+                anyhow::bail!("HandItem requires one argument")
+            };
+            let hud = self
+                .inputs
+                .hud
+                .context("HandItem inventory host unavailable")?;
+            if hud.inventory_ready()? {
+                self.actors[self.index].hand_item(
+                    item.integer()?,
+                    hud,
+                    self.inputs.shell_execution,
+                )?;
+            }
+            return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && super::ScriptHud::handles(function) {
             let hud = self.inputs.hud.context("script HUD host unavailable")?;

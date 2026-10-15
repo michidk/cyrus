@@ -2808,3 +2808,208 @@ fn inventory_drop_list_preserves_authored_order_and_zero_admission_skips_effects
         [(1, 1), (2, 1), (3, 0), (4, 0)].into()
     );
 }
+
+#[test]
+fn active_item_reads_selected_record_without_ownership_filter_and_takes_no_arguments() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    assert!(hud_call(None, "ActiveItem", &[]).is_err());
+    let hud = ScriptHud::default();
+    assert_eq!(hud_call(Some(&hud), "ActiveItem", &[]).unwrap(), 0);
+    assert_eq!(hud_call(Some(&hud), "HaveItem", &[999]).unwrap(), 0);
+    let mut asset = inventory_fixture(&[(1, 1), (257, 0)]);
+    asset.inventory.get_mut(&257).unwrap().hidden = true;
+    asset.selected = Some(257);
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(hud_call(Some(&hud), "ActiveItem", &[]).unwrap(), 257);
+    assert!(hud_call(Some(&hud), "ActiveItem", &[0]).is_err());
+    hud.select_item(1).unwrap();
+    assert_eq!(hud_call(Some(&hud), "ActiveItem", &[]).unwrap(), 1);
+}
+
+fn hand_item_world(item: i32, holding: u8) -> ScriptWorld {
+    let mut data = scripts(vec![
+        Operation::Assign {
+            destination: Place::Flag { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 3,
+                        kind: CallKind::Function,
+                        target: Object::Named { string: 0 },
+                        function: "HandItem".into(),
+                        arguments: vec![Value::Integer { value: item }],
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "HandItem".into(),
+        param_count: 1,
+        kind: CallKind::Function,
+    });
+    data.actors
+        .get_mut("OTHER")
+        .unwrap()
+        .attributes
+        .insert("attr_110".into(), holding);
+    data.content_id = data.content_identity().unwrap();
+    ScriptWorld::prepare(&data, 7).unwrap()
+}
+
+#[test]
+fn hand_item_routes_to_receiver_and_preserves_inventory_and_attributes() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(1, 1), (257, 0)]);
+    asset.inventory.get_mut(&257).unwrap().hidden = true;
+    asset.selected = Some(1);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    let mut world = hand_item_world(257, 0);
+    let attributes = world.actors()[1].attributes().to_vec();
+    world
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert!(world.actors()[0].failure().is_none());
+    assert_eq!(
+        world.actors()[1].control_state().unwrap().held_item,
+        Some(1)
+    );
+    assert_eq!(world.actors()[0].control_state().unwrap().held_item, None);
+    assert_eq!(world.actors()[1].attributes(), attributes);
+    assert_eq!(hud.active_item().unwrap(), 1);
+    assert_eq!(hud.inventory(None).unwrap().counts[&257], 0);
+    assert_eq!(world.flags(), [0]);
+}
+
+#[test]
+fn hand_item_rejects_known_gates_before_lookup_and_requires_known_shell_admission() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let hud = ScriptHud::default();
+    hud.configure(&inventory_fixture(&[(1, 1)]), &Preferences::default());
+    for (surface, holding, shell) in [(2, 0, false), (4, 0, false), (0, 1, false), (0, 0, true)] {
+        let mut world = hand_item_world(-1, holding);
+        world
+            .set_actor_surface(world.id(1).unwrap(), surface)
+            .unwrap();
+        world
+            .advance(
+                world.id(0).unwrap(),
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(shell),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .unwrap();
+        assert!(world.actors()[0].failure().is_none());
+        assert_eq!(world.actors()[1].control_state().unwrap().held_item, None);
+    }
+    let mut world = hand_item_world(1, 0);
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                hud: Some(&hud),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("shell admission unavailable"));
+    assert!(
+        world.actors()[0]
+            .failure()
+            .unwrap()
+            .contains("shell admission unavailable")
+    );
+}
+
+#[test]
+fn hand_item_distinguishes_closed_unknown_and_invalid_inventory() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let closed = ScriptHud::default();
+    let mut world = hand_item_world(-1, 0);
+    world
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                hud: Some(&closed),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[1].control_state().unwrap().held_item, None);
+    for configured in [false, true] {
+        let hud = ScriptHud::default();
+        if configured {
+            hud.configure(&inventory_fixture(&[(1, 1)]), &Preferences::default());
+        }
+        let mut world = hand_item_world(513, 0);
+        let error = world
+            .advance(
+                world.id(0).unwrap(),
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    hud: configured.then_some(&hud),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(if configured {
+            "definition absent"
+        } else {
+            "inventory host unavailable"
+        }));
+        assert_eq!(world.actors()[1].control_state().unwrap().held_item, None);
+    }
+    let invalid = ScriptHud::default();
+    let mut asset = inventory_fixture(&[(1, 1)]);
+    asset.selected = Some(999);
+    invalid.configure(&asset, &Preferences::default());
+    assert!(hud_call(Some(&invalid), "ActiveItem", &[]).is_err());
+    let mut world = hand_item_world(1, 0);
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            BODY,
+            cyrus_game::script::ScriptInputs {
+                hud: Some(&invalid),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("inventory initialization"));
+}

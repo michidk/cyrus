@@ -31,6 +31,10 @@ impl Inventory {
         }
         Ok(inventory)
     }
+    pub fn selected(&self) -> Option<u16> {
+        self.selected
+    }
+
     pub fn inspect(&self) -> serde_json::Value {
         serde_json::json!({
             "selected": self.selected,

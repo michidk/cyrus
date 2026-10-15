@@ -82,6 +82,16 @@ and current logical-player control, surface, animation and attribute state.
 Explicit activation inputs remain available for inspection. Receiving a compass
 does not enable it; a held accepted use toggles only once. Rules follow
 preservation's [inventory contract](https://github.com/michidk/redguard-preservation/commit/695ac1f).
+`ActiveItem` reads the selected record without an ownership or visibility filter;
+`ActiveItem` and `HaveItem` return zero for a closed inventory. Missing hosts and failed initialization
+remain contextual errors. `HandItem` validates the full item ID, then records its
+low byte on the receiving logical actor after the documented water, edge, air,
+weapon and shell gates. The ordinary scheduler supplies its established non-shell context; explicit
+callers supply `ScriptInputs::shell_execution`. Unknown context does not authorize assignment. It changes neither inventory
+selection/counts nor weapon attributes, and does not draw attachment geometry.
+Initial held-item state remains unestablished until an admitted assignment.
+These gates follow preservation's
+[held-item contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/attachment.md#held-item-assignment).
 `state.script_hud.inventory` reports current ownership and selection;
 `inventory_error` retains initialization failures without publishing partial counts.
 Acquisition/removal rules follow preservation

@@ -559,6 +559,7 @@ pub fn run_ordinary(
                 .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0))),
             scripts: ScriptInputs {
                 hud: hud.as_deref(),
+                shell_execution: Some(false),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),
                 player_query,

@@ -21,6 +21,56 @@ pub struct CombatEntryInputs {
     pub selected_player_death_override: bool,
 }
 
+impl super::ScriptActor {
+    pub(super) fn hand_item(
+        &mut self,
+        item: i32,
+        hud: &crate::script::ScriptHud,
+        shell_execution: Option<bool>,
+    ) -> Result<()> {
+        let surface = self
+            .surface
+            .context("HandItem receiver surface unavailable")?;
+        let control = self
+            .control
+            .as_mut()
+            .context("HandItem receiver control unavailable")?;
+        if matches!(surface, 2 | 4)
+            || (10..=19).contains(&control.living_state)
+            || (27..=29).contains(&control.living_state)
+            || control.falling_state != 0
+            || control.sliding_state != 0
+            || control.queued_motion != 0
+            || self.attributes[110] != 0
+        {
+            return Ok(());
+        }
+        let shell = shell_execution.context("HandItem shell admission unavailable")?;
+        if shell
+            || super::super::activation::weapon_predicates(
+                control.living_state,
+                self.animation
+                    .as_ref()
+                    .map(|animation| crate::script::ActivationAnimation {
+                        group: animation.playback.current_group(),
+                    }),
+                control.combat_death_default.is_some(),
+                control.weapon_drawn,
+                self.attributes[110],
+                true,
+                shell,
+            )
+            .0
+        {
+            return Ok(());
+        }
+        let item = u16::try_from(item).context("HandItem item ID outside u16 range")?;
+        hud.validate_item(item)?;
+        control.held_item = Some(item as u8);
+        Ok(())
+    }
+}
+
 /// A synchronous borrow of one authoritative logical actor and its shared globals.
 pub(super) struct CombatReceiver<'a> {
     actor: &'a mut super::ScriptActor,
@@ -434,6 +484,37 @@ mod tests {
             }),
             animation_failure: None,
             update_failure: None,
+        }
+    }
+
+    #[test]
+    fn hand_item_rejects_edges_air_and_drawn_weapons_without_resolving_item() {
+        for gate in 0..8 {
+            let mut actor = actor();
+            let control = actor.control.as_mut().unwrap();
+            control.held_item = Some(7);
+            match gate {
+                0 => control.living_state = 10,
+                1 => control.living_state = 19,
+                2 => control.living_state = 27,
+                3 => control.living_state = 29,
+                4 => control.falling_state = 1,
+                5 => control.sliding_state = 1,
+                6 => control.queued_motion = 1,
+                7 => {
+                    control.weapon_drawn = true;
+                    control.combat_death_default = Some(1);
+                }
+                _ => unreachable!(),
+            }
+            actor
+                .hand_item(-1, &crate::script::ScriptHud::default(), Some(false))
+                .unwrap();
+            assert_eq!(
+                actor.control.as_ref().unwrap().held_item,
+                Some(7),
+                "gate {gate}"
+            );
         }
     }
 
