@@ -4,6 +4,10 @@ The browser game runs startup through the book menu by default. It uses the same
 world, game and presentation plugins as the native game. This host owns URL
 selection and localStorage preferences; it has no native control port.
 
+Shared document storage preserves the accepted value when a write exceeds the
+browser quota, and distinguishes missing records from read failures. Complete
+gameplay save restoration and capacity for visited-world state remain open.
+
 ```sh
 just web-build
 just run-web --install /path/to/Redguard
