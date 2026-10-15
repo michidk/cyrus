@@ -61,8 +61,7 @@ screen-linear vertex RGB and texture modulation before the existing scene fog,
 without Bevy PBR or tone mapping. **Verified:** terrain texels use the world's six-bit palette conversion before
 filtering, following the [published COL upload rule](https://github.com/michidk/redguard-preservation/commit/395e6693514482fb4a8c8881d5998843efee3542).
 Generic exported images retain their original colors. Ordinary prepared models
-apply the same world palette conversion in their sampling path. Standalone and
-generated-flat palette handling remains **Unknown**.
+apply the same world palette conversion in their sampling path. Standalone-model palette handling remains **Unknown**.
 **Verified:** measured ISLAND original/native/browser captures with frozen sky
 and waves and held per-image frames reduce shoreline mean RGB error from 1.281
 to about 0.096 and land error from 1.405 to about 0.030. A control restoring only
@@ -418,7 +417,7 @@ Converted model palette samples reduce lower-deck mean RGB error from 1.179 to
 0.038 against an isolated old-sampler control. Native/browser deck and rail
 differences stay below 0.002. Native BELLTOWR controls improve sampled wall and
 table colors; the measured ISLAND terrain regions are unchanged. Full pixel
-parity, original cadence and solid-face palette initialization remain **Unknown**.
+parity and original cadence remain **Unknown**.
 
 **Verified:** native and browser START New Game preserve the measured inspection
 view after the book menu and intro. At zero sky/wave speed, measured sky phase
@@ -457,3 +456,17 @@ an isolated old-sampler control. Frame 2 mean RGB error is 0.733 native and
 0.725 browser, versus 0.837 for the control. Wall/table pixels are unchanged
 by this correction. Original flame phase, cadence and full parity remain
 **Unknown**. Standalone actor sampling eligibility remains separate.
+
+**Verified:** world archive solid-color faces require `rgpre_solid_palette` version 1 from
+[preservation's indexed export](https://github.com/michidk/redguard-preservation/commit/395b1b3).
+Their palette conversion precedes retained lighting and unbaked corner lighting;
+index zero becomes black. Missing metadata requires re-export. Generic model
+exports keep their existing colors.
+**Verified:** measured 640×480 BELLTOWR original/native/browser captures cover the
+upper tower windows and a close tower ring. Against an isolated old-conversion
+control, mean RGB error drops from 0.810 to zero in the sampled window band and
+from 0.29–0.33 to at most 0.002 in four ring regions. Native/browser ring regions
+match exactly; sampled textured wall and beam pixels are unchanged by the fix.
+All five held candle frames preserve the previous browser flame/wall/table pixels.
+These static views do not establish full-scene parity, actor preparation rules or
+synchronized animation cadence.

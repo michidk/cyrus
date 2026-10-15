@@ -66,12 +66,16 @@ pub(crate) fn grid_face_normal(grid: &[[f32; 3]], side: usize, [a, b, c]: [usize
     normalize((position(b) - position(a)).cross(position(c) - position(a)))
 }
 
-/// Copy authored per-face inputs into a private mesh's unused second UV channel.
+/// Prepare private face inputs and optional retained RGB for model lighting.
+/// World archive solids use the converted palette before lighting, as documented in
+/// <https://github.com/michidk/redguard-preservation/commit/dd46e20>.
+/// The returned solid RGB is in encoded byte units for the unbaked path.
 pub(crate) fn model_mesh(
     mesh: &Mesh,
     extras: &str,
     bake: Option<(&Environment, &StaticLightingInstance)>,
-) -> anyhow::Result<(Mesh, i32)> {
+    world_palette: bool,
+) -> anyhow::Result<(Mesh, i32, Option<[u8; 3]>)> {
     #[derive(serde::Deserialize)]
     struct Inputs {
         version: u32,
@@ -80,10 +84,43 @@ pub(crate) fn model_mesh(
         solid_rgb: Option<[u8; 3]>,
     }
     #[derive(serde::Deserialize)]
+    struct PaletteIndex {
+        version: u32,
+        index: u8,
+    }
+    #[derive(serde::Deserialize)]
     struct Extras {
         rgpre_lighting: Inputs,
+        rgpre_solid_palette: Option<PaletteIndex>,
     }
-    let inputs = serde_json::from_str::<Extras>(extras)?.rgpre_lighting;
+    let extras = serde_json::from_str::<Extras>(extras)?;
+    let mut inputs = extras.rgpre_lighting;
+    let solid_rgb = if world_palette {
+        inputs
+            .solid_rgb
+            .map(|rgb| {
+                let palette = extras
+                    .rgpre_solid_palette
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("missing solid palette-index metadata"))?;
+                anyhow::ensure!(
+                    palette.version == 1,
+                    "unsupported solid palette-index version {}",
+                    palette.version
+                );
+                Ok(if palette.index == 0 {
+                    [0; 3]
+                } else {
+                    rgb.map(|channel| channel & !3)
+                })
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    if solid_rgb.is_some() {
+        inputs.solid_rgb = solid_rgb;
+    }
     anyhow::ensure!(
         inputs.version == 5,
         "unsupported model lighting version {}",
@@ -185,7 +222,7 @@ pub(crate) fn model_mesh(
             })
             .collect::<Vec<_>>(),
     );
-    Ok((private, inputs.radius_fixed))
+    Ok((private, inputs.radius_fixed, solid_rgb))
 }
 
 #[cfg(test)]
@@ -231,7 +268,8 @@ mod tests {
         };
         for (x, expected) in [(0, [199, 100, 50]), (1000, [62, 45, 38])] {
             instance.position[0] = x;
-            let (baked, _) = model_mesh(&mesh, extras, Some((&environment, &instance))).unwrap();
+            let (baked, _, _) =
+                model_mesh(&mesh, extras, Some((&environment, &instance)), false).unwrap();
             let Some(VertexAttributeValues::Float32x4(colors)) =
                 baked.attribute(Mesh::ATTRIBUTE_COLOR)
             else {
@@ -240,16 +278,68 @@ mod tests {
             let [r, g, b] = expected.map(|v| v as f32 / 255.0);
             assert_eq!(colors, &vec![[r, g, b, 1.0]; 3]);
         }
+        instance.position[0] = 0;
+        let mut indexed: serde_json::Value = serde_json::from_str(extras).unwrap();
+        indexed["rgpre_lighting"]["solid_rgb"] = serde_json::json!([19, 31, 47]);
+        for (index, rgb) in [(0, [0, 0, 0]), (7, [16, 28, 44])] {
+            indexed["rgpre_solid_palette"] = serde_json::json!({"version":1,"index":index});
+            let (baked, _, _) = model_mesh(
+                &mesh,
+                &indexed.to_string(),
+                Some((&environment, &instance)),
+                true,
+            )
+            .unwrap();
+            let Some(VertexAttributeValues::Float32x4(colors)) =
+                baked.attribute(Mesh::ATTRIBUTE_COLOR)
+            else {
+                panic!("missing retained colors")
+            };
+            let [r, g, b] = rgb.map(|v| v as f32 / 255.0);
+            assert_eq!(colors, &vec![[r, g, b, 1.0]; 3]);
+        }
         assert!(mesh.attribute(Mesh::ATTRIBUTE_COLOR).is_none());
         assert!(
-            model_mesh(&mesh, extras, None)
+            model_mesh(&mesh, extras, None, false)
                 .unwrap()
                 .0
                 .attribute(Mesh::ATTRIBUTE_COLOR)
                 .is_none()
         );
         mesh.remove_attribute(Mesh::ATTRIBUTE_NORMAL);
-        assert!(model_mesh(&mesh, extras, Some((&environment, &instance))).is_err());
+        assert!(model_mesh(&mesh, extras, Some((&environment, &instance)), false).is_err());
+    }
+
+    #[test]
+    fn world_solids_require_indices_and_preserve_equal_color_distinction() {
+        let mut mesh = Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, default());
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
+        let mut extras = serde_json::json!({
+            "rgpre_lighting": {"version":5,"radius_fixed":0,"solid_rgb":[19,31,47],"vertices":[[0,1],[0,1],[0,1]]}
+        });
+        assert!(model_mesh(&mesh, &extras.to_string(), None, true).is_err());
+        assert_eq!(
+            model_mesh(&mesh, &extras.to_string(), None, false)
+                .unwrap()
+                .2,
+            None
+        );
+        for (index, expected) in [(0, [0, 0, 0]), (7, [16, 28, 44])] {
+            extras["rgpre_solid_palette"] = serde_json::json!({"version":1,"index":index});
+            assert_eq!(
+                model_mesh(&mesh, &extras.to_string(), None, true)
+                    .unwrap()
+                    .2,
+                Some(expected)
+            );
+        }
+        for invalid in [
+            serde_json::json!({"version":2,"index":7}),
+            serde_json::json!({"version":1,"index":256}),
+        ] {
+            extras["rgpre_solid_palette"] = invalid;
+            assert!(model_mesh(&mesh, &extras.to_string(), None, true).is_err());
+        }
     }
 
     #[test]
@@ -260,10 +350,11 @@ mod tests {
             bevy::asset::RenderAssetUsages::default(),
         );
         mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0; 3]; 3]);
-        let (prepared, _) = model_mesh(
+        let (prepared, _, _) = model_mesh(
             &mesh,
             r#"{"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":[200,100,50],"vertices":[[0,1],[64,1],[255,1]]}}"#,
             None,
+            false,
         )
         .unwrap();
         let Some(VertexAttributeValues::Float32x2(values)) =
@@ -285,7 +376,7 @@ mod tests {
             r#"{"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[0,0],[0,2]]}}"#,
             r#"{"rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":[1,2,3],"vertices":[[0,0],[0,0],[0,0]]}}"#,
         ] {
-            assert!(model_mesh(&mesh, invalid, None).is_err());
+            assert!(model_mesh(&mesh, invalid, None, false).is_err());
         }
     }
 

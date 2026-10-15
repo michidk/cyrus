@@ -49,6 +49,7 @@ type MaterialCache = HashMap<
     (
         AssetId<StandardMaterial>,
         i32,
+        Option<[u8; 3]>,
         Option<Entity>,
         Option<u8>,
         Option<u16>,
@@ -134,6 +135,8 @@ struct ModelExtension {
     placement: Mat4,
     #[uniform(102)]
     lighting: Vec4,
+    #[uniform(102)]
+    solid_color: Vec4,
     #[uniform(103)]
     compositing: Vec4,
     #[uniform(104)]
@@ -402,6 +405,7 @@ fn apply_scene_fog(
                 })
             });
         let mut radius = 0;
+        let mut solid_rgb = None;
         let mut attributes = None;
         let mut chroma_key = Vec4::ZERO;
         let mut texture_layout = UVec4::ZERO;
@@ -471,10 +475,12 @@ fn apply_scene_fog(
                         instance
                             .filter(|_| !environment.prelighting.lights.is_empty())
                             .map(|(_, instance)| (environment, instance)),
+                        attributes.is_some() && !flats.contains(entity),
                     )
                 });
             match prepared {
-                Ok((mut private, bound)) => {
+                Ok((mut private, bound, solid)) => {
+                    solid_rgb = solid;
                     if let Some(brightness) =
                         flats.get(entity).ok().and_then(|flat| flat.brightness)
                         && let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) =
@@ -507,6 +513,7 @@ fn apply_scene_fog(
             .entry((
                 handle.0.id(),
                 radius,
+                solid_rgb,
                 instance.map(|(entity, _)| entity),
                 attributes,
                 flats.get(entity).ok().map(|flat| flat.alpha),
@@ -526,6 +533,9 @@ fn apply_scene_fog(
                 fog_materials.add(SceneMaterial {
                     base,
                     extension: ModelExtension {
+                        solid_color: solid_rgb.map_or(Vec4::ZERO, |rgb| {
+                            Vec3::from_array(rgb.map(f32::from)).extend(1.0)
+                        }),
                         chroma_key,
                         texture_layout,
                         texture_scale,

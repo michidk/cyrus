@@ -6,6 +6,7 @@ import constants::MATERIAL_BIND_GROUP;
 struct ModelLighting {
     placement: mat4x4<f32>,
     parameters: vec4<f32>,
+    solid_color: vec4<f32>,
 };
 @group(MATERIAL_BIND_GROUP) @binding(102) var<uniform> model: ModelLighting;
 

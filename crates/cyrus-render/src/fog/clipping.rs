@@ -351,13 +351,18 @@ fn light_colors(
                     color += strength * (-normal_dot * attenuation);
                 }
             }
-            let tint = if retained.is_some() { 1.0 } else { input[1] };
+            let solid = retained.is_none() && material.solid_color.w != 0.0;
+            let tint = if solid {
+                material.solid_color.truncate() / 256.0
+            } else {
+                Vec3::splat(if retained.is_some() { 1.0 } else { input[1] })
+            };
             let rgb = color.clamp(Vec3::ZERO, Vec3::splat(255.0)) * tint;
             [
                 rgb.x,
                 rgb.y,
                 rgb.z,
-                retained.map_or(0.0, |colors| colors[i][3]),
+                retained.map_or(f32::from(u8::from(solid)), |colors| colors[i][3]),
             ]
         })
         .collect())
@@ -564,6 +569,7 @@ mod tests {
 
     fn material() -> ModelExtension {
         ModelExtension {
+            solid_color: Vec4::ZERO,
             chroma_key: Vec4::ZERO,
             texture_layout: UVec4::ZERO,
             texture_scale: Vec4::ZERO,
@@ -609,6 +615,29 @@ mod tests {
             ],
         );
         mesh
+    }
+
+    #[test]
+    fn solid_tint_precedes_clipping_and_is_not_reapplied_to_retained_rgb() {
+        let mut source = mesh();
+        source.remove_attribute(Mesh::ATTRIBUTE_COLOR);
+        let mut material = material();
+        material.fog.ambient = Vec4::splat(128.0);
+        material.solid_color = Vec4::new(16.0, 28.0, 44.0, 1.0);
+        assert_eq!(
+            light_colors(&source, Mat4::IDENTITY, &material, &Image::default()).unwrap(),
+            vec![[8.0, 14.0, 22.0, 1.0]; 3]
+        );
+        material.solid_color = Vec4::new(0.0, 0.0, 0.0, 1.0);
+        assert_eq!(
+            light_colors(&source, Mat4::IDENTITY, &material, &Image::default()).unwrap(),
+            vec![[0.0, 0.0, 0.0, 1.0]; 3]
+        );
+        source.insert_attribute(Mesh::ATTRIBUTE_COLOR, vec![[1.0, 1.0, 1.0, 1.0]; 3]);
+        assert_eq!(
+            light_colors(&source, Mat4::IDENTITY, &material, &Image::default()).unwrap(),
+            vec![[255.0, 255.0, 255.0, 1.0]; 3]
+        );
     }
 
     #[test]

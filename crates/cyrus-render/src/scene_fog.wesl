@@ -96,11 +96,12 @@ fn vertex(raw: Vertex,
     out.uv = vertex.uv;
     let weight = max(0.0, -dot(fog.direction.xyz, out.normal));
     var color = fog.ambient.xyz + vec3(vertex.uv_b.x) + weight * fog.directional.xyz;
-    var tint = vertex.uv_b.y;
-    out.retained_solid = 0u;
+    var tint = vec3(vertex.uv_b.y);
+    if model.solid_color.w != 0.0 { tint = model.solid_color.rgb / 256.0; }
+    out.retained_solid = u32(model.solid_color.w);
 @if(VERTEX_COLORS) {
     color = vertex.color.rgb * 255.0;
-    tint = 1.0;
+    tint = vec3(1.0);
     out.retained_solid = u32(vertex.color.a);
 }
     // Prepared model RGB has already received source-corner lighting and clipping.

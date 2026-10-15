@@ -573,6 +573,7 @@ mod tests {
                 ..default()
             },
             extension: super::super::ModelExtension {
+                solid_color: Vec4::ZERO,
                 chroma_key: Vec4::ZERO,
                 texture_layout: UVec4::ZERO,
                 texture_scale: Vec4::ZERO,
