@@ -138,6 +138,7 @@ module where it is defined and regenerate.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/hud.rs` — Session inventory, compass use, power-up slots and accepted logbook writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
+- `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
 - `src/script/maintenance.rs` — Ordered sound maintenance follows preservation's engine/sound.md.
 - `src/script/markers.rs` — Ordinary-world marker queries use preservation's SOUP node-marker distance contract.
 - `src/script/mod.rs` — Game-owned SOUP hosts and supported camera-centered ordinary actor updates.

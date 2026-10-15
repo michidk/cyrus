@@ -50,6 +50,11 @@ wrap/backward samples and rejected malformed state. Saved settings are retained,
 following [preservation's saved clock rules](https://github.com/michidk/redguard-preservation/compare/main...docs/save-clock-state).
 Original SAV import, whole-world restore and save-point admission remain unsupported.
 
+`ScriptHud::snapshot_journal` captures accepted text, duplicate-tag history and
+the pending notification. `Journal::from_snapshot` validates installed RTX
+definitions and returns a separate replacement without replaying `AddLog` or
+accessing storage. Inventory and complete session restoration remain separate.
+
 `SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
 validated installed clock settings and caller-supplied BIOS samples. Its twelve-update
 warmup, fractional carry, smoothing and suspension rebasing are independent of

@@ -1,13 +1,10 @@
 //! Session inventory, compass use, power-up slots and accepted logbook writes.
-use crate::preferences::{PreferenceKey, PreferenceStore, Preferences};
+use crate::preferences::Preferences;
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
 use cyrus_assets::hud::HudAsset;
 use cyrus_script::Argument;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::Mutex;
 
 /// Result of the current item-use gates, before consuming the held-use latch.
 #[derive(Clone, Copy)]
@@ -27,15 +24,12 @@ pub struct ScriptHud(Mutex<State>);
 
 #[derive(Default)]
 struct State {
-    data: Option<(usize, BTreeMap<String, String>)>,
+    data: Option<usize>,
     inventory: Option<super::inventory::Inventory>,
     inventory_error: Option<String>,
     powerups: [Option<(u8, u8)>; 2],
     next_slot: usize,
-    seen: Vec<i32>,
-    entries: Option<Result<Vec<String>, String>>,
-    store: Option<Arc<dyn PreferenceStore>>,
-    notification: bool,
+    journal: Option<super::Journal>,
     compass_on: bool,
     use_consumed: bool,
 }
@@ -57,23 +51,8 @@ impl ScriptHud {
             Ok(inventory) => state.inventory = Some(inventory),
             Err(error) => state.inventory_error = Some(format!("{error:#}")),
         }
-        state.data = Some((hud.powerup_sizes.len(), hud.labels.clone()));
-        state.store = preferences.store();
-        state.entries = Some(
-            (|| {
-                let store = state
-                    .store
-                    .as_ref()
-                    .context("local logbook store unavailable")?;
-                let entries = store
-                    .load(PreferenceKey::Logbook)?
-                    .map(|text| serde_json::from_str::<Vec<String>>(&text))
-                    .transpose()?
-                    .unwrap_or_default();
-                Ok(entries)
-            })()
-            .map_err(|error: anyhow::Error| format!("local logbook: {error:#}")),
-        );
+        state.data = Some(hud.powerup_sizes.len());
+        state.journal = Some(super::Journal::load(hud, preferences));
     }
 
     /// Installed script HUD inputs have been supplied by the host.
@@ -85,7 +64,13 @@ impl ScriptHud {
     /// Current slots and a consumed notification request. Rendering owns icon animation.
     pub fn presentation(&self) -> ([Option<(u8, u8)>; 2], bool) {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
-        (state.powerups, std::mem::take(&mut state.notification))
+        (
+            state.powerups,
+            state
+                .journal
+                .as_mut()
+                .is_some_and(super::Journal::take_notification),
+        )
     }
 
     /// Use item 0 once per held input. The display flag survives world changes.
@@ -190,12 +175,24 @@ impl ScriptHud {
     /// Accepted logbook text, or the retained local-state load error.
     pub fn entries(&self) -> Result<Vec<String>> {
         let state = self.0.lock().expect("script HUD lock poisoned");
-        state
-            .entries
+        Ok(state
+            .journal
             .as_ref()
             .context("script HUD data unavailable")?
-            .clone()
-            .map_err(anyhow::Error::msg)
+            .entries()?
+            .to_vec())
+    }
+
+    /// Capture accepted text, duplicate tags and pending notification without effects.
+    /// Unconfigured or malformed local journal state cannot be saved.
+    pub fn snapshot_journal(&self) -> Result<super::JournalSnapshot> {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .journal
+            .as_ref()
+            .context("script HUD data unavailable")?
+            .snapshot()
     }
 
     /// Control diagnostics without consuming pending presentation requests or exposing RTX text.
@@ -207,8 +204,8 @@ impl ScriptHud {
             "compass_on": state.compass_on,
             "inventory_error": state.inventory_error,
             "inventory": state.inventory.as_ref().map(super::inventory::Inventory::inspect),
-            "logbook_entries": state.entries.as_ref().and_then(|entries| entries.as_ref().ok()).map(Vec::len),
-            "logbook_error": state.entries.as_ref().and_then(|entries| entries.as_ref().err()),
+            "logbook_entries": state.journal.as_ref().and_then(|journal| journal.entries().ok()).map(<[String]>::len),
+            "logbook_error": state.journal.as_ref().and_then(|journal| journal.entries().err()).map(|error| error.to_string()),
         })
     }
 
@@ -267,7 +264,7 @@ impl ScriptHud {
             }
             return Ok(0);
         }
-        let (frames, _) = state
+        let frames = state
             .data
             .as_ref()
             .context("installed script HUD data unavailable")?;
@@ -314,37 +311,11 @@ impl ScriptHud {
             let [tag] = arguments else {
                 anyhow::bail!("AddLog requires one argument")
             };
-            let tag = tag.integer()?;
-            // Zero remains an empty slot; an unmatched tag is not retained after 400 tags.
-            if tag != 0 && state.seen.contains(&tag) {
-                return Ok(0);
-            }
-            if tag != 0 && state.seen.len() < 400 {
-                state.seen.push(tag);
-            }
-            let bytes = tag.to_le_bytes();
-            let text = std::str::from_utf8(&bytes)
-                .ok()
-                .and_then(|label| state.data.as_ref().unwrap().1.get(label))
-                .cloned();
-            if let Some(text) = text {
-                let mut entries = state
-                    .entries
-                    .as_ref()
-                    .unwrap()
-                    .clone()
-                    .map_err(anyhow::Error::msg)?;
-                entries.push(text);
-                let serialized = serde_json::to_string_pretty(&entries)?;
-                state
-                    .store
-                    .as_ref()
-                    .context("local logbook store unavailable")?
-                    .save(PreferenceKey::Logbook, &serialized)
-                    .context("AddLog local logbook write")?;
-                state.entries = Some(Ok(entries));
-                state.notification = true;
-            }
+            state
+                .journal
+                .as_mut()
+                .context("script HUD data unavailable")?
+                .add_log(tag.integer()?)?;
         }
         Ok(0)
     }

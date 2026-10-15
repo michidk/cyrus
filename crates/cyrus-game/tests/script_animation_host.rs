@@ -2515,6 +2515,195 @@ fn full_logbook_tag_table_does_not_retain_new_tags() {
 }
 
 #[test]
+fn journal_replacement_preserves_text_tags_and_pending_notification_without_io() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{Journal, JournalSnapshot, ScriptHud},
+    };
+    let asset = hud_asset();
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: Some("[\"Earlier Ω entry.\"]".into()),
+        fail_save: false,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let tag = i32::from_le_bytes(*b"TEST");
+    hud_call(Some(&hud), "AddLog", &[tag]).unwrap();
+    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"NONE")]).unwrap();
+    let encoded = serde_json::to_string(&hud.snapshot_journal().unwrap()).unwrap();
+    assert!(
+        hud.presentation().1,
+        "capture must not consume the pending notification"
+    );
+    let before = writes.lock().unwrap().clone();
+    struct CountLoads(LogStore, std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl cyrus_game::preferences::PreferenceStore for CountLoads {
+        fn load(
+            &self,
+            key: cyrus_game::preferences::PreferenceKey,
+        ) -> anyhow::Result<Option<String>> {
+            self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            cyrus_game::preferences::PreferenceStore::load(&self.0, key)
+        }
+        fn save(
+            &self,
+            key: cyrus_game::preferences::PreferenceKey,
+            text: &str,
+        ) -> anyhow::Result<()> {
+            cyrus_game::preferences::PreferenceStore::save(&self.0, key, text)
+        }
+    }
+    let loads = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let candidate_preferences = Preferences::new(CountLoads(
+        LogStore {
+            load: Some("malformed backend must not be loaded".into()),
+            fail_save: false,
+            writes: std::sync::Arc::clone(&writes),
+        },
+        std::sync::Arc::clone(&loads),
+    ));
+    let loads_before = loads.load(std::sync::atomic::Ordering::Relaxed);
+    let mut replacement = Journal::from_snapshot(
+        &asset,
+        &candidate_preferences,
+        serde_json::from_str::<JournalSnapshot>(&encoded).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        loads.load(std::sync::atomic::Ordering::Relaxed),
+        loads_before,
+        "replacement must not read the backend"
+    );
+    assert_eq!(writes.lock().unwrap().as_slice(), before);
+    assert_eq!(
+        replacement.entries().unwrap(),
+        ["Earlier Ω entry.", "A new journal entry."]
+    );
+    assert!(replacement.take_notification());
+    assert!(!replacement.take_notification());
+    replacement.add_log(tag).unwrap();
+    replacement.add_log(i32::from_le_bytes(*b"NONE")).unwrap();
+    assert_eq!(writes.lock().unwrap().as_slice(), before);
+    let empty = i32::from_le_bytes(*b"EMPT");
+    replacement.add_log(empty).unwrap();
+    hud_call(Some(&hud), "AddLog", &[empty]).unwrap();
+    assert_eq!(replacement.entries().unwrap(), hud.entries().unwrap());
+    assert_eq!(
+        serde_json::to_value(replacement.snapshot().unwrap()).unwrap(),
+        serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap()
+    );
+}
+
+#[test]
+fn journal_replacement_rejects_incompatible_or_invalid_state_without_touching_live_hud() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{Journal, JournalSnapshot, ScriptHud},
+    };
+    let asset = hud_asset();
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: None,
+        fail_save: false,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let hud = ScriptHud::default();
+    assert!(hud.snapshot_journal().is_err());
+    hud.configure(&asset, &preferences);
+    hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"TEST")]).unwrap();
+    let saved = serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap();
+    let before = writes.lock().unwrap().clone();
+    for (field, value) in [
+        ("version", serde_json::json!(2)),
+        ("seen", serde_json::json!([0])),
+        ("seen", serde_json::json!([1, 1])),
+        ("seen", serde_json::json!((1..=401).collect::<Vec<i32>>())),
+        ("labels", serde_json::json!({})),
+    ] {
+        let mut invalid = saved.clone();
+        invalid[field] = value;
+        let invalid: JournalSnapshot = serde_json::from_value(invalid).unwrap();
+        assert!(
+            Journal::from_snapshot(&asset, &preferences, invalid).is_err(),
+            "{field}"
+        );
+        assert_eq!(
+            serde_json::to_value(hud.snapshot_journal().unwrap()).unwrap(),
+            saved
+        );
+        assert_eq!(writes.lock().unwrap().as_slice(), before);
+    }
+    let mut changed = hud_asset();
+    changed
+        .labels
+        .insert("TEST".into(), "changed installed text".into());
+    assert!(
+        Journal::from_snapshot(
+            &changed,
+            &preferences,
+            serde_json::from_value(saved).unwrap()
+        )
+        .is_err()
+    );
+    let broken = ScriptHud::default();
+    broken.configure(
+        &asset,
+        &Preferences::new(LogStore {
+            load: Some("malformed".into()),
+            fail_save: false,
+            writes: std::sync::Arc::clone(&writes),
+        }),
+    );
+    assert!(broken.snapshot_journal().is_err());
+    assert_eq!(writes.lock().unwrap().as_slice(), before);
+}
+
+#[test]
+fn journal_replacement_retains_full_tag_table_and_failed_write_suppression() {
+    use cyrus_game::{
+        preferences::Preferences,
+        script::{Journal, ScriptHud},
+    };
+    let asset = hud_asset();
+    let writes = std::sync::Arc::default();
+    let preferences = Preferences::new(LogStore {
+        load: Some("[\"Accepted before failure.\"]".into()),
+        fail_save: true,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let tag = i32::from_le_bytes(*b"TEST");
+    assert!(hud_call(Some(&hud), "AddLog", &[tag]).is_err());
+    let working = Preferences::new(LogStore {
+        load: None,
+        fail_save: false,
+        writes: std::sync::Arc::clone(&writes),
+    });
+    let mut replacement =
+        Journal::from_snapshot(&asset, &working, hud.snapshot_journal().unwrap()).unwrap();
+    replacement.add_log(tag).unwrap();
+    assert_eq!(replacement.entries().unwrap(), ["Accepted before failure."]);
+    assert!(!replacement.take_notification());
+    assert!(writes.lock().unwrap().is_empty());
+    for unknown in 1..400 {
+        replacement.add_log(unknown).unwrap();
+    }
+    let empty = i32::from_le_bytes(*b"EMPT");
+    let full = replacement.snapshot().unwrap();
+    let mut full = Journal::from_snapshot(&asset, &working, full).unwrap();
+    full.add_log(empty).unwrap();
+    full.add_log(empty).unwrap();
+    assert_eq!(
+        full.entries().unwrap(),
+        ["Accepted before failure.", "", ""]
+    );
+    assert_eq!(writes.lock().unwrap().len(), 2);
+}
+
+#[test]
 fn inventory_scripts_share_counts_caps_selection_and_requirements() {
     use cyrus_assets::hud::InventoryItem;
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
