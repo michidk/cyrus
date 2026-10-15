@@ -43,12 +43,13 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
+| Save/load: original persistence contracts and safe native/browser restoration | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
 | Rendering: controlled ISLAND water edges, residual sampling and transitions | In progress | Codex, Compare Water and Terrain Rendering, `t3/rendering-stage-one`; `magic/artifacts/2026-10-15-water-phase-recovery/` |
 | SOUP integration: standalone player initialization, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping` |
 | Unblocked console commands: research paused before original-game observation | In progress | Claude, Summarize Agent Work and Check Roadmap, `main`; `magic/artifacts/2026-10-15-console-commands/` |
 
-Save/load and remaining HUD integration are unassigned.
+Remaining HUD integration is unassigned.
 Controller implementation remains parked.
 
 ## Resource coverage
@@ -227,6 +228,7 @@ Requires the player controller.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
 - [ ] Authored world transitions and old sound/script/transient cleanup.
 - [ ] Pause/resume of simulation and audio; original save-slot menus.
+- [x] Publish [original inventory save records](https://github.com/michidk/redguard-preservation/compare/main...feat/save-inventory) and direct restoration rules. **Verified:** original instructions, typed codec tests, two original save-slot round trips and a rejected wrong-endian control. Runtime restoration remains open.
 - [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. Share storage operations with cheats where appropriate; format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,
