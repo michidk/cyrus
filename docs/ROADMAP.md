@@ -82,9 +82,6 @@ or fidelity across every world and palette.
 - [x] Local browser folder access without uploads and native install selection in the application window.
 - [x] CI, native/browser packaging and preservation integration.
 - [x] Installed world audit and repeatable original/native/browser captures for ISLAND, BELLTOWR and START. **Verified:** [capture workflow closeout](https://github.com/michidk/cyrus/commit/6248d6f). Static captures do not verify synchronized gameplay or audio.
-- [ ] Verify fresh-clone setup and complete native install-picker Continue flow, including Windows.
-- [ ] Finish browser viewer media and other-platform runtime checks. Native inspection controls have recorded GUI checks.
-- [ ] Resume deferred browser checks when requested: F1 during unskipped startup, fidelity controls, render-distance reset and cache reuse/invalidation.
 
 Done when a fresh clone with a purchased install runs both games, accepts agent
 control and produces a repeatable comparison through SETUP commands.
@@ -97,7 +94,6 @@ control and produces a repeatable comparison through SETUP commands.
 - [x] Input isolation, restart persistence, malformed-state protection and install immutability checks.
 - [ ] Connect remaining documented cheat effects as their gameplay owners become available. **Unknown:** `oddjob` behavior.
 - [ ] Implement remaining non-cheat commands, including object/marker editors and diagnostics, from preservation evidence.
-- [ ] Compare original console pixels, cursor timing and gameplay effects. Short quoted assignments remain unsupported.
 
 ## 1. Complete world playback
 
