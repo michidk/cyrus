@@ -403,3 +403,11 @@ view after the book menu and intro. At zero sky/wave speed, measured sky phase
 and held foam frame, browser deck, rail and sky pixels match direct entry.
 The original reference returned from its book menu. Residual shading, original
 water-field synchronization and complete transition parity remain **Unknown**.
+
+**Verified:** saved native/browser builds at `084466d` match the measured original
+ISLAND dry-ground viewpoint at 640×480 with frozen sky/wave speed. Two ground
+regions average 1.489 and 1.215 RGB levels of error against the original; an
+isolated incorrect-filter control raises them to 3.257 and 3.446. Native/browser
+pixels match throughout the lower region and differ by three channel levels in
+total in the larger region. HUD and water are excluded. Residual terrain error,
+original animation cadence and complete transition parity remain **Unknown**.
