@@ -168,6 +168,8 @@ module where it is defined and regenerate.
 - `src/script/spatial.rs` — Local and composed actor poses follow preservation's SOUP attachment rules.
 - `src/script/status.rs` — Script preparation diagnostics distinguish loaded programs from executable gameplay.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
+- `src/script/tasks/persistence.rs` — Native task continuations validate against saved VM calls without execution.
+- `src/script/tasks/persistence/tests.rs` — Native continuations resume through VM calls and explicit restored service bindings.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 

@@ -76,6 +76,7 @@ pub use registry::{
 };
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
+pub use tasks::{NativeTaskBindings, NativeTasks, NativeTasksSnapshot};
 
 pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {

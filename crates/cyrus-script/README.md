@@ -63,6 +63,10 @@ unique replacement token prepared by the host. `Snapshot::task_tokens` exposes
 those saved tokens in slot order. Slot holes, pause state, counters and sticky
 failures are retained. Source programs are included for exact compatibility,
 including their strings and initial locals, without an asset or hashing dependency.
+`Snapshot::task_calls` validates saved structure and exposes each token's
+unevaluated source call, including paused and foreign slots. Game hosts use it
+to validate native continuation variants. It does not replace the installed-source
+validation in `Runtime::from_snapshot`.
 
 **Verified:** headless public-interface tests resume waits and subroutines without
 reissuing native calls, retain both continuations and saved return values, poll

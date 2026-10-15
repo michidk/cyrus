@@ -1,7 +1,7 @@
 //! Validated VM snapshots; game hosts restore actor identities and native task state separately.
 use crate::{
-    CodeOrigin, Runtime, State,
-    program::{CallKind, Operation, Program},
+    CodeOrigin, Runtime, State, TaskSource,
+    program::{Call, CallKind, Operation, Program},
 };
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,15 @@ pub struct Snapshot {
     origin: CodeOrigin,
     programs: BTreeMap<CodeOrigin, Program>,
     state: State,
+}
+
+/// A saved actor-owned token and its unevaluated source call, in task-slot order.
+/// The source can belong to another actor's program after a routed call.
+#[derive(Debug)]
+pub struct SavedTaskCall<'a> {
+    pub token: u64,
+    pub source: TaskSource,
+    pub call: &'a Call,
 }
 
 impl Runtime {
@@ -102,6 +111,37 @@ impl Runtime {
 }
 
 impl Snapshot {
+    /// Validate saved structure and expose native-call contracts without evaluation.
+    /// This includes paused slots. It does not validate installed source identity;
+    /// the host must still use `Runtime::from_snapshot` before committing a candidate.
+    pub fn task_calls(&self) -> Result<Vec<SavedTaskCall<'_>>> {
+        self.validate()?;
+        self.state
+            .tasks
+            .iter()
+            .flatten()
+            .map(|task| {
+                let program = self
+                    .programs
+                    .get(&task.source.origin)
+                    .context("saved task source absent")?;
+                let step = program
+                    .steps
+                    .get(&task.source.instruction)
+                    .context("saved task instruction absent")?;
+                let call = match &step.operation {
+                    Operation::Call { call } | Operation::ObjectCall { call } => call,
+                    _ => anyhow::bail!("saved task instruction is not a call"),
+                };
+                Ok(SavedTaskCall {
+                    token: task.token,
+                    source: task.source,
+                    call,
+                })
+            })
+            .collect()
+    }
+
     /// Saved actor-owned tokens in slot order, for preparing explicit host bindings.
     /// Native task state must come from the same owning actor/world snapshot.
     pub fn task_tokens(&self) -> impl Iterator<Item = u64> + '_ {

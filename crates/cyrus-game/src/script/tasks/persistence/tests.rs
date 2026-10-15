@@ -1,0 +1,800 @@
+//! Native continuations resume through VM calls and explicit restored service bindings.
+use super::*;
+use crate::script::tasks::{NativeServices, SpatialCall};
+use cyrus_script::{
+    Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread, program::*,
+};
+use cyrus_world::transform::Matrix;
+use serde_json::json;
+use std::sync::Arc;
+
+#[derive(Default)]
+struct NativeHost {
+    native: NativeTasks,
+    position: [i32; 3],
+    angles: [u16; 3],
+    updates: Vec<usize>,
+    calls: usize,
+    polls: usize,
+}
+impl Host for NativeHost {
+    fn call(
+        &mut self,
+        _: &Target,
+        kind: CallKind,
+        function: &str,
+        arguments: &[Argument],
+        invocation: Invocation,
+        _: &mut [i32],
+    ) -> Result<CallResult> {
+        self.calls += 1;
+        let spatial = SpatialCall {
+            position: &mut self.position,
+            angles: &mut self.angles,
+            frame_scale: 256,
+            nominal_ticks: 1,
+            matrix: Matrix::IDENTITY,
+            slave: false,
+            locations: &[[100, 200, 300]],
+            effective_position: None,
+            actor_index: 0,
+            map_updates: &mut self.updates,
+        };
+        self.native
+            .call(
+                (function, kind),
+                arguments,
+                invocation,
+                &mut None,
+                &mut Some(spatial),
+                NativeServices::default(),
+            )?
+            .context("test native call absent")
+    }
+    fn poll(
+        &mut self,
+        token: u64,
+        arguments: &[Argument],
+        invocation: Invocation,
+        _: &mut [i32],
+    ) -> Result<bool> {
+        self.polls += 1;
+        let spatial = SpatialCall {
+            position: &mut self.position,
+            angles: &mut self.angles,
+            frame_scale: 256,
+            nominal_ticks: 1,
+            matrix: Matrix::IDENTITY,
+            slave: false,
+            locations: &[[100, 200, 300]],
+            effective_position: None,
+            actor_index: 0,
+            map_updates: &mut self.updates,
+        };
+        self.native.poll(
+            token,
+            arguments,
+            invocation,
+            &mut None,
+            &mut Some(spatial),
+            NativeServices::default(),
+        )
+    }
+    fn end(&mut self, _: Thread) -> Result<()> {
+        Ok(())
+    }
+}
+
+fn code(name: &str, kind: CallKind, arguments: &[i32]) -> Arc<Program> {
+    Arc::new(Program {
+        version: 2,
+        entry: 0,
+        variables: vec![],
+        strings: vec![],
+        steps: BTreeMap::from([
+            (
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::Call {
+                        call: Call {
+                            function_id: 0,
+                            function: name.into(),
+                            kind,
+                            target: Object::Me,
+                            arguments: arguments
+                                .iter()
+                                .map(|&value| Value::Integer { value })
+                                .collect(),
+                        },
+                    },
+                },
+            ),
+            (
+                1,
+                Step {
+                    next: 2,
+                    operation: Operation::End { target: 0 },
+                },
+            ),
+        ]),
+    })
+}
+fn begin(
+    name: &str,
+    arguments: &[i32],
+) -> (Runtime, NativeHost, BTreeMap<CodeOrigin, Arc<Program>>) {
+    let program = code(name, CallKind::Task, arguments);
+    let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
+    let mut runtime =
+        Runtime::from_shared(program, CodeOrigin(10), vec![], "task TEST".into()).unwrap();
+    let mut host = NativeHost {
+        position: [1000, 2000, 3000],
+        ..Default::default()
+    };
+    runtime
+        .invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    (runtime, host, sources)
+}
+fn resume(
+    vm: &Snapshot,
+    native: NativeTasksSnapshot,
+    sources: &BTreeMap<CodeOrigin, Arc<Program>>,
+    host: &NativeHost,
+) -> (Runtime, NativeHost) {
+    let tokens = BTreeMap::from([(1, 100)]);
+    let native = NativeTasks::from_snapshot(
+        serde_json::from_slice(&serde_json::to_vec(&native).unwrap()).unwrap(),
+        vm,
+        &tokens,
+        NativeTaskBindings::default(),
+    )
+    .unwrap();
+    let runtime = Runtime::from_snapshot(
+        CodeOrigin(10),
+        vm.clone(),
+        sources,
+        &tokens,
+        "restored task TEST".into(),
+    )
+    .unwrap();
+    (
+        runtime,
+        NativeHost {
+            native,
+            position: host.position,
+            angles: host.angles,
+            updates: host.updates.clone(),
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn wait_resumes_elapsed_without_reissuing_and_allocates_after_rebound_tokens() {
+    let (mut vm, mut host, sources) = begin("Wait", &[4]);
+    vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    let saved = vm.snapshot(&sources).unwrap();
+    let (mut restored, mut restored_host) = resume(&saved, host.native.snapshot(), &sources, &host);
+    assert_eq!(restored_host.calls, 0);
+    for active in [1, 0, 0] {
+        restored
+            .invoke_tasks_timed(&mut restored_host, &mut [], 256)
+            .unwrap();
+        vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+        assert_eq!(restored.active_tasks(), active);
+        assert_eq!(vm.active_tasks(), active);
+    }
+    assert_eq!(restored_host.calls, 0);
+    restored
+        .invoke_body(Thread::Main, &mut restored_host, &mut [], 20)
+        .unwrap();
+    assert_eq!(restored_host.calls, 0);
+    restored
+        .invoke_body(Thread::Main, &mut restored_host, &mut [], 20)
+        .unwrap();
+    assert_eq!(
+        restored
+            .snapshot(&sources)
+            .unwrap()
+            .task_tokens()
+            .collect::<Vec<_>>(),
+        [101]
+    );
+    assert_eq!(restored_host.calls, 1);
+}
+
+#[test]
+fn motion_and_rotation_continuations_resume_at_the_same_pose() {
+    for (name, args) in [
+        ("MoveByAxis", [0, 2560, 10]),
+        ("MoveObjectAxis", [0, 2560, 10]),
+        ("sMoveByAxis", [0, 2560, 10]),
+        ("RotateByAxis", [1, 80, 10]),
+        ("RotateToAxis", [1, 80, 10]),
+        ("sRotateToAxis", [1, 80, 10]),
+        ("sRotateByAxis", [1, 80, 10]),
+    ] {
+        let (mut vm, mut host, sources) = begin(name, &args);
+        for _ in 0..3 {
+            vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+        }
+        let (mut restored, mut restored_host) = resume(
+            &vm.snapshot(&sources).unwrap(),
+            host.native.snapshot(),
+            &sources,
+            &host,
+        );
+        assert_eq!(restored_host.calls, 0);
+        for _ in 0..12 {
+            vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+            restored
+                .invoke_tasks_timed(&mut restored_host, &mut [], 256)
+                .unwrap();
+            assert_eq!(
+                (
+                    restored_host.position,
+                    restored_host.angles,
+                    restored.active_tasks()
+                ),
+                (host.position, host.angles, vm.active_tasks()),
+                "{name}"
+            );
+        }
+        assert_eq!(restored_host.calls, 0);
+    }
+}
+
+#[test]
+fn restored_relative_motion_keeps_its_literal_destination() {
+    let (mut vm, mut host, sources) = begin("MoveByAxis", &[0, 2560, 10]);
+    for _ in 0..3 {
+        vm.invoke_tasks_timed(&mut host, &mut [], 256).unwrap();
+    }
+    assert_eq!(host.position, [2024, 2000, 3000]);
+    let (mut restored, mut restored_host) = resume(
+        &vm.snapshot(&sources).unwrap(),
+        host.native.snapshot(),
+        &sources,
+        &host,
+    );
+    for _ in 0..12 {
+        restored
+            .invoke_tasks_timed(&mut restored_host, &mut [], 256)
+            .unwrap();
+    }
+    assert_eq!(restored_host.position, [3560, 2000, 3000]);
+    assert_eq!(restored.active_tasks(), 0);
+}
+
+#[test]
+fn invalid_census_tokens_allocator_and_variant_are_rejected_before_replacement() {
+    let (vm, host, sources) = begin("Wait", &[4]);
+    let saved = vm.snapshot(&sources).unwrap();
+    let value = serde_json::to_value(host.native.snapshot()).unwrap();
+    let mut cases = vec![];
+    let mut changed = value.clone();
+    changed["version"] = json!(2);
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["next"] = json!(0);
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["tasks"][0]["token"] = json!(0);
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["tasks"][0]["token"] = json!(2);
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["tasks"][0]["token"] = json!(2);
+    changed["next"] = json!(2);
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["tasks"][0]["state"] = json!("Tasks");
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["tasks"].as_array_mut().unwrap().clear();
+    cases.push(changed);
+    let mut changed = value.clone();
+    changed["tasks"]
+        .as_array_mut()
+        .unwrap()
+        .push(value["tasks"][0].clone());
+    cases.push(changed);
+    for corrupt in cases {
+        assert!(
+            NativeTasks::from_snapshot(
+                serde_json::from_value(corrupt).unwrap(),
+                &saved,
+                &BTreeMap::from([(1, 100)]),
+                NativeTaskBindings::default()
+            )
+            .is_err()
+        );
+        assert_eq!(serde_json::to_value(host.native.snapshot()).unwrap(), value);
+    }
+    for tokens in [
+        BTreeMap::new(),
+        BTreeMap::from([(2, 100)]),
+        BTreeMap::from([(1, 0)]),
+        BTreeMap::from([(1, 100), (2, 200)]),
+    ] {
+        assert!(
+            NativeTasks::from_snapshot(
+                host.native.snapshot(),
+                &saved,
+                &tokens,
+                NativeTaskBindings::default()
+            )
+            .is_err()
+        );
+    }
+}
+
+struct DescriptorHost;
+impl Host for DescriptorHost {
+    fn call(
+        &mut self,
+        _: &Target,
+        _: CallKind,
+        _: &str,
+        _: &[Argument],
+        _: Invocation,
+        _: &mut [i32],
+    ) -> Result<CallResult> {
+        Ok(CallResult::Pending(1))
+    }
+    fn poll(&mut self, _: u64, _: &[Argument], _: Invocation, _: &mut [i32]) -> Result<bool> {
+        Ok(false)
+    }
+    fn end(&mut self, _: Thread) -> Result<()> {
+        Ok(())
+    }
+}
+fn contract_vm(name: &str, kind: CallKind, args: &[i32]) -> Snapshot {
+    let program = code(name, kind, args);
+    let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
+    let mut vm =
+        Runtime::from_shared(program, CodeOrigin(10), vec![], "contract TEST".into()).unwrap();
+    vm.invoke_body(Thread::Main, &mut DescriptorHost, &mut [], 20)
+        .unwrap();
+    vm.snapshot(&sources).unwrap()
+}
+fn one(state: Task) -> NativeTasksSnapshot {
+    NativeTasksSnapshot {
+        version: 1,
+        next: 1,
+        tasks: vec![SavedTask { token: 1, state }],
+    }
+}
+fn dialogue() -> crate::script::DialogueState {
+    crate::script::DialogueState::new(&cyrus_assets::script::DialogueSettings {
+        menu_start: [35, 25],
+        max_menu_items: 300,
+        max_dialog_lines: 20,
+        max_text_width: 500,
+        menu_traverse_delay: 4,
+        print_text: true,
+        use_speech: true,
+        max_distance: 1600,
+        rtx_filename: "ENGLISH.RTX".into(),
+    })
+    .unwrap()
+}
+
+#[test]
+fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
+    let tokens = BTreeMap::from([(1, 100)]);
+    let ambient = contract_vm("AmbientSound", CallKind::Multitask, &[3, 40, 0]);
+    let state = one(Task::Ambient { channel: Some(3) });
+    assert!(
+        NativeTasks::from_snapshot(
+            state.clone(),
+            &ambient,
+            &tokens,
+            NativeTaskBindings::default()
+        )
+        .is_err()
+    );
+    for channels in [
+        BTreeMap::new(),
+        BTreeMap::from([(3, 16)]),
+        BTreeMap::from([(3, 9), (4, 9)]),
+    ] {
+        assert!(
+            NativeTasks::from_snapshot(
+                state.clone(),
+                &ambient,
+                &tokens,
+                NativeTaskBindings {
+                    ambient_channels: Some(&channels),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+    }
+    let channels = BTreeMap::from([(3, 9)]);
+    let restored = NativeTasks::from_snapshot(
+        state,
+        &ambient,
+        &tokens,
+        NativeTaskBindings {
+            ambient_channels: Some(&channels),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(restored.snapshot()).unwrap()["tasks"][0]["state"],
+        json!({"Ambient":{"channel":9}})
+    );
+    assert!(
+        NativeTasks::from_snapshot(
+            one(Task::Ambient { channel: Some(16) }),
+            &ambient,
+            &tokens,
+            NativeTaskBindings {
+                ambient_channels: Some(&channels),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    let owner = dialogue();
+    for (name, args, state) in [
+        ("WaitOnDialog", vec![], Task::Dialogue),
+        ("RTXp", vec![123], Task::PlayerDialogue { started: true }),
+        ("RTXp", vec![123], Task::PlayerDialogue { started: false }),
+    ] {
+        let vm = contract_vm(name, CallKind::Task, &args);
+        let snapshot = one(state);
+        assert!(
+            NativeTasks::from_snapshot(
+                snapshot.clone(),
+                &vm,
+                &tokens,
+                NativeTaskBindings::default()
+            )
+            .is_err()
+        );
+        let expected = serde_json::to_value(&snapshot).unwrap()["tasks"][0]["state"].clone();
+        let restored = NativeTasks::from_snapshot(
+            snapshot,
+            &vm,
+            &tokens,
+            NativeTaskBindings {
+                dialogue: Some(&owner),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(restored.snapshot()).unwrap()["tasks"][0]["state"],
+            expected
+        );
+        assert!(!owner.line_active(Some(0)));
+    }
+}
+
+#[test]
+fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
+    use crate::script::tasks::AnimationCall;
+    use cyrus_assets::animation::Animations;
+    let data = Animations {
+        version: 2,
+        world: 0,
+        metadata: json!({"actors":[{
+        "script_name":"ACTOR", "animation_groups":[
+            {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]},
+            {"group_index":7,"anim_id":1,"anim_type":1,"commands":[{"opcode":4,"sound_param":4,"volume_shift":0},{"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},{"opcode":1}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut frame = None;
+    let mut sounds = vec![];
+    let mut tasks = NativeTasks::default();
+    let args = [Argument::Integer(7), Argument::Integer(2)];
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    {
+        let mut emit = |sound| {
+            sounds.push(sound);
+            Ok(())
+        };
+        let mut input = Some(AnimationCall {
+            animation: &mut animation,
+            ticks: 1,
+            frame: &mut frame,
+            sounds: Some(&mut emit),
+        });
+        assert_eq!(
+            tasks
+                .call(
+                    ("PushAnimation", CallKind::Task),
+                    &args,
+                    invocation,
+                    &mut input,
+                    &mut None,
+                    NativeServices::default()
+                )
+                .unwrap(),
+            Some(CallResult::Pending(1))
+        );
+        assert!(
+            !tasks
+                .poll(
+                    1,
+                    &args,
+                    Invocation {
+                        elapsed: Some(1),
+                        ..invocation
+                    },
+                    &mut input,
+                    &mut None,
+                    NativeServices::default()
+                )
+                .unwrap()
+        );
+    }
+    assert_eq!(sounds.len(), 1);
+    animation.set_loop_count(1).unwrap();
+    let vm = contract_vm("PushAnimation", CallKind::Task, &[7, 2]);
+    let tokens = BTreeMap::from([(1, 100)]);
+    assert!(
+        NativeTasks::from_snapshot(
+            tasks.snapshot(),
+            &vm,
+            &tokens,
+            NativeTaskBindings::default()
+        )
+        .is_err()
+    );
+    let mut invalid_group = tasks.snapshot();
+    invalid_group.tasks[0].state = Task::Animation {
+        group: u16::MAX,
+        started: true,
+    };
+    assert!(
+        NativeTasks::from_snapshot(
+            invalid_group,
+            &vm,
+            &tokens,
+            NativeTaskBindings {
+                animation: Some(&animation),
+                ..Default::default()
+            },
+        )
+        .is_err()
+    );
+    let mut restored = NativeTasks::from_snapshot(
+        tasks.snapshot(),
+        &vm,
+        &tokens,
+        NativeTaskBindings {
+            animation: Some(&animation),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let before = serde_json::to_value(animation.snapshot()).unwrap();
+    sounds.clear();
+    let mut emit = |sound| {
+        sounds.push(sound);
+        Ok(())
+    };
+    assert!(
+        !restored
+            .poll(
+                100,
+                &args,
+                Invocation {
+                    elapsed: Some(2),
+                    ..invocation
+                },
+                &mut Some(AnimationCall {
+                    animation: &mut animation,
+                    ticks: 1,
+                    frame: &mut frame,
+                    sounds: Some(&mut emit)
+                }),
+                &mut None,
+                NativeServices::default()
+            )
+            .unwrap()
+    );
+    assert_eq!(serde_json::to_value(animation.snapshot()).unwrap(), before);
+    assert!(sounds.is_empty());
+
+    let replacement_data = Animations {
+        metadata: json!({"actors":[{
+            "script_name":"ACTOR", "animation_groups":[
+                {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}
+            ]
+        }]}),
+        ..data
+    };
+    let mut replacement = ActorAnimation::from_asset(&replacement_data, "ACTOR", 0).unwrap();
+    assert!(!replacement.has_group(7));
+    let before = serde_json::to_value(replacement.snapshot()).unwrap();
+    let mut rebound = NativeTasks::from_snapshot(
+        tasks.snapshot(),
+        &vm,
+        &tokens,
+        NativeTaskBindings {
+            animation: Some(&replacement),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let mut emit = |sound| {
+        sounds.push(sound);
+        Ok(())
+    };
+    for (native, token) in [(&mut tasks, 1), (&mut rebound, 100)] {
+        assert!(
+            native
+                .poll(
+                    token,
+                    &args,
+                    Invocation {
+                        elapsed: Some(2),
+                        ..invocation
+                    },
+                    &mut Some(AnimationCall {
+                        animation: &mut replacement,
+                        ticks: 1,
+                        frame: &mut frame,
+                        sounds: Some(&mut emit)
+                    }),
+                    &mut None,
+                    NativeServices::default(),
+                )
+                .unwrap()
+        );
+        assert!(native.snapshot().tasks.is_empty());
+        assert_eq!(
+            serde_json::to_value(replacement.snapshot()).unwrap(),
+            before
+        );
+    }
+    assert!(sounds.is_empty());
+}
+
+#[test]
+fn duplicate_tokens_and_paused_vm_slots_are_checked_with_two_native_tasks() {
+    let mut program = (*code("Wait", CallKind::Multitask, &[4])).clone();
+    let call = program.steps[&0].operation.clone();
+    program.steps.insert(
+        1,
+        Step {
+            next: 2,
+            operation: call,
+        },
+    );
+    program.steps.insert(
+        2,
+        Step {
+            next: 3,
+            operation: Operation::End { target: 0 },
+        },
+    );
+    let program = Arc::new(program);
+    let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
+    let mut vm = Runtime::from_shared(program, CodeOrigin(10), vec![], "two TEST".into()).unwrap();
+    let mut host = NativeHost::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
+        .unwrap();
+    let mut document = serde_json::to_value(vm.snapshot(&sources).unwrap()).unwrap();
+    document["state"]["tasks"][0]["paused"] = json!(true);
+    let saved: Snapshot = serde_json::from_value(document).unwrap();
+    let snapshot = host.native.snapshot();
+    assert_eq!(snapshot.tasks.len(), 2);
+    assert!(
+        NativeTasks::from_snapshot(
+            snapshot.clone(),
+            &saved,
+            &BTreeMap::from([(1, 100), (2, 100)]),
+            NativeTaskBindings::default()
+        )
+        .is_err()
+    );
+    let mut duplicate = snapshot.clone();
+    duplicate.tasks[1].token = 1;
+    assert!(
+        NativeTasks::from_snapshot(
+            duplicate,
+            &saved,
+            &BTreeMap::from([(1, 100), (2, 200)]),
+            NativeTaskBindings::default()
+        )
+        .is_err()
+    );
+    let tokens = BTreeMap::from([(1, 100), (2, 200)]);
+    let native =
+        NativeTasks::from_snapshot(snapshot, &saved, &tokens, NativeTaskBindings::default())
+            .unwrap();
+    let mut restored = Runtime::from_snapshot(
+        CodeOrigin(10),
+        saved,
+        &sources,
+        &tokens,
+        "two restored TEST".into(),
+    )
+    .unwrap();
+    let mut host = NativeHost {
+        native,
+        ..Default::default()
+    };
+    restored
+        .invoke_tasks_timed(&mut host, &mut [], 256)
+        .unwrap();
+    assert_eq!(host.polls, 1);
+    assert_eq!(host.calls, 0);
+    assert_eq!(restored.active_tasks(), 2);
+}
+
+#[test]
+fn same_shape_wrong_native_variant_is_rejected() {
+    let (vm, host, sources) = begin("WaitOnTasks", &[]);
+    let snapshot = one(Task::Blocking);
+    let error = NativeTasks::from_snapshot(
+        snapshot,
+        &vm.snapshot(&sources).unwrap(),
+        &BTreeMap::from([(1, 100)]),
+        NativeTaskBindings::default(),
+    )
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("variant WaitNonMulti differs from VM call WaitOnTasks"));
+    assert_eq!(host.native.tasks.len(), 1);
+}
+
+#[test]
+fn empty_restore_preserves_allocator_history_and_exhaustion() {
+    let program = code("Wait", CallKind::Task, &[4]);
+    let sources = BTreeMap::from([(CodeOrigin(10), Arc::clone(&program))]);
+    let vm = Runtime::from_shared(program, CodeOrigin(10), vec![], "empty TEST".into()).unwrap();
+    let saved = vm.snapshot(&sources).unwrap();
+    for (next, expected) in [(40, Some(41)), (u64::MAX, None)] {
+        let native = NativeTasks::from_snapshot(
+            NativeTasksSnapshot {
+                version: 1,
+                next,
+                tasks: vec![],
+            },
+            &saved,
+            &BTreeMap::new(),
+            NativeTaskBindings::default(),
+        )
+        .unwrap();
+        let mut host = NativeHost {
+            native,
+            ..Default::default()
+        };
+        let result = host.call(
+            &Target::Me,
+            CallKind::Task,
+            "Wait",
+            &[Argument::Integer(4)],
+            Invocation {
+                elapsed: Some(0),
+                unpaused_tasks: 0,
+                unpaused_blocking_tasks: 0,
+            },
+            &mut [],
+        );
+        if let Some(token) = expected {
+            assert_eq!(result.unwrap(), CallResult::Pending(token));
+        } else {
+            assert!(format!("{:#}", result.unwrap_err()).contains("identity exhausted"));
+            assert!(host.native.tasks.is_empty());
+        }
+    }
+}

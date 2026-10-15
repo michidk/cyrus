@@ -315,6 +315,20 @@ partial writes. These follow preservation's
 [global flag records](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/SAVEGAME.md#global-flags).
 Original SVGF import, cross-world retention and whole-game restore remain unsupported.
 
+`NativeTasks::snapshot` captures actor-owned native variants, continuation fields
+and allocator history. `from_snapshot` returns replacement state after checking
+the matching VM's task calls, token census, variant/name/kind/arity agreement and
+complete injective token bindings. It preserves paused tasks, targets, traveled
+distance, rotation accumulators and started latches without polling or effects.
+Animation and dialogue tasks require restored owners; retained ambient sample
+slots require explicit channel mappings. The host validates owner/generation
+identity and installed sources, restores all actor/world state, and commits the
+complete candidate. This API supplies no live partial-task commit.
+**Verified:** headless contracts cover wait and motion continuation, allocator
+history, binding rejection and PushAnimation without repeated requests or cues.
+Audio/dialogue owner restoration, whole-actor/world assembly, storage and original
+save import remain incomplete.
+
 **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
 requires `frame_scale` with eight fractional bits; omission fails before actor

@@ -4,6 +4,8 @@ use cyrus_script::program::CallKind;
 use cyrus_script::{Argument, CallResult, Invocation};
 use cyrus_world::animation::{ActorAnimation, AnimationSound};
 use std::collections::BTreeMap;
+mod persistence;
+pub use persistence::{NativeTaskBindings, NativeTasksSnapshot};
 
 /// One explicit invocation's animation and synchronous sound destination.
 pub(super) struct AnimationCall<'a, 'sound> {
@@ -51,7 +53,7 @@ pub(super) struct PlayerDialogueCall<'a> {
     pub reset: Option<bool>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     Dialogue,
     PlayerDialogue { started: bool },
@@ -575,13 +577,15 @@ impl Task {
     }
 }
 
-#[derive(Default)]
-pub(super) struct NativeTasks {
+/// Actor-owned native continuations with replacement-only persistence APIs.
+/// Execution and polling remain internal to the game host.
+#[derive(Default, Debug)]
+pub struct NativeTasks {
     next: u64,
     tasks: BTreeMap<u64, Task>,
 }
 impl NativeTasks {
-    pub fn call(
+    pub(super) fn call(
         &mut self,
         (function, kind): (&str, CallKind),
         arguments: &[Argument],
@@ -658,7 +662,7 @@ impl NativeTasks {
         self.tasks.insert(next, task);
         Ok(Some(CallResult::Pending(next)))
     }
-    pub fn poll(
+    pub(super) fn poll(
         &mut self,
         token: u64,
         arguments: &[Argument],
@@ -677,13 +681,13 @@ impl NativeTasks {
         }
         Ok(completed)
     }
-    pub fn cancel(&mut self, token: u64) -> Result<()> {
+    pub(super) fn cancel(&mut self, token: u64) -> Result<()> {
         self.tasks
             .remove(&token)
             .with_context(|| format!("native task {token} absent"))?;
         Ok(())
     }
-    pub fn animation_group(&self) -> Option<u16> {
+    pub(super) fn animation_group(&self) -> Option<u16> {
         self.tasks.values().find_map(|task| match task {
             Task::Animation { group, .. } => Some(*group),
             _ => None,

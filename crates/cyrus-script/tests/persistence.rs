@@ -324,6 +324,13 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
     task["counter"] = json!(65535);
     document["state"]["tasks"][4] = task;
     let saved: Snapshot = serde_json::from_value(document).unwrap();
+    let descriptors = saved.task_calls().unwrap();
+    assert_eq!(descriptors.len(), 1);
+    assert_eq!(descriptors[0].token, 10);
+    assert_eq!(descriptors[0].source.origin, CodeOrigin(300));
+    assert!(descriptors[0].source.object_call);
+    assert_eq!(descriptors[0].call.kind, CallKind::Multitask);
+    assert_eq!(descriptors[0].call.function, "Wait");
     let mut restored = Runtime::from_snapshot(
         CodeOrigin(100),
         saved.clone(),
@@ -530,4 +537,29 @@ fn task_rebinding_is_complete_and_injective_and_retains_poll_order() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn saved_task_calls_are_validated_unevaluated_and_keep_the_source_operand() {
+    let (runtime, host, sources) = waiting();
+    let snapshot = runtime.snapshot(&sources).unwrap();
+    let calls = snapshot.task_calls().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].token, 10);
+    assert_eq!(calls[0].source.origin, CodeOrigin(100));
+    assert_eq!(calls[0].source.instruction, 6);
+    assert!(!calls[0].source.object_call);
+    assert_eq!(calls[0].call.function, "Wait");
+    assert_eq!(calls[0].call.kind, CallKind::Task);
+    assert_eq!(
+        calls[0].call.arguments,
+        [Value::Read {
+            place: Place::Local { index: 0 }
+        }]
+    );
+    assert_eq!(host.calls, 1);
+    let mut malformed = serde_json::to_value(snapshot).unwrap();
+    malformed["state"]["tasks"][0]["source"]["instruction"] = json!(0);
+    let malformed: Snapshot = serde_json::from_value(malformed).unwrap();
+    assert!(malformed.task_calls().is_err());
 }

@@ -226,6 +226,7 @@ Requires the player controller.
 - [x] Complete animation playback snapshots with installed-source validation and effect-free restoration. **Verified:** headless resume, delay/loop/exit, sound-latch and malformed-state contracts. Game-owned frame/sound binding and complete actor/world restoration remain open.
 - [x] Complete clock snapshots with saved settings and explicit host-epoch rebasing. **Verified:** headless continuation, warmup/smoothing, fractional carry, wrap/backward samples and malformed-state contracts. Original SAV import and whole-game restore remain open.
 - [x] Atomic global-flag value/latch snapshots with exact installed-schema validation. **Verified:** native-operation continuation, signed values, malformed-state rejection and installed-definition round trips. Cross-world retention, original SVGF import and whole-game restore remain open.
+- [x] Native-task replacement snapshots validated against VM calls and explicit token/service bindings. **Verified:** headless wait/motion continuation, allocator history, paused slots, malformed bindings and animation request/cue retention. Complete service-owner and actor/world restoration remain open.
 - [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. Share storage operations with cheats where appropriate; format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,
