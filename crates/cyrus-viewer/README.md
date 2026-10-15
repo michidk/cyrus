@@ -151,7 +151,16 @@ Original downloads are cached by content digest. CD reads use byte ranges.
 The selected asset is encoded as `#asset=<id>&file=<source-path>` in the browser URL. Copy that
 URL to reopen the asset in the same installation; browser Back restores selection.
 A selected model palette is also preserved in the URL.
-Native cached previews remain on disk outside the install.
+Native cached previews remain on disk outside the install. After updating for a
+parser correction, close the native viewer and remove `cyrus-config/cache/viewer/`
+from its working directory to regenerate previews. If using a custom cache
+location, remove its `viewer/` subdirectory instead. Browser previews are generated
+in memory; reload the updated application to regenerate them.
+
+**Verified:** preservation 0.10.1 corrects rare model UV overflow, including the
+observatory floor. Cyrus 0.1.13 and later include that parser fix. GLBs exported
+with an older parser retain their old UVs and must be exported again with the
+updated preservation CLI. See preservation's [UV accumulation rule](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/models/3d.md#facevertex).
 
 For private static hosting, serve `target/web`, the original files beneath
 `original/`, and an `original/manifest.json` listing each file's `path`,
