@@ -26,7 +26,7 @@ commits and implementation docs.
 
 Next independent HUD task: compare remaining HUD layout and representative
 real-time candle cadence. Production activation prompt/item acceptance depends on
-automatic SOUP activation inputs and player-lineup ownership.
+complete player-lineup execution and installed SOUP traversal acceptance.
 
 - Complete START actor movement, collision and ambient maintenance so New Game
   sustains authored scripts and animation. Repeat acceptance across installed worlds.
@@ -176,7 +176,8 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Shared logbook layout and native/browser reading screen. **Verified:** headless contracts, installed artwork export and native/browser input, scrolling and suspension checks. Scroll shading/filtering, other styles, editing and resets/saves remain open.
 - [x] Compare original candle health restoration and flicker frame order and installed sabre-to-gold cycling. Correct stale-health animation ordering, use shared nominal ticks for HUD countdowns and suspend HUD updates in the console. **Verified:** original recordings identify healing frames 29,23,17,11,5,0 and the five-frame flicker loop; original/native item cycling displays gold count 53. The stale-order control fails the integrated health check.
 - [x] Establish an original activation reference at ISLAND Siona. **Verified:** the installed prompt changes to gold/count 53 after Period and returns after release; Ctrl starts conversation. A captured-state classifier rejects a shifted sequence. Gold artwork placement matches the configured anchor in original and retained native captures; a shifted-placement control is worse. This does not establish production activation or full pixel parity.
-- [ ] Complete representative real-time candle cadence, all snuff intermediates, matched production activation prompt/item timing and remaining HUD layout against the original. **Unknown:** the slow software-emulated capture does not establish hardware cadence or complete prompt interaction parity. Automatic traversal supplies no activation inputs; the selected-player helper explicitly leaves prompt lineup scheduling unsupported.
+- [x] Supply live ordinary activation inputs and shared HUD prompt presentation. **Verified:** host and HUD-system tests cover installed-label lookup, live actor/menu state, held-use ownership and nominal-tick holdoff without inspection inputs; a reversed-input control fails. Standalone initialization owns the lineup result; unsupported alignment invalidates it. Full installed interaction remains open.
+- [ ] Complete representative real-time candle cadence, all snuff intermediates, matched production activation prompt/item timing and remaining HUD layout against the original. **Unknown:** the slow software-emulated capture does not establish hardware cadence or complete prompt interaction parity. Ordinary activation now samples live actor/input/RTX state and the initialized shared lineup result. PlayerLineUp movement remains unsupported; failed alignment invalidates the result. Installed prompt/conversation acceptance remains open.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
 

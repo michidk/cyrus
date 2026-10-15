@@ -1,5 +1,6 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use cyrus_script::program::{Call, CallKind, Operation};
+mod activation;
 pub(super) mod body;
 pub(super) mod bounds;
 mod dialogue;
@@ -93,6 +94,8 @@ pub struct ScriptInputs<'a> {
     /// Caller-established shell context for item operations; absence is unknown.
     pub shell_execution: Option<bool>,
     pub activation: Option<&'a super::ActivationInputs>,
+    /// Held installed Activate binding for live logical-actor activation.
+    pub activation_use_held: Option<bool>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
@@ -2007,6 +2010,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        if function.eq_ignore_ascii_case("PlayerLineUp") {
+            self.globals.lineup_result = None;
+            anyhow::bail!("PlayerLineUp alignment execution unavailable; shared result unknown");
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
             anyhow::ensure!(arguments.is_empty(), "beginCombat requires no arguments");
             let inputs = match self.inputs.combat_entry {
@@ -2151,7 +2158,33 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function {
-            let selected_player = self.inputs.activation.map(|inputs| {
+            let automatic;
+            let activation = if self.inputs.activation.is_none()
+                && (function.eq_ignore_ascii_case("Activate")
+                    || function.eq_ignore_ascii_case("TorchActivate"))
+                && let Some(use_held) = self.inputs.activation_use_held
+            {
+                anyhow::ensure!(
+                    self.inputs.shell_execution == Some(false),
+                    "ordinary activation requires an established non-shell context"
+                );
+                let hud = self
+                    .inputs
+                    .hud
+                    .context("activation HUD owner unavailable")?;
+                automatic = activation::ordinary_inputs(
+                    self.actors,
+                    self.generation,
+                    self.globals,
+                    hud,
+                    use_held,
+                    Some((self.index, arguments)),
+                )?;
+                Some(&automatic)
+            } else {
+                self.inputs.activation
+            };
+            let selected_player = activation.map(|inputs| {
                 (
                     &self.actors[inputs.player.index],
                     self.globals.lockout().unwrap_or(inputs.lockout),
@@ -2161,7 +2194,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 id,
                 function,
                 arguments,
-                self.inputs.activation,
+                activation,
                 &self.actors[self.index].attributes,
                 selected_player,
             )? {

@@ -268,7 +268,12 @@ walk mode, auto-defend, prompt, selected item and count. **Verified:** owned
 item-zero use toggles the shared compass flag once per held installed
 Activate/Attack binding when supplied actor state permits it. Unknown actor
 eligibility rejects use. Ordinary compass use reads logical-player control,
-surface, animation and attributes. Scripts and the HUD share session inventory
+surface, animation and attributes. Ordinary prompt activation also reads live
+receiver/player state, installed RTX and the held Activate binding. Standalone
+player initialization establishes the shared lineup result. Unsupported
+`PlayerLineUp` execution invalidates it and blocks later ordinary activation;
+complete alignment and conversation progression remain unavailable. Scripts and
+the HUD share session inventory
 through `AddItem`, `DropItem`, `HaveItem` and `SelectItem`. Recursive prerequisites,
 ordered acquisition/removal lists and starting acquisitions use that owner.
 New-game/death resets and save restore remain unsupported. Re-export older HUD

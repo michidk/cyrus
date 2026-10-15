@@ -707,6 +707,14 @@ fn update(
     let scan = |action: usize| cyrus_game::player::input::scan_key(bindings[action]);
     let pressed = |action: usize| scan(action).is_some_and(|k| keys.just_pressed(k));
     let held = |action: usize| scan(action).is_some_and(|k| keys.pressed(k));
+    let fallback_overlay = if state.player_type == 1 {
+        ActivationOverlay::Hidden
+    } else {
+        ActivationOverlay::Item {
+            visible: true,
+            cycle_allowed: !state.sword_drawn,
+        }
+    };
     let overlay = match (world, activation) {
         (Some(world), Some(inputs)) => {
             match world.activation_overlay(inputs, ticks, held(13) || held(14), hud.override_ticks)
@@ -724,12 +732,25 @@ fn update(
                 }
             }
         }
-        (Some(world), None) if world.activation().prompt().is_some() => ActivationOverlay::Hidden,
-        _ if state.player_type == 1 => ActivationOverlay::Hidden,
-        _ => ActivationOverlay::Item {
-            visible: true,
-            cycle_allowed: !state.sword_drawn,
-        },
+        (Some(world), None) => {
+            let pending = world.activation().prompt().is_some();
+            world
+                .ordinary_activation_overlay(
+                    &script_hud,
+                    ticks,
+                    held(13) || held(14),
+                    hud.override_ticks,
+                )
+                .unwrap_or_else(|error| {
+                    if pending {
+                        warn_once!("HUD ordinary activation: {error:#}");
+                        ActivationOverlay::Hidden
+                    } else {
+                        fallback_overlay
+                    }
+                })
+        }
+        _ => fallback_overlay,
     };
     let cycle = if matches!(
         overlay,
@@ -1785,6 +1806,72 @@ mod tests {
         }
         use_key(&mut app, true);
         assert!(!app.world().resource::<HudState>().compass_on);
+    }
+
+    #[test]
+    fn ordinary_prompt_renders_without_an_inspection_resource() {
+        let mut app = compass_app();
+        app.world_mut().remove_resource::<ActivationInputs>();
+        let handle = app.world().resource::<HudHandle>().0.clone();
+        app.world_mut()
+            .resource_mut::<Assets<HudAsset>>()
+            .get_mut(&handle)
+            .unwrap()
+            .labels
+            .insert("#opn".into(), "Installed prompt".into());
+        app.insert_resource(cyrus_game::script::ScriptHud::default());
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            actors.begin_new_game();
+            let world = actors.current.as_mut().unwrap();
+            let animation = cyrus_assets::animation::Animations {
+                version: 2,
+                world: 1,
+                sections: BTreeMap::new(),
+                models: BTreeMap::new(),
+                unsupported: BTreeMap::new(),
+                metadata: serde_json::json!({
+                    "script_content_id":world.inspect(0, 0)["content_id"],
+                    "actors":[{"script_name":"CYRUS","animation_groups":[{
+                        "group_index":0,"anim_type":0,"anim_id":1,"commands":[
+                            {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]
+                }),
+            };
+            world
+                .initialize_player_animation(world.id(1).unwrap(), &animation, 0, &mut |_| Ok(()))
+                .unwrap();
+        }
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().prompt.as_deref(),
+            Some("Open")
+        );
+        app.world_mut()
+            .resource_scope(|world, mut actors: Mut<ScriptActors>| {
+                let logical = actors.current.as_mut().unwrap();
+                logical
+                    .advance(
+                        logical.id(0).unwrap(),
+                        cyrus_game::script::ScriptStage::Body(cyrus_game::script::Thread::Main),
+                        cyrus_game::script::ScriptInputs {
+                            hud: world.get_resource::<cyrus_game::script::ScriptHud>(),
+                            activation_use_held: Some(false),
+                            shell_execution: Some(false),
+                            nominal_ticks: Some(0),
+                            ..default()
+                        },
+                        None,
+                        None,
+                        10,
+                    )
+                    .unwrap();
+            });
+        app.update();
+        assert_eq!(
+            app.world().resource::<HudState>().prompt.as_deref(),
+            Some("Installed prompt")
+        );
+        assert!(app.world().get_resource::<ActivationInputs>().is_none());
     }
 
     #[test]

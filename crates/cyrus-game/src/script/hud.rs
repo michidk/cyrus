@@ -159,6 +159,17 @@ impl ScriptHud {
         state.data.is_some() && state.inventory_error.is_none()
     }
 
+    /// Resolve installed RTX prompt text independently of journal storage errors.
+    pub(super) fn activation_label(&self, label: &str) -> Result<Option<String>> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        Ok(state
+            .journal
+            .as_ref()
+            .context("installed RTX catalog unavailable")?
+            .label(label)
+            .map(str::to_owned))
+    }
+
     /// Current slots and a consumed notification request. Rendering owns icon animation.
     pub fn presentation(&self) -> ([Option<(u8, u8)>; 2], bool) {
         let mut state = self.0.lock().expect("script HUD lock poisoned");

@@ -116,6 +116,10 @@ impl Journal {
         std::mem::take(&mut self.notification)
     }
 
+    pub(super) fn label(&self, label: &str) -> Option<&str> {
+        self.labels.get(label).map(String::as_str)
+    }
+
     /// Apply AddLog's ordered tag retention and installed-text lookup.
     /// Failed writes preserve accepted entries and notification, but retain the tag.
     pub fn add_log(&mut self, tag: i32) -> Result<()> {

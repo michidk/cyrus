@@ -145,6 +145,7 @@ pub struct GameplayGlobals {
     pub(super) combat_messages: super::CombatMessages,
     pub(super) dialogue: Option<super::DialogueState>,
     lockout: Option<u16>,
+    pub(super) lineup_result: Option<i32>,
     player_idle_counter: Option<i32>,
     controller_prelude: Option<ControllerPrelude>,
     pub(super) selected_combat_inhibition: Option<i32>,
@@ -175,6 +176,7 @@ impl GameplayGlobals {
     /// Run only at the explicit standalone-player initializer, never merely on a
     /// world swap or save restore. The sound-maintenance owner resets separately.
     pub(super) fn initialize_player_controller(&mut self) {
+        self.lineup_result = Some(0);
         self.selected_combat_inhibition = Some(0);
         self.sound_maintenance.initialize_player();
         self.controller_prelude = Some(ControllerPrelude {

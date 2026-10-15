@@ -149,6 +149,7 @@ module where it is defined and regenerate.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
+- `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.

@@ -885,3 +885,13 @@ The synthetic keyboard scheduler contract now exercises installed-style key samp
 ordinary sheathed forward dispatch, logical pose projection, authored sound delivery
 and release continuation. It sends no explicit grounded tick. Complete installed
 keyboard traversal and native/browser four-surface acceptance remain unverified.
+
+Ordinary `Activate` and `TorchActivate` calls sample the current logical receiver,
+selected player, installed RTX catalog, topic-menu state and held Activate input.
+The renderer consumes that shared prompt with nominal-tick holdoff and item
+cycling. Explicit inspection inputs remain available. **Verified:** the retained lineup result
+is established by standalone player initialization, following
+[preservation's lifecycle contract](https://github.com/michidk/redguard-preservation/pull/80).
+`PlayerLineUp` movement remains unsupported and invalidates the retained result;
+later ordinary activation refuses an unknown result. This does not establish
+complete NPC interaction or conversation progression.

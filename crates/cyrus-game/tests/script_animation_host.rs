@@ -3892,3 +3892,130 @@ fn hud_snapshot_rejects_unconfigured_and_failed_local_state() {
     assert!(!hud.ready());
     assert!(hud.snapshot().is_err());
 }
+
+fn ordinary_activation_fixture(
+    function: &str,
+    initialize: bool,
+) -> (ScriptWorld, cyrus_game::script::ScriptHud) {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let (world, inspection) = activation_world(function);
+    let mut animation = animations(&scripts(vec![Operation::End { target: 0 }]), false);
+    animation.metadata["script_content_id"] = world.inspect(0, 0)["content_id"].clone();
+    animation.metadata["actors"] = json!([{"script_name":"CYRUS", "animation_groups":[{
+        "group_index":0,"anim_type":0,"anim_id":1,"commands":[
+            {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]);
+    let mut asset = hud_asset();
+    asset.labels.insert("#opn".into(), "Installed open".into());
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    let mut session = cyrus_game::script::ScriptActors::default();
+    session.current = Some(world);
+    session.begin_new_game();
+    let mut world = session.current.take().unwrap();
+    if initialize {
+        world
+            .initialize_player_animation(inspection.player, &animation, 0, &mut |_| Ok(()))
+            .unwrap();
+    }
+    (world, hud)
+}
+
+#[test]
+fn ordinary_activation_uses_live_player_and_installed_text_without_inspection_inputs() {
+    use cyrus_game::script::{ActivationOverlay, ScriptInputs};
+    let (mut world, hud) = ordinary_activation_fixture("Activate", false);
+    let call = |world: &mut ScriptWorld, held| {
+        world.advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Interrupt),
+            ScriptInputs {
+                hud: Some(&hud),
+                activation_use_held: Some(held),
+                nominal_ticks: Some(0),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+    };
+    let error = call(&mut world, false).unwrap_err();
+    assert!(format!("{error:#}").contains("player-lineup result unavailable"));
+    assert_eq!(world.activation().owner(), None);
+    let (mut world, _) = ordinary_activation_fixture("Activate", true);
+    let player = world.id(2).unwrap();
+    call(&mut world, false).unwrap();
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.activation().owner(), None);
+    world.set_actor_surface(player, 2).unwrap();
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 0, false, 24)
+            .unwrap(),
+        ActivationOverlay::Hidden
+    );
+    world.set_actor_surface(player, 0).unwrap();
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 0, false, 24)
+            .unwrap(),
+        ActivationOverlay::Prompt("Installed open".into())
+    );
+    world.globals_mut().begin_topic_menu();
+    call(&mut world, true).unwrap();
+    assert_eq!(world.flags(), [0]);
+    assert_eq!(world.activation().owner(), None);
+    world.globals_mut().end_topic_menu();
+    call(&mut world, true).unwrap();
+    assert_eq!(world.flags(), [1]);
+    assert_eq!(world.activation().owner(), Some(world.id(1).unwrap()));
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 21, false, 24)
+            .unwrap(),
+        ActivationOverlay::Hidden
+    );
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 1, false, 24)
+            .unwrap(),
+        ActivationOverlay::Hidden
+    );
+    assert_eq!(
+        world
+            .ordinary_activation_overlay(&hud, 0, false, 24)
+            .unwrap(),
+        ActivationOverlay::Prompt("Installed open".into())
+    );
+}
+
+#[test]
+fn unsupported_lineup_invalidates_ordinary_activation_admission() {
+    let (mut world, hud) = ordinary_activation_fixture("PlayerLineUp", true);
+    assert!(
+        world
+            .ordinary_activation_overlay(&hud, 0, false, 24)
+            .is_ok()
+    );
+    let error = world
+        .advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Interrupt),
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("shared result unknown"));
+    let error = world
+        .ordinary_activation_overlay(&hud, 0, false, 24)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("player-lineup result unavailable"));
+    assert_eq!(world.activation().prompt(), None);
+    assert_eq!(world.activation().owner(), None);
+}
