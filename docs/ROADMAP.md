@@ -8,13 +8,14 @@ specification. No multiplayer or new content.
 | Stage | Status | Goal |
 | --- | --- | --- |
 | Foundations | Done | Install loading, world exports, browser viewer and development tools |
-| 0. Development tooling | In progress | Build, run, drive and compare both games |
+| 0. Development tooling | Done | Build, run, drive and compare both games |
 | 1. Complete world playback | In progress | Render, animate, sound and execute every required world script |
 | 2. Player controller | Parked at user request | Original movement, camera and collision |
 | 3. Interaction and persistence | Later | Dialogue, inventory, scripted cameras, transitions and saves |
 | 4. Complete gameplay | Later | Quests, combat and remaining gameplay services |
 | 5. Full-game fidelity | Later | A verified new-game-to-ending playthrough |
 | 6. Release | Later; packaging exists | A tested distribution and clean-machine setup |
+| Console and cheats | Lowest priority | Remaining cheat effects, then developer commands |
 
 Checked items exist in committed code; they do not establish complete fidelity.
 **Verified** means recorded evidence, **Inferred** means a conclusion from evidence,
@@ -47,7 +48,6 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | Rendering: controlled ISLAND water edges, residual sampling and transitions | In progress | Codex, Compare Water and Terrain Rendering, `t3/rendering-stage-one`; `magic/artifacts/2026-10-15-water-phase-recovery/` |
 | SOUP integration: automatic combat, dialogue, lifecycle and remaining script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping` |
-| Unblocked console commands: research paused before original-game observation | In progress | Claude, Summarize Agent Work and Check Roadmap, `main`; `magic/artifacts/2026-10-15-console-commands/` |
 
 Remaining HUD integration is unassigned.
 Controller implementation remains parked.
@@ -87,20 +87,6 @@ or fidelity across every world and palette.
 
 Done when a fresh clone with a purchased install runs both games, accepts agent
 control and produces a repeatable comparison through SETUP commands.
-
-### Console and cheats
-
-- [x] Shared console editor, keyboard/TCP dispatch, installed paper/font and original command catalog with explicit unsupported diagnostics.
-- [x] Native/browser CHT restore/save, import/export, cheat-name entry and assignments. `neversaydie` reaches automatic and explicit script queries.
-- [x] CPF preferences, log export, live SOUP flag commands and supported sky/wave controls.
-- [x] Input isolation, restart persistence, malformed-state protection and install immutability checks.
-- [ ] Connect remaining documented cheat effects as their gameplay owners become available. **Unknown:** `oddjob` behavior. Blocked by owner:
-  - `magiccarpet`, `yeahbaby`, `moonraker`: player controller (parked).
-  - `drevil`, `goldfinger`: health, damage and death handling.
-  - `task`, `animation`, `drno`: SOUP actor task, animation and NPC update ownership.
-  - `nodemarker`: navigation node-map display.
-- [ ] Implement console commands without an owner dependency: `render`, `getmapmarker`, `setmarker`/`getmarker`, `fxtexturelist`, `fxshowtexture` and `delay`. Their messages are recovered; visible effects, marker placement and the REDGUARD.MRK layout still need original-game observation or further evidence.
-- [ ] Implement owner-dependent console commands when their owners land: `load` (authored world transitions), `cameradist`, `playerdist`, `item` and `object` (SOUP inventory/actors and console object selection), `fxsun*`, `fxfog*` and `fxambient*` (rendering comparison), remaining `show` topics and node/PUT editors. PVO commands are excluded at user request.
 
 ## 1. Complete world playback
 
@@ -264,6 +250,49 @@ Requires full-game fidelity. Packaging and publication already exist.
 - [ ] Test supported platforms/hardware and clean setup with a purchased GOG install.
 - [ ] Measure loading, frame pacing and bounded memory across repeated transitions; fix observed bottlenecks.
 - [ ] Publish final controls and limitations; verify install, play, save and resume on a clean machine.
+
+## Console and cheats
+
+Lowest priority: gameplay comes first. Do not start new console work ahead of
+stages 1–5. Pull a command forward when it helps debug or verify gameplay, and
+note that reason in its claim. Sessions already working on a related part may
+finish it. Cheat effects come before the remaining developer commands; most of
+them land naturally as their gameplay owners are implemented.
+
+- [x] Shared console editor, keyboard/TCP dispatch, installed paper/font and original command catalog with explicit unsupported diagnostics.
+- [x] Native/browser CHT restore/save, import/export, cheat-name entry and assignments. `neversaydie` reaches automatic and explicit script queries.
+- [x] CPF preferences, log export, live SOUP flag commands and supported sky/wave controls.
+- [x] Input isolation, restart persistence, malformed-state protection and install immutability checks.
+
+### Cheats
+
+- [ ] Connect remaining documented cheat effects as their gameplay owners land. **Unknown:** `oddjob` behavior.
+  - `magiccarpet`, `yeahbaby`, `moonraker`: player controller (parked).
+  - `drevil`, `goldfinger`: health, damage and death handling.
+  - `task`, `animation`, `drno`: SOUP actor task, animation and NPC update ownership.
+  - `nodemarker`: navigation node-map display.
+
+### Developer commands
+
+Static recovery (2026-10-15; raw notes in the private research archive, not yet
+published to preservation):
+
+- **Verified:** `load world[,marker][,angle]` prints a usage error without a world
+  and nothing on success. Marker and angle default to zero and use the console
+  number reader; a later `load` replaces the request. The request applies after the
+  console closes with F12; Escape discards it. The angle is the entry heading,
+  wrapped modulo 2048, as in marker-based world entry.
+- **Verified:** `render` prints `XnGine Render turned on`/`off` and toggles static-object
+  rendering with `render static`; missing or unknown arguments print usage. Turning it
+  off skips the world and sky draws. **Unknown:** what the screen shows meanwhile and
+  where the static flag is consumed.
+- **Verified:** `getmapmarker number` reports a closed session, an undefined marker or
+  success. **Unknown:** how the player is re-placed.
+- **Unknown:** the `REDGUARD.MRK` user-marker layout, `fxtexturelist` order and
+  `fxshowtexture` presentation.
+
+- [ ] Commands without an owner dependency, after original-game observation of the unknowns above: `render`, `getmapmarker`, `setmarker`/`getmarker`, `fxtexturelist`, `fxshowtexture` and `delay`.
+- [ ] Owner-dependent commands when their owners land: `load` (authored in-world transitions), `cameradist`, `playerdist`, `item` and `object` (SOUP inventory/actors and console object selection), `fxsun*`, `fxfog*` and `fxambient*` (rendering comparison), remaining `show` topics and node/PUT editors. PVO commands are excluded at user request.
 
 Follow [METHOD.md](METHOD.md) for evidence and fidelity, [WORKFLOW.md](WORKFLOW.md)
 for ownership/handoffs and AGENTS.md for verification. Formats and recovered
