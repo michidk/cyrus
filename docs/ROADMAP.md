@@ -45,8 +45,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | Work | Status | Session |
 | --- | --- | --- |
 | Save/load: original persistence contracts and safe native/browser restoration | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
-| SOUP integration: automatic combat, dialogue, lifecycle and remaining script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
-| Surface sound acceptance and bounded player dispatch; SOUP owns the automatic adapter | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping`; `magic/artifacts/2026-10-15-player-admission/` |
+| SOUP integration: automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 
 Remaining HUD integration is unassigned.
 The bounded idle/walk/release controller integration is active. Complete controller implementation remains open.
@@ -228,7 +227,7 @@ Requires the player controller.
 - [x] Complete clock snapshots with saved settings and explicit host-epoch rebasing. **Verified:** headless continuation, warmup/smoothing, fractional carry, wrap/backward samples and malformed-state contracts. Original SAV import and whole-game restore remain open.
 - [x] Atomic global-flag value/latch snapshots with exact installed-schema validation. **Verified:** native-operation continuation, signed values, malformed-state rejection and installed-definition round trips. Cross-world retention, original SVGF import and whole-game restore remain open.
 - [x] Native-task replacement snapshots validated against VM calls and explicit token/service bindings. **Verified:** headless wait/motion continuation, allocator history, paused slots, malformed bindings and animation request/cue retention. Complete service-owner and actor/world restoration remain open.
-- [x] Journal replacement snapshots with exact installed-text validation. **Verified:** headless text/tag/notification continuation, failed-write suppression and malformed-state rejection without storage I/O. Complete session restoration remains open.
+- [x] Journal replacement snapshots with exact installed-text validation. **Verified:** headless text/tag/notification continuation, failed-write suppression and malformed-state rejection without storage I/O; an installed-data document also survives native publication and fresh-process reconstruction, with truncated data rejected. Complete session restoration remains open.
 - [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. Native byte replacement uses exclusive synced candidates; complete session restoration and browser storage capacity remain open. Format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,

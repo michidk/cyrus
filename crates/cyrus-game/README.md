@@ -53,7 +53,9 @@ Original SAV import, whole-world restore and save-point admission remain unsuppo
 `ScriptHud::snapshot_journal` captures accepted text, duplicate-tag history and
 the pending notification. `Journal::from_snapshot` validates installed RTX
 definitions and returns a separate replacement without replaying `AddLog` or
-accessing storage. Inventory and complete session restoration remain separate.
+accessing storage. An installed-data journal document has been verified through
+native publication and fresh-process reconstruction, including duplicate-tag and
+notification continuation. Inventory and complete session restoration remain separate.
 
 `SimulationClock` computes FPS-derived movement scale and whole nominal ticks from
 validated installed clock settings and caller-supplied BIOS samples. Its twelve-update
