@@ -188,6 +188,8 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             if args.launch.skip_startup {
                 app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
             }
+        } else {
+            app.add_plugins(cyrus_startup::LogbookPlugin);
         }
     }
     if let Some(install) = install {

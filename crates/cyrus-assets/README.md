@@ -245,3 +245,7 @@ prerequisites, drop/add dependencies and removal flags travel with each definiti
 HUD metadata retains whether each installed item has type one for shared weapon
 validation and selection fallback. Re-export older HUD caches for the required
 inventory metadata.
+
+`logbook/reader.logbook` contains the installed paper, small fonts, bindings and
+scroll geometry. The shared reader group prepares it on demand in browser workers;
+native HUD preparation exports the same validated record.

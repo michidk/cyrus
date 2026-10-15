@@ -727,7 +727,11 @@ breaks, original line spacing, newest-entry positioning and ordered scroll input
 **Verified:** public headless tests cover layout, ordinary/page scrolling,
 Home/End, simultaneous controls, bounds and close behavior against
 [preservation rules](https://github.com/michidk/redguard-preservation/blob/f45646a/docs/engine/hud.md#logbook-reading-layout-and-navigation).
-The full reading screen, installed key dispatch, pause ownership, paper and 3D
-scroll presentation remain unsupported. Existing `ScriptHud::entries` retains
-accepted text and local-state errors; callers must decode physical line separators
-before constructing a reading session.
+Existing `ScriptHud::entries` retains accepted text and local-state errors;
+the screen decodes physical line separators before constructing a reading session.
+
+`logbook::LogbookScreen` owns installed keyboard dispatch, the reading-session
+input lock, and suspension through exit-key release. It restores the simulation
+checkpoint against the current real BIOS tick and resumes only the virtual clock
+it paused itself. `Logbook` retains text layout, scroll bounds and scroll-model
+rotation; startup supplies installed artwork and shared screen rendering.

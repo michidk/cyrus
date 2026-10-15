@@ -64,7 +64,7 @@ const game = new GameLibrary('https://example.test/original/', manifest, () => {
 const worlds = JSON.parse(game.worlds());
 assert.ok(worlds.some(([, map]) => map === 'START') && worlds.some(([, map]) => map === 'ISLAND'));
 let menuClock;
-for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 'sounds/bank.sounds', 'START.scripts']) {
+for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 'logbook/reader.logbook', 'sounds/bank.sounds', 'START.scripts']) {
   console.log('Preparing ' + name);
   const result = game.prepare(name);
   const files = new Map(result.files);
@@ -75,6 +75,14 @@ for (const name of ['startup/title.png', 'menu/book.menu', 'hud/overlay.hud', 's
       normal_frame_rate: 12, min_frame_rate: 6, max_frame_rate: 300,
       use_smooth_fps: true, use_smooth_divisor: true,
     });
+  }
+  if (name === 'logbook/reader.logbook') {
+    const reader = JSON.parse(new TextDecoder().decode(files.get(name)));
+    assert.deepEqual([reader.paper.width, reader.paper.height], [640, 480]);
+    assert.equal(reader.paper.rgba.length, 640 * 480 * 4);
+    assert.equal(reader.bindings[12], 38);
+    assert.ok(reader.scroll.frames[0].length > 0 && reader.scroll.faces.length > 0);
+    assert.equal(reader.fonts.length, 2);
   }
   if (name === 'START.scripts') {
     const scripts = JSON.parse(new TextDecoder().decode(files.get(name)));

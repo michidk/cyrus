@@ -148,3 +148,34 @@ fn short_and_empty_books_do_not_scroll_and_storage_separators_need_decoding() {
         assert!(error.contains("logbook entry 0"));
     }
 }
+
+#[test]
+fn held_a_and_page_steps_rotate_only_when_scrolling_is_admitted() {
+    let mut book = Logbook::new(&vec!["entry".to_owned(); 20]).unwrap();
+    book.update(LogbookInput {
+        up: true,
+        fast: true,
+        ..Default::default()
+    });
+    assert_eq!((book.offset(), book.rotation()), (10, 1948));
+    book.update(LogbookInput {
+        page_up: true,
+        ..Default::default()
+    });
+    assert_eq!((book.offset(), book.rotation()), (0, 1848));
+    book.update(LogbookInput {
+        up: true,
+        ..Default::default()
+    });
+    assert_eq!((book.offset(), book.rotation()), (0, 1848));
+    book.update(LogbookInput {
+        end: true,
+        ..Default::default()
+    });
+    assert_eq!((book.offset(), book.rotation()), (60, 1848));
+    book.update(LogbookInput {
+        down: true,
+        ..Default::default()
+    });
+    assert_eq!(book.rotation(), 1848);
+}

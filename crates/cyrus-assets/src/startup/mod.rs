@@ -1,6 +1,6 @@
 //! Shared startup preparation and native streaming cinematic input.
 mod export;
-mod menu_export;
+pub(crate) mod menu_export;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod movie_native;
 mod raster;

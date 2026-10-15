@@ -127,16 +127,22 @@ pub fn scan_code(key: KeyCode) -> Option<u8> {
     (1..=127).find(|code| scan_key(*code) == Some(key))
 }
 
+// Bevy supplies the independent input locks and output resources.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Res<PlayerBindings>,
     suppressed: Res<InputSuppressed>,
+    logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<Fidelity>,
     mut input: ResMut<PlayerInput>,
     mut dialogue_skip: ResMut<DialogueSkip>,
 ) {
-    if suppressed.0 || console.is_some_and(|console| console.open) {
+    if suppressed.0
+        || logbook.is_some_and(|screen| screen.suspended())
+        || console.is_some_and(|console| console.open)
+    {
         *input = PlayerInput::default();
         dialogue_skip.0 = false;
         return;

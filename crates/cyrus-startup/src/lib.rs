@@ -1,6 +1,8 @@
 //! Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 mod book_motion;
 mod loading;
+mod logbook;
+pub use logbook::LogbookPlugin;
 mod menu;
 mod menu_raster;
 mod movie;
@@ -93,6 +95,7 @@ impl Plugin for StartupPlugin {
         menu::register(app);
         movie::register(app);
         loading::register(app);
+        app.add_plugins(LogbookPlugin);
     }
 }
 

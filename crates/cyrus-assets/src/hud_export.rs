@@ -38,6 +38,7 @@ fn rtx_labels(entries: Vec<RtxEntry>) -> std::collections::BTreeMap<String, Stri
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn export_hud(install: &crate::install::GameInstall, cache: &Path) -> anyhow::Result<()> {
     let source = crate::native::Files::scan(install, false)?;
+    crate::logbook::prepare(&source, &mut crate::preparation::DiskOutput(cache))?;
     prepare(&source, &mut crate::preparation::DiskOutput(cache))
 }
 

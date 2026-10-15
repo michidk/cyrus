@@ -16,6 +16,15 @@ const HEIGHT: usize = 480;
 // shortcut: book lighting and camera-plane clipping remain unsupported; add them after their rendering rules are recovered.
 fn render(faces: &[MenuFace], textures: &[RgbaImage]) -> anyhow::Result<RgbaImage> {
     let mut image = RgbaImage::from_pixel(WIDTH as u32, HEIGHT as u32, Rgba([0, 0, 0, 255]));
+    render_into(&mut image, faces, textures)?;
+    Ok(image)
+}
+
+pub(super) fn render_into(
+    image: &mut RgbaImage,
+    faces: &[MenuFace],
+    textures: &[RgbaImage],
+) -> anyhow::Result<()> {
     let mut depth = vec![0.0; WIDTH * HEIGHT];
     for face in faces {
         let triangle = face
@@ -68,7 +77,7 @@ fn render(faces: &[MenuFace], textures: &[RgbaImage]) -> anyhow::Result<RgbaImag
             }
         }
     }
-    Ok(image)
+    Ok(())
 }
 
 fn sample(image: &RgbaImage, uv: Vec2) -> Rgba<u8> {

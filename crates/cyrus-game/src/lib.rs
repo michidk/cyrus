@@ -24,6 +24,7 @@ pub enum AppState {
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
+        logbook::register(app);
         app.init_resource::<preferences::Preferences>()
             .init_resource::<random::EngineRandom>()
             .init_resource::<cheats::Cheats>()

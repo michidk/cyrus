@@ -470,6 +470,7 @@ struct CompassInputs<'w, 's> {
     scenes: Option<Res<'w, Assets<PlayerScene>>>,
     suppressed: Option<Res<'w, cyrus_game::player::input::InputSuppressed>>,
     console: Option<Res<'w, cyrus_console::Console>>,
+    logbook: Option<Res<'w, cyrus_game::logbook::LogbookScreen>>,
 }
 
 fn configure_scripts(
@@ -545,6 +546,17 @@ fn update(
         });
         return;
     };
+    if compass
+        .logbook
+        .as_ref()
+        .is_some_and(|screen| screen.suspended())
+    {
+        state.logbook_frame = None;
+        for (_, _, _, mut visibility) in &mut sprites {
+            *visibility = Visibility::Hidden;
+        }
+        return;
+    }
     let (powerups, notification) = script_hud.presentation();
     state.powerups = powerups;
     let start_notification = notification && state.logbook_frame.is_none();

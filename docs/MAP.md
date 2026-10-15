@@ -33,6 +33,7 @@ module where it is defined and regenerate.
 - `src/hud_export.rs` — Installed HUD artwork, font and layout exported for portable presentation.
 - `src/install.rs` — Explicit, read-only installation validation shared by applications.
 - `src/loading.rs` — Native preload scan and parser coverage results.
+- `src/logbook.rs` — Installed logbook paper, fonts and scroll geometry for native and browser readers.
 - `src/menu.rs` — Portable menu presentation cache. Installed parsers remain native in rgpre.
 - `src/movie.rs` — Portable cinematic metadata and on-demand browser assets from the local export.
 - `src/movie/original.rs` — Installed cinematic metadata and bounded original-file reads on either target.
@@ -214,6 +215,7 @@ module where it is defined and regenerate.
 
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
+- `src/logbook.rs` — Installed logbook paper, text and rotating scrolls over the suspended world.
 - `src/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
 - `src/menu_raster.rs` — Render the installed book's authored geometry into presentation images.
 - `src/movie.rs` — Shared installed Smacker playback. Rules live in preservation's engine/movies.md.

@@ -143,7 +143,11 @@ pub(super) fn register(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
-            advance.after(VisibilitySystems::CheckVisibility),
+            advance.after(VisibilitySystems::CheckVisibility).run_if(
+                |logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>| {
+                    !logbook.is_some_and(|screen| screen.suspended())
+                },
+            ),
         );
 }
 

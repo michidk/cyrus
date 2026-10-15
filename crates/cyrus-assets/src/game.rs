@@ -93,6 +93,7 @@ pub fn prepare(source: &dyn ReadAssets, path: &str) -> Result<BTreeMap<String, V
         )?,
         "startup" => crate::startup::prepare_startup(source, output)?,
         "menu" => crate::startup::prepare_menu(source, output)?,
+        "logbook" => crate::logbook::prepare(source, output)?,
         "hud" => crate::hud_export::prepare(source, output)?,
         "sounds" => crate::sound_export::prepare(source, output)?,
         "dialogue" => crate::sound::dialogue::export::prepare(source, path, output)?,

@@ -325,7 +325,7 @@ pub(crate) fn prepare_menu(
     Ok(())
 }
 
-fn export_model(
+pub(crate) fn export_model(
     model: Model3DFile,
     position: [f32; 3],
     references: &BTreeMap<(u16, u16), usize>,

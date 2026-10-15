@@ -78,6 +78,7 @@ fn availability(
     state: Res<State<crate::AppState>>,
     time: Option<Res<Time<Real>>>,
     mut console: ResMut<Console>,
+    logbook: Option<Res<crate::logbook::LogbookScreen>>,
 ) {
     if let Some(time) = time {
         let visible = console.cursor_visible();
@@ -88,7 +89,8 @@ fn availability(
             console.set_changed();
         }
     }
-    let enabled = *state.get() == crate::AppState::InGame;
+    let enabled = *state.get() == crate::AppState::InGame
+        && !logbook.is_some_and(|screen| screen.suspended());
     if console.enabled != enabled {
         console.enabled = enabled;
     }

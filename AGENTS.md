@@ -271,8 +271,15 @@ session flag. Installed `ShowBitmap`,
 `state.script_hud` reports native dispatch readiness, power-up slots and accepted
 logbook entry count or load error. Log text stays outside the install in native
 `cyrus-config/logbook.json` or browser localStorage `cyrus-logbook`. Malformed
-state and failed writes do not notify or overwrite accepted entries. Full logbook
-navigation, new-game/death resets and save-game integration remain unsupported.
+state and failed writes do not notify or overwrite accepted entries. The installed
+log key opens the shared native/browser reading screen at the newest
+accepted text. Installed up/down and A, Home/End and Page Up/Down scroll it; log,
+Escape or installed D closes it. Simulation and gameplay input remain suspended
+until the exit keys are released. Existing audio continues. Native `state.logbook`
+reports readiness, scrolling and errors. The reader uses installed paper, small
+fonts and rotating scroll geometry. Manual editing, additional font styles,
+new-game/death resets and save-game integration remain unsupported. Scroll lighting
+and pixel-exact filtering still need comparison.
 F8, Tab and F7 toggle
 candle mode, walk mode and auto-defend. `state.menu` exposes the installed
 entries, action IDs, readiness, selection, and unavailable-action message.

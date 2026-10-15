@@ -498,3 +498,5 @@ pub mod music;
 
 /// Number of cached Windows Glide splash frames, including the authored fade.
 pub const SPLASH_FRAMES: usize = 150;
+
+pub mod logbook;

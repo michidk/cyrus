@@ -1,7 +1,7 @@
 # cyrus-startup
 
 Installed splash/title presentation, the book menu and settings, cinematic playback,
-and world-entry loading. Book motion, rasterization and helpers remain internal.
+world-entry loading, and the installed logbook reader. Book motion, rasterization and helpers remain internal.
 The crate depends on assets/game/world/text/audio/media/app and Bevy; it does not
 depend on cyrus-render. Preservation owns installed parsing and rendering facts.
 
@@ -95,3 +95,15 @@ direction/capture feedback dispatch installed effects through the shared native/
 preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 **Verified:** the original default menu has no pointer hover/click selection; mouse/joystick
 rebinding, lighting, camera-plane clipping and gameplay thumbnails remain unsupported. See [SETUP.md](../../docs/SETUP.md) for controls and limitations.
+
+The in-game logbook reader loads `LOGPAPER.GXA`, small normal/selected fonts and
+`SCROLL.3D` through shared asset preparation. The installed log binding opens
+accepted local entries at the newest text. Installed up/down and A, Home/End and
+Page Up/Down drive the shared navigation core. Log, Escape or installed D closes
+it; gameplay resumes after those keys are released. The game owns the input lock
+and simulation checkpoint. Existing audio continues. Native control state exposes
+`logbook` readiness, scroll position and errors. Malformed stored entries remain
+unchanged. Font styles other than normal 7 and selected 9, manual entry editing,
+new-game resets and save integration remain unsupported. Scroll lighting and
+pixel-exact filtering still need fidelity work. Rules follow the
+[preservation contribution](https://github.com/michidk/redguard-preservation/compare/main...docs/logbook-screen).

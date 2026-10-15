@@ -283,10 +283,14 @@ pub(crate) fn sample_clock(
     mut running: Local<bool>,
     mut commands: Commands,
 ) {
-    let ready = prepared
-        .state
+    let ready = !prepared
+        .logbook
         .as_ref()
-        .is_some_and(|state| *state.get() == crate::AppState::InGame)
+        .is_some_and(|screen| screen.suspended())
+        && prepared
+            .state
+            .as_ref()
+            .is_some_and(|state| *state.get() == crate::AppState::InGame)
         && !prepared
             .console
             .as_ref()
@@ -322,6 +326,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     sample: Option<Res<'w, ClockSample>>,
     cheats: Option<Res<'w, crate::cheats::Cheats>>,
     console: Option<Res<'w, cyrus_console::Console>>,
+    logbook: Option<Res<'w, crate::logbook::LogbookScreen>>,
     state: Option<Res<'w, State<crate::AppState>>>,
 }
 
@@ -347,10 +352,16 @@ pub struct OrdinaryContext<'w, 's> {
 impl OrdinaryContext<'_, '_> {
     /// Whether automatic world execution may request host services this update.
     pub fn is_running(&self) -> bool {
-        self.prepared
-            .state
+        !self
+            .prepared
+            .logbook
             .as_ref()
-            .is_some_and(|state| *state.get() == crate::AppState::InGame)
+            .is_some_and(|screen| screen.suspended())
+            && self
+                .prepared
+                .state
+                .as_ref()
+                .is_some_and(|state| *state.get() == crate::AppState::InGame)
             && !self
                 .prepared
                 .console
@@ -449,9 +460,11 @@ pub fn run_ordinary(
         sample,
         cheats,
         console,
+        logbook,
         state,
     } = prepared;
     if !state.is_some_and(|state| *state.get() == crate::AppState::InGame)
+        || logbook.is_some_and(|screen| screen.suspended())
         || console.is_some_and(|console| console.open)
         || actors.error.is_some()
     {
