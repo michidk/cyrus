@@ -59,7 +59,8 @@ impl TaskSource {
 /// Routing either resolves to this instance or finishes synchronously on another one.
 pub enum Route {
     Here,
-    Complete(i32),
+    /// None preserves a completed effect whose numeric result is unsupported.
+    Complete(Option<i32>),
 }
 
 /// Numeric bit patterns remain intact until a native handler interprets their units.
@@ -82,6 +83,9 @@ impl Argument {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallResult {
     Complete(i32),
+    /// The effect completed, but no portable numeric result is established.
+    /// Statements may discard it; consuming it as a value is unsupported.
+    CompleteWithoutValue,
     Pending(u64),
 }
 

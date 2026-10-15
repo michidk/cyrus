@@ -26,6 +26,7 @@ impl Host for Service {
         match function {
             "Wait" => Ok(CallResult::Pending(9)),
             "Query" => Ok(CallResult::Complete(17)),
+            "NoValue" => Ok(CallResult::CompleteWithoutValue),
             "Fail" => anyhow::bail!("cue failed"),
             _ => Ok(CallResult::Complete(0)),
         }
@@ -996,7 +997,7 @@ fn native_hook_is_independent_of_both_continuations_and_task_polling() {
         runtime
             .invoke_native_hook(&hook, &mut host, &mut [])
             .unwrap(),
-        17
+        Some(17)
     );
     assert_eq!(host.calls, ["Wait", "Query"]);
     assert_eq!(runtime.active_tasks(), 1);
@@ -1079,4 +1080,128 @@ fn ordinary_task_bypass_preserves_entry_gate_but_runs_main_with_a_blocking_slot(
             .unwrap();
         assert_eq!(runtime.variables(), [1]);
     }
+}
+
+#[test]
+fn completed_effects_without_values_are_discarded_only_by_statements() {
+    #[derive(Default)]
+    struct Effects {
+        count: usize,
+    }
+    impl Host for Effects {
+        fn end(&mut self, _: Thread) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn call(
+            &mut self,
+            _: &Target,
+            _: CallKind,
+            _: &str,
+            _: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<CallResult> {
+            self.count += 1;
+            Ok(CallResult::CompleteWithoutValue)
+        }
+        fn route(
+            &mut self,
+            target: &Target,
+            _: &Call,
+            _: &[String],
+            _: Option<TaskSource>,
+            _: &mut [i32],
+        ) -> anyhow::Result<Route> {
+            if *target == Target::Player {
+                self.count += 1;
+                Ok(Route::Complete(None))
+            } else {
+                Ok(Route::Here)
+            }
+        }
+        fn poll(
+            &mut self,
+            _: u64,
+            _: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<bool> {
+            unreachable!()
+        }
+    }
+    for routed in [false, true] {
+        let call = Call {
+            function_id: 0,
+            kind: CallKind::Function,
+            target: if routed { Object::Player } else { Object::Me },
+            function: "Effect".into(),
+            arguments: vec![],
+        };
+        let statement = if routed {
+            Operation::ObjectCall { call: call.clone() }
+        } else {
+            Operation::Call { call: call.clone() }
+        };
+        let mut vm = runtime(vec![
+            statement,
+            assign(Place::Local { index: 0 }, 7),
+            Operation::End { target: 0 },
+        ]);
+        let mut host = Effects::default();
+        vm.invoke(Thread::Main, &mut host, &mut [], 10).unwrap();
+        assert_eq!(vm.variables(), [7]);
+        assert_eq!(host.count, 1);
+
+        let mut vm = runtime(vec![
+            Operation::Assign {
+                destination: Place::Local { index: 0 },
+                formula: Formula {
+                    first: Value::Call {
+                        call: Box::new(call),
+                    },
+                    rest: vec![],
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        let mut host = Effects::default();
+        let error = vm
+            .invoke(Thread::Main, &mut host, &mut [], 10)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("world 17 actor TEST script"), "{error}");
+        assert!(error.contains("instruction 0"), "{error}");
+        assert!(
+            error.contains("native Effect has no supported numeric result"),
+            "{error}"
+        );
+        assert_eq!(vm.variables(), [0]);
+        assert!(vm.invoke(Thread::Main, &mut host, &mut [], 10).is_err());
+        assert_eq!(host.count, 1);
+    }
+    let mut vm = runtime(vec![
+        call("NoValue", CallKind::Task),
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Service::default();
+    assert!(
+        vm.invoke(Thread::Main, &mut host, &mut [], 10)
+            .unwrap_err()
+            .to_string()
+            .contains("must retain a token")
+    );
+    assert_eq!(vm.active_tasks(), 0);
+
+    let mut vm = runtime(vec![Operation::End { target: 0 }]);
+    let Operation::Call { call } = call("NoValue", CallKind::Function) else {
+        unreachable!()
+    };
+    assert_eq!(
+        vm.invoke_native_hook(&call, &mut host, &mut []).unwrap(),
+        None
+    );
+    assert_eq!(
+        vm.receive(&call, &[], None, &mut host, &mut []).unwrap(),
+        None
+    );
 }

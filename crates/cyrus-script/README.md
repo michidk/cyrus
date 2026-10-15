@@ -19,6 +19,13 @@ Synthetic public-interface tests cover immediate statements, subroutines,
 shared locals, blocking completion, arithmetic, branches, and sticky failures.
 These tests do not establish complete game fidelity.
 
+`CallResult::CompleteWithoutValue` lets a host complete an effect when no
+portable numeric result is established. Statements discard that result;
+formulas, conditions and arguments fail contextually when consuming it.
+The failure is retained so the effect is not repeated. Routing and native hooks
+preserve the absent value. This does not define a new result for the original
+handler or admit any unsupported native service.
+
 Six actor-owned task slots support blocking tasks, multitasks, operand
 reevaluation, explicit task passes, pause/resume, stop and teardown cancellation.
 Native operands evaluate from last to first; handlers receive authored argument order.

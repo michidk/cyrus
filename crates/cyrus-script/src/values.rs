@@ -51,7 +51,9 @@ impl Runtime {
                     super::Route::Here => self.receive_inner(call, strings, None, host, flags)?.0,
                     super::Route::Complete(value) => value,
                 };
-                Argument::Integer(value)
+                Argument::Integer(value.with_context(|| {
+                    format!("native {} has no supported numeric result", call.function)
+                })?)
             }
         })
     }

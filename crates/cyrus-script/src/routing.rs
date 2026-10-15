@@ -11,7 +11,7 @@ impl Runtime {
         source: Option<TaskSource>,
         host: &mut dyn Host,
         flags: &mut [i32],
-    ) -> Result<(i32, bool)> {
+    ) -> Result<(Option<i32>, bool)> {
         let target = self.target(&call.target)?;
         let program = Arc::clone(&self.program);
         match host.route(&target, call, &program.strings, source, flags)? {
@@ -21,12 +21,13 @@ impl Runtime {
     }
     /// Dispatches a validated RAHK call using this actor's locals and strings.
     /// This does not advance a continuation or poll existing tasks.
+    /// None preserves completion without an established portable numeric result.
     pub fn invoke_native_hook(
         &mut self,
         call: &Call,
         host: &mut dyn Host,
         flags: &mut [i32],
-    ) -> Result<i32> {
+    ) -> Result<Option<i32>> {
         anyhow::ensure!(
             call.kind == CallKind::Function && call.target == Object::Me,
             "native hook must directly call a function on its actor"
@@ -37,6 +38,7 @@ impl Runtime {
     /// Invokes a resolved receiving actor without running either of its script bodies.
     /// Initial string arguments retain the calling actor's table; locals use this instance.
     /// The host must restore this instance and its own receiver context even on failure.
+    /// None means the completed effect has no established portable numeric result.
     pub fn receive(
         &mut self,
         call: &Call,
@@ -44,7 +46,7 @@ impl Runtime {
         source: Option<TaskSource>,
         host: &mut dyn Host,
         flags: &mut [i32],
-    ) -> Result<i32> {
+    ) -> Result<Option<i32>> {
         if let Some(error) = &self.state.failure {
             anyhow::bail!("{error}");
         }

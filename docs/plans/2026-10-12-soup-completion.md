@@ -40,7 +40,9 @@ collision/combat/intro services and complete all-world acceptance remain open.
 - `cyrus-script` implements values, control flow, main and interrupt continuations,
   the shared actor return continuation, six task slots, operand reevaluation,
   pause/resume/stop, receiver dispatch, and sticky failures. Callers supply stages
-  and timing. Serializable state is not a working save implementation.
+  and timing. Completed effects without established numeric results continue as
+  statements and fail contextually when consumed as values, including routed calls.
+  Serializable state is not a working save implementation.
 - `cyrus-game/src/script/registry.rs` prepares logical map actors and standalone
   player, gremlin, and camera roles. It guards world generations and supports
   Me, Player, Camera, and named receivers. Inspection handlers support attribute

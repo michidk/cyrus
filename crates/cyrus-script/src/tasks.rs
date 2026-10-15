@@ -133,7 +133,7 @@ impl Runtime {
         source: Option<TaskSource>,
         host: &mut dyn Host,
         flags: &mut [i32],
-    ) -> Result<(i32, bool)> {
+    ) -> Result<(Option<i32>, bool)> {
         anyhow::ensure!(
             (call.kind == CallKind::Function) == source.is_none(),
             "native call/task source mismatch"
@@ -147,7 +147,7 @@ impl Runtime {
                 .flatten()
                 .any(|task| Some(task.operand) == operand)
         {
-            return Ok((0, false));
+            return Ok((Some(0), false));
         }
         let slot = self.state.tasks.iter().position(Option::is_none);
         anyhow::ensure!(
@@ -170,7 +170,15 @@ impl Runtime {
                     "native task {} must retain a token for its later completion pass",
                     call.function
                 );
-                Ok((value, false))
+                Ok((Some(value), false))
+            }
+            CallResult::CompleteWithoutValue => {
+                anyhow::ensure!(
+                    call.kind == CallKind::Function,
+                    "native task {} must retain a token for its later completion pass",
+                    call.function
+                );
+                Ok((None, false))
             }
             CallResult::Pending(token) => {
                 anyhow::ensure!(
@@ -196,7 +204,7 @@ impl Runtime {
                     paused: false,
                     counter: 1,
                 });
-                Ok((0, blocking))
+                Ok((Some(0), blocking))
             }
         }
     }

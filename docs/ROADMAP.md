@@ -129,7 +129,7 @@ change visible output. Revisit only with a demonstrated fidelity or performance 
 
 ### Animation and scripts
 
-- [x] Portable SOUP VM, logical actors, installed defaults, retained animation frames and supported requests/tasks.
+- [x] Portable SOUP VM, logical actors, installed defaults, retained animation frames and supported requests/tasks. Completed native effects can preserve an unavailable numeric result; consuming it remains explicitly unsupported.
 - [x] Shared explicit hosts for attributes, flags, waits, routing, activation, spatial transforms, movement/rotation and player queries.
 - [x] Shared clock and random arithmetic, ordinary actor ordering, native-hook dispatch and supported automatic traversal.
 - [x] Initial actor collision shapes, ordered static/live/transient candidates and live static-model support geometry.
