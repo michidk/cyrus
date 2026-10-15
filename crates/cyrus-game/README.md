@@ -306,8 +306,16 @@ These contracts follow preservation's
 lifecycle and remaining live player attribute effects remain pending. Walking and
 SOUP share logical-player playback; scene entry now constructs player-role
 animation and combat state, without enabling automatic locomotion.
-Flag numeric values and latches
-remain separate. **Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
+`ScriptWorld::snapshot_flags` captures global values and latches with their ordered
+installed definitions. `restore_flags` validates the complete snapshot before
+replacing both values and latches, without executing scripts or native operations.
+**Verified:** public contracts cover native Bool/FlipFlop continuation, mixed
+latches, signed values, counter wrap, installed definitions and rejection without
+partial writes. These follow preservation's
+[global flag records](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/SAVEGAME.md#global-flags).
+Original SVGF import, cross-world retention and whole-game restore remain unsupported.
+
+**Verified:** self task and multitask `Wait`, `WaitOnTasks`, and
 `WaitNonMulti` use preservation's elapsed and unpaused-slot rules. The tasks stage
 requires `frame_scale` with eight fractional bits; omission fails before actor
 mutation. Native wait tokens belong to each logical instance. Initial waits always allocate;

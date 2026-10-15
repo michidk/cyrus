@@ -15,6 +15,7 @@ pub use dialogue::{
     DialogueEffects, DialogueLine, DialoguePlayback, DialogueSource, DialogueState,
 };
 mod flags;
+pub use flags::GlobalFlagsSnapshot;
 mod hud;
 mod inventory;
 pub use hud::{CompassUse, ScriptHud};

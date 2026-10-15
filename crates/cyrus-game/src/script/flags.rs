@@ -1,7 +1,27 @@
 //! Installed global flag types and native latch operations from preservation's SOUP rules.
 use anyhow::{Context, Result};
 use cyrus_script::Argument;
-use cyrus_script::program::Definition;
+use cyrus_script::program::{Definition, Flag};
+use serde::{Deserialize, Serialize};
+
+/// Ordered global values and latches, tied to the exact installed flag schema.
+///
+/// Preserves the independent state described by preservation's
+/// `docs/formats/SAVEGAME.md#global-flags` without encoding an original SVGF record.
+/// Deserialize first, then validate and commit with `ScriptWorld::restore_flags`.
+/// Capturing or restoring does not execute native flag operations or scripts.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GlobalFlagsSnapshot {
+    version: u32,
+    flags: Vec<SavedFlag>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SavedFlag {
+    definition: Flag,
+    value: i32,
+    latched: bool,
+}
 
 #[derive(Clone, Copy)]
 enum Kind {
@@ -11,10 +31,63 @@ enum Kind {
     Number,
 }
 pub(super) struct Flags {
+    definitions: Vec<Flag>,
     kinds: Vec<Kind>,
     latched: Vec<bool>,
 }
 impl Flags {
+    pub(super) fn snapshot(&self, values: &[i32]) -> GlobalFlagsSnapshot {
+        GlobalFlagsSnapshot {
+            version: 1,
+            flags: self
+                .definitions
+                .iter()
+                .enumerate()
+                .map(|(index, definition)| SavedFlag {
+                    definition: definition.clone(),
+                    value: values[index],
+                    latched: self.latched[index],
+                })
+                .collect(),
+        }
+    }
+
+    pub(super) fn restore(
+        &mut self,
+        values: &mut Vec<i32>,
+        snapshot: GlobalFlagsSnapshot,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            snapshot.version == 1,
+            "global flag snapshot version {} is unsupported",
+            snapshot.version
+        );
+        anyhow::ensure!(
+            snapshot.flags.len() == self.definitions.len(),
+            "global flag snapshot count {} differs from installed count {}",
+            snapshot.flags.len(),
+            self.definitions.len()
+        );
+        for (index, (saved, installed)) in snapshot.flags.iter().zip(&self.definitions).enumerate()
+        {
+            anyhow::ensure!(
+                saved.definition.name == installed.name
+                    && saved.definition.flag_type == installed.flag_type
+                    && saved.definition.initial_value == installed.initial_value,
+                "global flag snapshot index {index} ({}) differs from installed definition",
+                installed.name
+            );
+        }
+        let (restored_values, restored_latches) = snapshot
+            .flags
+            .into_iter()
+            .map(|flag| (flag.value, flag.latched))
+            .unzip();
+        *values = restored_values;
+        self.latched = restored_latches;
+        Ok(())
+    }
+
     pub(super) fn is_set(&self, index: usize) -> bool {
         self.latched[index]
     }
@@ -37,6 +110,7 @@ impl Flags {
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(Self {
+            definitions: definition.flags.clone(),
             latched: vec![false; kinds.len()],
             kinds,
         })

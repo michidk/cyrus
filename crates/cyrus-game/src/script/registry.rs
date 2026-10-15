@@ -1439,6 +1439,21 @@ impl ScriptWorld {
     pub fn flags(&self) -> &[i32] {
         &self.flags
     }
+    /// Capture ordered global values and latches without running scripts.
+    /// The snapshot includes installed definitions for compatibility validation.
+    pub fn snapshot_flags(&self) -> super::GlobalFlagsSnapshot {
+        self.flag_state.snapshot(&self.flags)
+    }
+
+    /// Validate all flag definitions before replacing values and latches together.
+    /// No native operations, initialization or effects run during restoration.
+    /// World/actor restoration and cross-world retention remain host-owned.
+    pub fn restore_flags(&mut self, snapshot: super::GlobalFlagsSnapshot) -> Result<()> {
+        self.flag_state
+            .restore(&mut self.flags, snapshot)
+            .with_context(|| format!("world {} global flag restoration", self.world))
+    }
+
     /// Read the global flag's latch without applying its native set/reset operation.
     pub fn global_flag_is_set(&self, index: usize) -> Result<bool> {
         anyhow::ensure!(
