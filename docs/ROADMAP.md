@@ -46,7 +46,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | Rendering: controlled ISLAND water edges, residual sampling and transitions | In progress | Codex, Compare Water and Terrain Rendering, `t3/rendering-stage-one`; `magic/artifacts/2026-10-15-water-phase-recovery/` |
 | SOUP integration: standalone player initialization, dialogue, lifecycle and remaining automatic script services | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Compare Surface Footstep Audio, `t3/surface-ini-remapping` |
-| Unblocked console commands | In progress | Claude, Summarize Agent Work and Check Roadmap, `main` |
+| Unblocked console commands: research paused before original-game observation | In progress | Claude, Summarize Agent Work and Check Roadmap, `main`; `magic/artifacts/2026-10-15-console-commands/` |
 
 Save/load and remaining HUD integration are unassigned.
 Controller implementation remains parked.
@@ -98,8 +98,8 @@ control and produces a repeatable comparison through SETUP commands.
   - `drevil`, `goldfinger`: health, damage and death handling.
   - `task`, `animation`, `drno`: SOUP actor task, animation and NPC update ownership.
   - `nodemarker`: navigation node-map display.
-- [ ] Implement unblocked console commands from preservation evidence: `load`, `getmapmarker`, `setmarker`/`getmarker` (if REDGUARD.MRK is documented), `fxtexturelist`, `fxshowtexture`, `render`, `delay` and `cameradist`.
-- [ ] Implement owner-dependent console commands when their owners land: `item` and `object` (SOUP inventory/actors), `fxsun*`, `fxfog*` and `fxambient*` (rendering comparison), `playerdist`, remaining `show` topics and node/PUT editors. PVO commands are excluded at user request.
+- [ ] Implement console commands without an owner dependency: `render`, `getmapmarker`, `setmarker`/`getmarker`, `fxtexturelist`, `fxshowtexture` and `delay`. Their messages are recovered; visible effects, marker placement and the REDGUARD.MRK layout still need original-game observation or further evidence.
+- [ ] Implement owner-dependent console commands when their owners land: `load` (authored world transitions), `cameradist`, `playerdist`, `item` and `object` (SOUP inventory/actors and console object selection), `fxsun*`, `fxfog*` and `fxambient*` (rendering comparison), remaining `show` topics and node/PUT editors. PVO commands are excluded at user request.
 
 ## 1. Complete world playback
 
