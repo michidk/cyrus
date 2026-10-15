@@ -260,8 +260,11 @@ candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
 walk mode, auto-defend, prompt, selected item and count. **Verified:** owned
 item-zero use toggles the shared compass flag once per held installed
 Activate/Attack binding when supplied actor state permits it. Unknown actor
-eligibility rejects use; inventory/acquisition, new-game/death resets and save
-restore remain unsupported. `state.script_hud.compass_on` reports the retained
+eligibility rejects use. Ordinary compass use reads logical-player control,
+surface, animation and attributes. Scripts and the HUD share session inventory
+through `AddItem`, `HaveItem` and `SelectItem`; nonempty acquisition lists,
+new-game/death resets and save restore remain unsupported. Re-export older HUD
+caches for inventory definitions and all selectable artwork. `state.script_hud.compass_on` reports the retained
 session flag. Installed `ShowBitmap`,
 `UnShowBitmap` and `AddLog` calls feed shared native/browser HUD state.
 `state.script_hud` reports native dispatch readiness, power-up slots and accepted

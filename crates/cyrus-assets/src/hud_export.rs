@@ -1,9 +1,10 @@
 //! Installed HUD artwork, font and layout exported for portable presentation.
-use crate::hud::{HudAsset, HudItem};
+use crate::hud::{HudAsset, HudItem, InventoryItem};
 use anyhow::Context;
 use rgpre::import::{
     fnt::parse_fnt,
     gxa::parse_gxa_file,
+    item_ini::ItemIni,
     keys_ini::KeysIni,
     rtx::{RtxEntry, parse_rtx_file},
 };
@@ -50,8 +51,12 @@ pub(crate) fn prepare(
     let keys = read("KEYS.INI")?;
     let worlds = read("WORLD.INI")?;
     let system_fields = ini_fields(&system, "SYSTEM.INI")?;
-    let item_fields = ini_fields(&items, "ITEM.INI")?;
-    let atlas_name = text(&item_fields, "ITEM.INI", "items", "bitmap_file")?.to_owned();
+    let definitions = ItemIni::parse(std::str::from_utf8(&items).context("hud: ITEM.INI UTF-8")?)?;
+    let atlas_name = definitions
+        .settings
+        .bitmap_file
+        .clone()
+        .context("hud: ITEM.INI bitmap_file missing")?;
     let powerup_name = text(&system_fields, "SYSTEM.INI", "system", "game_bitmap")?.to_owned();
     let candle_bytes = read("system/SNUFF.GXA")?;
     let compass_bytes = read("system/COMPASS2.GXA")?;
@@ -73,7 +78,7 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        7u32,
+        8u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
@@ -181,30 +186,54 @@ pub(crate) fn prepare(
             .with_context(|| format!("hud: {}: no {tag} text", rtx_path))
     };
     let atlas = parse_gxa_file(&atlas_bytes).with_context(|| format!("hud: {atlas_name}"))?;
-    let item_number = |key: &str| number(&item_fields, "ITEM.INI", "items", key);
-    let mut owned = Vec::new();
-    for (id, count) in starting_inventory(&item_fields)? {
-        if item_number(&format!("hide[{id}]")).unwrap_or(0) == 1 {
+    let counts = starting_inventory(&definitions)?;
+    let mut inventory = BTreeMap::new();
+    let mut artwork = Vec::new();
+    for (id, item) in &definitions.items {
+        let id = u16::try_from(*id).context("hud: ITEM.INI item ID exceeds u16")?;
+        let count = counts.get(&id).copied().unwrap_or(0);
+        let unsigned = |value: Option<i32>, field: &str| -> anyhow::Result<u32> {
+            u32::try_from(value.unwrap_or(0))
+                .with_context(|| format!("hud: ITEM.INI {field}[{id}] must be nonnegative"))
+        };
+        inventory.insert(
+            id,
+            InventoryItem {
+                count,
+                total: unsigned(item.total, "total")?,
+                player_max: unsigned(item.player_max, "player_max")?,
+                hidden: item.hide.unwrap_or(false),
+                acquisition_effects: [
+                    &item.required_item_list,
+                    &item.add_item_list,
+                    &item.drop_add_item_list,
+                ]
+                .into_iter()
+                .any(|list| list.as_ref().is_some_and(|list| !list.is_empty())),
+            },
+        );
+        if item.hide.unwrap_or(false) {
             continue;
         }
-        let bitmap = item_number(&format!("bitmap[{id}]"))?;
-        let frame = usize::try_from(bitmap)
-            .ok()
-            .and_then(|b| atlas.frames.get(b))
-            .with_context(|| {
-                format!("hud: ITEM.INI bitmap[{id}] = {bitmap} is not in {atlas_name}")
-            })?;
-        owned.push(HudItem {
+        let bitmap = item
+            .bitmap
+            .with_context(|| format!("hud: ITEM.INI bitmap[{id}] missing"))?;
+        let frame = atlas.frames.get(bitmap as usize).with_context(|| {
+            format!("hud: ITEM.INI bitmap[{id}] = {bitmap} is not in {atlas_name}")
+        })?;
+        artwork.push(HudItem {
             id,
-            bitmap: bitmap as u16,
+            bitmap: u16::try_from(bitmap).context("hud: item bitmap exceeds u16")?,
             count,
             size: [frame.width, frame.height],
         });
     }
-    let selected = item_number("start_item_select")
-        .ok()
-        .and_then(|id| u16::try_from(id).ok())
-        .filter(|id| owned.iter().any(|i| i.id == *id));
+    let selected = definitions
+        .settings
+        .start_item_select
+        .map(u16::try_from)
+        .transpose()
+        .context("hud: initial item ID exceeds u16")?;
 
     let font = cyrus_text::Font::from(&parse_fnt(&font_bytes).context("hud: fonts/REDSEL.FNT")?);
     let keys = KeysIni::parse(std::str::from_utf8(&keys).context("hud: KEYS.INI is not UTF-8")?)
@@ -233,7 +262,8 @@ pub(crate) fn prepare(
             [label("#wof")?, label("#won")?],
             [label("#dof")?, label("#don")?],
         ],
-        items: owned,
+        items: artwork,
+        inventory,
         selected,
         bindings: keys.control_codes(),
         font,
@@ -279,48 +309,43 @@ fn text<'a>(fields: &'a Fields, file: &str, section: &str, key: &str) -> anyhow:
 
 /// New-game counts by item ID, owned items only. Every item starts at `player_total[x]`;
 /// each `start_item_list` entry then adds one, capped by `total[x]` and `player_max[x]`.
-fn starting_inventory(fields: &Fields) -> anyhow::Result<BTreeMap<u16, u32>> {
-    let field = |key: String| -> anyhow::Result<Option<u32>> {
-        fields
-            .get(&("items".into(), key.clone()))
-            .map(|v| v.parse::<u32>())
-            .transpose()
-            .with_context(|| format!("hud: ITEM.INI [items] {key}"))
-    };
+fn starting_inventory(ini: &ItemIni) -> anyhow::Result<BTreeMap<u16, u32>> {
     let mut counts = BTreeMap::new();
-    for (section, key) in fields.keys() {
-        if let Some(id) = key
-            .strip_prefix("player_total[")
-            .and_then(|k| k.strip_suffix(']'))
-            .filter(|_| section == "items")
-        {
-            let id = id
-                .parse::<u16>()
-                .with_context(|| format!("hud: ITEM.INI [items] {key}"))?;
-            counts.insert(id, field(key.clone())?.unwrap_or(0));
-        }
+    for (&id, item) in &ini.items {
+        counts.insert(
+            u16::try_from(id).context("hud: ITEM.INI ID exceeds u16")?,
+            u32::try_from(item.player_total.unwrap_or(0))
+                .with_context(|| format!("hud: ITEM.INI player_total[{id}] must be nonnegative"))?,
+        );
     }
-    let list = text(fields, "ITEM.INI", "items", "start_item_list")?;
-    for id in list.split(',') {
-        let id = id
-            .trim()
-            .parse::<u16>()
-            .with_context(|| format!("hud: ITEM.INI [items] start_item_list: {list:?}"))?;
-        // Pickup side effects need the item system; refuse rather than skip them.
-        for list in ["required_item_list", "add_item_list", "drop_add_item_list"] {
-            anyhow::ensure!(
-                text(fields, "ITEM.INI", "items", &format!("{list}[{id}]"))
-                    .map_or(true, str::is_empty),
-                "hud: ITEM.INI {list}[{id}] on a starting item is unsupported"
-            );
-        }
-        let count = counts.entry(id).or_insert(0);
-        let room = |key: &str| -> anyhow::Result<u32> {
-            Ok(field(format!("{key}[{id}]"))?
-                .with_context(|| format!("hud: ITEM.INI [items] {key}[{id}] is missing"))?
+    for &id in ini.settings.start_item_list.as_deref().unwrap_or_default() {
+        let item = ini
+            .items
+            .get(&id)
+            .with_context(|| format!("hud: ITEM.INI starting item {id} undefined"))?;
+        anyhow::ensure!(
+            [
+                &item.required_item_list,
+                &item.add_item_list,
+                &item.drop_add_item_list
+            ]
+            .into_iter()
+            .all(|list| list.as_ref().is_none_or(Vec::is_empty)),
+            "hud: ITEM.INI starting item {id}: acquisition lists unsupported"
+        );
+        let count = counts
+            .get_mut(&u16::try_from(id)?)
+            .expect("validated item ID");
+        let room =
+            |value: Option<i32>, key: &str| -> anyhow::Result<u32> {
+                Ok(u32::try_from(
+                    value.with_context(|| format!("hud: ITEM.INI {key}[{id}] missing"))?,
+                )?
                 .saturating_sub(*count))
-        };
-        *count += room("total")?.min(room("player_max")?).min(1);
+            };
+        *count += room(item.total, "total")?
+            .min(room(item.player_max, "player_max")?)
+            .min(1);
     }
     counts.retain(|_, count| *count > 0);
     Ok(counts)
@@ -369,23 +394,19 @@ mod tests {
 
     #[test]
     fn starting_items_add_one_to_player_totals_within_their_caps() {
-        let fields = ini_fields(
-            b"[items]\nstart_item_list = 1, 2, 4\n\
+        let fields = ItemIni::parse(
+            "[items]\nstart_item_list = 1, 2, 4\n\
               player_total[1] = 0\ntotal[1] = 1\nplayer_max[1] = 1\n\
               player_total[2] = 52\ntotal[2] = 1000000\nplayer_max[2] = 500\n\
               player_total[3] = 0\n\
               player_total[4] = 5\ntotal[4] = 5\nplayer_max[4] = 10\n\
               player_total[5] = 2\n",
-            "ITEM.INI",
         )
         .unwrap();
         let counts = starting_inventory(&fields).unwrap();
         assert_eq!(counts, [(1, 1), (2, 53), (4, 5), (5, 2)].into());
-        let fields = ini_fields(
-            b"[items]\nstart_item_list = 1\nadd_item_list[1] = 2\n",
-            "ITEM.INI",
-        )
-        .unwrap();
+        let fields =
+            ItemIni::parse("[items]\nstart_item_list = 1\nadd_item_list[1] = 2\n").unwrap();
         assert!(starting_inventory(&fields).is_err());
     }
 }

@@ -2315,6 +2315,7 @@ fn hud_asset() -> cyrus_assets::hud::HudAsset {
         walk_mode: false,
         auto_defend: false,
         notices: Default::default(),
+        inventory: BTreeMap::new(),
         items: vec![],
         selected: None,
         bindings: [0; 15],
@@ -2342,22 +2343,31 @@ fn hud_call(
     hud: Option<&cyrus_game::script::ScriptHud>,
     function: &str,
     arguments: &[i32],
-) -> anyhow::Result<()> {
+) -> anyhow::Result<i32> {
     let mut data = scripts(vec![
-        Operation::Call {
-            call: Call {
-                function_id: 3,
-                kind: CallKind::Function,
-                target: Object::Me,
-                function: function.into(),
-                arguments: arguments
-                    .iter()
-                    .map(|value| Value::Integer { value: *value })
-                    .collect(),
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 3,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: function.into(),
+                        arguments: arguments
+                            .iter()
+                            .map(|value| Value::Integer { value: *value })
+                            .collect(),
+                    }),
+                },
+                rest: vec![],
             },
         },
         Operation::End { target: 0 },
     ]);
+    let actor = data.actors.get_mut("ACTOR").unwrap();
+    actor.program.variables = vec![0];
+    actor.instance_variables = vec![vec![0]];
     data.definition.functions.push(Function {
         name: function.into(),
         param_count: arguments.len().try_into().unwrap(),
@@ -2381,8 +2391,9 @@ fn hud_call(
         "{:?}",
         world.actors()[0].failure()
     );
-    Ok(())
+    Ok(world.actors()[0].runtime().unwrap().variables()[0])
 }
+
 #[test]
 fn script_powerup_dispatch_validates_installed_frames_and_retains_slot_order() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
@@ -2499,4 +2510,80 @@ fn full_logbook_tag_table_does_not_retain_new_tags() {
         hud.entries().unwrap(),
         ["A new journal entry.", "A new journal entry."]
     );
+}
+
+#[test]
+fn inventory_scripts_share_counts_caps_selection_and_reject_unsupported_effects() {
+    use cyrus_assets::hud::InventoryItem;
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = hud_asset();
+    asset.inventory = [
+        (
+            0,
+            InventoryItem {
+                count: 0,
+                total: 1,
+                player_max: 1,
+                hidden: false,
+                acquisition_effects: false,
+            },
+        ),
+        (
+            2,
+            InventoryItem {
+                count: 3,
+                total: 8,
+                player_max: 6,
+                hidden: false,
+                acquisition_effects: false,
+            },
+        ),
+        (
+            3,
+            InventoryItem {
+                count: 1,
+                total: 1,
+                player_max: 1,
+                hidden: true,
+                acquisition_effects: false,
+            },
+        ),
+        (
+            4,
+            InventoryItem {
+                count: 0,
+                total: 2,
+                player_max: 2,
+                hidden: false,
+                acquisition_effects: true,
+            },
+        ),
+    ]
+    .into();
+    asset.selected = Some(2);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud_call(Some(&hud), "AddItem", &[0, 9]).unwrap();
+    hud_call(Some(&hud), "AddItem", &[2, 9]).unwrap();
+    hud_call(Some(&hud), "AddItem", &[2, -5]).unwrap();
+    hud_call(Some(&hud), "SelectItem", &[0]).unwrap();
+    assert_eq!(hud_call(Some(&hud), "HaveItem", &[0]).unwrap(), 1);
+    assert_eq!(hud_call(Some(&hud), "HaveItem", &[2]).unwrap(), 6);
+    let view = hud.inventory(None).unwrap();
+    assert_eq!(view.selected, Some(0));
+    assert_eq!(view.counts, [(0, 1), (2, 6), (3, 1), (4, 0)].into());
+    assert_eq!(hud.inspect()["compass_on"], false);
+    assert_eq!(hud.inventory(Some(true)).unwrap().selected, Some(2));
+    assert_eq!(hud.inventory(Some(true)).unwrap().selected, Some(0));
+    assert_eq!(hud.inventory(Some(false)).unwrap().selected, Some(2));
+    let error = hud_call(Some(&hud), "AddItem", &[4, 1]).unwrap_err();
+    assert!(format!("{error:#}").contains("acquisition lists"));
+    assert_eq!(hud.inventory(None).unwrap().counts[&4], 0);
+    hud_call(Some(&hud), "SelectItem", &[4]).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().selected, Some(0));
+    assert!(hud_call(Some(&hud), "AddItem", &[90, 1]).is_err());
+    assert!(hud_call(Some(&hud), "SelectItem", &[-1]).is_err());
+    // Reconfiguration on a new world cannot restore initial counts or selection.
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(hud.inventory(None).unwrap().counts[&0], 1);
 }

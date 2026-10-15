@@ -614,6 +614,7 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
         .as_array()
         .unwrap()
         .iter()
+        .filter(|i| i["count"].as_u64().unwrap() > 0)
         .map(|i| {
             (
                 i["id"].as_u64().unwrap(),
@@ -623,6 +624,15 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
         })
         .collect();
     assert_eq!(items, [(1, 7, 1), (2, 26, 53), (4, 13, 6), (18, 24, 1)]);
+    assert_eq!(data["inventory"]["0"]["count"], 0);
+    assert_eq!(data["inventory"]["0"]["player_max"], 1);
+    assert!(
+        data["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["id"] == 0)
+    );
     let snuff = rgpre::import::gxa::parse_gxa_file(
         // Install file names vary in case; this one ships lowercase in GOG.
         &std::fs::read(

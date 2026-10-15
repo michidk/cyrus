@@ -24,6 +24,35 @@ pub struct ActivationActor {
     pub animation: Option<ActivationAnimation>,
 }
 impl ActivationActor {
+    /// Item-zero actor gates from preservation's HUD contract; unknown actors must not call this.
+    pub fn compass_eligible(
+        self,
+        holding_attribute: u8,
+        item_system_ready: bool,
+        shell_execution: bool,
+    ) -> bool {
+        let actor = self;
+        let group = actor.animation.and_then(|animation| animation.group);
+        let animated = item_system_ready && !shell_execution && actor.animation.is_some();
+        let climbing =
+            animated && (matches!(actor.state, 33 | 34) || matches!(group, Some(149 | 150)));
+        item_system_ready
+            && !shell_execution
+            && !matches!(actor.water_state, 2 | 4)
+            && !weapon_predicates(
+                actor.state,
+                actor.animation,
+                actor.weapon_assigned,
+                actor.weapon_drawn,
+                holding_attribute,
+                item_system_ready,
+                shell_execution,
+            )
+            .0
+            && !climbing
+            && actor.torch_burning == 0
+    }
+
     fn on_edge(self) -> bool {
         (10..=19).contains(&self.state)
     }
@@ -68,25 +97,11 @@ impl ActivationInputs {
     /// Lockout/ownership/selection and interaction routing belong to the caller.
     pub fn compass_eligible(&self, player: &super::ScriptActor) -> Result<bool> {
         let actor = self.player_state(player)?;
-        let group = actor.animation.and_then(|animation| animation.group);
-        let animated = self.item_system_ready && !self.shell_execution && actor.animation.is_some();
-        let climbing =
-            animated && (matches!(actor.state, 33 | 34) || matches!(group, Some(149 | 150)));
-        Ok(self.item_system_ready
-            && !self.shell_execution
-            && !matches!(actor.water_state, 2 | 4)
-            && !weapon_predicates(
-                actor.state,
-                actor.animation,
-                actor.weapon_assigned,
-                actor.weapon_drawn,
-                player.attributes()[110],
-                self.item_system_ready,
-                self.shell_execution,
-            )
-            .0
-            && !climbing
-            && actor.torch_burning == 0)
+        Ok(actor.compass_eligible(
+            player.attributes()[110],
+            self.item_system_ready,
+            self.shell_execution,
+        ))
     }
 
     fn player_state(&self, player: &super::ScriptActor) -> Result<ActivationActor> {

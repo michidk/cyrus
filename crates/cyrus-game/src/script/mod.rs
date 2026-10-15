@@ -16,7 +16,9 @@ pub use dialogue::{
 };
 mod flags;
 mod hud;
+mod inventory;
 pub use hud::{CompassUse, ScriptHud};
+pub use inventory::InventoryView;
 mod maintenance;
 mod markers;
 pub use maintenance::{SoundMaintenance, SoundResetStage};

@@ -107,9 +107,9 @@ pub(crate) struct ScriptAnimation {
     pub(crate) frame: Option<u32>,
 }
 
-/// Allocated ordinary-map control state, separate from animation playback.
+/// Allocated ordinary-map and player control state, separate from animation playback.
 /// Allocation and combat construction follow preservation's engine/animation.md.
-/// Standalone role setup and death/removal transitions remain unsupported.
+/// Player role transitions and death/removal transitions remain unsupported.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct ActorControlState {
     /// Runtime script flags, separate from installed attribute bytes.
@@ -202,7 +202,7 @@ impl ScriptActor {
     pub fn attributes(&self) -> &[u8] {
         &self.attributes
     }
-    /// Known ordinary-map allocation state; standalone roles have no established state.
+    /// Retained ordinary-map/player allocation state; separate records have no persistent control.
     pub fn control_state(&self) -> Option<&ActorControlState> {
         self.control.as_ref()
     }
@@ -418,38 +418,10 @@ impl ScriptWorld {
             };
             let control = match &source {
                 ScriptActorSource::Map(placement) if !matches!(placement.object_type, 2 | 6) => {
-                    Some(ActorControlState {
-                        script_control: 0,
-                        death_selector: 0,
-                        death_response: 0,
-                        living_state: 0,
-                        motion_companion: 0,
-                        sliding_state: 0,
-                        falling_state: 0,
-                        queued_motion: 0,
-                        motion_direction: 0,
-                        directional_state: [0; 2],
-                        movement_flags: 0,
-                        motion_vector: [0; 3],
-                        fall_origin_y: 0,
-                        fall_timer: 0,
-                        jump_selector: 0,
-                        stable_position_valid: false,
-                        stable_local_position: [0; 3],
-                        sliding_distance: 0,
-                        body_response_flags: 0,
-                        collision_transition_flags: 0,
-                        collision_response_auxiliary: [0; 2],
-                        collision_response_age: 0,
-                        overlap_contact_identifier: 0,
-                        rope_attached: false,
-                        torch_burning: 0,
-                        weapon_drawn: false,
-                        object_update_excluded: false,
-                        hidden: false,
-                        combat_death_default: None,
-                        combat: None,
-                    })
+                    Some(ActorControlState::default())
+                }
+                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer => {
+                    Some(ActorControlState::default())
                 }
                 _ => None,
             };
@@ -777,6 +749,36 @@ impl ScriptWorld {
                 self.actors[index].name()
             )
         })
+    }
+
+    /// Current selected-player item gates from the logical actor, never presentation defaults.
+    /// Player switching and prompt lineup scheduling remain separate unsupported services.
+    pub fn player_activation_state(&self) -> Result<(ScriptActorId, super::ActivationActor)> {
+        let index = self
+            .actors
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .context("selected player absent")?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("selected player control state unavailable")?;
+        let id = self.id(index)?;
+        Ok((
+            id,
+            super::ActivationActor {
+                state: control.living_state,
+                on_rope: control.rope_attached,
+                water_state: self.actor_surface(id)?,
+                torch_burning: control.torch_burning,
+                weapon_assigned: control.combat_death_default.is_some(),
+                weapon_drawn: control.weapon_drawn,
+                animation: actor
+                    .bound_animation_group()
+                    .map(|group| super::ActivationAnimation { group }),
+            },
+        ))
     }
 
     /// Commit the actor driver's stored surface, including assignments before a failed transition.

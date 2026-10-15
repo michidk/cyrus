@@ -41,9 +41,11 @@ pub struct HudAsset {
     pub auto_defend: bool,
     /// RTX notice texts, off then on: walk mode `#WOF`/`#WON`, auto-defend `#DOF`/`#DON`.
     pub notices: [[String; 2]; 2],
-    /// Owned, unhidden starting items in item ID order.
+    /// All installed item definitions, including hidden and unowned items.
+    pub inventory: BTreeMap<u16, InventoryItem>,
+    /// Unhidden artwork in ID order; counts are the initial session counts.
     pub items: Vec<HudItem>,
-    /// ITEM.INI `start_item_select`, if owned.
+    /// ITEM.INI `start_item_select`; live selection belongs to the game session.
     pub selected: Option<u16>,
     /// Installed KEYS.INI scan codes for menu actions 710 through 724.
     pub bindings: [u8; 15],
@@ -62,4 +64,15 @@ pub struct HudItem {
     pub bitmap: u16,
     pub count: u32,
     pub size: [u16; 2],
+}
+
+/// Portable acquisition inputs decoded from ITEM.INI by preservation.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct InventoryItem {
+    pub count: u32,
+    pub total: u32,
+    pub player_max: u32,
+    pub hidden: bool,
+    /// Acquisition lists require additional gameplay services before they can run.
+    pub acquisition_effects: bool,
 }

@@ -44,7 +44,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | SOUP integration: dialogue speech/skip input, lifecycle and remaining automatic script services | In progress | Codex, Plan the SOUP Implementation, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
 | Surface sound comparison: audible waveform/duration | In progress | Codex, Parse SURFACE.INI Sound Remapping, `t3/surface-ini-remapping` |
 
-Save/load and remaining HUD integration are unassigned. The save/load session ended with
+Save/load and remaining HUD integration beyond shared inventory are unassigned. The save/load session ended with
 an unfinished prototype; it is not active work. Controller implementation remains
 parked; the surface session compares bounded supplied-tick behavior.
 
@@ -63,7 +63,7 @@ or fidelity across every world and palette.
 | SFX, RTX, CD audio | Effects, speech, subtitles, channels, music, preferences and surface remaps | Complete automatic triggers, moving emitters, nonplayer ground updates and audible parity |
 | SOUP | Portable VM, logical actors, supported ordinary updates and explicit hosts | Remaining actor stages, native services, lifecycle, synchronization and persistence |
 | MENU.INI, KEYS.INI | Data-driven menu, keyboard navigation, settings, rebinding and Movies | Gameplay handlers, device capture, Continue/pause, save slots and movie unlocks |
-| ITEM.INI, COMBAT.INI | Starting-item HUD icons/counts and compass use with supplied actor state | Shared inventory, pickups, production item use and combat |
+| ITEM.INI, COMBAT.INI | Shared script/HUD ownership, selection, capped acquisition and compass use | Acquisition side effects, pickups, remaining item use, resets, saves and combat |
 | SMK | Streamed native/browser video, first-track audio and skip/subtitle rules | Original comparison, A/V sync and hardware seek/audio checks |
 | BMP, PCX, LBM, ANM | Image inspection and authored-rate ANM playback | Game cursor and palette cycling |
 | CHT, CPF | Cheat and console parsing, local persistence and supported commands | Remaining gameplay effects, commands and console fidelity |
@@ -165,8 +165,9 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [ ] Complete positional/ambient scheduling, maintenance/reset ownership, StopAllSounds results, shell/code objects, KillMe/Resurrect cleanup, rope/torch behavior and moving-emitter gain/pan.
 - [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support and an explicit ordered reset adapter exist; automatic player-controller inhibition, topic execution and death/load resets remain open. Portable RTX preparation, the 20-entry cache, explicit combat-taunt cache replacement and shared-sample dialogue playback are implemented. Authored actor taunt lists, explicit ordered selection and prepared shared-sample presentation are implemented; explicit weapon draw/cleanup and synchronous resultless combat entry share authoritative actor state; complete eligibility, standalone weapon initialization and automatic invocation remain open. Full New Game story acceptance remains open.
 - [x] Shared `ShowBitmap`/`UnShowBitmap` slots and `AddLog` persistence/notification dispatch. **Verified:** original-instruction acceptance checks, shared dispatch/render tests and native/browser START entry. Full logbook UI, save integration and original notification cadence remain open.
-- [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Inventory, production actor state and save restore remain open.
+- [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Shared inventory and production actor inputs are connected below; save restore remains open.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
+- [x] Shared script/HUD inventory, capped `AddItem`, `HaveItem`, `SelectItem` and compass use from logical-player state. **Verified:** headless script and HUD checks cover acquisition, live counts/selection, surface gates and world/HUD replacement; installed export checks cover all item artwork. Acquisition side effects, new-game/death resets, saves and original timing comparison remain open.
 - [ ] Compare candle cadence, health transitions, activation prompt/item timing and remaining HUD layout against the original.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
 - [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
@@ -210,7 +211,7 @@ transitions in native and browser builds.
 Requires the player controller.
 
 - [ ] Production interaction with one eligible target, including overlapping pickups and removed objects on revisits.
-- [ ] One inventory shared by scripts, HUD, selection/use and saves, retaining inventory-screen candle rules.
+- [ ] Complete inventory acquisition side effects, pickups, remaining use handlers, inventory-screen candle rules, resets and save integration. Script/HUD counts, selection and compass use already share session ownership.
 - [ ] Dialogue choices, disabled choices, synchronized speech/subtitles/animation and results returned to waiting scripts.
 - [ ] Scripted cameras and player-control lockout with reliable restoration.
 - [ ] Authored world transitions and old sound/script/transient cleanup.

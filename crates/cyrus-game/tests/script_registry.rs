@@ -1869,7 +1869,7 @@ fn living_map_default_writes_do_not_change_the_combat_death_default() {
 }
 
 #[test]
-fn standalone_default_writes_require_role_lifecycle_before_mutating() {
+fn standalone_default_writes_use_initialized_player_control() {
     for (function, name) in [(1, "SetAttribute"), (2, "SetMyAttr")] {
         let mut write = attribute_call(function, name, 44, Some(7));
         write.target = Object::Player;
@@ -1879,21 +1879,16 @@ fn standalone_default_writes_require_role_lifecycle_before_mutating() {
         ]);
         add_standalone_receivers(&mut scripts);
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-        let error = world
-            .step(world.id(0).unwrap(), Thread::Main, 20)
-            .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("attribute 44 actor lifecycle unavailable")
-        );
+        world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
         let player = world
             .actors()
             .iter()
             .find(|actor| actor.name() == "CYRUS")
             .unwrap();
-        assert!(player.control_state().is_none());
-        assert_eq!(player.attributes()[44], 0);
+        assert_eq!(player.control_state().unwrap().living_state, 0);
+        assert_eq!(player.attributes()[44], 7);
+        let (_, state) = world.player_activation_state().unwrap();
+        assert!(state.compass_eligible(player.attributes()[110], true, false));
     }
 }
 

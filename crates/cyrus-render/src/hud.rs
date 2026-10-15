@@ -113,8 +113,8 @@ impl HudPreferences {
 /// no gameplay system writing them yet; they keep the defaults of a fresh session.
 #[derive(Resource, Serialize, Debug)]
 pub struct HudState {
-    /// Player health, 0..=100: script attribute 3 while activation inputs are supplied,
-    /// else the fresh-session 100. Use [`HudState::set_health`].
+    /// Player health, 0..=100, from logical player attribute 3 when available.
+    /// Use [`HudState::set_health`].
     pub health: u8,
     /// Candle visibility mode; F8 cycles 0 → 1 → 2 → 0.
     pub candle_mode: u8,
@@ -126,7 +126,7 @@ pub struct HudState {
     pub lockout: u16,
     /// Selected player weapon state, projected from the logical actor when known.
     pub sword_drawn: bool,
-    /// Selected script player attribute 105 when activation inputs are supplied.
+    /// Logical selected-player attribute 105 when actor state is available.
     pub player_type: u8,
     /// Placed player's heading in 2048-unit turns and the loaded WORLD.INI world ID, for the compass.
     pub heading: u16,
@@ -292,7 +292,9 @@ impl AssetLoader for HudLoader {
     ) -> Result<HudAsset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        let mut hud: HudAsset = serde_json::from_slice(&bytes)?;
+        let mut hud: HudAsset = serde_json::from_slice(&bytes).map_err(|error| {
+            anyhow::anyhow!("HUD cache invalid; re-export installed HUD data: {error}")
+        })?;
         for (name, count) in [
             ("candle", 81),
             ("compass", 32),
@@ -615,40 +617,49 @@ fn update(
             .as_ref()
             .is_some_and(|world| world.generation() == inputs.player.generation)
     });
-    if let Some(drawn) = activation.and_then(|inputs| {
-        world
-            .as_ref()
-            .and_then(|world| world.actors().get(inputs.player.index))
-            .and_then(|actor| actor.control_state())
-            .map(|control| control.weapon_drawn)
-            .or_else(|| {
-                inputs
-                    .actors
-                    .get(&inputs.player.index)
-                    .map(|actor| actor.weapon_drawn)
-            })
-    }) {
-        state.set_sword_drawn(drawn);
-    }
     state.lockout = world
         .as_ref()
         .and_then(|world| world.globals().lockout())
         .unwrap_or_else(|| activation.map_or(0, |inputs| inputs.lockout));
-    let on_edge = activation
-        .and_then(|inputs| inputs.actors.get(&inputs.player.index))
-        .is_some_and(|actor| (10..=19).contains(&actor.state));
-    let compass_eligible = match (world.as_ref(), activation) {
-        (Some(world), Some(inputs)) => world
+    let player_state = activation
+        .and_then(|inputs| {
+            inputs
+                .actors
+                .get(&inputs.player.index)
+                .copied()
+                .map(|actor| (inputs.player, actor))
+        })
+        .or_else(|| {
+            if activation.is_some() {
+                return None;
+            }
+            world.as_ref()?.player_activation_state().ok()
+        });
+    let on_edge = player_state.is_some_and(|(_, actor)| (10..=19).contains(&actor.state));
+    if let Some((id, actor)) = player_state
+        && let Some(player) = world
+            .as_ref()
+            .and_then(|world| world.actors().get(id.index))
+    {
+        let attributes = player.attributes();
+        state.player_type = attributes[105];
+        state.set_health(attributes[3]);
+        state.set_sword_drawn(
+            player
+                .control_state()
+                .map_or(actor.weapon_drawn, |control| control.weapon_drawn),
+        );
+    }
+    let compass_eligible = match (world.as_ref(), activation, player_state) {
+        (Some(world), Some(inputs), _) => world
             .actors()
             .get(inputs.player.index)
-            .ok_or_else(|| {
-                anyhow::anyhow!("selected compass actor {} unavailable", inputs.player.index)
-            })
-            .and_then(|player| inputs.compass_eligible(player))
-            .unwrap_or_else(|error| {
-                warn!("compass item use: {error:#}");
-                false
-            }),
+            .is_some_and(|player| inputs.compass_eligible(player).unwrap_or(false)),
+        (Some(world), None, Some((id, actor))) => actor.compass_eligible(
+            world.actors()[id.index].attributes()[110],
+            script_hud.ready(),
+            false,
+        ),
         _ => false,
     };
 
@@ -690,31 +701,41 @@ fn update(
             cycle_allowed: !state.sword_drawn,
         },
     };
-    if matches!(
+    let cycle = if matches!(
         overlay,
         ActivationOverlay::Item {
             cycle_allowed: true,
             ..
         }
     ) {
-        // Menu actions 723 and 724: next and previous item.
-        let position = hud.items.iter().position(|i| Some(i.id) == state.selected);
-        let step = match (pressed(14), pressed(13)) {
-            (true, false) => hud.items.len().checked_sub(1),
-            (false, true) => Some(1),
+        match (pressed(14), pressed(13)) {
+            (true, false) => Some(false),
+            (false, true) => Some(true),
             _ => None,
-        };
-        if let (Some(position), Some(step)) = (position, step) {
-            state.selected = Some(hud.items[(position + step) % hud.items.len()].id);
         }
-    }
+    } else {
+        None
+    };
+    let inventory = script_hud.inventory(cycle);
+    state.selected = inventory.as_ref().and_then(|items| items.selected);
+    let live_items: Vec<_> = hud
+        .items
+        .iter()
+        .filter_map(|item| {
+            let count = inventory.as_ref()?.counts.get(&item.id).copied()?;
+            (count > 0).then(|| HudItem {
+                count,
+                ..item.clone()
+            })
+        })
+        .collect();
 
     let item_path = matches!(&overlay, ActivationOverlay::Item { .. });
     let (shown_item, prompt) = match overlay {
         ActivationOverlay::Hidden | ActivationOverlay::Item { visible: false, .. } => (None, None),
         ActivationOverlay::Prompt(text) => (None, Some(text)),
         ActivationOverlay::Item { visible: true, .. } => (
-            hud.items.iter().find(|i| Some(i.id) == state.selected),
+            live_items.iter().find(|i| Some(i.id) == state.selected),
             None,
         ),
     };
@@ -722,7 +743,9 @@ fn update(
     state.count = shown_item.map(|i| i.count);
 
     // The original consumes use once per hold, independently of drawing its compass.
-    let owns_compass = hud.items.iter().any(|item| item.id == 0 && item.count > 0);
+    let owns_compass = inventory
+        .as_ref()
+        .is_some_and(|items| items.counts.get(&0).is_some_and(|count| *count > 0));
     let attempt = if state.lockout == 1
         || on_edge
         || compass
@@ -1008,6 +1031,7 @@ mod tests {
             walk_mode: false,
             auto_defend: true,
             notices: default(),
+            inventory: BTreeMap::new(),
             items: vec![],
             selected: None,
             bindings: [0; 15],
@@ -1293,6 +1317,24 @@ mod tests {
         assert_eq!(visible(&mut app, HudSprite::Logbook), Visibility::Hidden);
     }
 
+    fn inventory_items(counts: &[(u16, u32)]) -> BTreeMap<u16, cyrus_assets::hud::InventoryItem> {
+        counts
+            .iter()
+            .map(|&(id, count)| {
+                (
+                    id,
+                    cyrus_assets::hud::InventoryItem {
+                        count,
+                        total: 10,
+                        player_max: 10,
+                        hidden: false,
+                        acquisition_effects: false,
+                    },
+                )
+            })
+            .collect()
+    }
+
     fn compass_app() -> App {
         let mut app = App::new();
         app.add_plugins((MinimalPlugins, AssetPlugin::default()))
@@ -1301,11 +1343,12 @@ mod tests {
             .init_asset::<HudAsset>()
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
-            .add_systems(Update, update);
+            .add_systems(Update, (configure_scripts, update).chain());
         let hud = app
             .world_mut()
             .resource_mut::<Assets<HudAsset>>()
             .add(HudAsset {
+                inventory: inventory_items(&[(0, 1), (1, 1)]),
                 items: vec![HudItem {
                     id: 0,
                     bitmap: 1,
@@ -1396,17 +1439,88 @@ mod tests {
     }
 
     #[test]
+    fn script_acquired_compass_uses_authoritative_player_without_inspection_inputs() {
+        let mut app = compass_app();
+        // New session starts without compass ownership, with the installed sabre selected.
+        let handle = app.world().resource::<HudHandle>().0.clone();
+        {
+            let mut assets = app.world_mut().resource_mut::<Assets<HudAsset>>();
+            let mut hud = assets.get_mut(&handle).unwrap();
+            hud.inventory.get_mut(&0).unwrap().count = 0;
+            hud.inventory.get_mut(&0).unwrap().player_max = 1;
+            hud.selected = Some(1);
+        }
+        app.insert_resource(cyrus_game::script::ScriptHud::default());
+        app.update();
+        app.world_mut().remove_resource::<ActivationInputs>();
+        use_key(&mut app, true);
+        assert!(!app.world().resource::<HudState>().compass_on);
+        use_key(&mut app, false);
+        prepare_script(&mut app, &[("AddItem", &[0, 8]), ("SelectItem", &[0])]);
+        app.world_mut().remove_resource::<ActivationInputs>();
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!((state.selected, state.count), (Some(0), Some(1)));
+        assert!(
+            !state.compass_on,
+            "acquisition does not activate the compass"
+        );
+        use_key(&mut app, true);
+        assert!(app.world().resource::<HudState>().compass_on);
+        assert_eq!(app.world().resource::<HudState>().compass_frame, Some(16));
+        app.update();
+        assert!(
+            app.world().resource::<HudState>().compass_on,
+            "held use does not repeat"
+        );
+        use_key(&mut app, false);
+        // Surface changes from the actor host, without a separate activation resource.
+        {
+            let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+            let world = actors.current.as_mut().unwrap();
+            let (id, _) = world.player_activation_state().unwrap();
+            world.set_actor_surface(id, 2).unwrap();
+        }
+        use_key(&mut app, true);
+        assert!(
+            app.world().resource::<HudState>().compass_on,
+            "deep water rejects use"
+        );
+        use_key(&mut app, false);
+        prepare_script(&mut app, &[("LockoutPlayer", &[0])]);
+        app.world_mut().remove_resource::<ActivationInputs>();
+        app.world_mut().remove_resource::<HudState>();
+        app.update();
+        app.update();
+        let state = app.world().resource::<HudState>();
+        assert_eq!((state.selected, state.count), (Some(0), Some(1)));
+        assert!(
+            state.compass_on,
+            "world and HUD replacement retain live inventory"
+        );
+        app.world_mut().resource_mut::<HudState>().bindings[7] = 18;
+        use_key(&mut app, true);
+        assert!(!app.world().resource::<HudState>().compass_on);
+    }
+
+    #[test]
     fn compass_requires_known_actor_state_ownership_selection_and_current_binding() {
         let mut app = compass_app();
         let inputs = app
             .world_mut()
             .remove_resource::<ActivationInputs>()
             .unwrap();
+        let world = app
+            .world_mut()
+            .resource_mut::<ScriptActors>()
+            .current
+            .take();
         use_key(&mut app, true);
         assert!(
             !app.world().resource::<HudState>().compass_on,
             "unknown gates reject use"
         );
+        app.world_mut().resource_mut::<ScriptActors>().current = world;
         app.insert_resource(inputs);
         app.update();
         assert!(
@@ -1414,11 +1528,18 @@ mod tests {
             "rejected hold stays consumed"
         );
         use_key(&mut app, false);
-        app.world_mut().resource_mut::<HudState>().selected = Some(1);
+        app.world()
+            .resource::<cyrus_game::script::ScriptHud>()
+            .select_item(1)
+            .unwrap();
         use_key(&mut app, true);
         assert!(!app.world().resource::<HudState>().compass_on);
         use_key(&mut app, false);
-        app.world_mut().resource_mut::<HudState>().selected = Some(0);
+        app.world()
+            .resource::<cyrus_game::script::ScriptHud>()
+            .select_item(0)
+            .unwrap();
+        // Re-exported initial metadata cannot replace live ownership.
         let handle = app.world().resource::<HudHandle>().0.clone();
         app.world_mut()
             .resource_mut::<Assets<HudAsset>>()
@@ -1426,18 +1547,6 @@ mod tests {
             .unwrap()
             .items[0]
             .count = 0;
-        use_key(&mut app, true);
-        assert!(
-            !app.world().resource::<HudState>().compass_on,
-            "zero count is unowned"
-        );
-        use_key(&mut app, false);
-        app.world_mut()
-            .resource_mut::<Assets<HudAsset>>()
-            .get_mut(&handle)
-            .unwrap()
-            .items[0]
-            .count = 1;
         app.world_mut().resource_mut::<HudState>().bindings[7] = 0x21; // F
         use_key(&mut app, true);
         assert!(
@@ -1451,6 +1560,7 @@ mod tests {
         assert!(app.world().resource::<HudState>().compass_on);
         app.world_mut().resource_mut::<HudState>().player_type = 1;
         app.world_mut().remove_resource::<ActivationInputs>();
+        app.world_mut().resource_mut::<ScriptActors>().current = None;
         app.update();
         assert_eq!(app.world().resource::<HudState>().compass_frame, None);
         assert!(
@@ -1561,7 +1671,7 @@ mod tests {
             .init_asset::<HudAsset>()
             .init_resource::<cyrus_game::preferences::Preferences>()
             .init_resource::<ButtonInput<KeyCode>>()
-            .add_systems(Update, update);
+            .add_systems(Update, (configure_scripts, update).chain());
         let mut bindings = [0; 15];
         bindings[13] = 0x34;
         let item = |id| HudItem {
@@ -1574,6 +1684,7 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<HudAsset>>()
             .add(HudAsset {
+                inventory: inventory_items(&[(1, 1), (2, 1)]),
                 items: vec![item(1), item(2)],
                 selected: Some(1),
                 bindings,

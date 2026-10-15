@@ -1,4 +1,4 @@
-//! Shared compass use, power-up slots and accepted logbook writes, independent of rendering.
+//! Session inventory, compass use, power-up slots and accepted logbook writes.
 use crate::preferences::{PreferenceKey, PreferenceStore, Preferences};
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
@@ -21,13 +21,14 @@ pub enum CompassUse {
 }
 
 /// Shared native/browser script HUD state. Rules follow preservation's engine/hud.md.
-/// Slots, compass state and duplicate tags survive world changes within this game session.
+/// Inventory, slots, compass state and duplicate tags survive world changes within the session.
 #[derive(Resource, Default)]
 pub struct ScriptHud(Mutex<State>);
 
 #[derive(Default)]
 struct State {
     data: Option<(usize, BTreeMap<String, String>)>,
+    inventory: Option<super::inventory::Inventory>,
     powerups: [Option<(u8, u8)>; 2],
     next_slot: usize,
     seen: Vec<i32>,
@@ -51,6 +52,7 @@ impl ScriptHud {
         if state.data.is_some() {
             return;
         }
+        state.inventory = Some(super::inventory::Inventory::new(hud));
         state.data = Some((hud.powerup_sizes.len(), hud.labels.clone()));
         state.store = preferences.store();
         state.entries = Some(
@@ -101,6 +103,38 @@ impl ScriptHud {
         state.compass_on
     }
 
+    /// Repair exhausted selection and optionally cycle once through visible owned items.
+    pub fn inventory(&self, cycle: Option<bool>) -> Option<super::InventoryView> {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .inventory
+            .as_mut()
+            .map(|items| items.view(cycle))
+    }
+
+    /// Apply acquisition caps and refuse unsupported side effects before changing ownership.
+    pub fn add_item(&self, id: u16, amount: i32) -> Result<()> {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .inventory
+            .as_mut()
+            .context("installed inventory data unavailable")?
+            .add(id, amount)
+    }
+
+    /// Script selection accepts any defined ID; the item overlay repairs exhausted selection.
+    pub fn select_item(&self, id: u16) -> Result<()> {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .inventory
+            .as_mut()
+            .context("installed inventory data unavailable")?
+            .select(id)
+    }
+
     /// Accepted logbook text, or the retained local-state load error.
     pub fn entries(&self) -> Result<Vec<String>> {
         let state = self.0.lock().expect("script HUD lock poisoned");
@@ -119,19 +153,57 @@ impl ScriptHud {
             "ready": state.data.is_some(),
             "powerups": state.powerups,
             "compass_on": state.compass_on,
+            "inventory": state.inventory.as_ref().map(super::inventory::Inventory::inspect),
             "logbook_entries": state.entries.as_ref().and_then(|entries| entries.as_ref().ok()).map(Vec::len),
             "logbook_error": state.entries.as_ref().and_then(|entries| entries.as_ref().err()),
         })
     }
 
     pub(super) fn handles(function: &str) -> bool {
-        ["ShowBitmap", "UnShowBitmap", "AddLog"]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+        [
+            "ShowBitmap",
+            "UnShowBitmap",
+            "AddLog",
+            "AddItem",
+            "HaveItem",
+            "SelectItem",
+        ]
+        .iter()
+        .any(|name| function.eq_ignore_ascii_case(name))
     }
 
     pub(super) fn call(&self, function: &str, arguments: &[Argument]) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if ["AddItem", "HaveItem", "SelectItem"]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            let expected = if function.eq_ignore_ascii_case("AddItem") {
+                2
+            } else {
+                1
+            };
+            anyhow::ensure!(
+                arguments.len() == expected,
+                "{function} requires {expected} arguments"
+            );
+            let id = u16::try_from(arguments[0].integer()?)
+                .context("inventory item ID outside u16 range")?;
+            let items = state
+                .inventory
+                .as_mut()
+                .context("installed inventory data unavailable")?;
+            if function.eq_ignore_ascii_case("HaveItem") {
+                return i32::try_from(items.count(id)?)
+                    .context("item count outside script integer range");
+            }
+            if function.eq_ignore_ascii_case("AddItem") {
+                items.add(id, arguments[1].integer()?)?;
+            } else {
+                items.select(id)?;
+            }
+            return Ok(0);
+        }
         let (frames, _) = state
             .data
             .as_ref()

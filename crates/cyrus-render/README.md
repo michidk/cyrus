@@ -300,9 +300,12 @@ slots and accepted notification requests. New logbook notifications draw frame 0
 first; entries accepted during playback do not restart the icon. Lockout hides
 power-up slots and leaves the logbook icon visible. Owned compass use consumes the
 installed Activate/Attack binding once per hold, with supplied actor
-gates. Missing eligibility rejects use; shared inventory/acquisition and save
-restore remain unsupported. The display flag survives HUD/world replacement.
-Sword state and gameplay walk-mode/auto-defend behavior remain unwired. Native
+gates. Ordinary use derives them from the logical player; missing actor state
+rejects use. Script acquisition, selection, item cycling, counts and compass
+ownership share game-owned session inventory. The display flag and inventory
+survive HUD/world replacement. Acquisition side effects, save restore and
+new-game/death resets remain unsupported.
+Automatic weapon-draw admission and gameplay walk-mode/auto-defend behavior remain unwired. Native
 health-number placement matches the original at 640×480; complete pixel and timing parity remain open.
 
 Re-exported animated i16 poses use absolute coordinates reconstructed by rgpre.
