@@ -26,8 +26,15 @@ fn playing_decoder_applies_gain_updates_without_restarting_or_splitting_a_frame(
     for (audio_type, pcm) in [
         (AudioType::Mono8, vec![192; 4]),
         (AudioType::Stereo8, vec![192; 8]),
+        (AudioType::Mono16, [0, 64].repeat(4)),
+        (AudioType::Stereo16, [0, 64].repeat(8)),
     ] {
-        let gains = PannedGains::new(127, 256, 0);
+        let gains = PannedGains::new(
+            audio_type.bits_per_sample().try_into().unwrap(),
+            127,
+            256,
+            0,
+        );
         let source = Panned {
             source: AudioSource {
                 bytes: pcm_wav(audio_type, 11025, &pcm).unwrap().into(),
@@ -163,10 +170,25 @@ fn distance_volume_matches_the_original_curve() {
         "the original divides by zero"
     );
     // Miles mixer: (v + 1) / 128 after v = volume × master >> 8.
-    assert_eq!(output_gain(127, 256), 1.0);
-    assert_eq!(output_gain(127, 128), 0.5, "v 63");
-    assert_eq!(output_gain(64, 255), 0.5, "v 63");
-    assert_eq!(output_gain(1, 255), 0.0, "v 0 is silent");
+    assert_eq!(
+        output_gain(cyrus_audio::sound::PcmWidth::Eight, 127, 256),
+        1.0
+    );
+    assert_eq!(
+        output_gain(cyrus_audio::sound::PcmWidth::Eight, 127, 128),
+        0.5,
+        "v 63"
+    );
+    assert_eq!(
+        output_gain(cyrus_audio::sound::PcmWidth::Eight, 64, 255),
+        0.5,
+        "v 63"
+    );
+    assert_eq!(
+        output_gain(cyrus_audio::sound::PcmWidth::Eight, 1, 255),
+        0.0,
+        "v 0 is silent"
+    );
     // Sound page slider to engine volume (preservation docs/engine/menu.md).
     let volumes: Vec<i32> = (0..=20).map(slider_volume).collect();
     assert_eq!(
@@ -239,6 +261,7 @@ fn flat_cues_fill_sixteen_channels_with_clamped_rate_and_base_volume() {
     app.update();
     let master = app.world().resource::<SoundSettings>().master_volume;
     app.insert_resource(SoundEffects(vec![Some(Effect {
+        bits_per_sample: 8,
         audio: Handle::default(),
         looping: true,
         base_volume: 64,
@@ -267,7 +290,10 @@ fn flat_cues_fill_sixteen_channels_with_clamped_rate_and_base_volume() {
         "16 channels; the 17th start and effect 1 are dropped"
     );
     assert_eq!(settings[0].speed, 21538.0 / 22050.0);
-    assert_eq!(settings[0].volume, Volume::Linear(output_gain(60, master)));
+    assert_eq!(
+        settings[0].volume,
+        Volume::Linear(output_gain(cyrus_audio::sound::PcmWidth::Eight, 60, master))
+    );
 }
 
 #[test]
@@ -300,6 +326,7 @@ fn animation_cues_need_a_known_surface_and_stop_their_last_sound() {
             bytes: pcm_wav(AudioType::Mono8, 11025, &[128; 64]).unwrap().into(),
         });
     app.insert_resource(SoundEffects(vec![Some(Effect {
+        bits_per_sample: 8,
         audio,
         looping: true,
         base_volume: 64,
@@ -397,6 +424,7 @@ fn script_sound_cleanup_matches_owner_effect_and_world_generation() {
         (0..2)
             .map(|_| {
                 Some(Effect {
+                    bits_per_sample: 8,
                     audio: Handle::default(),
                     looping: true,
                     base_volume: 64,
@@ -586,6 +614,7 @@ fn positional_script_starts_include_silent_channels_and_owned_cleanup() {
             bytes: pcm_wav(AudioType::Mono8, 11025, &[192; 8]).unwrap().into(),
         });
     app.insert_resource(SoundEffects(vec![Some(Effect {
+        bits_per_sample: 8,
         audio,
         looping: true,
         base_volume: 64,
@@ -637,4 +666,85 @@ fn positional_script_starts_include_silent_channels_and_owned_cleanup() {
         .get(&handle)
         .unwrap();
     assert!(source.decoder().all(|sample| sample == 0.0));
+}
+
+#[test]
+fn pcm_width_selects_original_gain_and_signed_rounding_before_stereo_output() {
+    use cyrus_audio::sound::{Panned, PannedGains};
+    use rgpre::import::sfx::AudioType;
+
+    for (kind, samples, expected) in [
+        (
+            AudioType::Mono8,
+            vec![192, 64, 129, 127],
+            vec![14464, -14464, 226, -226],
+        ),
+        (
+            AudioType::Stereo8,
+            vec![192, 192, 64, 64, 129, 129, 127, 127],
+            vec![14464, -14464, 226, -226],
+        ),
+        (
+            AudioType::Mono16,
+            [16384i16, -16384, 257, -257]
+                .into_iter()
+                .flat_map(i16::to_le_bytes)
+                .collect(),
+            vec![14336, -14336, 224, -225],
+        ),
+        (
+            AudioType::Stereo16,
+            [16384i16, 16384, -16384, -16384, 257, 257, -257, -257]
+                .into_iter()
+                .flat_map(i16::to_le_bytes)
+                .collect(),
+            vec![14336, -14336, 224, -225],
+        ),
+    ] {
+        let source = Panned {
+            source: AudioSource {
+                bytes: pcm_wav(kind, 22050, &samples).unwrap().into(),
+            },
+            gains: PannedGains::new(kind.bits_per_sample().try_into().unwrap(), 112, 256, 64),
+        };
+        let actual: Vec<_> = source
+            .decoder()
+            .map(|sample| (sample * 32768.0) as i32)
+            .collect();
+        let expected: Vec<_> = expected
+            .into_iter()
+            .flat_map(|sample| [sample, sample])
+            .collect();
+        assert_eq!(actual, expected, "{kind:?}");
+    }
+}
+
+#[test]
+fn scalar_pan_rounds_the_coefficient_before_multiplying_each_sample() {
+    use cyrus_audio::sound::{Panned, PannedGains, PcmWidth};
+    use rgpre::import::sfx::AudioType;
+    let pcm: Vec<_> = [16384i16, -257]
+        .into_iter()
+        .flat_map(i16::to_le_bytes)
+        .collect();
+    let source = Panned {
+        source: AudioSource {
+            bytes: pcm_wav(AudioType::Mono16, 22050, &pcm).unwrap().into(),
+        },
+        gains: PannedGains::new(PcmWidth::Sixteen, 112, 256, 32),
+    };
+    // Original pan-table values 128 and64 produce integer coefficients112 and56.
+    assert_eq!(
+        source.decoder().collect::<Vec<_>>(),
+        vec![
+            14336.0 / 32768.0,
+            7168.0 / 32768.0,
+            -225.0 / 32768.0,
+            -113.0 / 32768.0
+        ]
+    );
+    assert_eq!(output_gain(PcmWidth::Sixteen, 127, 256), 1.0);
+    assert_eq!(output_gain(PcmWidth::Sixteen, 112, 256), 112.0 / 128.0);
+    assert_eq!(output_gain(PcmWidth::Eight, 112, 256), 113.0 / 128.0);
+    assert!(PcmWidth::try_from(24).is_err());
 }

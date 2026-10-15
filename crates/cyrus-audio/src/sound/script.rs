@@ -362,6 +362,7 @@ impl SoundFrame<'_, '_> {
                                 )),
                                 effect: Some(i32::from(*requested)),
                                 audio: effect.audio.clone(),
+                                bits_per_sample: effect.bits_per_sample,
                                 looping: effect.looping,
                                 volume,
                                 pan: Some(pan),
@@ -597,6 +598,7 @@ impl ScriptSounds<'_, '_> {
                 owner: None,
                 effect: None,
                 audio: audio.clone(),
+                bits_per_sample: voice.bits_per_sample,
                 looping: false,
                 volume: voice.base_volume.min(127),
                 pan: Some(64),
@@ -1390,9 +1392,10 @@ mod dialogue_tests {
         assert_eq!(channels.start, 6);
         assert_eq!(channels.samples.status(Some(0)), 4);
         let channel = channels.playing.values().next().unwrap();
+        let scale = channel.gains.as_ref().unwrap().snapshot();
         assert_eq!(
-            channel.gains.as_ref().unwrap().snapshot(),
-            [114.0 / 128.0; 2]
+            [scale.apply(0.5, 0), scale.apply(0.5, 1)],
+            [113.0 / 256.0; 2]
         );
         assert!(
             world
@@ -1411,19 +1414,17 @@ mod dialogue_tests {
         world.resource_mut::<SoundSettings>().sound_distance = Some(20);
         world.insert_resource(crate::AudioListener(GlobalTransform::IDENTITY));
         world.run_system_cached(refresh_line).unwrap();
-        assert_eq!(
-            world
-                .resource::<Channels>()
-                .playing
-                .values()
-                .next()
-                .unwrap()
-                .gains
-                .as_ref()
-                .unwrap()
-                .snapshot(),
-            [1.0; 2]
-        );
+        let scale = world
+            .resource::<Channels>()
+            .playing
+            .values()
+            .next()
+            .unwrap()
+            .gains
+            .as_ref()
+            .unwrap()
+            .snapshot();
+        assert_eq!([scale.apply(0.5, 0), scale.apply(0.5, 1)], [0.5; 2]);
         for _ in 1..16 {
             world
                 .resource_mut::<Channels>()

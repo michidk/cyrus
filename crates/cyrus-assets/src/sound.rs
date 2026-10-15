@@ -188,6 +188,8 @@ pub fn slider_volume(slider: i32) -> i32 {
 /// One voiced RTX entry: its audio, header base volume and subtitle text.
 #[derive(Clone)]
 pub struct VoiceClip<A> {
+    /// Original PCM sample width, 8 or 16 bits.
+    pub bits_per_sample: u16,
     pub audio: A,
     pub base_volume: u8,
     pub seconds: f64,

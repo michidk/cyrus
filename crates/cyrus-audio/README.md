@@ -8,6 +8,10 @@ in presentation. This crate has no rendering or startup dependency.
 Loaded sample playback entities carry `PannedGains`, shared with their active
 decoder. A volume/pan update affects subsequent stereo frames without restarting
 the sample. One-shots retain their start gains unless explicitly updated.
+Original PCM width is retained through native and browser preparation. The decoder
+applies preservation's 8-bit lookup-table or 16-bit scalar gain rule, including
+integer rounding before backend resampling. Volume and pan updates keep the
+sample's original width and apply together at stereo-frame boundaries.
 
 Hosts supply an optional `AudioListener` in Bevy world space. Native and browser
 game hosts schedule `follow_listener::<ViewCamera>` before `ApplyPreferences`;
@@ -94,7 +98,7 @@ movement replay; it does not drive body clearance, dynamic support or keyboard i
 Each report step records the position, prior and assigned surface, ground veto,
 support source and ordered animation events. Each event records its captured
 surface, signed Q8 position for Play, authored effect/rate offset, newly started
-PCM target candidates, playback speed and decoded channel gain ratios, plus
+PCM target candidates, playback speed and fitted decoded channel gain ratios, plus
 remaining channels after cleanup. Gain ratios compare actual decoder output with
 the source samples; a silent prefix reports null. Target identification
 compares the actual mixer PCM with every installed bank entry. Identical samples
@@ -113,6 +117,9 @@ movement. Supply measured inputs rather than deriving them from host durations.
 The first step supplies the starting position and heading. Every subsequent step
 must supply the exact position and heading left by the previous update; a mismatch
 reports the case and step instead of teleporting the player.
+Gain ratios fit actual decoder output against up to 65,536 source frames, so
+quiet-sample integer rounding does not stand in for the whole clip's scaling.
+They are measurements of that PCM window, not exact waveform parity.
 
 Grounded cases initialize player animation, advance the ordinary animation stage,
 select candidates with the current model's installed radius, then run the public

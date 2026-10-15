@@ -38,6 +38,7 @@ fn fixture() -> (App, Entity) {
                     bytes: pcm_wav(AudioType::Mono8, rate, &[192; 16]).unwrap().into(),
                 });
             Some(Effect {
+                bits_per_sample: 8,
                 audio,
                 looping: true,
                 base_volume: 64,
@@ -606,5 +607,42 @@ fn animation_checkpoint_can_restore_absent_slot_and_current_replacement() {
         playing(&mut app),
         0,
         "a reusable remembered slot stops its replacement occupant"
+    );
+}
+
+#[test]
+fn remapped_target_retains_its_pcm_width_through_production_playback() {
+    let (mut app, actor) = fixture();
+    *app.world_mut().get_mut::<GlobalTransform>(actor).unwrap() = GlobalTransform::IDENTITY;
+    app.world_mut()
+        .resource_mut::<SoundSettings>()
+        .master_volume = 255;
+    let pcm = [0, 64].repeat(4);
+    let audio = app
+        .world_mut()
+        .resource_mut::<Assets<AudioSource>>()
+        .add(AudioSource {
+            bytes: pcm_wav(AudioType::Mono16, 22050, &pcm).unwrap().into(),
+        });
+    let mut effects = app.world_mut().resource_mut::<SoundEffects>();
+    let target = effects.0[1].as_mut().unwrap();
+    target.audio = audio;
+    target.bits_per_sample = 16;
+    play(&mut app, actor, 200);
+    let handle = app
+        .world_mut()
+        .query::<&AudioPlayer<Panned>>()
+        .single(app.world())
+        .unwrap()
+        .0
+        .clone();
+    let audio = app
+        .world()
+        .resource::<Assets<Panned>>()
+        .get(&handle)
+        .unwrap();
+    assert_eq!(
+        audio.decoder().collect::<Vec<_>>(),
+        vec![16128.0 / 32768.0; 8]
     );
 }

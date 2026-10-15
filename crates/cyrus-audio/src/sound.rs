@@ -127,6 +127,8 @@ use cyrus_assets::sound::SurfaceSounds;
 pub struct SoundEffects(pub Vec<Option<Effect>>);
 
 pub struct Effect {
+    /// Original PCM sample width, 8 or 16 bits.
+    pub bits_per_sample: u16,
     pub audio: Handle<AudioSource>,
     pub looping: bool,
     /// Header volume of non-positional starts, 0..=127.
@@ -204,6 +206,7 @@ fn load_effects(
             .into_iter()
             .map(|effect| {
                 effect.map(|effect| Effect {
+                    bits_per_sample: effect.bits_per_sample,
                     audio: audio.add(AudioSource {
                         bytes: effect.bytes.into(),
                     }),
@@ -246,6 +249,7 @@ fn finish_speech(
                     (
                         label,
                         VoiceClip {
+                            bits_per_sample: clip.bits_per_sample,
                             audio,
                             base_volume: clip.base_volume,
                             seconds: clip.seconds,
@@ -287,6 +291,7 @@ struct Channel {
 
 /// One start: volume 0..=127 before the master volume, Miles pan (`None` = centre).
 struct Start {
+    bits_per_sample: u16,
     owner: Option<Owner>,
     effect: Option<i32>,
     audio: Handle<AudioSource>,
@@ -364,6 +369,7 @@ impl Channels {
                 owner: Some(owner),
                 effect: Some(cue.effect),
                 audio: effect.audio.clone(),
+                bits_per_sample: effect.bits_per_sample,
                 looping: effect.looping,
                 volume,
                 pan: Some(pan),
@@ -406,6 +412,7 @@ impl Channels {
                             }),
                             effect: Some(request.effect),
                             audio: effect.audio.clone(),
+                            bits_per_sample: effect.bits_per_sample,
                             looping: effect.looping,
                             volume,
                             pan: Some(pan),
@@ -440,7 +447,17 @@ impl Channels {
     /// start still occupies its channel. Returns the reusable sample slot.
     fn start(&mut self, commands: &mut Commands, mixer: &mut Mixer, start: Start) -> Option<u8> {
         let master = mixer.master;
-        let gain = output_gain(start.volume, master);
+        let width = match PcmWidth::try_from(start.bits_per_sample) {
+            Ok(width) => width,
+            Err(error) => {
+                warn!(
+                    "sound: effect {:?}, audio {:?}: {error}",
+                    start.effect, start.audio
+                );
+                return None;
+            }
+        };
+        let gain = output_gain(width, start.volume, master);
         let panned_source = match start.pan {
             Some(pan) => Some((
                 mixer.panned.as_deref_mut()?,
@@ -481,7 +498,7 @@ impl Channels {
                 None,
             ),
             Some((panned, source, pan)) => {
-                let gains = PannedGains::new(start.volume, master, pan);
+                let gains = PannedGains::new(width, start.volume, master, pan);
                 let audio = panned.add(Panned {
                     source: source.clone(),
                     gains: gains.clone(),
@@ -524,6 +541,7 @@ impl Channels {
                 owner,
                 effect: i32::try_from(index).ok(),
                 audio: effect.audio.clone(),
+                bits_per_sample: effect.bits_per_sample,
                 looping: effect.looping,
                 volume: i32::from(effect.base_volume)
                     .wrapping_add(volume)
@@ -702,6 +720,7 @@ fn play_requests(
                         owner: None,
                         effect: i32::try_from(*index).ok(),
                         audio: effect.audio.clone(),
+                        bits_per_sample: effect.bits_per_sample,
                         looping: effect.looping,
                         volume,
                         pan,
@@ -725,6 +744,7 @@ fn play_requests(
                         owner: None,
                         effect: None,
                         audio: clip.audio.clone(),
+                        bits_per_sample: clip.bits_per_sample,
                         looping: false,
                         volume: clip.base_volume.min(127),
                         pan: None,
@@ -792,6 +812,7 @@ fn finish_bank(
             .zip(&bank.audio)
             .map(|(effect, audio)| {
                 Some(Effect {
+                    bits_per_sample: effect.bits_per_sample,
                     audio: audio.clone(),
                     looping: effect.looping,
                     base_volume: effect.base_volume,
@@ -836,14 +857,30 @@ fn distance_volume_q8(sound_distance: i32, distance: i64, offset: i32) -> Result
 /// Engine volume for a Sound page slider value: `trunc(slider × 12.8)`, exact as `slider × 64 / 5`.
 pub use cyrus_assets::sound::slider_volume;
 
-/// Linear gain of a 0..=127 sample volume after the master volume, as the
-/// original's Miles mixer applies it: `v = volume × master >> 8`, then
-/// `(v + 1) / 128` for any non-zero `v` (the driver's own master stays at 127).
-pub fn output_gain(volume: u8, master: i32) -> f32 {
-    match (i32::from(volume) * master) >> 8 {
-        v if v <= 0 => 0.0,
-        v => (v.min(127) + 1) as f32 / 128.0,
+/// Original integer PCM sample width, retained before Bevy converts samples to floats.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PcmWidth {
+    Eight,
+    Sixteen,
+}
+
+impl TryFrom<u16> for PcmWidth {
+    type Error = String;
+    fn try_from(bits: u16) -> Result<Self, Self::Error> {
+        match bits {
+            8 => Ok(Self::Eight),
+            16 => Ok(Self::Sixteen),
+            _ => Err(format!(
+                "unsupported PCM sample width {bits}; expected 8 or 16 bits"
+            )),
+        }
     }
+}
+
+/// Nominal centre gain after the game master volume, excluding integer sample rounding.
+/// PCM width selects the original table or scalar rule (preservation engine/sound.md).
+pub fn output_gain(width: PcmWidth, volume: u8, master: i32) -> f32 {
+    PcmScale::new(width, volume, master, 64).apply(1.0, 0)
 }
 
 /// Left and right gains of a Miles pan 0..=127 (0 left, 64 centre, 127 right):
@@ -907,30 +944,65 @@ pub fn pan(angle: i32, yaw: i32) -> u8 {
     (64 + p) as u8
 }
 
-/// Shared mixer gains. Updates affect subsequent decoded stereo frames without restarting.
+#[derive(Clone, Copy)]
+enum PcmScale {
+    Eight { volume: i32, pan: [i32; 2] },
+    Sixteen([i32; 2]),
+}
+
+impl PcmScale {
+    fn new(width: PcmWidth, volume: u8, master: i32, pan: u8) -> Self {
+        let volume = (i32::from(volume).wrapping_mul(master) >> 8).clamp(0, 127);
+        let pan = pan.min(127);
+        let table = |p: u8| if p < 63 { i32::from(p) * 2 } else { 128 };
+        let pan = [table(127 - pan), table(pan)];
+        match width {
+            PcmWidth::Eight => Self::Eight {
+                volume: if volume == 0 { 0 } else { volume + 1 },
+                pan,
+            },
+            PcmWidth::Sixteen => Self::Sixteen(pan.map(|side| side * volume / 127)),
+        }
+    }
+
+    fn apply(self, sample: f32, channel: usize) -> f32 {
+        let sample = (sample * 32768.0).round() as i32;
+        let scaled = match self {
+            Self::Eight { volume, pan } => (((sample * volume) >> 7) * pan[channel]) >> 7,
+            Self::Sixteen(coefficients) => (sample * coefficients[channel]) >> 7,
+        };
+        scaled as f32 / 32768.0
+    }
+}
+
+/// Shared PCM scaling. Updates affect subsequent stereo frames without restarting.
 #[derive(Component, Clone)]
-pub struct PannedGains(Arc<Mutex<[f32; 2]>>);
+pub struct PannedGains {
+    width: PcmWidth,
+    scale: Arc<Mutex<PcmScale>>,
+}
 
 impl PannedGains {
-    /// Construct gains from engine volume, master volume and Miles pan units.
-    pub fn new(volume: u8, master: i32, pan: u8) -> Self {
-        let gain = output_gain(volume, master);
-        Self(Arc::new(Mutex::new(pan_gains(pan).map(|side| side * gain))))
+    /// Retain source PCM width; volume, master and pan use original engine units.
+    pub fn new(width: PcmWidth, volume: u8, master: i32, pan: u8) -> Self {
+        Self {
+            width,
+            scale: Arc::new(Mutex::new(PcmScale::new(width, volume, master, pan))),
+        }
     }
 
-    /// Apply the engine's volume-set operation to a playing sample.
+    /// Apply the engine's volume-set operation without changing the source PCM width.
     pub fn set(&self, volume: u8, master: i32, pan: u8) {
-        let gain = output_gain(volume, master);
         *self
-            .0
+            .scale
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-            pan_gains(pan).map(|side| side * gain);
+            PcmScale::new(self.width, volume, master, pan);
     }
 
-    fn snapshot(&self) -> [f32; 2] {
+    fn snapshot(&self) -> PcmScale {
         *self
-            .0
+            .scale
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -949,7 +1021,7 @@ impl bevy::audio::Decodable for Panned {
         PannedDecoder {
             inner: bevy::audio::Decodable::decoder(&self.source),
             gains: self.gains.clone(),
-            frame_gains: [0.0; 2],
+            frame_scale: self.gains.snapshot(),
             right: None,
             channel: 0,
         }
@@ -959,7 +1031,7 @@ impl bevy::audio::Decodable for Panned {
 pub struct PannedDecoder {
     inner: <AudioSource as bevy::audio::Decodable>::Decoder,
     gains: PannedGains,
-    frame_gains: [f32; 2],
+    frame_scale: PcmScale,
     right: Option<f32>,
     channel: u16,
 }
@@ -974,16 +1046,16 @@ impl Iterator for PannedDecoder {
             }
             let sample = self.inner.next()?;
             let gains = self.gains.snapshot();
-            self.right = Some(sample * gains[1]);
-            return Some(sample * gains[0]);
+            self.right = Some(gains.apply(sample, 1));
+            return Some(gains.apply(sample, 0));
         }
         let sample = self.inner.next()?;
         if self.channel.is_multiple_of(2) {
-            self.frame_gains = self.gains.snapshot();
+            self.frame_scale = self.gains.snapshot();
         }
-        let gain = self.frame_gains[usize::from(self.channel % 2)];
+        let channel = usize::from(self.channel % 2);
         self.channel = (self.channel + 1) % self.inner.channels().get();
-        Some(sample * gain)
+        Some(self.frame_scale.apply(sample, channel))
     }
 }
 
@@ -1025,6 +1097,7 @@ mod ambient_tests {
             bytes: Vec::<u8>::new().into(),
         });
         let effects = SoundEffects(vec![Some(Effect {
+            bits_per_sample: 8,
             audio,
             looping: false,
             base_volume: 64,
@@ -1067,8 +1140,11 @@ mod ambient_tests {
         assert_eq!(second.channel, Some(0));
         assert_eq!(channels.playing.len(), 1);
         assert_eq!(
-            gains.snapshot(),
-            pan_gains(127).map(|side| side * output_gain(32, 256))
+            [
+                gains.snapshot().apply(0.5, 0),
+                gains.snapshot().apply(0.5, 1)
+            ],
+            [0.0, 0.12890625]
         );
         channels.samples.finish(reservation);
         channels.playing.remove(&reservation.token);

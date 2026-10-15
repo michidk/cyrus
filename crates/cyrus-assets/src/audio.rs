@@ -60,6 +60,7 @@ pub fn load_speech(path: &std::path::Path) -> Result<HashMap<String, VoiceClip<V
                 clips.insert(
                     label,
                     VoiceClip {
+                        bits_per_sample: header.audio_type.bits_per_sample(),
                         audio: source,
                         base_volume: header.base_volume,
                         seconds: header.duration_secs(),
@@ -75,6 +76,7 @@ pub fn load_speech(path: &std::path::Path) -> Result<HashMap<String, VoiceClip<V
 
 /// Decoded PCM and installed playback metadata, without a renderer handle.
 pub struct PreparedEffect {
+    pub bits_per_sample: u16,
     pub bytes: Vec<u8>,
     pub looping: bool,
     pub base_volume: u8,
@@ -92,6 +94,7 @@ pub fn load_effect_bank(install: &GameInstall) -> Result<Vec<Option<PreparedEffe
         .map(|(index, effect)| {
             match pcm_wav(effect.audio_type, effect.sample_rate, &effect.pcm_data) {
                 Ok(bytes) => Some(PreparedEffect {
+                    bits_per_sample: effect.audio_type.bits_per_sample(),
                     bytes,
                     looping: effect.loop_flag != 0,
                     base_volume: effect.base_volume,

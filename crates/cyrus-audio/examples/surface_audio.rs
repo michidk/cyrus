@@ -159,6 +159,7 @@ fn main() -> Result<()> {
                 .zip(&bank)
                 .map(|(effect, bytes)| {
                     Some(Effect {
+                        bits_per_sample: effect.audio_type.bits_per_sample(),
                         audio: app.world_mut().resource_mut::<Assets<AudioSource>>().add(
                             AudioSource {
                                 bytes: bytes.clone().into(),
@@ -448,8 +449,8 @@ fn set_listener(app: &mut App, position_q8: [i32; 3], yaw: u16) -> Result<()> {
     Ok(())
 }
 
-/// Infer applied channel gains from actual public decoder samples.
-/// A silent prefix or unsupported channel layout has no measurable ratio.
+/// Fit channel scaling to actual decoder PCM, including sample rounding.
+/// Uses up to 65,536 source frames. Silent or unsupported layouts have no slope.
 fn decoded_channel_gains(panned: &Panned) -> Option<[f32; 2]> {
     let mut source = panned.source.decoder();
     let channels = source.channels().get();
@@ -457,15 +458,22 @@ fn decoded_channel_gains(panned: &Panned) -> Option<[f32; 2]> {
         return None;
     }
     let mut output = panned.decoder();
+    let mut energy = [0.0f64; 2];
+    let mut product = [0.0f64; 2];
     for _ in 0..65_536 {
-        let left = source.next()?;
+        let Some(left) = source.next() else {
+            break;
+        };
         let right = if channels == 1 { left } else { source.next()? };
+        let input = [left, right];
         let mixed = [output.next()?, output.next()?];
-        if left != 0.0 && right != 0.0 {
-            return Some([mixed[0] / left, mixed[1] / right]);
+        for channel in 0..2 {
+            energy[channel] += f64::from(input[channel]).powi(2);
+            product[channel] += f64::from(input[channel]) * f64::from(mixed[channel]);
         }
     }
-    None
+    (energy[0] > 0.0 && energy[1] > 0.0)
+        .then(|| std::array::from_fn(|channel| (product[channel] / energy[channel]) as f32))
 }
 
 fn play(
@@ -573,12 +581,43 @@ mod tests {
             source: AudioSource {
                 bytes: bytes.into(),
             },
-            gains: cyrus_audio::sound::PannedGains::new(32, 256, 32),
+            gains: cyrus_audio::sound::PannedGains::new(
+                cyrus_audio::sound::PcmWidth::Eight,
+                32,
+                256,
+                32,
+            ),
         };
         assert_eq!(
             decoded_channel_gains(&panned),
             Some([0.2578125, 0.12890625])
         );
+    }
+
+    #[test]
+    fn decoder_gain_fit_does_not_treat_a_rounded_quiet_sample_as_unity() {
+        let pcm: Vec<_> = [-1i16, 16384, -16384]
+            .into_iter()
+            .flat_map(i16::to_le_bytes)
+            .collect();
+        let panned = Panned {
+            source: AudioSource {
+                bytes: cyrus_assets::audio::pcm_wav(
+                    rgpre::import::sfx::AudioType::Mono16,
+                    22050,
+                    &pcm,
+                )
+                .unwrap()
+                .into(),
+            },
+            gains: cyrus_audio::sound::PannedGains::new(
+                cyrus_audio::sound::PcmWidth::Sixteen,
+                112,
+                256,
+                64,
+            ),
+        };
+        assert_eq!(decoded_channel_gains(&panned), Some([0.875, 0.875]));
     }
 
     #[test]
@@ -654,6 +693,7 @@ mod tests {
                 .enumerate()
                 .map(|(id, bytes)| {
                     matches!(id, 1 | 200).then(|| Effect {
+                        bits_per_sample: 8,
                         audio: app.world_mut().resource_mut::<Assets<AudioSource>>().add(
                             AudioSource {
                                 bytes: bytes.clone().into(),

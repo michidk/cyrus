@@ -49,6 +49,7 @@ mod tests {
         app.world_mut().resource_mut::<Speech>().0.insert(
             "greeting".into(),
             cyrus_assets::sound::VoiceClip {
+                bits_per_sample: 8,
                 text: "Hello.".into(),
                 seconds: 2.5,
                 audio: Handle::default(),
