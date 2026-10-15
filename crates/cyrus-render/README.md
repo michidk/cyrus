@@ -262,7 +262,7 @@ viewpoint and 640×480 render size; the native/browser build sources match.
 The coastal comparison freezes cloud phase and follows an original book-menu
 return; native/browser use direct world entry. Sampled sun and cloud errors
 average below one RGB level. Terrain/model shading, remaining texture sampling,
-native/browser menu transitions and physical-hardware pixel parity remain
+complete cross-world menu transitions and physical-hardware pixel parity remain
 **Unknown**.
 
 Ordinary archive-model, placed-flat and terrain texture playback use preservation's
@@ -411,3 +411,11 @@ isolated incorrect-filter control raises them to 3.257 and 3.446. Native/browser
 pixels match throughout the lower region and differ by three channel levels in
 total in the larger region. HUD and water are excluded. Residual terrain error,
 original animation cadence and complete transition parity remain **Unknown**.
+
+**Verified:** saved `084466d` native ISLAND entry from the ready book menu, via
+scene control, preserves the measured coastal sun/cloud view. Against the original
+menu-return reference, sun error averages 0.023 RGB levels and cloud error 0.300;
+a zero-alpha sun control raises sun error to 25.035 while leaving clouds identical.
+Matching browser direct entry averages 0.022 and 0.299. The browser debug world
+picker reloads the page and clears the inspection pose, so it does not establish
+an in-process menu transition. Browser coastal menu-entry parity remains **Unknown**.
