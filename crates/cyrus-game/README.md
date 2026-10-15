@@ -82,6 +82,10 @@ acquisitions or effects. Unconfigured state and retained initialization or
 journal-load errors prevent capture. The aggregate session owner must validate
 the installed asset identity before committing a replacement. These component
 APIs do not enable player-facing save/load.
+**Verified:** an installed-data HUD snapshot survives native publication and
+fresh-process reconstruction, retaining the held-use latch, empty hidden
+selection, slots and notification. Corrupt candidates and failed publication
+preserve accepted state; altered latch/notification controls fail as expected.
 
 `DialogueState::snapshot` retains ordered records, formatted text, remaining
 lifetimes, skip latch and presentation selection. `from_snapshot` returns a
