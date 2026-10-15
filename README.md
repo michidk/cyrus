@@ -72,8 +72,12 @@ See [browser setup](crates/cyrus-web/README.md) for building from source.
 
 ## Asset viewer
 
-Run `cargo run -p cyrus-viewer -- --install /path/to/Redguard` to browse assets
-in a separate application. It also builds for the browser. See the
+cyrus ships a separate asset viewer that opens every Redguard file format:
+models, worlds, textures, fonts, animations, scripts, and audio. Download a
+prebuilt `cyrus-viewer` archive from the
+[latest release](https://github.com/michidk/cyrus/releases/latest) or open the
+[browser viewer](https://michidk.github.io/cyrus/viewer/) directly. From source,
+run `cargo run -p cyrus-viewer -- --install /path/to/Redguard`. See the
 [viewer guide](crates/cyrus-viewer/README.md) for previews, controls, and browser
 setup. The viewer uses a modern inspection interface and generic rendering.
 

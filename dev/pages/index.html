@@ -34,6 +34,7 @@
   .note { margin: 24px 0 32px; padding-left: 16px; border-left: 3px solid var(--gold-muted); }
   .downloads { padding: 28px; background: var(--burgundy); color: var(--parchment-light); border-top: 3px solid var(--gold-muted); }
   .downloads h2 { margin: 0 0 6px; color: var(--gold-pale); }
+  .downloads h2 + h2, .downloads .download-grid + h2 { margin-top: 28px; }
   .downloads p { margin: 0; }
   .download-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 24px 0 20px; }
   .download-link { display: flex; flex-direction: column; justify-content: center; gap: 5px; min-height: 112px;
@@ -102,13 +103,29 @@
         <strong>Linux</strong><span>x64</span><small>.tar.gz</small>
       </a>
     </div>
+    <h2 id="viewer-download-heading">Download the asset viewer</h2>
+    <p>A separate application that opens every Redguard file format: models, worlds, textures, fonts, animations, scripts, and audio.</p>
+    <div class="download-grid">
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-viewer-x86_64-pc-windows-msvc.exe" aria-label="Download the asset viewer for Windows, x64, EXE">
+        <strong>Windows</strong><span>x64</span><small>.exe</small>
+      </a>
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-viewer-aarch64-apple-darwin.tar.gz" aria-label="Download the asset viewer for macOS, Apple Silicon, tar.gz">
+        <strong>macOS</strong><span>Apple Silicon</span><small>.tar.gz</small>
+      </a>
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-viewer-x86_64-apple-darwin.tar.gz" aria-label="Download the asset viewer for macOS, Intel, tar.gz">
+        <strong>macOS</strong><span>Intel</span><small>.tar.gz</small>
+      </a>
+      <a class="download-link" href="https://github.com/michidk/cyrus/releases/latest/download/cyrus-viewer-x86_64-unknown-linux-gnu.tar.gz" aria-label="Download the asset viewer for Linux, x64, tar.gz">
+        <strong>Linux</strong><span>x64</span><small>.tar.gz</small>
+      </a>
+    </div>
     <a class="release-link" href="https://github.com/michidk/cyrus/releases/latest">Release notes &amp; all downloads</a>
   </section>
 
   <section class="browser" aria-labelledby="browser-heading">
     <div>
       <h2 id="browser-heading">Try it in your browser</h2>
-      <p>Open cyrus or explore individual game assets. Choose your local GOG folder to get started.
+      <p>Open cyrus, or inspect every game file format in the asset viewer. Choose your local GOG folder to get started.
       See the <a href="https://github.com/michidk/cyrus/blob/main/docs/SETUP.md">setup guide</a> for help.</p>
     </div>
     <div class="browser-actions">
