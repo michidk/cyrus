@@ -245,4 +245,7 @@ entity. Hidden staging loads each selected source before texture/material prepar
 shared asynchronous load path supplies them automatically. Missing displayed models,
 aliased roots and source/pose mismatches reject before publication. Model candidates
 publish prepared frame geometry in the same commit. This closes a represented-owner
-gap; installed rendered round-trip and revisit acceptance remain pending.
+gap. Installed native load and recapture retain all 173 ordinary model replacements
+with matching displayed poses and unique roots; dormant START matches after fresh
+actor-generation binding. Pixel comparison, malformed-model rejection preservation
+and installed revisit acceptance remain pending.

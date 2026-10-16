@@ -364,8 +364,11 @@ retained-world source is rejected while the accepted world and generation remain
 live. These checks do not establish complete rendered continuation. Ordinary map
 actors could select another animation model without replacing their original scene
 geometry. The current draft adds that replacement owner and its session staging;
-the checkpoint passed full gates with zero installed-data skips, while installed
-rendered continuation remains unverified.
+the checkpoint passed full gates with zero installed-data skips. Installed native
+load and recapture now retain all 173 ordinary model replacements with matching
+displayed poses and unique roots, plus unchanged dormant START state after fresh
+actor-generation binding. Pixel comparison and complete rendered/audio
+continuation remain unverified.
 
 The diagnostic browser caller is integrated. Remaining work includes complete
 rendered/audio restoration, restart/reload and visited-world continuation. The revisit draft now initializes entry roles, validates retained actors, clears
