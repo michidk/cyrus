@@ -400,10 +400,15 @@ mutation. Native wait tokens belong to each logical instance. Initial waits alwa
 completion applies on a later task pass, including duration zero and one. Function-encoded
 waits remain unsupported because their timing context is not established.
 Prepared spatial hosts also support `RotateByAxis`, `PlayerDistance`, and
-`PlayerFacing` and `PlayerLooking` with explicit selected-player inputs.
+`PlayerFacing`, `PlayerLooking` and `PlayerArc` with explicit selected-player inputs.
 `PlayerLooking` uses the effective receiver position and signed angular tolerance,
 including equality, per the [published query contract](https://github.com/michidk/redguard-preservation/compare/main...docs/player-looking-contract).
-It does not perform a visibility query. `PlayerStand` compares the receiving actor
+It does not perform a visibility query. `PlayerArc` uses receiver heading, signed
+offset and inclusive angular tolerance, following its
+[published query contract](https://github.com/michidk/redguard-preservation/compare/main...docs/player-arc-contract).
+Attached poses supply its position and heading; a linked position alone leaves
+local heading unchanged. It performs no visibility or distance check.
+`PlayerStand` compares the receiving actor
 with the selected player's retained supporting-actor identity, following the
 [published query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playerstand-query).
 It performs no collision search and leaves support ownership unchanged. Missing or

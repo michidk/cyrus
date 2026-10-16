@@ -64,6 +64,7 @@ module where it is defined and regenerate.
 - `src/sound/dialogue/export.rs` — Per-label original RTX preparation for disk caches and browser workers.
 - `src/sound_export.rs` — MAIN.SFX PCM is preserved verbatim inside standard WAV containers.
 - `src/source.rs` — Original-file access. Browser workers and native installs share the same parsers.
+- `src/startup/dos_raster.rs` — DOS Glide overlay splash rendering from preservation's `docs/engine/startup.md`
 - `src/startup/export.rs` — (undocumented)
 - `src/startup/menu_export.rs` — Installed book geometry, text, widgets, and defaults for portable presentation.
 - `src/startup/mod.rs` — Shared startup preparation and native streaming cinematic input.

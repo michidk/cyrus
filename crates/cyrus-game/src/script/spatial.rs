@@ -398,7 +398,7 @@ impl ActorSpatial {
         Ok(())
     }
 
-    /// Evaluate published player distance/facing/looking rules against explicit current inputs.
+    /// Evaluate published player distance/facing/looking/arc rules against explicit current inputs.
     /// Unsupported query names return None; absent required state is an error.
     pub fn query(
         &self,
@@ -409,8 +409,32 @@ impl ActorSpatial {
         let distance = name.eq_ignore_ascii_case("PlayerDistance");
         let facing = name.eq_ignore_ascii_case("PlayerFacing");
         let looking = name.eq_ignore_ascii_case("PlayerLooking");
-        if !distance && !facing && !looking {
+        let arc = name.eq_ignore_ascii_case("PlayerArc");
+        if !distance && !facing && !looking && !arc {
             return Ok(None);
+        }
+        if arc {
+            let [offset, tolerance] = arguments else {
+                anyhow::bail!("PlayerArc requires two arguments");
+            };
+            let player = inputs
+                .player
+                .context("PlayerArc selected-player input unavailable")?;
+            let pose = self.query_pose()?;
+            let receiver = if self.parent.is_some() {
+                pose.position
+            } else {
+                inputs
+                    .linked_position
+                    .context("PlayerArc linked-position state unavailable")?
+                    .unwrap_or(self.local.position)
+            };
+            let x = receiver[0].wrapping_sub(player.position[0]);
+            let z = receiver[2].wrapping_sub(player.position[2]);
+            let target = i32::from(query_bearing(x, z));
+            let heading = i32::from(pose.angles[1]).wrapping_sub(offset.integer()?) & 2047;
+            let difference = (heading - target + 1024).rem_euclid(2048) - 1024;
+            return Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)));
         }
         if looking {
             let [tolerance] = arguments else {

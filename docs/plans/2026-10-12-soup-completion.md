@@ -442,5 +442,9 @@ collision assignment, the standing dialogue route or automatic gameplay acceptan
 The [published PlayerArc contract](https://github.com/michidk/redguard-preservation/compare/main...docs/player-arc-contract)
 establishes receiver heading, attached/linked/local position priority, signed offset
 and inclusive angular tolerance. Complete retained helper execution and altered
-controls verify that bounded query. Registry implementation and installed acceptance
-remain pending; the existing PlayerStand verification tree stays frozen.
+controls verify that bounded query, including signed-offset extremes. The registry
+now routes it through the existing spatial query owner. Public and installed
+CAMPDIRG distant-player contracts pass. A double-negation error was caught by
+the cardinal-direction contract and corrected by using the existing bearing
+helper directly. WASM verification passes; combined-tree gates are pending. Complete dialogue and automatic gameplay
+acceptance remain open.

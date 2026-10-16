@@ -989,3 +989,52 @@ fn installed_player_stand_query_advances_nonstanding_receiver() {
     assert_eq!(world.flags(), flags);
     assert_eq!(world.model_support(player).unwrap().actor, None);
 }
+
+#[test]
+fn installed_player_arc_receiver_advances_with_distant_player() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs, ScriptInputs, ScriptStage};
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP PlayerArc receiver)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/ISLAND.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 1).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let receiver = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "CAMPDIRG")
+        .unwrap();
+    let id = world.id(receiver).unwrap();
+    let origin = world.spatial(id).unwrap().local.position;
+    let flags = world.flags().to_vec();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(cyrus_script::Thread::Main),
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                player_query: Some(QueryInputs {
+                    player: Some(PlayerQuery {
+                        position: [origin[0], origin[1], origin[2].wrapping_sub(10_000_000)],
+                        heading: 777,
+                    }),
+                    linked_position: None,
+                    distance_override: Some(false),
+                    fallback_position: None,
+                }),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    assert!(world.actors()[receiver].failure().is_none());
+    assert_eq!(world.flags(), flags);
+}

@@ -12316,3 +12316,131 @@ fn player_stand_validates_explicit_selected_identity() {
         }
     }
 }
+
+#[test]
+fn player_arc_uses_receiver_heading_signed_offset_and_inclusive_tolerance() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    let mut world = ScriptWorld::prepare(&cache(), 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut actor = world.spatial(world.id(0).unwrap()).unwrap().clone();
+    for (position, yaw, offset, tolerance, expected) in [
+        ([0, 900, 100], 0, 0, 0, 1),
+        ([100, 0, 0], 1536, 0, 0, 1),
+        ([-100, 0, 0], 512, 0, 0, 1),
+        ([0, 0, -100], 1024, 0, 0, 1),
+        ([100, 0, 100], 1792, 0, 0, 1),
+        ([0, 0, 100], 10, 10, 0, 1),
+        ([0, 0, 100], 2047, 0, 1, 1),
+        ([0, 0, 100], 2047, 0, 0, 0),
+        ([0, 0, 100], 0, 0, -1, 0),
+        ([0, 0, 100], 10, 0, 10, 1),
+        ([0, 0, 100], 10, 0, 9, 0),
+        ([0, 0, 100], 0, i32::MAX, 1, 1),
+        ([0, 0, 100], 0, i32::MAX, 0, 0),
+        ([0, 0, 100], 0, i32::MIN, 0, 1),
+    ] {
+        actor.local.position = position;
+        actor.local.angles[1] = yaw;
+        let inputs = QueryInputs {
+            player: Some(PlayerQuery {
+                position: [0, -900, 0],
+                heading: 777,
+            }),
+            linked_position: Some(None),
+            distance_override: None,
+            fallback_position: None,
+        };
+        assert_eq!(
+            actor
+                .query(
+                    "PlayerArc",
+                    &[Argument::Integer(offset), Argument::Integer(tolerance)],
+                    inputs
+                )
+                .unwrap(),
+            Some(expected),
+            "{position:?}/{yaw}/{offset}/{tolerance}"
+        );
+    }
+}
+
+#[test]
+fn player_arc_distinguishes_linked_position_from_attached_heading() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    let mut world = ScriptWorld::prepare(&cache(), 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut actor = world.spatial(world.id(0).unwrap()).unwrap().clone();
+    actor.local.position = [100, 0, 0];
+    actor.local.angles[1] = 0;
+    let args = [Argument::Integer(0), Argument::Integer(0)];
+    let mut inputs = QueryInputs {
+        player: Some(PlayerQuery {
+            position: [0; 3],
+            heading: 777,
+        }),
+        linked_position: Some(None),
+        distance_override: None,
+        fallback_position: None,
+    };
+    assert_eq!(actor.query("PlayerArc", &args, inputs).unwrap(), Some(0));
+    inputs.linked_position = Some(Some([0, 0, 100]));
+    assert_eq!(actor.query("PlayerArc", &args, inputs).unwrap(), Some(1));
+    actor.parent = Some(1);
+    let mut effective = actor.local;
+    effective.position = [0, 0, -100];
+    effective.angles[1] = 1024;
+    actor.effective = Some(effective);
+    assert_eq!(actor.query("PlayerArc", &args, inputs).unwrap(), Some(1));
+    actor.effective = None;
+    assert!(actor.query("PlayerArc", &args, inputs).is_err());
+    actor.parent = None;
+    inputs.linked_position = None;
+    assert!(actor.query("PlayerArc", &args, inputs).is_err());
+    inputs.linked_position = Some(None);
+    inputs.player = None;
+    assert!(actor.query("PlayerArc", &args, inputs).is_err());
+    assert!(actor.query("PlayerArc", &args[..1], inputs).is_err());
+}
+
+#[test]
+fn player_arc_dispatch_returns_receiver_relative_result() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs, ScriptInputs, ScriptStage};
+    for (offset_delta, expected) in [(0, 1), (1, 0)] {
+        let mut scripts = random_scripts(
+            "PlayerArc",
+            vec![Value::Integer { value: 0 }, Value::Integer { value: 0 }],
+            Object::Me,
+        );
+        scripts.definition.functions[1].param_count = 2;
+        scripts.instances[0].angles[1] = offset_delta;
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let origin = world.spatial(id).unwrap().local.position;
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    player_query: Some(QueryInputs {
+                        player: Some(PlayerQuery {
+                            position: [origin[0], origin[1], origin[2].wrapping_sub(100)],
+                            heading: 777,
+                        }),
+                        linked_position: None,
+                        distance_override: None,
+                        fallback_position: None,
+                    }),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+    }
+}
