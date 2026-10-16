@@ -211,6 +211,7 @@ fn ground_scene(surface: u8) -> cyrus_game::player::data::PlayerScene {
         ..Default::default()
     };
     PlayerScene {
+        source_identity: None,
         actor_collision: None,
         model_radii: Default::default(),
         world: 1,

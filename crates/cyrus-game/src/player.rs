@@ -54,8 +54,46 @@ impl Plugin for PlayerPlugin {
             );
     }
 }
-fn spawn(mut commands: Commands) {
-    commands.spawn((Player, Transform::default()));
+fn spawn(mut commands: Commands, players: Query<(), With<Player>>) {
+    if players.is_empty() {
+        commands.spawn((Player, Transform::default()));
+    }
+}
+
+#[cfg(test)]
+mod entry_tests {
+    use super::*;
+
+    #[test]
+    fn entry_preserves_a_published_player_and_pose() {
+        let mut app = App::new();
+        app.add_systems(Update, spawn);
+        let player = app
+            .world_mut()
+            .spawn((Player, Transform::from_xyz(12.0, 34.0, 56.0)))
+            .id();
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query_filtered::<Entity, With<Player>>()
+                .iter(app.world())
+                .collect::<Vec<_>>(),
+            vec![player]
+        );
+        assert_eq!(
+            app.world().get::<Transform>(player).unwrap().translation,
+            Vec3::new(12.0, 34.0, 56.0)
+        );
+        app.world_mut().despawn(player);
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query_filtered::<Entity, With<Player>>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+    }
 }
 
 fn despawn(mut commands: Commands, players: Query<Entity, With<Player>>) {

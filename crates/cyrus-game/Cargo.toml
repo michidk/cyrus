@@ -12,6 +12,7 @@ cyrus-world.workspace = true
 cyrus-collision.workspace = true
 cyrus-script.workspace = true
 anyhow.workspace = true
+blake3.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 [dev-dependencies]

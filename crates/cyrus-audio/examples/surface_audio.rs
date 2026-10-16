@@ -640,6 +640,7 @@ mod tests {
             ..Default::default()
         };
         let mut scene = PlayerScene {
+            source_identity: None,
             world: 1,
             model_radii: std::collections::BTreeMap::from([("TEST".into(), 1.0)]),
             keyboard_codes: None,

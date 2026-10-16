@@ -2876,6 +2876,7 @@ version = "0.1.15"
 dependencies = [
  "anyhow",
  "bevy",
+ "blake3",
  "cyrus-assets",
  "cyrus-collision",
  "cyrus-console",

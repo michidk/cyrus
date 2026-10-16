@@ -22,7 +22,7 @@ pub struct PlayerInput {
 
 /// Retained gameplay toggles, initialized from installed HUD data or saved preferences.
 /// The HUD projects these values; world replacement must not reset them.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct PlayerToggles {
     pub walk_mode: bool,
     pub auto_defend: bool,

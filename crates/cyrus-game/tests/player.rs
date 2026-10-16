@@ -386,3 +386,70 @@ fn installed_island_marker_matches_observed_original_entry() {
     );
     assert_eq!(metadata["markers"][0]["reserved"], 1);
 }
+
+#[test]
+fn restored_player_placement_survives_marker_entry_without_settling() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::player::data::{PlayerScene, PlayerSceneRequest};
+    use cyrus_game::player::placement::{
+        MarkerEntry, PlayerEntrySupport, PlayerPlacementSnapshot, PlayerPose,
+    };
+    use cyrus_world::animation::AnimationRequest;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .init_resource::<Assets<Animations>>()
+        .init_resource::<Assets<PlayerScene>>()
+        .init_resource::<AnimationRequest>()
+        .add_plugins(PlayerPlugin);
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::InGame);
+    app.update();
+    let entity = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    let marker = MarkerEntry {
+        marker: 7,
+        heading: -23,
+    };
+    let pose = PlayerPose {
+        position: [12345, -67890, 45678],
+        heading: 2025,
+    };
+    let transform = Transform::from_xyz(-1.25, 8.5, 22.0).with_rotation(Quat::from_rotation_y(0.7));
+    let support = PlayerEntrySupport::InspectionOnly("retained support failure".into());
+    let snapshot =
+        PlayerPlacementSnapshot::capture(17, marker, &pose, &support, &transform).unwrap();
+    let bytes = serde_json::to_vec(&snapshot).unwrap();
+    let snapshot: PlayerPlacementSnapshot = serde_json::from_slice(&bytes).unwrap();
+    assert!(
+        snapshot
+            .clone()
+            .restore(18, Handle::default(), Handle::default())
+            .is_err()
+    );
+    app.insert_resource(snapshot.marker_entry());
+    app.insert_resource(PlayerSceneRequest(Handle::default()));
+    app.world_mut().entity_mut(entity).insert(
+        snapshot
+            .restore(17, Handle::default(), Handle::default())
+            .unwrap(),
+    );
+    app.update();
+    app.update();
+    assert_eq!(app.world().get::<PlayerPose>(entity), Some(&pose));
+    assert_eq!(
+        app.world().get::<PlayerEntrySupport>(entity),
+        Some(&support)
+    );
+    assert_eq!(app.world().get::<Transform>(entity), Some(&transform));
+    // A later explicit entry is not mistaken for restoration.
+    app.world_mut().resource_mut::<MarkerEntry>().marker = 8;
+    app.update();
+    assert!(app.world().get::<PlayerPose>(entity).is_none());
+}

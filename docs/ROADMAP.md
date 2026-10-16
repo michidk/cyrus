@@ -47,7 +47,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | Session storage: native/browser publication, browser caller, reload and failure acceptance; shared assembly excluded | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
 | SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
-| Player controller: movement, input, placement/runtime, collision and installed walking acceptance | Transferred by maintainer; incoming agent | Separate controller owner; preserve the existing SOUP-worktree controller draft |
+| Player controller: movement, input, placement/runtime, collision and installed walking acceptance | Transferred by maintainer; incoming agent | Separate controller owner; player runtime/placement checkpoint committed for handoff; final checkpoint gates pending |
 | Startup comparisons: splash, camera clipping, book-transition timing, loading artwork and audio against the original | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-15-startup-comparison/` |
 
 Remaining rendering follow-ups and HUD integration are unassigned.
@@ -212,6 +212,7 @@ Running, composite actions and the original follow camera remain incomplete.
 
 - [x] Installed keyboard bindings, marker placement, static/dry-ground settling and independent flycam.
 - [x] Explicit grounded walking/turning/support/wall response with shared player, script, animation and render poses.
+- [x] Player runtime and placement snapshot APIs, decoded player-source identity, and restored-entry preservation are checkpointed for the controller owner. Final isolated checkpoint gates are pending; this does not establish complete save/load or installed traversal acceptance.
 - [x] Bounded ordinary keyboard walking adapter with retained walk-mode state, controller prelude, selected-player phase-zero combat maintenance and shared sound-maintenance timing. **Verified:** synthetic scheduler and ordinary-stage contracts.
 - [ ] Complete installed idle/held-forward/release acceptance across zero, sand, wood and rock; preserved offline audio evidence does not establish this route.
   Installed weapon/fighting queries now allow the selected-player script to reach movement. **Verified:** a headless ISLAND probe with explicit view context completes idle, held forward and release without selected-player failure. Other world actors still report unsupported services/queries; full traversal remains unaccepted. Fighting selection follows the [published ordered query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#fighting-query).

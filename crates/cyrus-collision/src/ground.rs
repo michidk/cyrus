@@ -58,6 +58,12 @@ impl SupportHistory {
         self.ticks
     }
 
+    /// Last support metadata, retained even after a later support query misses.
+    /// Together with `ticks`, this reconstructs history without running a query.
+    pub fn metadata(&self) -> u8 {
+        self.metadata
+    }
+
     /// Run once at the designated player's admitted update, before animation/movement.
     pub fn begin_player_update(&mut self, nominal_ticks: u32) {
         self.ticks = self.ticks.saturating_sub(nominal_ticks);

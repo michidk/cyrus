@@ -895,3 +895,10 @@ is established by standalone player initialization, following
 `PlayerLineUp` movement remains unsupported and invalidates the retained result;
 later ordinary activation refuses an unknown result. This does not establish
 complete NPC interaction or conversation progression.
+
+Player continuation exposes opaque `PlayerRuntimeSnapshot` and
+`PlayerPlacementSnapshot` replacements with explicit fresh entity/source bindings.
+Decoded `PlayerScene` assets carry a content identity. Restored player entry
+preserves its pose and prepared sidecar on the first update. Complete session
+validation and publication belong to the session host; these APIs alone do not
+establish live save/load acceptance.

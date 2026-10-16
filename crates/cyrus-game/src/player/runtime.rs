@@ -62,6 +62,114 @@ pub struct PlayerRuntime {
     pub error: Option<String>,
 }
 
+/// Explicit-update continuation; logical movement remains in the world snapshot.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct PlayerRuntimeSnapshot {
+    version: u32,
+    source: Option<RuntimeSourceSnapshot>,
+    entry_pending: bool,
+    explicit_updated: bool,
+    error: Option<String>,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct RuntimeSourceSnapshot {
+    player: u64,
+    generation: u64,
+    marker: MarkerEntry,
+}
+
+/// Host-validated source and identity bindings for the prepared player candidate.
+pub struct PlayerRuntimeBinding {
+    pub saved_player: u64,
+    pub saved_generation: u64,
+    pub player: Entity,
+    pub generation: u64,
+    pub scene: Handle<PlayerScene>,
+    pub animation: Handle<Animations>,
+    pub marker: MarkerEntry,
+}
+
+impl PlayerRuntimeSnapshot {
+    /// Saved player entity and logical generation needed by the host's binding census.
+    pub fn source_identity(&self) -> Option<(u64, u64)> {
+        self.source
+            .as_ref()
+            .map(|source| (source.player, source.generation))
+    }
+}
+
+impl PlayerRuntime {
+    /// Capture at a completed update boundary against the active prepared sources.
+    pub fn snapshot(
+        &self,
+        scene: &Handle<PlayerScene>,
+        animation: &Handle<Animations>,
+    ) -> anyhow::Result<PlayerRuntimeSnapshot> {
+        if let Some(source) = &self.source {
+            anyhow::ensure!(
+                source.scene == scene.id() && source.animation == animation.id(),
+                "player runtime snapshot: active source identity differs"
+            );
+        }
+        Ok(PlayerRuntimeSnapshot {
+            version: 1,
+            source: self.source.as_ref().map(|source| RuntimeSourceSnapshot {
+                player: source.player.to_bits(),
+                generation: source.generation,
+                marker: source.marker,
+            }),
+            entry_pending: self.entry_pending,
+            explicit_updated: self.explicit_updated,
+            error: self.error.clone(),
+        })
+    }
+
+    /// Validate an off-live replacement without entry initialization or grounded updates.
+    /// The aggregate validates installed source content before supplying the binding.
+    pub fn from_snapshot(
+        snapshot: PlayerRuntimeSnapshot,
+        binding: Option<PlayerRuntimeBinding>,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            snapshot.version == 1,
+            "player runtime snapshot version unsupported"
+        );
+        let source = match (snapshot.source, binding) {
+            (None, None) => None,
+            (Some(saved), Some(binding)) => {
+                anyhow::ensure!(
+                    saved.player == binding.saved_player
+                        && saved.generation == binding.saved_generation
+                        && saved.marker == binding.marker,
+                    "player runtime snapshot: source binding differs"
+                );
+                anyhow::ensure!(
+                    binding.generation != saved.generation,
+                    "player runtime snapshot: replacement generation is not fresh"
+                );
+                Some(Source {
+                    player: binding.player,
+                    scene: binding.scene.id(),
+                    animation: binding.animation.id(),
+                    marker: binding.marker,
+                    generation: binding.generation,
+                })
+            }
+            _ => anyhow::bail!("player runtime snapshot: source binding census differs"),
+        };
+        anyhow::ensure!(
+            source.is_some() || (!snapshot.entry_pending && !snapshot.explicit_updated),
+            "player runtime snapshot: update state lacks a source"
+        );
+        Ok(Self {
+            source,
+            entry_pending: snapshot.entry_pending,
+            explicit_updated: snapshot.explicit_updated,
+            error: snapshot.error,
+        })
+    }
+}
+
 #[derive(SystemParam)]
 pub(crate) struct RuntimeAssets<'w> {
     scene_request: Option<Res<'w, PlayerSceneRequest>>,

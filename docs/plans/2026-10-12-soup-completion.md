@@ -107,7 +107,10 @@ all missing host commands and cannot measure gameplay completeness.
 and an installed headless ISLAND idle/forward/release probe with explicit view
 context. Complete installed traversal and four-surface acceptance remain open.
 The separate player-controller owner now owns movement, input, placement/runtime
-and collision work. SOUP owns the ordinary-stage caller and authoritative registry.
+and collision work. Runtime/placement snapshot APIs and restored-entry preservation
+are checkpointed for handoff; final isolated checkpoint gates remain pending.
+Private walking-phase serialization stays with the unfinished SOUP registry snapshot.
+SOUP owns the ordinary-stage caller and authoritative registry.
 Changes to their shared contract require coordination; explicit walking replays
 do not establish complete automatic keyboard acceptance.
 

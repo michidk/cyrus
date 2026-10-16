@@ -10,6 +10,9 @@ use cyrus_collision::{collision_world::StaticCollision, ground::TerrainGround};
 /// Validated player inputs. Loading this asset does not enable unsupported movement.
 #[derive(Asset, TypePath)]
 pub struct PlayerScene {
+    /// Complete authored cache identity, established by decoding. Hand-built inspection
+    /// scenes without this provenance cannot supply complete save compatibility.
+    pub source_identity: Option<String>,
     pub world: u32,
     /// Authored model radii in map units; absent entries require re-export.
     pub model_radii: std::collections::BTreeMap<String, f32>,
@@ -106,9 +109,35 @@ impl PlayerScene {
 #[derive(Resource)]
 pub struct PlayerSceneRequest(pub Handle<PlayerScene>);
 
+#[derive(Resource)]
+pub(super) struct RestoredPlayerScene {
+    animations: bevy::asset::AssetId<cyrus_assets::animation::Animations>,
+    scripts: bevy::asset::AssetId<cyrus_assets::script::Scripts>,
+    path: bevy::asset::AssetPath<'static>,
+}
+impl PlayerSceneRequest {
+    /// Queue the validated replacement handle without starting a second sidecar load.
+    /// The complete session owner publishes this with the matching prepared world.
+    pub fn queue_restored(
+        self,
+        commands: &mut bevy::prelude::Commands,
+        prepared: &cyrus_world::lifecycle::PreparedWorld,
+    ) {
+        commands.insert_resource(RestoredPlayerScene {
+            animations: prepared.animations.id(),
+            scripts: prepared.scripts.id(),
+            path: prepared.player_path.clone(),
+        });
+        commands.insert_resource(self);
+    }
+}
+
 impl PlayerScene {
     fn from_data(data: SceneData) -> anyhow::Result<PlayerScene> {
         data.validate()?;
+        let source_identity = blake3::hash(&serde_json::to_vec(&data)?)
+            .to_hex()
+            .to_string();
         anyhow::ensure!(
             data.version == 2,
             "world {}: unsupported player schema {}; re-export",
@@ -148,6 +177,7 @@ impl PlayerScene {
             ),
         };
         Ok(PlayerScene {
+            source_identity: Some(source_identity),
             model_radii: data.model_radii,
             world: data.world,
             keyboard_codes: data.keyboard_codes,
@@ -194,14 +224,63 @@ pub(super) fn request(
     mut commands: bevy::prelude::Commands,
     assets: bevy::prelude::Res<bevy::prelude::AssetServer>,
     prepared: Option<bevy::prelude::Res<cyrus_world::lifecycle::PreparedWorld>>,
+    restored: Option<bevy::prelude::Res<RestoredPlayerScene>>,
 ) {
     use bevy::prelude::DetectChanges;
     let Some(prepared) = prepared else {
         return;
     };
+    if let Some(restored) = restored {
+        commands.remove_resource::<RestoredPlayerScene>();
+        if restored.animations == prepared.animations.id()
+            && restored.scripts == prepared.scripts.id()
+            && restored.path == prepared.player_path
+        {
+            return;
+        }
+    }
     if prepared.is_changed() {
         commands.insert_resource(PlayerSceneRequest(
             assets.load(prepared.player_path.clone()),
         ));
+    }
+}
+
+#[cfg(test)]
+mod restoration_tests {
+    use super::*;
+    use bevy::prelude::*;
+
+    #[test]
+    fn restored_sidecar_survives_first_update_but_new_world_loads_normally() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<PlayerScene>()
+            .init_asset_loader::<PlayerSceneLoader>()
+            .add_systems(Update, request);
+        let prepared = cyrus_world::lifecycle::PreparedWorld {
+            requested_name: "TEST".into(),
+            world: Some(17),
+            animations: Handle::default(),
+            scripts: Handle::default(),
+            player_path: "original.player".into(),
+            scene_path: "scene.glb".into(),
+            environment_path: "scene.environment".into(),
+        };
+        let retained = Handle::<PlayerScene>::default();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        PlayerSceneRequest(retained.clone())
+            .queue_restored(&mut Commands::new(&mut queue, app.world()), &prepared);
+        app.insert_resource(prepared);
+        queue.apply(app.world_mut());
+        app.update();
+        assert_eq!(app.world().resource::<PlayerSceneRequest>().0, retained);
+        app.update();
+        assert_eq!(app.world().resource::<PlayerSceneRequest>().0, retained);
+        app.world_mut()
+            .resource_mut::<cyrus_world::lifecycle::PreparedWorld>()
+            .player_path = "next.player".into();
+        app.update();
+        assert_ne!(app.world().resource::<PlayerSceneRequest>().0, retained);
     }
 }

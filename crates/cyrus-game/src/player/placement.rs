@@ -1,4 +1,5 @@
 //! Marker-based entry from preservation's player and RGM documentation.
+mod persistence;
 use super::Player;
 use anyhow::Context;
 use bevy::prelude::{
@@ -6,10 +7,13 @@ use bevy::prelude::{
     Transform, Vec3, With,
 };
 use cyrus_world::animation::{ActorAnimation, AnimationRequest, AnimationSound, Animations};
+pub use persistence::{PlayerPlacementCandidate, PlayerPlacementSnapshot};
 use serde::Deserialize;
 
 /// Explicit marker entry for scene inspection. Scripted world transitions are not implemented.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(
+    Resource, Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 pub struct MarkerEntry {
     pub marker: usize,
     /// Original heading units, wrapped modulo 2048 during placement.
@@ -25,7 +29,7 @@ pub struct PlayerPose {
 
 /// Result of marker settling for this presentation entry. A retained inspection
 /// pose does not establish ground support or admit automatic player movement.
-#[derive(Component, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PlayerEntrySupport {
     /// Static settling completed; dynamic support and controller guards remain separate.
     StaticSettled,
@@ -155,10 +159,10 @@ pub(super) fn enter_marker(
         Option<Res<super::data::PlayerSceneRequest>>,
         Option<Res<Assets<super::data::PlayerScene>>>,
     ),
-    mut player: Query<(Entity, &mut Transform), With<Player>>,
+    mut player: Query<(Entity, &mut Transform, Option<&persistence::RestoredEntry>), With<Player>>,
     mut applied: Local<Option<AppliedEntry>>,
 ) {
-    let (Some(request), Some(assets), Ok((entity, mut transform))) =
+    let (Some(request), Some(assets), Ok((entity, mut transform, restored))) =
         (request, assets, player.single_mut())
     else {
         return;
@@ -175,6 +179,18 @@ pub(super) fn enter_marker(
         scene: scene_request.0.id(),
         marker: *entry,
     };
+    if let Some(restored) = restored {
+        commands
+            .entity(entity)
+            .remove::<persistence::RestoredEntry>();
+        if restored.animation == key.animation
+            && restored.scene == key.scene
+            && restored.marker == key.marker
+        {
+            *applied = Some(key);
+            return;
+        }
+    }
     if applied.as_ref() == Some(&key) {
         return;
     }
