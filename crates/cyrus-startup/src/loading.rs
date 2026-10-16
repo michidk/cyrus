@@ -19,6 +19,12 @@ struct WorldEntry<'w, 's> {
     preparation: Option<Res<'w, PreparationProgress>>,
     world_assets: Option<Res<'w, WorldAssets>>,
     scene_error: Option<Res<'w, SceneLoadError>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    menu_prepared: Option<Res<'w, crate::preparation::MenuPrepared>>,
+    #[cfg(target_arch = "wasm32")]
+    sound_bank: Option<Res<'w, cyrus_audio::SoundBankHandle>>,
+    #[cfg(target_arch = "wasm32")]
+    sound_settings: Option<Res<'w, cyrus_audio::sound::SoundSettings>>,
     spawner: Res<'w, WorldInstanceSpawner>,
     instances: Query<'w, 's, Option<&'static WorldInstance>, With<WorldAssetRoot>>,
 }
@@ -34,11 +40,6 @@ fn poll(
     mut startup: ResMut<StartupPresentation>,
     input: (Res<ButtonInput<KeyCode>>, ResMut<NextState<AppState>>),
     entry: WorldEntry,
-    #[cfg(not(target_arch = "wasm32"))] menu_prepared: Option<
-        Res<crate::preparation::MenuPrepared>,
-    >,
-    #[cfg(target_arch = "wasm32")] sound_bank: Option<Res<cyrus_audio::SoundBankHandle>>,
-    #[cfg(target_arch = "wasm32")] sound_settings: Option<Res<cyrus_audio::sound::SoundSettings>>,
     rendering: (
         ResMut<Assets<Image>>,
         Query<Entity, With<super::menu::MenuNotice>>,
@@ -52,6 +53,12 @@ fn poll(
         preparation,
         world_assets,
         scene_error,
+        #[cfg(not(target_arch = "wasm32"))]
+        menu_prepared,
+        #[cfg(target_arch = "wasm32")]
+        sound_bank,
+        #[cfg(target_arch = "wasm32")]
+        sound_settings,
         spawner,
         instances,
     } = entry;

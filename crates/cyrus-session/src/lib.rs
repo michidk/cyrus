@@ -82,6 +82,8 @@ pub struct RuntimeSessionSnapshot {
     sky: Option<SkySnapshot>,
     render_playback: Option<render_playback::RenderPlaybackSnapshot>,
     player_model: Option<cyrus_render::player_model::PlayerModelSnapshot>,
+    #[serde(default)]
+    actor_models: BTreeMap<u64, cyrus_render::player_model::PlayerModelSnapshot>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -111,6 +113,7 @@ pub struct RuntimeSessionPlan<'a> {
     sky: Option<SkySnapshot>,
     render_playback: Option<render_playback::RenderPlaybackSnapshot>,
     player_model: Option<cyrus_render::player_model::PlayerModelSnapshot>,
+    actor_models: BTreeMap<u64, cyrus_render::player_model::PlayerModelSnapshot>,
     world: u32,
 }
 
@@ -137,6 +140,8 @@ pub struct SessionServices<'a> {
     pub sky_images: Option<SkyImages>,
     pub render_playback: Option<PreparedRenderPlayback>,
     pub player_model_root: Option<Entity>,
+    /// Saved actor entity to independently prepared model root.
+    pub actor_model_roots: &'a BTreeMap<u64, Entity>,
     pub environments: &'a BTreeMap<u32, &'a cyrus_assets::environment::Environment>,
 }
 
@@ -166,6 +171,7 @@ pub struct RuntimeSessionCandidate {
     sky: Option<SkyCandidate>,
     render_playback: Option<RenderPlaybackCandidate>,
     player_model: Option<cyrus_render::player_model::PlayerModelCandidate>,
+    actor_models: Vec<cyrus_render::player_model::PlayerModelCandidate>,
     marker: MarkerEntry,
 }
 
@@ -262,7 +268,12 @@ impl RuntimeSessionCandidate {
             "session publication player target absent from entity census"
         );
         self.samples.validate_publication(world)?;
-        if let Some(model) = &self.player_model {
+        let mut model_roots = std::collections::BTreeSet::new();
+        for model in self.player_model.iter().chain(&self.actor_models) {
+            ensure!(
+                model_roots.insert(model.root()),
+                "session model roots alias"
+            );
             model.validate(world)?;
             entities::validate_retirement_ancestry(world, model.root())?;
         }
@@ -443,6 +454,20 @@ impl RuntimeSessionSnapshot {
         } else {
             None
         };
+        let mut actor_models = BTreeMap::new();
+        if environment_edits.is_some() {
+            for binding in &entity_bindings {
+                if binding.saved_entity() == entity.to_bits() {
+                    continue;
+                }
+                if let Some(model) = cyrus_render::player_model::PlayerModelSnapshot::capture(
+                    world,
+                    Entity::from_bits(binding.saved_entity()),
+                )? {
+                    actor_models.insert(binding.saved_entity(), model);
+                }
+            }
+        }
         let render_playback = environment_edits
             .as_ref()
             .map(|_| {
@@ -451,6 +476,15 @@ impl RuntimeSessionSnapshot {
                     player_model
                         .as_ref()
                         .map(|model| Entity::from_bits(model.saved_root())),
+                    actor_models
+                        .iter()
+                        .filter(|(entity, _)| {
+                            entity_bindings.iter().any(|binding| {
+                                binding.saved_entity() == **entity && binding.role() != "map"
+                            })
+                        })
+                        .map(|(_, model)| Entity::from_bits(model.saved_root()))
+                        .collect(),
                 )
             })
             .transpose()?;
@@ -490,6 +524,7 @@ impl RuntimeSessionSnapshot {
             sky,
             render_playback,
             player_model,
+            actor_models,
         })
     }
 
@@ -626,6 +661,7 @@ impl RuntimeSessionSnapshot {
             sky: self.sky,
             render_playback: self.render_playback,
             player_model: self.player_model,
+            actor_models: self.actor_models,
             world,
         })
     }
@@ -660,6 +696,7 @@ impl RuntimeSessionPlan<'_> {
             sky_images,
             render_playback: prepared_render_playback,
             player_model_root,
+            actor_model_roots,
             environments,
         } = services;
         sources::validate_retained(&sources, &self.source_identities, live_world)?;
@@ -737,6 +774,54 @@ impl RuntimeSessionPlan<'_> {
             (None, None) => None,
             _ => anyhow::bail!("session player model/prepared root census differs"),
         };
+        let expected_models: std::collections::BTreeSet<_> = self
+            .entity_bindings
+            .iter()
+            .filter(|binding| scene.is_some() && binding.saved_entity() != self.player.entity)
+            .filter(|binding| {
+                binding.displayed().is_some_and(|(model, _)| {
+                    binding.role() != "map"
+                        || model != entities::map_node_name(binding.actor().index, binding.name())
+                })
+            })
+            .map(EntityBindingSnapshot::saved_entity)
+            .collect();
+        ensure!(
+            self.actor_models
+                .keys()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                == expected_models,
+            "session displayed actor model census differs"
+        );
+        ensure!(
+            self.actor_models.keys().eq(actor_model_roots.keys()),
+            "session actor model/prepared root census differs"
+        );
+        let mut actor_models = Vec::new();
+        for (saved_entity, saved) in self.actor_models {
+            let binding = self
+                .entity_bindings
+                .iter()
+                .find(|binding| binding.saved_entity() == saved_entity)
+                .context("session actor model has no entity binding")?;
+            ensure!(
+                saved_entity != self.player.entity
+                    && binding.displayed() == Some((saved.model(), saved.frame())),
+                "session actor model/displayed pose differs"
+            );
+            let entity = entities
+                .iter()
+                .find(|(id, _)| *id == saved_entity)
+                .map(|(_, entity)| *entity)
+                .context("session actor model target absent")?;
+            actor_models.push(saved.prepare(
+                &prepared,
+                actor_model_roots[&saved_entity],
+                entity,
+                live_world,
+            )?);
+        }
         let lifecycle = self.lifecycle.restore(prepared, live_world)?;
         let saved_entities: std::collections::BTreeSet<_> = self
             .entity_bindings
@@ -849,6 +934,7 @@ impl RuntimeSessionPlan<'_> {
                             .root(),
                     )
                     .chain(player_model.as_ref().map(|model| model.root()))
+                    .chain(actor_models.iter().map(|model| model.root()))
                     .collect(),
                 )?,
             ),
@@ -934,6 +1020,7 @@ impl RuntimeSessionPlan<'_> {
             sky,
             render_playback,
             player_model,
+            actor_models,
             marker,
         })
     }

@@ -80,12 +80,14 @@ and the GLB source vertex/face mapping. Older sidecars are rejected with a
 re-export error. In `cyrus-render`, explicit model poses update private meshes, normals, and bounds;
 removing a pose or changing worlds restores the original mesh.
 
-World export also prepares CYRUS's standalone RAAN frame-source models under
+World export also prepares every actor's RAAN frame-source models under
 `<world>.player-models/`, with the world's palette, textures and source geometry
-mappings. The `.player` sidecar retains their authored model-header radii in map
-units for collision candidate selection. Missing standalone player models report
-contextual export errors.
-Re-export worlds before using explicit player model poses.
+mappings. The existing cache directory name is shared by player and ordinary actor
+models. The `.player` sidecar retains only CYRUS's authored model-header radii in map
+units for collision candidate selection. Frame tables and replacement geometry use
+the same placed, standalone or embedded ROB source selection. Missing or conflicting
+sources report contextual export errors. Re-export worlds before using newly supported frame-source models.
+Ordinary actor model replacement and its session staging are still being integrated.
 
 **Verified:** the pinned preservation [texture export](https://github.com/michidk/redguard-preservation/commit/d0eec6c98e6917f942e643204fc155f53b34b649)
 retains every authored TEXBSI frame in world and model GLBs, with shared image

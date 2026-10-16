@@ -23,6 +23,8 @@ pub struct PlayerModelCandidate {
     asset: Handle<WorldAsset>,
     saved: PlayerModelSnapshot,
     nodes: Vec<Entity>,
+    base_meshes: Vec<(Entity, Visibility)>,
+    frames: crate::animation::PreparedModelFrames,
 }
 
 fn ready(world: &World, root: Entity) -> Result<()> {
@@ -101,7 +103,9 @@ impl PlayerModelSnapshot {
             })
             .unwrap_or_default();
         let pose = world.get::<AnimationPose>(player);
-        if roots.is_empty() && pose.is_none() {
+        if roots.is_empty()
+            && pose.is_none_or(|pose| !replaces_base(world.get::<Name>(player), pose))
+        {
             return Ok(None);
         }
         ensure!(
@@ -141,7 +145,9 @@ impl PlayerModelSnapshot {
                     .is_some_and(|parent| parent.parent() == player),
             "player model owner/pose binding differs"
         );
-        for node in model_nodes(world, root, &pose.model)? {
+        let nodes = model_nodes(world, root, &pose.model)?;
+        crate::animation::validate_model_pose(world, &nodes, &prepared.animations, pose)?;
+        for node in nodes {
             ensure!(
                 world.get::<AnimationPose>(node) == Some(pose),
                 "player model frame binding has not settled"
@@ -211,6 +217,29 @@ impl PlayerModelSnapshot {
             })
             .ok_or_else(|| anyhow::anyhow!("player model {}: asset not prepared", self.model))?;
         let nodes = model_nodes(world, root, &self.model)?;
+        let base_meshes = world
+            .get::<Children>(player)
+            .into_iter()
+            .flatten()
+            .filter(|entity| world.get::<Mesh3d>(**entity).is_some())
+            .map(|entity| {
+                Ok((
+                    *entity,
+                    *world
+                        .get::<Visibility>(*entity)
+                        .ok_or_else(|| anyhow::anyhow!("actor base mesh visibility absent"))?,
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let frames = crate::animation::PreparedModelFrames::prepare(
+            world,
+            &nodes,
+            &prepared.animations,
+            &AnimationPose {
+                model: self.model.clone(),
+                frame: self.frame,
+            },
+        )?;
         let result = PlayerModelCandidate {
             root,
             player,
@@ -218,6 +247,8 @@ impl PlayerModelSnapshot {
             asset,
             saved: self,
             nodes,
+            base_meshes,
+            frames,
         };
         result.validate(world)?;
         Ok(result)
@@ -249,9 +280,27 @@ impl PlayerModelCandidate {
             model_nodes(world, self.root, &self.saved.model)? == self.nodes,
             "player model replacement node census changed"
         );
+        for (entity, visibility) in &self.base_meshes {
+            ensure!(
+                world.get::<Mesh3d>(*entity).is_some()
+                    && world
+                        .get::<ChildOf>(*entity)
+                        .is_some_and(|parent| parent.parent() == self.player)
+                    && world.get::<Visibility>(*entity) == Some(visibility)
+                    && world.get::<BaseModelVisibility>(*entity).is_none(),
+                "actor model replacement base mesh changed"
+            );
+        }
+        self.frames.validate(world)?;
         self.saved.source.validate(world, self.root)
     }
     pub fn queue(self, commands: &mut Commands) {
+        self.frames.queue(commands);
+        for (entity, visibility) in self.base_meshes {
+            commands
+                .entity(entity)
+                .insert((BaseModelVisibility(visibility), Visibility::Hidden));
+        }
         for node in self.nodes {
             commands.entity(node).insert(AnimationPose {
                 model: self.saved.model.clone(),
@@ -318,6 +367,8 @@ mod tests {
             source,
             asset: Handle::default(),
             nodes: vec![node],
+            base_meshes: vec![],
+            frames: Default::default(),
             saved: PlayerModelSnapshot {
                 version: 1,
                 root: 0,
@@ -355,6 +406,11 @@ mod tests {
 
     #[test]
     fn loaded_model_round_trips_through_public_preparation() -> Result<()> {
+        loaded_model_round_trip(false)?;
+        loaded_model_round_trip(true)
+    }
+
+    fn loaded_model_round_trip(map_actor: bool) -> Result<()> {
         use bevy::{
             asset::io::{
                 AssetSourceBuilder, AssetSourceId,
@@ -394,14 +450,17 @@ mod tests {
         .init_asset::<cyrus_assets::animation::Animations>();
         app.finish();
         app.cleanup();
-        let animations: cyrus_assets::animation::Animations =
-            serde_json::from_value(serde_json::json!({
+        let animations: cyrus_assets::animation::Animations = serde_json::from_value(
+            serde_json::json!({
                 "version":2,"world":17,"metadata":{},"sections":{},
-                "models":{"TEST":{"base_positions":[[0.0,0.0,0.0]],"base_normals":[],
-                    "faces":[],"encoding":"animated_i16",
-                    "positions":[[[0.0,0.0,0.0]],[[1.0,2.0,3.0]]],"normals":[[],[]]}},
+                "models":{"TEST":{"base_positions":[[0.0,0.0,0.0],[-20.0,0.0,0.0],[0.0,-20.0,0.0]],
+                    "base_normals":[[0.0,0.0,1.0]], "faces":[[0,1,2]],"encoding":"animated_i16_absolute",
+                    "positions":[[[0.0,0.0,0.0],[-20.0,0.0,0.0],[0.0,-20.0,0.0]],
+                                 [[0.0,0.0,40.0],[-20.0,0.0,40.0],[0.0,-20.0,40.0]]],
+                    "normals":[[[0.0,0.0,1.0]],[[0.0,0.0,1.0]]]}},
                 "unsupported":{}
-            }))?;
+            }),
+        )?;
         let animations = app
             .world_mut()
             .resource_mut::<Assets<cyrus_assets::animation::Animations>>()
@@ -426,6 +485,21 @@ mod tests {
                 },
             ))
             .id();
+        if map_actor {
+            app.world_mut()
+                .entity_mut(player)
+                .remove::<Player>()
+                .insert((
+                    Name::new("B_001_ACTOR"),
+                    ScriptBinding {
+                        actor: cyrus_game::script::ScriptActorId {
+                            generation: 1,
+                            index: 1,
+                        },
+                        source: Handle::default(),
+                    },
+                ));
+        }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let saved = loop {
             app.update();
@@ -463,6 +537,29 @@ mod tests {
             );
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
+        let mut mesh = Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_POSITION,
+            vec![[0.0_f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        );
+        let original_mesh = app.world_mut().resource_mut::<Assets<Mesh>>().add(mesh);
+        let node = model_nodes(app.world(), replacement, "TEST")?[0];
+        let primitive = app
+            .world_mut()
+            .spawn((
+                Mesh3d(original_mesh.clone()),
+                ChildOf(node),
+                bevy::gltf::GltfExtras {
+                    value: serde_json::json!({"rgpre_geometry": {
+                        "version": 1, "source_vertices": [[0,0],[1,0],[2,0]]
+                    }})
+                    .to_string(),
+                },
+            ))
+            .id();
         let candidate = saved.clone().prepare(
             app.world().resource::<PreparedWorld>(),
             replacement,
@@ -498,6 +595,31 @@ mod tests {
         let mut queue = bevy::ecs::world::CommandQueue::default();
         candidate.queue(&mut Commands::new(&mut queue, app.world()));
         queue.apply(app.world_mut());
+        let restored_mesh = &app.world().get::<Mesh3d>(primitive).unwrap().0;
+        assert_ne!(restored_mesh, &original_mesh);
+        let meshes = app.world().resource::<Assets<Mesh>>();
+        assert_eq!(
+            meshes
+                .get(restored_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_POSITION),
+            Some(&bevy::mesh::VertexAttributeValues::Float32x3(vec![
+                [0.0, 0.0, 2.0],
+                [1.0, 0.0, 2.0],
+                [0.0, 1.0, 2.0]
+            ]))
+        );
+        assert_eq!(
+            meshes
+                .get(&original_mesh)
+                .unwrap()
+                .attribute(Mesh::ATTRIBUTE_POSITION),
+            Some(&bevy::mesh::VertexAttributeValues::Float32x3(vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0]
+            ]))
+        );
         app.world_mut().despawn(player);
         app.world_mut().entity_mut(replacement_player).insert((
             Player,
@@ -506,6 +628,21 @@ mod tests {
                 frame: 1,
             },
         ));
+        if map_actor {
+            app.world_mut()
+                .entity_mut(replacement_player)
+                .remove::<Player>()
+                .insert((
+                    Name::new("B_001_ACTOR"),
+                    ScriptBinding {
+                        actor: cyrus_game::script::ScriptActorId {
+                            generation: 2,
+                            index: 1,
+                        },
+                        source: Handle::default(),
+                    },
+                ));
+        }
         app.update();
         app.update();
         let restored = PlayerModelSnapshot::capture(app.world_mut(), replacement_player)?

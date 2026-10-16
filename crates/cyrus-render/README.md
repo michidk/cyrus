@@ -490,3 +490,11 @@ match exactly; sampled textured wall and beam pixels are unchanged by the fix.
 All five held candle frames preserve the previous browser flame/wall/table pixels.
 These static views do not establish full-scene parity, actor preparation rules or
 synchronized animation cadence.
+
+Ordinary actor poses that select another frame source use the same model replacement
+owner as the player. Map-local poses retain their original geometry. Replacement
+hides the original primitives and restores their visibility when the actor returns
+to its map-local source or loses its pose. Shared source meshes remain immutable.
+Model snapshots require settled mesh frames. Replacement candidates compute private
+frame geometry off-live and publish it with the pose, without waiting for the next
+render update. Installed rendered continuation is still awaiting acceptance.

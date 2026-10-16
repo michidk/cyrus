@@ -349,8 +349,10 @@ from START and recaptured both worlds. Retained START matches the input after
 actor-generation rebinding. This does not establish revisit execution or complete
 render/audio continuation. Native malformed-document rejection and retained-result
 polling pass. Full workspace gates pass with the browser caller and zero
-installed-data skips. Ordinary actor model changes still need matching rendered
-model replacement; the native load probe exposed this existing gap.
+installed-data skips. The current draft adds ordinary actor model replacement and
+off-live model/mesh staging to address the geometry gap exposed by the native load
+probe. Focused replacement and session tests pass; installed rendered acceptance
+and final gates for this draft are pending.
 The diagnostic browser storage caller is connected; successful installed
 restart/reload/revisits and complete gameplay acceptance remain unchecked.
 Source-decoder audio checkpoints

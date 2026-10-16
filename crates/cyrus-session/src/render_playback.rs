@@ -34,13 +34,20 @@ pub struct RenderPlaybackCandidate {
 }
 
 impl RenderPlaybackSnapshot {
-    pub(super) fn capture(world: &World, model_root: Option<Entity>) -> Result<Self> {
+    pub(super) fn capture(
+        world: &World,
+        model_root: Option<Entity>,
+        actor_roots: Vec<Entity>,
+    ) -> Result<Self> {
         let root = world
             .try_query_filtered::<Entity, With<cyrus_game::script::ScriptScene>>()
             .context("session scene bindings absent")?
             .single(world)
             .context("session texture source requires one active scene root")?;
-        let roots: Vec<_> = std::iter::once(root).chain(model_root).collect();
+        let roots: Vec<_> = std::iter::once(root)
+            .chain(model_root)
+            .chain(actor_roots)
+            .collect();
         let request =
             resource::<cyrus_render::environment::EnvironmentRequest>(world, "environment")?;
         let environment = resource::<Assets<Environment>>(world, "environment assets")?

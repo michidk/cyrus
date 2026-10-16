@@ -16,6 +16,7 @@ use cyrus_world::lifecycle::PreparedWorld;
 pub struct SessionSceneInstances {
     root: Entity,
     model: Option<Entity>,
+    actor_models: std::collections::BTreeMap<u64, Entity>,
     camera: Entity,
     assets: Vec<Handle<WorldAsset>>,
     sky: Option<Entity>,
@@ -88,6 +89,11 @@ impl SessionSceneInstances {
             .player_model()
             .map(|model| model.source_path(prepared))
             .transpose()?;
+        let actor_paths = snapshot
+            .actor_models
+            .iter()
+            .map(|(&entity, model)| Ok((entity, model.source_path(prepared)?)))
+            .collect::<Result<Vec<_>>>()?;
         let server = world
             .get_resource::<AssetServer>()
             .context("session scene staging asset server absent")?
@@ -96,6 +102,15 @@ impl SessionSceneInstances {
             server.load(GltfAssetLabel::Scene(0).from_asset(prepared.scene_path.clone()));
         let model: Option<Handle<WorldAsset>> =
             model_path.map(|path| server.load(GltfAssetLabel::Scene(0).from_asset(path)));
+        let actor_assets: Vec<(u64, Handle<WorldAsset>)> = actor_paths
+            .into_iter()
+            .map(|(entity, path)| {
+                (
+                    entity,
+                    server.load(GltfAssetLabel::Scene(0).from_asset(path)),
+                )
+            })
+            .collect();
         let root = world
             .spawn((
                 StagedSessionEntity,
@@ -116,6 +131,23 @@ impl SessionSceneInstances {
                 ))
                 .id()
         });
+        let actor_models = actor_assets
+            .iter()
+            .map(|(entity, handle)| {
+                (
+                    *entity,
+                    world
+                        .spawn((
+                            StagedSessionEntity,
+                            cyrus_render::persistence::StagedRenderRoot,
+                            WorldAssetRoot(handle.clone()),
+                            Transform::default(),
+                            Visibility::Hidden,
+                        ))
+                        .id(),
+                )
+            })
+            .collect();
         let camera = world
             .spawn((
                 StagedSessionEntity,
@@ -129,8 +161,12 @@ impl SessionSceneInstances {
         Ok(Self {
             root,
             model: model_root,
+            actor_models,
             camera,
-            assets: std::iter::once(scene).chain(model).collect(),
+            assets: std::iter::once(scene)
+                .chain(model)
+                .chain(actor_assets.into_iter().map(|(_, asset)| asset))
+                .collect(),
             sky: None,
             sky_images: None,
         })
@@ -189,7 +225,10 @@ impl SessionSceneInstances {
             "session playback environment store absent"
         );
         let terrain_bindings = snapshot.terrain_bindings(world, self.root)?;
-        let roots: Vec<_> = std::iter::once(self.root).chain(self.model).collect();
+        let roots: Vec<_> = std::iter::once(self.root)
+            .chain(self.model)
+            .chain(self.actor_models.values().copied())
+            .collect();
         cyrus_render::prepare_scene_flats(world, &roots)?;
         let textures = self.prepare_textures(environment, world)?;
         world.resource_scope(
@@ -221,7 +260,10 @@ impl SessionSceneInstances {
             self.ready(world)?,
             "session texture scene instance still loading"
         );
-        let roots: Vec<_> = std::iter::once(self.root).chain(self.model).collect();
+        let roots: Vec<_> = std::iter::once(self.root)
+            .chain(self.model)
+            .chain(self.actor_models.values().copied())
+            .collect();
         cyrus_render::fog::TextureAnimations::prepare(world, environment.id(), &roots)
     }
 
@@ -252,7 +294,10 @@ impl SessionSceneInstances {
             .as_ref()
             .context("session rendered playback absent")?
             .clipping(fidelity)?;
-        let roots: Vec<_> = std::iter::once(self.root).chain(self.model).collect();
+        let roots: Vec<_> = std::iter::once(self.root)
+            .chain(self.model)
+            .chain(self.actor_models.values().copied())
+            .collect();
         cyrus_render::fog::prepare_scene_materials(
             world,
             &roots,
@@ -359,6 +404,9 @@ impl SessionSceneInstances {
     pub fn model(&self) -> Option<Entity> {
         self.model
     }
+    pub fn actor_models(&self) -> &std::collections::BTreeMap<u64, Entity> {
+        &self.actor_models
+    }
     pub fn camera(&self) -> Entity {
         self.camera
     }
@@ -377,7 +425,10 @@ impl SessionSceneInstances {
             }
         }
         let mut ready = true;
-        for entity in std::iter::once(self.root).chain(self.model) {
+        for entity in std::iter::once(self.root)
+            .chain(self.model)
+            .chain(self.actor_models.values().copied())
+        {
             ensure!(
                 world.get_entity(entity).is_ok(),
                 "session staged scene {entity:?} disappeared"
@@ -404,6 +455,7 @@ impl SessionSceneInstances {
         for entity in [Some(self.root), self.model, Some(self.camera), self.sky]
             .into_iter()
             .flatten()
+            .chain(self.actor_models.into_values())
         {
             if world.get::<StagedSessionEntity>(entity).is_some() {
                 world.despawn(entity);

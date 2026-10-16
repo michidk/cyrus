@@ -110,3 +110,92 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
         0
     );
 }
+
+#[test]
+fn map_actor_replaces_foreign_geometry_and_restores_original_visibility() {
+    use cyrus_game::script::{ScriptActorId, ScriptBinding};
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetPlugin::default(),
+        AnimationPlugin,
+        cyrus_world::lifecycle::WorldPlugin,
+        PlayerModelPlugin,
+    ))
+    .init_asset::<WorldAsset>();
+    let prepared =
+        PreparedWorld::from_cache("ISLAND".into(), app.world().resource::<AssetServer>());
+    app.insert_resource(prepared);
+    let actor = app
+        .world_mut()
+        .spawn((
+            Name::new("B_387_KOTARO"),
+            ScriptBinding {
+                actor: ScriptActorId {
+                    generation: 1,
+                    index: 387,
+                },
+                source: Handle::default(),
+            },
+            AnimationPose {
+                model: "THUGA002".into(),
+                frame: 1,
+            },
+            Transform::default(),
+        ))
+        .id();
+    let original = app
+        .world_mut()
+        .spawn((Mesh3d::default(), Visibility::Inherited, ChildOf(actor)))
+        .id();
+    app.update();
+    assert_eq!(
+        app.world().get::<Visibility>(original),
+        Some(&Visibility::Hidden)
+    );
+    let root = app
+        .world_mut()
+        .query_filtered::<Entity, With<WorldAssetRoot>>()
+        .single(app.world())
+        .unwrap();
+    assert_eq!(app.world().get::<ChildOf>(root).unwrap().parent(), actor);
+    let model = app
+        .world_mut()
+        .spawn((Name::new("THUGA002"), ChildOf(root)))
+        .id();
+    app.update();
+    assert_eq!(app.world().get::<AnimationPose>(model).unwrap().frame, 1);
+    app.world_mut().entity_mut(actor).insert(AnimationPose {
+        model: "B_387_KOTARO".into(),
+        frame: 0,
+    });
+    app.update();
+    assert!(app.world().get_entity(root).is_err());
+    assert_eq!(
+        app.world().get::<Visibility>(original),
+        Some(&Visibility::Inherited)
+    );
+    assert!(app.world().get::<Mesh3d>(original).is_some());
+    app.world_mut().entity_mut(actor).insert(AnimationPose {
+        model: "THUGA002".into(),
+        frame: 2,
+    });
+    app.update();
+    assert_eq!(
+        app.world().get::<Visibility>(original),
+        Some(&Visibility::Hidden)
+    );
+    app.world_mut().entity_mut(actor).remove::<AnimationPose>();
+    app.update();
+    assert_eq!(
+        app.world().get::<Visibility>(original),
+        Some(&Visibility::Inherited)
+    );
+    assert_eq!(
+        app.world_mut()
+            .query_filtered::<Entity, With<WorldAssetRoot>>()
+            .iter(app.world())
+            .count(),
+        0
+    );
+}

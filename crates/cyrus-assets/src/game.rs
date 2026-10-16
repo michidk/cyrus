@@ -49,9 +49,10 @@ pub(crate) fn scene(
         out,
         output,
     )?;
-    source.progress(2, 6, "Player models");
+    source.progress(2, 6, "Actor models");
     let radii = crate::player_export::models::prepare(
         &world.rgm,
+        &world.models,
         &world.registry,
         &world.palette,
         &mut world.textures,

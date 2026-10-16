@@ -362,11 +362,12 @@ Native diagnostic load reached ready ISLAND gameplay from START and recaptured
 both worlds. Retained START matches after actor-generation rebinding. An altered
 retained-world source is rejected while the accepted world and generation remain
 live. These checks do not establish complete rendered continuation. Ordinary map
-actors can select another animation model without replacing their original scene
-geometry; that model-replacement owner is still missing.
+actors could select another animation model without replacing their original scene
+geometry. The current draft adds that replacement owner and its session staging;
+installed rendered continuation remains unverified.
 
-Remaining work includes browser caller integration, complete rendered/audio
-restoration, restart/reload and visited-world continuation. Revisit guards remain
+The diagnostic browser caller is integrated. Remaining work includes complete
+rendered/audio restoration, restart/reload and visited-world continuation. Revisit guards remain
 until service cleanup and retained-task behavior are implemented and verified.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.

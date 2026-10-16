@@ -56,7 +56,7 @@ fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
     })
 }
 
-fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<AnimationModel> {
+fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<Model3DFile> {
     let mut payload = None;
     for entry in registry
         .files
@@ -98,10 +98,39 @@ fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<AnimationMod
     }
     let (path, bytes) = payload
         .with_context(|| format!("model {name}: no standalone, placed or embedded model"))?;
-    model_data(
-        &model3d::parse_3d_file(&bytes)
-            .with_context(|| format!("{}: model {name}", path.display()))?,
-    )
+    model3d::parse_3d_file(&bytes).with_context(|| format!("{}: model {name}", path.display()))
+}
+
+/// Use the same installed geometry for frame tables and textured replacement meshes.
+pub(crate) fn resolve_model<'a>(
+    name: &str,
+    placed: &'a [PositionedModel],
+    registry: &Registry,
+) -> anyhow::Result<std::borrow::Cow<'a, Model3DFile>> {
+    if let Some(model) = placed
+        .iter()
+        .find(|model| model.model_name.eq_ignore_ascii_case(name))
+    {
+        return Ok(std::borrow::Cow::Borrowed(&model.model));
+    }
+    let entry = registry
+        .files
+        .values()
+        .filter(|entry| {
+            entry.name.eq_ignore_ascii_case(name)
+                && matches!(entry.file_type, FileType::Model3d | FileType::Model3dc)
+        })
+        .min_by_key(|entry| registry.source_rank_key(&entry.path));
+    let model = if let Some(entry) = entry {
+        let bytes = entry
+            .data
+            .as_ref()
+            .with_context(|| format!("model bytes absent: {}", entry.path.display()))?;
+        model3d::parse_3d_file(bytes).with_context(|| entry.path.display().to_string())?
+    } else {
+        archive_model(name, registry)?
+    };
+    Ok(std::borrow::Cow::Owned(model))
 }
 
 pub(crate) fn prepare(
@@ -197,35 +226,7 @@ pub(crate) fn prepare(
         unsupported: BTreeMap::new(),
     };
     for name in names {
-        let decoded = if let Some(model) = placed
-            .iter()
-            .find(|p| p.model_name.eq_ignore_ascii_case(&name))
-        {
-            model_data(&model.model)
-        } else {
-            let entry = registry
-                .files
-                .values()
-                .filter(|entry| {
-                    entry.name.eq_ignore_ascii_case(&name)
-                        && matches!(entry.file_type, FileType::Model3d | FileType::Model3dc)
-                })
-                .min_by_key(|entry| registry.source_rank_key(&entry.path));
-            if let Some(entry) = entry {
-                (|| {
-                    let bytes = entry
-                        .data
-                        .as_ref()
-                        .with_context(|| format!("model bytes absent: {}", entry.path.display()))
-                        .with_context(|| entry.path.display().to_string())?;
-                    let model = model3d::parse_3d_file(bytes)
-                        .with_context(|| entry.path.display().to_string())?;
-                    model_data(&model)
-                })()
-            } else {
-                archive_model(&name, registry)
-            }
-        };
+        let decoded = resolve_model(&name, placed, registry).and_then(|model| model_data(&model));
         match decoded {
             Ok(model) => {
                 result.models.insert(name, model);

@@ -113,7 +113,40 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
     let animations: cyrus_assets::animation::Animations =
         serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
     verify_walking_release(&scene, &animations);
-    for name in ["CYRSA001", "CYRSA012"] {
+    assert!(!scene.model_radii.contains_key("THUGA002"));
+    verify_exported_models(&path, &animations, &["CYRSA001", "CYRSA012", "THUGA002"]);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn installed_embedded_actor_model_exports_matching_frame_geometry() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let install = match GameInstall::open(&root) {
+        Ok(install) => install,
+        Err(error) => {
+            eprintln!("skipped: no install (embedded actor export) ({error})");
+            return;
+        }
+    };
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config")
+        .join(format!("actor-archive-export-test-{}", std::process::id()));
+    let path = directory.join("CATACOMB.glb");
+    cyrus_assets::scene::export_scene(&install, "CATACOMB", &path).unwrap();
+    let animations: cyrus_assets::animation::Animations =
+        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+    verify_exported_models(&path, &animations, &["RAT"]);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+fn verify_exported_models(
+    path: &std::path::Path,
+    animations: &cyrus_assets::animation::Animations,
+    names: &[&str],
+) {
+    for &name in names {
         let bytes = std::fs::read(
             path.with_extension("player-models")
                 .join(format!("{name}.glb")),
@@ -124,7 +157,18 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
         let mesh = node.mesh().unwrap();
         assert!(mesh.primitives().len() > 0);
         assert!(glb.textures().len() > 0);
+        let mut static_positions = std::collections::BTreeSet::new();
         for primitive in mesh.primitives() {
+            if animations.models[name].positions.len() == 1 {
+                static_positions.extend(
+                    primitive
+                        .reader(|_| glb.blob.as_deref())
+                        .read_positions()
+                        .unwrap()
+                        .map(|position| position.map(f32::to_bits)),
+                );
+                continue;
+            }
             let extras: serde_json::Value =
                 serde_json::from_str(primitive.extras().as_ref().unwrap().get()).unwrap();
             assert_eq!(extras["rgpre_geometry"]["version"], 1);
@@ -157,8 +201,21 @@ fn installed_scene_exports_original_player_and_ground_inputs() {
                     .is_empty()
             );
         }
+        if animations.models[name].positions.len() == 1 {
+            let model = &animations.models[name];
+            let expected: std::collections::BTreeSet<_> = model
+                .faces
+                .iter()
+                .flatten()
+                .map(|&index| {
+                    let [x, y, z] = model.positions[0][index as usize];
+                    [-x / 20.0, -y / 20.0, z / 20.0].map(f32::to_bits)
+                })
+                .collect();
+            assert!(!static_positions.is_empty());
+            assert_eq!(static_positions, expected);
+        }
     }
-    std::fs::remove_dir_all(directory).unwrap();
 }
 
 fn verify_walking_release(scene: &PlayerScene, data: &cyrus_assets::animation::Animations) {

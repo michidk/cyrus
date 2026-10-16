@@ -272,6 +272,12 @@ impl SessionLoad {
                     .and_then(SessionSceneInstances::sky_images),
                 render_playback: playback,
                 player_model_root: self.scene.as_ref().and_then(SessionSceneInstances::model),
+                actor_model_roots: &self
+                    .scene
+                    .as_ref()
+                    .map(SessionSceneInstances::actor_models)
+                    .cloned()
+                    .unwrap_or_default(),
                 environments: &references,
             },
             world,

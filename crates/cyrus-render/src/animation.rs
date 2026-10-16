@@ -125,6 +125,7 @@ pub(crate) fn apply_poses(
         Option<&RejectedPose>,
     )>,
     nodes: Query<(&Name, &AnimationPose)>,
+    actors: Query<(), bevy::prelude::With<cyrus_game::script::ScriptBinding>>,
 ) {
     let Some(mut meshes) = meshes else {
         return;
@@ -134,6 +135,10 @@ pub(crate) fn apply_poses(
         if let Some(mut bound) = bound {
             if bound.source != request.0.id()
                 || nodes.get(bound.node).is_err()
+                || (actors.contains(bound.node)
+                    && nodes
+                        .get(bound.node)
+                        .is_ok_and(|(name, pose)| name.as_str() != pose.model))
                 || nodes
                     .get(bound.node)
                     .is_ok_and(|(_, pose)| pose.model != bound.name)
@@ -186,6 +191,9 @@ pub(crate) fn apply_poses(
         let Ok((name, pose)) = nodes.get(parent.parent()) else {
             continue;
         };
+        if actors.contains(parent.parent()) && name.as_str() != pose.model {
+            continue;
+        }
         // rgpre emits vertex mappings only for models with multiple frames.
         if pose.frame == 0
             && animation
@@ -207,34 +215,11 @@ pub(crate) fn apply_poses(
         let Some(original) = meshes.get(&mesh.0) else {
             continue;
         };
-        let result = (|| -> anyhow::Result<(MeshFrameBinding, FrameGeometry)> {
-            let model = animation
-                .models
-                .get(&pose.model)
-                .with_context(|| format!("requested model {} unavailable", pose.model))?;
-            let extras: PrimitiveExtras = serde_json::from_str(
-                &extras
-                    .context("GLB source mapping absent; re-export the world")?
-                    .value,
-            )?;
-            let base =
-                crate::animation::FrameGeometry::from_model(model, 0, &extras.rgpre_geometry)?;
-            let VertexAttributeValues::Float32x3(positions) =
-                original.try_attribute(Mesh::ATTRIBUTE_POSITION)?
-            else {
-                anyhow::bail!("GLB positions are not Float32x3");
-            };
-            anyhow::ensure!(
-                *positions == base.positions,
-                "GLB base geometry does not match animation model; re-export the world"
-            );
-            let frame = crate::animation::FrameGeometry::from_model(
-                model,
-                pose.frame,
-                &extras.rgpre_geometry,
-            )?;
-            Ok((extras.rgpre_geometry, frame))
-        })();
+        let result = animation
+            .models
+            .get(&pose.model)
+            .with_context(|| format!("requested model {} unavailable", pose.model))
+            .and_then(|model| mapped_frame(model, pose.frame, extras, original));
         match result {
             Ok((mapping, frame)) => {
                 let mut private = original.clone();
@@ -265,6 +250,167 @@ pub(crate) fn apply_poses(
                 });
             }
         }
+    }
+}
+
+fn mapped_frame(
+    model: &AnimationModel,
+    frame: usize,
+    extras: Option<&GltfExtras>,
+    original: &Mesh,
+) -> anyhow::Result<(MeshFrameBinding, FrameGeometry)> {
+    let extras: PrimitiveExtras = serde_json::from_str(
+        &extras
+            .context("GLB source mapping absent; re-export the world")?
+            .value,
+    )?;
+    let base = FrameGeometry::from_model(model, 0, &extras.rgpre_geometry)?;
+    let VertexAttributeValues::Float32x3(positions) =
+        original.try_attribute(Mesh::ATTRIBUTE_POSITION)?
+    else {
+        anyhow::bail!("GLB positions are not Float32x3");
+    };
+    anyhow::ensure!(
+        *positions == base.positions,
+        "GLB base geometry does not match animation model; re-export the world"
+    );
+    let geometry = FrameGeometry::from_model(model, frame, &extras.rgpre_geometry)?;
+    Ok((extras.rgpre_geometry, geometry))
+}
+
+pub(crate) fn validate_model_pose(
+    world: &bevy::prelude::World,
+    nodes: &[Entity],
+    source: &Handle<Animations>,
+    pose: &AnimationPose,
+) -> anyhow::Result<()> {
+    let model = world
+        .get_resource::<Assets<Animations>>()
+        .and_then(|assets| assets.get(source))
+        .and_then(|data| data.models.get(&pose.model))
+        .context("displayed model source absent")?;
+    if pose.frame == 0 && model.positions.len() == 1 {
+        return Ok(());
+    }
+    for &node in nodes {
+        for entity in world
+            .get::<bevy::prelude::Children>(node)
+            .into_iter()
+            .flatten()
+        {
+            if world.get::<Mesh3d>(*entity).is_none() {
+                continue;
+            }
+            anyhow::ensure!(
+                world
+                    .get::<BoundFrameMesh>(*entity)
+                    .is_some_and(|binding| binding.source == source.id()
+                        && binding.node == node
+                        && binding.name == pose.model
+                        && binding.frame == pose.frame),
+                "displayed model mesh has not settled to the selected frame"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Fully computed private meshes; publication does no fallible frame decoding.
+#[derive(Default)]
+pub(crate) struct PreparedModelFrames(Vec<(Entity, BoundFrameMesh, Mesh)>);
+impl PreparedModelFrames {
+    pub(crate) fn prepare(
+        world: &bevy::prelude::World,
+        nodes: &[Entity],
+        source: &Handle<Animations>,
+        pose: &AnimationPose,
+    ) -> anyhow::Result<Self> {
+        let animations = world
+            .get_resource::<Assets<Animations>>()
+            .and_then(|assets| assets.get(source))
+            .context("replacement model animation source absent")?;
+        let model = animations
+            .models
+            .get(&pose.model)
+            .context("replacement model frame source absent")?;
+        let meshes = world
+            .get_resource::<Assets<Mesh>>()
+            .context("replacement model mesh store absent")?;
+        let mut prepared = Vec::new();
+        for &node in nodes {
+            for entity in world
+                .get::<bevy::prelude::Children>(node)
+                .into_iter()
+                .flatten()
+            {
+                let Some(mesh) = world.get::<Mesh3d>(*entity) else {
+                    continue;
+                };
+                anyhow::ensure!(
+                    world.get::<BoundFrameMesh>(*entity).is_none(),
+                    "replacement model mesh already animated"
+                );
+                if pose.frame == 0 && model.positions.len() == 1 {
+                    continue;
+                }
+                let original = meshes
+                    .get(&mesh.0)
+                    .context("replacement model mesh absent")?;
+                let (mapping, frame) = mapped_frame(
+                    model,
+                    pose.frame,
+                    world.get::<GltfExtras>(*entity),
+                    original,
+                )?;
+                let mut private = original.clone();
+                private.insert_attribute(Mesh::ATTRIBUTE_POSITION, frame.positions);
+                private.insert_attribute(Mesh::ATTRIBUTE_NORMAL, frame.normals);
+                private.final_aabb = None;
+                prepared.push((
+                    *entity,
+                    BoundFrameMesh {
+                        source: source.id(),
+                        node,
+                        name: pose.model.clone(),
+                        mapping,
+                        original: mesh.0.clone(),
+                        frame: pose.frame,
+                    },
+                    private,
+                ));
+            }
+        }
+        Ok(Self(prepared))
+    }
+    pub(crate) fn validate(&self, world: &bevy::prelude::World) -> anyhow::Result<()> {
+        for (entity, binding, _) in &self.0 {
+            anyhow::ensure!(
+                world
+                    .get::<Mesh3d>(*entity)
+                    .is_some_and(|mesh| mesh.0 == binding.original)
+                    && world
+                        .get::<ChildOf>(*entity)
+                        .is_some_and(|parent| parent.parent() == binding.node)
+                    && world.get::<BoundFrameMesh>(*entity).is_none(),
+                "replacement model mesh binding changed"
+            );
+        }
+        Ok(())
+    }
+    pub(crate) fn queue(self, commands: &mut Commands) {
+        commands.queue(move |world: &mut bevy::prelude::World| {
+            for (entity, binding, mesh) in self.0 {
+                let bounds = mesh.get_aabb();
+                let handle = world.resource_mut::<Assets<Mesh>>().add(mesh);
+                let mut target = world.entity_mut(entity);
+                target
+                    .insert((Mesh3d(handle), binding))
+                    .remove::<RejectedPose>();
+                if let Some(bounds) = bounds {
+                    target.insert(bounds);
+                }
+            }
+        });
     }
 }
 

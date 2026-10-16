@@ -50,6 +50,7 @@ impl RuntimeSessionCandidate {
             sky,
             render_playback,
             player_model,
+            actor_models,
             marker,
         } = self;
         let mut queue = CommandQueue::default();
@@ -89,7 +90,7 @@ impl RuntimeSessionCandidate {
             if let Some(playback) = render_playback {
                 playback.queue(&mut commands);
             }
-            if let Some(model) = player_model {
+            for model in player_model.into_iter().chain(actor_models) {
                 commands.entity(model.root()).remove::<(
                     crate::staging::StagedSessionEntity,
                     cyrus_render::persistence::StagedRenderRoot,

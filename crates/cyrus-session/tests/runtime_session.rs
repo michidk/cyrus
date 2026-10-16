@@ -584,6 +584,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
                     sky_images: None,
                     render_playback: None,
                     player_model_root: None,
+                    actor_model_roots: &BTreeMap::new(),
                     environments: &BTreeMap::new(),
                 },
                 app.world(),

@@ -238,3 +238,11 @@ restart/reload and visited-world continuation. Revisit guards
 remain until service cleanup and retained-task behavior are implemented and
 verified. Audio snapshots cover source-decoder continuation, not downstream
 converter/device queues. Complete gameplay and controller acceptance remain open.
+
+The current draft also captures ordinary actor model replacements by saved actor
+entity. Hidden staging loads each selected source before texture/material preparation.
+`SessionServices::actor_model_roots` supplies those roots for direct assembly; the
+shared asynchronous load path supplies them automatically. Missing displayed models,
+aliased roots and source/pose mismatches reject before publication. Model candidates
+publish prepared frame geometry in the same commit. This closes a represented-owner
+gap; installed rendered round-trip and revisit acceptance remain pending.

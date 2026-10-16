@@ -1,8 +1,8 @@
-//! Textured player frame-source models, prepared for the shared GLB loader.
+//! Textured actor frame-source models, prepared for the shared GLB loader.
 use anyhow::Context;
 use rgpre::{
     gltf::{TextureCache, convert_positioned_models_to_gltf, to_glb},
-    import::{FileType, model3d, palette::Palette, registry::Registry, rgm},
+    import::{palette::Palette, registry::Registry, rgm},
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -11,6 +11,7 @@ use std::{
 
 pub(crate) fn prepare(
     map: &rgm::RgmFile,
+    placed: &[rgm::PositionedModel],
     registry: &Registry,
     palette: &Palette,
     textures: &mut TextureCache,
@@ -20,48 +21,42 @@ pub(crate) fn prepare(
     let metadata = rgm::export_rgm_metadata_json(map, None);
     let actors = metadata["actors"]
         .as_array()
-        .context("player models: missing actors")?;
-    let Some(actor) = actors.iter().find(|actor| actor["script_name"] == "CYRUS") else {
-        return Ok(BTreeMap::new());
-    };
-    let entries = actor["raan_entries"]
-        .as_array()
-        .context("CYRUS: missing frame sources")?;
+        .context("actor models: missing actors")?;
     let mut names = BTreeSet::new();
-    for entry in entries {
-        let path = entry["file_path"]
-            .as_str()
-            .context("CYRUS: missing frame-source path")?;
-        let filename = path.rsplit(['/', '\\']).next().unwrap_or(path);
-        let name = filename.rsplit_once('.').map_or(filename, |(name, _)| name);
-        anyhow::ensure!(
-            !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
-            "CYRUS: invalid frame-source name {name:?}"
-        );
-        names.insert(name.to_ascii_uppercase());
+    let mut player_names = BTreeSet::new();
+    for actor in actors {
+        let actor_name = actor["script_name"].as_str().unwrap_or("unnamed actor");
+        let Some(entries) = actor["raan_entries"].as_array() else {
+            anyhow::ensure!(actor_name != "CYRUS", "CYRUS: missing frame sources");
+            continue;
+        };
+        for entry in entries {
+            let path = entry["file_path"]
+                .as_str()
+                .with_context(|| format!("{actor_name}: missing frame-source path"))?;
+            let filename = path.rsplit(['/', '\\']).next().unwrap_or(path);
+            let name = filename.rsplit_once('.').map_or(filename, |(name, _)| name);
+            anyhow::ensure!(
+                !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
+                "{actor_name}: invalid frame-source name {name:?}"
+            );
+            let name = name.to_ascii_uppercase();
+            if actor_name == "CYRUS" {
+                player_names.insert(name.clone());
+            }
+            names.insert(name);
+        }
     }
     let directory = out.with_extension("player-models");
     let mut radii = BTreeMap::new();
     for name in names {
-        let entry = registry
-            .files
-            .values()
-            .filter(|entry| {
-                entry.name.eq_ignore_ascii_case(&name)
-                    && matches!(entry.file_type, FileType::Model3d | FileType::Model3dc)
-            })
-            .min_by_key(|entry| registry.source_rank_key(&entry.path))
-            .with_context(|| format!("CYRUS model {name}: standalone frame source unavailable"))?;
-        let model = model3d::parse_3d_file(
-            entry
-                .data
-                .as_deref()
-                .with_context(|| format!("CYRUS model {name}: bytes absent"))?,
-        )
-        .with_context(|| format!("CYRUS model {name}: {}", entry.path.display()))?;
-        radii.insert(name.clone(), model.header.radius as f32 / 256.0);
+        let model = crate::animation_export::resolve_model(&name, placed, registry)
+            .with_context(|| format!("actor model {name}"))?;
+        if player_names.contains(&name) {
+            radii.insert(name.clone(), model.header.radius as f32 / 256.0);
+        }
         let model = rgm::PositionedModel {
-            model,
+            model: model.into_owned(),
             transform: [
                 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
             ],
@@ -72,7 +67,7 @@ pub(crate) fn prepare(
         };
         let (root, buffer) =
             convert_positioned_models_to_gltf(&[model], &[], Some(palette), Some(textures), false)
-                .with_context(|| format!("CYRUS model {name}: GLB export"))?;
+                .with_context(|| format!("actor model {name}: GLB export"))?;
         output.publish(
             &directory.join(format!("{name}.glb")),
             &to_glb(&root, &buffer)?,
