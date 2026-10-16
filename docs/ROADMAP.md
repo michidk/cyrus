@@ -351,8 +351,9 @@ render/audio continuation. Native malformed-document rejection and retained-resu
 polling pass. Full workspace gates pass with the browser caller and zero
 installed-data skips. The current draft adds ordinary actor model replacement and
 off-live model/mesh staging to address the geometry gap exposed by the native load
-probe. Focused replacement and session tests pass; installed rendered acceptance
-and final gates for this draft are pending.
+probe. Focused replacement and session tests pass, and the checkpoint passed full gates
+with 950 Rust test executions and zero installed-data skips. Installed rendered
+round-trip acceptance remains pending.
 The diagnostic browser storage caller is connected; successful installed
 restart/reload/revisits and complete gameplay acceptance remain unchecked.
 Source-decoder audio checkpoints

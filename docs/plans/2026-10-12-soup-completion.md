@@ -364,7 +364,8 @@ retained-world source is rejected while the accepted world and generation remain
 live. These checks do not establish complete rendered continuation. Ordinary map
 actors could select another animation model without replacing their original scene
 geometry. The current draft adds that replacement owner and its session staging;
-installed rendered continuation remains unverified.
+the checkpoint passed full gates with zero installed-data skips, while installed
+rendered continuation remains unverified.
 
 The diagnostic browser caller is integrated. Remaining work includes complete
 rendered/audio restoration, restart/reload and visited-world continuation. Revisit guards remain
