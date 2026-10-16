@@ -6,6 +6,10 @@ The game camera keeps the original horizontal field of view when its viewport
 resizes. **Verified:** preservation's [Glide projection](https://github.com/michidk/redguard-preservation/blob/6520206/docs/engine/projection.md)
 defines its scale. The original follow camera and matched-view pixel parity
 remain unsupported and unverified, respectively.
+**Verified:** the current default START camera shares the player's transform and
+intersects the animated CYRUS mesh, exposing a moving outline above the ship rail.
+An explicit inspection view outside the player avoids that symptom; it does not
+implement the original follow camera.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition
