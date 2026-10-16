@@ -956,3 +956,36 @@ fn installed_map_taunts_reach_logical_actors_before_explicit_ordered_selection()
         "installed maps must exercise authored ordered-taunt candidates"
     );
 }
+
+#[test]
+fn installed_player_stand_query_advances_nonstanding_receiver() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP PlayerStand receiver)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/ISLAND.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 1).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let receiver = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "KOTAROTB")
+        .unwrap();
+    let player = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(player).unwrap();
+    assert_eq!(world.model_support(player).unwrap().actor, None);
+    let flags = world.flags().to_vec();
+    world
+        .step(world.id(receiver).unwrap(), cyrus_script::Thread::Main, 100)
+        .unwrap();
+    assert!(world.actors()[receiver].failure().is_none());
+    assert_eq!(world.flags(), flags);
+    assert_eq!(world.model_support(player).unwrap().actor, None);
+}

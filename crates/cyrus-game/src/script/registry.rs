@@ -2552,6 +2552,23 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .contains(marker.integer()?, position, distance.integer()?)?;
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        if function.eq_ignore_ascii_case("PlayerStand") {
+            anyhow::ensure!(arguments.is_empty(), "PlayerStand requires no arguments");
+            let player = self
+                .selected_player()
+                .context("PlayerStand selected player unavailable")?;
+            anyhow::ensure!(
+                player.generation == self.generation && player.index < self.actors.len(),
+                "PlayerStand selected player identity is stale"
+            );
+            let receiver = ScriptActorId {
+                generation: self.generation,
+                index: self.index,
+            };
+            return Ok(CallResult::Complete(i32::from(
+                self.actors[player.index].model.support.actor == Some(receiver),
+            )));
+        }
         if function.eq_ignore_ascii_case("IsInDeepWater") {
             anyhow::ensure!(arguments.is_empty(), "IsInDeepWater requires no arguments");
             let surface = self.actors[self.index]

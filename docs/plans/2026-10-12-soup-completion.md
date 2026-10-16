@@ -423,3 +423,12 @@ Integrity-valid current-world and dormant-world source mismatches both reject.
 Recapture after those failures preserves registry, player, HUD, random/toggle state,
 entity bindings and model replacements exactly. Pixel/audio continuation and complete
 successful gameplay traversal remain open.
+
+### Retained supporting-actor query
+
+`PlayerStand` reads the existing selected-player model-support owner. Three public
+identity, routing and rejection contracts pass. The installed non-standing
+KOTAROTB branch runs without changing flags or support. The published original
+identity comparison and its altered-branch control pass against retained instructions.
+Final workspace gates and WASM verification are pending. This does not establish
+collision assignment, the standing dialogue route or automatic gameplay acceptance.

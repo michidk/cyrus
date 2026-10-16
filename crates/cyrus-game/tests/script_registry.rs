@@ -12203,3 +12203,116 @@ fn player_looking_dispatch_returns_result_to_script_local() {
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
     }
 }
+
+#[test]
+fn player_stand_reads_selected_player_support_without_changing_it() {
+    use cyrus_game::script::ModelSupportOwners;
+    for (support_index, receiver, expected) in [
+        (Some(0), Object::Me, 1),
+        (Some(1), Object::Me, 0),
+        (None, Object::Me, 0),
+        (Some(2), Object::Player, 1),
+    ] {
+        let mut scripts = random_scripts("PlayerStand", vec![], receiver);
+        scripts.definition.functions[1].param_count = 0;
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        let player = world.id(2).unwrap();
+        let support = ModelSupportOwners {
+            actor: support_index.map(|index| world.id(index).unwrap()),
+            static_placement: None,
+        };
+        world.set_model_support(player, support).unwrap();
+        world.step(caller, Thread::Main, 20).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+        assert_eq!(world.model_support(player).unwrap(), support);
+    }
+}
+
+#[test]
+fn player_stand_rejects_missing_player_and_arguments() {
+    for (arguments, player, expected) in [
+        (vec![], false, "selected player unavailable"),
+        (
+            vec![Value::Integer { value: 0 }],
+            true,
+            "requires no arguments",
+        ),
+    ] {
+        let mut scripts = random_scripts("PlayerStand", arguments, Object::Me);
+        if !player {
+            scripts.definition.functions[1].param_count = 0;
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        if player {
+            add_standalone_receivers(&mut scripts);
+        }
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let error = world.step(id, Thread::Main, 20).unwrap_err();
+        assert!(error.to_string().contains(expected), "{error:#}");
+    }
+}
+
+#[test]
+fn player_stand_validates_explicit_selected_identity() {
+    use cyrus_game::script::{ActivationInputs, ModelSupportOwners, ScriptInputs, ScriptStage};
+    for (selected_index, stale, expected_error) in [
+        (2, false, None),
+        (2, true, Some("stale script actor generation")),
+        (3, false, Some("selected-player switching unsupported")),
+    ] {
+        let mut scripts = random_scripts("PlayerStand", vec![], Object::Me);
+        scripts.definition.functions[1].param_count = 0;
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        let mut selected = world.id(selected_index).unwrap();
+        world
+            .set_model_support(
+                selected,
+                ModelSupportOwners {
+                    actor: Some(caller),
+                    static_placement: None,
+                },
+            )
+            .unwrap();
+        if stale {
+            selected.generation += 1;
+        }
+        let inputs = ActivationInputs {
+            player: selected,
+            actors: BTreeMap::new(),
+            labels: BTreeMap::new(),
+            lockout: 0,
+            dialogue_open: false,
+            lineup_result: 0,
+            use_held: false,
+            item_system_ready: false,
+            shell_execution: false,
+            render_disabled: false,
+        };
+        let result = world.advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                activation: Some(&inputs),
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        );
+        if let Some(expected) = expected_error {
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains(expected), "{error:#}");
+        } else {
+            result.unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [1]);
+            assert_eq!(world.model_support(selected).unwrap().actor, Some(caller));
+        }
+    }
+}

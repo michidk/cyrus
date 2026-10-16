@@ -403,8 +403,11 @@ Prepared spatial hosts also support `RotateByAxis`, `PlayerDistance`, and
 `PlayerFacing` and `PlayerLooking` with explicit selected-player inputs.
 `PlayerLooking` uses the effective receiver position and signed angular tolerance,
 including equality, per the [published query contract](https://github.com/michidk/redguard-preservation/compare/main...docs/player-looking-contract).
-It does not perform a visibility query. Remaining
-native services are explicit failures. `IsInDeepWater` reads the receiver's stored
+It does not perform a visibility query. `PlayerStand` compares the receiving actor
+with the selected player's retained supporting-actor identity, following the
+[published query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playerstand-query).
+It performs no collision search and leaves support ownership unchanged. Missing or
+stale selected identities reject. Remaining native services are explicit failures. `IsInDeepWater` reads the receiver's stored
 surface state, with fresh map/player allocation values and grounded assignments
 shared through `ScriptWorld`. It does not issue a separate support query. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.
