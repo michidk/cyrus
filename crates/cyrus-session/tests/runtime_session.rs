@@ -962,6 +962,14 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
     let pose = (saved_pose.position, saved_pose.heading);
     let transform = *app.world().get::<Transform>(replacement).unwrap();
     let source = app.world().resource::<PlayerSceneRequest>().0.clone();
+    let script_assets = app
+        .world_mut()
+        .remove_resource::<Assets<Scripts>>()
+        .unwrap();
+    let player_assets = app
+        .world_mut()
+        .remove_resource::<Assets<PlayerScene>>()
+        .unwrap();
     app.init_resource::<cyrus_game::fidelity::Fidelity>()
         .init_resource::<ButtonInput<KeyCode>>()
         .add_message::<cyrus_world::animation::AnimationTick>()
@@ -970,6 +978,12 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
             cyrus_game::player::PlayerPlugin,
             cyrus_game::script::ScriptPlugin,
         ));
+    // Late plugin registration replaces asset stores; retain the fixture's handles and sources.
+    let server = app.world().resource::<AssetServer>();
+    server.register_asset(&script_assets);
+    server.register_asset(&player_assets);
+    app.insert_resource(script_assets)
+        .insert_resource(player_assets);
     app.update();
     app.update();
     let current = app
