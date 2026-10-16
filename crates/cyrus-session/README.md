@@ -247,5 +247,7 @@ aliased roots and source/pose mismatches reject before publication. Model candid
 publish prepared frame geometry in the same commit. This closes a represented-owner
 gap. Installed native load and recapture retain all 173 ordinary model replacements
 with matching displayed poses and unique roots; dormant START matches after fresh
-actor-generation binding. Pixel comparison, malformed-model rejection preservation
+actor-generation binding. Installed missing-model and mismatched-frame candidates
+reject without replacing the logical session, entity identities or captured
+non-presentation owners. Presentation state continues advancing. Pixel comparison
 and installed revisit acceptance remain pending.

@@ -357,9 +357,11 @@ round-trip acceptance remains pending. A paused installed capture now represents
 current ISLAND, retained START and all 173 required ordinary model replacements
 in 17,600,858 encoded bytes. Native load and recapture preserve all 173 ordinary
 model replacements with matching displayed poses and unique roots. Retained START
-matches after fresh actor-generation binding. Pixel comparison, malformed-model
-rejection preservation and installed revisits remain pending. The unfinished
-revisit integration initializes
+matches after fresh actor-generation binding. Missing-model and mismatched-frame
+candidates reject while the logical session, entity identities, model replacements
+and other captured non-presentation owners remain unchanged. Presentation state
+continues advancing. Pixel comparison and installed revisits remain pending.
+The unfinished revisit integration initializes
 entry roles, validates retained actors and clears shared sound services before
 restoring saved execution state. Focused registry/task and audio cleanup tests,
 WASM Clippy and the native build pass. The final workspace gate passed 955 Rust
