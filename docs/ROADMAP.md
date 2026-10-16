@@ -404,6 +404,10 @@ retains all 975 actor records exactly. A subsequent browser save and fresh-page 
 retain both worlds, all 173 ordinary models, the player model and logical session
 state after generation/entity rebinding. Unsupported player behavior, rendered/audio
 continuation and complete gameplay revisits remain open.
+A refreshed native animation-version-2 capture retains current ISLAND and visited
+START, 174 playback records and 173 ordinary models. Its 461 exports match the
+runtime and the document is 17,248,094 bytes. Restoration of this refreshed fixture
+remains pending; preceding checks used the earlier animation schema.
 Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
 [SOUP completion plan](plans/2026-10-12-soup-completion.md#unfinished-session-checkpoint).

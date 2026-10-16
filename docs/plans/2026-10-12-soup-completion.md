@@ -414,6 +414,11 @@ This does not establish perception, line of sight or complete installed traversa
 current ISLAND and visited START, including 173 ordinary rendered model replacements
 and the player model. The copied native cache matches the capture runtime byte-for-byte.
 Source, executable, document and cache manifests accompany the local fixture.
+The refreshed animation-version-2 fixture contains 174 playback records and 173
+ordinary model replacements, with current ISLAND and visited START. All 461 copied
+export files match the capture runtime. Its encoded size is 17,248,094 bytes; this
+is a representative fixture, not a save-capacity maximum. Earlier restoration
+checks used the preceding fixture and do not verify this refreshed capture.
 Browser acceptance of this corrected-export fixture, rendered/audio continuation
 and complete gameplay revisits remain open.
 
