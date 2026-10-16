@@ -10,7 +10,7 @@ Redguard's file formats and engine facts are owned by the sibling project
 Read in this order: this file, `docs/METHOD.md` (how a change is judged),
 `docs/MAP.md` (every crate and module, generated), `docs/SETUP.md` (running
 the new and the original game), `docs/ROADMAP.md` (delivery stages, what is
-done and what is next), then the `README.md` of the crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
+done and what is next), `docs/DIFFERENCES.md` (accepted differences from the original), then the `README.md` of the crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
 (direct commits, roadmap ownership, `magic/` artifacts, handoff). The root
 `README.md` is for players, `CONTRIBUTING.md` for human contributors.
 
@@ -196,7 +196,9 @@ A later explicit user instruction to keep a named preview stopped takes
 precedence; do not create a replacement to evade it.
 
 Default windowed and browser launches play the installed Windows Glide 3dfx splash and title,
-then stop at the book menu. It supports Options, Display, Sound, Controls,
+then stop at the book menu. `--splash dos` (`?splash=dos`) plays the DOS overlay's shield
+splash instead; `--music modern` mutes the CD data noise at the start of track 2. Both are
+listed in `docs/DIFFERENCES.md`. It supports Options, Display, Sound, Controls,
 Movies browsing, keyboard navigation, and Quit. Native Movies playback uses
 installed Smacker files through the in-process decoder. Browser Movies uses
 bounded original Smacker ranges and incrementally decoded first-track PCM with shared playback rules.

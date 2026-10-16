@@ -23,6 +23,10 @@
 //! pauses the CD from its request until it ends, and the CD then resumes where
 //! it was (preservation `docs/engine/music.md`).
 //!
+//! Modern music fidelity mutes CD-ROM data-sector bytes that the GOG image
+//! places at the start of track 2 (preservation `docs/engine/music.md`);
+//! Faithful plays every installed byte.
+//!
 //! Unsupported: credits and won-game music (those screens do not exist yet).
 
 use bevy::audio::{AudioPlayer, AudioSource};
@@ -108,6 +112,23 @@ fn music_enabled(
     audio: &Option<Res<Assets<AudioSource>>>,
 ) -> bool {
     audio.is_some() && settings.as_ref().is_some_and(|s| s.music)
+}
+
+/// A copy of a prepared CD WAV with its leading CD-ROM data-sector bytes muted,
+/// or `None` when the track starts with audio.
+pub(crate) fn muted(source: &AudioSource) -> Option<AudioSource> {
+    let data = source
+        .bytes
+        .get(..64)?
+        .windows(4)
+        .position(|tag| tag == b"data")?
+        + 8;
+    let mut bytes = source.bytes.to_vec();
+    (cyrus_assets::disc::mute_leading_data_sectors(bytes.get_mut(data..)?) > 0).then(|| {
+        AudioSource {
+            bytes: bytes.into(),
+        }
+    })
 }
 
 /// Starts loading `track`; the playing track is replaced once it is read.
@@ -238,6 +259,7 @@ fn finish_track(
         Query<(), With<crate::CinematicAudio>>,
     ),
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
+    fidelity: Option<Res<cyrus_game::fidelity::Fidelity>>,
 ) {
     let (Some(load), Some(transports)) = (music.load.as_mut(), transports.as_mut()) else {
         return;
@@ -266,6 +288,11 @@ fn finish_track(
             music.track = None;
             return error!("music: {e}");
         }
+    };
+    let source = if fidelity.is_some_and(|f| f.music == cyrus_game::fidelity::Mode::Modern) {
+        muted(&source).unwrap_or(source)
+    } else {
+        source
     };
     let transport = match MusicTransport::new(source) {
         Ok(transport) => transport,

@@ -42,6 +42,13 @@ impl MusicTransport {
             snapshot.is_unscaled_loop(),
             "CD music transport is not an unscaled normal-speed loop"
         );
+        // A Modern music session captured the muted bytes; the host supplies the installed ones.
+        let source = if snapshot.source_identity() == blake3::hash(&source.bytes).to_hex().as_str()
+        {
+            source
+        } else {
+            super::muted(&source).unwrap_or(source)
+        };
         Ok(Self(Panned::from_snapshot(
             source,
             PcmWidth::Sixteen,

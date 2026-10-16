@@ -231,6 +231,12 @@ fn debug_menu(
             Area::Lighting,
             "Lighting (Modern uses Faithful)",
         );
+        fidelity_control(
+            ui,
+            &mut fidelity,
+            Area::Music,
+            "Music (Modern mutes CD data noise)",
+        );
 
         ui.separator();
         let inspector_label = if menu.inspector_open {

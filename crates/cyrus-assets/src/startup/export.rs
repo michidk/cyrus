@@ -1,6 +1,7 @@
 use anyhow::Context;
 use rgpre::import::{
-    fnt::parse_fnt, glide_splash_dll::parse_windows_glide_splash, gxa::parse_gxa_file,
+    fnt::parse_fnt, glide_splash::parse_glide_splash, glide_splash_dll::parse_windows_glide_splash,
+    gxa::parse_gxa_file,
 };
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
@@ -49,8 +50,20 @@ pub(crate) fn prepare_startup(
     let font = cyrus_text::Font::from(
         &parse_fnt(&font_bytes).with_context(|| format!("startup: {}", font_path))?,
     );
+    // The DOS overlay variant is optional; GOG installs ship it beside the Windows DLL.
+    let overlay = "splash/glide2x_emu.ovl";
+    let overlay_bytes = if source.manifest().find(overlay).is_some() {
+        Some(source.read(overlay)?)
+    } else {
+        None
+    };
     let mut fingerprint = DefaultHasher::new();
-    (5u32, &dll_bytes, &title_bytes, &font_bytes).hash(&mut fingerprint);
+    (6u32, &dll_bytes, &title_bytes, &font_bytes, &overlay_bytes).hash(&mut fingerprint);
+    let dos_frames = if overlay_bytes.is_some() {
+        crate::DOS_SPLASH_FRAMES
+    } else {
+        0
+    };
     let fingerprint = fingerprint.finish().to_string();
     let directory = Path::new("startup");
     let stamp = directory.join("source.txt");
@@ -61,6 +74,8 @@ pub(crate) fn prepare_startup(
         == Some(&fingerprint)
         && (0..crate::SPLASH_FRAMES)
             .all(|frame| output.exists(&directory.join(format!("splash-{frame:02}.png"))))
+        && (0..dos_frames)
+            .all(|frame| output.exists(&directory.join(format!("splash-dos-{frame:02}.png"))))
         && [
             "title.png",
             "title-preparing.png",
@@ -109,6 +124,16 @@ pub(crate) fn prepare_startup(
         output
             .image(&path, &image)
             .with_context(|| format!("startup: writing {}", path.display()))?;
+    }
+    if let Some(bytes) = &overlay_bytes {
+        let splash = parse_glide_splash(bytes).with_context(|| format!("startup: {overlay}"))?;
+        for frame in 0..dos_frames {
+            let image = super::dos_raster::render(&splash, frame + super::dos_raster::FIRST_FRAME);
+            let path = directory.join(format!("splash-dos-{frame:02}.png"));
+            output
+                .image(&path, &image)
+                .with_context(|| format!("startup: writing {}", path.display()))?;
+        }
     }
     let mut background = image::RgbaImage::from_raw(640, 480, title_frame.rgba.clone())
         .context("startup: title pixel count is invalid")?;

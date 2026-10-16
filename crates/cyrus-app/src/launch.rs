@@ -59,6 +59,12 @@ pub struct GameOptions {
     /// Sky presentation mode.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub sky: Option<String>,
+    /// CD music mode; modern mutes CD-ROM data bytes inside audio tracks.
+    #[arg(long, value_parser = ["faithful", "modern"])]
+    pub music: Option<String>,
+    /// Installed 3dfx splash: the GOG Windows launch's `3DfxSpl2.dll` or the DOS Glide overlay.
+    #[arg(long, value_parser = ["windows", "dos"])]
+    pub splash: Option<String>,
 }
 
 /// Viewer selection options also accept existing browser fragment links.
@@ -166,8 +172,13 @@ mod tests {
             "--scene=start",
             "--water=modern",
             "--skip-startup",
+            "--music=modern",
+            "--splash=dos",
         ])
         .unwrap();
+        assert_eq!(game.music.as_deref(), Some("modern"));
+        assert_eq!(game.splash.as_deref(), Some("dos"));
+        assert!(GameOptions::try_parse_from(["game", "--splash=other"]).is_err());
         assert_eq!(game.scene.as_deref(), Some("START"));
         assert_eq!(game.water.as_deref(), Some("modern"));
         assert!(game.skip_startup);

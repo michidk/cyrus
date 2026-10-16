@@ -68,6 +68,11 @@ fn main() {
         } else {
             Mode::Faithful
         },
+        music: if options.music.as_deref() == Some("modern") {
+            Mode::Modern
+        } else {
+            Mode::Faithful
+        },
         ..default()
     })
     .add_plugins((
@@ -91,9 +96,13 @@ fn main() {
             .run_if(in_state(cyrus_game::AppState::Loading))
             .run_if(resource_exists::<cyrus_startup::StartGame>),
     );
-    if options.skip_startup {
-        app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
-    }
+    let mut presentation = if options.skip_startup {
+        cyrus_startup::StartupPresentation::without_splash()
+    } else {
+        cyrus_startup::StartupPresentation::default()
+    };
+    presentation.splash = cyrus_startup::Splash::from_option(options.splash.as_deref());
+    app.insert_resource(presentation);
     app.add_plugins(cyrus_debug::DebugMenuPlugin);
     cheats::register(&mut app);
     debug::register(&mut app);

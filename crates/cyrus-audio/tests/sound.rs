@@ -139,6 +139,17 @@ fn installed_world_music_reads_red_book_tracks() {
     assert_eq!((rate, channels), (44_100, 2));
     assert!(samples > 44_100 * 2 * 60, "track 2 lasts over a minute");
     assert!(read_track(&cue, 1).is_err(), "track 1 is the data track");
+    // The GOG image's track 2 starts with two sync-marked CD-ROM data sectors.
+    let mut track = read_track(&cue, 2).unwrap();
+    assert_eq!(
+        cyrus_assets::disc::mute_leading_data_sectors(&mut track[44..]),
+        4728
+    );
+    let mut later = read_track(&cue, 3).unwrap();
+    assert_eq!(
+        cyrus_assets::disc::mute_leading_data_sectors(&mut later[44..]),
+        0
+    );
 }
 
 #[test]

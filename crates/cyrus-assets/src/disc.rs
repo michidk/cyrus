@@ -67,9 +67,53 @@ fn msf_sector(msf: &str) -> Option<u64> {
     (s < 60 && f < 75 && parts.next().is_none()).then_some((m * 60 + s) * 75 + f)
 }
 
+/// The 12-byte sync pattern that begins every CD-ROM data sector; scrambling leaves it intact.
+const SYNC: [u8; 12] = [
+    0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0,
+];
+
+/// Silences CD-ROM data-sector bytes at the start of an audio track's PCM and
+/// returns how many bytes were zeroed. The GOG image's track 2 begins with the
+/// overlapping tail of the data track (preservation `docs/engine/music.md`).
+/// Muting starts at the track start, runs through the last of a contiguous
+/// chain of sync-marked sectors, and keeps the track length and timing.
+pub fn mute_leading_data_sectors(pcm: &mut [u8]) -> usize {
+    let sector = SECTOR_BYTES as usize;
+    let mut end = 0;
+    // The first sector may start mid-sector, so the first search spans a whole sector.
+    while let Some(offset) = pcm
+        .get(end..(end + sector).min(pcm.len()))
+        .and_then(|window| window.windows(SYNC.len()).position(|bytes| bytes == SYNC))
+    {
+        end = (end + offset + sector).min(pcm.len());
+    }
+    // Whole stereo 16-bit frames only.
+    let end = end.next_multiple_of(4).min(pcm.len());
+    pcm[..end].fill(0);
+    end
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn leading_data_sectors_are_muted_and_audio_is_kept() {
+        let sector = SECTOR_BYTES as usize;
+        // GOG track 2 layout: sync-marked sectors at bytes 24 and 2376, then audio.
+        let mut pcm = vec![7u8; 6 * sector];
+        for start in [24, 24 + sector] {
+            pcm[start..start + SYNC.len()].copy_from_slice(&SYNC);
+        }
+        assert_eq!(mute_leading_data_sectors(&mut pcm), 4728);
+        assert!(pcm[..4728].iter().all(|byte| *byte == 0));
+        assert!(pcm[4728..].iter().all(|byte| *byte == 7));
+        let mut audio = vec![7u8; 3 * sector];
+        assert_eq!(mute_leading_data_sectors(&mut audio), 0);
+        assert!(audio.iter().all(|byte| *byte == 7));
+        // A sync mark beyond the first sector is not part of a leading chain.
+        audio[sector + 100..sector + 100 + SYNC.len()].copy_from_slice(&SYNC);
+        assert_eq!(mute_leading_data_sectors(&mut audio), 0);
+    }
     #[test]
     fn cue_track_ranges_end_at_the_next_track() {
         let cue = "FILE \"disc.bin\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n  TRACK 02 AUDIO\n    INDEX 00 00:10:00\n    INDEX 01 00:12:00\n  TRACK 03 AUDIO\n    INDEX 01 01:00:74\n";

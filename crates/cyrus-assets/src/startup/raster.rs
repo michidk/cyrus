@@ -71,7 +71,7 @@ impl Canvas {
     }
 }
 
-fn sample(texture: &SplashTexture, uv: Vec2) -> Vec3 {
+pub(super) fn sample(texture: &SplashTexture, uv: Vec2) -> Vec3 {
     let scale = texture.width.max(texture.height) as f32 / 256.0;
     let point = uv * scale - Vec2::splat(0.5);
     let base = point.floor();

@@ -236,6 +236,8 @@ reads the installed `3DfxSpl2.dll`, `system/STARTUP2.GXA`, and the configured
 needed. The splash DLL is selected from `Redguard`, with the sibling GOG `DOSBOX`
 directory as a fallback. **Verified:** its metallic logo and orange swoosh are
 the Windows Glide splash; the full DOS overlay contains the older shield logo.
+`--splash dos` plays that overlay animation from `glide2x_emu.ovl`; startup export
+caches both variants when the overlay is present ([DIFFERENCES.md](DIFFERENCES.md)).
 The [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/GLIDE-SPLASH-DLL.md)
 documents both paths. Enter, Space, or Escape advances startup.
 `--skip-startup` bypasses the splash while required menu preparation remains behind the title. `--scene` loads

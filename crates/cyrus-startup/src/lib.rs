@@ -22,11 +22,34 @@ pub use preparation::LoadingPlugin;
 /// Plays installed startup images through the installed book menu, before gameplay.
 pub struct StartupPlugin;
 
+/// Installed 3dfx splash variant played before the title. Both ship with the GOG release.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Splash {
+    /// `3DfxSpl2.dll`, which GOG's Windows DOSBox plays when the game opens Glide.
+    #[default]
+    Windows,
+    /// The older shield animation in the DOS Glide overlay `glide2x_emu.ovl`.
+    Dos,
+}
+
+impl Splash {
+    /// Parses the shared launch option; absent selects the Windows default.
+    pub fn from_option(value: Option<&str>) -> Self {
+        if value == Some("dos") {
+            Self::Dos
+        } else {
+            Self::Windows
+        }
+    }
+}
+
 /// Presence selects startup presentation instead of the scene-viewer preload UI.
 #[derive(Resource, Default, serde::Serialize)]
 pub struct StartupPresentation {
     /// Bypass splash playback while retaining required game preparation.
     pub skip: bool,
+    pub splash: Splash,
     pub(crate) title_visible: bool,
     pub(crate) error: Option<String>,
     #[serde(skip)]
@@ -128,7 +151,7 @@ fn sync_audio(
     }
 }
 
-use cyrus_assets::SPLASH_FRAMES;
+use cyrus_assets::{DOS_SPLASH_FRAMES, SPLASH_FRAMES};
 
 fn setup(
     mut commands: Commands,
@@ -138,12 +161,17 @@ fn setup(
 ) {
     startup.title_visible = false;
     startup.error = None;
-    let frames: Vec<_> = (0..if startup.skip || game.is_some() {
+    let (prefix, count) = match startup.splash {
+        Splash::Windows => ("splash", SPLASH_FRAMES),
+        Splash::Dos => ("splash-dos", DOS_SPLASH_FRAMES),
+    };
+    let count = if startup.skip || game.is_some() {
         0
     } else {
-        SPLASH_FRAMES
-    })
-        .map(|frame| assets.load(format!("cache://startup/splash-{frame:02}.png")))
+        count
+    };
+    let frames: Vec<_> = (0..count)
+        .map(|frame| assets.load(format!("cache://startup/{prefix}-{frame:02}.png")))
         .collect();
     commands.spawn((Camera2d, StartupContent));
     let title = game

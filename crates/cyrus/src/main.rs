@@ -99,6 +99,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         (cyrus_game::fidelity::Area::Water, args.launch.water),
         (cyrus_game::fidelity::Area::Fog, args.launch.fog),
         (cyrus_game::fidelity::Area::Sky, args.launch.sky),
+        (cyrus_game::fidelity::Area::Music, args.launch.music),
     ] {
         if let Some(value) = value {
             settings.fidelity.set(
@@ -186,9 +187,13 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         debug::register(&mut app);
         if startup {
             app.add_plugins(cyrus_startup::StartupPlugin);
-            if args.launch.skip_startup {
-                app.insert_resource(cyrus_startup::StartupPresentation::without_splash());
-            }
+            let mut presentation = if args.launch.skip_startup {
+                cyrus_startup::StartupPresentation::without_splash()
+            } else {
+                cyrus_startup::StartupPresentation::default()
+            };
+            presentation.splash = cyrus_startup::Splash::from_option(args.launch.splash.as_deref());
+            app.insert_resource(presentation);
         } else {
             app.add_plugins(cyrus_startup::LogbookPlugin);
         }

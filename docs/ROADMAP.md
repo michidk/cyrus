@@ -191,11 +191,12 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Supply live ordinary activation inputs and shared HUD prompt presentation. **Verified:** host and HUD-system tests cover installed-label lookup, live actor/menu state, held-use ownership and nominal-tick holdoff without inspection inputs; a reversed-input control fails. Standalone initialization owns the lineup result; unsupported alignment invalidates it. Full installed interaction remains open.
 - [ ] Complete representative real-time candle cadence, all snuff intermediates, matched production activation prompt/item timing and remaining HUD layout against the original. **Unknown:** the slow software-emulated capture does not establish hardware cadence or complete prompt interaction parity. Ordinary activation now samples live actor/input/RTX state and the initialized shared lineup result. PlayerLineUp movement remains unsupported; failed alignment invalidates the result. **Verified:** [published alignment rules](https://github.com/michidk/redguard-preservation/compare/main...docs/player-lineup-execution) establish per-task mode/reference ownership and distinct distance thresholds, checked against original instructions. Directional movement, collision-query cleanup and installed prompt/conversation acceptance remain open.
 - [ ] Compare effects, speech, subtitles and music by ear. Establish listener/camera rules, pan direction, text-only subtitle timing and attached-emitter eligibility.
-- [ ] Evaluate optional Modern suppression of the startup CD burst after paired original/cyrus audio capture. Faithful retains installed playback; no suppression exists.
+- [x] Optional Modern music mutes the CD data bytes at the start of track 2; Faithful retains installed playback. See [accepted differences](DIFFERENCES.md).
 
 ### Startup and book menu
 
 - [x] Installed Windows splash/title and data-driven book motion, settings, keyboard navigation, feedback and authored Quit.
+- [x] Selectable DOS overlay splash (`--splash dos`); the Windows GOG splash stays the default. See [accepted differences](DIFFERENCES.md).
 - [x] Streamed native/browser Movies with skip points, subtitles/interlace and retained menu selection.
 - [x] New Game and temporary Load enter the installed starting world behind artwork and dependency readiness. Original-style world-entry progress text is implemented.
 - [x] Compare settled startup title, Options/Display layout and native loading-bar presentation with the original; verify native/browser startup skipping and subtitle persistence across restart/reload. Full pixel and timing parity remain **Unknown**.
