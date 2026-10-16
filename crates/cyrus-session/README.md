@@ -14,7 +14,7 @@ rejects in-flight preparation. Player replacements also retain the displayed
 model/frame and sound surface before the first gameplay update.
 
 This draft provides an exclusive commit and document encoding for its represented
-owners, but does not yet provide a complete accepted save or a host load handler.
+owners and diagnostic host load handlers, but does not yet provide a complete accepted save.
 Host preparation, complete source identity and lifecycle admission still need
 native/browser publication and restart/revisit acceptance. Source-decoder snapshots
 do not retain downstream resampler or device queues.
@@ -232,9 +232,9 @@ Terminal native load results remain available until explicitly acknowledged.
 An installed diagnostic load reached ready ISLAND gameplay from START and
 recaptured current ISLAND plus visited START. Retained START matches after
 actor-generation rebinding. Complete rendered continuation and revisit execution
-remain unverified. Remaining work includes integration
-of the separately owned browser storage caller, installed live restoration,
-restart/reload and visited-world continuation. Revisit guards
+remain unverified. The separately owned browser storage caller is integrated.
+Remaining work includes installed live restoration, restart/reload and
+visited-world continuation. Revisit guards
 remain until service cleanup and retained-task behavior are implemented and
 verified. Audio snapshots cover source-decoder continuation, not downstream
 converter/device queues. Complete gameplay and controller acceptance remain open.
