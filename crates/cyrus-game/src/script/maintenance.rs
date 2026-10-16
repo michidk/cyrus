@@ -36,6 +36,43 @@ impl SoundMaintenance {
         self.ticks = 0;
     }
 
+    /// Restore retained actor state after clearing shared sound services.
+    /// Unlike periodic maintenance, restoration preserves walk-node reservations
+    /// and sets the reset flag only after actor restoration succeeds. The next
+    /// maintenance sample clears it, including while accumulation is inhibited.
+    /// Follows preservation's engine/sound.md saved-world restoration order.
+    pub fn restore_world<T>(
+        &mut self,
+        cleanup: &mut dyn FnMut(SoundResetStage) -> Result<()>,
+        restore_actors: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        if let Some(error) = &self.failure {
+            bail!("{error}");
+        }
+        let result = (|| {
+            for stage in [
+                SoundResetStage::ReleaseRtx,
+                SoundResetStage::ClearDialogue,
+                SoundResetStage::StopSamples,
+            ] {
+                cleanup(stage)
+                    .map_err(|error| anyhow::anyhow!("world restoration {stage:?}: {error:#}"))?;
+            }
+            restore_actors()
+        })();
+        match result {
+            Ok(value) => {
+                self.reset = true;
+                Ok(value)
+            }
+            Err(error) => {
+                let message = format!("world sound restoration: {error:#}");
+                self.failure = Some(message.clone());
+                bail!("{message}")
+            }
+        }
+    }
+
     /// Sample once after clock sampling and before ordinary actor updates.
     /// The host must execute each requested cleanup stage synchronously. Missing
     /// ownership is an error. A partial reset remains failed rather than being
