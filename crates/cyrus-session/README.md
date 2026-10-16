@@ -222,14 +222,16 @@ The shared-load integration test passes after separating its fixture from the
 late plugin-registration check, which reinitializes source asset storage. Focused
 public tests cover delayed-asset waiting, commit, malformed-candidate rejection
 without live replacement, and direct-candidate/audio continuation. These synthetic
-contracts do not establish installed rendered load acceptance. Final workspace
-gates and browser checks have not been run for the current checkpoint.
+contracts do not establish complete installed rendered load acceptance. The
+full workspace gate is running after a corrected native lint failure.
 
 The native diagnostic load caller prepares installed current and visited sources
 off-live. Its malformed-document host test passes without live replacement.
 Terminal native load results remain available until explicitly acknowledged.
-Installed rendered restoration is still under verification; request acceptance
-does not establish successful publication. Remaining work includes integration
+An installed diagnostic load reached ready ISLAND gameplay from START and
+recaptured current ISLAND plus visited START. Retained START matches after
+actor-generation rebinding. Complete rendered continuation and revisit execution
+remain unverified. Remaining work includes integration
 of the separately owned browser storage caller, installed live restoration,
 restart/reload and visited-world continuation. Revisit guards
 remain until service cleanup and retained-task behavior are implemented and

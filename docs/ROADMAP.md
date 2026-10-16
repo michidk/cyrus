@@ -344,8 +344,12 @@ Shared aggregate, registry/service replacements, rendered staging, capture hooks
 and asynchronous load preparation are committed as work in progress. The latest
 asynchronous load integration test passes after isolating its asset fixture from
 late plugin registration. Delayed-asset waiting and rejected-load preservation
-have synthetic coverage. Final checkpoint gates have not run. Native diagnostic load wiring is drafted but unverified.
-Browser-owner integration, installed live restore/restart/reload/revisits and
+have synthetic coverage. Native diagnostic load reached ready ISLAND gameplay
+from START and recaptured both worlds. Retained START matches the input after
+actor-generation rebinding. This does not establish revisit execution or complete
+render/audio continuation. Native malformed-document rejection and retained-result
+polling pass. The full gate is running after a corrected lint failure.
+Browser-owner integration, installed restart/reload/revisits and
 complete gameplay acceptance remain unchecked. Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
 [SOUP completion plan](plans/2026-10-12-soup-completion.md#unfinished-session-checkpoint).

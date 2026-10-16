@@ -128,7 +128,10 @@ reject malformed or aborted writes. These checks establish document transport,
 not gameplay restoration. Shared aggregate preparation and live commit are checkpointed as unfinished
 SOUP work. The native diagnostic load caller prepares sources off-live and
 retains completion until acknowledgement. Synthetic assembly and asynchronous
-rejection contracts pass; installed rendered load acceptance remains open. Complete installed restore, revisits, browser caller
+rejection contracts pass. Installed native load reaches ready ISLAND gameplay
+from START and recaptures current ISLAND plus retained START; dormant START
+matches after actor-generation rebinding. Complete rendered continuation and
+revisit execution remain open. Complete installed restore, revisits, browser caller
 integration and downstream audio continuation remain open.
 
 Active boundaries are recorded in the roadmap. The SOUP owner retains
