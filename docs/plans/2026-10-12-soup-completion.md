@@ -401,5 +401,14 @@ movement remain unsupported. This does not complete the light/native-service row
 `PlayerLooking` now routes through the existing spatial query owner. Its signed-width
 bearing helper matches 272 retained-instruction vectors, including signed-minimum
 differences. Three public argument, position-priority and script-dispatch tests pass.
-Final workspace gates, WASM check and installed automatic traversal remain pending.
+Final workspace gates and the WASM check pass. Installed automatic traversal remains pending.
 This does not establish perception, line of sight or complete installed traversal.
+
+### Portable current and visited fixture
+
+**Verified:** a fresh native capture using portable placement exports retains
+current ISLAND and visited START, including 173 ordinary rendered model replacements
+and the player model. The copied native cache matches the capture runtime byte-for-byte.
+Source, executable, document and cache manifests accompany the local fixture.
+Browser acceptance of this corrected-export fixture, rendered/audio continuation
+and complete gameplay revisits remain open.
