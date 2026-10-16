@@ -27,7 +27,7 @@ collision/combat/intro services and complete all-world acceptance remain open.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
-  metadata, and decoded programs. The current draft script cache is version 13, programs are
+  metadata, and decoded programs. The script cache is version 14, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
@@ -103,11 +103,43 @@ all missing host commands and cannot measure gameplay completeness.
   stage 5 owns full-game verification. The active SOUP task owns the remaining implementation checklist.
 - [Method](../METHOD.md): original-game evidence and reproducible comparisons.
 
-**Verified:** complete automatic keyboard locomotion remains unavailable. The
-authorized controller integration uses the selected actor's ordinary native-hook
-stage and shared clock. The controller module owns pure input selection; the
-registry owns actor state, spatial initialization and execution. Explicit walking
-replays do not establish automatic keyboard acceptance.
+**Verified:** bounded automatic keyboard walking has synthetic scheduler coverage
+and an installed headless ISLAND idle/forward/release probe with explicit view
+context. Complete installed traversal and four-surface acceptance remain open.
+The separate player-controller owner now owns movement, input, placement/runtime
+and collision work. SOUP owns the ordinary-stage caller and authoritative registry.
+Changes to their shared contract require coordination; explicit walking replays
+do not establish complete automatic keyboard acceptance.
+
+## Persistence status and ownership
+
+The detailed roadmap is the current record of landed component contracts. The
+unchecked milestones below describe complete behavior, not absence of component
+work. VM, native tasks, animation, clock, flags, inventory, journal, dialogue,
+HUD, source audio/CD and texture/terrain replacements have landed.
+
+**Verified:** an installed native START-to-ISLAND capture represents current and
+visited worlds. Native typed publication/fresh-process readback and a typed
+Rust/WASM IndexedDB prototype preserve its exact document across reload and
+reject malformed or aborted writes. These checks establish document transport,
+not gameplay restoration. Shared aggregate preparation and live commit remain
+an unlanded SOUP draft. Complete installed restore, revisits, browser caller
+integration and downstream audio continuation remain open.
+
+Active boundaries are recorded in the roadmap. The SOUP owner retains
+`cyrus-game/src/script`, shared session assembly and the native load caller.
+The storage owner retains browser session storage/caller and publication/reload
+acceptance. The controller owner retains `cyrus-game/src/player` and collision.
+Preserve existing drafts when taking ownership; do not replace snapshot contracts
+or move live state between these owners without coordinating the interface.
+
+Independent work can cover Smacker decoder correctness within `cyrus-smacker`
+without changing startup/audio callers, portable VM rejection/continuation tests
+within `cyrus-script/tests` without changing host APIs, and retained-evidence
+research for unsupported SOUP services. Rendering/HUD comparisons can proceed as
+evidence work, but runtime persistence, camera/sky, texture/terrain and actor
+prelighting integration currently intersect the aggregate draft. Stopped original
+and browser previews remain stopped unless the maintainer authorizes a restart.
 
 ## Ordered implementation checklist
 

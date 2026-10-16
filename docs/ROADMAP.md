@@ -11,7 +11,7 @@ specification. No multiplayer or new content.
 | 0. Development tooling | Done | Build, run, drive and compare both games |
 | 1. Complete world playback | In progress | Render, animate, sound and execute every required world script |
 | 2. Player controller | Bounded walking integration | Original movement, camera and collision |
-| 3. Interaction and persistence | Later | Dialogue, inventory, scripted cameras, transitions and saves |
+| 3. Interaction and persistence | In progress; complete restoration unverified | Dialogue, inventory, scripted cameras, transitions and saves |
 | 4. Complete gameplay | Later | Quests, combat and remaining gameplay services |
 | 5. Full-game fidelity | Later | A verified new-game-to-ending playthrough |
 | 6. Release | Later; packaging exists | A tested distribution and clean-machine setup |
@@ -45,12 +45,16 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| Save/load: original persistence contracts and safe native/browser restoration | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
-| SOUP integration: automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-12-soup-spatial-runtime/` |
+| Session storage: native/browser publication, browser caller, reload and failure acceptance; shared assembly excluded | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-15-save-runtime/` |
+| SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
+| Player controller: movement, input, placement/runtime, collision and installed walking acceptance | Transferred by maintainer; incoming agent | Separate controller owner; preserve the existing SOUP-worktree controller draft |
 | Startup comparisons: splash, camera clipping, book-transition timing, loading artwork and audio against the original | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-15-startup-comparison/` |
 
 Remaining rendering follow-ups and HUD integration are unassigned.
-The bounded idle/walk/release controller integration is active. Complete controller implementation remains open.
+Player-controller implementation and walking acceptance belong to the incoming controller owner.
+SOUP consumes that owner through the existing ordinary-stage and snapshot contracts.
+Browser session-storage and its caller belong to the storage owner; shared load
+preparation and the native caller belong to the SOUP owner.
 
 ## Resource coverage
 
@@ -72,7 +76,7 @@ or fidelity across every world and palette.
 | BMP, PCX, LBM, ANM | Image inspection and authored-rate ANM playback | Game cursor and palette cycling |
 | CHT, CPF | Cheat and console parsing, local persistence and supported commands | Remaining gameplay effects, commands and console fidelity |
 | PVO | Parsing and viewer inspection | Runtime culling excluded at user request |
-| Save data | Unsupported | Safe world, player, script and quest persistence |
+| Save data | Component replacements and complete-document storage checks | Live whole-session restoration, revisits and original-save compatibility |
 
 ## 0. Development tooling
 
@@ -249,6 +253,7 @@ Requires the player controller.
 - [x] Complete configured script-HUD replacement snapshots compose inventory and journal with compass, held-use latch, power-up slots and replacement order. **Verified:** public continuation/malformed-state contracts and installed-data native publication with fresh-process reconstruction, including failed-write protection and altered-state controls. Replacement performs no storage I/O or startup acquisitions. Unconfigured and failed local state cannot be captured. Whole-session restoration remains open.
 - [x] Exact source-decoder replacement checkpoints for effects, speech and CD music retain cursor, gains, looping and pause state. **Verified:** public continuation/rejection contracts, installed effects/CD through the headless host, unchanged CD PCM and browser compilation. Channel/dialogue assembly and downstream output buffers remain open.
 - [x] Document [original restoration audio lifecycle](https://github.com/michidk/redguard-preservation/pull/83). **Verified:** original instructions and altered controls cover cleanup, reset-flag lifetime, saved native-task continuation and CD track-selection paths. Live music continuity and installed runtime revisit acceptance remain open.
+- [ ] Complete session candidate and coordinated live commit. **Verified:** focused logical-world/native-task continuation and first-plugin-update checks preserve current/visited identities, clock and player entry state. Focused sample-pool tests retain source-decoder progress, pause and silent animation ownership while rejecting incomplete replacements. Focused presentation replacement checks retain HUD continuation, camera/framing, sky scrolling, the presentation epoch and per-world environment edits. Complete rendered publication, full audio/backend policy, installed host assembly, revisits and restart acceptance remain open.
 - [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. **Verified:** native publication and fresh-process typed readback preserve the complete installed current-plus-visited document; malformed input and failed writes preserve accepted bytes. Writer-interruption controls pass before sync and rename. **Verified:** the installed START session document exceeds localStorage capacity in Chrome; failed publication preserves the accepted record across reload. The typed Rust/WASM IndexedDB prototype retains the complete two-world document across reload; malformed candidates and aborted writes preserve accepted bytes. Production browser integration, complete session restoration and power-loss durability remain open. Format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,
@@ -300,7 +305,7 @@ them land naturally as their gameplay owners are implemented.
 ### Cheats
 
 - [ ] Connect remaining documented cheat effects as their gameplay owners land. **Unknown:** `oddjob` behavior.
-  - `magiccarpet`, `yeahbaby`, `moonraker`: player controller (parked).
+  - `magiccarpet`, `yeahbaby`, `moonraker`: player controller owner.
   - `drevil`, `goldfinger`: health, damage and death handling.
   - `task`, `animation`, `drno`: SOUP actor task, animation and NPC update ownership.
   - `nodemarker`: navigation node-map display.
