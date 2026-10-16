@@ -1,14 +1,17 @@
 //! Platform world-picker sources and navigation.
 use bevy::prelude::*;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 use cyrus_debug::WorldPicker;
 #[cfg(target_arch = "wasm32")]
 fn initialize_web_world(mut picker: ResMut<WorldPicker>) {
     picker.options = web_worlds();
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 fn update_web_world(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    state: Res<State<cyrus_game::AppState>>,
     mut picker: ResMut<WorldPicker>,
     current: Res<cyrus_world::lifecycle::CurrentScene>,
 ) {
@@ -19,21 +22,42 @@ fn update_web_world(
     let Some(requested) = picker.pending.take() else {
         return;
     };
+    let in_game = *state.get() == cyrus_game::AppState::InGame;
+    if in_game {
+        commands.remove_resource::<cyrus_render::camera::InitialView>();
+        commands.insert_resource(cyrus_world::lifecycle::SceneRequest(requested.clone()));
+        commands.insert_resource(cyrus_world::lifecycle::PreparedWorld::from_cache(
+            requested.clone(),
+            &assets,
+        ));
+    }
+    #[cfg(target_arch = "wasm32")]
     if let Some(window) = web_sys::window()
-        && let Err(error) = set_scene(&window, &requested)
+        && let Err(error) = set_scene(&window, &requested, !in_game)
     {
         error!("load world {requested}: {error:?}");
     }
 }
 
 #[cfg(target_arch = "wasm32")]
-fn set_scene(window: &web_sys::Window, scene: &str) -> Result<(), wasm_bindgen::JsValue> {
+fn set_scene(
+    window: &web_sys::Window,
+    scene: &str,
+    reload: bool,
+) -> Result<(), wasm_bindgen::JsValue> {
     let params = web_sys::UrlSearchParams::new_with_str(&window.location().search()?)?;
     params.set("scene", scene);
     params.delete("view");
-    window
-        .location()
-        .set_search(&params.to_string().as_string().unwrap_or_default())
+    let query = params.to_string().as_string().unwrap_or_default();
+    if reload {
+        window.location().set_search(&query)
+    } else {
+        window.history()?.replace_state_with_url(
+            &wasm_bindgen::JsValue::NULL,
+            "",
+            Some(&format!("?{query}")),
+        )
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -53,8 +77,10 @@ fn parse_worlds(worlds: &str) -> Vec<[String; 2]> {
 
 pub fn register(app: &mut App) {
     #[cfg(target_arch = "wasm32")]
-    app.add_systems(Startup, initialize_web_world)
-        .add_systems(Update, update_web_world);
+    app.add_systems(Startup, initialize_web_world).add_systems(
+        Update,
+        update_web_world.before(cyrus_world::lifecycle::WorldChange),
+    );
     #[cfg(not(target_arch = "wasm32"))]
     let _ = app;
 }
@@ -62,6 +88,65 @@ pub fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn in_game_world_selection_keeps_the_session_and_queues_shared_preparation() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::state::app::StatesPlugin,
+            AssetPlugin::default(),
+        ))
+        .insert_state(cyrus_game::AppState::InGame)
+        .init_asset::<cyrus_assets::animation::Animations>()
+        .init_asset::<cyrus_assets::script::Scripts>()
+        .insert_resource(cyrus_game::random::EngineRandom::from_state(42))
+        .insert_resource(cyrus_world::lifecycle::CurrentScene {
+            name: "ISLAND".into(),
+            world: Some(1),
+        })
+        .insert_resource(cyrus_world::lifecycle::SceneRequest("ISLAND".into()))
+        .insert_resource(cyrus_render::camera::InitialView(Transform::IDENTITY))
+        .insert_resource(WorldPicker {
+            pending: Some("0".into()),
+            ..default()
+        })
+        .add_systems(Update, update_web_world);
+        let retained = app
+            .world_mut()
+            .spawn(Name::new("retained session entity"))
+            .id();
+        app.update();
+        assert!(app.world().get::<Name>(retained).is_some());
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::random::EngineRandom>()
+                .state(),
+            42
+        );
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_world::lifecycle::SceneRequest>()
+                .0,
+            "0"
+        );
+        let prepared = app
+            .world()
+            .resource::<cyrus_world::lifecycle::PreparedWorld>();
+        assert_eq!(prepared.requested_name, "0");
+        assert_eq!(prepared.player_path.to_string(), "cache://0.player");
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_render::camera::InitialView>()
+        );
+        assert!(app.world().resource::<WorldPicker>().pending.is_none());
+        app.update();
+        assert!(app.world().get::<Name>(retained).is_some());
+        assert_eq!(
+            *app.world().resource::<State<cyrus_game::AppState>>().get(),
+            cyrus_game::AppState::InGame
+        );
+    }
+
     #[test]
     fn world_options_preserve_ids_for_shared_maps() {
         assert_eq!(

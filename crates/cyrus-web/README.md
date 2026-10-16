@@ -77,7 +77,10 @@ WORLD.INI ID. Modes accept `faithful` and `modern`; defaults remain Faithful.
 Boolean `skip-startup` accepts an empty value, `true`/`1`, and `false`/`0`.
 `view` supplies a one-shot inspection camera pose in scene coordinates with a
 unit quaternion, including world entry through the menu. It does not move the player.
-World-picker navigation clears the one-shot inspection pose and preserves the install URL and other launch options.
+In a world, the world picker prepares the destination within the current session
+and updates the URL without reloading the page. It clears the one-shot inspection
+pose and preserves the install URL and other launch options. From startup or the
+menu, the picker still navigates to a direct scene launch.
 AI-driven browser tests must always supply the install to the server or in the URL,
 so the user never has to answer the prompt during testing.
 

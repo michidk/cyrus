@@ -32,7 +32,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Document", "Element", "UrlSearchParams"] }
+web-sys = { version = "0.3", features = ["Window", "History", "Location", "Storage", "Document", "Element", "UrlSearchParams"] }
 
 [dev-dependencies]
 cyrus-collision.workspace = true
