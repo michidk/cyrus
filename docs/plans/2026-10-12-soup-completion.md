@@ -430,5 +430,13 @@ successful gameplay traversal remain open.
 identity, routing and rejection contracts pass. The installed non-standing
 KOTAROTB branch runs without changing flags or support. The published original
 identity comparison and its altered-branch control pass against retained instructions.
-Final workspace gates and WASM verification are pending. This does not establish
+WASM verification passes; final workspace gates are pending. This does not establish
 collision assignment, the standing dialogue route or automatic gameplay acceptance.
+
+### Receiver-relative player arc query
+
+The [published PlayerArc contract](https://github.com/michidk/redguard-preservation/compare/main...docs/player-arc-contract)
+establishes receiver heading, attached/linked/local position priority, signed offset
+and inclusive angular tolerance. Complete retained helper execution and altered
+controls verify that bounded query. Registry implementation and installed acceptance
+remain pending; the existing PlayerStand verification tree stays frozen.
