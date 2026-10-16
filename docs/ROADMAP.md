@@ -38,9 +38,11 @@ Next rendering work after the Windows validation batch:
   accepted control. Full sky/sun color parity and browser runtime repetition remain
   **Unknown**. [Comparison evidence](https://github.com/michidk/redguard-decomp/tree/e8e9944464699d128640ee30c5869e1cbf3e0fa1/research/supplements/2026-10-16-next-five-validations).
 
-1. Compare Cyrus and a START NPC at matched camera poses and animation frames;
-   separate normals, brightness and prelighting. **Unknown:** actor pixel parity.
-   The attempted pose hold is invalid: [zero animation suppresses the player's draw](https://github.com/michidk/redguard-preservation/pull/91).
+1. Correct animated corner-normal selection and preserve actor-specific skins across
+   frame-source models, then repeat ordinary native/browser actor comparisons.
+   **Verified:** held Cyrus and START Brennan controls favor authored vertex normals;
+   Brennan's standalone animation export loses the installed green skin override.
+   **Unknown:** complete production actor pixel parity. [Held actor evidence](https://github.com/michidk/redguard-decomp/tree/1e19412b230b142643bb042804a1b6355d36d2d0/research/supplements/2026-10-16-held-actor-shading).
 2. Compare follow-camera placement and movement with the original, including the
    confirmed player/model intersection. Camera implementation stays with its owner.
 3. Compare original candle timing under representative runtime conditions; bounded native/browser cadence
@@ -52,6 +54,12 @@ Next rendering work after the Windows validation batch:
 
 Use background window input and game-only capture on the shared Windows desktop.
 Record failed comparisons as defects; a completed investigation does not imply a fix.
+
+- [ ] Investigate the missing START boat in the isolated actor preview. **Verified:**
+  the original reference shows the deck beneath Cyrus and Brennan while the native
+  fixture shows water. **Unknown:** geometry, visibility, live boat transforms or
+  fixture setup; reproduce through ordinary world entry before assigning a production cause.
+
 **Verified:** matched Windows original,
 native and browser START/ISLAND static regions favor the current world sampling
 over forced point sampling. Remaining filtering and full pixel parity are **Unknown**.
@@ -130,6 +138,9 @@ world playback remains unfinished.
 
 - [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky, fog and water exist; Modern lighting reuses Faithful results.
 - [x] Installed model lighting, static map-light baking, authored object lights and ROB filtering attributes.
+- [x] Compare held Cyrus and START Brennan shading with isolated normal and skin controls. **Verified:** sampled sleeve RGB error falls from 37.91 to 3.60 for Cyrus and 5.32 to 2.42 for Brennan when only normals change; the wrong-skin control raises Brennan shirt error from 2.94 to 44.03. Presentation resampling and unmatched boat state limit acceptance. Brightness and lighting inputs stay fixed; no production correction ships. [Bounded comparison](https://github.com/michidk/redguard-decomp/tree/1e19412b230b142643bb042804a1b6355d36d2d0/research/supplements/2026-10-16-held-actor-shading).
+- [ ] Preserve authored vertex-normal selection during animated mesh updates, including invalid-normal face fallback, then verify ordinary native/browser actors.
+- [ ] Retain each actor's installed texture override when preparing and replacing animation source models. **Verified:** Brennan's held THUGA003 frame uses skin 454 in the original; the standalone source export shows generic blue/tan clothing. A local skin-only control restores the green clothing. Production replacement acceptance remains open.
 - [x] Finite terrain window, clipping, fixed-point texture sampling, fog and water-edge normal retention.
 - [x] Resizable World Inspector with a scrollable entity viewport. **Verified:** the egui pointer-drag regression checks window and viewport growth; headless browser v0.1.12 START captures at 1000×800 confirm growth and shrinkage with the entity viewport filling the resized window.
 - [x] Modern render distance expands terrain and water together. **Verified:** native v0.1.12 ISLAND captures at the same elevated view show extended terrain and river water at the default Modern distance; returning Fog to Faithful restores the original 3,800-unit view. Water remains Faithful during the check. **Verified:** headless browser START checks accept typed distances of 7,600 and 5,200, select Modern Fog, and restore 3,800 with Faithful Fog through Original.
@@ -215,6 +226,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [ ] Complete global lifecycle and menu/dialogue maintenance. Lockout support and an explicit ordered reset adapter exist; automatic player-controller inhibition, topic execution and death/load resets remain open. Portable RTX preparation, the 20-entry cache, explicit combat-taunt cache replacement and shared-sample dialogue playback are implemented. Authored actor taunt lists, explicit ordered selection and prepared shared-sample presentation are implemented; explicit weapon draw/cleanup and synchronous resultless combat entry share authoritative actor state; automatic nonplayer invocation now derives shared inventory and prepared-model admission and prepares taunt dependencies; complete eligibility and remaining weapon lifecycle remain open. Full New Game story acceptance remains open.
 - [x] Shared `ShowBitmap`/`UnShowBitmap` slots and `AddLog` persistence/notification dispatch. **Verified:** original-instruction acceptance checks, shared dispatch/render tests and native/browser START entry. Additional logbook styles/editing, save integration and original notification cadence remain open.
 - [x] Shared compass use through installed bindings with known actor gates. **Verified:** headless checks cover ownership, rebinding, held-use consumption, lockout and HUD/world recreation. Shared inventory and production actor inputs are connected below; save restore remains open.
+- [ ] Investigate and correct bottom-right compass shifting against the original. **Verified:** the user reports shifting during the Windows actor comparison. **Unknown:** whether the discrepancy comes from HUD anchoring, heading/frame selection, viewport scaling or the isolated fixture. Repeat with matched viewport dimensions and held heading, then check ordinary gameplay before claiming parity.
 - [ ] Connect remaining production activation/sword state and player walk-mode/auto-defend behavior.
 - [x] Shared script/HUD inventory, capped `AddItem`, `HaveItem`, `SelectItem` and compass use from logical-player state. **Verified:** headless script and HUD checks cover acquisition, live counts/selection, surface gates and world/HUD replacement; installed export checks cover all item artwork. New-game/death resets, saves and original timing comparison remain open.
 - [x] `ActiveItem` and receiver-owned `HandItem` services. **Verified:** headless VM tests cover selected hidden/unowned records, admission gates, full-ID lookup before byte assignment, routed receivers and unavailable host state; a truncation mutation is rejected. Initial held-item reconstruction and attachment geometry remain open.
