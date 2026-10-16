@@ -239,7 +239,9 @@ before traversal; hosts without that restoration still reject the update.
 Installed ISLAND-to-START revisit preserves retained task identities and player
 records while invocation counters continue; departed ISLAND remains unchanged.
 Pre-existing controller/combat update errors remain, so complete gameplay revisit
-acceptance is still open. Audio snapshots cover source-decoder continuation, not downstream
+acceptance is still open. The return to ISLAND preserves all 975 actor records
+exactly under fresh generation binding and leaves dormant START unchanged;
+pre-existing update failures persist. Audio snapshots cover source-decoder continuation, not downstream
 converter/device queues. Complete gameplay and controller acceptance remain open.
 
 The current draft also captures ordinary actor model replacements by saved actor

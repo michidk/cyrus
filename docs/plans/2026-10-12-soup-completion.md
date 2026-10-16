@@ -378,6 +378,8 @@ Cancellation preserves the retained world. Final workspace verification passed
 skips. Installed ISLAND-to-START revisit preserves 34 retained actors, task
 identities and player records; seven invocation counters continue and departed
 ISLAND remains unchanged. Eighteen pre-existing controller/combat update errors
-remain. Repeated transitions and complete gameplay revisit acceptance are open.
+remain. Returning to ISLAND preserves all 975 actor records exactly and leaves
+dormant START unchanged; its 70 pre-existing failures persist. Complete gameplay
+revisit acceptance remains open.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.

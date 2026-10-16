@@ -371,7 +371,9 @@ identities under fresh generation binding; seven invocation counters advance by
 two, and departed ISLAND remains exactly unchanged. Player, alternate player and
 camera records are unchanged. Eighteen pre-existing controller/combat update
 errors persist, so this proves retained-state continuation, not successful
-gameplay traversal. Repeated transitions and complete revisit acceptance remain open.
+gameplay traversal. Returning to ISLAND preserves all 975 actor records exactly
+under fresh generation binding and leaves dormant START unchanged; its 70
+pre-existing update failures persist. Complete gameplay revisit acceptance remains open.
 The diagnostic browser storage caller is connected; successful installed
 restart/reload/revisits and complete gameplay acceptance remain unchecked.
 Source-decoder audio checkpoints
