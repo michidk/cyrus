@@ -4419,6 +4419,7 @@ fn script_plugin_prepares_model_resources_only_from_current_scene_asset() {
         .load::<PlayerScene>("previous-model.player");
     app.insert_resource(PlayerSceneRequest(stale.clone()));
     let scene = PlayerScene {
+        source_identity: None,
         world: 7,
         model_radii: Default::default(),
         keyboard_codes: None,
@@ -4717,6 +4718,7 @@ fn ordinary_collision_scene(
     use cyrus_collision::collision_world::StaticCollision;
     use cyrus_game::player::data::{MovementSettings, PlayerScene};
     PlayerScene {
+        source_identity: None,
         world,
         model_radii: Default::default(),
         keyboard_codes: None,
@@ -5377,6 +5379,7 @@ fn ordinary_collision_loader_distinguishes_authored_static_and_model_less_shapes
             "neg_extent":[24,66,25], "center_offset":[0,0,0], "flags":2,
         }]);
         let mut scene = PlayerScene {
+            source_identity: None,
             world: world.world,
             model_radii: Default::default(),
             keyboard_codes: None,
@@ -11574,5 +11577,87 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
         world
             .run_player_native_hook(player, &mut |_| panic!("failed native hook replayed"))
             .is_err()
+    );
+}
+
+#[test]
+fn restored_alternate_entity_survives_ordinary_binding_updates() {
+    use bevy::prelude::*;
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{ScriptActorSource, ScriptActors, ScriptBinding, ScriptPlugin};
+    use cyrus_world::{animation::AnimationRequest, lifecycle::PreparedWorld};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .add_message::<cyrus_world::animation::AnimationTick>()
+        .init_asset::<Scripts>()
+        .init_asset::<Animations>()
+        .insert_resource(State::new(cyrus_game::AppState::InGame))
+        .add_plugins(ScriptPlugin);
+    let mut data = cache();
+    add_standalone_receivers(&mut data);
+    let animations = app.world_mut().resource_mut::<Assets<Animations>>().add(Animations {
+        version: 2, world: data.world,
+        metadata: serde_json::json!({"actors": [], "markers": [], "walk_node_maps": [], "script_content_id": data.content_id}),
+        sections: BTreeMap::new(), models: BTreeMap::new(), unsupported: BTreeMap::new(),
+    });
+    let world_id = data.world;
+    let scripts = app.world_mut().resource_mut::<Assets<Scripts>>().add(data);
+    app.insert_resource(PreparedWorld {
+        requested_name: "TEST".into(),
+        world: Some(world_id),
+        scripts,
+        animations: animations.clone(),
+        player_path: "test.player".into(),
+        scene_path: "test.glb".into(),
+        environment_path: "test.environment".into(),
+    })
+    .insert_resource(AnimationRequest(animations.clone()));
+    let player = app
+        .world_mut()
+        .spawn((cyrus_game::player::Player, Transform::default()))
+        .id();
+    app.update();
+    app.update();
+    let current = app
+        .world()
+        .resource::<ScriptActors>()
+        .current
+        .as_ref()
+        .unwrap();
+    let index = current
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::AlternatePlayer))
+        .unwrap();
+    let actor = current.id(index).unwrap();
+    let candidate = current.prepare_entity_binding(actor, animations).unwrap();
+    let old: Vec<_> = app
+        .world_mut()
+        .query::<(Entity, &ScriptBinding)>()
+        .iter(app.world())
+        .filter_map(|(entity, binding)| (binding.actor == actor).then_some(entity))
+        .collect();
+    assert_eq!(old.len(), 1);
+    app.world_mut().despawn(old[0]);
+    let replacement = app.world_mut().spawn(Transform::default()).id();
+    let mut queue = bevy::ecs::world::CommandQueue::default();
+    candidate.queue(
+        &mut Commands::new(&mut queue, app.world()),
+        replacement,
+        player,
+    );
+    queue.apply(app.world_mut());
+    app.update();
+    app.update();
+    let retained: Vec<_> = app
+        .world_mut()
+        .query::<(Entity, &ScriptBinding)>()
+        .iter(app.world())
+        .filter_map(|(entity, binding)| (binding.actor == actor).then_some(entity))
+        .collect();
+    assert_eq!(retained, [replacement]);
+    assert_eq!(
+        app.world().get::<ChildOf>(replacement).unwrap().parent(),
+        player
     );
 }

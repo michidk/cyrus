@@ -39,12 +39,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 pub mod dialogue;
+pub mod persistence;
 mod samples;
 mod script;
 use samples::{Reservation, SampleSlots};
 #[cfg(target_arch = "wasm32")]
 use script::PendingSounds;
-pub use script::ScriptSounds;
+pub use script::{RestoredDialogueAssets, RuntimeDialogue, RuntimeDialogueSnapshot, ScriptSounds};
 use script::{execute_ordinary, play_audio};
 
 pub struct SoundPlugin;

@@ -651,3 +651,153 @@ pub(crate) fn prepare_resources(
         actors.error = Some(format!("automatic model resource preparation: {error:#}"));
     }
 }
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct ModelSnapshot {
+    prepared: bool,
+    support_actor: Option<(u64, usize)>,
+    support_static: Option<usize>,
+    static_radius: Option<u32>,
+    animation_radius: Option<u32>,
+    collision_flags: Option<u8>,
+    current: Option<ModelPresentationSnapshot>,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct ModelPresentationSnapshot {
+    pose: super::super::spatial::SavedPose,
+    radius: u32,
+    animation: Option<(String, usize)>,
+}
+impl ModelState {
+    pub(super) fn snapshot(&self) -> ModelSnapshot {
+        ModelSnapshot {
+            prepared: self.prepared,
+            support_actor: self.support.actor.map(|id| (id.generation, id.index)),
+            support_static: self.support.static_placement,
+            static_radius: self.static_radius.map(f32::to_bits),
+            animation_radius: self.animation_radius.map(f32::to_bits),
+            collision_flags: self.collision_flags,
+            current: self
+                .current
+                .as_ref()
+                .map(|current| ModelPresentationSnapshot {
+                    pose: current.pose.into(),
+                    radius: current.radius.to_bits(),
+                    animation: current
+                        .animation
+                        .as_ref()
+                        .map(|frame| (frame.model.clone(), frame.frame)),
+                }),
+        }
+    }
+
+    /// Restore retained presentation independently of the actor's newer logical pose.
+    pub(super) fn from_snapshot(
+        saved: ModelSnapshot,
+        data: &Animations,
+        static_count: Option<usize>,
+        rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
+    ) -> Result<Self> {
+        let radius = |bits| -> Result<f32> {
+            let value = f32::from_bits(bits);
+            ensure!(
+                value.is_finite() && value >= 0.0,
+                "saved model radius invalid"
+            );
+            Ok(value)
+        };
+        if let Some(index) = saved.support_static {
+            ensure!(
+                static_count.is_some_and(|count| index < count),
+                "saved support placement {index}: outside admitted static table"
+            );
+        }
+        let support = ModelSupportOwners {
+            actor: saved
+                .support_actor
+                .map(|(generation, index)| rebind(generation, index))
+                .transpose()?,
+            static_placement: saved.support_static,
+        };
+        let current = saved
+            .current
+            .map(|saved| -> Result<_> {
+                let animation = saved
+                    .animation
+                    .map(|(model, frame)| -> Result<_> {
+                        let installed = data
+                            .models
+                            .get(&model)
+                            .with_context(|| format!("saved model {model}: geometry absent"))?;
+                        ensure!(
+                            frame < installed.positions.len(),
+                            "saved model {model} frame {frame}: outside geometry"
+                        );
+                        Ok(ModelFrame { model, frame })
+                    })
+                    .transpose()?;
+                Ok(ModelPresentation {
+                    pose: saved.pose.restore()?,
+                    radius: radius(saved.radius)?,
+                    animation,
+                })
+            })
+            .transpose()?;
+        Ok(Self {
+            prepared: saved.prepared,
+            support,
+            static_radius: saved.static_radius.map(radius).transpose()?,
+            animation_radius: saved.animation_radius.map(radius).transpose()?,
+            collision_flags: saved.collision_flags,
+            current,
+        })
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct ModelAdmissionSnapshot {
+    secondary: Vec<(u64, usize)>,
+    static_count: usize,
+}
+impl AdmissionState {
+    pub(super) fn snapshot(&self) -> ModelAdmissionSnapshot {
+        ModelAdmissionSnapshot {
+            secondary: self
+                .secondary
+                .iter()
+                .map(|id| (id.generation, id.index))
+                .collect(),
+            static_count: self.static_count,
+        }
+    }
+
+    /// Exact visibility/content matching belongs to the enclosing world candidate.
+    pub(super) fn from_snapshot(
+        saved: ModelAdmissionSnapshot,
+        visibility: &cyrus_assets::collision::ModelVisibility,
+        static_count: usize,
+        rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
+    ) -> Result<Self> {
+        ensure!(
+            saved.static_count == static_count,
+            "saved static model census differs"
+        );
+        let mut seen = std::collections::BTreeSet::new();
+        let secondary = saved
+            .secondary
+            .into_iter()
+            .map(|(generation, index)| {
+                ensure!(
+                    seen.insert((generation, index)),
+                    "duplicate saved secondary actor {index}"
+                );
+                rebind(generation, index)
+            })
+            .collect::<Result<_>>()?;
+        Ok(Self {
+            filter: cyrus_collision::model_admission::ModelAdmission::new(visibility.clone())?,
+            secondary,
+            static_count,
+        })
+    }
+}

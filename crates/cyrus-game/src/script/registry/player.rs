@@ -765,3 +765,32 @@ impl cyrus_script::Host for PlayerHookHost<'_, '_> {
         anyhow::bail!("player native hook cannot end a script body")
     }
 }
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct PlayerMovementSnapshot {
+    phase: u8,
+    support_ticks: u32,
+    support_metadata: u8,
+    veto: i32,
+    accepted_forward: Option<bool>,
+}
+impl PlayerMovement {
+    pub(super) fn snapshot(&self) -> PlayerMovementSnapshot {
+        PlayerMovementSnapshot {
+            phase: self.startup.snapshot_phase(),
+            support_ticks: self.history.ticks(),
+            support_metadata: self.history.metadata(),
+            veto: self.veto,
+            accepted_forward: self.accepted_forward,
+        }
+    }
+
+    pub(super) fn from_snapshot(snapshot: PlayerMovementSnapshot) -> Result<Self> {
+        Ok(Self {
+            startup: WalkingStartup::from_snapshot_phase(snapshot.phase)?,
+            history: SupportHistory::new(snapshot.support_ticks, snapshot.support_metadata),
+            veto: snapshot.veto,
+            accepted_forward: snapshot.accepted_forward,
+        })
+    }
+}

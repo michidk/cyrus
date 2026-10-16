@@ -179,3 +179,169 @@ impl ActorLists {
         Ok(&self.selected)
     }
 }
+
+/// Cell maps use ordered entries so the snapshot is portable to JSON documents.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct ActorListsSnapshot {
+    cells: Vec<([i32; 2], Vec<usize>)>,
+    persistent: Vec<usize>,
+    separate_cells: Vec<([i32; 2], Vec<usize>)>,
+    membership: Vec<(usize, [i32; 2])>,
+    first: Option<[i32; 2]>,
+    traversal_prepared: bool,
+    selected: Vec<(u64, usize)>,
+    separate_selected: Vec<(u64, usize)>,
+}
+
+impl ActorLists {
+    pub(super) fn snapshot(&self) -> ActorListsSnapshot {
+        ActorListsSnapshot {
+            cells: self
+                .cells
+                .iter()
+                .map(|(&cell, ids)| (cell, ids.clone()))
+                .collect(),
+            persistent: self.persistent.clone(),
+            separate_cells: self
+                .separate_cells
+                .iter()
+                .map(|(&cell, ids)| (cell, ids.clone()))
+                .collect(),
+            membership: self
+                .membership
+                .iter()
+                .map(|(&index, &cell)| (index, cell))
+                .collect(),
+            first: self.first,
+            traversal_prepared: self.traversal_prepared,
+            selected: self
+                .selected
+                .iter()
+                .map(|id| (id.generation, id.index))
+                .collect(),
+            separate_selected: self
+                .separate_selected
+                .iter()
+                .map(|id| (id.generation, id.index))
+                .collect(),
+        }
+    }
+
+    pub(super) fn from_snapshot(
+        saved: ActorListsSnapshot,
+        actors: &[ScriptActor],
+        saved_generation: u64,
+        generation: u64,
+    ) -> Result<Self> {
+        use anyhow::ensure;
+        use std::collections::BTreeSet;
+        let installed = Self::new(actors)?;
+        ensure!(
+            saved.persistent == installed.persistent,
+            "saved persistent actor order differs"
+        );
+        let decode_cells =
+            |entries: Vec<([i32; 2], Vec<usize>)>| -> Result<BTreeMap<[i32; 2], Vec<usize>>> {
+                let mut cells = BTreeMap::new();
+                for (cell, indices) in entries {
+                    ensure!(
+                        cell.iter().all(|v| (0..128).contains(v)),
+                        "saved actor cell {cell:?} outside map"
+                    );
+                    ensure!(
+                        cells.insert(cell, indices).is_none(),
+                        "duplicate saved actor cell {cell:?}"
+                    );
+                }
+                Ok(cells)
+            };
+        let cells = decode_cells(saved.cells)?;
+        let separate_cells = decode_cells(saved.separate_cells)?;
+        ensure!(
+            separate_cells == installed.separate_cells,
+            "saved separate actor membership differs"
+        );
+        let mut membership = BTreeMap::new();
+        for (cell, indices) in &cells {
+            for &index in indices {
+                ensure!(
+                    installed.membership.contains_key(&index),
+                    "saved cell actor {index} has wrong membership class"
+                );
+                ensure!(
+                    membership.insert(index, *cell).is_none(),
+                    "duplicate saved cell actor {index}"
+                );
+            }
+        }
+        ensure!(
+            membership.keys().eq(installed.membership.keys()),
+            "saved cell actor census differs"
+        );
+        ensure!(
+            saved.membership.len() == membership.len(),
+            "saved membership census differs"
+        );
+        let mut seen = BTreeSet::new();
+        for (index, cell) in saved.membership {
+            ensure!(
+                seen.insert(index) && membership.get(&index) == Some(&cell),
+                "actor {index}: saved cell membership inconsistent"
+            );
+        }
+        ensure!(
+            saved
+                .first
+                .is_none_or(|cell| cell.iter().all(|v| (0..=109).contains(v))),
+            "saved view window outside map"
+        );
+        ensure!(
+            saved.traversal_prepared
+                || (saved.first.is_none()
+                    && saved.selected.is_empty()
+                    && saved.separate_selected.is_empty()),
+            "unprepared saved traversal contains cached state"
+        );
+        let ordinary: BTreeSet<_> = installed
+            .membership
+            .keys()
+            .chain(installed.persistent.iter())
+            .copied()
+            .collect();
+        let separate: BTreeSet<_> = installed
+            .separate_cells
+            .values()
+            .flatten()
+            .copied()
+            .collect();
+        let rebind = |ids: Vec<(u64, usize)>,
+                      allowed: &BTreeSet<usize>|
+         -> Result<Vec<ScriptActorId>> {
+            let mut seen = BTreeSet::new();
+            ids.into_iter().map(|(old_generation, index)| {
+                ensure!(old_generation == saved_generation && allowed.contains(&index) && seen.insert(index),
+                    "saved traversal actor {index}: stale identity, duplicate or wrong membership");
+                Ok(ScriptActorId { generation, index })
+            }).collect()
+        };
+        let selected = rebind(saved.selected, &ordinary)?;
+        let separate_selected = rebind(saved.separate_selected, &separate)?;
+        if saved.traversal_prepared {
+            let indices: Vec<_> = selected.iter().map(|id| id.index).collect();
+            ensure!(
+                indices.ends_with(&saved.persistent),
+                "saved traversal lost persistent actor tail"
+            );
+        }
+        Ok(Self {
+            cells,
+            persistent: saved.persistent,
+            separate_cells,
+            separate_selected,
+            membership,
+            first: saved.first,
+            traversal_prepared: saved.traversal_prepared,
+            selected,
+        })
+    }
+}

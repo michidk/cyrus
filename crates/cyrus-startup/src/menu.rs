@@ -515,8 +515,10 @@ fn cleanup(
     mut menu: ResMut<MenuState>,
     clock: Option<ResMut<SimulationClock>>,
     time: Res<Time<Real>>,
+    restored: Option<Res<cyrus_game::RestoredSessionEntry>>,
 ) {
-    if let Some(mut clock) = clock
+    if restored.is_none()
+        && let Some(mut clock) = clock
         && let Some(timing) = menu.timing.take()
     {
         clock.restore(timing.checkpoint, bios_tick(time.elapsed()));
@@ -569,6 +571,39 @@ fn begin_world_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restored_entry_does_not_resume_the_replaced_menu_clock() {
+        let mut clock = SimulationClock::new(cyrus_assets::script::ClockSettings {
+            normal_frame_rate: 24,
+            min_frame_rate: 6,
+            max_frame_rate: 300,
+            use_smooth_fps: false,
+            use_smooth_divisor: false,
+        })
+        .unwrap();
+        let checkpoint = clock.checkpoint();
+        clock.advance(18);
+        let expected = serde_json::to_value(clock.snapshot()).unwrap();
+        let mut app = App::new();
+        app.insert_resource(clock)
+            .insert_resource(Time::<Real>::default())
+            .insert_resource(cyrus_game::RestoredSessionEntry)
+            .insert_resource(MenuState {
+                timing: Some(MenuTiming {
+                    checkpoint,
+                    last_tick: 18,
+                }),
+                ..default()
+            })
+            .add_systems(Update, cleanup);
+        app.update();
+        assert!(!app.world().contains_resource::<MenuState>());
+        assert_eq!(
+            serde_json::to_value(app.world().resource::<SimulationClock>().snapshot()).unwrap(),
+            expected
+        );
+    }
 
     #[test]
     fn menu_exit_restores_saved_clock_without_resetting_menu_warmup_or_last_step() {

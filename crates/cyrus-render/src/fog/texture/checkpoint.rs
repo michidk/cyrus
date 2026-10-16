@@ -3,6 +3,116 @@ use super::{Playback, TextureAnimations};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
+/// Exact decoded frame identities for the bound scene, independent of runtime handles.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextureSourcesSnapshot {
+    images: std::collections::BTreeMap<String, Vec<[u8; 32]>>,
+}
+
+impl TextureAnimations {
+    /// Fingerprint every bound animation frame under the prepared scene root.
+    /// Missing CPU image data or incomplete binding rejects instead of weakening identity.
+    pub fn snapshot_sources(
+        &self,
+        world: &bevy::prelude::World,
+        roots: &[bevy::prelude::Entity],
+    ) -> Result<TextureSourcesSnapshot> {
+        use anyhow::Context;
+        use bevy::prelude::{Assets, Children, Image};
+        let assets = world
+            .get_resource::<Assets<Image>>()
+            .context("texture image assets absent")?;
+        let mut images = std::collections::BTreeMap::new();
+        let mut pending = roots.to_vec();
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(entity) = pending.pop() {
+            ensure!(
+                visited.insert(entity),
+                "texture scene hierarchy repeats an entity"
+            );
+            ensure!(
+                world.get_entity(entity).is_ok(),
+                "texture scene entity {entity:?} absent"
+            );
+            if let Some(children) = world.get::<Children>(entity) {
+                pending.extend(children.iter());
+            }
+            let binding = world.get::<super::Binding>(entity);
+            if world.get::<bevy::prelude::Mesh3d>(entity).is_some()
+                && let Some(extras) = world.get::<bevy::gltf::GltfMaterialExtras>(entity)
+            {
+                let metadata: super::MaterialExtras = serde_json::from_str(&extras.value)
+                    .with_context(|| {
+                        format!("texture source entity {entity:?}: invalid metadata")
+                    })?;
+                ensure!(
+                    metadata.rgpre_texture_animation.is_none() || binding.is_some(),
+                    "texture source entity {entity:?}: authored animation is not bound"
+                );
+            }
+            let Some(binding) = binding else {
+                continue;
+            };
+            let mut frames = Vec::with_capacity(binding.frames.len());
+            for (index, handle) in binding.frames.iter().enumerate() {
+                let image = assets.get(handle).with_context(|| {
+                    format!("texture {} frame {index}: image absent", binding.key)
+                })?;
+                let data = image.data.as_ref().with_context(|| {
+                    format!(
+                        "texture {} frame {index}: CPU image bytes absent",
+                        binding.key
+                    )
+                })?;
+                let descriptor = &image.texture_descriptor;
+                let mut hash = blake3::Hasher::new();
+                hash.update(&serde_json::to_vec(&(
+                    descriptor.size.width,
+                    descriptor.size.height,
+                    descriptor.size.depth_or_array_layers,
+                    descriptor.mip_level_count,
+                    descriptor.sample_count,
+                    format!("{:?}", descriptor.dimension),
+                    format!("{:?}", descriptor.format),
+                    format!("{:?}", image.data_order),
+                ))?);
+                hash.update(data);
+                frames.push(*hash.finalize().as_bytes());
+            }
+            if let Some(previous) = images.insert(binding.key.clone(), frames.clone()) {
+                ensure!(
+                    previous == frames,
+                    "texture {}: shared frame contents differ",
+                    binding.key
+                );
+            }
+        }
+        ensure!(
+            images.len() == self.states.len()
+                && self.states.iter().all(|(key, state)| images
+                    .get(key)
+                    .is_some_and(|frames| frames.len() == state.count)),
+            "texture source census differs from bound playback"
+        );
+        Ok(TextureSourcesSnapshot { images })
+    }
+}
+
+impl TextureSourcesSnapshot {
+    pub fn validate(
+        &self,
+        prepared: &TextureAnimations,
+        world: &bevy::prelude::World,
+        roots: &[bevy::prelude::Entity],
+    ) -> Result<()> {
+        ensure!(
+            *self == prepared.snapshot_sources(world, roots)?,
+            "prepared texture frame content differs"
+        );
+        Ok(())
+    }
+}
+
 /// Opaque shared-image timeline state, without image bytes or runtime asset IDs.
 /// The session separately validates installed sources and retains the presentation
 /// clock epoch used by absolute BIOS-tick deadlines.
@@ -150,6 +260,58 @@ mod tests {
             .collect(),
             restored_binding: false,
         }
+    }
+
+    #[test]
+    fn source_identity_uses_frame_bytes_and_rejects_missing_census() -> anyhow::Result<()> {
+        let mut world = World::new();
+        world.init_resource::<Assets<Image>>();
+        let image = world.resource_mut::<Assets<Image>>().add(Image::default());
+        let root = world.spawn_empty().id();
+        let first = world
+            .spawn((
+                ChildOf(root),
+                super::super::Binding {
+                    key: "a00000".into(),
+                    frames: vec![image.clone(); 4],
+                },
+            ))
+            .id();
+        world.spawn((
+            ChildOf(root),
+            super::super::Binding {
+                key: "b00000".into(),
+                frames: vec![image.clone()],
+            },
+        ));
+        let owner = prepared();
+        let saved = owner.snapshot_sources(&world, &[root])?;
+        saved.validate(&owner, &world, &[root])?;
+        let duplicate = world.resource_mut::<Assets<Image>>().add(Image::default());
+        world
+            .get_mut::<super::super::Binding>(first)
+            .unwrap()
+            .frames = vec![duplicate.clone(); 4];
+        saved.validate(&owner, &world, &[root])?;
+        world
+            .resource_mut::<Assets<Image>>()
+            .get_mut(&duplicate)
+            .unwrap()
+            .data
+            .as_mut()
+            .unwrap()[0] ^= 1;
+        assert!(saved.validate(&owner, &world, &[root]).is_err());
+        world
+            .resource_mut::<Assets<Image>>()
+            .get_mut(&duplicate)
+            .unwrap()
+            .data
+            .as_mut()
+            .unwrap()[0] ^= 1;
+        saved.validate(&owner, &world, &[root])?;
+        world.entity_mut(first).remove::<super::super::Binding>();
+        assert!(saved.validate(&owner, &world, &[root]).is_err());
+        Ok(())
     }
 
     #[test]

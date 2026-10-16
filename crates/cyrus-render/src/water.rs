@@ -1,6 +1,8 @@
 //! Private terrain meshes, shading normals and wave playback from preservation.
 mod checkpoint;
+mod preparation;
 pub use checkpoint::{TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot};
+pub use preparation::PreparedTerrainMesh;
 
 use crate::environment::EnvironmentRequest;
 use bevy::camera::primitives::MeshAabb;
@@ -42,6 +44,11 @@ pub struct WaterPlayback {
 }
 
 impl WaterPlayback {
+    /// Whether this owner is bound to the environment asset adopted at publication.
+    pub fn is_bound_to(&self, environment: AssetId<Environment>) -> bool {
+        self.source == Some(environment)
+    }
+
     /// Rebuild from original meshes after console edits, including bounds and zero-amplitude changes.
     pub(crate) fn invalidate(&mut self) {
         self.source = None;
@@ -108,13 +115,17 @@ pub(crate) fn animate_water(
     mut meshes: ResMut<Assets<Mesh>>,
     mut entities: Query<(Entity, &mut Mesh3d)>,
     names: Query<&Name>,
-    parents: Query<&ChildOf>,
+    hierarchy: (
+        Query<&ChildOf>,
+        Query<(), With<crate::persistence::StagedRenderRoot>>,
+    ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
     distance: Option<Res<crate::fog::RenderDistance>>,
     mut preparation: Local<crate::terrain::Preparation>,
     mut camera_grid: Local<Vec<[f32; 3]>>,
 ) {
+    let (parents, staged) = hierarchy;
     if playback.source != Some(request.0.id())
         || playback
             .terrain
@@ -151,13 +162,16 @@ pub(crate) fn animate_water(
         let terrain: Vec<_> = entities
             .iter()
             .filter(|(entity, _)| {
-                std::iter::once(*entity)
+                !std::iter::once(*entity)
                     .chain(parents.iter_ancestors(*entity))
-                    .any(|ancestor| {
-                        names
-                            .get(ancestor)
-                            .is_ok_and(|name| name.as_str() == "Terrain")
-                    })
+                    .any(|node| staged.contains(node))
+                    && std::iter::once(*entity)
+                        .chain(parents.iter_ancestors(*entity))
+                        .any(|ancestor| {
+                            names
+                                .get(ancestor)
+                                .is_ok_and(|name| name.as_str() == "Terrain")
+                        })
             })
             .map(|(entity, mesh)| (entity, mesh.0.clone()))
             .collect();
@@ -168,67 +182,22 @@ pub(crate) fn animate_water(
         {
             return;
         }
-        playback.base = vec![[0.0; 3]; side * side];
-        for (entity, original) in terrain {
-            let mesh = meshes.get(&original).unwrap();
-            let Ok(VertexAttributeValues::Float32x3(positions)) =
-                mesh.try_attribute(Mesh::ATTRIBUTE_POSITION)
-            else {
-                error_once!("water terrain {entity}: missing positions");
-                return;
-            };
-            let mut vertices = Vec::with_capacity(positions.len());
-            for &position in positions {
-                let x = (-position[0] / CELL_SIZE).round() as usize;
-                let row = (-position[2] / CELL_SIZE).round() as usize;
-                if x >= side || row >= side {
-                    error_once!("water terrain {entity}: vertex outside {}-wide grid", side);
-                    return;
-                }
-                let vertex = x + row * side;
-                playback.base[vertex] = position;
-                vertices.push(vertex);
-            }
-            let source = match crate::terrain::Source::new(mesh, vertices.len()) {
-                Ok(source) => source,
-                Err(reason) => {
-                    error_once!(
-                        "water terrain {entity}, environment {:?}: {reason}",
-                        request.0.id()
-                    );
+        let (prepared, bindings) =
+            match WaterPlayback::prepare_meshes(environment, request.0.id(), &terrain, &mut meshes)
+            {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    error_once!("terrain preparation: {error:#}");
                     return;
                 }
             };
-            let mut animated_mesh = mesh.clone();
-            animated_mesh.insert_attribute(
-                Mesh::ATTRIBUTE_UV_1,
-                vertices
-                    .iter()
-                    .map(|&vertex| {
-                        [
-                            u8::from(water.is_some_and(|w| w.animated_vertices[vertex])) as f32,
-                            0.0,
-                        ]
-                    })
-                    .collect::<Vec<_>>(),
-            );
-            if let Some(mut bounds) = mesh.get_aabb() {
-                bounds.half_extents.y += water.map_or(0.0, |w| w.parameters[0].abs()) * 1.5 / 20.0;
-                animated_mesh.final_aabb = Some(bounds.into());
-                commands.entity(entity).insert(bounds);
+        for binding in bindings {
+            entities.get_mut(binding.entity).unwrap().1.0 = binding.mesh;
+            if let Some(bounds) = binding.bounds {
+                commands.entity(binding.entity).insert(bounds);
             }
-            let animated = meshes.add(animated_mesh);
-            entities.get_mut(entity).unwrap().1.0 = animated.clone();
-            playback.terrain.push(TerrainMesh {
-                entity,
-                original,
-                animated,
-                vertices,
-                source,
-                view: None,
-            });
         }
-        playback.source = Some(request.0.id());
+        *playback = prepared;
     }
     let window = cameras.single().ok().and_then(|(view, camera)| {
         let terrain = transforms.get(playback.terrain[0].entity).ok()?;

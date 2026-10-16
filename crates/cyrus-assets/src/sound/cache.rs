@@ -478,3 +478,129 @@ mod tests {
         assert_eq!(samples.events, ["status", "stop", "status", "stop"]);
     }
 }
+
+/// Ordered RTX cache continuation. Payload encoding belongs to the asset owner.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct DialogueCacheSnapshot<P> {
+    version: u32,
+    slots: Vec<SavedSlot<P>>,
+}
+impl<P> DialogueCacheSnapshot<P> {
+    /// Retained payload preparation hints, including partially released entries.
+    /// They remain untrusted until from_snapshot validates the complete cache.
+    pub fn payloads(&self) -> impl Iterator<Item = &P> {
+        self.slots.iter().filter_map(|slot| slot.payload.as_ref())
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct SavedSlot<P> {
+    label: Option<[u8; 4]>,
+    payload: Option<P>,
+    sample: Option<u8>,
+    used: bool,
+    age: u32,
+}
+impl<T: DialoguePayload> DialogueCache<T> {
+    /// Capture without aging, sample feedback or payload release.
+    pub fn snapshot<P>(
+        &self,
+        mut encode: impl FnMut(&T) -> Result<P>,
+    ) -> Result<DialogueCacheSnapshot<P>> {
+        let slots = self
+            .slots
+            .iter()
+            .enumerate()
+            .map(|(index, slot)| {
+                Ok(SavedSlot {
+                    label: slot.label,
+                    payload: slot
+                        .payload
+                        .as_ref()
+                        .map(&mut encode)
+                        .transpose()
+                        .with_context(|| {
+                            format!("dialogue cache slot {index}: snapshot payload")
+                        })?,
+                    sample: slot.sample,
+                    used: slot.used,
+                    age: slot.age,
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(DialogueCacheSnapshot { version: 1, slots })
+    }
+
+    /// Return an off-live replacement using already prepared payloads and sample owners.
+    /// The decoder validates installed payload identity, including partially released text.
+    /// No sample status, stop, load, aging or release operation is invoked here.
+    pub fn from_snapshot<P>(
+        snapshot: DialogueCacheSnapshot<P>,
+        samples: &std::collections::BTreeMap<u8, u8>,
+        mut decode: impl FnMut([u8; 4], P) -> Result<T>,
+    ) -> Result<Self> {
+        use anyhow::ensure;
+        ensure!(
+            snapshot.version == 1,
+            "dialogue cache snapshot version unsupported"
+        );
+        ensure!(
+            snapshot.slots.len() == 20,
+            "dialogue cache snapshot capacity differs"
+        );
+        let mut destinations = std::collections::BTreeSet::new();
+        for (&old, &new) in samples {
+            ensure!(
+                old < 16 && new < 16 && destinations.insert(new),
+                "dialogue cache sample map outside range or noninjective"
+            );
+        }
+        let mut labels = std::collections::BTreeSet::new();
+        let mut candidate = Self::default();
+        for (index, saved) in snapshot.slots.into_iter().enumerate() {
+            ensure!(
+                saved.age <= 8,
+                "dialogue cache slot {index}: invalid replacement age"
+            );
+            let payload = match (saved.label, saved.payload) {
+                (Some(label), Some(payload)) => {
+                    ensure!(
+                        labels.insert(label),
+                        "dialogue cache slot {index}: duplicate label"
+                    );
+                    Some(decode(label, payload).with_context(|| {
+                        format!("dialogue cache slot {index}: restored payload")
+                    })?)
+                }
+                (None, None) => {
+                    ensure!(
+                        !saved.used && saved.age == 0 && saved.sample.is_none(),
+                        "dialogue cache slot {index}: vacant slot retains ownership"
+                    );
+                    None
+                }
+                _ => anyhow::bail!("dialogue cache slot {index}: label/payload mismatch"),
+            };
+            let sample = saved
+                .sample
+                .map(|old| {
+                    ensure!(
+                        payload.as_ref().is_some_and(DialoguePayload::has_voice),
+                        "dialogue cache slot {index}: sample without voice payload"
+                    );
+                    samples.get(&old).copied().with_context(|| {
+                        format!("dialogue cache slot {index}: sample {old} replacement absent")
+                    })
+                })
+                .transpose()?;
+            candidate.slots[index] = Slot {
+                label: saved.label,
+                payload,
+                sample,
+                used: saved.used,
+                age: saved.age,
+            };
+        }
+        Ok(candidate)
+    }
+}

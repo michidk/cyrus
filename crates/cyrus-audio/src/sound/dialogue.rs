@@ -95,7 +95,6 @@ enum DialogueRequest {
     #[cfg(not(target_arch = "wasm32"))]
     Exporting(bevy::tasks::Task<Result<()>>),
     Loading(Handle<DialogueClip>),
-    #[cfg(not(target_arch = "wasm32"))]
     Failed(String),
 }
 
@@ -154,7 +153,6 @@ impl DialoguePreparation {
         }
         let handle = match request {
             DialogueRequest::Loading(handle) => handle,
-            #[cfg(not(target_arch = "wasm32"))]
             DialogueRequest::Failed(error) => anyhow::bail!("{error}"),
             #[cfg(not(target_arch = "wasm32"))]
             DialogueRequest::Exporting(_) => unreachable!("exporting dialogue was polled above"),
@@ -291,5 +289,215 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct DialoguePreparationSnapshot {
+    requests: Vec<([u8; 4], Option<String>)>,
+}
+impl DialoguePreparationSnapshot {
+    pub(super) fn required_labels(&self) -> impl Iterator<Item = [u8; 4]> + '_ {
+        self.requests
+            .iter()
+            .filter_map(|(label, failure)| failure.is_none().then_some(*label))
+    }
+}
+impl DialoguePreparation {
+    /// Export tasks must reach an asset request before a coherent save boundary.
+    /// Capture does not poll them or consume their completion.
+    pub(super) fn snapshot(&self, server: &AssetServer) -> Result<DialoguePreparationSnapshot> {
+        let mut requests = Vec::with_capacity(self.requests.len());
+        for (&label, request) in &self.requests {
+            let key = label
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let failure = match request {
+                #[cfg(not(target_arch = "wasm32"))]
+                DialogueRequest::Exporting(_) => {
+                    anyhow::bail!("dialogue {label:?}: export still in flight at save boundary")
+                }
+                DialogueRequest::Failed(error) => Some(error.clone()),
+                DialogueRequest::Loading(handle) => {
+                    if let Some(bevy::asset::LoadState::Failed(error)) =
+                        server.get_load_state(handle.id())
+                    {
+                        Some(format!("dialogue {key} metadata: {error}"))
+                    } else if let Some(bevy::asset::RecursiveDependencyLoadState::Failed(error)) =
+                        server.get_recursive_dependency_load_state(handle.id())
+                    {
+                        Some(format!("dialogue {key} dependency: {error}"))
+                    } else {
+                        None
+                    }
+                }
+            };
+            requests.push((label, failure));
+        }
+        requests.sort_by_key(|(label, _)| *label);
+        Ok(DialoguePreparationSnapshot { requests })
+    }
+
+    /// The host prepares asset requests before construction; this never starts I/O.
+    pub(super) fn from_snapshot(
+        snapshot: DialoguePreparationSnapshot,
+        prepared: &std::collections::BTreeMap<[u8; 4], Handle<DialogueClip>>,
+        server: &AssetServer,
+        clips: &Assets<DialogueClip>,
+    ) -> Result<Self> {
+        ensure!(
+            snapshot.requests.len() <= 20,
+            "saved dialogue preparation exceeds capacity"
+        );
+        let mut requests = std::collections::HashMap::new();
+        for (label, failure) in snapshot.requests {
+            let request = if let Some(failure) = failure {
+                DialogueRequest::Failed(failure)
+            } else {
+                let handle = anyhow::Context::with_context(prepared.get(&label), || {
+                    format!("saved dialogue {label:?}: prepared request absent")
+                })?;
+                ensure!(
+                    server.is_loaded_with_dependencies(handle.id()),
+                    "saved dialogue {label:?}: replacement dependencies not ready"
+                );
+                let clip =
+                    anyhow::Context::context(clips.get(handle), "restored dialogue asset absent")?;
+                ensure!(
+                    clip.entry.label == label,
+                    "saved dialogue {label:?}: replacement label differs"
+                );
+                DialogueRequest::Loading(handle.clone())
+            };
+            ensure!(
+                requests.insert(label, request).is_none(),
+                "saved dialogue {label:?}: duplicate preparation"
+            );
+        }
+        Ok(Self { requests })
+    }
+}
+
+impl DialogueClip {
+    /// Preserve retained text separately from immutable installed voice metadata.
+    pub(super) fn from_saved_entry(
+        saved: cyrus_assets::sound::DialogueEntry,
+        installed: &Self,
+    ) -> Result<Self> {
+        ensure!(
+            saved.text.is_empty() || saved.text == installed.entry.text,
+            "dialogue {:?}: saved text differs from installed text",
+            saved.label
+        );
+        let mut expected = installed.entry.clone();
+        expected.text = saved.text.clone();
+        ensure!(
+            serde_json::to_value(&saved)? == serde_json::to_value(&expected)?,
+            "dialogue {:?}: saved payload metadata differs",
+            saved.label
+        );
+        ensure!(
+            saved.voice.is_some() == installed.audio.is_some(),
+            "dialogue {:?}: prepared voice dependency differs",
+            saved.label
+        );
+        Ok(Self {
+            entry: saved,
+            audio: installed.audio.clone(),
+        })
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct DialogueClipSnapshot {
+    pub entry: cyrus_assets::sound::DialogueEntry,
+    audio_hash: Option<String>,
+}
+impl DialogueClip {
+    pub(super) fn snapshot(&self, sources: &Assets<AudioSource>) -> Result<DialogueClipSnapshot> {
+        let audio_hash = self
+            .audio
+            .as_ref()
+            .map(|handle| -> Result<_> {
+                let source = anyhow::Context::context(
+                    sources.get(handle),
+                    "dialogue snapshot voice source absent",
+                )?;
+                Ok(blake3::hash(&source.bytes).to_hex().to_string())
+            })
+            .transpose()?;
+        ensure!(
+            self.entry.voice.is_some() == audio_hash.is_some(),
+            "dialogue snapshot voice ownership differs"
+        );
+        Ok(DialogueClipSnapshot {
+            entry: self.entry.clone(),
+            audio_hash,
+        })
+    }
+
+    pub(super) fn from_snapshot(
+        saved: DialogueClipSnapshot,
+        installed: &Self,
+        sources: &Assets<AudioSource>,
+    ) -> Result<Self> {
+        let identity = installed.snapshot(sources)?;
+        ensure!(
+            saved.audio_hash == identity.audio_hash,
+            "dialogue {:?}: saved voice content differs",
+            saved.entry.label
+        );
+        Self::from_saved_entry(saved.entry, installed)
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn voice_replacement_rejects_changed_bytes_with_identical_metadata() -> Result<()> {
+        let mut sources = Assets::<AudioSource>::default();
+        let handle = sources.add(AudioSource {
+            bytes: vec![1, 2, 3, 4].into(),
+        });
+        let mut clip = DialogueClip {
+            entry: cyrus_assets::sound::DialogueEntry {
+                version: 1,
+                label: *b"TEST",
+                text: "Retained".into(),
+                text_lifetime: 120,
+                voice: Some(cyrus_assets::sound::DialogueVoice {
+                    audio: "dialogue/54455354.wav".into(),
+                    base_volume: 127,
+                    sample_rate: 22050,
+                    channels: 1,
+                    bits_per_sample: 8,
+                    loop_flag: 0,
+                    loop_offset: 0,
+                    loop_end: 0,
+                    lifetime: 1,
+                }),
+            },
+            audio: Some(handle.clone()),
+        };
+        let saved = clip.snapshot(&sources)?;
+        let restored = DialogueClip::from_snapshot(saved.clone(), &clip, &sources)?;
+        assert_eq!(restored.entry.text, "Retained");
+        let mut released = saved.clone();
+        released.entry.text.clear();
+        assert!(
+            DialogueClip::from_snapshot(released, &clip, &sources)?
+                .entry
+                .text
+                .is_empty()
+        );
+        clip.audio = Some(sources.add(AudioSource {
+            bytes: vec![1, 2, 3, 5].into(),
+        }));
+        assert!(DialogueClip::from_snapshot(saved, &clip, &sources).is_err());
+        assert_eq!(&*sources.get(&handle).unwrap().bytes, &[1, 2, 3, 4]);
+        Ok(())
     }
 }

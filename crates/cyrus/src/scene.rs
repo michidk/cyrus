@@ -100,6 +100,7 @@ fn load_requested(
         });
     match worker {
         Ok(_) => {
+            commands.insert_resource(cyrus_world::lifecycle::WorldPreparationPending);
             commands.insert_resource(Preparation {
                 name,
                 result: Mutex::new(receiver),
@@ -139,6 +140,7 @@ fn finish(
         }
     };
     commands.remove_resource::<Preparation>();
+    commands.remove_resource::<cyrus_world::lifecycle::WorldPreparationPending>();
     if pending.name != request.0.to_ascii_uppercase() {
         debug!("world {}: superseded by a newer request", pending.name);
         return;
@@ -206,6 +208,38 @@ mod tests {
     }
 
     #[test]
+    fn completed_preparation_keeps_progress_but_releases_capture_guard() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            cyrus_world::animation::AnimationPlugin,
+            cyrus_world::lifecycle::WorldPlugin,
+        ))
+        .insert_resource(SceneRequest("TEST".into()))
+        .insert_resource(cyrus_world::lifecycle::WorldPreparationPending)
+        .add_systems(Update, finish);
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(Message::Stage(1, 1, "prepared".into()))
+            .unwrap();
+        sender.send(Message::Done(Ok(17))).unwrap();
+        app.insert_resource(Preparation {
+            name: "TEST".into(),
+            result: Mutex::new(receiver),
+            started: std::time::Instant::now(),
+        });
+        app.update();
+        assert!(!app.world().contains_resource::<Preparation>());
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_world::lifecycle::WorldPreparationPending>()
+        );
+        assert_eq!(app.world().resource::<PreparationProgress>().done, 1);
+        assert_eq!(app.world().resource::<PreparedWorld>().world, Some(17));
+    }
+
+    #[test]
     fn failed_preparation_preserves_the_committed_scene_and_references() {
         let mut app = App::new();
         app.add_plugins((
@@ -237,6 +271,10 @@ mod tests {
             );
             std::thread::yield_now();
         }
+        assert!(
+            !app.world()
+                .contains_resource::<cyrus_world::lifecycle::WorldPreparationPending>()
+        );
         assert_eq!(app.world().resource::<CurrentScene>().name, "OLD");
         assert_eq!(app.world().resource::<CurrentScene>().world, Some(17));
         assert_eq!(

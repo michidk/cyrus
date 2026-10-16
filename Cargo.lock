@@ -2754,6 +2754,7 @@ dependencies = [
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-session",
  "cyrus-startup",
  "cyrus-world",
  "serde",
@@ -2943,6 +2944,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyrus-session"
+version = "0.1.15"
+dependencies = [
+ "anyhow",
+ "bevy",
+ "blake3",
+ "cyrus-assets",
+ "cyrus-audio",
+ "cyrus-game",
+ "cyrus-render",
+ "cyrus-script",
+ "cyrus-world",
+ "redguard-preservation",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cyrus-startup"
 version = "0.1.15"
 dependencies = [
@@ -3002,6 +3021,7 @@ dependencies = [
  "cyrus-debug",
  "cyrus-game",
  "cyrus-render",
+ "cyrus-session",
  "cyrus-startup",
  "cyrus-world",
  "getrandom 0.3.4",

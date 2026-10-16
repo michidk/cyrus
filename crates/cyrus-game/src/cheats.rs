@@ -28,6 +28,50 @@ pub struct Cheats {
     state: Result<CheatFile, String>,
 }
 
+/// Complete raw cheat values with their decoded slot layout; no storage binding.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct CheatSnapshot {
+    version: u32,
+    names: Vec<Option<String>>,
+    values: Vec<u32>,
+}
+
+/// Validated state for coordinated publication, preserving the current host store.
+pub struct CheatReplacement(CheatFile);
+
+impl CheatReplacement {
+    pub fn validate(&self, live: &Cheats) -> Result<()> {
+        anyhow::ensure!(
+            self.0.entries().iter().map(|entry| &entry.name).eq(live
+                .state()?
+                .entries()
+                .iter()
+                .map(|entry| &entry.name)),
+            "cheat replacement slot layout differs"
+        );
+        Ok(())
+    }
+
+    /// Call after aggregate preflight; changes only retained values, without I/O.
+    pub fn publish(self, live: &mut Cheats) {
+        live.state = Ok(self.0);
+    }
+}
+
+impl CheatSnapshot {
+    pub fn prepare(self, live: &Cheats) -> Result<CheatReplacement> {
+        anyhow::ensure!(self.version == 1, "cheat snapshot version unsupported");
+        let state = live.state()?;
+        anyhow::ensure!(
+            self.names
+                .iter()
+                .eq(state.entries().iter().map(|entry| &entry.name)),
+            "cheat snapshot slot layout differs"
+        );
+        Ok(CheatReplacement(state.with_values(&self.values)?))
+    }
+}
+
 impl Default for Cheats {
     fn default() -> Self {
         Self {
@@ -38,6 +82,18 @@ impl Default for Cheats {
 }
 
 impl Cheats {
+    pub fn snapshot(&self) -> Result<CheatSnapshot> {
+        let state = self.state()?;
+        Ok(CheatSnapshot {
+            version: 1,
+            names: state
+                .entries()
+                .iter()
+                .map(|entry| entry.name.clone())
+                .collect(),
+            values: state.entries().iter().map(|entry| entry.value).collect(),
+        })
+    }
     pub fn new(store: impl CheatStore) -> Self {
         let state = store
             .load()

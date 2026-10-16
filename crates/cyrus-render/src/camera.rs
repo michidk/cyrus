@@ -1,10 +1,12 @@
 //! Inspection camera, independent of gameplay pose and input.
+mod persistence;
 pub(crate) mod projection;
 use bevy::{camera::primitives::Aabb, input::mouse::AccumulatedMouseMotion, prelude::*};
 use cyrus_game::AppState;
 use cyrus_game::player::Player;
 use cyrus_game::player::input::InputSample;
 use cyrus_game::player::input::InputSuppressed;
+pub use persistence::{CameraCandidate, CameraSnapshot};
 /// The view camera is independent of the player transform.
 #[derive(Component)]
 pub struct ViewCamera;
@@ -211,7 +213,11 @@ fn spawn(
     mut commands: Commands,
     initial: Option<Res<InitialView>>,
     mut flycam: ResMut<FlycamSettings>,
+    cameras: Query<(), With<ViewCamera>>,
 ) {
+    if !cameras.is_empty() {
+        return;
+    }
     if initial.is_some() {
         flycam.enabled = true;
     }
@@ -226,6 +232,34 @@ fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn entry_preserves_a_published_camera_and_controls() {
+        let mut app = App::new();
+        app.insert_resource(FlycamSettings {
+            enabled: false,
+            speed: 321.0,
+        })
+        .add_systems(Update, spawn);
+        let camera = app
+            .world_mut()
+            .spawn((ViewCamera, Transform::from_xyz(12.0, 34.0, 56.0)))
+            .id();
+        app.update();
+        assert_eq!(
+            app.world_mut()
+                .query_filtered::<Entity, With<ViewCamera>>()
+                .iter(app.world())
+                .collect::<Vec<_>>(),
+            vec![camera]
+        );
+        assert_eq!(
+            app.world().get::<Transform>(camera).unwrap().translation,
+            Vec3::new(12.0, 34.0, 56.0)
+        );
+        assert!(!app.world().resource::<FlycamSettings>().enabled);
+        assert_eq!(app.world().resource::<FlycamSettings>().speed, 321.0);
+    }
 
     #[test]
     fn ordinary_view_uses_camera_and_waits_for_scene_framing() {

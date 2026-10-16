@@ -108,9 +108,10 @@ fn handle(
     ),
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
-    (state, mut next): (
+    (state, mut next, mut session): (
         Res<State<cyrus_game::AppState>>,
         ResMut<NextState<cyrus_game::AppState>>,
+        Option<ResMut<cyrus_session::SessionBoundary>>,
     ),
     (mut startup, menu): (
         Option<ResMut<cyrus_startup::StartupPresentation>>,
@@ -183,6 +184,23 @@ fn handle(
                     break;
                 }
             }
+            Command::SessionCapture => session.as_mut()
+                .ok_or_else(|| anyhow::anyhow!("session boundary unavailable"))
+                .and_then(|boundary| boundary.capture_live())
+                .map(|()| json!({"pending":true}))
+                .map_err(|error| format!("{error:#}")),
+            Command::SessionCaptureResult => (|| -> anyhow::Result<serde_json::Value> {
+                let boundary = session.as_mut().ok_or_else(|| anyhow::anyhow!("session boundary unavailable"))?;
+                match boundary.take_result() {
+                    None => Ok(json!({"pending":true})),
+                    Some(Err(error)) => Err(error),
+                    Some(Ok(cyrus_session::SessionBoundaryResult::Captured(snapshot))) => {
+                        let document = snapshot.encode_document()?;
+                        Ok(json!({"pending":false,"bytes":document.len(),"document":String::from_utf8(document)?}))
+                    }
+                    Some(Ok(cyrus_session::SessionBoundaryResult::Committed)) => Ok(json!({"pending":false,"committed":true})),
+                }
+            })().map_err(|error| format!("{error:#}")),
             Command::State => {
                 let scene_ready = ready_scene.as_ref().is_some_and(|ready| {
                     prepared.as_ref().is_some_and(|world| ready.0 == world.animations)

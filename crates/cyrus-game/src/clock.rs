@@ -343,7 +343,9 @@ pub(crate) fn enter_world(
         return;
     }
     if let Some(mut clock) = clock {
-        clock.restart_warmup();
+        if actors.restored_generation != Some(world.generation()) {
+            clock.restart_warmup();
+        }
         *entered = Some(world.generation());
     }
 }

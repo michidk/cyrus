@@ -126,6 +126,7 @@ module where it is defined and regenerate.
 - `src/player/input.rs` — Keyboard input only. Binding semantics and scan codes are documented in
 - `src/player/motion.rs` — Original heading projection, per preservation's player and water engine specs.
 - `src/player/placement.rs` — Marker-based entry from preservation's player and RGM documentation.
+- `src/player/placement/persistence.rs` — Off-live player presentation replacement, preserving marker-entry completion.
 - `src/player/runtime.rs` — Explicit admitted static-ground updates shared by native and browser player paths.
 - `src/player/support.rs` — Player-specific forward admission after world support queries.
 - `src/player/turn.rs` — Ordinary ground-turn arithmetic from redguard-preservation's

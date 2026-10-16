@@ -1,7 +1,9 @@
 //! Player frame-source replacement through the shared native/browser GLB loader.
+mod persistence;
 use bevy::{asset::AssetPath, prelude::*};
 use cyrus_game::player::Player;
 use cyrus_world::{animation::AnimationPose, lifecycle::PreparedWorld};
+pub use persistence::{PlayerModelCandidate, PlayerModelSnapshot};
 
 #[derive(Component)]
 struct ModelRoot {
@@ -54,14 +56,7 @@ fn bind(
             }
             continue;
         }
-        let path = prepared
-            .scene_path
-            .path()
-            .with_extension("player-models")
-            .join(format!("{}.glb", pose.model));
-        let source = AssetPath::from(path)
-            .with_source(prepared.scene_path.source().clone())
-            .into_owned();
+        let source = model_source(&prepared, &pose.model);
         if let Some((root, binding)) = roots.iter().find(|(_, binding)| binding.player == player) {
             if binding.source == source && binding.model == pose.model {
                 for child in children.iter_descendants(root) {
@@ -90,4 +85,16 @@ fn bind(
             ChildOf(player),
         ));
     }
+}
+
+fn model_source(prepared: &PreparedWorld, model: &str) -> AssetPath<'static> {
+    AssetPath::from(
+        prepared
+            .scene_path
+            .path()
+            .with_extension("player-models")
+            .join(format!("{model}.glb")),
+    )
+    .with_source(prepared.scene_path.source().clone())
+    .into_owned()
 }

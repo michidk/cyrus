@@ -12,6 +12,11 @@ pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
 pub(super) mod overlap;
+mod persistence;
+pub use persistence::{
+    LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
+    LogicalSessionSnapshot, WorldRestoreContext, WorldSnapshot, WorldSnapshotSources,
+};
 pub(super) mod player;
 pub(super) mod prevalidation;
 pub(super) mod queued;
@@ -1633,6 +1638,9 @@ impl ScriptWorld {
 #[derive(Resource)]
 pub struct ScriptActors {
     pub current: Option<ScriptWorld>,
+    visited: BTreeMap<u32, ScriptWorld>,
+    discard_current_on_release: bool,
+    pub(crate) restored_generation: Option<u64>,
     generation: u64,
     requested: Option<Handle<Scripts>>,
     globals: super::GameplayGlobals,
@@ -1642,6 +1650,9 @@ impl Default for ScriptActors {
     fn default() -> Self {
         Self {
             current: None,
+            visited: BTreeMap::new(),
+            discard_current_on_release: false,
+            restored_generation: None,
             generation: 0,
             requested: None,
             globals: super::GameplayGlobals::new_session(),
@@ -1694,11 +1705,18 @@ impl ScriptActors {
             self.globals.lockout_player(0);
             self.globals.combat_messages.reset();
         }
+        self.discard_current_on_release = self.current.is_some();
+        self.visited.clear();
     }
 
     fn release_world(&mut self) {
-        if let Some(world) = self.current.take() {
-            self.globals = world.globals;
+        self.restored_generation = None;
+        if let Some(mut world) = self.current.take() {
+            self.globals = std::mem::take(&mut world.globals);
+            if !self.discard_current_on_release {
+                self.visited.insert(world.world, world);
+            }
+            self.discard_current_on_release = false;
         }
     }
     /// Record a host failure without replacing the first failure in this world.
@@ -1716,6 +1734,31 @@ pub(super) fn prepare(
     clock: Option<Res<crate::clock::SimulationClock>>,
     mut commands: Commands,
 ) {
+    // A replacement registry adopts its already validated world without entry work.
+    if actors.restored_generation.is_some() && actors.requested.is_none() {
+        let (Some(scripts), Some(animation_data)) = (
+            assets.get(&prepared.scripts),
+            animations.get(&prepared.animations),
+        ) else {
+            return;
+        };
+        let compatible = actors.current.as_ref().is_some_and(|world| {
+            world.world == scripts.world
+                && world.content_id == scripts.content_id
+                && prepared.world.is_none_or(|id| id == world.world)
+                && animation_data.world == world.world
+                && animation_data.metadata["script_content_id"].as_str()
+                    == Some(world.content_id.as_str())
+        });
+        if compatible {
+            actors.requested = Some(prepared.scripts.clone());
+        } else {
+            actors.report_runtime_error(
+                "restored registry does not match prepared world assets".into(),
+            );
+        }
+        return;
+    }
     if prepared.is_changed() {
         actors.release_world();
         actors.error = None;
@@ -1756,6 +1799,11 @@ pub(super) fn prepare(
                 scripts.world
             );
         }
+        anyhow::ensure!(
+            !actors.visited.contains_key(&scripts.world),
+            "world {} revisit requires complete session service restoration",
+            scripts.world
+        );
         actors.globals.prepare_dialogue(&scripts.dialogue)?;
         let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
         world.prepare_markers(animation_data)?;

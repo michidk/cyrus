@@ -1,8 +1,14 @@
 //! Documented Glide fog and clipping for exported scene materials.
 mod clipping;
 mod compositing;
+mod preparation;
 mod texture;
-pub use texture::{TextureAnimations, TextureFrame, TexturePlaybackSnapshot};
+pub use preparation::{
+    SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
+};
+pub use texture::{
+    TextureAnimations, TextureFrame, TexturePlaybackSnapshot, TextureSourcesSnapshot,
+};
 
 use crate::camera::ViewCamera;
 use crate::environment::EnvironmentRequest;
@@ -20,7 +26,7 @@ use cyrus_game::fidelity::Mode;
 use std::collections::{HashMap, HashSet};
 
 /// Original scene clipping and a debug-only Modern fog override, in engine units.
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RenderDistance {
     /// Near/far distances from the active world's environment. None while loading.
     pub original: Option<[f32; 2]>,
@@ -272,7 +278,10 @@ fn apply_scene_fog(
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<Assets<StandardMaterial>>,
     names: Query<&Name>,
-    parents: Query<&ChildOf>,
+    hierarchy: (
+        Query<&ChildOf>,
+        Query<(), With<crate::persistence::StagedRenderRoot>>,
+    ),
     mut fog_materials: ResMut<Assets<SceneMaterial>>,
     mut converted: Local<MaterialCache>,
     mut terrain_materials: ResMut<Assets<TerrainMaterial>>,
@@ -281,12 +290,13 @@ fn apply_scene_fog(
         Local<Option<(AssetId<Environment>, FogExtension)>>,
         Local<crate::lighting::runtime::RuntimeLights>,
         ResMut<Assets<Image>>,
-        Query<&MeshMaterial3d<SceneMaterial>>,
-        Query<&MeshMaterial3d<TerrainMaterial>>,
+        Query<(Entity, &MeshMaterial3d<SceneMaterial>)>,
+        Query<(Entity, &MeshMaterial3d<TerrainMaterial>)>,
         Query<&bevy::gltf::GltfExtras>,
         Query<&crate::flat::Flat>,
     ),
 ) {
+    let (parents, staged) = hierarchy;
     let (mut previous, mut lights, mut images, scene_handles, terrain_handles, node_extras, flats) =
         runtime;
     let (Some(environment), Some([near, far])) =
@@ -308,27 +318,7 @@ fn apply_scene_fog(
             perspective.far = far / 20.0;
         }
     }
-    let extension = FogExtension {
-        ambient: Vec3::from(environment.model_lighting.ambient).extend(0.0),
-        directional: Vec3::from(environment.model_lighting.directional).extend(0.0),
-        direction: Vec3::from(environment.model_lighting.direction).extend(0.0),
-        color: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
-        clipping: Vec4::new(
-            near,
-            far,
-            u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
-            0.0,
-        ),
-        water: Vec4::new(
-            u8::from(fidelity.mode(Area::Water) == Mode::Modern) as f32,
-            0.0,
-            0.0,
-            0.0,
-        ),
-        table: environment
-            .fog_table
-            .map(|values| Vec4::from_array(values.map(|value| value as f32))),
-    };
+    let extension = fog_extension(environment, &fidelity, [near, far]);
     if request.is_changed()
         || previous
             .as_ref()
@@ -337,11 +327,27 @@ fn apply_scene_fog(
         converted.clear();
         terrain_cache.clear();
     }
+    let is_live = |entity| {
+        !std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|node| staged.contains(node))
+    };
+    for (entity, handle) in &scene_handles {
+        if !is_live(entity) {
+            continue;
+        }
+        if let Some(mut material) = fog_materials.get_mut(&handle.0)
+            && material.extension.lights != light_texture
+        {
+            material.extension.lights = light_texture.clone();
+        }
+    }
     if previous.as_ref().is_none_or(|(_, old)| *old != extension) {
         // Retained assets from a departed world must not trigger fresh GPU uploads.
         for id in scene_handles
             .iter()
-            .map(|h| h.0.id())
+            .filter(|(entity, _)| is_live(*entity))
+            .map(|(_, h)| h.0.id())
             .collect::<HashSet<_>>()
         {
             let Some(mut material) = fog_materials.get_mut(id) else {
@@ -353,7 +359,8 @@ fn apply_scene_fog(
         }
         for id in terrain_handles
             .iter()
-            .map(|h| h.0.id())
+            .filter(|(entity, _)| is_live(*entity))
+            .map(|(_, h)| h.0.id())
             .collect::<HashSet<_>>()
         {
             let Some(mut material) = terrain_materials.get_mut(id) else {
@@ -365,6 +372,12 @@ fn apply_scene_fog(
     }
     *previous = Some((request.0.id(), extension.clone()));
     for (entity, handle, mut mesh, extras, material_extras) in &mut entities {
+        if std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|node| staged.contains(node))
+        {
+            continue;
+        }
         let Some(base) = materials.get(&handle.0) else {
             continue;
         };
@@ -424,7 +437,12 @@ fn apply_scene_fog(
             let prepared = extras
                 .ok_or_else(|| anyhow::anyhow!("missing model lighting metadata"))
                 .and_then(|extras| {
-                    attributes = crate::sampling::attributes(
+                    prepare_model_geometry(
+                        environment,
+                        base,
+                        original,
+                        &extras.value,
+                        material_extras.map(|extras| extras.value.as_str()),
                         std::iter::once(entity)
                             .chain(parents.iter_ancestors(entity))
                             .filter_map(|ancestor| {
@@ -433,65 +451,20 @@ fn apply_scene_fog(
                                     .ok()
                                     .map(|extras| extras.value.as_str())
                             }),
-                    )?;
-                    if flats.contains(entity) {
-                        // The material sampling word uses point/chroma bits shared with ROB flags.
-                        attributes = Some(3);
-                    }
-                    if attributes.is_some()
-                        && base.base_color_texture.is_some()
-                        && let Some(key) = crate::sampling::chroma_key(
-                            material_extras.map(|extras| extras.value.as_str()),
-                            &extras.value,
-                        )?
-                    {
-                        chroma_key =
-                            Vec3::from_array(key.map(f32::from))
-                                .extend(
-                                    u8::from(attributes.is_some_and(|flags| flags & 2 != 0)) as f32
-                                );
-                        if !flats.contains(entity) && attributes.is_some_and(|flags| flags & 4 == 0)
-                        {
-                            let image = images
-                                .get(base.base_color_texture.as_ref().unwrap())
-                                .unwrap();
-                            let layout = rgpre::import::bsi::GlideTextureLayout::new(
-                                [
-                                    u16::try_from(image.width())?,
-                                    u16::try_from(image.height())?,
-                                ],
-                                Some(environment.texture_scale),
-                            )?;
-                            let [w, h] = layout.allocation_dimensions().map(u32::from);
-                            let [x, y] = layout.sampling_stride().map(u32::from);
-                            texture_layout = UVec4::new(w, h, x, y);
-                            let [u, v] = layout.coordinate_scale();
-                            texture_scale = Vec4::new(u, v, layout.sampling_level() as f32, 0.0);
-                        }
-                    }
-                    crate::lighting::model_mesh(
-                        original,
-                        &extras.value,
-                        instance
-                            .filter(|_| !environment.prelighting.lights.is_empty())
-                            .map(|(_, instance)| (environment, instance)),
-                        attributes.is_some() && !flats.contains(entity),
+                        flats.get(entity).ok(),
+                        instance.map(|(_, instance)| instance),
+                        &images,
                     )
                 });
             match prepared {
-                Ok((mut private, bound, solid)) => {
-                    solid_rgb = solid;
-                    if let Some(brightness) =
-                        flats.get(entity).ok().and_then(|flat| flat.brightness)
-                        && let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) =
-                            private.attribute_mut(Mesh::ATTRIBUTE_UV_1)
-                    {
-                        for value in uv {
-                            value[0] = f32::from(brightness);
-                        }
-                    }
-                    mesh.0 = meshes.add(private);
-                    radius = bound;
+                Ok(prepared) => {
+                    solid_rgb = prepared.solid_rgb;
+                    attributes = prepared.attributes;
+                    chroma_key = prepared.chroma_key;
+                    texture_layout = prepared.texture_layout;
+                    texture_scale = prepared.texture_scale;
+                    mesh.0 = meshes.add(prepared.mesh);
+                    radius = prepared.radius;
                 }
                 Err(error) => {
                     error!(
@@ -519,52 +492,20 @@ fn apply_scene_fog(
                 flats.get(entity).ok().map(|flat| flat.alpha),
             ))
             .or_insert_with(|| {
-                let mut extension = extension.clone();
-                extension.water.y = u8::from(terrain) as f32;
-                let mut base = base.clone();
-                let flat = flats.get(entity).ok();
-                if flat.is_some() {
-                    base.specular_transmission = 1.0;
-                }
-                // Known opaque paths bypass the generic material alpha mask.
-                if attributes.is_some_and(|flags| flags & 2 == 0) {
-                    base.alpha_mode = AlphaMode::Opaque;
-                }
-                fog_materials.add(SceneMaterial {
+                fog_materials.add(model_material(
                     base,
-                    extension: ModelExtension {
-                        solid_color: solid_rgb.map_or(Vec4::ZERO, |rgb| {
-                            Vec3::from_array(rgb.map(f32::from)).extend(1.0)
-                        }),
-                        chroma_key,
-                        texture_layout,
-                        texture_scale,
-                        fog: extension,
-                        compositing: Vec4::new(
-                            flat.map_or(-1.0, |flat| f32::from(flat.alpha)),
-                            0.0,
-                            0.0,
-                            0.0,
-                        ),
-                        lights: light_texture.clone(),
-                        placement: instance.map_or(Mat4::IDENTITY, |(_, instance)| {
-                            let m = instance.matrix.map(|value| value as f32 / 268_435_456.0);
-                            Mat4::from_cols(
-                                Vec4::new(m[0], m[3], m[6], 0.0),
-                                Vec4::new(m[1], m[4], m[7], 0.0),
-                                Vec4::new(m[2], m[5], m[8], 0.0),
-                                Vec3::from_array(instance.position.map(|value| value as f32))
-                                    .extend(1.0),
-                            )
-                        }),
-                        lighting: Vec4::new(
-                            flat.map_or(radius as f32 / 256.0, |flat| flat.radius),
-                            u8::from(instance.is_some()) as f32,
-                            u8::from(!terrain) as f32,
-                            attributes.map_or(-1.0, f32::from),
-                        ),
-                    },
-                })
+                    &extension,
+                    terrain,
+                    flats.get(entity).ok(),
+                    instance.map(|(_, instance)| instance),
+                    radius,
+                    solid_rgb,
+                    attributes,
+                    chroma_key,
+                    texture_layout,
+                    texture_scale,
+                    &light_texture,
+                ))
             })
             .clone();
         commands
@@ -572,6 +513,177 @@ fn apply_scene_fog(
             .remove::<MeshMaterial3d<StandardMaterial>>()
             .insert(MeshMaterial3d(material));
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn model_material(
+    base: &StandardMaterial,
+    extension: &FogExtension,
+    terrain: bool,
+    flat: Option<&crate::flat::Flat>,
+    instance: Option<&cyrus_assets::environment::StaticLightingInstance>,
+    radius: i32,
+    solid_rgb: Option<[u8; 3]>,
+    attributes: Option<u8>,
+    chroma_key: Vec4,
+    texture_layout: UVec4,
+    texture_scale: Vec4,
+    light_texture: &Handle<Image>,
+) -> SceneMaterial {
+    let mut extension = extension.clone();
+    extension.water.y = u8::from(terrain) as f32;
+    let mut base = base.clone();
+    if flat.is_some() {
+        base.specular_transmission = 1.0;
+    }
+    // Known opaque paths bypass the generic material alpha mask.
+    if attributes.is_some_and(|flags| flags & 2 == 0) {
+        base.alpha_mode = AlphaMode::Opaque;
+    }
+    SceneMaterial {
+        base,
+        extension: ModelExtension {
+            solid_color: solid_rgb.map_or(Vec4::ZERO, |rgb| {
+                Vec3::from_array(rgb.map(f32::from)).extend(1.0)
+            }),
+            chroma_key,
+            texture_layout,
+            texture_scale,
+            fog: extension,
+            compositing: Vec4::new(
+                flat.map_or(-1.0, |flat| f32::from(flat.alpha)),
+                0.0,
+                0.0,
+                0.0,
+            ),
+            lights: light_texture.clone(),
+            placement: instance.map_or(Mat4::IDENTITY, |instance| {
+                let m = instance.matrix.map(|value| value as f32 / 268_435_456.0);
+                Mat4::from_cols(
+                    Vec4::new(m[0], m[3], m[6], 0.0),
+                    Vec4::new(m[1], m[4], m[7], 0.0),
+                    Vec4::new(m[2], m[5], m[8], 0.0),
+                    Vec3::from_array(instance.position.map(|value| value as f32)).extend(1.0),
+                )
+            }),
+            lighting: Vec4::new(
+                flat.map_or(radius as f32 / 256.0, |flat| flat.radius),
+                u8::from(instance.is_some()) as f32,
+                u8::from(!terrain) as f32,
+                attributes.map_or(-1.0, f32::from),
+            ),
+        },
+    }
+}
+
+fn fog_extension(
+    environment: &Environment,
+    fidelity: &Fidelity,
+    [near, far]: [f32; 2],
+) -> FogExtension {
+    FogExtension {
+        ambient: Vec3::from(environment.model_lighting.ambient).extend(0.0),
+        directional: Vec3::from(environment.model_lighting.directional).extend(0.0),
+        direction: Vec3::from(environment.model_lighting.direction).extend(0.0),
+        color: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
+        clipping: Vec4::new(
+            near,
+            far,
+            u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
+            0.0,
+        ),
+        water: Vec4::new(
+            u8::from(fidelity.mode(Area::Water) == Mode::Modern) as f32,
+            0.0,
+            0.0,
+            0.0,
+        ),
+        table: environment
+            .fog_table
+            .map(|values| Vec4::from_array(values.map(|value| value as f32))),
+    }
+}
+
+struct PreparedModelGeometry {
+    mesh: Mesh,
+    radius: i32,
+    solid_rgb: Option<[u8; 3]>,
+    attributes: Option<u8>,
+    chroma_key: Vec4,
+    texture_layout: UVec4,
+    texture_scale: Vec4,
+}
+
+// Shared validation is independent of asset allocation and entity publication.
+#[allow(clippy::too_many_arguments)]
+fn prepare_model_geometry<'a>(
+    environment: &Environment,
+    base: &StandardMaterial,
+    original: &Mesh,
+    extras: &str,
+    material_extras: Option<&str>,
+    ancestry: impl IntoIterator<Item = &'a str>,
+    flat: Option<&crate::flat::Flat>,
+    instance: Option<&cyrus_assets::environment::StaticLightingInstance>,
+    images: &Assets<Image>,
+) -> anyhow::Result<PreparedModelGeometry> {
+    let mut chroma_key = Vec4::ZERO;
+    let mut texture_layout = UVec4::ZERO;
+    let mut texture_scale = Vec4::ZERO;
+    let mut attributes = crate::sampling::attributes(ancestry.into_iter())?;
+    if flat.is_some() {
+        // The material sampling word uses point/chroma bits shared with ROB flags.
+        attributes = Some(3);
+    }
+    if attributes.is_some()
+        && base.base_color_texture.is_some()
+        && let Some(key) = crate::sampling::chroma_key(material_extras, extras)?
+    {
+        chroma_key = Vec3::from_array(key.map(f32::from))
+            .extend(u8::from(attributes.is_some_and(|flags| flags & 2 != 0)) as f32);
+        if flat.is_none() && attributes.is_some_and(|flags| flags & 4 == 0) {
+            let image = images
+                .get(base.base_color_texture.as_ref().unwrap())
+                .ok_or_else(|| anyhow::anyhow!("model texture image is not loaded"))?;
+            let layout = rgpre::import::bsi::GlideTextureLayout::new(
+                [
+                    u16::try_from(image.width())?,
+                    u16::try_from(image.height())?,
+                ],
+                Some(environment.texture_scale),
+            )?;
+            let [w, h] = layout.allocation_dimensions().map(u32::from);
+            let [x, y] = layout.sampling_stride().map(u32::from);
+            texture_layout = UVec4::new(w, h, x, y);
+            let [u, v] = layout.coordinate_scale();
+            texture_scale = Vec4::new(u, v, layout.sampling_level() as f32, 0.0);
+        }
+    }
+    let (mut mesh, radius, solid_rgb) = crate::lighting::model_mesh(
+        original,
+        extras,
+        instance
+            .filter(|_| !environment.prelighting.lights.is_empty())
+            .map(|instance| (environment, instance)),
+        attributes.is_some() && flat.is_none(),
+    )?;
+    if let Some(brightness) = flat.and_then(|flat| flat.brightness)
+        && let Some(bevy::mesh::VertexAttributeValues::Float32x2(uv)) =
+            mesh.attribute_mut(Mesh::ATTRIBUTE_UV_1)
+    {
+        for value in uv {
+            value[0] = f32::from(brightness);
+        }
+    }
+    Ok(PreparedModelGeometry {
+        mesh,
+        radius,
+        solid_rgb,
+        attributes,
+        chroma_key,
+        texture_layout,
+        texture_scale,
+    })
 }
 
 #[cfg(test)]
@@ -719,12 +831,114 @@ mod tests {
                     .id()
             })
             .collect();
+        let staged_root = app
+            .world_mut()
+            .spawn((crate::persistence::StagedRenderRoot, Visibility::Hidden))
+            .id();
+        let staged_mesh = app
+            .world_mut()
+            .spawn((
+                ChildOf(staged_root),
+                MeshMaterial3d(base.clone()),
+                Mesh3d(mesh.clone()),
+                extras.clone(),
+            ))
+            .id();
         let terrain_root = app.world_mut().spawn(Name::new("Terrain")).id();
         let terrain = app
             .world_mut()
             .spawn((MeshMaterial3d(base), Mesh3d(mesh), ChildOf(terrain_root)))
             .id();
         app.update();
+        assert!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(staged_mesh)
+                .is_some()
+        );
+        assert!(
+            app.world()
+                .get::<MeshMaterial3d<SceneMaterial>>(staged_mesh)
+                .is_none()
+        );
+
+        assert!(validate_scene_materials(app.world(), &[staged_root]).is_err());
+        let environments = app
+            .world_mut()
+            .remove_resource::<Assets<Environment>>()
+            .unwrap();
+        let environment_id = app.world().resource::<EnvironmentRequest>().0.id();
+        let destination = environments.get(environment_id).unwrap();
+        let before_meshes = app.world().resource::<Assets<Mesh>>().len();
+        let invalid = app
+            .world_mut()
+            .spawn((
+                ChildOf(staged_root),
+                Mesh3d(Handle::default()),
+                MeshMaterial3d::<StandardMaterial>(Handle::default()),
+            ))
+            .id();
+        assert!(
+            prepare_scene_materials(
+                app.world_mut(),
+                &[staged_root],
+                destination,
+                environment_id,
+                &Fidelity::default(),
+                [7.0, 3800.0],
+                Vec3::ZERO
+            )
+            .is_err()
+        );
+        assert_eq!(app.world().resource::<Assets<Mesh>>().len(), before_meshes);
+        assert!(
+            app.world()
+                .get::<MeshMaterial3d<StandardMaterial>>(staged_mesh)
+                .is_some()
+        );
+        app.world_mut().despawn(invalid);
+        prepare_scene_materials(
+            app.world_mut(),
+            &[staged_root],
+            destination,
+            environment_id,
+            &Fidelity::default(),
+            [7.0, 3800.0],
+            Vec3::ZERO,
+        )
+        .unwrap();
+        validate_scene_materials(app.world(), &[staged_root]).unwrap();
+        let staged_material = app
+            .world()
+            .get::<MeshMaterial3d<SceneMaterial>>(staged_mesh)
+            .unwrap()
+            .0
+            .clone();
+        let live_material = app
+            .world()
+            .get::<MeshMaterial3d<SceneMaterial>>(first)
+            .unwrap()
+            .0
+            .clone();
+        let store = app.world().resource::<Assets<SceneMaterial>>();
+        assert!(
+            store.get(&staged_material).unwrap().extension.fog
+                == store.get(&live_material).unwrap().extension.fog
+        );
+        assert_eq!(
+            store.get(&staged_material).unwrap().extension.lighting,
+            store.get(&live_material).unwrap().extension.lighting
+        );
+        let removed = app
+            .world_mut()
+            .resource_mut::<Assets<SceneMaterial>>()
+            .remove(staged_material.id())
+            .unwrap();
+        assert!(validate_scene_materials(app.world(), &[staged_root]).is_err());
+        app.world_mut()
+            .resource_mut::<Assets<SceneMaterial>>()
+            .insert(staged_material.id(), removed)
+            .unwrap();
+        app.insert_resource(environments);
         let handle = app
             .world()
             .get::<MeshMaterial3d<SceneMaterial>>(first)

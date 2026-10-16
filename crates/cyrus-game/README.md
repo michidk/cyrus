@@ -896,9 +896,35 @@ is established by standalone player initialization, following
 later ordinary activation refuses an unknown result. This does not establish
 complete NPC interaction or conversation progression.
 
-Player continuation exposes opaque `PlayerRuntimeSnapshot` and
-`PlayerPlacementSnapshot` replacements with explicit fresh entity/source bindings.
-Decoded `PlayerScene` assets carry a content identity. Restored player entry
-preserves its pose and prepared sidecar on the first update. Complete session
-validation and publication belong to the session host; these APIs alone do not
-establish live save/load acceptance.
+`ScriptActors::snapshot_session` captures the current and retained visited logical
+worlds, shared globals, HUD, clock, RNG and gameplay toggles. `LogicalSessionSnapshot::plan` validates
+installed content and reserves actor generations above both the saved identities
+and the host's live high-water mark. Its actor bindings let service owners prepare
+replacements before `finish` constructs `LogicalSessionCandidate`. A failed world
+validation leaves every live resource unchanged. Capture requires a completed
+scheduler boundary outside world loading and New Game transitions.
+
+This is a logical component of a complete save document. Audio transport,
+presentation bindings and host lifecycle must join the same candidate before a
+coordinated live commit; the logical API alone does not enable save/load or revisits.
+A restored registry adopts matching prepared assets on its first plugin update
+without rerunning fresh-world preparation. Its restored generation also suppresses
+the normal clock warmup restart. Ordinary world release clears that distinction;
+subsequent fresh entries retain their existing initialization behavior.
+`player::placement::PlayerPlacementSnapshot` retains projected pose, transform,
+marker selection and support status, including inspection failures. Its replacement
+bundle suppresses marker settling once for matching prepared asset handles. A later
+explicit marker or source change follows ordinary entry behavior. The session host
+must validate complete source identity and pair this presentation with its restored
+logical player before inserting the bundle.
+`PlayerRuntime::snapshot/from_snapshot` retains explicit-update entry state and
+failures with explicit player/generation/source bindings. Its replacement performs
+no grounded update or initialization. The host must restore it alongside placement
+and the logical actor so the next explicit update recognizes the same continuation.
+
+Decoded `PlayerScene` assets retain the complete authored cache fingerprint,
+including movement settings, terrain and player definitions. World snapshot
+sources can include this identity; a complete gameplay session must supply it
+for every retained world. Hand-built inspection scenes without decoded provenance
+cannot provide this compatibility check. The fingerprint identifies the decoded
+input, so hosts must retain trusted prepared assets rather than mutate their fields.

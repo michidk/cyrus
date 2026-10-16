@@ -21,6 +21,11 @@ pub enum AppState {
     Menu,
     InGame,
 }
+/// A complete replacement was published before a menu-to-game state transition.
+/// Exit systems must not restore checkpoints belonging to the replaced session.
+#[derive(Resource)]
+pub struct RestoredSessionEntry;
+
 pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
@@ -36,8 +41,16 @@ impl Plugin for GamePlugin {
                 script::ScriptPlugin,
                 console::GameConsolePlugin,
             ))
-            .add_systems(Update, (log_state_changes, log_fidelity));
+            .add_systems(Update, (log_state_changes, log_fidelity))
+            .add_systems(
+                Last,
+                clear_restored_entry.run_if(in_state(AppState::InGame)),
+            );
     }
+}
+
+fn clear_restored_entry(mut commands: Commands) {
+    commands.remove_resource::<RestoredSessionEntry>();
 }
 
 fn log_state_changes(mut transitions: MessageReader<StateTransitionEvent<AppState>>) {

@@ -9,10 +9,10 @@ use cyrus_console::{Command, ConsoleApp, Invocation};
 use cyrus_world::lifecycle::CurrentScene;
 use std::collections::BTreeMap;
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Edits(BTreeMap<u32, WorldEdits>);
 
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 struct WorldEdits {
     scalars: [Option<f32>; 5],
     sky_speed: Option<u8>,
@@ -290,6 +290,32 @@ mod tests {
     }
 
     #[test]
+    fn replacement_environment_applies_edits_before_owner_reconstruction() -> Result<()> {
+        let installed = environment();
+        let saved = EnvironmentEditsSnapshot {
+            version: 1,
+            edits: Edits(BTreeMap::from([(
+                7,
+                WorldEdits {
+                    scalars: [None, Some(-1234.0), Some(48.0), None, None],
+                    sky_speed: Some(9),
+                },
+            )])),
+        };
+        let candidate = saved.restore(&BTreeMap::from([(7, &installed)]))?;
+        let prepared = candidate.prepare_environment(7, environment())?;
+        assert_eq!(prepared.sky.as_ref().unwrap().level, -1234.0);
+        assert_eq!(prepared.sky.as_ref().unwrap().speed, 9);
+        assert_eq!(prepared.water.as_ref().unwrap().parameters[0], 48.0);
+        assert_eq!(installed.sky.as_ref().unwrap().level, -3500.0);
+        assert_eq!(installed.water.as_ref().unwrap().parameters[0], 24.0);
+        let mut missing = environment();
+        missing.water = None;
+        assert!(candidate.prepare_environment(7, missing).is_err());
+        Ok(())
+    }
+
+    #[test]
     fn speed_commands_consume_one_draw_and_retain_only_the_world_byte() {
         use cyrus_game::random::EngineRandom;
         let mut app = App::new();
@@ -377,6 +403,45 @@ mod tests {
     }
 
     #[test]
+    fn environment_edits_replacement_validates_all_worlds_before_publication() {
+        let mut live = World::new();
+        live.insert_resource(Edits(BTreeMap::from([(
+            7,
+            WorldEdits {
+                scalars: [Some(-800.0), None, Some(0.0), Some(-2.0), None],
+                sky_speed: Some(255),
+            },
+        )])));
+        let saved = EnvironmentEditsSnapshot::capture(&live).unwrap();
+        let bytes = serde_json::to_vec(&saved).unwrap();
+        assert!(saved.clone().restore(&BTreeMap::new()).is_err());
+        let installed = environment();
+        let sources = BTreeMap::from([(7, &installed)]);
+        let mut malformed = serde_json::to_value(&saved).unwrap();
+        malformed["version"] = 99.into();
+        assert!(
+            serde_json::from_value::<EnvironmentEditsSnapshot>(malformed)
+                .unwrap()
+                .restore(&sources)
+                .is_err()
+        );
+        let candidate = saved.restore(&sources).unwrap();
+        assert_eq!(
+            serde_json::to_vec(&EnvironmentEditsSnapshot::capture(&live).unwrap()).unwrap(),
+            bytes
+        );
+        let mut replacement = World::new();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        candidate.queue(&mut bevy::prelude::Commands::new(&mut queue, &replacement));
+        assert!(EnvironmentEditsSnapshot::capture(&replacement).is_err());
+        queue.apply(&mut replacement);
+        assert_eq!(
+            serde_json::to_vec(&EnvironmentEditsSnapshot::capture(&replacement).unwrap()).unwrap(),
+            bytes
+        );
+    }
+
+    #[test]
     fn commands_mutate_current_inputs_and_restore_only_the_edited_world_on_revisit() {
         let mut app = App::new();
         app.add_plugins(cyrus_console::ConsolePlugin)
@@ -454,5 +519,97 @@ mod tests {
                 .parameters,
             [0.0, -2.0, 512.0]
         );
+    }
+}
+
+/// Retained per-world console edits, independent of loaded asset handles.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct EnvironmentEditsSnapshot {
+    version: u32,
+    edits: Edits,
+}
+
+/// Validated replacement; queued only by the complete session commit.
+pub struct EnvironmentEditsCandidate(Edits);
+
+impl EnvironmentEditsSnapshot {
+    pub fn capture(world: &World) -> Result<Self> {
+        Ok(Self {
+            version: 1,
+            edits: world
+                .get_resource::<Edits>()
+                .context("environment edits owner absent")?
+                .clone(),
+        })
+    }
+
+    /// Validate every retained world and affected field against prepared installed inputs.
+    pub fn restore(
+        self,
+        sources: &BTreeMap<u32, &Environment>,
+    ) -> Result<EnvironmentEditsCandidate> {
+        anyhow::ensure!(
+            self.version == 1,
+            "environment edits snapshot version unsupported"
+        );
+        for (id, edits) in &self.edits.0 {
+            let environment = sources.get(id).with_context(|| {
+                format!("environment edits world {id}: installed source absent")
+            })?;
+            for (index, value) in edits.scalars.iter().enumerate() {
+                if let Some(value) = value {
+                    anyhow::ensure!(
+                        value.is_finite(),
+                        "environment edits world {id} field {index}: nonfinite scalar"
+                    );
+                    anyhow::ensure!(
+                        if index < 2 {
+                            environment.sky.is_some()
+                        } else {
+                            environment.water.is_some()
+                        },
+                        "environment edits world {id} field {index}: installed owner absent"
+                    );
+                }
+            }
+            anyhow::ensure!(
+                edits.sky_speed.is_none() || environment.sky.is_some(),
+                "environment edits world {id}: installed sky absent"
+            );
+        }
+        Ok(EnvironmentEditsCandidate(self.edits))
+    }
+}
+
+impl EnvironmentEditsCandidate {
+    /// Apply retained edits to an owned off-live installed environment before preparing
+    /// sky, terrain and materials. The caller publishes this private asset at commit.
+    pub fn prepare_environment(&self, world: u32, mut source: Environment) -> Result<Environment> {
+        if let Some(edits) = self.0.0.get(&world) {
+            for (index, value) in edits.scalars.iter().enumerate() {
+                if let Some(value) = value {
+                    anyhow::ensure!(
+                        value.is_finite(),
+                        "environment world {world} field {index}: nonfinite edit"
+                    );
+                    *slot(&mut source, index)
+                        .with_context(|| format!("environment world {world} field {index}"))? =
+                        *value;
+                }
+            }
+            if let Some(speed) = edits.sky_speed {
+                source
+                    .sky
+                    .as_mut()
+                    .with_context(|| format!("environment world {world}: sky absent"))?
+                    .speed = speed;
+            }
+        }
+        Ok(source)
+    }
+
+    /// Queue the validated owner alongside the other session replacements.
+    pub fn queue(self, commands: &mut bevy::prelude::Commands) {
+        commands.insert_resource(self.0);
     }
 }

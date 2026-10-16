@@ -109,3 +109,39 @@ impl WalkNodeReservations {
         }
     }
 }
+
+/// Reservation bytes retain low-byte ownership, including identifiers that alias.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct WalkNodeSnapshot {
+    maps: Vec<Vec<u8>>,
+}
+
+impl WalkNodeReservations {
+    pub(super) fn snapshot(&self) -> WalkNodeSnapshot {
+        WalkNodeSnapshot {
+            maps: self.maps.clone(),
+        }
+    }
+
+    /// The aggregate checks exact world content before supplying installed metadata.
+    pub(super) fn from_snapshot(
+        snapshot: WalkNodeSnapshot,
+        metadata: &serde_json::Value,
+        world: u32,
+    ) -> Result<Self> {
+        let installed = Self::prepare(metadata, world)?;
+        ensure!(
+            snapshot.maps.len() == installed.maps.len(),
+            "world {world}: saved walk-node map count differs"
+        );
+        for (map, (saved, expected)) in snapshot.maps.iter().zip(&installed.maps).enumerate() {
+            ensure!(
+                saved.len() == expected.len(),
+                "world {world} walk-node map {map}: saved node count differs"
+            );
+        }
+        Ok(Self {
+            maps: snapshot.maps,
+        })
+    }
+}

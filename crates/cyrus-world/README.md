@@ -11,6 +11,10 @@ request name. `WorldMetadataStatus` reports animation metadata loading and
 errors; neither identity nor metadata readiness implies that graphics or player
 sidecars are ready.
 
+`WorldPreparationPending` marks an active host preparation worker and is removed
+on completion, failure or supersession. `PreparationProgress` is retained loading-bar
+history and must not be used as an in-flight-work marker.
+
 `AnimationPlugin` loads animation data and advances explicitly attached playback
 only for supplied `AnimationTick` messages. `FrameSequence::from_asset`,
 `ActorAnimation::from_asset` construct runtime

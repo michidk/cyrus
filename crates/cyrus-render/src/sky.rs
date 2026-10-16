@@ -1,5 +1,6 @@
 //! Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
 
+pub(crate) mod persistence;
 use bevy::asset::embedded_asset;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{MaterialPipeline, MaterialPipelineKey};

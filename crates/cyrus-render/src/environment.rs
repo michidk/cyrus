@@ -18,9 +18,9 @@ pub use cyrus_assets::environment::{Environment, SkyImage, SunImage, Water};
 pub struct EnvironmentRequest(pub Handle<Environment>);
 
 #[derive(Resource, Default)]
-struct ActiveEnvironment {
-    source: Option<AssetId<Environment>>,
-    sky: Option<Entity>,
+pub(crate) struct ActiveEnvironment {
+    pub(crate) source: Option<AssetId<Environment>>,
+    pub(crate) sky: Option<Entity>,
 }
 
 /// Renders the Glide sky and BIOS-timed sky scrolling and terrain waves.
@@ -87,38 +87,16 @@ fn apply_sky(
             sun: None,
         };
         let sky = environment.sky.as_ref().unwrap_or(&background);
-        let mut image = Image::new(
-            Extent3d {
-                width: sky.width,
-                height: sky.height,
-                depth_or_array_layers: 1,
-            },
-            TextureDimension::D2,
-            sky.rgba.clone(),
-            TextureFormat::Rgba8UnormSrgb,
-            RenderAssetUsages::default(),
-        );
-        image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-            address_mode_u: ImageAddressMode::Repeat,
-            address_mode_v: ImageAddressMode::Repeat,
-            ..ImageSamplerDescriptor::linear()
-        });
+        let prepared = match prepare_sky_assets(environment) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                error!("sky preparation: {error:#}");
+                return;
+            }
+        };
         let sun = sky.sun.as_ref();
-        let size = sun.map_or([1, 1], |sun| sun.size);
-        let mut sun_image = Image::new(
-            Extent3d {
-                width: size[0],
-                height: size[1],
-                depth_or_array_layers: 1,
-            },
-            TextureDimension::D2,
-            sun.map_or_else(|| vec![0], |sun| sun.alpha.clone()),
-            TextureFormat::R8Unorm,
-            RenderAssetUsages::default(),
-        );
-        sun_image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::linear());
         let material = materials.add(SkyMaterial {
-            image: images.add(image),
+            image: images.add(prepared.sky),
             plane: if environment.sky.is_some() {
                 Vec4::new(sky.level, sky.scale, sky.width as f32, sky.height as f32)
             } else {
@@ -126,7 +104,7 @@ fn apply_sky(
             },
             fog_rgb: Vec3::from_array(environment.background.map(|v| v as f32 / 255.0)).extend(0.0),
             scroll: Vec4::ZERO,
-            sun_image: images.add(sun_image),
+            sun_image: images.add(prepared.sun),
             sun_position: sun.map_or(Vec4::ZERO, |sun| {
                 let [x, y, z] = sun.center;
                 Vec4::new(-x, -y, z, sun.half_size[0]) / 20.0
@@ -136,19 +114,11 @@ fn apply_sky(
                     .extend(sun.half_size[1] / 20.0)
             }),
         });
-        let mut mesh = Mesh::new(
-            PrimitiveTopology::TriangleList,
-            RenderAssetUsages::default(),
-        );
-        mesh.insert_attribute(
-            Mesh::ATTRIBUTE_POSITION,
-            vec![[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]],
-        );
         active.sky = Some(
             commands
                 .spawn((
                     Sky::new(sky.speed),
-                    Mesh3d(meshes.add(mesh)),
+                    Mesh3d(meshes.add(prepared.mesh)),
                     MeshMaterial3d(material),
                     NoFrustumCulling,
                 ))
@@ -159,6 +129,87 @@ fn apply_sky(
     let [r, g, b] = environment.background;
     clear.0 = Color::srgb_u8(r, g, b);
     active.source = Some(request.0.id());
+}
+
+/// CPU sky assets prepared without changing environment, clocks or live entities.
+pub struct PreparedSkyAssets {
+    pub sky: Image,
+    pub sun: Image,
+    pub mesh: Mesh,
+}
+
+/// Build the same images and fullscreen triangle used by ordinary world entry.
+/// Invalid dimensions or payload sizes reject before Bevy image construction.
+pub fn prepare_sky_assets(environment: &Environment) -> anyhow::Result<PreparedSkyAssets> {
+    let background = SkyImage {
+        width: 1,
+        height: 1,
+        rgba: vec![0; 4],
+        level: 0.0,
+        scale: 0.0,
+        speed: 0,
+        sun: None,
+    };
+    let sky = environment.sky.as_ref().unwrap_or(&background);
+    let pixels = (sky.width as usize)
+        .checked_mul(sky.height as usize)
+        .and_then(|pixels| pixels.checked_mul(4));
+    anyhow::ensure!(
+        sky.width > 0 && sky.height > 0 && pixels == Some(sky.rgba.len()),
+        "sky image dimensions/payload differ"
+    );
+    if let Some(sun) = &sky.sun {
+        anyhow::ensure!(
+            sun.size[0] > 0
+                && sun.size[1] > 0
+                && (sun.size[0] as usize).checked_mul(sun.size[1] as usize)
+                    == Some(sun.alpha.len()),
+            "sun image dimensions/payload differ"
+        );
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: sky.width,
+            height: sky.height,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        sky.rgba.clone(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        ..ImageSamplerDescriptor::linear()
+    });
+    let sun = sky.sun.as_ref();
+    let size = sun.map_or([1, 1], |sun| sun.size);
+    let mut sun_image = Image::new(
+        Extent3d {
+            width: size[0],
+            height: size[1],
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        sun.map_or_else(|| vec![0], |sun| sun.alpha.clone()),
+        TextureFormat::R8Unorm,
+        RenderAssetUsages::default(),
+    );
+    sun_image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::linear());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_POSITION,
+        vec![[-1.0, -1.0, 0.0], [3.0, -1.0, 0.0], [-1.0, 3.0, 0.0]],
+    );
+    Ok(PreparedSkyAssets {
+        sky: image,
+        sun: sun_image,
+        mesh,
+    })
 }
 
 #[cfg(test)]
@@ -210,6 +261,34 @@ mod tests {
             water: None,
             terrain_lighting: None,
         });
+        let prepared = prepare_sky_assets(environments.get(&outdoor).unwrap()).unwrap();
+        assert_eq!(prepared.sky.data.as_deref(), Some(pixels.as_slice()));
+        assert_eq!(prepared.sun.data.as_deref(), Some([0, 255].as_slice()));
+        {
+            let mut environment = environments.get_mut(&outdoor).unwrap();
+            environment.sky.as_mut().unwrap().width = 0;
+            assert!(prepare_sky_assets(&environment).is_err());
+            environment.sky.as_mut().unwrap().width = 2;
+            environment
+                .sky
+                .as_mut()
+                .unwrap()
+                .sun
+                .as_mut()
+                .unwrap()
+                .alpha
+                .pop();
+            assert!(prepare_sky_assets(&environment).is_err());
+            environment
+                .sky
+                .as_mut()
+                .unwrap()
+                .sun
+                .as_mut()
+                .unwrap()
+                .alpha
+                .push(255);
+        }
         app.insert_resource(environments)
             .insert_resource(EnvironmentRequest(outdoor.clone()))
             .init_resource::<ActiveEnvironment>()

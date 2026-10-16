@@ -58,6 +58,7 @@ mod tests {
     fn scene() -> PlayerScene {
         let collision = cyrus_assets::collision::CollisionScene::default();
         PlayerScene {
+            source_identity: None,
             actor_collision: None,
             model_radii: Default::default(),
             world: 17,

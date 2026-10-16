@@ -339,3 +339,24 @@ controller, rather than every ordinary object update, as documented in
 Automatic reset integration must preserve that admission point and the ordered
 RTX-cache, dialogue, sample-channel and walk-node cleanup. The explicit
 `SoundMaintenance` timer does not establish this runtime ownership.
+
+## Unfinished session checkpoint
+
+The shared session implementation is committed as work in progress. It includes
+current/visited-world documents, source validation, replacement candidates,
+render/audio staging, boundary capture/commit and asynchronous load preparation.
+Native and browser diagnostic capture hooks are present. This does not enable
+accepted end-to-end save/load.
+
+The latest shared-load integration test remains failing because completion stays
+pending after the fixture supplies its delayed HUD asset. The cause has not yet
+been verified. Earlier direct-candidate and active-audio replacement checks passed,
+but do not validate this new asynchronous path. Final workspace gates and browser
+checks have not been run for this checkpoint.
+
+Remaining work includes resolving that test, implementing the native load caller,
+integrating the separately owned browser storage caller, and verifying installed
+live restoration, restart/reload and visited-world continuation. Revisit guards
+remain until service cleanup and retained-task behavior are implemented and
+verified. Audio snapshots cover source-decoder continuation, not downstream
+converter/device queues. Complete gameplay and controller acceptance remain open.

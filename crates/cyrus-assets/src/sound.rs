@@ -2,7 +2,7 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 mod cache;
-pub use cache::{DialogueCache, DialoguePayload};
+pub use cache::{DialogueCache, DialogueCacheSnapshot, DialoguePayload};
 #[cfg(feature = "parsers")]
 pub mod dialogue;
 /// `MAIN.SFX` metadata and the `SYSTEM.INI` values the mixer needs, exported for the browser.

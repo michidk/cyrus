@@ -15,6 +15,18 @@ pub struct WalkingStep {
 }
 
 impl WalkingStartup {
+    pub(crate) fn snapshot_phase(&self) -> u8 {
+        self.phase
+    }
+
+    pub(crate) fn from_snapshot_phase(phase: u8) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            phase <= 3,
+            "saved walking startup phase {phase} outside range"
+        );
+        Ok(Self { phase })
+    }
+
     /// Request the supported ordinary walking group before reading its movement marker.
     /// Caller must establish sheathed/non-combat eligibility and pass the forward probe.
     /// Requires the enabled animation system. Missing or pending groups do not advance

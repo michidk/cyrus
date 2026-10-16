@@ -2,9 +2,10 @@
 pub(super) mod admission;
 mod checkpoint;
 mod frames;
-pub use checkpoint::TexturePlaybackSnapshot;
+pub use checkpoint::{TexturePlaybackSnapshot, TextureSourcesSnapshot};
 
 use super::{SceneMaterial, TerrainMaterial};
+use crate::persistence::StagedRenderRoot;
 use crate::{camera::ViewCamera, environment::EnvironmentRequest};
 use anyhow::ensure;
 use bevy::{
@@ -98,6 +99,11 @@ pub struct TextureFrame {
 }
 
 impl TextureAnimations {
+    /// Whether this owner is bound to the environment asset adopted at publication.
+    pub fn is_bound_to(&self, environment: AssetId<Environment>) -> bool {
+        self.environment == Some(environment)
+    }
+
     /// Inspect loaded animated images. An unset frame has not yet received a draw request.
     pub fn snapshot(&self) -> Vec<TextureFrame> {
         let mut frames: Vec<_> = self
@@ -163,6 +169,7 @@ fn bind(
     meshes: Res<Assets<Mesh>>,
     parents: Query<&ChildOf>,
     names: Query<&Name>,
+    staged: Query<(), With<StagedRenderRoot>>,
     candidates: Query<
         (
             Entity,
@@ -182,95 +189,19 @@ fn bind(
         images.states.clear();
     }
     for (entity, material, extras, geometry, mesh, frames, flat) in &candidates {
+        if std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|node| staged.contains(node))
+        {
+            continue;
+        }
         let Some(mesh) = meshes.get(&mesh.0) else {
             continue;
         };
-        let result = (|| -> anyhow::Result<Option<(Binding, Option<Admission>)>> {
-            let Some(description) =
-                serde_json::from_str::<MaterialExtras>(&extras.value)?.rgpre_texture_animation
-            else {
-                return Ok(None);
-            };
-            let terrain = std::iter::once(entity)
-                .chain(parents.iter_ancestors(entity))
-                .any(|node| names.get(node).is_ok_and(|name| name.as_str() == "Terrain"));
-            let admission = if terrain {
-                None
-            } else if let Some(flat) = flat {
-                Some(Admission::Flat(admission::Flat::from_mesh(
-                    mesh,
-                    flat.radius,
-                )?))
-            } else {
-                let Some(geometry) = geometry else {
-                    return Ok(None);
-                };
-                let Some(admission) = admission::Model::parse(&geometry.value)? else {
-                    return Ok(None);
-                };
-                let Some(VertexAttributeValues::Float32x3(positions)) =
-                    mesh.attribute(Mesh::ATTRIBUTE_POSITION)
-                else {
-                    anyhow::bail!("animated texture mesh lacks three-component positions")
-                };
-                admission.validate(positions)?;
-                Some(Admission::Model(admission))
-            };
-            ensure!(
-                description.version == 1,
-                "texture animation version {} unsupported",
-                description.version
-            );
-            ensure!(
-                !description.textures.is_empty(),
-                "texture {} has no frames",
-                description.image_name
-            );
-            ensure!(
-                description.delay_ms >= 0,
-                "texture {} has unsupported negative delay {}",
-                description.image_name,
-                description.delay_ms
-            );
-            ensure!(
-                description.image_name.len() == 6
-                    && description
-                        .image_name
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric()),
-                "texture name {:?} is not a shipped canonical image key",
-                description.image_name
-            );
-            let key = description.image_name.to_ascii_lowercase();
-            let delay = (f64::from(description.delay_ms) * 18.2 / 1000.0)
-                .round_ties_even()
-                .max(1.0) as u32;
-            let count = description.textures.len();
-            if let Some(existing) = images.states.get(&key) {
-                ensure!(
-                    existing.count == count && existing.delay == delay,
-                    "texture {key} has conflicting shared frame metadata"
-                );
-            }
-            let frames = frames.ok_or_else(|| {
-                anyhow::anyhow!("animated texture frames were not retained by the GLTF loader")
-            })?;
-            ensure!(
-                frames.0.len() == count,
-                "texture frame count disagrees with GLTF metadata"
-            );
-            let frames = frames.0.clone();
-            images
-                .states
-                .entry(key.clone())
-                .or_insert_with(|| ImageState {
-                    count,
-                    delay,
-                    playback: Playback::default(),
-                    held: false,
-                });
-            Ok(Some((Binding { key, frames }, admission)))
-        })();
+        let terrain = std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|node| names.get(node).is_ok_and(|name| name.as_str() == "Terrain"));
+        let result = images.bind_mesh(mesh, extras, geometry, frames, flat, terrain);
         commands.entity(entity).insert(Inspected);
         match result {
             Ok(Some((binding, admission))) => {
@@ -312,15 +243,22 @@ fn advance(
         Entity,
     )>,
     terrain: Query<(
+        Entity,
         &Binding,
         &crate::terrain::TextureAdmission,
         &MeshMaterial3d<TerrainMaterial>,
     )>,
-    parents: Query<&ChildOf>,
+    hierarchy: (Query<&ChildOf>, Query<(), With<StagedRenderRoot>>),
     scripted: Query<(), With<ScriptBinding>>,
     animated: Query<(), With<crate::animation::BoundFrameMesh>>,
     mut clip: Local<admission::Clip>,
 ) {
+    let (parents, staged) = hierarchy;
+    let is_staged = |entity| {
+        std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|node| staged.contains(node))
+    };
     let (Ok((camera, projection)), Some(clipping)) =
         (camera.single(), distance.effective(&fidelity))
     else {
@@ -332,8 +270,9 @@ fn advance(
         clock.as_deref(),
         &time,
     ));
-    for (binding, admission, _) in &terrain {
-        if admission.0
+    for (entity, binding, admission, _) in &terrain {
+        if !is_staged(entity)
+            && admission.0
             && binding
                 .frames
                 .iter()
@@ -344,7 +283,8 @@ fn advance(
         }
     }
     for (binding, admission, mesh, transform, visibility, material, entity) in &bindings {
-        if !visibility.get()
+        if is_staged(entity)
+            || !visibility.get()
             || binding
                 .frames
                 .iter()
@@ -397,7 +337,10 @@ fn advance(
             state.request(now);
         }
     }
-    for (binding, _, _, _, _, material, _) in &bindings {
+    for (binding, _, _, _, _, material, entity) in &bindings {
+        if is_staged(entity) {
+            continue;
+        }
         let Some(frame) = images
             .states
             .get(&binding.key)
@@ -414,7 +357,10 @@ fn advance(
             material.base.base_color_texture = Some(texture.clone());
         }
     }
-    for (binding, _, material) in &terrain {
+    for (entity, binding, _, material) in &terrain {
+        if is_staged(entity) {
+            continue;
+        }
         let Some(frame) = images
             .states
             .get(&binding.key)
@@ -671,6 +617,27 @@ mod tests {
                 );
             }
         };
+        for entity in nodes.iter().copied().chain([terrain_node]) {
+            app.world_mut().entity_mut(entity).insert(StagedRenderRoot);
+        }
+        app.world_mut()
+            .get_mut::<crate::terrain::TextureAdmission>(terrain_node)
+            .unwrap()
+            .0 = true;
+        app.update();
+        assert_eq!(
+            app.world().resource::<TextureAnimations>().snapshot()[0].frame,
+            None
+        );
+        for entity in nodes.iter().copied().chain([terrain_node]) {
+            app.world_mut()
+                .entity_mut(entity)
+                .remove::<StagedRenderRoot>();
+        }
+        app.world_mut()
+            .get_mut::<crate::terrain::TextureAdmission>(terrain_node)
+            .unwrap()
+            .0 = false;
         app.update();
         check(&app, 0);
         app.world_mut()
@@ -761,5 +728,247 @@ mod tests {
             .unwrap();
         app.update();
         check(&app, 3);
+    }
+}
+
+impl TextureAnimations {
+    fn bind_mesh(
+        &mut self,
+        mesh: &Mesh,
+        extras: &GltfMaterialExtras,
+        geometry: Option<&GltfExtras>,
+        frames: Option<&frames::Frames>,
+        flat: Option<&crate::flat::Flat>,
+        terrain: bool,
+    ) -> anyhow::Result<Option<(Binding, Option<Admission>)>> {
+        let Some(description) =
+            serde_json::from_str::<MaterialExtras>(&extras.value)?.rgpre_texture_animation
+        else {
+            return Ok(None);
+        };
+        let admission = if terrain {
+            None
+        } else if let Some(flat) = flat {
+            Some(Admission::Flat(admission::Flat::from_mesh(
+                mesh,
+                flat.radius,
+            )?))
+        } else {
+            let Some(geometry) = geometry else {
+                return Ok(None);
+            };
+            let Some(admission) = admission::Model::parse(&geometry.value)? else {
+                return Ok(None);
+            };
+            let Some(VertexAttributeValues::Float32x3(positions)) =
+                mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+            else {
+                anyhow::bail!("animated texture mesh lacks three-component positions")
+            };
+            admission.validate(positions)?;
+            Some(Admission::Model(admission))
+        };
+        ensure!(
+            description.version == 1,
+            "texture animation version {} unsupported",
+            description.version
+        );
+        ensure!(
+            !description.textures.is_empty(),
+            "texture {} has no frames",
+            description.image_name
+        );
+        ensure!(
+            description.delay_ms >= 0,
+            "texture {} has unsupported negative delay {}",
+            description.image_name,
+            description.delay_ms
+        );
+        ensure!(
+            description.image_name.len() == 6
+                && description
+                    .image_name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric()),
+            "texture name {:?} is not a shipped canonical image key",
+            description.image_name
+        );
+        let key = description.image_name.to_ascii_lowercase();
+        let delay = (f64::from(description.delay_ms) * 18.2 / 1000.0)
+            .round_ties_even()
+            .max(1.0) as u32;
+        let count = description.textures.len();
+        if let Some(existing) = self.states.get(&key) {
+            ensure!(
+                existing.count == count && existing.delay == delay,
+                "texture {key} has conflicting shared frame metadata"
+            );
+        }
+        let frames = frames.ok_or_else(|| {
+            anyhow::anyhow!("animated texture frames were not retained by the GLTF loader")
+        })?;
+        ensure!(
+            frames.0.len() == count,
+            "texture frame count disagrees with GLTF metadata"
+        );
+        let frames = frames.0.clone();
+        self.states
+            .entry(key.clone())
+            .or_insert_with(|| ImageState {
+                count,
+                delay,
+                playback: Playback::default(),
+                held: false,
+            });
+        Ok(Some((Binding { key, frames }, admission)))
+    }
+
+    /// Bind only an off-live scene forest, without advancing or replacing live timelines.
+    /// Callers must keep these roots hidden until coordinated session publication.
+    /// Every mesh validates before binding components are installed.
+    pub fn prepare(
+        world: &mut World,
+        environment: AssetId<Environment>,
+        roots: &[Entity],
+    ) -> anyhow::Result<Self> {
+        let mut prepared = Self {
+            environment: Some(environment),
+            ..default()
+        };
+        let mut pending: Vec<_> = roots.iter().map(|&entity| (entity, false)).collect();
+        let mut visited = std::collections::HashSet::new();
+        let mut bindings = Vec::new();
+        for &root in roots {
+            ensure!(
+                world.get::<Visibility>(root) == Some(&Visibility::Hidden)
+                    && world.get::<StagedRenderRoot>(root).is_some(),
+                "texture preparation root {root:?} is not hidden"
+            );
+        }
+        while let Some((entity, parent_terrain)) = pending.pop() {
+            ensure!(
+                visited.insert(entity),
+                "texture preparation hierarchy repeats entity {entity:?}"
+            );
+            ensure!(
+                world.get_entity(entity).is_ok(),
+                "texture preparation entity {entity:?} absent"
+            );
+            let terrain = parent_terrain
+                || world
+                    .get::<Name>(entity)
+                    .is_some_and(|name| name.as_str() == "Terrain");
+            if let Some(children) = world.get::<Children>(entity) {
+                pending.extend(children.iter().map(|child| (child, terrain)));
+            }
+            let (Some(mesh), Some(extras)) = (
+                world.get::<Mesh3d>(entity),
+                world.get::<GltfMaterialExtras>(entity),
+            ) else {
+                continue;
+            };
+            let mesh = world
+                .get_resource::<Assets<Mesh>>()
+                .and_then(|assets| assets.get(&mesh.0))
+                .ok_or_else(|| anyhow::anyhow!("texture preparation mesh {entity:?} absent"))?;
+            let binding = prepared
+                .bind_mesh(
+                    mesh,
+                    extras,
+                    world.get::<GltfExtras>(entity),
+                    world.get::<frames::Frames>(entity),
+                    world.get::<crate::flat::Flat>(entity),
+                    terrain,
+                )
+                .map_err(|error| {
+                    anyhow::anyhow!("texture preparation entity {entity:?}: {error:#}")
+                })?;
+            bindings.push((entity, binding));
+        }
+        for (entity, binding) in bindings {
+            let mut entity = world.entity_mut(entity);
+            entity.insert(Inspected);
+            if let Some((binding, admission)) = binding {
+                entity.insert(binding);
+                if let Some(admission) = admission {
+                    entity.insert(admission);
+                }
+            }
+        }
+        Ok(prepared)
+    }
+}
+
+#[cfg(test)]
+mod preparation_tests {
+    use super::*;
+
+    #[test]
+    fn preparation_rejects_whole_forest_before_installing_any_binding() {
+        let mut world = World::new();
+        world.insert_resource(Assets::<Mesh>::default());
+        let mesh = world.resource_mut::<Assets<Mesh>>().add(Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::MAIN_WORLD,
+        ));
+        let root = world
+            .spawn((StagedRenderRoot, Visibility::Hidden, Name::new("Terrain")))
+            .id();
+        let metadata = |version| GltfMaterialExtras {
+            value: serde_json::json!({
+                "rgpre_texture_animation": {"version": version, "image_name": "A00000",
+                    "delay_ms": 100, "textures": [0]}
+            })
+            .to_string(),
+        };
+        let valid = world
+            .spawn((
+                ChildOf(root),
+                Mesh3d(mesh.clone()),
+                metadata(1),
+                frames::Frames(vec![Handle::default()]),
+            ))
+            .id();
+        let invalid = world
+            .spawn((
+                ChildOf(root),
+                Mesh3d(mesh),
+                metadata(2),
+                frames::Frames(vec![Handle::default()]),
+            ))
+            .id();
+        let environment = Handle::<Environment>::default().id();
+        assert!(TextureAnimations::prepare(&mut world, environment, &[root]).is_err());
+        assert!(world.get::<Binding>(valid).is_none());
+        assert!(world.get::<Inspected>(valid).is_none());
+        world.entity_mut(invalid).insert(metadata(1));
+        let prepared = TextureAnimations::prepare(&mut world, environment, &[root]).unwrap();
+        assert_eq!(
+            prepared.snapshot(),
+            vec![TextureFrame {
+                image: "a00000".into(),
+                frame: None,
+                count: 1,
+                held: false
+            }]
+        );
+        assert!(world.get::<Binding>(valid).is_some());
+        assert!(world.get::<Binding>(invalid).is_some());
+        world.insert_resource(Assets::<Image>::default());
+        let image = world.resource_mut::<Assets<Image>>().add(Image::default());
+        for entity in [valid, invalid] {
+            world.get_mut::<Binding>(entity).unwrap().frames = vec![image.clone()];
+        }
+        prepared.snapshot_sources(&world, &[root]).unwrap();
+        world.entity_mut(valid).remove::<Binding>();
+        assert!(
+            prepared
+                .snapshot_sources(&world, &[root])
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("authored animation is not bound")
+        );
+        assert!(!world.contains_resource::<TextureAnimations>());
     }
 }

@@ -127,7 +127,7 @@ pub enum ActivationOverlay {
 }
 
 /// Retained preliminary controller state, reset by standalone player construction.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
 struct ControllerPrelude {
     override_active: bool,
     pending_action: bool,
@@ -523,22 +523,42 @@ mod idle_tests {
     use super::GameplayGlobals;
     use crate::random::EngineRandom;
 
+    fn controller_settings() -> cyrus_assets::script::DialogueSettings {
+        cyrus_assets::script::DialogueSettings {
+            menu_start: [0, 0],
+            max_menu_items: 300,
+            max_dialog_lines: 16,
+            max_text_width: 320,
+            menu_traverse_delay: 1,
+            print_text: true,
+            use_speech: false,
+            max_distance: 1024,
+            rtx_filename: "TEST.RTX".into(),
+        }
+    }
+
     fn controller_globals() -> GameplayGlobals {
         let mut globals = GameplayGlobals::new_session();
+        globals.prepare_dialogue(&controller_settings()).unwrap();
         globals
-            .prepare_dialogue(&cyrus_assets::script::DialogueSettings {
-                menu_start: [0, 0],
-                max_menu_items: 300,
-                max_dialog_lines: 16,
-                max_text_width: 320,
-                menu_traverse_delay: 1,
-                print_text: true,
-                use_speech: false,
-                max_distance: 1024,
-                rtx_filename: "TEST.RTX".into(),
-            })
+    }
+
+    #[test]
+    fn replacement_preserves_known_and_unknown_lineup_results() {
+        for result in [None, Some(0), Some(-1), Some(17)] {
+            let mut globals = controller_globals();
+            globals.lineup_result = result;
+            let saved = serde_json::to_vec(&globals.snapshot()).unwrap();
+            let restored = GameplayGlobals::from_snapshot(
+                serde_json::from_slice(&saved).unwrap(),
+                &controller_settings(),
+                &[],
+                &(0..16).map(|channel| (channel, channel)).collect(),
+            )
             .unwrap();
-        globals
+            assert_eq!(restored.lineup_result, result);
+            assert_eq!(globals.lineup_result, result);
+        }
     }
 
     #[test]
@@ -755,5 +775,123 @@ mod idle_tests {
             None
         );
         assert_eq!(globals.player_idle_counter(), Some(0));
+    }
+}
+
+/// Session-only state is captured once, independently of retained world records.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct GameplayGlobalsSnapshot {
+    lineup_result: Option<i32>,
+    combat_messages: super::combat::CombatMessagesSnapshot,
+    dialogue: Option<super::DialogueSnapshot>,
+    lockout: Option<u16>,
+    player_idle_counter: Option<i32>,
+    controller_prelude: Option<ControllerPrelude>,
+    selected_combat_inhibition: Option<i32>,
+    sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
+    menu_state: u16,
+    dialogue_state: Option<u16>,
+    highlighted_choice: Option<String>,
+    candle_show_requested: bool,
+}
+impl GameplayGlobals {
+    pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
+        GameplayGlobalsSnapshot {
+            lineup_result: self.lineup_result,
+            combat_messages: self.combat_messages.snapshot(),
+            dialogue: self.dialogue.as_ref().map(super::DialogueState::snapshot),
+            lockout: self.lockout,
+            player_idle_counter: self.player_idle_counter,
+            controller_prelude: self.controller_prelude.clone(),
+            selected_combat_inhibition: self.selected_combat_inhibition,
+            sound_maintenance: self.sound_maintenance.snapshot(),
+            menu_state: self.menu_state,
+            dialogue_state: self.dialogue_state,
+            highlighted_choice: self.highlighted_choice.clone(),
+            candle_show_requested: self.candle_show_requested,
+        }
+    }
+
+    /// The aggregate supplies validated current/visited actor and restored sample owners.
+    pub(super) fn from_snapshot(
+        saved: GameplayGlobalsSnapshot,
+        settings: &cyrus_assets::script::DialogueSettings,
+        actors: &[(ScriptActorId, ScriptActorId)],
+        samples: &BTreeMap<u8, u8>,
+    ) -> Result<Self> {
+        let mut bindings = BTreeMap::new();
+        let mut destinations = std::collections::BTreeSet::new();
+        for &(old, new) in actors {
+            anyhow::ensure!(
+                bindings.insert((old.generation, old.index), new).is_none(),
+                "session snapshot: duplicate saved actor binding"
+            );
+            anyhow::ensure!(
+                destinations.insert((new.generation, new.index)),
+                "session snapshot: noninjective actor binding"
+            );
+        }
+        let rebind = |generation, index| {
+            bindings
+                .get(&(generation, index))
+                .copied()
+                .with_context(|| {
+                    format!("session snapshot actor {generation}/{index}: replacement absent")
+                })
+        };
+        let combat_messages = super::CombatMessages::from_snapshot(saved.combat_messages, &rebind)?;
+        let dialogue = saved
+            .dialogue
+            .map(|dialogue| {
+                super::DialogueState::from_snapshot(settings, dialogue, actors, samples)
+            })
+            .transpose()?;
+        Ok(Self {
+            combat_messages,
+            dialogue,
+            lockout: saved.lockout,
+            lineup_result: saved.lineup_result,
+            player_idle_counter: saved.player_idle_counter,
+            controller_prelude: saved.controller_prelude,
+            selected_combat_inhibition: saved.selected_combat_inhibition,
+            sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
+            menu_state: saved.menu_state,
+            dialogue_state: saved.dialogue_state,
+            highlighted_choice: saved.highlighted_choice,
+            candle_show_requested: saved.candle_show_requested,
+        })
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct ActivationSnapshot {
+    owner: Option<(u64, usize)>,
+    prompt: Option<String>,
+    holdoff: u32,
+    prompt_override: u32,
+}
+impl ActivationState {
+    pub(super) fn snapshot(&self) -> ActivationSnapshot {
+        ActivationSnapshot {
+            owner: self.owner.map(|id| (id.generation, id.index)),
+            prompt: self.prompt.clone(),
+            holdoff: self.holdoff,
+            prompt_override: self.prompt_override,
+        }
+    }
+
+    pub(super) fn from_snapshot(
+        saved: ActivationSnapshot,
+        rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
+    ) -> Result<Self> {
+        Ok(Self {
+            owner: saved
+                .owner
+                .map(|(generation, index)| rebind(generation, index))
+                .transpose()?,
+            prompt: saved.prompt,
+            holdoff: saved.holdoff,
+            prompt_override: saved.prompt_override,
+        })
     }
 }

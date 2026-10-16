@@ -70,6 +70,7 @@ fn main() {
     })
     .add_plugins((
         GamePlugin,
+        cyrus_session::SessionBoundaryPlugin,
         cyrus_render::WorldRenderPlugin,
         cyrus_world::lifecycle::WorldPlugin,
         cyrus_world::animation::AnimationPlugin,

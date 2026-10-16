@@ -621,6 +621,35 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_terrain_binding_excludes_staged_scene_descendants() {
+        let (mut app, _, _) = fixture(Mode::Faithful, false);
+        let live_mesh = app.world().resource::<WaterPlayback>().terrain[0]
+            .original
+            .clone();
+        let root = app
+            .world_mut()
+            .spawn((
+                crate::persistence::StagedRenderRoot,
+                Visibility::Hidden,
+                Name::new("Terrain"),
+            ))
+            .id();
+        let staged = app
+            .world_mut()
+            .spawn((ChildOf(root), Mesh3d(live_mesh.clone())))
+            .id();
+        app.world_mut().resource_mut::<WaterPlayback>().invalidate();
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<WaterPlayback>()
+                .terrain_entities()
+                .contains(&staged)
+        );
+        assert_eq!(app.world().get::<Mesh3d>(staged).unwrap().0, live_mesh);
+    }
+
+    #[test]
     fn terrain_continues_after_rebinding_with_rebased_time_and_camera_changes() -> Result<()> {
         for mode in [Mode::Faithful, Mode::Modern] {
             for projected in [false, true] {

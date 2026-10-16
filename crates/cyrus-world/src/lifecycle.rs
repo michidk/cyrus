@@ -24,8 +24,12 @@ pub struct PreparationProgress {
     pub total: usize,
     pub label: String,
 }
-/// A host has completed preparation; sidecar loading remains asynchronous.
+/// A host worker is still preparing world sources. Unlike loading-bar progress,
+/// this marker is removed on completion, failure or supersession.
 #[derive(Resource)]
+pub struct WorldPreparationPending;
+/// A host has completed preparation; sidecar loading remains asynchronous.
+#[derive(Resource, Clone)]
 pub struct PreparedWorld {
     pub requested_name: String,
     /// Native preparation can resolve this immediately; browser metadata loads asynchronously.

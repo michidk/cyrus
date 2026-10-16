@@ -472,3 +472,193 @@ pub(super) fn normalized_direction(differences: [i32; 3]) -> [i32; 3] {
     }
     differences.map(|component| ((component as f32) / divisor).round_ties_even() as i32)
 }
+
+/// Stored poses use float bits so serialization cannot round retained matrices.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct SpatialSnapshot {
+    actors: Vec<Option<SavedSpatialActor>>,
+    order: Vec<usize>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct SavedPose {
+    position: [i32; 3],
+    angles: [u16; 3],
+    matrix_bits: [[u32; 3]; 3],
+}
+impl From<Pose> for SavedPose {
+    fn from(pose: Pose) -> Self {
+        Self {
+            position: pose.position,
+            angles: pose.angles,
+            matrix_bits: pose.matrix.0.map(|row| row.map(f32::to_bits)),
+        }
+    }
+}
+impl SavedPose {
+    pub(super) fn restore(self) -> Result<Pose> {
+        ensure!(
+            self.angles.iter().all(|&angle| angle < 2048),
+            "saved pose angle outside wrapped range"
+        );
+        let matrix = self.matrix_bits.map(|row| row.map(f32::from_bits));
+        ensure!(
+            matrix.iter().flatten().all(|value| value.is_finite()),
+            "saved pose matrix is nonfinite"
+        );
+        Ok(Pose {
+            position: self.position,
+            angles: self.angles,
+            matrix: Matrix(matrix),
+        })
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct SavedSpatialActor {
+    local: SavedPose,
+    locations: Vec<[i32; 3]>,
+    effective: Option<SavedPose>,
+    previous_effective_position: Option<[i32; 3]>,
+    previous_local_position: [i32; 3],
+    water_rollback_position: Option<[i32; 3]>,
+    angle_history: [u16; 3],
+    parent: Option<usize>,
+    linked_position: Option<[i32; 3]>,
+    no_slave_rotation: bool,
+    rotation_mode: u8,
+}
+impl From<&ActorSpatial> for SavedSpatialActor {
+    fn from(actor: &ActorSpatial) -> Self {
+        Self {
+            local: actor.local.into(),
+            locations: actor.locations.clone(),
+            effective: actor.effective.map(Into::into),
+            previous_effective_position: actor.previous_effective_position,
+            previous_local_position: actor.previous_local_position,
+            water_rollback_position: actor.water_rollback_position,
+            angle_history: actor.angle_history,
+            parent: actor.parent,
+            linked_position: actor.linked_position,
+            no_slave_rotation: actor.no_slave_rotation,
+            rotation_mode: actor.rotation_mode,
+        }
+    }
+}
+impl SpatialWorld {
+    pub(super) fn snapshot(&self) -> SpatialSnapshot {
+        SpatialSnapshot {
+            actors: self
+                .actors
+                .iter()
+                .map(|actor| actor.as_ref().map(Into::into))
+                .collect(),
+            order: self.order.clone(),
+        }
+    }
+
+    /// Retain family ownership as initialized, independently of later attribute writes.
+    /// The aggregate validates installed identity; no family refresh or startup runs.
+    pub(super) fn from_snapshot(snapshot: SpatialSnapshot, actors: &[ScriptActor]) -> Result<Self> {
+        ensure!(
+            snapshot.actors.len() == actors.len(),
+            "spatial snapshot actor census differs"
+        );
+        let mut restored = Vec::with_capacity(actors.len());
+        for (index, saved) in snapshot.actors.into_iter().enumerate() {
+            let Some(saved) = saved else {
+                ensure!(
+                    actors[index].placement().is_none(),
+                    "actor {index}: saved map spatial owner absent"
+                );
+                restored.push(None);
+                continue;
+            };
+            let home = if let Some(placement) = actors[index].placement() {
+                let mut home = [0; 3];
+                for (axis, value) in placement.map_position.into_iter().enumerate() {
+                    home[axis] = value
+                        .checked_mul(256)
+                        .and_then(|value| i32::try_from(value).ok())
+                        .with_context(|| {
+                            format!("actor {index}: installed home axis {axis} outside Q8 range")
+                        })?;
+                }
+                home
+            } else {
+                ensure!(
+                    matches!(actors[index].source, super::ScriptActorSource::Player),
+                    "actor {index}: unexpected standalone spatial owner"
+                );
+                ensure!(
+                    saved.parent.is_none(),
+                    "actor {index}: standalone parent unsupported"
+                );
+                *saved
+                    .locations
+                    .first()
+                    .with_context(|| format!("actor {index}: saved home absent"))?
+            };
+            let locations: Vec<_> = std::iter::once(home)
+                .chain(actors[index].location_offsets.iter().map(|offset| {
+                    std::array::from_fn(|axis| home[axis].wrapping_add(offset[axis]))
+                }))
+                .collect();
+            ensure!(
+                saved.locations == locations,
+                "actor {index}: saved authored locations differ"
+            );
+            ensure!(
+                saved.angle_history.iter().all(|&angle| angle < 2048),
+                "actor {index}: saved angle history outside wrapped range"
+            );
+            restored.push(Some(ActorSpatial {
+                local: saved
+                    .local
+                    .restore()
+                    .with_context(|| format!("actor {index} saved local pose"))?,
+                locations: saved.locations,
+                effective: saved
+                    .effective
+                    .map(SavedPose::restore)
+                    .transpose()
+                    .with_context(|| format!("actor {index} saved effective pose"))?,
+                previous_effective_position: saved.previous_effective_position,
+                previous_local_position: saved.previous_local_position,
+                water_rollback_position: saved.water_rollback_position,
+                angle_history: saved.angle_history,
+                parent: saved.parent,
+                linked_position: saved.linked_position,
+                no_slave_rotation: saved.no_slave_rotation,
+                rotation_mode: saved.rotation_mode,
+            }));
+        }
+        let mut visited = std::collections::BTreeSet::new();
+        for &index in &snapshot.order {
+            let state = restored
+                .get(index)
+                .and_then(Option::as_ref)
+                .with_context(|| {
+                    format!("saved family order actor {index}: spatial owner absent")
+                })?;
+            ensure!(
+                visited.insert(index),
+                "saved family order duplicates actor {index}"
+            );
+            if let Some(parent) = state.parent {
+                ensure!(
+                    parent != index && visited.contains(&parent),
+                    "actor {index}: saved family parent {parent} absent, cyclic or ordered after child"
+                );
+            }
+        }
+        ensure!(
+            visited.len() == restored.iter().flatten().count(),
+            "saved family traversal census differs"
+        );
+        Ok(Self {
+            actors: restored,
+            order: snapshot.order,
+        })
+    }
+}

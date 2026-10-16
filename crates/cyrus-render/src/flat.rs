@@ -124,51 +124,30 @@ fn prepare(
     parents: Query<&ChildOf>,
     extras: Query<&GltfExtras>,
     names: Query<&Name>,
+    staged: Query<(), With<crate::persistence::StagedRenderRoot>>,
 ) {
     let mut failures = BTreeMap::<String, (Entity, String, usize)>::new();
     for (entity, mut mesh) in &mut candidates {
+        if std::iter::once(entity)
+            .chain(parents.iter_ancestors(entity))
+            .any(|node| staged.contains(node))
+        {
+            continue;
+        }
         let Some(source) = meshes.get(&mesh.0) else {
             continue;
         };
-        let result = (|| -> anyhow::Result<Option<(Mesh, Flat)>> {
-            for ancestor in std::iter::once(entity).chain(parents.iter_ancestors(entity)) {
-                let Ok(extras) = extras.get(ancestor) else {
-                    continue;
-                };
-                #[derive(Deserialize)]
-                struct Extras {
-                    rgpre_flat: Option<Description>,
-                }
-                if let Some(flat) = serde_json::from_str::<Extras>(&extras.value)?.rgpre_flat {
-                    let source_index = names
-                        .get(ancestor)
+        let result = prepare_mesh(
+            source,
+            std::iter::once(entity)
+                .chain(parents.iter_ancestors(entity))
+                .filter_map(|node| {
+                    extras
+                        .get(node)
                         .ok()
-                        .and_then(|name| name.as_str().strip_prefix('F'))
-                        .and_then(|name| name.split_once('_'))
-                        .and_then(|(index, _)| index.parse().ok())
-                        .ok_or_else(|| {
-                            anyhow::anyhow!("flat lacks its exported placement index")
-                        })?;
-                    let mesh = flat.mesh(source)?;
-                    let [width, height] = flat
-                        .dimensions
-                        .ok_or_else(|| anyhow::anyhow!("missing flat dimensions"))?;
-                    let scale = flat
-                        .texture_scale
-                        .ok_or_else(|| anyhow::anyhow!("missing flat scale"))?;
-                    return Ok(Some((
-                        mesh,
-                        Flat {
-                            brightness: (flat.alpha < 254).then_some(255),
-                            alpha: flat.alpha,
-                            source_index,
-                            radius: bound_radius(width, height, scale),
-                        },
-                    )));
-                }
-            }
-            Ok(None)
-        })();
+                        .map(|extra| (extra, names.get(node).ok()))
+                }),
+        );
         commands.entity(entity).insert(Inspected);
         match result {
             Ok(Some((private, flat))) => {
@@ -198,10 +177,18 @@ fn prepare(
 fn face_camera(
     camera: Query<&GlobalTransform, (With<crate::camera::ViewCamera>, Without<Flat>)>,
     parents: Query<&GlobalTransform, Without<Flat>>,
-    mut flats: Query<(&ChildOf, &mut Transform, &mut GlobalTransform), With<Flat>>,
+    mut flats: Query<(Entity, &ChildOf, &mut Transform, &mut GlobalTransform), With<Flat>>,
+    hierarchy: Query<&ChildOf>,
+    staged: Query<(), With<crate::persistence::StagedRenderRoot>>,
 ) {
     let Ok(camera) = camera.single() else { return };
-    for (parent, mut local, mut global) in &mut flats {
+    for (entity, parent, mut local, mut global) in &mut flats {
+        if std::iter::once(entity)
+            .chain(hierarchy.iter_ancestors(entity))
+            .any(|node| staged.contains(node))
+        {
+            continue;
+        }
         let Ok(parent) = parents.get(parent.parent()) else {
             continue;
         };
@@ -284,9 +271,18 @@ mod tests {
                 .abs_diff_eq(camera_pose.rotation, 0.000001)
         );
         app.world_mut()
+            .entity_mut(parent)
+            .insert(crate::persistence::StagedRenderRoot);
+        let retained = *app.world().get::<Transform>(flat).unwrap();
+        app.world_mut()
             .get_mut::<Transform>(camera)
             .unwrap()
             .rotation = Quat::from_rotation_z(-0.75);
+        app.update();
+        assert_eq!(*app.world().get::<Transform>(flat).unwrap(), retained);
+        app.world_mut()
+            .entity_mut(parent)
+            .remove::<crate::persistence::StagedRenderRoot>();
         app.update();
         let actual = app.world().get::<GlobalTransform>(flat).unwrap();
         assert_eq!(actual.translation(), parent_pose.translation);
@@ -386,5 +382,167 @@ mod tests {
                 .unwrap(),
             &[[0.0; 3]; 4]
         );
+    }
+}
+
+fn prepare_mesh<'a>(
+    source: &Mesh,
+    ancestors: impl Iterator<Item = (&'a GltfExtras, Option<&'a Name>)>,
+) -> anyhow::Result<Option<(Mesh, Flat)>> {
+    for (extras, name) in ancestors {
+        #[derive(Deserialize)]
+        struct Extras {
+            rgpre_flat: Option<Description>,
+        }
+        if let Some(flat) = serde_json::from_str::<Extras>(&extras.value)?.rgpre_flat {
+            let source_index = name
+                .and_then(|name| name.as_str().strip_prefix('F'))
+                .and_then(|name| name.split_once('_'))
+                .and_then(|(index, _)| index.parse().ok())
+                .ok_or_else(|| anyhow::anyhow!("flat lacks its exported placement index"))?;
+            let mesh = flat.mesh(source)?;
+            let [width, height] = flat
+                .dimensions
+                .ok_or_else(|| anyhow::anyhow!("missing flat dimensions"))?;
+            let scale = flat
+                .texture_scale
+                .ok_or_else(|| anyhow::anyhow!("missing flat scale"))?;
+            return Ok(Some((
+                mesh,
+                Flat {
+                    brightness: (flat.alpha < 254).then_some(255),
+                    alpha: flat.alpha,
+                    source_index,
+                    radius: bound_radius(width, height, scale),
+                },
+            )));
+        }
+    }
+    Ok(None)
+}
+
+/// Prepare flat meshes only under hidden replacement roots, without advancing a camera.
+/// Every source is validated before any private mesh is allocated or installed.
+pub fn prepare_scene_flats(world: &mut World, roots: &[Entity]) -> anyhow::Result<()> {
+    let mut pending = roots.to_vec();
+    let mut seen = std::collections::HashSet::new();
+    let mut prepared = Vec::new();
+    for &root in roots {
+        ensure!(
+            world
+                .get::<crate::persistence::StagedRenderRoot>(root)
+                .is_some()
+                && world.get::<Visibility>(root) == Some(&Visibility::Hidden),
+            "flat preparation root is not hidden staging"
+        );
+    }
+    while let Some(entity) = pending.pop() {
+        ensure!(
+            seen.insert(entity),
+            "flat preparation hierarchy repeats entity"
+        );
+        ensure!(
+            world.get_entity(entity).is_ok(),
+            "flat preparation entity absent"
+        );
+        if let Some(children) = world.get::<Children>(entity) {
+            pending.extend(children.iter());
+        }
+        let Some(mesh) = world.get::<Mesh3d>(entity) else {
+            continue;
+        };
+        if world.get::<Inspected>(entity).is_some() {
+            continue;
+        }
+        let source = world
+            .get_resource::<Assets<Mesh>>()
+            .and_then(|assets| assets.get(&mesh.0))
+            .ok_or_else(|| anyhow::anyhow!("flat preparation mesh {entity:?} absent"))?;
+        let mut ancestors = Vec::new();
+        let mut cursor = Some(entity);
+        while let Some(node) = cursor {
+            ensure!(!ancestors.contains(&node), "flat preparation parent cycle");
+            ancestors.push(node);
+            cursor = world.get::<ChildOf>(node).map(ChildOf::parent);
+        }
+        let result = prepare_mesh(
+            source,
+            ancestors.into_iter().filter_map(|node| {
+                world
+                    .get::<GltfExtras>(node)
+                    .map(|extra| (extra, world.get::<Name>(node)))
+            }),
+        )
+        .map_err(|error| anyhow::anyhow!("flat preparation entity {entity:?}: {error:#}"))?;
+        prepared.push((entity, result));
+    }
+    for (entity, result) in prepared {
+        if let Some((mesh, flat)) = result {
+            let mesh = world.resource_mut::<Assets<Mesh>>().add(mesh);
+            world
+                .entity_mut(entity)
+                .insert((Mesh3d(mesh), flat))
+                .remove::<bevy::camera::primitives::Aabb>();
+        }
+        world.entity_mut(entity).insert(Inspected);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod staging_tests {
+    use super::*;
+
+    #[test]
+    fn hidden_flat_preparation_is_atomic_and_does_not_reallocate_on_retry() {
+        let mut app = App::new();
+        app.init_resource::<Assets<Mesh>>()
+            .add_systems(Update, prepare);
+        let mesh = app
+            .world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .add(Mesh::from(Rectangle::new(1.0, 1.0)));
+        let root = app
+            .world_mut()
+            .spawn((crate::persistence::StagedRenderRoot, Visibility::Hidden))
+            .id();
+        let metadata = |flags| GltfExtras {
+            value: serde_json::json!({"rgpre_flat":{
+                "version":1,"dimensions":[4,8],"texture_scale":0.5,"flags":flags,"alpha":181
+            }})
+            .to_string(),
+        };
+        let valid = app
+            .world_mut()
+            .spawn((
+                ChildOf(root),
+                Name::new("F1_TEST"),
+                Mesh3d(mesh.clone()),
+                metadata(1),
+            ))
+            .id();
+        let invalid = app
+            .world_mut()
+            .spawn((
+                ChildOf(root),
+                Name::new("F2_TEST"),
+                Mesh3d(mesh.clone()),
+                metadata(0),
+            ))
+            .id();
+        app.update();
+        assert!(app.world().get::<Inspected>(valid).is_none());
+        assert!(prepare_scene_flats(app.world_mut(), &[root]).is_err());
+        assert_eq!(app.world().get::<Mesh3d>(valid).unwrap().0, mesh);
+        assert!(app.world().get::<Flat>(valid).is_none());
+        app.world_mut().entity_mut(invalid).insert(metadata(1));
+        prepare_scene_flats(app.world_mut(), &[root]).unwrap();
+        let replacement = app.world().get::<Mesh3d>(valid).unwrap().0.clone();
+        assert_ne!(replacement, mesh);
+        assert_eq!(app.world().get::<Flat>(valid).unwrap().source_index, 1);
+        let count = app.world().resource::<Assets<Mesh>>().len();
+        prepare_scene_flats(app.world_mut(), &[root]).unwrap();
+        assert_eq!(app.world().resource::<Assets<Mesh>>().len(), count);
+        assert_eq!(app.world().get::<Mesh3d>(valid).unwrap().0, replacement);
     }
 }

@@ -670,3 +670,30 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
         Some(1)
     );
 }
+
+#[test]
+fn replacement_retains_raw_values_and_store_without_writing() -> anyhow::Result<()> {
+    let store = Store::default();
+    let mut runtime = Cheats::new(store.clone());
+    runtime.execute("neversaydie", Some(42))?;
+    let saved = runtime.snapshot()?;
+    runtime.execute("neversaydie", Some(0))?;
+    let replacement = saved.clone().prepare(&runtime)?;
+    assert!(!runtime.distance_override()?);
+    assert!(store.0.lock().unwrap().is_none());
+    replacement.validate(&runtime)?;
+    replacement.publish(&mut runtime);
+    assert_eq!(runtime.state()?.value("neversaydie"), Some(42));
+    assert!(store.0.lock().unwrap().is_none());
+    let mut malformed = serde_json::to_value(saved)?;
+    malformed["names"][0] = serde_json::json!("foreign");
+    assert!(
+        serde_json::from_value::<cyrus_game::cheats::CheatSnapshot>(malformed)?
+            .prepare(&runtime)
+            .is_err()
+    );
+    assert_eq!(runtime.state()?.value("neversaydie"), Some(42));
+    runtime.execute("savecheats", None)?;
+    assert_eq!(Cheats::new(store).state()?.value("neversaydie"), Some(42));
+    Ok(())
+}

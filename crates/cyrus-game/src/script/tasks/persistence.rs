@@ -191,3 +191,23 @@ impl Task {
 
 #[cfg(test)]
 mod tests;
+
+impl NativeTasks {
+    /// Actors without an executable VM cannot retain native continuations.
+    pub(in crate::script) fn from_snapshot_without_vm(
+        snapshot: NativeTasksSnapshot,
+    ) -> Result<Self> {
+        ensure!(
+            snapshot.version == 1,
+            "native task snapshot version unsupported"
+        );
+        ensure!(
+            snapshot.tasks.is_empty(),
+            "saved native tasks have no owning VM"
+        );
+        Ok(Self {
+            next: snapshot.next,
+            tasks: BTreeMap::new(),
+        })
+    }
+}

@@ -4019,3 +4019,509 @@ fn unsupported_lineup_invalidates_ordinary_activation_admission() {
     assert_eq!(world.activation().prompt(), None);
     assert_eq!(world.activation().owner(), None);
 }
+
+#[test]
+fn world_snapshot_resumes_native_wait_without_replaying_body_or_changing_live_world() {
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = scripts(vec![
+        call(2, CallKind::Task, Object::Me),
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let data = animations(&scripts, false);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut live = ScriptWorld::prepare(&scripts, 7).unwrap();
+    live.prepare_spatial().unwrap();
+    let id = live.id(0).unwrap();
+    stage(&mut live, id, BODY);
+    assert_eq!(live.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(live.flags(), [0]);
+    let bytes = serde_json::to_vec(&live.snapshot(&sources).unwrap()).unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        serde_json::from_slice(&bytes).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 19,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert!(restored.spatial(id).is_err());
+    let resumed = restored.id(0).unwrap();
+    assert_eq!(restored.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(
+        restored.spatial(resumed).unwrap().local.position,
+        live.spatial(id).unwrap().local.position
+    );
+    for _ in 0..3 {
+        stage(&mut restored, resumed, TASKS);
+        stage(&mut restored, resumed, BODY);
+    }
+    assert_eq!(restored.flags(), [9]);
+    assert_eq!(live.flags(), [0]);
+    assert_eq!(live.actors()[0].runtime().unwrap().active_tasks(), 1);
+}
+
+#[test]
+fn world_snapshot_rejects_corrupt_family_and_changed_source_without_live_mutation() {
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = scripts(vec![Operation::End { target: 0 }]);
+    let data = animations(&scripts, false);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut live = ScriptWorld::prepare(&scripts, 4).unwrap();
+    live.prepare_spatial().unwrap();
+    live.assign_global_flag(0, -19, true).unwrap();
+    let snapshot = live.snapshot(&sources).unwrap();
+    let mut corrupt = serde_json::to_value(&snapshot).unwrap();
+    corrupt["spatial"]["actors"][0]["parent"] = 0.into();
+    let samples = BTreeMap::new();
+    let context = || WorldRestoreContext {
+        generation: 8,
+        globals: GameplayGlobals::default(),
+        samples: &samples,
+    };
+    assert!(
+        ScriptWorld::from_snapshot(
+            snapshot.clone(),
+            &sources,
+            WorldRestoreContext {
+                generation: 4,
+                globals: GameplayGlobals::default(),
+                samples: &samples,
+            },
+        )
+        .is_err()
+    );
+    assert!(
+        ScriptWorld::from_snapshot(
+            serde_json::from_value(corrupt).unwrap(),
+            &sources,
+            context()
+        )
+        .is_err()
+    );
+    let mut changed = animations(&scripts, false);
+    changed.sections.insert("changed".into(), vec![1]);
+    let changed_sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &changed,
+        collision: &collision,
+    };
+    assert!(ScriptWorld::from_snapshot(snapshot, &changed_sources, context()).is_err());
+    assert_eq!(live.flags(), [-19]);
+    assert_eq!(live.spatial(live.id(0).unwrap()).unwrap().parent, None);
+}
+
+#[test]
+fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identities() {
+    use cyrus_game::{
+        clock::SimulationClock,
+        preferences::Preferences,
+        random::EngineRandom,
+        script::{
+            LogicalSessionRestoreInputs, LogicalSessionSnapshot, ScriptActors, ScriptHud,
+            WorldSnapshotSources,
+        },
+    };
+    let current_scripts = scripts(vec![Operation::End { target: 0 }]);
+    let mut visited_scripts = current_scripts.clone();
+    visited_scripts.world = 18;
+    visited_scripts.content_id = visited_scripts.content_identity().unwrap();
+    let current_animations = animations(&current_scripts, false);
+    let visited_animations = animations(&visited_scripts, false);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = BTreeMap::from([
+        (
+            17,
+            WorldSnapshotSources {
+                player: None,
+                scripts: &current_scripts,
+                animations: &current_animations,
+                collision: &collision,
+            },
+        ),
+        (
+            18,
+            WorldSnapshotSources {
+                player: None,
+                scripts: &visited_scripts,
+                animations: &visited_animations,
+                collision: &collision,
+            },
+        ),
+    ]);
+    let asset = inventory_fixture(&[(1, 3)]);
+    let preferences = Preferences::new(LogStore {
+        load: None,
+        fail_save: false,
+        writes: Default::default(),
+    });
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &preferences);
+    let mut clock = SimulationClock::new(current_scripts.clock).unwrap();
+    for _ in 0..5 {
+        clock.advance(0);
+    }
+    let random = EngineRandom::from_state(123456);
+    let toggles = cyrus_game::player::input::PlayerToggles {
+        walk_mode: true,
+        auto_defend: false,
+    };
+    let mut registry = ScriptActors::default();
+    let mut current = ScriptWorld::prepare(&current_scripts, 41).unwrap();
+    current.assign_global_flag(0, 17, true).unwrap();
+    registry.current = Some(current);
+    let mut visited = ScriptWorld::prepare(&visited_scripts, 72).unwrap();
+    visited.assign_global_flag(0, 18, true).unwrap();
+    let mut document = serde_json::to_value(
+        registry
+            .snapshot_session(&sources, &hud, &clock, &random, toggles)
+            .unwrap(),
+    )
+    .unwrap();
+    document["registry"]["worlds"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::to_value(visited.snapshot(&sources[&18]).unwrap()).unwrap());
+    let inputs = || LogicalSessionRestoreInputs {
+        sources: &sources,
+        last_generation: 0,
+        hud: &asset,
+        preferences: &preferences,
+        bios_tick: 100,
+    };
+    let plan = serde_json::from_value::<LogicalSessionSnapshot>(document.clone())
+        .unwrap()
+        .plan(inputs())
+        .unwrap();
+    assert_eq!(plan.actor_bindings().len(), 4);
+    assert!(
+        plan.actor_bindings()
+            .iter()
+            .all(|(old, new)| new.generation > 72 && old.index == new.index)
+    );
+    let samples: BTreeMap<u8, u8> = (0..16).map(|slot| (slot, slot)).collect();
+    let candidate = plan.finish(&samples).unwrap();
+    assert_eq!(candidate.actors.visited_worlds()[&18].flags(), [18]);
+    assert!(candidate.actors.generation_high_water() > 72);
+    assert_eq!(candidate.actors.current.as_ref().unwrap().flags(), [17]);
+    assert_eq!(candidate.random.state(), 123456);
+    assert_eq!(candidate.toggles, toggles);
+    let roundtrip = serde_json::to_value(
+        candidate
+            .actors
+            .snapshot_session(
+                &sources,
+                &candidate.hud,
+                &candidate.clock,
+                &candidate.random,
+                candidate.toggles,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(roundtrip["registry"]["worlds"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        roundtrip["registry"]["worlds"][1]["flags"],
+        document["registry"]["worlds"][1]["flags"]
+    );
+    // A late invalid visited-world field must discard the whole candidate.
+    document["registry"]["worlds"][1]["actors"][0]["message_read"] = 8.into();
+    let plan = serde_json::from_value::<LogicalSessionSnapshot>(document)
+        .unwrap()
+        .plan(inputs())
+        .unwrap();
+    assert!(plan.finish(&samples).is_err());
+    assert_eq!(registry.current.as_ref().unwrap().flags(), [17]);
+    assert_eq!(random.state(), 123456);
+
+    // Real plugin entry must adopt the candidate without restarting clock/world setup.
+    use bevy::prelude::*;
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<cyrus_game::AppState>()
+        .init_resource::<Assets<Scripts>>()
+        .init_resource::<Assets<Animations>>()
+        .init_resource::<Assets<cyrus_game::player::data::PlayerScene>>()
+        .add_message::<cyrus_world::animation::AnimationTick>()
+        .add_message::<cyrus_world::sound::SoundCue>()
+        .init_resource::<cyrus_game::fidelity::Fidelity>()
+        .init_resource::<ButtonInput<KeyCode>>()
+        .add_plugins((
+            cyrus_game::script::ScriptPlugin,
+            cyrus_game::player::PlayerPlugin,
+        ))
+        .add_plugins(bevy::asset::AssetPlugin::default());
+    app.world_mut()
+        .resource_mut::<NextState<cyrus_game::AppState>>()
+        .set(cyrus_game::AppState::InGame);
+    app.update();
+    let script_handle = app
+        .world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .add(current_scripts.clone());
+    let animation_handle = app.world_mut().resource_mut::<Assets<Animations>>().add(
+        serde_json::from_value::<Animations>(serde_json::to_value(&current_animations).unwrap())
+            .unwrap(),
+    );
+    app.insert_resource(cyrus_world::lifecycle::PreparedWorld {
+        requested_name: "TEST".into(),
+        world: Some(17),
+        scripts: script_handle,
+        animations: animation_handle.clone(),
+        player_path: "unused.player".into(),
+        scene_path: "unused.glb".into(),
+        environment_path: "unused.environment".into(),
+    });
+    let clock_before = serde_json::to_value(candidate.clock.snapshot()).unwrap();
+    let generation = candidate.actors.current.as_ref().unwrap().generation();
+    app.insert_resource(State::new(cyrus_game::AppState::InGame))
+        .insert_resource(candidate.actors)
+        .insert_resource(candidate.clock)
+        .insert_resource(candidate.hud)
+        .insert_resource(candidate.random)
+        .insert_resource(candidate.toggles);
+    use cyrus_game::player::{
+        Player,
+        data::{PlayerScene, PlayerSceneRequest},
+        placement::{MarkerEntry, PlayerEntrySupport, PlayerPlacementSnapshot, PlayerPose},
+        runtime::{PlayerRuntime, PlayerRuntimeBinding},
+    };
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    let scene = PlayerScene::decode(
+        &serde_json::to_vec(&json!({
+            "version":2,"world":17,"settings":{"standing_height":-2,"post_collide_height":50,
+            "slide_range":-60000,"turn_speed":12,"turn_max_speed":48,"poly_push_units":16},
+            "definition":{},"collision":{"placements":[],"models":{},"unsupported":{}}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let scene_handle = app
+        .world_mut()
+        .resource_mut::<Assets<PlayerScene>>()
+        .add(scene);
+    let marker = MarkerEntry {
+        marker: 7,
+        heading: -23,
+    };
+    let pose = PlayerPose {
+        position: [12345, -67890, 45678],
+        heading: 2025,
+    };
+    let transform = Transform::from_xyz(-1.25, 8.5, 22.0);
+    let support = PlayerEntrySupport::InspectionOnly("retained support failure".into());
+    let placement =
+        PlayerPlacementSnapshot::capture(17, marker, &pose, &support, &transform).unwrap();
+    app.world_mut().entity_mut(player).insert(
+        placement
+            .restore(17, animation_handle.clone(), scene_handle.clone())
+            .unwrap(),
+    );
+    let mut runtime = serde_json::to_value(
+        PlayerRuntime::default()
+            .snapshot(&scene_handle, &animation_handle)
+            .unwrap(),
+    )
+    .unwrap();
+    runtime["source"] =
+        json!({"player":player.to_bits(),"generation":41,"marker":{"marker":7,"heading":-23}});
+    runtime["error"] = "retained explicit update failure".into();
+    let runtime = PlayerRuntime::from_snapshot(
+        serde_json::from_value(runtime).unwrap(),
+        Some(PlayerRuntimeBinding {
+            saved_player: player.to_bits(),
+            saved_generation: 41,
+            player,
+            generation,
+            scene: scene_handle.clone(),
+            animation: animation_handle.clone(),
+            marker,
+        }),
+    )
+    .unwrap();
+    app.insert_resource(runtime)
+        .insert_resource(marker)
+        .insert_resource(PlayerSceneRequest(scene_handle.clone()))
+        .insert_resource(cyrus_world::animation::AnimationRequest(
+            animation_handle.clone(),
+        ));
+    app.update();
+    app.update();
+    assert_eq!(app.world().get::<PlayerPose>(player), Some(&pose));
+    assert_eq!(
+        app.world().get::<PlayerEntrySupport>(player),
+        Some(&support)
+    );
+    assert_eq!(app.world().get::<Transform>(player), Some(&transform));
+    let runtime = app.world().resource::<PlayerRuntime>();
+    assert_eq!(
+        runtime.error.as_deref(),
+        Some("retained explicit update failure")
+    );
+    let runtime =
+        serde_json::to_value(runtime.snapshot(&scene_handle, &animation_handle).unwrap()).unwrap();
+    assert_eq!(runtime["entry_pending"], false);
+    assert_eq!(runtime["source"]["generation"], generation);
+    let actors = app.world().resource::<ScriptActors>();
+    assert_eq!(actors.current.as_ref().unwrap().generation(), generation);
+    assert_eq!(actors.current.as_ref().unwrap().flags(), [17]);
+    assert_eq!(actors.visited_worlds().len(), 1);
+    assert_eq!(
+        serde_json::to_value(app.world().resource::<SimulationClock>().snapshot()).unwrap(),
+        clock_before
+    );
+}
+
+#[test]
+fn world_snapshot_resumes_displayed_animation_and_native_completion_together() {
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = scripts(vec![
+        call(1, CallKind::Task, Object::Me),
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    let mut data = animations(&scripts, false);
+    for actor in data.metadata["actors"].as_array_mut().unwrap() {
+        actor["raan_entries"] = json!([{"frame_count": 2, "file_path": "TEST.3D"}]);
+    }
+    data.metadata["mpob_objects"] = json!([
+        {"script_name": "ACTOR"}, {"script_name": "OTHER"}
+    ]);
+    data.models.insert(
+        "TEST".into(),
+        cyrus_assets::animation::AnimationModel {
+            radius: Some(1.0),
+            base_positions: vec![],
+            base_normals: vec![],
+            faces: vec![],
+            encoding: "static_3d".into(),
+            positions: vec![vec![], vec![]],
+            normals: vec![vec![], vec![]],
+        },
+    );
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut live = ScriptWorld::prepare(&scripts, 7).unwrap();
+    let id = live.id(0).unwrap();
+    live.bind_animation(id, &data, 1).unwrap();
+    stage(&mut live, id, ScriptStage::Animation);
+    stage(&mut live, id, BODY);
+    assert_eq!(live.animation_frame(id).unwrap(), Some(1));
+    assert_eq!(live.actors()[0].runtime().unwrap().active_tasks(), 1);
+    let saved = live.snapshot(&sources).unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        saved,
+        &sources,
+        WorldRestoreContext {
+            generation: 8,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let replacement_id = restored.id(0).unwrap();
+    assert_eq!(restored.animation_frame(replacement_id).unwrap(), Some(1));
+    assert_eq!(restored.flags(), [0]);
+    'resume: for _ in 0..4 {
+        for stage_kind in [ScriptStage::Animation, TASKS, BODY] {
+            stage(&mut live, id, stage_kind);
+            stage(&mut restored, replacement_id, stage_kind);
+            assert_eq!(
+                restored.animation_frame(replacement_id).unwrap(),
+                live.animation_frame(id).unwrap()
+            );
+            assert_eq!(restored.flags(), live.flags());
+            assert_eq!(
+                restored.actors()[0].runtime().unwrap().active_tasks(),
+                live.actors()[0].runtime().unwrap().active_tasks()
+            );
+            if restored.flags() == [9]
+                && restored.actors()[0].runtime().unwrap().active_tasks() == 0
+            {
+                break 'resume;
+            }
+        }
+    }
+    assert_eq!(restored.flags(), [9]);
+    assert_eq!(restored.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn world_snapshot_rejects_changed_player_settings_terrain_and_missing_source() {
+    use cyrus_game::player::data::PlayerScene;
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let scripts = scripts(vec![Operation::End { target: 0 }]);
+    let data = animations(&scripts, false);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let scene_document = json!({
+        "version":2,"world":17,"settings":{"standing_height":-2,"post_collide_height":50,
+        "slide_range":-60000,"turn_speed":12,"turn_max_speed":48,"poly_push_units":16},
+        "definition":{},"heights":vec![0;65536],"water":vec![false;65536],
+        "collision":{"placements":[],"models":{},"unsupported":{}}
+    });
+    let original = PlayerScene::decode(&serde_json::to_vec(&scene_document).unwrap()).unwrap();
+    let sources = WorldSnapshotSources {
+        player: Some(&original),
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let live = ScriptWorld::prepare(&scripts, 4).unwrap();
+    let saved = live.snapshot(&sources).unwrap();
+    let samples = BTreeMap::new();
+    let context = || WorldRestoreContext {
+        generation: 8,
+        globals: GameplayGlobals::default(),
+        samples: &samples,
+    };
+    assert!(ScriptWorld::from_snapshot(saved.clone(), &sources, context()).is_ok());
+    for (pointer, value) in [
+        ("/settings/turn_speed", json!(13)),
+        ("/heights/123", json!(-1)),
+    ] {
+        let mut changed = scene_document.clone();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        let changed = PlayerScene::decode(&serde_json::to_vec(&changed).unwrap()).unwrap();
+        let changed_sources = WorldSnapshotSources {
+            player: Some(&changed),
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        assert!(
+            ScriptWorld::from_snapshot(saved.clone(), &changed_sources, context()).is_err(),
+            "accepted {pointer}"
+        );
+    }
+    let absent = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    assert!(ScriptWorld::from_snapshot(saved, &absent, context()).is_err());
+}

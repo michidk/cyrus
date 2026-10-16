@@ -114,3 +114,30 @@ impl super::ScriptWorld {
         result
     }
 }
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct SoundMaintenanceSnapshot {
+    ticks: i32,
+    inhibited: bool,
+    reset: bool,
+    failure: Option<String>,
+}
+impl SoundMaintenance {
+    pub(super) fn snapshot(&self) -> SoundMaintenanceSnapshot {
+        SoundMaintenanceSnapshot {
+            ticks: self.ticks,
+            inhibited: self.inhibited,
+            reset: self.reset,
+            failure: self.failure.clone(),
+        }
+    }
+
+    pub(super) fn from_snapshot(snapshot: SoundMaintenanceSnapshot) -> Self {
+        Self {
+            ticks: snapshot.ticks,
+            inhibited: snapshot.inhibited,
+            reset: snapshot.reset,
+            failure: snapshot.failure,
+        }
+    }
+}

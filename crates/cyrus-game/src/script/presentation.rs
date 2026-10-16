@@ -235,3 +235,46 @@ pub(super) fn apply(
         }
     }
 }
+
+/// Validated actor-to-entity attachment for the complete session publication.
+/// The authoritative actor remains in ScriptWorld; this supplies no execution eligibility.
+pub struct ScriptEntityBinding {
+    binding: ScriptBinding,
+    map: bool,
+    alternate: bool,
+}
+impl super::ScriptWorld {
+    pub fn prepare_entity_binding(
+        &self,
+        actor: ScriptActorId,
+        source: Handle<Animations>,
+    ) -> anyhow::Result<ScriptEntityBinding> {
+        anyhow::ensure!(
+            self.id(actor.index)? == actor,
+            "restored presentation actor generation differs"
+        );
+        let actor_source = &self.actors()[actor.index].source;
+        Ok(ScriptEntityBinding {
+            binding: ScriptBinding { actor, source },
+            map: matches!(actor_source, super::ScriptActorSource::Map(_)),
+            alternate: matches!(actor_source, super::ScriptActorSource::AlternatePlayer),
+        })
+    }
+}
+impl ScriptEntityBinding {
+    /// Queue after all target entities and the selected player have been validated.
+    pub fn queue(self, commands: &mut Commands, entity: Entity, selected_player: Entity) {
+        let mut target = commands.entity(entity);
+        target.insert(self.binding);
+        if self.map {
+            target.insert(SceneActorBound);
+        }
+        if self.alternate {
+            target.insert((
+                StandaloneRole,
+                cyrus_world::sound::PlayerAnimationSource,
+                ChildOf(selected_player),
+            ));
+        }
+    }
+}

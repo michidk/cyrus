@@ -1136,7 +1136,7 @@ impl cyrus_world::sound::AmbientSoundDriver for DialogueAmbient<'_, '_, '_, '_> 
 }
 
 #[derive(Resource, Default)]
-pub(super) struct RuntimeDialogue {
+pub struct RuntimeDialogue {
     ordinary_completed: bool,
     generation: Option<u64>,
     hud: Option<Handle<cyrus_assets::hud::HudAsset>>,
@@ -1975,5 +1975,135 @@ mod dialogue_tests {
         let channels = world.resource::<Channels>();
         assert_eq!(channels.samples.status(Some(0)), 2);
         assert!(channels.playing.is_empty());
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+/// Opaque retained dialogue service checkpoint, separate from logical text records.
+pub struct RuntimeDialogueSnapshot {
+    ordinary_completed: bool,
+    generation: Option<u64>,
+    hud_bound: bool,
+    cache: cyrus_assets::sound::DialogueCacheSnapshot<super::dialogue::DialogueClipSnapshot>,
+    preparation: super::dialogue::DialoguePreparationSnapshot,
+    taunts: Vec<super::dialogue::DialogueClipSnapshot>,
+}
+
+/// Prepared installed dialogue assets. Construction never requests or loads assets.
+pub struct RestoredDialogueAssets<'a> {
+    pub server: &'a AssetServer,
+    pub audio_sources: &'a Assets<AudioSource>,
+    pub loaded: &'a Assets<super::dialogue::DialogueClip>,
+    pub clips: &'a std::collections::BTreeMap<[u8; 4], super::dialogue::DialogueClip>,
+    pub requests: &'a std::collections::BTreeMap<[u8; 4], Handle<super::dialogue::DialogueClip>>,
+    pub hud: Option<Handle<cyrus_assets::hud::HudAsset>>,
+}
+impl RuntimeDialogue {
+    /// Capture retained dialogue preparation/cache state at an ordinary boundary.
+    /// No loader is polled and no sample feedback or dialogue update is performed.
+    pub fn snapshot(
+        &self,
+        server: &AssetServer,
+        audio_sources: &Assets<AudioSource>,
+    ) -> anyhow::Result<RuntimeDialogueSnapshot> {
+        Ok(RuntimeDialogueSnapshot {
+            ordinary_completed: self.ordinary_completed,
+            generation: self.generation,
+            hud_bound: self.hud.is_some(),
+            cache: self.cache.snapshot(|clip| clip.snapshot(audio_sources))?,
+            preparation: self.preparation.snapshot(server)?,
+            taunts: self
+                .taunts
+                .iter()
+                .map(|clip| clip.snapshot(audio_sources))
+                .collect::<anyhow::Result<_>>()?,
+        })
+    }
+
+    /// Validate an off-live service replacement with prepared installed clips.
+    /// The host commits it alongside logical dialogue records and the sample pool.
+    pub fn from_snapshot(
+        saved: RuntimeDialogueSnapshot,
+        assets: RestoredDialogueAssets<'_>,
+        samples: &std::collections::BTreeMap<u8, u8>,
+        bindings: &crate::persistence::AudioRestoreBindings,
+    ) -> anyhow::Result<Self> {
+        use anyhow::{Context, ensure};
+        let restore_clip = |saved: super::dialogue::DialogueClipSnapshot| {
+            let entry = &saved.entry;
+            let installed = Context::with_context(assets.clips.get(&entry.label), || {
+                format!("dialogue {:?}: restored asset absent", entry.label)
+            })?;
+            super::dialogue::DialogueClip::from_snapshot(saved, installed, assets.audio_sources)
+        };
+        let cache = cyrus_assets::sound::DialogueCache::from_snapshot(
+            saved.cache,
+            samples,
+            |label, entry| {
+                ensure!(
+                    label == entry.entry.label,
+                    "saved dialogue cache label differs from payload"
+                );
+                restore_clip(entry)
+            },
+        )?;
+        let mut labels = std::collections::BTreeSet::new();
+        let taunts = saved
+            .taunts
+            .into_iter()
+            .map(|entry| {
+                ensure!(
+                    labels.insert(entry.entry.label),
+                    "saved dialogue taunt label duplicated"
+                );
+                let installed = Context::context(
+                    assets.clips.get(&entry.entry.label),
+                    "saved taunt asset absent",
+                )?;
+                ensure!(
+                    serde_json::to_value(&entry.entry)? == serde_json::to_value(&installed.entry)?,
+                    "saved taunt payload differs from installed entry"
+                );
+                restore_clip(entry)
+            })
+            .collect::<anyhow::Result<_>>()?;
+        let hud = if saved.hud_bound {
+            Some(Context::context(
+                assets.hud,
+                "saved dialogue HUD owner unavailable",
+            )?)
+        } else {
+            None
+        };
+        Ok(Self {
+            ordinary_completed: saved.ordinary_completed,
+            generation: saved
+                .generation
+                .map(|old| bindings.generation(old))
+                .transpose()?,
+            hud,
+            cache,
+            preparation: super::dialogue::DialoguePreparation::from_snapshot(
+                saved.preparation,
+                assets.requests,
+                assets.server,
+                assets.loaded,
+            )?,
+            taunts,
+        })
+    }
+}
+
+impl RuntimeDialogueSnapshot {
+    /// Installed labels needed before replacement construction. Includes retained
+    /// cache payloads, taunts and nonfailed preparation requests, without duplicates.
+    /// These are preparation hints, not validated installed source identities.
+    pub fn required_labels(&self) -> std::collections::BTreeSet<[u8; 4]> {
+        self.cache
+            .payloads()
+            .map(|clip| clip.entry.label)
+            .chain(self.taunts.iter().map(|clip| clip.entry.label))
+            .chain(self.preparation.required_labels())
+            .collect()
     }
 }

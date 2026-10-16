@@ -165,3 +165,91 @@ impl CombatMessages {
         *self = Self::default();
     }
 }
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub(super) struct CombatMessagesSnapshot {
+    classes: Vec<SavedClassQueue>,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct SavedClassQueue {
+    write: u8,
+    entries: Vec<Option<SavedMessage>>,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct SavedMessage {
+    sender: (u64, usize),
+    receiver: Option<(u64, usize)>,
+    code: i32,
+}
+impl CombatMessages {
+    pub(super) fn snapshot(&self) -> CombatMessagesSnapshot {
+        CombatMessagesSnapshot {
+            classes: self
+                .classes
+                .iter()
+                .map(|queue| SavedClassQueue {
+                    write: queue.write,
+                    entries: queue
+                        .entries
+                        .iter()
+                        .map(|entry| {
+                            entry.map(|message| SavedMessage {
+                                sender: (message.sender.generation, message.sender.index),
+                                receiver: message.receiver.map(|id| (id.generation, id.index)),
+                                code: message.code,
+                            })
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+
+    /// Every retained reference is rebound, including entries behind a read cursor.
+    pub(super) fn from_snapshot(
+        saved: CombatMessagesSnapshot,
+        rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
+    ) -> Result<Self> {
+        anyhow::ensure!(
+            saved.classes.len() == 256,
+            "saved combat class count differs"
+        );
+        let mut classes = Vec::with_capacity(saved.classes.len());
+        for (class, saved) in saved.classes.into_iter().enumerate() {
+            anyhow::ensure!(
+                usize::from(saved.write) < QUEUE_CAPACITY,
+                "saved combat class {class}: write cursor outside queue"
+            );
+            anyhow::ensure!(
+                saved.entries.len() == QUEUE_CAPACITY,
+                "saved combat class {class}: queue capacity differs"
+            );
+            let mut entries = [None; QUEUE_CAPACITY];
+            for (slot, message) in saved.entries.into_iter().enumerate() {
+                if let Some(message) = message {
+                    anyhow::ensure!(
+                        message.code != 0,
+                        "saved combat class {class} slot {slot}: occupied zero-code sentinel"
+                    );
+                    entries[slot] = Some(CombatMessage {
+                        sender: rebind(message.sender.0, message.sender.1)?,
+                        receiver: message
+                            .receiver
+                            .map(|(generation, index)| rebind(generation, index))
+                            .transpose()?,
+                        code: message.code,
+                    });
+                }
+            }
+            anyhow::ensure!(
+                entries[usize::from(saved.write)].is_none(),
+                "saved combat class {class}: write sentinel occupied"
+            );
+            classes.push(ClassQueue {
+                write: saved.write,
+                entries,
+            });
+        }
+        Ok(Self { classes })
+    }
+}

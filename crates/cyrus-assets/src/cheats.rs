@@ -75,6 +75,19 @@ pub struct CheatFile {
 }
 
 impl CheatFile {
+    /// Replace raw values against this decoded slot layout, retaining unnamed slots.
+    pub fn with_values(&self, values: &[u32]) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            values.len() == self.entries.len(),
+            "cheat replacement slot count differs"
+        );
+        let mut replacement = self.clone();
+        for (entry, value) in replacement.entries.iter_mut().zip(values) {
+            entry.value = *value;
+        }
+        Ok(replacement)
+    }
+
     pub fn entries(&self) -> &[CheatEntry] {
         &self.entries
     }

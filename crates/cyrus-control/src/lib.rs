@@ -29,6 +29,10 @@ pub enum Command {
     },
     /// App state, scene name, player transform, fidelity settings, frame counter.
     State,
+    /// Request settled session capture; poll SessionCaptureResult on a later frame.
+    SessionCapture,
+    /// Take the pending capture result as one UTF-8 document without writing storage.
+    SessionCaptureResult,
     /// Capture the primary window to `path` (PNG). The file appears a frame or two later.
     Screenshot {
         path: String,

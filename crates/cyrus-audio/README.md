@@ -221,3 +221,22 @@ remains unsupported.
 The complete periodic reset and its selected-player inhibition stage remain
 unconnected. Automatic RTXp and ambient tasks therefore still report missing
 reset input; these adapters do not establish story or full dialogue acceptance.
+
+`persistence::AudioRestoreBindings` validates the host's saved-to-replacement actor,
+world-generation and presentation-entity mappings once for audio reconstruction.
+Channel and dialogue candidates share those bindings. Missing owners and aliased
+or inconsistent mappings fail before playback or live replacement. The host still
+owns asset preparation, entity existence and the coordinated session commit.
+
+`SamplePlaybackSnapshot` composes logical sample ownership with each `Panned`
+source-decoder checkpoint. Capture requires a complete playback census after cue
+dispatch and deferred commands. Reconstruction validates installed source bytes,
+explicit owner/entity bindings and fresh transport tokens before returning a
+candidate. The candidate queues its changes into the aggregate commit buffer;
+it does not start playback during validation. Pause and mute state are retained.
+Backend resampler and device queues remain outside this checkpoint.
+
+`RuntimeDialogue::snapshot/from_snapshot` retains the prepared RTX cache, taunts,
+request failures and ordinary-update state. `RuntimeDialogueSnapshot::required_labels`
+provides installed asset preparation hints before validation. The host commits this
+replacement together with logical dialogue records and the sample pool.

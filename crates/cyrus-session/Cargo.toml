@@ -1,0 +1,22 @@
+[package]
+name = "cyrus-session"
+description = "Shared off-live gameplay session assembly for native and browser hosts."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["bevy_asset", "bevy_audio", "bevy_state"] }
+cyrus-assets.workspace = true
+cyrus-game.workspace = true
+cyrus-world.workspace = true
+cyrus-audio.workspace = true
+cyrus-render.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+cyrus-assets = { workspace = true, features = ["parsers"] }
+cyrus-script.workspace = true
+redguard-preservation.workspace = true

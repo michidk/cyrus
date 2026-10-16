@@ -20,6 +20,7 @@ serde.workspace = true
 cyrus-assets = { workspace = true, features = ["parsers"] }
 cyrus-world.workspace = true
 cyrus-render.workspace = true
+cyrus-session.workspace = true
 cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default", "webgl2"] }
 cyrus-debug = { path = "../cyrus-debug" }

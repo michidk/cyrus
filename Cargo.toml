@@ -27,6 +27,7 @@ cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }
 cyrus-collision = { path = "crates/cyrus-collision" }
 cyrus-render = { path = "crates/cyrus-render" }
+cyrus-session = { path = "crates/cyrus-session" }
 cyrus-media = { path = "crates/cyrus-media" }
 cyrus-audio = { path = "crates/cyrus-audio" }
 cyrus-startup = { path = "crates/cyrus-startup" }

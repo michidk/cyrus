@@ -1,5 +1,6 @@
 //! In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
 //! power-up slots, active item, prompt text. Rules follow redguard-preservation's HUD documentation.
+mod persistence;
 use bevy::{
     asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     prelude::*,
@@ -15,6 +16,7 @@ use cyrus_game::{
     },
     script::{ActivationInputs, ActivationOverlay, ScriptActors},
 };
+pub use persistence::HudPresentationSnapshot;
 use serde::{Deserialize, Serialize};
 
 /// Shows the exported `hud/overlay.hud` over gameplay, fitted like the original 640×480 viewport.
@@ -36,7 +38,7 @@ fn candle_level(health: u8) -> u8 {
 }
 
 /// The candle's shown level and flicker step; advanced once per original rendered frame.
-#[derive(Default, Serialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 struct Candle {
     shown: Option<u8>,
     step: u8,
@@ -109,7 +111,7 @@ impl HudPreferences {
 
 /// Live overlay state, reported by the control server. The inputs marked *unwired* have
 /// no gameplay system writing them yet; they keep the defaults of a fresh session.
-#[derive(Resource, Serialize, Debug)]
+#[derive(Resource, Serialize, Deserialize, Clone, Debug)]
 pub struct HudState {
     /// Player health, 0..=100, from logical player attribute 3 when available.
     /// Use [`HudState::set_health`].
@@ -153,24 +155,31 @@ pub struct HudState {
     bindings: [u8; 15],
     /// Every frame of the fixed atlases, held so swapping frames never reloads an image.
     #[serde(skip)]
-    frames: Frames,
+    frames: HudPresentationAssets,
     /// Text lines and pen positions currently drawn on the text layer.
     #[serde(skip)]
     text: Vec<(String, [i32; 2])>,
     #[serde(skip)]
     dialogue_text: Option<(usize, String)>,
+    #[serde(skip)]
+    redraw_text: bool,
 }
 
-#[derive(Default, Debug)]
-struct Frames {
-    candle: Vec<Handle<Image>>,
-    compass: Vec<Handle<Image>>,
-    logbook: Vec<Handle<Image>>,
-    powerup: Vec<Handle<Image>>,
+#[derive(Default, Clone, Debug)]
+/// Prepared installed HUD image handles for off-live presentation reconstruction.
+pub struct HudPresentationAssets {
+    pub candle: Vec<Handle<Image>>,
+    pub compass: Vec<Handle<Image>>,
+    pub logbook: Vec<Handle<Image>>,
+    pub powerup: Vec<Handle<Image>>,
 }
 
 impl HudState {
-    fn new(hud: &HudAsset, preferences: Option<HudPreferences>, frames: Frames) -> Self {
+    fn new(
+        hud: &HudAsset,
+        preferences: Option<HudPreferences>,
+        frames: HudPresentationAssets,
+    ) -> Self {
         let preferences = preferences.unwrap_or(HudPreferences {
             candle_mode: hud.candle_mode,
             walk_mode: hud.walk_mode,
@@ -202,6 +211,7 @@ impl HudState {
             frames,
             text: Vec::new(),
             dialogue_text: None,
+            redraw_text: false,
         }
     }
 
@@ -243,6 +253,13 @@ impl HudState {
 
 #[derive(Resource)]
 struct HudHandle(Handle<HudAsset>);
+
+/// Installed HUD definition currently bound by the renderer. Session capture must
+/// use this asset rather than choosing an arbitrary loaded HUD definition.
+pub fn bound_asset(world: &World) -> Option<&HudAsset> {
+    let handle = world.get_resource::<HudHandle>()?;
+    world.get_resource::<Assets<HudAsset>>()?.get(&handle.0)
+}
 
 #[derive(Component)]
 struct HudContent;
@@ -517,7 +534,7 @@ fn update(
                 .collect()
         };
         // The exporter validates these frame counts.
-        let frames = Frames {
+        let frames = HudPresentationAssets {
             candle: load("candle", 81),
             compass: load("compass", 32),
             logbook: load("logbook", 32),
@@ -902,7 +919,7 @@ fn update(
     if let Some(prompt) = prompt {
         text.push((prompt, hud.prompt));
     }
-    if text != state.text || dialogue_text != state.dialogue_text {
+    if state.redraw_text || text != state.text || dialogue_text != state.dialogue_text {
         for entity in &text_layer {
             commands.entity(entity).despawn();
         }
@@ -915,6 +932,7 @@ fn update(
                 ZIndex(SPRITES.len() as i32),
             ));
         }
+        state.redraw_text = false;
         state.text = text;
         state.dialogue_text = dialogue_text;
     }
@@ -974,7 +992,7 @@ mod tests {
 
     #[test]
     fn show_timer_and_logbook_follow_their_triggers() {
-        let mut state = HudState::new(&asset(0), None, Frames::default());
+        let mut state = HudState::new(&asset(0), None, HudPresentationAssets::default());
         state.set_health(80);
         assert_eq!(state.show_timer, SHOW_TICKS);
         state.show_timer = SHOW_PINNED;
@@ -1972,5 +1990,60 @@ mod tests {
         }
         app.update();
         assert_eq!(app.world().resource::<HudState>().selected, Some(1));
+    }
+    #[test]
+    fn presentation_snapshot_retains_next_candle_icon_and_fractional_frame() -> anyhow::Result<()> {
+        let asset = asset(2);
+        let frames = HudPresentationAssets {
+            candle: vec![Handle::default(); 81],
+            compass: vec![Handle::default(); 32],
+            logbook: vec![Handle::default(); 32],
+            powerup: vec![Handle::default(); 2],
+        };
+        let prepared = HudState::new(&asset, None, frames);
+        let mut live = prepared.clone();
+        live.set_health(47);
+        live.logbook_entry();
+        for _ in 0..9 {
+            live.advance_frame();
+        }
+        live.elapsed = 0.01;
+        live.notices = [7, 13];
+        live.bindings[0] = 72;
+        live.text = vec![("retained prompt".into(), [17, 20])];
+        live.dialogue_text = Some((3, "retained dialogue".into()));
+        let saved = serde_json::to_value(live.snapshot(&asset)?)?;
+        let mut restored = HudState::from_snapshot(
+            &asset,
+            &prepared.frames,
+            serde_json::from_value(saved.clone())?,
+        )?;
+        assert_eq!(serde_json::to_value(restored.snapshot(&asset)?)?, saved);
+        for _ in 0..26 {
+            live.advance_frame();
+            restored.advance_frame();
+            assert_eq!(restored.candle, live.candle);
+            assert_eq!(restored.logbook_frame, live.logbook_frame);
+        }
+        for (pointer, value) in [
+            ("/version", serde_json::json!(2)),
+            ("/elapsed_bits", serde_json::json!(f32::NAN.to_bits())),
+            ("/state/logbook_frame", serde_json::json!(32)),
+            ("/state/candle/frame", serde_json::json!(81)),
+        ] {
+            let mut invalid = saved.clone();
+            *invalid.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                HudState::from_snapshot(&asset, &prepared.frames, serde_json::from_value(invalid)?)
+                    .is_err()
+            );
+        }
+        let mut changed = asset;
+        changed.logbook[0] += 1;
+        assert!(
+            HudState::from_snapshot(&changed, &prepared.frames, serde_json::from_value(saved)?)
+                .is_err()
+        );
+        Ok(())
     }
 }

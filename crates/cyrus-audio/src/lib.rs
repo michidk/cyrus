@@ -1,5 +1,6 @@
 //! Effects, speech and CD music playback, independent of rendering and menu presentation.
 pub mod music;
+pub mod persistence;
 pub mod sound;
 #[cfg(target_arch = "wasm32")]
 mod sound_bank;

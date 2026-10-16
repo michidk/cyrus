@@ -214,6 +214,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         .insert_resource(cyrus_world::lifecycle::SceneRequest(settings.scene.clone()))
         .add_plugins((
             GamePlugin,
+            cyrus_session::SessionBoundaryPlugin,
             cyrus_startup::LoadingPlugin,
             cyrus_app::loading::LoadingOverlayPlugin,
             scene::ScenePlugin,
