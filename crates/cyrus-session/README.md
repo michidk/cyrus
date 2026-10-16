@@ -261,3 +261,8 @@ and complete installed revisit acceptance remain pending.
 Capture compares shared immutable source references without serializing the same
 asset twice. Separately decoded sources still require complete content comparison;
 saved source fingerprints and document compatibility are unchanged.
+
+Logical load planning validates each represented world's source fingerprint once
+and retains immutable source borrows through reconstruction. Aggregate planning
+reuses those checked fingerprints. Direct world restores still validate sources,
+and assembly/publication independently recheck live asset content before mutation.

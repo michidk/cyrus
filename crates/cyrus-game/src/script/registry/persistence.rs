@@ -593,14 +593,28 @@ impl WorldSnapshot {
         samples: &BTreeMap<u8, u8>,
     ) -> Result<ScriptWorld> {
         ensure!(
+            self.source_identity == sources.identity()?,
+            "world {}: saved source content differs",
+            self.world
+        );
+        self.restore_validated_source(sources, generation, dialogue, samples)
+    }
+
+    // Registry plans retain immutable source borrows after checking their full identities.
+    fn restore_validated_source(
+        self,
+        sources: &WorldSnapshotSources<'_>,
+        generation: u64,
+        dialogue: Option<&super::super::DialogueState>,
+        samples: &BTreeMap<u8, u8>,
+    ) -> Result<ScriptWorld> {
+        ensure!(
             self.version == 1,
             "world snapshot version {} unsupported",
             self.version
         );
         ensure!(
-            self.world == sources.scripts.world
-                && self.content_id == sources.scripts.content_id
-                && self.source_identity == sources.identity()?,
+            self.world == sources.scripts.world && self.content_id == sources.scripts.content_id,
             "world {}: saved source content differs",
             self.world
         );
@@ -913,7 +927,7 @@ impl RegistryRestorePlan<'_> {
         let mut visited = BTreeMap::new();
         for world_snapshot in saved.worlds {
             let world = world_snapshot.world;
-            let candidate = world_snapshot.restore(
+            let candidate = world_snapshot.restore_validated_source(
                 &sources[&world],
                 replacements[&world],
                 globals.dialogue.as_ref(),
@@ -1053,6 +1067,25 @@ pub struct LogicalSessionRestorePlan<'a> {
     toggles: crate::player::input::PlayerToggles,
 }
 impl LogicalSessionRestorePlan<'_> {
+    /// Complete supplied source identities, reusing checked world fingerprints while
+    /// the plan retains immutable source borrows. Unrepresented extra sources are
+    /// fingerprinted here; callers still validate independently mutable live assets.
+    pub fn source_identities(&self) -> Result<BTreeMap<u32, String>> {
+        let mut identities: BTreeMap<_, _> = self
+            .registry
+            .saved
+            .worlds
+            .iter()
+            .map(|world| (world.world, world.source_identity.clone()))
+            .collect();
+        for (&world, source) in self.registry.sources {
+            if let std::collections::btree_map::Entry::Vacant(entry) = identities.entry(world) {
+                entry.insert(source.identity()?);
+            }
+        }
+        Ok(identities)
+    }
+
     /// Complete saved-to-replacement actor identities for service reconstruction.
     pub fn actor_bindings(&self) -> &[(ScriptActorId, ScriptActorId)] {
         self.registry.actor_bindings()

@@ -377,6 +377,13 @@ identical documents; changed source content still rejects. Focused contracts,
 WASM checking and full workspace gates pass. Optimized browser capture/load timing
 remains open; this does not complete save/load acceptance.
 
+Load planning reuses source fingerprints after validating each represented world
+and retains immutable source borrows through reconstruction. Direct restoration,
+extra supplied sources and live publication retain their source checks. Current
+and visited world rejection contracts cover mismatched identities, unsupported
+versions and invalid retained state. Browser load timing after this change remains
+unmeasured.
+
 Shared aggregate, registry/service replacements, rendered staging, capture hooks
 and asynchronous load preparation are committed as work in progress. The latest
 asynchronous load integration test passes after isolating its asset fixture from

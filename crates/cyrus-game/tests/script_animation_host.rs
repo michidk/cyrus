@@ -4211,6 +4211,23 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
         .unwrap()
         .plan(inputs())
         .unwrap();
+    assert_eq!(
+        plan.source_identities().unwrap(),
+        sources
+            .iter()
+            .map(|(&id, source)| (id, source.identity().unwrap()))
+            .collect()
+    );
+    let single_world_plan = registry
+        .snapshot_session(&sources, &hud, &clock, &random, toggles)
+        .unwrap()
+        .plan(inputs())
+        .unwrap();
+    assert_eq!(
+        single_world_plan.source_identities().unwrap(),
+        plan.source_identities().unwrap(),
+        "unrepresented supplied sources still require complete fingerprinting"
+    );
     assert_eq!(plan.actor_bindings().len(), 4);
     assert!(
         plan.actor_bindings()
@@ -4242,6 +4259,23 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
         roundtrip["registry"]["worlds"][1]["flags"],
         document["registry"]["worlds"][1]["flags"]
     );
+    for index in 0..2 {
+        let mut wrong_source = document.clone();
+        wrong_source["registry"]["worlds"][index]["source_identity"] = "wrong".into();
+        assert!(
+            serde_json::from_value::<LogicalSessionSnapshot>(wrong_source)
+                .unwrap()
+                .plan(inputs())
+                .is_err()
+        );
+        let mut wrong_version = document.clone();
+        wrong_version["registry"]["worlds"][index]["version"] = 999.into();
+        let plan = serde_json::from_value::<LogicalSessionSnapshot>(wrong_version)
+            .unwrap()
+            .plan(inputs())
+            .unwrap();
+        assert!(plan.finish(&samples).is_err());
+    }
     // A late invalid visited-world field must discard the whole candidate.
     document["registry"]["worlds"][1]["actors"][0]["message_read"] = 8.into();
     let plan = serde_json::from_value::<LogicalSessionSnapshot>(document)

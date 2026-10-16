@@ -634,8 +634,14 @@ impl RuntimeSessionSnapshot {
                 "session restoration world {id}: complete decoded player source absent"
             );
         }
-        let source_identities = sources::identities(inputs.sources)?;
+        for (&id, source) in inputs.sources {
+            ensure!(
+                source.player.is_some(),
+                "session source world {id}: player absent"
+            );
+        }
         let logical = self.logical.plan(inputs)?;
+        let source_identities = logical.source_identities()?;
         ensure!(
             logical
                 .actor_bindings()
