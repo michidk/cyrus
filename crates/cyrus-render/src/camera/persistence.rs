@@ -213,7 +213,7 @@ mod tests {
             Transform::from_xyz(17.0, -2.0, 93.0),
             Projection::custom(GameProjection::default()),
         ));
-        let saved = CameraSnapshot::capture(&mut original).unwrap().unwrap();
+        let saved = CameraSnapshot::capture(&original).unwrap().unwrap();
         let bytes = serde_json::to_vec(&saved).unwrap();
         let mut invalid = serde_json::to_value(&saved).unwrap();
         invalid["projection"][2] = (-1).into();
@@ -228,13 +228,13 @@ mod tests {
         let camera = fresh.spawn_empty().id();
         let mut queue = bevy::ecs::world::CommandQueue::default();
         replacement.queue(&mut Commands::new(&mut queue, &fresh), camera);
-        assert!(CameraSnapshot::capture(&mut fresh).unwrap().is_none());
+        assert!(CameraSnapshot::capture(&fresh).unwrap().is_none());
         queue.apply(&mut fresh);
         assert_eq!(
-            serde_json::to_vec(&CameraSnapshot::capture(&mut fresh).unwrap().unwrap()).unwrap(),
+            serde_json::to_vec(&CameraSnapshot::capture(&fresh).unwrap().unwrap()).unwrap(),
             bytes
         );
         fresh.spawn(ViewCamera);
-        assert!(CameraSnapshot::capture(&mut fresh).is_err());
+        assert!(CameraSnapshot::capture(&fresh).is_err());
     }
 }

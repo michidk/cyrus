@@ -310,6 +310,10 @@ impl SceneCandidate {
     }
 }
 
+fn environment_identity(environment: &Environment) -> Result<[u8; 32]> {
+    Ok(*blake3::hash(&serde_json::to_vec(environment)?).as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,8 +500,4 @@ mod tests {
         assert!(candidate.validate_map_entity(&world, old).is_err());
         Ok(())
     }
-}
-
-fn environment_identity(environment: &Environment) -> Result<[u8; 32]> {
-    Ok(*blake3::hash(&serde_json::to_vec(environment)?).as_bytes())
 }

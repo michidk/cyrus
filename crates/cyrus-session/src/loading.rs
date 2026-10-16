@@ -104,10 +104,10 @@ impl SessionLoad {
             let Some(clip) = loaded(world, handle, "dialogue")? else {
                 return Ok(None);
             };
-            if let Some(audio) = &clip.audio {
-                if loaded(world, audio, "dialogue audio")?.is_none() {
-                    return Ok(None);
-                }
+            if let Some(audio) = &clip.audio
+                && loaded(world, audio, "dialogue audio")?.is_none()
+            {
+                return Ok(None);
             }
             clips.insert(label, clip.clone());
         }
@@ -277,13 +277,12 @@ impl SessionLoad {
         if let Some(scene) = self.scene {
             scene.discard(world);
         }
-        if let Some(camera) = self.camera {
-            if world
+        if let Some(camera) = self.camera
+            && world
                 .get::<crate::staging::StagedSessionEntity>(camera)
                 .is_some()
-            {
-                world.despawn(camera);
-            }
+        {
+            world.despawn(camera);
         }
     }
 }

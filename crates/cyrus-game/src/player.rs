@@ -60,6 +60,12 @@ fn spawn(mut commands: Commands, players: Query<(), With<Player>>) {
     }
 }
 
+fn despawn(mut commands: Commands, players: Query<Entity, With<Player>>) {
+    for player in &players {
+        commands.entity(player).despawn();
+    }
+}
+
 #[cfg(test)]
 mod entry_tests {
     use super::*;
@@ -93,11 +99,5 @@ mod entry_tests {
                 .count(),
             1
         );
-    }
-}
-
-fn despawn(mut commands: Commands, players: Query<Entity, With<Player>>) {
-    for player in &players {
-        commands.entity(player).despawn();
     }
 }

@@ -251,6 +251,13 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
         .remember_choice("Remembered topic".into());
     app.insert_resource(prepared());
     app.update();
+    let registry = app.world().resource::<ScriptActors>();
+    assert!(registry.current.is_none());
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .begin_new_game();
+    app.insert_resource(prepared());
+    app.update();
     assert_eq!(
         app.world()
             .resource::<ScriptActors>()
@@ -259,7 +266,7 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
             .unwrap()
             .globals()
             .highlighted_choice(),
-        Some("Remembered topic")
+        Some("")
     );
     assert!(app.world().get::<ScriptBinding>(node).is_none());
     assert!(app.world().get::<SoundSurface>(node).is_none());

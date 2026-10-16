@@ -584,8 +584,10 @@ mod channel_persistence_tests {
         let replacement = world.spawn_empty().id();
         let sound = world.spawn_empty().id();
         let restored_sound = world.spawn_empty().id();
-        let mut live = super::super::Channels::default();
-        live.start = 6;
+        let mut live = super::super::Channels {
+            start: 6,
+            ..Default::default()
+        };
         let old = live
             .samples
             .start(6, Some(Owner::Entity(owner)), Some(12))

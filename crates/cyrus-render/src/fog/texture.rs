@@ -160,8 +160,8 @@ pub(super) fn register(app: &mut App) {
         );
 }
 
-// Binding joins retained frame handles, metadata and the current world lifetime.
-#[allow(clippy::type_complexity)]
+// Binding joins retained frame handles, metadata, staging and the current world lifetime.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn bind(
     mut commands: Commands,
     request: Res<EnvironmentRequest>,

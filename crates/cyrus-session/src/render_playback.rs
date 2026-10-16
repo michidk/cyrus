@@ -233,6 +233,23 @@ fn resolve_path(world: &World, mut root: Entity, path: &[usize]) -> Result<Entit
     Ok(root)
 }
 
+fn validate_distance(distance: &cyrus_render::fog::RenderDistance) -> Result<()> {
+    let [near, far] = distance
+        .original
+        .context("session render clipping absent")?;
+    ensure!(
+        near.is_finite() && far.is_finite() && near > 0.0 && far > near,
+        "session render clipping invalid"
+    );
+    if let Some(value) = distance.override_far {
+        ensure!(
+            value.is_finite() && value > near,
+            "session render clipping override invalid"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,21 +294,4 @@ mod tests {
         world.despawn(new_mesh);
         assert!(resolve_path(&world, new_root, &path).is_err());
     }
-}
-
-fn validate_distance(distance: &cyrus_render::fog::RenderDistance) -> Result<()> {
-    let [near, far] = distance
-        .original
-        .context("session render clipping absent")?;
-    ensure!(
-        near.is_finite() && far.is_finite() && near > 0.0 && far > near,
-        "session render clipping invalid"
-    );
-    if let Some(value) = distance.override_far {
-        ensure!(
-            value.is_finite() && value > near,
-            "session render clipping override invalid"
-        );
-    }
-    Ok(())
 }

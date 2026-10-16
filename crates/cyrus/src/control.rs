@@ -96,7 +96,8 @@ struct Inspection<'w, 's> {
     player_poses: Query<'w, 's, &'static cyrus_game::player::placement::PlayerPose, With<Player>>,
 }
 
-#[allow(clippy::too_many_arguments)]
+// Control dispatch joins input, session state and presentation resources.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn handle(
     mut commands: Commands,
     inbox: Res<Inbox>,
