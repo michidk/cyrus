@@ -23,6 +23,9 @@ Script visibility flags hide or restore bound scene nodes independently of actor
 update eligibility. Static transforms continue to use the logical actor matrix.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
+HUD artwork and rasterized text explicitly use nearest sampling when the
+640×480 overlay is enlarged, preserving its pixel edges instead of inheriting
+the image plugin's linear sampler. World materials retain their own sampling rules.
 
 Menu edits persist before applying. Audio preference application precedes
 `AnimationSystems`, which precedes cue consumption in the same Update. Mesh poses

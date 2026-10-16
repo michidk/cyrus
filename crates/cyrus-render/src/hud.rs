@@ -3,6 +3,7 @@
 mod persistence;
 use bevy::{
     asset::{AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
+    image::{ImageLoaderSettings, ImageSampler},
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
@@ -315,6 +316,10 @@ impl AssetLoader for HudLoader {
         ] {
             hud.images.extend((0..count).map(|frame| {
                 context
+                    .load_builder()
+                    .with_settings(|settings: &mut ImageLoaderSettings| {
+                        settings.sampler = ImageSampler::nearest();
+                    })
                     .load::<Image>(format!("cache://hud/{name}-{frame:02}.png"))
                     .untyped()
             }));
@@ -322,6 +327,10 @@ impl AssetLoader for HudLoader {
         for item in &hud.items {
             hud.images.push(
                 context
+                    .load_builder()
+                    .with_settings(|settings: &mut ImageLoaderSettings| {
+                        settings.sampler = ImageSampler::nearest();
+                    })
                     .load::<Image>(format!("cache://hud/item-{:02}.png", item.bitmap))
                     .untyped(),
             );
@@ -461,7 +470,7 @@ fn text_image(
             hud.font.draw_shadowed(&mut rgba, 640, &line, at, alpha);
         }
     }
-    Image::new(
+    let mut image = Image::new(
         Extent3d {
             width: 640,
             height: 480,
@@ -471,7 +480,9 @@ fn text_image(
         rgba,
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::default(),
-    )
+    );
+    image.sampler = ImageSampler::nearest();
+    image
 }
 
 /// The placed player and the loaded world's player scene, which supply the compass.
@@ -530,7 +541,14 @@ fn update(
     let Some(mut state) = state else {
         let load = |name: &str, count: usize| -> Vec<Handle<Image>> {
             (0..count)
-                .map(|f| assets.load(format!("cache://hud/{name}-{f:02}.png")))
+                .map(|f| {
+                    assets
+                        .load_builder()
+                        .with_settings(|settings: &mut ImageLoaderSettings| {
+                            settings.sampler = ImageSampler::nearest();
+                        })
+                        .load(format!("cache://hud/{name}-{f:02}.png"))
+                })
                 .collect()
         };
         // The exporter validates these frame counts.
@@ -892,7 +910,16 @@ fn update(
                     }),
                 HudSprite::Item => shown_item.map(|item| {
                     let path = format!("cache://hud/item-{:02}.png", item.bitmap);
-                    (assets.load(path), hud.pickup, item.size)
+                    (
+                        assets
+                            .load_builder()
+                            .with_settings(|settings: &mut ImageLoaderSettings| {
+                                settings.sampler = ImageSampler::nearest();
+                            })
+                            .load(path),
+                        hud.pickup,
+                        item.size,
+                    )
                 }),
             };
         let Some((frame, at, size)) = target else {
