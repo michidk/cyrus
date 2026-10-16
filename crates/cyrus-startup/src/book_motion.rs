@@ -70,8 +70,8 @@ impl BookMotion {
     }
 
     fn sweep(&mut self, target: [f32; 3]) {
-        self.request([192.0, 284.0, -160.0], -152, 0.15);
-        self.request([192.0, 284.0, -160.0], 0, 0.12);
+        self.request([192.0, 284.0, -96.0], -152, 0.15);
+        self.request([192.0, 284.0, -96.0], 0, 0.12);
         self.request(target, 152, 0.15);
     }
 
@@ -293,7 +293,7 @@ mod tests {
         let mut motion = settled();
         motion.navigate(0, 3).unwrap();
         assert!(motion.tick(|_| {}));
-        assert_eq!(motion.pose.camera, [28.0, 42.0, -24.0]);
+        assert_eq!(motion.pose.camera, [28.0, 42.0, -14.0]);
         assert_eq!(motion.pose.pitch, 2026);
         for _ in 0..3 {
             motion.tick(|_| {});
