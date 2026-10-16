@@ -434,7 +434,7 @@ successful gameplay traversal remain open.
 identity, routing and rejection contracts pass. The installed non-standing
 KOTAROTB branch runs without changing flags or support. The published original
 identity comparison and its altered-branch control pass against retained instructions.
-WASM verification passes; final workspace gates are pending. This does not establish
+WASM verification and final workspace gates pass with zero installed skips. This does not establish
 collision assignment, the standing dialogue route or automatic gameplay acceptance.
 
 ### Receiver-relative player arc query
@@ -446,5 +446,6 @@ controls verify that bounded query, including signed-offset extremes. The regist
 now routes it through the existing spatial query owner. Public and installed
 CAMPDIRG distant-player contracts pass. A double-negation error was caught by
 the cardinal-direction contract and corrected by using the existing bearing
-helper directly. WASM verification passes; combined-tree gates are pending. Complete dialogue and automatic gameplay
+helper directly. WASM verification and combined-tree gates pass with zero
+installed skips. Complete dialogue and automatic gameplay
 acceptance remain open.
