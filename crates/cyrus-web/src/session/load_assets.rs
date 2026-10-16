@@ -114,8 +114,15 @@ impl LoadAssets {
                 source.source_identity
             );
         }
+        if self.sources.sources(world)?.is_none() {
+            return Ok(None);
+        }
+        let mut worlds = self.sources.clone().into_worlds();
+        for (&id, (prepared, _)) in &mut worlds {
+            prepared.world = Some(id);
+        }
         Ok(Some(SessionLoadAssets {
-            sources: self.sources.clone(),
+            sources: SessionWorldAssets::from_loaded(snapshot, worlds)?,
             hud: self.hud.clone(),
             hud_images: self.images.clone(),
             samples,

@@ -19,6 +19,9 @@ completion reports `stored`; a load reports `committed` only after shared
 source validation and exclusive live replacement. Malformed documents, missing
 records and storage failures return contextual errors. These inspection requests
 do not enable menu save slots or establish complete gameplay restoration.
+Browser load preparation resolves each saved world ID only after its decoded
+script, animation and player sources agree. Rendered sources still require exact
+compatibility with the saved document.
 
 ```sh
 just web-build
