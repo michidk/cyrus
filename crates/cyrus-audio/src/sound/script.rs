@@ -531,6 +531,27 @@ impl ScriptSounds<'_, '_> {
         })
     }
 
+    fn restore_service(
+        &mut self,
+        stage: cyrus_game::script::SoundResetStage,
+        globals: &mut cyrus_game::script::GameplayGlobals,
+        cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
+    ) -> anyhow::Result<()> {
+        use cyrus_game::script::SoundResetStage;
+        match stage {
+            SoundResetStage::ReleaseRtx => cache.reset(self)?,
+            SoundResetStage::ClearDialogue => {
+                anyhow::Context::context(globals.dialogue_mut(), "revisit dialogue owner absent")?
+                    .reset_active_lines();
+            }
+            SoundResetStage::StopSamples => self.frame.channels.stop_all(&mut self.frame.commands),
+            SoundResetStage::ClearNodeReservations => {
+                anyhow::bail!("revisit requested periodic node cleanup")
+            }
+        }
+        Ok(())
+    }
+
     fn check_dialogue_dependencies(
         &self,
         clip: &super::dialogue::DialogueClip,
@@ -1178,6 +1199,28 @@ fn scoped_ordinary(
             preparation,
             taunts,
         } = &mut *dialogue.runtime;
+        if context.has_pending_revisit() {
+            let restored = (|| -> anyhow::Result<bool> {
+                if !context.prepare_revisit_entry(&mut |cue| {
+                    sounds.frame.emit(&cue, Some(generation));
+                    Ok(())
+                })? {
+                    return Ok(false);
+                }
+                context.restore_visited(&mut |stage, globals| {
+                    sounds.restore_service(stage, globals, cache)
+                })?;
+                Ok(true)
+            })();
+            match restored {
+                Ok(true) => {}
+                Ok(false) => return,
+                Err(error) => {
+                    context.report_error(format!("world revisit restoration: {error:#}"));
+                    return;
+                }
+            }
+        }
         if *prepared_generation != generation {
             preparation.clear();
             taunts.clear();
@@ -1416,6 +1459,55 @@ mod dialogue_tests {
         assert!(cache.payload(slot).is_none());
         assert!(game.reserve_walk_node(second, 0, 0).unwrap());
         assert!(timer.reset().unwrap());
+    }
+
+    #[test]
+    fn revisit_cleanup_stops_shared_samples_and_dialogue_without_clearing_walk_reservations() {
+        let mut game = maintenance_world(true);
+        let first = game.id(0).unwrap();
+        let second = game.id(1).unwrap();
+        assert!(game.reserve_walk_node(first, 0, 0).unwrap());
+        let mut audio = World::new();
+        audio.init_resource::<SoundEffects>();
+        let mut channels = Channels::default();
+        channels.samples.start(0, None, None).unwrap().unwrap();
+        channels.samples.start(1, None, None).unwrap().unwrap();
+        audio.insert_resource(channels);
+        let mut cache = cyrus_assets::sound::DialogueCache::default();
+        let slot = cache
+            .load(*b"TEST", |_| {
+                Ok(super::super::dialogue::DialogueClip {
+                    entry: cyrus_assets::sound::DialogueEntry {
+                        version: 1,
+                        label: *b"TEST",
+                        text: "Cached text".into(),
+                        text_lifetime: 100,
+                        voice: None,
+                    },
+                    audio: None,
+                })
+            })
+            .unwrap();
+        let mut timer = cyrus_game::script::SoundMaintenance::default();
+        let mut state = bevy::ecs::system::SystemState::<ScriptSounds>::new(&mut audio);
+        let mut sounds = state.get_mut(&mut audio).unwrap();
+        timer
+            .restore_world(
+                &mut |stage| sounds.restore_service(stage, game.globals_mut(), &mut cache),
+                || Ok(()),
+            )
+            .unwrap();
+        assert!(cache.payload(slot).is_none());
+        assert!(!game.globals().dialogue().unwrap().waiting());
+        assert!(!sounds.playing(0).unwrap() && !sounds.playing(1).unwrap());
+        assert!(!game.reserve_walk_node(second, 0, 0).unwrap());
+        assert!(timer.reset().unwrap());
+        assert!(
+            !sounds
+                .maintain_sound(&mut timer, 0, &mut game, &mut cache)
+                .unwrap()
+        );
+        assert!(!timer.reset().unwrap());
     }
 
     #[test]

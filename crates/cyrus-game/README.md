@@ -934,6 +934,8 @@ input, so hosts must retain trusted prepared assets rather than mutate their fie
 `SoundMaintenance::restore_world` is a restoration prerequisite. It orders RTX,
 dialogue and sample cleanup before the supplied actor restoration, then sets the
 sample-reset flag. It does not request periodic walk-node cleanup. Cleanup or
-restoration failure remains sticky. Seven public maintenance tests pass; runtime
-revisit wiring and its final workspace verification remain unfinished, and the
-registry revisit guard is still active.
+restoration failure remains sticky. The ordinary audio host now initializes entry roles, validates retained actors
+off-live, clears services and adopts the retained world before maintenance and
+traversal. Unsupported hosts retain an explicit traversal guard. Leaving an
+unrestored entry preserves its retained world. Installed revisit acceptance and
+final workspace verification remain unfinished.

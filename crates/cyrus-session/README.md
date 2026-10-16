@@ -234,9 +234,9 @@ recaptured current ISLAND plus visited START. Retained START matches after
 actor-generation rebinding. Complete rendered continuation and revisit execution
 remain unverified. The separately owned browser storage caller is integrated.
 Remaining work includes installed live restoration, restart/reload and
-visited-world continuation. Revisit guards
-remain until service cleanup and retained-task behavior are implemented and
-verified. Audio snapshots cover source-decoder continuation, not downstream
+visited-world continuation. The revisit draft validates retained actors and clears shared sound services
+before traversal; hosts without that restoration still reject the update.
+Installed revisit continuation remains unverified. Audio snapshots cover source-decoder continuation, not downstream
 converter/device queues. Complete gameplay and controller acceptance remain open.
 
 The current draft also captures ordinary actor model replacements by saved actor

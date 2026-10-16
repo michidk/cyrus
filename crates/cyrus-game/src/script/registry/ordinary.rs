@@ -417,6 +417,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     view: Option<Res<'w, ScriptView>>,
     request: Option<Res<'w, AnimationRequest>>,
     assets: Res<'w, Assets<Animations>>,
+    scripts: Res<'w, Assets<cyrus_assets::script::Scripts>>,
     scene_request: Option<Res<'w, crate::player::data::PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<crate::player::data::PlayerScene>>>,
     sample: Option<Res<'w, ClockSample>>,
@@ -451,6 +452,97 @@ pub struct OrdinaryContext<'w, 's> {
 }
 
 impl OrdinaryContext<'_, '_> {
+    /// Whether this entry requires retained-world restoration before traversal.
+    pub fn has_pending_revisit(&self) -> bool {
+        self.actors.has_pending_revisit()
+    }
+
+    /// Initialize the entry roles before the host clears services and restores
+    /// retained records. Pending asset/clock preparation runs no entry effects.
+    pub fn prepare_revisit_entry(
+        &mut self,
+        emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
+    ) -> anyhow::Result<bool> {
+        if !self.has_pending_revisit() || !self.is_running() {
+            return Ok(false);
+        }
+        let (Some(request), Some(clock), Some(sample)) = (
+            self.prepared.request.as_ref(),
+            self.clock.as_ref(),
+            self.prepared.sample.as_ref(),
+        ) else {
+            return Ok(false);
+        };
+        let Some(data) = self.prepared.assets.get(&request.0) else {
+            return Ok(false);
+        };
+        let world = self.actors.current.as_mut().expect("running world");
+        if sample.0 != world.generation()
+            || !world.model_resources_prepared()
+            || world.model_admission.is_none()
+            || (world
+                .actors
+                .iter()
+                .any(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                && self.players.single().is_err())
+        {
+            return Ok(false);
+        }
+        initialize_entry(
+            world,
+            data,
+            clock.step().nominal_ticks,
+            self.players.single().ok(),
+            self.entry.as_deref().copied(),
+            &mut |actor, sound| send_actor_sound(actor, sound, &request.0, &self.bindings, emit),
+        )?;
+        Ok(true)
+    }
+
+    /// Reconstruct retained actors with fresh identities and clear shared services
+    /// before adopting them. The host must first complete `prepare_revisit_entry`.
+    pub fn restore_visited(
+        &mut self,
+        cleanup: &mut dyn FnMut(
+            super::super::SoundResetStage,
+            &mut super::super::GameplayGlobals,
+        ) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        let request = self
+            .prepared
+            .request
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("revisit animation request absent"))?;
+        let data = self
+            .prepared
+            .assets
+            .get(&request.0)
+            .ok_or_else(|| anyhow::anyhow!("revisit animations unavailable"))?;
+        let scripts = self
+            .actors
+            .requested
+            .as_ref()
+            .and_then(|handle| self.prepared.scripts.get(handle))
+            .ok_or_else(|| anyhow::anyhow!("revisit scripts unavailable"))?;
+        let scene = self
+            .prepared
+            .scene_request
+            .as_ref()
+            .zip(self.prepared.scenes.as_ref())
+            .and_then(|(request, scenes)| scenes.get(&request.0))
+            .ok_or_else(|| anyhow::anyhow!("revisit player/collision source unavailable"))?;
+        self.actors.restore_visited(
+            &super::WorldSnapshotSources {
+                scripts,
+                animations: data,
+                collision: &scene.collision,
+                player: Some(scene),
+            },
+            cleanup,
+        )?;
+        Ok(())
+    }
+
     /// Whether automatic world execution may request host services this update.
     pub fn is_running(&self) -> bool {
         !self
@@ -548,6 +640,118 @@ fn queued_step(context: OrdinaryContext, mut sounds: Option<ResMut<Messages<Soun
     });
 }
 
+fn send_actor_sound(
+    actor: ScriptActorId,
+    sound: super::super::ScriptSound,
+    source: &Handle<Animations>,
+    bindings: &Query<(Entity, &super::super::ScriptBinding)>,
+    emit: &mut dyn FnMut(SoundCue) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    let cue = match sound {
+        super::super::ScriptSound::Animation {
+            sound,
+            surface,
+            position,
+        } => {
+            let mut nodes = bindings
+                .iter()
+                .filter(|(_, binding)| binding.actor == actor && binding.source == *source);
+            let (entity, _) = nodes
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("animation sound scene binding unavailable"))?;
+            anyhow::ensure!(
+                nodes.next().is_none(),
+                "animation sound scene binding ambiguous"
+            );
+            SoundCue::Animation {
+                actor: entity,
+                sound,
+                surface,
+                position,
+            }
+        }
+        sound => SoundCue::Script {
+            generation: actor.generation,
+            index: actor.index,
+            sound,
+        },
+    };
+    emit(cue)
+}
+
+fn initialize_entry(
+    world: &mut ScriptWorld,
+    data: &Animations,
+    ticks: u32,
+    player_pose: Option<&crate::player::placement::PlayerPose>,
+    entry: Option<crate::player::placement::MarkerEntry>,
+    send_sound: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
+    world.prepare_ordinary_models(data, ticks, send_sound)?;
+    if let Some(pose) = player_pose
+        && world
+            .actors
+            .iter()
+            .any(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+    {
+        for index in 0..world.actors.len() {
+            if !matches!(
+                world.actors[index].source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ) {
+                continue;
+            }
+            let id = world.id(index)?;
+            if matches!(world.actors[index].source, super::ScriptActorSource::Player)
+                && !world
+                    .spatial
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("player spatial registry not prepared"))?
+                    .is_initialized(index)?
+            {
+                let mut position = [0; 3];
+                for (axis, value) in pose.position.into_iter().enumerate() {
+                    position[axis] = i32::try_from(value).map_err(|_| {
+                        anyhow::anyhow!(
+                            "player spatial initialization axis {axis}: Q8 position outside i32"
+                        )
+                    })?;
+                }
+                world.initialize_player_spatial(id, position, [0, pose.heading, 0])?;
+            }
+            if !world.actors[index].animation_initialized() {
+                let entry = entry.ok_or_else(|| {
+                    anyhow::anyhow!("player role initialization: marker entry unavailable")
+                })?;
+                let (spawn, _) = crate::player::placement::placement(data, entry)?;
+                let mut position = [0; 3];
+                for (axis, value) in spawn.position.into_iter().enumerate() {
+                    position[axis] = i32::try_from(value).map_err(|_| {
+                        anyhow::anyhow!(
+                            "player role initialization axis {axis}: Q8 position outside i32"
+                        )
+                    })?;
+                }
+                let surface = world.actors[index].surface;
+                world.initialize_player_animation(id, data, ticks, &mut |sound| {
+                    let position =
+                        matches!(sound, cyrus_world::animation::AnimationSound::Play { .. })
+                            .then_some(position);
+                    send_sound(
+                        id,
+                        super::super::ScriptSound::Animation {
+                            sound,
+                            surface,
+                            position,
+                        },
+                    )
+                })?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Run the game-owned ordinary stages with synchronous audio feedback. Missing
 /// reset state remains unsupported; a host must not substitute a guessed flag.
 pub fn run_ordinary(
@@ -579,6 +783,7 @@ pub fn run_ordinary(
         view,
         request,
         assets,
+        scripts: _,
         scene_request,
         scenes,
         sample,
@@ -592,6 +797,10 @@ pub fn run_ordinary(
         || console.is_some_and(|console| console.open)
         || actors.error.is_some()
     {
+        return;
+    }
+    if actors.has_pending_revisit() {
+        actors.error = Some("world revisit requires complete session service restoration".into());
         return;
     }
     let (Some(view), Some(request), Some(clock)) = (view, request, clock) else {
@@ -618,124 +827,30 @@ pub fn run_ordinary(
         actors.error = Some(format!("automatic deferred movement: {error:#}"));
         return;
     }
-    let mut send_sound = |actor: ScriptActorId, sound| {
-        let cue = match sound {
-            super::super::ScriptSound::Animation {
-                sound,
-                surface,
-                position,
-            } => {
-                let mut nodes = bindings
-                    .iter()
-                    .filter(|(_, binding)| binding.actor == actor && binding.source == request.0);
-                let (entity, _) = nodes
-                    .next()
-                    .ok_or_else(|| anyhow::anyhow!("animation sound scene binding unavailable"))?;
-                anyhow::ensure!(
-                    nodes.next().is_none(),
-                    "animation sound scene binding ambiguous"
-                );
-                SoundCue::Animation {
-                    actor: entity,
-                    sound,
-                    surface,
-                    position,
-                }
-            }
-            sound => SoundCue::Script {
-                generation: actor.generation,
-                index: actor.index,
-                sound,
-            },
-        };
-        emit(cue)
-    };
+    let mut send_sound = |actor, sound| send_actor_sound(actor, sound, &request.0, &bindings, emit);
     let preparation = (|| -> anyhow::Result<()> {
-        world.prepare_ordinary_models(data, timing.nominal_ticks, &mut send_sound)?;
+        initialize_entry(
+            world,
+            data,
+            timing.nominal_ticks,
+            players.single().ok(),
+            entry.as_deref().copied(),
+            &mut send_sound,
+        )?;
         if players.single().is_ok()
-            && world
+            && let Some(hud) = hud.as_ref()
+            && let Some(index) = world
                 .actors
                 .iter()
-                .any(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
         {
-            for index in 0..world.actors.len() {
-                if !matches!(
-                    world.actors[index].source,
-                    super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
-                ) {
-                    continue;
-                }
-                let id = world.id(index)?;
-                if matches!(world.actors[index].source, super::ScriptActorSource::Player)
-                    && !world
-                        .spatial
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("player spatial registry not prepared"))?
-                        .is_initialized(index)?
-                {
-                    let pose = players.single().map_err(|error| {
-                        anyhow::anyhow!("player spatial initialization: {error}")
-                    })?;
-                    let mut position = [0; 3];
-                    for (axis, value) in pose.position.into_iter().enumerate() {
-                        position[axis] = i32::try_from(value).map_err(|_| {
-                            anyhow::anyhow!(
-                                "player spatial initialization axis {axis}: Q8 position outside i32"
-                            )
-                        })?;
-                    }
-                    world.initialize_player_spatial(id, position, [0, pose.heading, 0])?;
-                }
-                if !world.actors[index].animation_initialized() {
-                    let entry = entry.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("player role initialization: marker entry unavailable")
-                    })?;
-                    let (spawn, _) = crate::player::placement::placement(data, **entry)?;
-                    let mut position = [0; 3];
-                    for (axis, value) in spawn.position.into_iter().enumerate() {
-                        position[axis] = i32::try_from(value).map_err(|_| {
-                            anyhow::anyhow!(
-                                "player role initialization axis {axis}: Q8 position outside i32"
-                            )
-                        })?;
-                    }
-                    let surface = world.actors[index].surface;
-                    world.initialize_player_animation(
-                        id,
-                        data,
-                        timing.nominal_ticks,
-                        &mut |sound| {
-                            let position = matches!(
-                                sound,
-                                cyrus_world::animation::AnimationSound::Play { .. }
-                            )
-                            .then_some(position);
-                            send_sound(
-                                id,
-                                super::super::ScriptSound::Animation {
-                                    sound,
-                                    surface,
-                                    position,
-                                },
-                            )
-                        },
-                    )?;
-                }
-            }
-            if let Some(hud) = hud.as_ref()
-                && let Some(index) = world
-                    .actors
-                    .iter()
-                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
-            {
-                world.check_player_weapon(
-                    world.id(index)?,
-                    hud,
-                    false,
-                    timing.nominal_ticks,
-                    &mut send_sound,
-                )?;
-            }
+            world.check_player_weapon(
+                world.id(index)?,
+                hud,
+                false,
+                timing.nominal_ticks,
+                &mut send_sound,
+            )?;
         }
         world.refresh_automatic_models(data, view.position)
     })();

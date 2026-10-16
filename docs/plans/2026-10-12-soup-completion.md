@@ -368,7 +368,9 @@ the checkpoint passed full gates with zero installed-data skips, while installed
 rendered continuation remains unverified.
 
 The diagnostic browser caller is integrated. Remaining work includes complete
-rendered/audio restoration, restart/reload and visited-world continuation. Revisit guards remain
-until service cleanup and retained-task behavior are implemented and verified.
+rendered/audio restoration, restart/reload and visited-world continuation. The revisit draft now initializes entry roles, validates retained actors, clears
+shared sound services and restores saved execution state before traversal.
+Cancellation preserves the retained world. Installed continuation and final
+workspace verification remain pending.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.

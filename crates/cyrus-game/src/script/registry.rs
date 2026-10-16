@@ -1714,7 +1714,8 @@ impl ScriptActors {
         if let Some(mut world) = self.current.take() {
             self.globals = std::mem::take(&mut world.globals);
             if !self.discard_current_on_release {
-                self.visited.insert(world.world, world);
+                // An unfinished revisit must not overwrite its retained actor state.
+                self.visited.entry(world.world).or_insert(world);
             }
             self.discard_current_on_release = false;
         }
@@ -1799,11 +1800,6 @@ pub(super) fn prepare(
                 scripts.world
             );
         }
-        anyhow::ensure!(
-            !actors.visited.contains_key(&scripts.world),
-            "world {} revisit requires complete session service restoration",
-            scripts.world
-        );
         actors.globals.prepare_dialogue(&scripts.dialogue)?;
         let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
         world.prepare_markers(animation_data)?;

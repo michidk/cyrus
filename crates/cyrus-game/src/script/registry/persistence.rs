@@ -1030,6 +1030,13 @@ impl LogicalSessionRestorePlan<'_> {
 }
 
 impl ScriptActors {
+    /// The loaded entry still needs its retained actor state and service cleanup.
+    pub fn has_pending_revisit(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|world| self.visited.contains_key(&world.world))
+    }
+
     /// Highest actor generation allocated by this registry, including released worlds.
     pub fn generation_high_water(&self) -> u64 {
         self.generation
@@ -1104,5 +1111,52 @@ impl ScriptWorld {
         )?;
         candidate.globals = context.globals;
         Ok(candidate)
+    }
+}
+
+impl ScriptActors {
+    /// Replace a freshly initialized entry with its retained logical world.
+    /// The host clears shared RTX, dialogue and sample services synchronously;
+    /// saved task counters and remembered slot numbers remain unchanged.
+    /// No dormant transport or dialogue owner is reconstructed.
+    pub fn restore_visited(
+        &mut self,
+        sources: &WorldSnapshotSources<'_>,
+        cleanup: &mut dyn FnMut(
+            super::super::SoundResetStage,
+            &mut super::super::GameplayGlobals,
+        ) -> Result<()>,
+    ) -> Result<bool> {
+        ensure!(
+            self.error.is_none(),
+            "revisit registry has a retained failure"
+        );
+        let current = self
+            .current
+            .as_ref()
+            .context("revisit current world absent")?;
+        let world_id = current.world;
+        let Some(retained) = self.visited.get(&world_id) else {
+            return Ok(false);
+        };
+        let snapshot = retained.snapshot(sources)?;
+        let samples = (0..16).map(|slot| (slot, slot)).collect();
+        let replacement = snapshot.restore(
+            sources,
+            current.generation(),
+            current.globals.dialogue.as_ref(),
+            &samples,
+        )?;
+        let mut globals = std::mem::take(&mut self.current.as_mut().unwrap().globals);
+        let mut maintenance = std::mem::take(&mut globals.sound_maintenance);
+        let result = maintenance.restore_world(&mut |stage| cleanup(stage, &mut globals), || {
+            self.current = Some(replacement);
+            Ok(())
+        });
+        globals.sound_maintenance = maintenance;
+        self.current.as_mut().unwrap().globals = globals;
+        result?;
+        self.visited.remove(&world_id);
+        Ok(true)
     }
 }

@@ -355,7 +355,12 @@ probe. Focused replacement and session tests pass, and the checkpoint passed ful
 with 950 Rust test executions and zero installed-data skips. Installed rendered
 round-trip acceptance remains pending. A paused installed capture now represents
 current ISLAND, retained START and all 173 required ordinary model replacements
-in 17,600,858 encoded bytes; native load acceptance is still pending.
+in 17,600,858 encoded bytes. Native load committed that document; subsequent
+rendered recapture remains pending. The unfinished revisit integration initializes
+entry roles, validates retained actors and clears shared sound services before
+restoring saved execution state. Focused registry/task and audio cleanup tests,
+WASM Clippy and the native build pass. Its final workspace gate and installed
+revisit acceptance remain pending.
 The diagnostic browser storage caller is connected; successful installed
 restart/reload/revisits and complete gameplay acceptance remain unchecked.
 Source-decoder audio checkpoints

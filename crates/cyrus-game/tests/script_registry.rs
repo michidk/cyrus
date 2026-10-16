@@ -390,6 +390,225 @@ fn researched_attribute_query_reads_unsigned_bytes_and_checks_bounds() {
     }
 }
 
+fn revisit_test_app(
+    scripts: &Scripts,
+) -> (
+    bevy::prelude::App,
+    cyrus_world::lifecycle::PreparedWorld,
+    cyrus_assets::animation::Animations,
+) {
+    use bevy::{asset::AssetApp, prelude::*};
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::ScriptPlugin;
+    use cyrus_world::lifecycle::PreparedWorld;
+    let make_animations = || Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"actors":[], "markers":[], "walk_node_maps":[], "script_content_id":scripts.content_id}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let animations = make_animations();
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+        .init_asset::<Scripts>()
+        .init_asset::<Animations>()
+        .insert_resource(State::new(cyrus_game::AppState::Menu))
+        .add_plugins(ScriptPlugin);
+    let script_handle = app
+        .world_mut()
+        .resource_mut::<Assets<Scripts>>()
+        .add(serde_json::from_value::<Scripts>(serde_json::to_value(scripts).unwrap()).unwrap());
+    let animation_handle = app
+        .world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .add(make_animations());
+    let prepared = PreparedWorld {
+        requested_name: "TEST".into(),
+        world: Some(scripts.world),
+        scripts: script_handle.clone(),
+        animations: animation_handle.clone(),
+        player_path: "test.player".into(),
+        scene_path: "test.glb".into(),
+        environment_path: "test.environment".into(),
+    };
+    (app, prepared, animations)
+}
+
+#[test]
+fn retained_world_rebinds_actors_after_service_cleanup_without_restarting_script_state() {
+    use cyrus_game::script::{ScriptActors, SoundResetStage, WorldSnapshotSources};
+    use cyrus_world::lifecycle::PreparedWorld;
+    let scripts = cache();
+    let (mut app, prepared, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    app.insert_resource(prepared.clone());
+    app.update();
+    let old = {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
+        id
+    };
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    app.insert_resource(prepared.clone());
+    app.update();
+    assert!(app.world().resource::<ScriptActors>().has_pending_revisit());
+    // Cancel the prepared entry before service restoration, then enter it again.
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    app.insert_resource(prepared.clone());
+    app.update();
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        assert!(actors.has_pending_revisit());
+        assert_eq!(
+            actors.current.as_ref().unwrap().actors()[0]
+                .runtime()
+                .unwrap()
+                .variables(),
+            [4]
+        );
+        let mut wrong_scripts = cache();
+        wrong_scripts.world += 1;
+        wrong_scripts.content_id = wrong_scripts.content_identity().unwrap();
+        assert!(
+            actors
+                .restore_visited(
+                    &WorldSnapshotSources {
+                        scripts: &wrong_scripts,
+                        player: None,
+                        animations: &animations,
+                        collision: &collision,
+                    },
+                    &mut |_, _| panic!("invalid source reached cleanup")
+                )
+                .is_err()
+        );
+        assert!(actors.has_pending_revisit());
+        let mut cleanup = vec![];
+        assert!(
+            actors
+                .restore_visited(&sources, &mut |stage, globals| {
+                    cleanup.push(stage);
+                    if stage == SoundResetStage::ClearDialogue {
+                        globals.dialogue_mut().unwrap().reset_active_lines();
+                    }
+                    Ok(())
+                })
+                .unwrap()
+        );
+        assert_eq!(
+            cleanup,
+            [
+                SoundResetStage::ReleaseRtx,
+                SoundResetStage::ClearDialogue,
+                SoundResetStage::StopSamples
+            ]
+        );
+        assert!(!actors.has_pending_revisit());
+        let world = actors.current.as_mut().unwrap();
+        assert!(world.step(old, Thread::Main, 20).is_err());
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
+        let fresh = world.id(0).unwrap();
+        world.step(fresh, Thread::Main, 20).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [6]);
+        assert!(
+            !actors
+                .restore_visited(&sources, &mut |_, _| panic!("cleanup repeated"))
+                .unwrap()
+        );
+    }
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    app.insert_resource(prepared.clone());
+    app.update();
+    let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+    let before = actors.current.as_ref().unwrap().id(0).unwrap();
+    let failure = actors
+        .restore_visited(&sources, &mut |stage, _| {
+            if stage == SoundResetStage::ClearDialogue {
+                anyhow::bail!("dialogue cleanup failed");
+            }
+            Ok(())
+        })
+        .unwrap_err()
+        .to_string();
+    assert!(failure.contains("dialogue cleanup failed"));
+    assert!(actors.has_pending_revisit());
+    assert_eq!(actors.current.as_ref().unwrap().id(0).unwrap(), before);
+    assert_eq!(
+        actors.current.as_ref().unwrap().actors()[0]
+            .runtime()
+            .unwrap()
+            .variables(),
+        [4]
+    );
+    assert!(
+        actors
+            .restore_visited(&sources, &mut |_, _| panic!("failed cleanup retried"))
+            .is_err()
+    );
+}
+
+#[test]
+fn retained_world_wait_task_continues_its_saved_invocation_counter() {
+    use cyrus_game::script::{ScriptActors, WorldSnapshotSources};
+    use cyrus_world::lifecycle::PreparedWorld;
+    let scripts = wait_cache(vec![
+        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    let (mut app, prepared, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    app.insert_resource(prepared.clone());
+    app.update();
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        world.step_tasks(id, Some(512)).unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        assert_eq!(world.flags(), [12]);
+    }
+    app.world_mut().remove_resource::<PreparedWorld>();
+    app.update();
+    app.insert_resource(prepared);
+    app.update();
+    let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+    actors
+        .restore_visited(&sources, &mut |_, _| Ok(()))
+        .unwrap();
+    let world = actors.current.as_mut().unwrap();
+    let id = world.id(0).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    world.step_tasks(id, Some(0)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [12]);
+    world.step_tasks(id, Some(256)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    assert_eq!(world.flags(), [7]);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
 #[test]
 fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
     use bevy::{asset::AssetApp, prelude::*};
