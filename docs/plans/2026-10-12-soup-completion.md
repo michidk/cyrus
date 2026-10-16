@@ -27,7 +27,7 @@ collision/combat/intro services and complete all-world acceptance remain open.
 
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
-  metadata, and decoded programs. The script cache is version 14, programs are
+  metadata, and decoded programs. The script cache is version 15, programs are
   version 2, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
@@ -412,3 +412,14 @@ and the player model. The copied native cache matches the capture runtime byte-f
 Source, executable, document and cache manifests accompany the local fixture.
 Browser acceptance of this corrected-export fixture, rendered/audio continuation
 and complete gameplay revisits remain open.
+
+### Native corrected-export restoration
+
+**Verified:** fresh-process native load and recapture of the portable current ISLAND /
+visited START fixture preserve all retained world state except validated fresh actor
+generation references. All 173 ordinary rendered model replacements and the player
+retain model, frame, source, transform and visibility. HUD and scene identity match.
+Integrity-valid current-world and dormant-world source mismatches both reject.
+Recapture after those failures preserves registry, player, HUD, random/toggle state,
+entity bindings and model replacements exactly. Pixel/audio continuation and complete
+successful gameplay traversal remain open.
