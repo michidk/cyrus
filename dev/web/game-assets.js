@@ -83,11 +83,17 @@ export async function openGameAssets(source, { createWorker = () => new Worker('
       },
     }), { headers: { 'Content-Type': 'application/octet-stream' } });
   }
-  const opened = await request('game-open', { source });
-  return { read, response, worlds: JSON.parse(opened.worlds), close() {
+  function close() {
     failure = new Error('Asset worker closed');
     worker.terminate();
     for (const request of requests.values()) request.reject(new Error('Asset worker closed'));
     requests.clear(); files.clear(); dialoguePaths.clear();
-  } };
+  }
+  try {
+    const opened = await request('game-open', { source });
+    return { read, response, worlds: JSON.parse(opened.worlds), close };
+  } catch (error) {
+    close();
+    throw error;
+  }
 }

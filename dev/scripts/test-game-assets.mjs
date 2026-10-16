@@ -44,3 +44,21 @@ await assert.rejects(assets.read('missing.glb'), /Worker stopped/);
 assets.close();
 assert.equal(worker.terminated, true);
 console.log('game asset transport: group deduplication, bounded ranges, cancellation and terminal worker errors passed');
+
+for (const failure of ['prepare error', 'worker error', 'send error', 'invalid catalog']) {
+  const failedWorker = {
+    postMessage(data) {
+      if (failure === 'send error') throw new Error('open send failed');
+      queueMicrotask(() => {
+        if (failure === 'worker error') this.onerror({ message: 'open worker failed' });
+        else if (failure === 'invalid catalog') this.onmessage({ data: { id: data.id, worlds: 'invalid JSON' } });
+        else this.onmessage({ data: { kind: 'error', id: data.id, message: 'open source failed' } });
+      });
+    },
+    terminate() { this.terminations = (this.terminations || 0) + 1; },
+  };
+  await assert.rejects(openGameAssets('https://example.test/original/', { createWorker: () => failedWorker }),
+    failure === 'invalid catalog' ? SyntaxError : /open (?:send|worker|source) failed/);
+  assert.equal(failedWorker.terminations, 1, failure + ' must release the worker before rejecting');
+}
+console.log('failed asset-source opens release their worker and preserve the original error');

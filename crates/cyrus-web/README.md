@@ -7,7 +7,9 @@ selection and localStorage preferences; it has no native control port.
 Preference storage preserves the accepted value when a write exceeds the browser
 quota, and distinguishes missing records from read failures. Read/write errors
 identify the document key and retain the browser's reason, including denied access
-to local storage. Complete gameplay save restoration remains open.
+to local storage. Failed asset-source opens terminate their worker before returning
+the original error.
+Complete gameplay save restoration remains open.
 
 With `?capture`, diagnostic session requests use `window.__cyrusSessionRequest`
 as a JSON string. Send `{"type":"save","id":1,"key":"slot"}` or
