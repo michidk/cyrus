@@ -417,7 +417,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     view: Option<Res<'w, ScriptView>>,
     request: Option<Res<'w, AnimationRequest>>,
     assets: Res<'w, Assets<Animations>>,
-    scripts: Res<'w, Assets<cyrus_assets::script::Scripts>>,
+    scripts: Option<Res<'w, Assets<cyrus_assets::script::Scripts>>>,
     scene_request: Option<Res<'w, crate::player::data::PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<crate::player::data::PlayerScene>>>,
     sample: Option<Res<'w, ClockSample>>,
@@ -522,7 +522,8 @@ impl OrdinaryContext<'_, '_> {
             .actors
             .requested
             .as_ref()
-            .and_then(|handle| self.prepared.scripts.get(handle))
+            .zip(self.prepared.scripts.as_ref())
+            .and_then(|(handle, scripts)| scripts.get(handle))
             .ok_or_else(|| anyhow::anyhow!("revisit scripts unavailable"))?;
         let scene = self
             .prepared
