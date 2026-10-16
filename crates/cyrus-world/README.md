@@ -117,3 +117,8 @@ Subsequent Stop/Forget cues retain the prior sound latch without replaying Play.
 Malformed state and changed sources reject without changing live playback. This does
 not restore a game world: the host must validate actor/world generation and bind its
 saved model frame and native sound slot before committing the replacement.
+
+The shared rotation table retains the angle precision through sine and stores
+single-precision samples, including the extended cosine endpoint. Water reuses
+this owner. The construction follows preservation's
+[rotation-table correction](https://github.com/michidk/redguard-preservation/commit/7fb4970af38d225f2f0182f2af0d44885aea8569).

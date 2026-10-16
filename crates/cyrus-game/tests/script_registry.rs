@@ -6012,11 +6012,7 @@ fn ordinary_overlap_response_moves_logical_actors_and_preserves_model_records() 
         );
         assert_eq!(
             world.spatial(id).unwrap().local.position,
-            [
-                expected_actor,
-                5120,
-                if actor_distance == 0 { 7680 } else { 7679 }
-            ]
+            [expected_actor, 5120, 7680]
         );
         assert_eq!(
             world.spatial(other).unwrap().local.position,

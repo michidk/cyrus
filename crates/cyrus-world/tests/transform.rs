@@ -162,3 +162,16 @@ fn stored_sphere_transform_keeps_fractional_centers_and_extended_products() {
     );
     assert!(half.transform_stored([f32::INFINITY, 0.0, 0.0]).is_err());
 }
+
+#[test]
+fn shared_rotation_table_retains_native_angle_precision_and_endpoint() {
+    for (index, bits) in [
+        (1, 0x3b49_0fc6),
+        (256, 0x3f35_04f3),
+        (1024, 0x3366_2a9a),
+        (2048, 0xb3e6_2a9a),
+        (2560, 0x3f80_0000),
+    ] {
+        assert_eq!(rotation_sample(index).to_bits(), bits, "sample {index}");
+    }
+}

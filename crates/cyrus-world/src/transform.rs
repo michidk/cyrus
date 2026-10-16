@@ -6,13 +6,13 @@ use rustc_apfloat::{
 };
 use std::sync::LazyLock;
 
-static ROTATION: LazyLock<[f32; 2560]> = LazyLock::new(|| {
+static ROTATION: LazyLock<[f32; 2561]> = LazyLock::new(|| {
     #[allow(clippy::approx_constant)] // Published original table-generation constant.
-    std::array::from_fn(|index| f64::from((index as f64 * 6.2831852 / 2048.0) as f32).sin() as f32)
+    std::array::from_fn(|index| (index as f64 * 6.2831852 / 2048.0).sin() as f32)
 });
 
 /// Original sine table sample; cosine uses the masked angle index plus 512.
-/// The caller must supply an index below 2560, retaining the extended cosine tail.
+/// The caller must supply an index below 2561, retaining the extended cosine tail.
 pub fn rotation_sample(index: usize) -> f32 {
     ROTATION[index]
 }

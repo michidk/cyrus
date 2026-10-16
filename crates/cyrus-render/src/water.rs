@@ -89,16 +89,13 @@ fn modern_displacement(water: &Water, position: [f32; 3], seconds: f32) -> f32 {
 /// Vertical offset for a grid vertex in exported units with positive Y up.
 /// `vertex` must be within the validated square grid; timing uses BIOS ticks.
 /// Phase starts at the application's clock origin; scene changes do not reset it.
-#[allow(clippy::approx_constant)]
-// The documented table uses this decimal period, rather than mathematical tau.
 fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
     let x = (vertex % water.side) as i64 - (water.side / 2) as i64;
     let row = (vertex / water.side) as i64 - (water.side / 2) as i64;
     let [amplitude, speed, frequency] = water.parameters;
     let spatial = (x * x + row * row) * frequency as i64;
     let phase = (spatial as u64).wrapping_add(ticks.wrapping_mul((speed as i64) as u64)) & 2047;
-    let angle = ((phase + 512) as f64 * 6.2831852 / 2048.0) as f32;
-    let sample = f64::from(angle).sin() as f32;
+    let sample = cyrus_world::transform::rotation_sample((phase + 512) as usize);
     -(sample * amplitude - amplitude * 0.5) / 20.0
 }
 
@@ -417,15 +414,15 @@ mod tests {
     }
 
     #[test]
-    fn wave_angle_is_rounded_before_sampling() {
+    fn wave_uses_original_unrounded_angle_samples() {
         let water = Water {
             parameters: [24.0, 1.0, 0.0],
             side: 2,
             animated_vertices: vec![false, false, false, true],
         };
-        // Published single-precision angle samples, including the extended revolution.
-        for (ticks, expected) in [(777, 1.471631), (1536, 0.6000004), (1901, -0.4800191)] {
-            assert_eq!(displacement(&water, 3, ticks), expected);
+        // Native table samples, including the extended revolution.
+        for (ticks, expected) in [(777, 0x3fbc_5e67), (1536, 0x3f19_999c), (1901, 0xbef5_c50d)] {
+            assert_eq!(displacement(&water, 3, ticks).to_bits(), expected);
         }
     }
 
