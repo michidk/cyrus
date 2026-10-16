@@ -24,8 +24,19 @@ commits and implementation docs.
 
 ## Next work
 
-Next rendering verification: compare actor appearance, remaining HUD layout,
-browser candle cadence and health transitions. **Verified:** matched Windows original,
+Next rendering validations, in order:
+
+1. Compare Cyrus and a START NPC at matched camera poses and animation frames;
+   separate normals, brightness and prelighting.
+2. Compare follow-camera placement and movement with the original, including the
+   confirmed player/model intersection. Camera implementation stays with its owner.
+3. Measure browser candle cadence against native and the original.
+4. Compare health-level changes, damage feedback and the complete candle snuff sequence.
+5. Compare HUD layout, text sampling and logbook scroll shading/filtering at matched resolutions.
+
+Use background window input and game-only capture on the shared Windows desktop.
+Record failed comparisons as defects; a completed investigation does not imply a fix.
+**Verified:** matched Windows original,
 native and browser START/ISLAND static regions favor the current world sampling
 over forced point sampling. Remaining filtering and full pixel parity are **Unknown**.
 Production activation prompt/item acceptance depends on
@@ -48,7 +59,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| Rendering/HUD verification: actor appearance, remaining layout and candle cadence | In progress | Codex, Windows verification; `magic/artifacts/2026-10-16-windows-verification/` |
+| Rendering/HUD verification: actor shading, camera comparison, browser candle cadence, health transitions and HUD/logbook appearance | In progress | Codex, Windows verification; `magic/artifacts/2026-10-16-five-validations/` |
 | SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Startup comparisons: splash, camera clipping, book-transition timing, loading artwork and audio against the original | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-15-startup-comparison/` |
