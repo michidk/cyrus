@@ -57,7 +57,7 @@ impl NativeSessionLoad {
         self.result.as_ref().map(|result| {
             result
                 .as_ref()
-                .map(|()| ())
+                .copied()
                 .map_err(|error| format!("loading session {}: {error:#}", self.path))
         })
     }
