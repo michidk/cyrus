@@ -35,8 +35,10 @@ The logical player's mixed-candidate walking stage uses
 forward acceptance so continuation cannot move twice, and an update without
 accepted movement resets startup. The ordinary scheduler supplies Faithful held
 input and shared walk mode when their owners are present. Explicit GroundedTick
-updates exclude automatic player movement for that update. End-to-end keyboard
-walking acceptance remains unverified.
+updates exclude automatic player movement for that update.
+**Verified:** an installed ISLAND headless test covers idle, held forward and
+release through the ordinary keyboard scheduler, including logical/presentation
+pose agreement. Four-surface native/browser comparison remains open.
 
 Ground-turn, walking startup, wall response and forward support admission are
 explicit deterministic APIs. Complete actor eligibility remains unsupported.

@@ -363,7 +363,9 @@ fn walking_release_restarts_but_animation_suppression_does_not() {
 
 #[test]
 fn installed_island_marker_matches_observed_original_entry() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
     let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
         eprintln!("skipped: no install (marker observation check)");
         return;
