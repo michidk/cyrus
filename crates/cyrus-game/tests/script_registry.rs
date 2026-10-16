@@ -12848,3 +12848,215 @@ fn position_property_rejects_unavailable_owner_and_unknown_reference() {
         }
     }
 }
+
+#[test]
+fn current_animation_property_reads_signed_group_without_advancing_playback() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (group, start, expected) in [(7, false, -1), (7, true, 7), (32768, true, -32768)] {
+        for (object, selected) in [
+            (Object::Me, false),
+            (Object::Player, true),
+            (Object::Named { string: 0 }, false),
+        ] {
+            let mut scripts = heading_property_scripts(294, object);
+            scripts.definition.references[294] = "anim.current".into();
+            add_standalone_receivers(&mut scripts);
+            let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+            let caller = world.id(0).unwrap();
+            let receiver = world.id(if selected { 2 } else { 0 }).unwrap();
+            let data = Animations {
+                version: 2,
+                world: scripts.world,
+                metadata: serde_json::json!({"script_content_id":scripts.content_id,"actors":[{
+                    "script_name":world.actors()[receiver.index].name(),
+                    "animation_groups":[{"group_index":group,"anim_id":1,"anim_type":0,
+                        "commands":[{"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},{"opcode":2,"value":0}]}]
+                }]}),
+                sections: Default::default(),
+                models: Default::default(),
+                unsupported: Default::default(),
+            };
+            world.bind_animation(receiver, &data, group).unwrap();
+            if start {
+                world
+                    .advance(
+                        receiver,
+                        ScriptStage::Animation,
+                        ScriptInputs {
+                            nominal_ticks: Some(1),
+                            ..Default::default()
+                        },
+                        None,
+                        None,
+                        0,
+                    )
+                    .unwrap();
+            }
+            let before = world.inspect(receiver.index, 1)["actors"][0]["animation"].clone();
+            world
+                .advance(
+                    caller,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+            assert_eq!(
+                world.inspect(receiver.index, 1)["actors"][0]["animation"],
+                before
+            );
+        }
+    }
+}
+
+#[test]
+fn torch_property_wraps_writes_and_reads_the_shared_counter_without_other_changes() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (value, expected) in [
+        (-1, 255),
+        (0, 0),
+        (1, 1),
+        (255, 255),
+        (256, 0),
+        (511, 255),
+        (i32::MIN, 0),
+        (i32::MAX, 255),
+    ] {
+        for (object, selected) in [
+            (Object::Me, false),
+            (Object::Player, true),
+            (Object::Named { string: 0 }, false),
+        ] {
+            let mut scripts = heading_property_scripts(294, object.clone());
+            scripts.definition.references[294] = "torch_timer".into();
+            let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+            let read = program.steps[&0].operation.clone();
+            program.steps.insert(
+                0,
+                Step {
+                    next: 1,
+                    operation: Operation::Assign {
+                        destination: Place::Property {
+                            object,
+                            reference: 294,
+                        },
+                        formula: Formula {
+                            first: Value::Integer { value },
+                            rest: vec![],
+                        },
+                    },
+                },
+            );
+            program.steps.insert(
+                1,
+                Step {
+                    next: 2,
+                    operation: read,
+                },
+            );
+            program.steps.insert(
+                2,
+                Step {
+                    next: 3,
+                    operation: Operation::End { target: 0 },
+                },
+            );
+            add_standalone_receivers(&mut scripts);
+            let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+            let caller = world.id(0).unwrap();
+            let receiver = if selected { 2 } else { 0 };
+            let other = if selected { 0 } else { 2 };
+            let mut expected_control =
+                serde_json::to_value(world.actors()[receiver].control_state().unwrap()).unwrap();
+            expected_control["torch_burning"] = expected.into();
+            let other_before =
+                serde_json::to_value(world.actors()[other].control_state().unwrap()).unwrap();
+            world
+                .advance(
+                    caller,
+                    ScriptStage::Body(Thread::Main),
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+            assert_eq!(
+                serde_json::to_value(world.actors()[receiver].control_state().unwrap()).unwrap(),
+                expected_control
+            );
+            assert_eq!(
+                serde_json::to_value(world.actors()[other].control_state().unwrap()).unwrap(),
+                other_before
+            );
+        }
+    }
+}
+
+#[test]
+fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes() {
+    for (name, write, separate, expected) in [
+        ("anim.current", false, false, "animation owner unavailable"),
+        ("anim.current", true, false, "write unsupported"),
+        ("torch_timer", false, true, "control owner unavailable"),
+        ("torch_timer", true, true, "control owner unavailable"),
+    ] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        if separate {
+            scripts.instances[0].object_type = 2;
+        }
+        if write {
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .program
+                .steps
+                .get_mut(&0)
+                .unwrap()
+                .operation = Operation::Assign {
+                destination: Place::Property {
+                    object: Object::Me,
+                    reference: 294,
+                },
+                formula: Formula {
+                    first: Value::Integer { value: 255 },
+                    rest: vec![],
+                },
+            };
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        let error = world
+            .advance(
+                caller,
+                cyrus_game::script::ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
+    }
+}

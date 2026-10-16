@@ -417,7 +417,13 @@ and the selected player. `angle.vy` reads the receiver's local heading.
 `pos.vx`, `pos.vy` and `pos.vz` read and write signed Q8 local coordinates.
 Writes change only the selected coordinate; matrices and effective attached poses
 remain unchanged until ordinary processing refreshes them. Missing spatial state,
-unknown properties and angle writes reject explicitly. These rules follow
+unknown properties and angle writes reject explicitly. `anim.current` reads the
+prepared playback owner's signed current group without advancing it; a prepared
+owner with no current group returns `-1`. Missing playback preparation rejects
+rather than inferring an absent native animation association. `torch_timer`
+reads the shared torch-burning byte and writes only the assigned low byte,
+without running torch effects. Animation-property writes remain unsupported.
+These rules follow
 [preservation's property contract](https://github.com/michidk/redguard-preservation/compare/8c6bdb15c783fca72a6399aa226f25f596585407...fix/soup-property-references).
 Older script programs require re-export for full-width references.
 Remaining native services are explicit failures. `IsInDeepWater` reads the receiver's stored

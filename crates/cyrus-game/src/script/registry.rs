@@ -2073,6 +2073,25 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 impl Host for GameHost<'_, '_, '_, '_> {
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         let name = self.property_name(target, reference)?;
+        if name.eq_ignore_ascii_case("anim.current") {
+            let index = self.property_receiver(target)?;
+            let animation = self.actors[index]
+                .animation
+                .as_ref()
+                .context("anim.current animation owner unavailable")?;
+            return Ok(animation
+                .playback
+                .current_group()
+                .map_or(-1, |group| i32::from(group as i16)));
+        }
+        if name.eq_ignore_ascii_case("torch_timer") {
+            let index = self.property_receiver(target)?;
+            let control = self.actors[index]
+                .control
+                .as_ref()
+                .context("torch_timer control owner unavailable")?;
+            return Ok(i32::from(control.torch_burning));
+        }
         let position_axis = ["pos.vx", "pos.vy", "pos.vz"]
             .iter()
             .position(|candidate| name.eq_ignore_ascii_case(candidate));
@@ -2094,6 +2113,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
 
     fn write_property(&mut self, target: &Target, reference: u16, value: i32) -> Result<()> {
         let name = self.property_name(target, reference)?;
+        if name.eq_ignore_ascii_case("torch_timer") {
+            let index = self.property_receiver(target)?;
+            let control = self.actors[index]
+                .control
+                .as_mut()
+                .context("torch_timer control owner unavailable")?;
+            control.torch_burning = value as u8;
+            return Ok(());
+        }
         let axis = ["pos.vx", "pos.vy", "pos.vz"]
             .iter()
             .position(|candidate| name.eq_ignore_ascii_case(candidate))

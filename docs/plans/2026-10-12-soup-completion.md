@@ -464,3 +464,15 @@ branch pass with explicit player pose and timing inputs. The WASM check passes.
 Final workspace verification passes 983 Rust test executions with zero installed
 data skips after correcting embedded native/render/session animation-program
 fixtures. Complete shrine interaction remains open.
+
+### Current animation and torch properties
+
+The registry reads `anim.current` through the prepared playback owner as a signed
+group number, returning `-1` when that owner has no current group. Unprepared
+playback rejects; it does not establish the original null-association case.
+`torch_timer` reads and writes the existing torch-burning byte, retaining only
+the low byte on writes without dispatching torch effects. These contracts follow
+[preservation's published property rules](https://github.com/michidk/redguard-preservation/compare/8c6bdb15c783fca72a6399aa226f25f596585407...fix/soup-property-references).
+All nine property contracts pass. Final combined verification remains pending.
+Animation-property writes,
+complete shrine interaction and full gameplay acceptance remain open.
