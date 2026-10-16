@@ -24,8 +24,11 @@ commits and implementation docs.
 
 ## Next work
 
-Next independent HUD task: compare remaining HUD layout and representative
-real-time candle cadence. Production activation prompt/item acceptance depends on
+Next rendering verification: compare original and native START texture sharpness
+at a matched camera, resolution and texture frame, separating terrain, static
+models and actors. Remaining filtering parity is **Unknown**. Follow with browser
+comparison, remaining HUD layout and representative real-time candle cadence.
+Production activation prompt/item acceptance depends on
 complete player-lineup execution and installed SOUP traversal acceptance.
 
 - Complete START actor movement, collision and ambient maintenance so New Game
@@ -45,12 +48,13 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
+| Rendering/HUD verification: matched texture sharpness, browser comparison, remaining layout and candle cadence | In progress | Codex, Windows verification; `magic/artifacts/2026-10-16-windows-verification/` |
 | Browser persistence: corrected-export save acceptance and remaining restoration; shared assembly excluded | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-16-source-compatibility/` |
 | SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Startup comparisons: splash, camera clipping, book-transition timing, loading artwork and audio against the original | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-15-startup-comparison/` |
 
-Remaining rendering follow-ups and HUD integration are unassigned.
+Other rendering follow-ups and HUD integration are unassigned.
 Player-controller implementation and walking acceptance belong to the controller owner.
 SOUP consumes that owner through the existing ordinary-stage and snapshot contracts.
 Browser session-storage and its caller belong to the storage owner; shared load
