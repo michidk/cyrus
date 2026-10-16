@@ -11,7 +11,7 @@ header radii and initial ROB collision metadata, including known zero for ordina
 actors without a static resource. Runtime hosts retain that metadata and supply
 current poses. Collision scenes retain the effective installed sphere-object scale
 for initial static bounds. Missing live geometry or metadata remains unsupported;
-catalog version 22 requires preparation of older caches. Animation models also
+catalog version 24 requires preparation of older caches. Animation models also
 retain the original header radius.
 
 The opt-in `native` feature enables read-only install discovery, preload scans,
@@ -20,6 +20,10 @@ scene/startup/menu/HUD/movie and sound/CD/voice/font preparation through `rgpre`
 on native and browser targets. `game::prepare` returns cache-relative bytes from
 a `ReadAssets` source; the browser worker requires no server-side exporter. Export paths are
 caller-supplied; the install is never written. Sidecar filenames are stable; schema checks reject incompatible cache records.
+Native and browser exports use the same math backend for placement transforms through
+preservation's [portable export](https://github.com/michidk/redguard-preservation/commit/8c6bdb15c783fca72a6399aa226f25f596585407).
+Re-export manually prepared worlds and models after updating. Session documents
+retain exact source identities and reject incompatible exports.
 Environment caches require the installed 256-size and 128-size texture reduction
 factors. Re-export older environments and model GLBs for original pixel-coordinate
 metadata before using fixed model sampling.
@@ -113,9 +117,8 @@ correction; the viewer catalog version invalidates older previews.
 The `parsers` feature enables runtime parsing on native and browser targets; `native` includes it.
 
 Shared, renderer-independent asset handling for the game and asset viewer.
-Preservation (`rgpre`), pinned to the [sound-remap and CHT integration](https://github.com/michidk/redguard-preservation/commit/5826a304e1aa1a08b4b57e074ce21587c4f60380), owns parsing and recovered
-engine rules. This crate owns install validation, catalog identities, portable
-preview descriptions, generated
+Preservation (`rgpre`) owns parsing and recovered engine rules. This crate owns
+install validation, catalog identities, portable preview descriptions and generated
 files. `cyrus-media` owns PCM conversion and the portable movie decoder wrappers.
 
 Native game and viewer share `GameInstall::locate`, which resolves selected

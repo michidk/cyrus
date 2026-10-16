@@ -45,7 +45,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| Browser persistence: source compatibility and complete restoration acceptance; shared assembly excluded | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-16-browser-restore-acceptance/` |
+| Browser persistence: corrected-export save acceptance and remaining restoration; shared assembly excluded | In progress | Codex, Build Logbook Reading Screen, `t3/simplify-roadmap`; `magic/artifacts/2026-10-16-source-compatibility/` |
 | SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Startup comparisons: splash, camera clipping, book-transition timing, loading artwork and audio against the original | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-15-startup-comparison/` |
@@ -258,7 +258,7 @@ Requires the player controller.
 - [x] Exact source-decoder replacement checkpoints for effects, speech and CD music retain cursor, gains, looping and pause state. **Verified:** public continuation/rejection contracts, installed effects/CD through the headless host, unchanged CD PCM and browser compilation. Channel/dialogue assembly and downstream output buffers remain open.
 - [x] Document [original restoration audio lifecycle](https://github.com/michidk/redguard-preservation/pull/83). **Verified:** original instructions and altered controls cover cleanup, reset-flag lifetime, saved native-task continuation and CD track-selection paths. Live music continuity and installed runtime revisit acceptance remain open.
 - [ ] Complete session candidate and coordinated live commit. **Verified:** focused logical-world/native-task continuation and first-plugin-update checks preserve current/visited identities, clock and player entry state. Focused sample-pool tests retain source-decoder progress, pause and silent animation ownership while rejecting incomplete replacements. Focused presentation replacement checks retain HUD continuation, camera/framing, sky scrolling, the presentation epoch and per-world environment edits. Complete rendered publication, full audio/backend policy, installed host assembly, revisits and restart acceptance remain open.
-- [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. **Verified:** current-plus-visited documents survive native fresh-process readback and typed Rust/WASM IndexedDB reload. With compatible source exports, the production browser caller restores, recaptures, saves and reloads both worlds, 173 actor model replacements and logical HUD state in a CPU-only fixture. Malformed documents, missing records, failed/aborted writes and incompatible sources preserve accepted bytes and observed live state. Complete rendered/audio continuation, browser revisits, cross-platform export compatibility and power-loss durability remain open. Original-format readers/writers belong in preservation.
+- [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. **Verified:** complete documents survive native fresh-process readback and typed WASM IndexedDB reload. With compatible exports, the production browser caller restores, recaptures, saves and reloads ISLAND and retained START with 173 model replacements and matching logical HUD state in a CPU-only fixture. Independent native/browser preparation produces 100 identical files after the portable placement fix. Malformed/missing documents, failed/aborted writes and incompatible sources preserve accepted bytes and observed live state. Fresh snapshots from corrected exports, rendered/audio continuation, browser revisits and power-loss durability remain open. Original-format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,
 saves, restarts and resumes with matching state and control.
@@ -377,8 +377,9 @@ gameplay traversal. Returning to ISLAND preserves all 975 actor records exactly
 under fresh generation binding and leaves dormant START unchanged; its 70
 pre-existing update failures persist. Complete gameplay revisit acceptance remains open.
 The production browser caller passes CPU-only restore/save/reload with compatible
-exports. Browser revisits, rendered/audio continuation and complete gameplay
-acceptance remain unchecked.
+exports. Native/browser preparation now produces identical files for ISLAND and
+START through portable placement math. Fresh snapshot acceptance from those exports,
+browser revisits, rendered/audio continuation and complete gameplay remain unchecked.
 Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
 [SOUP completion plan](plans/2026-10-12-soup-completion.md#unfinished-session-checkpoint).
