@@ -1100,7 +1100,7 @@ fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
         ],"flags":[],"references":[],"attributes":[]},
         "actors":{"CYRUS":{"header_index":0,"code_origin":0,"instances":1,
             "namespace":"CYRUS","instance_variables":[[]],"location_offsets":[],"attributes":{},"native_hook":null,
-            "program":{"version":2,"entry":0,"steps":{
+            "program":{"version":3,"entry":0,"steps":{
                 "0":{"next":1,"operation":{"type":"call","call":{
                     "function_id":1,"kind":"task","target":{"type":"me"},"function":"PushAnimation",
                     "arguments":[{"type":"integer","value":30},{"type":"integer","value":1}]

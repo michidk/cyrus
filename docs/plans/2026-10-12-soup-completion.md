@@ -457,5 +457,6 @@ references. Program schema 3 rejects older exports that may have truncated them.
 The registry resolves installed reference names and supports local `angle.vy`
 reads through its existing spatial owner. Other properties and writes remain
 explicitly unsupported. Public contracts and the installed shrine non-standing
-branch pass with explicit player pose and timing inputs. Final workspace/WASM
-verification and complete shrine interaction remain open.
+branch pass with explicit player pose and timing inputs. The WASM check passes.
+Final workspace verification remains pending after correcting stale schema
+versions in native/render test fixtures. Complete shrine interaction remains open.

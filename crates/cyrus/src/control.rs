@@ -705,7 +705,7 @@ mod tests {
             ],"flags":[],"references":[],"attributes":[]},
             "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
                 "namespace":"ACTOR","instance_variables":[[]],"location_offsets":[],"attributes":{},"native_hook":null,
-                "program":{"version":2,"entry":0,"steps":{
+                "program":{"version":3,"entry":0,"steps":{
                     "0":{"next":1,"operation":{"type":"call","call":{
                         "function_id":1,"kind":"task","target":{"type":"me"},
                         "function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]
@@ -819,7 +819,7 @@ mod tests {
             ],"flags":[],"references":[],"attributes":[]},
             "actors":{"ACTOR":{"header_index":0,"code_origin":0,"instances":1,
                 "namespace":"ACTOR","instance_variables":[[0]],"location_offsets":[],"attributes":{},"native_hook":null,
-                "program":{"version":2,"entry":0,"variables":[0],"steps":{
+                "program":{"version":3,"entry":0,"variables":[0],"steps":{
                     "0":{"next":1,"operation":{"type":"assign","destination":{"type":"local","index":0},
                         "formula":{"first":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":"PlayerDistance","arguments":[]}},"rest":[]}}},
                     "1":{"next":2,"operation":{"type":"end","target":0}}
