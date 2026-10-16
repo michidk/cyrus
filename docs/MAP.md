@@ -256,6 +256,7 @@ module where it is defined and regenerate.
 ## `cyrus-startup` — Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 
 - `src/book_motion.rs` — Authored book turns and camera requests from preservation's engine/menu.md.
+- `src/fade.rs` — Black overlay fades around new-game world entry, from preservation's
 - `src/loading.rs` — The installed title stays visible until menu or world assets are ready.
 - `src/logbook.rs` — Installed logbook paper, text and rotating scrolls over the suspended world.
 - `src/menu.rs` — MENU.INI-derived presentation data, shared by native and browser builds.
