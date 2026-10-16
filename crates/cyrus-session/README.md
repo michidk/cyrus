@@ -236,7 +236,10 @@ remain unverified. The separately owned browser storage caller is integrated.
 Remaining work includes installed live restoration, restart/reload and
 visited-world continuation. The revisit draft validates retained actors and clears shared sound services
 before traversal; hosts without that restoration still reject the update.
-Installed revisit continuation remains unverified. Audio snapshots cover source-decoder continuation, not downstream
+Installed ISLAND-to-START revisit preserves retained task identities and player
+records while invocation counters continue; departed ISLAND remains unchanged.
+Pre-existing controller/combat update errors remain, so complete gameplay revisit
+acceptance is still open. Audio snapshots cover source-decoder continuation, not downstream
 converter/device queues. Complete gameplay and controller acceptance remain open.
 
 The current draft also captures ordinary actor model replacements by saved actor
@@ -250,4 +253,4 @@ with matching displayed poses and unique roots; dormant START matches after fres
 actor-generation binding. Installed missing-model and mismatched-frame candidates
 reject without replacing the logical session, entity identities or captured
 non-presentation owners. Presentation state continues advancing. Pixel comparison
-and installed revisit acceptance remain pending.
+and complete installed revisit acceptance remain pending.

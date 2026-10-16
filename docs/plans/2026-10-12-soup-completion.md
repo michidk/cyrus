@@ -375,6 +375,9 @@ rendered/audio restoration, restart/reload and visited-world continuation. The r
 shared sound services and restores saved execution state before traversal.
 Cancellation preserves the retained world. Final workspace verification passed
 955 Rust test executions with zero failures, ignored tests or installed-data
-skips. Installed revisit continuation remains pending.
+skips. Installed ISLAND-to-START revisit preserves 34 retained actors, task
+identities and player records; seven invocation counters continue and departed
+ISLAND remains unchanged. Eighteen pre-existing controller/combat update errors
+remain. Repeated transitions and complete gameplay revisit acceptance are open.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.

@@ -360,13 +360,18 @@ model replacements with matching displayed poses and unique roots. Retained STAR
 matches after fresh actor-generation binding. Missing-model and mismatched-frame
 candidates reject while the logical session, entity identities, model replacements
 and other captured non-presentation owners remain unchanged. Presentation state
-continues advancing. Pixel comparison and installed revisits remain pending.
+continues advancing. Pixel comparison remains pending.
 The unfinished revisit integration initializes
 entry roles, validates retained actors and clears shared sound services before
 restoring saved execution state. Focused registry/task and audio cleanup tests,
 WASM Clippy and the native build pass. The final workspace gate passed 955 Rust
 test executions with zero failures, ignored tests or installed-data skips.
-Installed revisit acceptance remains pending.
+Installed ISLAND-to-START revisit preserves all 34 retained actors and task
+identities under fresh generation binding; seven invocation counters advance by
+two, and departed ISLAND remains exactly unchanged. Player, alternate player and
+camera records are unchanged. Eighteen pre-existing controller/combat update
+errors persist, so this proves retained-state continuation, not successful
+gameplay traversal. Repeated transitions and complete revisit acceptance remain open.
 The diagnostic browser storage caller is connected; successful installed
 restart/reload/revisits and complete gameplay acceptance remain unchecked.
 Source-decoder audio checkpoints
