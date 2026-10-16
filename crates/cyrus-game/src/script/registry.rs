@@ -2027,6 +2027,27 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(())
     }
 
+    fn property_name(&self, target: &Target, reference: u16) -> Result<&str> {
+        self.reference_names
+            .get(usize::from(reference))
+            .map(String::as_str)
+            .with_context(|| format!("property {target:?}.{reference}: installed reference absent"))
+    }
+
+    fn property_receiver(&self, target: &Target) -> Result<usize> {
+        if !matches!(target, Target::Player) {
+            return self.target_index(target);
+        }
+        let player = self
+            .selected_player()
+            .context("Player property selected player unavailable")?;
+        anyhow::ensure!(
+            player.generation == self.generation && player.index < self.actors.len(),
+            "Player property selected player identity is stale"
+        );
+        Ok(player.index)
+    }
+
     fn target_index(&self, target: &Target) -> Result<usize> {
         let index = match target {
             Target::Me => return Ok(self.index),
@@ -2051,35 +2072,42 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 }
 impl Host for GameHost<'_, '_, '_, '_> {
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
-        let name = self
-            .reference_names
-            .get(usize::from(reference))
-            .with_context(|| {
-                format!("property {target:?}.{reference}: installed reference absent")
-            })?;
+        let name = self.property_name(target, reference)?;
+        let position_axis = ["pos.vx", "pos.vy", "pos.vz"]
+            .iter()
+            .position(|candidate| name.eq_ignore_ascii_case(candidate));
         anyhow::ensure!(
-            name.eq_ignore_ascii_case("angle.vy"),
+            position_axis.is_some() || name.eq_ignore_ascii_case("angle.vy"),
             "property {target:?}.{name} unsupported"
         );
-        let index = if matches!(target, Target::Player) {
-            let player = self
-                .selected_player()
-                .context("Player.angle.vy selected player unavailable")?;
-            anyhow::ensure!(
-                player.generation == self.generation && player.index < self.actors.len(),
-                "Player.angle.vy selected player identity is stale"
-            );
-            player.index
-        } else {
-            self.target_index(target)?
-        };
+        let index = self.property_receiver(target)?;
         let spatial = self
             .spatial
             .as_deref()
-            .context("angle.vy spatial owner unavailable")?
+            .with_context(|| format!("property {target:?}.{name}: spatial owner unavailable"))?
             .actor(index)?;
-        Ok(i32::from(spatial.local.angles[1]))
+        Ok(match position_axis {
+            Some(axis) => spatial.local.position[axis],
+            None => i32::from(spatial.local.angles[1]),
+        })
     }
+
+    fn write_property(&mut self, target: &Target, reference: u16, value: i32) -> Result<()> {
+        let name = self.property_name(target, reference)?;
+        let axis = ["pos.vx", "pos.vy", "pos.vz"]
+            .iter()
+            .position(|candidate| name.eq_ignore_ascii_case(candidate))
+            .with_context(|| format!("property {target:?}.{name} write unsupported"))?;
+        let index = self.property_receiver(target)?;
+        self.spatial
+            .as_deref_mut()
+            .with_context(|| format!("property {target:?}.{reference}: spatial owner unavailable"))?
+            .actor_mut(index)?
+            .local
+            .position[axis] = value;
+        Ok(())
+    }
+
     fn call(
         &mut self,
         target: &Target,

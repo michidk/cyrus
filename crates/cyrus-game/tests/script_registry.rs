@@ -12578,3 +12578,273 @@ fn heading_property_rejects_missing_owner_unknown_name_and_writes() {
         }
     }
 }
+
+#[test]
+fn position_properties_read_local_coordinates_without_refreshing_pose() {
+    for (axis, name) in ["pos.vx", "pos.vy", "pos.vz"].into_iter().enumerate() {
+        for (object, selected) in [
+            (Object::Me, false),
+            (Object::Player, true),
+            (Object::Named { string: 0 }, false),
+        ] {
+            let mut scripts = heading_property_scripts(294, object);
+            scripts.definition.references[294] = name.into();
+            scripts.instances[0].map_position = [-7, 11, -13];
+            add_standalone_receivers(&mut scripts);
+            let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+            world.prepare_spatial().unwrap();
+            let caller = world.id(0).unwrap();
+            let player = world.id(2).unwrap();
+            world
+                .initialize_player_spatial(player, [i32::MIN, -1, i32::MAX], [0; 3])
+                .unwrap();
+            let receiver = if selected { player } else { caller };
+            let before = serde_json::to_value(world.spatial(receiver).unwrap()).unwrap();
+            world
+                .advance(
+                    caller,
+                    cyrus_game::script::ScriptStage::Body(Thread::Main),
+                    cyrus_game::script::ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+            let expected = if selected {
+                [i32::MIN, -1, i32::MAX][axis]
+            } else {
+                [-7 * 256, 11 * 256, -13 * 256][axis]
+            };
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+            assert_eq!(
+                serde_json::to_value(world.spatial(receiver).unwrap()).unwrap(),
+                before
+            );
+        }
+    }
+}
+
+#[test]
+fn position_property_writes_change_only_the_selected_local_coordinate() {
+    for (axis, name) in ["pos.vx", "pos.vy", "pos.vz"].into_iter().enumerate() {
+        for (object, selected) in [
+            (Object::Me, false),
+            (Object::Player, true),
+            (Object::Named { string: 0 }, false),
+        ] {
+            for value in [i32::MIN, -1, 0, 1, i32::MAX] {
+                let mut scripts = heading_property_scripts(294, object.clone());
+                scripts.definition.references[294] = name.into();
+                let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+                let read = program.steps[&0].operation.clone();
+                program.steps.insert(
+                    0,
+                    Step {
+                        next: 1,
+                        operation: Operation::Assign {
+                            destination: Place::Property {
+                                object: object.clone(),
+                                reference: 294,
+                            },
+                            formula: Formula {
+                                first: Value::Integer { value },
+                                rest: vec![],
+                            },
+                        },
+                    },
+                );
+                program.steps.insert(
+                    1,
+                    Step {
+                        next: 2,
+                        operation: read,
+                    },
+                );
+                program.steps.insert(
+                    2,
+                    Step {
+                        next: 3,
+                        operation: Operation::End { target: 0 },
+                    },
+                );
+                add_standalone_receivers(&mut scripts);
+                let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+                world.prepare_spatial().unwrap();
+                let caller = world.id(0).unwrap();
+                let player = world.id(2).unwrap();
+                world
+                    .initialize_player_spatial(player, [123, -456, 789], [0; 3])
+                    .unwrap();
+                let receiver = if selected { player } else { caller };
+                let other = if selected { caller } else { player };
+                let mut expected = serde_json::to_value(world.spatial(receiver).unwrap()).unwrap();
+                expected["local"]["position"][axis] = value.into();
+                let other_before = serde_json::to_value(world.spatial(other).unwrap()).unwrap();
+                world
+                    .advance(
+                        caller,
+                        cyrus_game::script::ScriptStage::Body(Thread::Main),
+                        cyrus_game::script::ScriptInputs {
+                            frame_scale: Some(256),
+                            nominal_ticks: Some(1),
+                            ..Default::default()
+                        },
+                        None,
+                        None,
+                        20,
+                    )
+                    .unwrap();
+                assert_eq!(world.actors()[0].runtime().unwrap().variables(), [value]);
+                assert_eq!(
+                    serde_json::to_value(world.spatial(receiver).unwrap()).unwrap(),
+                    expected
+                );
+                assert_eq!(
+                    serde_json::to_value(world.spatial(other).unwrap()).unwrap(),
+                    other_before
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn position_property_access_keeps_attached_effective_pose_until_family_refresh() {
+    let mut scripts = heading_property_scripts(294, Object::Me);
+    scripts.definition.references[294] = "pos.vx".into();
+    let mut child = scripts.actors["LOGIC"].clone();
+    child.namespace = Some("child".into());
+    child.attributes.insert("attr_26".into(), 1);
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_25".into(), 1);
+    scripts.actors.insert("CHILD".into(), child);
+    scripts.instances[0].map_position = [100, 0, 0];
+    scripts.instances[1].map_position = [103, 4, 0];
+    scripts.instances[1].actor = "CHILD".into();
+    scripts.instances[0].angles = [0; 3];
+    let program = &mut scripts.actors.get_mut("CHILD").unwrap().program;
+    program.steps.insert(
+        1,
+        Step {
+            next: 2,
+            operation: Operation::Assign {
+                destination: Place::Property {
+                    object: Object::Me,
+                    reference: 294,
+                },
+                formula: Formula {
+                    first: Value::Integer { value: -512 },
+                    rest: vec![],
+                },
+            },
+        },
+    );
+    program.steps.insert(
+        2,
+        Step {
+            next: 3,
+            operation: Operation::End { target: 0 },
+        },
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    world.refresh_families().unwrap();
+    let child = world.id(1).unwrap();
+    assert_eq!(world.spatial(child).unwrap().local.position[0], 768);
+    assert_eq!(
+        world.spatial(child).unwrap().effective.unwrap().position[0],
+        26368
+    );
+    let mut expected = serde_json::to_value(world.spatial(child).unwrap()).unwrap();
+    expected["local"]["position"][0] = (-512).into();
+    world
+        .advance(
+            child,
+            cyrus_game::script::ScriptStage::Body(Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert_eq!(world.actors()[1].runtime().unwrap().variables(), [768]);
+    assert_eq!(
+        serde_json::to_value(world.spatial(child).unwrap()).unwrap(),
+        expected
+    );
+    world.refresh_families().unwrap();
+    assert_eq!(
+        world.spatial(child).unwrap().effective.unwrap().position[0],
+        25088
+    );
+}
+
+#[test]
+fn position_property_rejects_unavailable_owner_and_unknown_reference() {
+    for (name, prepare, expected) in [
+        ("pos.vx", false, "spatial owner unavailable"),
+        ("unknown", true, "unsupported"),
+    ] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::Assign {
+            destination: Place::Property {
+                object: Object::Me,
+                reference: 294,
+            },
+            formula: Formula {
+                first: Value::Integer { value: i32::MIN },
+                rest: vec![],
+            },
+        };
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        if prepare {
+            world.prepare_spatial().unwrap();
+        }
+        let caller = world.id(0).unwrap();
+        let before = prepare.then(|| serde_json::to_value(world.spatial(caller).unwrap()).unwrap());
+        let error = world
+            .advance(
+                caller,
+                cyrus_game::script::ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+        if let Some(before) = before {
+            assert_eq!(
+                serde_json::to_value(world.spatial(caller).unwrap()).unwrap(),
+                before
+            );
+        }
+    }
+}

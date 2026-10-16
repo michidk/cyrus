@@ -450,13 +450,16 @@ helper directly. WASM verification and combined-tree gates pass with zero
 installed skips. Complete dialogue and automatic gameplay
 acceptance remain open.
 
-### Local heading property and full-width references
+### Local pose properties and full-width references
 
 The preservation decoder and portable runtime retain complete 16-bit property
 references. Program schema 3 rejects older exports that may have truncated them.
 The registry resolves installed reference names and supports local `angle.vy`
-reads through its existing spatial owner. Other properties and writes remain
-explicitly unsupported. Public contracts and the installed shrine non-standing
+reads through its existing spatial owner. Local `pos.vx`, `pos.vy` and `pos.vz`
+reads/writes use the same signed coordinate owner without immediately refreshing
+matrices or attached poses. Other properties and angle writes remain explicitly
+unsupported. Four public position contracts pass, including signed limits,
+read-after-write, unchanged attached effective state and explicit rejection. Public contracts and the installed shrine non-standing
 branch pass with explicit player pose and timing inputs. The WASM check passes.
 Final workspace verification remains pending after correcting stale schema
-versions in native/render test fixtures. Complete shrine interaction remains open.
+versions in native/render/session and animation-program test fixtures. Complete shrine interaction remains open.

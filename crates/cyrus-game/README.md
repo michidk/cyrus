@@ -412,9 +412,12 @@ local heading unchanged. It performs no visibility or distance check.
 with the selected player's retained supporting-actor identity, following the
 [published query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playerstand-query).
 It performs no collision search and leaves support ownership unchanged. Missing or
-stale selected identities reject. `angle.vy` property reads resolve the installed reference name and return the
-receiver's local heading, including the selected player. Missing spatial state,
-unknown property names and property writes reject explicitly. The rule follows
+stale selected identities reject. Property access resolves installed reference names
+and the selected player. `angle.vy` reads the receiver's local heading.
+`pos.vx`, `pos.vy` and `pos.vz` read and write signed Q8 local coordinates.
+Writes change only the selected coordinate; matrices and effective attached poses
+remain unchanged until ordinary processing refreshes them. Missing spatial state,
+unknown properties and angle writes reject explicitly. These rules follow
 [preservation's property contract](https://github.com/michidk/redguard-preservation/compare/8c6bdb15c783fca72a6399aa226f25f596585407...fix/soup-property-references).
 Older script programs require re-export for full-width references.
 Remaining native services are explicit failures. `IsInDeepWater` reads the receiver's stored
