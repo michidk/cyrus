@@ -1,5 +1,6 @@
 //! Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 mod book_motion;
+mod fade;
 mod loading;
 mod logbook;
 pub use logbook::LogbookPlugin;
@@ -78,6 +79,9 @@ pub struct StartGame {
     background: Vec<u8>,
     font: cyrus_text::Font,
     progress: (usize, usize),
+    /// Menu entries fade the loading screen in, then out before entering the world.
+    faded_in: bool,
+    fade_out: Option<Entity>,
 }
 
 /// Browser host attempts to close its tab without terminating the game loop.

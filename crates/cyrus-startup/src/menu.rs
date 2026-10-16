@@ -564,6 +564,7 @@ fn begin_world_entry(
         background: picture.rgba.clone(),
         font: book.new_game.font.clone(),
         progress: (0, 1),
+        ..default()
     });
     next.set(AppState::Loading);
 }

@@ -263,7 +263,9 @@ Menu New/Load wait behind installed destination artwork and a red percentage bar
 for world preparation and asset dependencies. Bottom-right red title labels report startup
 menu/HUD preparation. Those labels describe cyrus work. **Verified:** world-entry
 loading shows the original red bar and gold lower-left percentage, without a
-right-hand status message or pending asset filename. Failed world entry reports a
+right-hand status message or pending asset filename. Menu world entry fades the loading
+screen in, fades it out after loading and fades the first world view in, 12/256 per
+installed nominal tick. Failed world entry reports a
 contextual error and supports Escape back to the menu. In a world, `state.hud` reports health,
 candle mode, visibility and frame, compass frame, power-up slots, logbook frame,
 walk mode, auto-defend, prompt, selected item and count. **Verified:** owned

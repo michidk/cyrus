@@ -27,10 +27,14 @@ struct WorldEntry<'w, 's> {
     sound_settings: Option<Res<'w, cyrus_audio::sound::SoundSettings>>,
     spawner: Res<'w, WorldInstanceSpawner>,
     instances: Query<'w, 's, Option<&'static WorldInstance>, With<WorldAssetRoot>>,
+    clock: Option<Res<'w, cyrus_game::clock::SimulationClock>>,
+    fades: Query<'w, 's, &'static super::fade::Fade>,
 }
 
 pub(super) fn register(app: &mut App) {
     app.add_systems(Update, poll.run_if(in_state(AppState::Loading)))
+        .add_systems(Update, super::fade::advance)
+        .add_systems(OnEnter(AppState::InGame), fade_in_world)
         .add_systems(OnExit(AppState::Loading), cleanup);
 }
 
@@ -61,10 +65,25 @@ fn poll(
         sound_settings,
         spawner,
         instances,
+        clock,
+        fades,
     } = entry;
     let (mut images, notices) = rendering;
     if !startup.title_visible {
         return;
+    }
+    // Direct inspections show the title without menu-entry fades.
+    let fade_clock = clock
+        .filter(|_| {
+            game.as_ref()
+                .is_some_and(|game| game.image != Handle::default())
+        })
+        .map(|clock| clock.settings());
+    if let (Some(game), Some(settings)) = (game.as_mut(), fade_clock)
+        && !game.faded_in
+    {
+        super::fade::spawn(&mut commands, settings, true);
+        game.faded_in = true;
     }
     if game.is_some() {
         if let Some(error) = scene_error {
@@ -114,8 +133,20 @@ fn poll(
                     update_progress(game, &mut images, done, total);
                 }
                 if loaded == handles.0.len() && spawned && startup.error.is_none() {
-                    commands.remove_resource::<StartGame>();
-                    next.set(AppState::InGame);
+                    let fade_out = game.as_ref().and_then(|game| game.fade_out);
+                    match (fade_out, fade_clock) {
+                        (None, Some(settings)) => {
+                            if let Some(game) = game.as_mut() {
+                                game.fade_out =
+                                    Some(super::fade::spawn(&mut commands, settings, false));
+                            }
+                        }
+                        (Some(fade), _) if !fades.get(fade).is_ok_and(|f| f.black()) => {}
+                        _ => {
+                            commands.remove_resource::<StartGame>();
+                            next.set(AppState::InGame);
+                        }
+                    }
                 }
             } else {
                 let handles = vec![
@@ -230,6 +261,15 @@ fn poll(
                 error.clone()
             }),
         ));
+    }
+}
+
+/// The first world view fades in from the black left by the loading fade-out.
+fn fade_in_world(mut fades: Query<&mut super::fade::Fade>) {
+    for mut fade in &mut fades {
+        if fade.black() {
+            fade.reverse();
+        }
     }
 }
 
