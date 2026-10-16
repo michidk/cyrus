@@ -26,6 +26,8 @@ use cyrus_game::{
     },
 };
 use cyrus_soup::program::*;
+// bevy's prelude also exports a `Function` trait once wasvy enables bevy_reflect functions.
+use cyrus_soup::program::Function;
 use cyrus_soup::{AnimationGroup, Native};
 use cyrus_session::{PlayerReplacement, RuntimeSessionSnapshot};
 use serde_json::json;
@@ -363,7 +365,7 @@ fn exercise_runtime_session(
         );
     }
     app.insert_resource(cyrus_game::fidelity::Fidelity {
-        water: cyrus_game::fidelity::Mode::Modern,
+        fog: cyrus_game::fidelity::Mode::Modern,
         ..Default::default()
     });
     app.add_plugins((
@@ -1028,7 +1030,7 @@ fn exercise_runtime_session(
     assert!(app.world().get::<Transform>(replacement_node).is_none());
     app.world_mut()
         .resource_mut::<cyrus_game::fidelity::Fidelity>()
-        .water = cyrus_game::fidelity::Mode::Faithful;
+        .fog = cyrus_game::fidelity::Mode::Faithful;
     app.world_mut()
         .resource_mut::<cyrus_game::cheats::Cheats>()
         .execute("neversaydie", Some(0))?;
@@ -1130,7 +1132,7 @@ fn exercise_runtime_session(
     assert_eq!(
         app.world()
             .resource::<cyrus_game::fidelity::Fidelity>()
-            .water,
+            .fog,
         cyrus_game::fidelity::Mode::Modern
     );
     assert!(app.world().get_entity(player).is_err());

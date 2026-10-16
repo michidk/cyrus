@@ -5410,11 +5410,13 @@ fn automatic_world_updates_wait_for_effects_then_advance_and_pause_in_menu() {
 
 fn automatic_world_updates_with_prepared_identity(browser_identity: bool) {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
+    // Bevy's prelude adds a `Function` trait when reflect functions are enabled.
     use cyrus_assets::animation::Animations;
     use cyrus_game::{
         AppState,
         script::{ScriptActors, ScriptPlugin, ScriptView},
     };
+    use cyrus_script::program::Function;
     use cyrus_world::{
         animation::{AnimationRequest, AnimationTick},
         lifecycle::PreparedWorld,

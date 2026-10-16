@@ -32,6 +32,9 @@ acceptance, status and session claims. The maintainer's agents also follow
    is registered under a fidelity `Area` and runs only in the configured `Mode`
    (`crates/cyrus-game/src/fidelity.rs`). The default of every area is
    `Faithful`. A deviation lives in a `Modern` branch, never in the shared path.
+   Native mods (`crates/cyrus-mods`, `mods/`) are the other place for
+   deviations: the shared path offers a hook whose built-in behaviour is the
+   original, and only an active mod replaces it. Water already works this way.
    Faithful means the same player experience: visuals, audio, controls,
    camera, game logic, timing of scripts and animations, and outcomes. It
    never means reproducing technical limits. Loading time, frame rate,

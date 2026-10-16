@@ -1,0 +1,2 @@
+name = "Fly camera (F3)"
+description = "F3 toggles a free first-person camera: WASD to fly, Space/Left Shift up and down, mouse to look."

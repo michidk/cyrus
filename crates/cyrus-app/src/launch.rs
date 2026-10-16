@@ -57,9 +57,6 @@ pub struct GameOptions {
     /// Enter a new game without its introduction movie, from this launch and from the menu entry.
     #[arg(long)]
     pub skip_movies: bool,
-    /// Water presentation mode.
-    #[arg(long, value_parser = ["faithful", "modern"])]
-    pub water: Option<String>,
     /// Fog presentation mode.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub fog: Option<String>,
@@ -183,7 +180,6 @@ mod tests {
         let game = GameOptions::try_parse_from([
             "game",
             "--scene=start",
-            "--water=modern",
             "--skip-startup",
             "--music=modern",
             "--splash=dos",
@@ -197,7 +193,6 @@ mod tests {
         assert_eq!(game.splash.as_deref(), Some("dos"));
         assert!(GameOptions::try_parse_from(["game", "--splash=other"]).is_err());
         assert_eq!(game.scene.as_deref(), Some("START"));
-        assert_eq!(game.water.as_deref(), Some("modern"));
         assert!(game.skip_startup);
         let direct = GameOptions::try_parse_from(["game", "--new-game", "--skip-movies"]).unwrap();
         assert!(direct.new_game && direct.skip_movies);

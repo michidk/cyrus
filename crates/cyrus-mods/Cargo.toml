@@ -1,0 +1,18 @@
+[package]
+name = "cyrus-mods"
+description = "Native-only WebAssembly mods: catalog, activation and the hook API, built on wasvy."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = ["default"] }
+bevy_egui = { version = "=0.43.1", default-features = false, features = ["default_fonts", "render", "bevy_ui"] }
+cyrus-debug = { path = "../cyrus-debug" }
+cyrus-render.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+# Pre-1.0 and breaking: keep wit/deps/wasvy-ecs.wit and the bundled mods on this same version.
+wasvy = "=0.0.11"
+wasmtime = { version = "50", default-features = false }

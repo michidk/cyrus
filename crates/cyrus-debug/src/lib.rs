@@ -18,9 +18,10 @@ use cyrus_render::fog::RenderDistance;
 
 pub struct DebugMenuPlugin;
 
+/// The F1 menu's visibility; other native panels open alongside it.
 #[derive(Resource, Default)]
-struct DebugMenu {
-    open: bool,
+pub struct DebugMenu {
+    pub open: bool,
     inspector_open: bool,
 }
 
@@ -222,7 +223,6 @@ fn debug_menu(
             "Player controller",
         );
         fidelity_control(ui, &mut fidelity, Area::Camera, "Camera");
-        fidelity_control(ui, &mut fidelity, Area::Water, "Water");
         fidelity_control(ui, &mut fidelity, Area::Fog, "Fog");
         fidelity_control(ui, &mut fidelity, Area::Sky, "Sky");
         fidelity_control(
