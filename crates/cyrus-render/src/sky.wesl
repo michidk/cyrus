@@ -5,13 +5,16 @@ import package::glide_fog::{fog_coordinate, fog_table_position, table_density, b
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var sky: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
-@group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> plane: vec4<f32>;
-@group(MATERIAL_BIND_GROUP) @binding(3) var<uniform> fog_rgb: vec4<f32>;
-@group(MATERIAL_BIND_GROUP) @binding(4) var<uniform> scroll: vec4<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(5) var sun: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(6) var sun_sampler: sampler;
-@group(MATERIAL_BIND_GROUP) @binding(7) var<uniform> sun_position: vec4<f32>;
-@group(MATERIAL_BIND_GROUP) @binding(8) var<uniform> sun_color: vec4<f32>;
+struct SkyParameters {
+    plane: vec4<f32>,
+    fog_rgb: vec4<f32>,
+    scroll: vec4<f32>,
+    sun_position: vec4<f32>,
+    sun_color: vec4<f32>,
+};
+@group(MATERIAL_BIND_GROUP) @binding(2) var<uniform> sky_parameters: SkyParameters;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -66,15 +69,15 @@ fn faithful_sun_sample(uv: vec2<f32>) -> u32 {
 
 
 fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
-    if plane.z == 0.0 { return srgb_to_linear(fog_rgb.rgb); }
-    if scroll.z != 0.0 {
+    if sky_parameters.plane.z == 0.0 { return srgb_to_linear(sky_parameters.fog_rgb.rgb); }
+    if sky_parameters.scroll.z != 0.0 {
         let direction = normalize(ray);
-        let cloud_plane = direction.xz / max(direction.y, 0.001) * abs(plane.x);
-        let uv = (-plane.y * cloud_plane / 65000.0 + scroll.xy) / plane.zw;
+        let cloud_plane = direction.xz / max(direction.y, 0.001) * abs(sky_parameters.plane.x);
+        let uv = (-sky_parameters.plane.y * cloud_plane / 65000.0 + sky_parameters.scroll.xy) / sky_parameters.plane.zw;
         let color = textureSampleLevel(sky, sky_sampler, uv, 0.0).rgb;
-        let depth = abs(plane.x) * (-near.z / length(near)) / max(direction.y, 0.001);
+        let depth = abs(sky_parameters.plane.x) * (-near.z / length(near)) / max(direction.y, 0.001);
         let haze = sky_fog_density(depth);
-        return blend_fog(color, fog_rgb.rgb, haze);
+        return blend_fog(color, sky_parameters.fog_rgb.rgb, haze);
     }
     // Preservation's camera-relative 24-unit tilt, applied before the height offset.
     let forward = -view.world_from_view[2].xz;
@@ -83,25 +86,25 @@ fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     let tilt = 24.0 * 6.2831852 / 2048.0;
     let normal = vec3(horizontal.x * sin(tilt), cos(tilt), horizontal.y * sin(tilt));
     let denominator = dot(normal, ray);
-    if denominator == 0.0 { return srgb_to_linear(fog_rgb.rgb); }
-    let distance = cos(tilt) * (-plane.x / 20.0 - view.world_position.y) / denominator;
+    if denominator == 0.0 { return srgb_to_linear(sky_parameters.fog_rgb.rgb); }
+    let distance = cos(tilt) * (-sky_parameters.plane.x / 20.0 - view.world_position.y) / denominator;
     let relative_xz = ray.xz * distance;
     let plane_xz = relative_xz + (1.0 / cos(tilt) - 1.0) * dot(relative_xz, horizontal) * horizontal;
     let depth = -near.z * distance;
     if distance <= 0.0 || depth < 0.05 || depth > 3250.0 || any(abs(plane_xz) > vec2(3250.0)) {
-        return srgb_to_linear(fog_rgb.rgb);
+        return srgb_to_linear(sky_parameters.fog_rgb.rgb);
     }
     // Preservation RGM export shifts Z; sky.md uses the original camera coordinates.
     let camera_z = (view.world_position.z * 5120.0 + 16777215.0) / 256.0;
     let texture_center = vec2(-view.world_position.x * 20.0, -camera_z) * 0.009;
-    let uv = (-plane.y * plane_xz * 20.0 / 65000.0 + texture_center + scroll.xy) / plane.zw;
+    let uv = (-sky_parameters.plane.y * plane_xz * 20.0 / 65000.0 + texture_center + sky_parameters.scroll.xy) / sky_parameters.plane.zw;
     let color = faithful_cloud_sample(uv);
-    if scroll.w != 0.0 { return blend_fog(color, fog_rgb.rgb, sky_fog_density(depth * 20.0)); }
+    if sky_parameters.scroll.w != 0.0 { return blend_fog(color, sky_parameters.fog_rgb.rgb, sky_fog_density(depth * 20.0)); }
     let position = fog_table_position(depth * 20.0);
     let current = select(f32(max(position.x, 32u) - 32u) * 8.0, 255.0, position.x == 63u);
     let next_index = min(position.x + 1u, 63u);
     let next = select(f32(max(next_index, 32u) - 32u) * 8.0, 255.0, next_index == 63u);
-    return blend_fog_integer(color, fog_rgb.rgb, table_density(current, next, position.y));
+    return blend_fog_integer(color, sky_parameters.fog_rgb.rgb, table_density(current, next, position.y));
 }
 
 @fragment
@@ -111,28 +114,28 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let near = near_h.xyz / near_h.w;
     let ray = (view.world_from_view * vec4(near, 0.0)).xyz;
     var color = cloud_color(ray, near);
-    if scroll.w == 0.0 { color = framebuffer_rgb565(color, in.position.xy); }
-    if sun_position.w > 0.0 {
-        let center = (view.view_from_world * vec4(sun_position.xyz, 0.0)).xyz;
+    if sky_parameters.scroll.w == 0.0 { color = framebuffer_rgb565(color, in.position.xy); }
+    if sky_parameters.sun_position.w > 0.0 {
+        let center = (view.view_from_world * vec4(sky_parameters.sun_position.xyz, 0.0)).xyz;
         let depth = -center.z;
         let uv = (near.xy * (depth / -near.z) - center.xy) * vec2(1.0, -1.0)
-            / (2.0 * vec2(sun_position.w, sun_color.w)) + vec2(0.5);
+            / (2.0 * vec2(sky_parameters.sun_position.w, sky_parameters.sun_color.w)) + vec2(0.5);
         if depth >= 0.05 && depth <= 3276.75 && all(uv >= vec2(0.0)) && all(uv <= vec2(1.0)) {
             var opacity: f32;
             var alpha = 0u;
-            if scroll.z == 0.0 {
+            if sky_parameters.scroll.z == 0.0 {
                 alpha = faithful_sun_sample(uv);
                 opacity = f32(alpha) / 255.0;
             } else {
                 opacity = textureSampleLevel(sun, sun_sampler, uv, 0.0).r;
             }
-            if scroll.z == 0.0 && scroll.w == 0.0 {
-                color = framebuffer_blend_integer(color, sun_color.rgb, alpha, framebuffer_dither(in.position.xy));
+            if sky_parameters.scroll.z == 0.0 && sky_parameters.scroll.w == 0.0 {
+                color = framebuffer_blend_integer(color, sky_parameters.sun_color.rgb, alpha, framebuffer_dither(in.position.xy));
             } else {
-                color = srgb_to_linear(mix(linear_to_srgb(color), sun_color.rgb, opacity));
+                color = srgb_to_linear(mix(linear_to_srgb(color), sky_parameters.sun_color.rgb, opacity));
             }
         }
     }
-    if scroll.w == 0.0 { color = framebuffer_rgb565(color, in.position.xy); }
+    if sky_parameters.scroll.w == 0.0 { color = framebuffer_rgb565(color, in.position.xy); }
     return vec4(color, 1.0);
 }

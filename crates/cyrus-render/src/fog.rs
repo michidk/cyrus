@@ -137,19 +137,20 @@ struct ModelExtension {
     fog: FogExtension,
     #[texture(101, sample_type = "float", filterable = false)]
     lights: Handle<Image>,
+    // Share one model buffer to stay within the minimum WebGL fragment binding budget.
     #[uniform(102)]
     placement: Mat4,
     #[uniform(102)]
     lighting: Vec4,
     #[uniform(102)]
     solid_color: Vec4,
-    #[uniform(103)]
+    #[uniform(102)]
     compositing: Vec4,
-    #[uniform(104)]
+    #[uniform(102)]
     chroma_key: Vec4,
-    #[uniform(105)]
+    #[uniform(102)]
     texture_layout: UVec4,
-    #[uniform(105)]
+    #[uniform(102)]
     texture_scale: Vec4,
 }
 

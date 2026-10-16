@@ -14,16 +14,9 @@ import package::scene_shading::{fog, scene_color, scene_fog_at_position};
 import package::glide_fog::{fog_table_position, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
 @if(VIEW_TRANSMISSION_TEXTURE)
 import bevy_pbr::render::mesh_view_bindings::view_transmission_texture;
-import package::model_lights::{apply_local_lights, model, compositing};
+import package::model_lights::{apply_local_lights, model};
 import package::sampling::{sample_encoded, sample_flat, sample_model, matches_chroma, color_channel};
-import constants::MATERIAL_BIND_GROUP;
 import package::terrain_texture::texture_coordinates;
-@group(MATERIAL_BIND_GROUP) @binding(104) var<uniform> chroma_key: vec4<f32>;
-struct ModelTexture {
-    allocation: vec4<u32>,
-    scale: vec4<f32>,
-};
-@group(MATERIAL_BIND_GROUP) @binding(105) var<uniform> model_texture: ModelTexture;
 
 
 struct ModelVertex {
@@ -135,23 +128,23 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
         base.a = 1.0;
     }
     var texture_rgb = linear_to_srgb(base.rgb);
-    var texture_key = chroma_key.rgb;
+    var texture_key = model.chroma_key.rgb;
     if model.parameters.w >= 0.0 && (input.material.flags & STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u {
         texture_rgb = sample_encoded(surface.uv, (u32(model.parameters.w) & 1u) != 0u, false);
-        if compositing.x >= 0.0 {
+        if model.compositing.x >= 0.0 {
             texture_rgb = sample_flat(surface.uv);
             texture_key = vec3(0.0);
         }
     }
 @if(PREPARED_MODEL) {
-    if model_texture.allocation.x != 0u {
+    if model.texture_layout.x != 0u {
         let offset = vec2<i32>(floor(in.position.xy - view.viewport.xy)) - vec2(in.red.w, in.green.w);
         let coordinate = texture_coordinates(in.texture_a, in.texture_b, in.texture_c, in.texture_d, in.texture_e, offset);
         texture_key = vec3(0.0);
-        texture_rgb = sample_model(coordinate, model_texture.allocation, u32(model_texture.scale.z), (u32(model.parameters.w) & 1u) != 0u, texture_key);
+        texture_rgb = sample_model(coordinate, model.texture_layout, u32(model.texture_scale.z), (u32(model.parameters.w) & 1u) != 0u, texture_key);
     }
 }
-    if chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, texture_key) {
+    if model.chroma_key.w != 0.0 && in.retained_solid == 0u && matches_chroma(texture_rgb, texture_key) {
         discard;
     }
     texture_rgb = select(texture_rgb, vec3(1.0), in.retained_solid != 0u);
@@ -165,11 +158,11 @@ fn fragment(in: ModelVertex, @builtin(front_facing) is_front: bool) -> FragmentO
     var out: FragmentOutput;
     out.color = vec4(scene_color(color, depth, in.position.xy), base.a);
 @if(VIEW_TRANSMISSION_TEXTURE) {
-    if compositing.x >= 0.0 {
+    if model.compositing.x >= 0.0 {
         var result = scene_fog_at_position(color, depth, fog_table_position(depth));
-        if compositing.x < 254.0 {
+        if model.compositing.x < 254.0 {
             let destination = textureLoad(view_transmission_texture, vec2<i32>(in.position.xy), 0).rgb;
-            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(compositing.x) & 255u, framebuffer_dither(in.position.xy));
+            result = framebuffer_blend_integer(destination, linear_to_srgb(result), u32(model.compositing.x) & 255u, framebuffer_dither(in.position.xy));
         }
         if fog.clipping.z == 0.0 { result = framebuffer_rgb565(result, in.position.xy); }
         out.color = vec4(result, 1.0);

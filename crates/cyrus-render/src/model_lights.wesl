@@ -1,14 +1,16 @@
 import constants::MATERIAL_BIND_GROUP;
 
-@group(MATERIAL_BIND_GROUP) @binding(103) var<uniform> compositing: vec4<f32>;
-
 @group(MATERIAL_BIND_GROUP) @binding(101) var lights: texture_2d<f32>;
-struct ModelLighting {
+struct ModelParameters {
     placement: mat4x4<f32>,
     parameters: vec4<f32>,
     solid_color: vec4<f32>,
+    compositing: vec4<f32>,
+    chroma_key: vec4<f32>,
+    texture_layout: vec4<u32>,
+    texture_scale: vec4<f32>,
 };
-@group(MATERIAL_BIND_GROUP) @binding(102) var<uniform> model: ModelLighting;
+@group(MATERIAL_BIND_GROUP) @binding(102) var<uniform> model: ModelParameters;
 
 fn ordered_dot(a: vec3<f32>, b: vec3<f32>) -> f32 {
     return (a.x * b.x + a.y * b.y) + a.z * b.z;
@@ -18,7 +20,7 @@ fn apply_local_lights(initial: vec3<f32>, position: vec3<f32>, normal: vec3<f32>
     if model.parameters.z == 0.0 { return initial; }
     let axes = vec3(-1.0, -1.0, 1.0);
     // Billboard-local X is camera right, Y is up and Z points toward the camera.
-    let local_axes = select(axes, vec3(1.0, -1.0, -1.0), compositing.x >= 0.0);
+    let local_axes = select(axes, vec3(1.0, -1.0, -1.0), model.compositing.x >= 0.0);
     let vertex = position * local_axes * 20.0;
     let supplied_normal = normal * local_axes;
     var origin = transform[3].xyz * axes * 20.0 + vec3(0.0, 0.0, 65535.99609375);

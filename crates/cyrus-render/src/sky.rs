@@ -77,19 +77,19 @@ pub(crate) struct SkyMaterial {
     #[uniform(2)]
     pub plane: Vec4,
     /// Encoded Glide fog color shared with the scene background.
-    #[uniform(3)]
+    #[uniform(2)]
     pub fog_rgb: Vec4,
     /// U/V scroll in texels, Modern sky flag, Modern fog flag.
-    #[uniform(4)]
+    #[uniform(2)]
     pub scroll: Vec4,
     #[texture(5)]
     #[sampler(6)]
     pub sun_image: Handle<Image>,
     /// Camera-relative Bevy center and half-width.
-    #[uniform(7)]
+    #[uniform(2)]
     pub sun_position: Vec4,
     /// Encoded tint and half-height in Bevy units.
-    #[uniform(8)]
+    #[uniform(2)]
     pub sun_color: Vec4,
 }
 
