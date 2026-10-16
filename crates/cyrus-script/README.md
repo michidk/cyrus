@@ -95,3 +95,8 @@ game scheduler's responsibility.
 an admitted ordinary update. Its task-bypass input skips polling and the main
 blocking-slot gate, while retaining entry's operand gate. It does not choose
 actor eligibility or recheck game control flags between entry and main.
+
+Property references retain the full installed 16-bit index. Program schema 3
+rejects older exports because their decoder could discard the high byte.
+The host owns property semantics; the portable runtime forwards the complete
+reference and does not select an actor field itself.

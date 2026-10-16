@@ -56,7 +56,7 @@ fn call(kind: CallKind) -> Call {
 }
 fn program(ops: Vec<Operation>) -> Arc<Program> {
     Arc::new(Program {
-        version: 2,
+        version: 3,
         entry: 0,
         variables: vec![0],
         strings: vec![],

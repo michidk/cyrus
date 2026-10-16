@@ -412,7 +412,12 @@ local heading unchanged. It performs no visibility or distance check.
 with the selected player's retained supporting-actor identity, following the
 [published query contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#playerstand-query).
 It performs no collision search and leaves support ownership unchanged. Missing or
-stale selected identities reject. Remaining native services are explicit failures. `IsInDeepWater` reads the receiver's stored
+stale selected identities reject. `angle.vy` property reads resolve the installed reference name and return the
+receiver's local heading, including the selected player. Missing spatial state,
+unknown property names and property writes reject explicitly. The rule follows
+[preservation's property contract](https://github.com/michidk/redguard-preservation/compare/8c6bdb15c783fca72a6399aa226f25f596585407...fix/soup-property-references).
+Older script programs require re-export for full-width references.
+Remaining native services are explicit failures. `IsInDeepWater` reads the receiver's stored
 surface state, with fresh map/player allocation values and grounded assignments
 shared through `ScriptWorld`. It does not issue a separate support query. End notifications with synchronization
 channels remain unsupported. These tools do not start New Game.

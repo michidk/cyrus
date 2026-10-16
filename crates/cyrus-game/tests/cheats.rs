@@ -506,7 +506,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
                 combat_taunts: vec![],
                 native_hook: None,
                 program: Program {
-                    version: 2,
+                    version: 3,
                     entry: 0,
                     variables: vec![],
                     strings: vec![],

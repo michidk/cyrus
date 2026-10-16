@@ -34,7 +34,7 @@ impl Host for NoServices {
 
 fn cache() -> Scripts {
     let program = Program {
-        version: 2,
+        version: 3,
         entry: 0,
         variables: vec![4],
         strings: vec![],
@@ -12442,5 +12442,139 @@ fn player_arc_dispatch_returns_receiver_relative_result() {
             )
             .unwrap();
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+    }
+}
+
+fn heading_property_scripts(reference: u16, object: Object) -> Scripts {
+    let mut scripts = cache();
+    scripts.definition.references = vec!["unsupported".into(); usize::from(reference) + 1];
+    scripts.definition.references[usize::from(reference)] = "angle.vy".into();
+    scripts.instances[0].angles[1] = 1536;
+    let program = &mut scripts.actors.get_mut("LOGIC").unwrap().program;
+    program.strings = vec!["logic".into()];
+    program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: Operation::Assign {
+                    destination: Place::Local { index: 0 },
+                    formula: Formula {
+                        first: Value::Read {
+                            place: Place::Property { object, reference },
+                        },
+                        rest: vec![],
+                    },
+                },
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    scripts
+}
+
+#[test]
+fn heading_property_reads_installed_name_with_full_reference_and_receiver() {
+    for reference in [0, 38, 294] {
+        for (object, expected) in [
+            (Object::Me, 1536),
+            (Object::Player, 0),
+            (Object::Named { string: 0 }, 1536),
+        ] {
+            let mut scripts = heading_property_scripts(reference, object);
+            add_standalone_receivers(&mut scripts);
+            let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+            world.prepare_spatial().unwrap();
+            let player = world.id(2).unwrap();
+            world
+                .initialize_player_spatial(player, [0; 3], [0; 3])
+                .unwrap();
+            let caller = world.id(0).unwrap();
+            let before = world.spatial(caller).unwrap().local;
+            world
+                .advance(
+                    caller,
+                    cyrus_game::script::ScriptStage::Body(Thread::Main),
+                    cyrus_game::script::ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap();
+            assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+            assert_eq!(world.spatial(caller).unwrap().local.angles, before.angles);
+            assert_eq!(
+                world.spatial(caller).unwrap().local.position,
+                before.position
+            );
+        }
+    }
+}
+
+#[test]
+fn heading_property_rejects_missing_owner_unknown_name_and_writes() {
+    for (spatial, name, write, expected) in [
+        (false, "angle.vy", false, "spatial owner unavailable"),
+        (true, "unknown", false, "unsupported"),
+        (true, "angle.vy", true, "unsupported"),
+    ] {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        if write {
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .program
+                .steps
+                .get_mut(&0)
+                .unwrap()
+                .operation = Operation::Assign {
+                destination: Place::Property {
+                    object: Object::Me,
+                    reference: 294,
+                },
+                formula: Formula {
+                    first: Value::Integer { value: 512 },
+                    rest: vec![],
+                },
+            };
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        if spatial {
+            world.prepare_spatial().unwrap();
+        }
+        let caller = world.id(0).unwrap();
+        let error = world
+            .advance(
+                caller,
+                cyrus_game::script::ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(expected), "{error:#}");
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
+        if spatial {
+            assert_eq!(world.spatial(caller).unwrap().local.angles[1], 1536);
+        }
     }
 }

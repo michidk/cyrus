@@ -119,7 +119,7 @@ pub fn prepare_source(
             }
         };
         let program = Program {
-            version: 2,
+            version: 3,
             entry,
             variables: source.variables,
             strings: source.strings,

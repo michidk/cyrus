@@ -28,7 +28,7 @@ collision/combat/intro services and complete all-world acceptance remain open.
 - `cyrus-assets/src/script.rs` and `script_export.rs` retain installed definitions,
   initial flags, locals, strings, initialized attributes, native hooks, installed update switches, placement model
   metadata, and decoded programs. The script cache is version 15, programs are
-  version 2, and content
+  version 3, and content
   identity is validated. Attribute-load defaults use installed SYSTEM.INI through
   preservation [PR59](https://github.com/michidk/redguard-preservation/pull/59).
   RAHK retains a typed native call, distinct from the VM entry continuation.
@@ -449,3 +449,13 @@ the cardinal-direction contract and corrected by using the existing bearing
 helper directly. WASM verification and combined-tree gates pass with zero
 installed skips. Complete dialogue and automatic gameplay
 acceptance remain open.
+
+### Local heading property and full-width references
+
+The preservation decoder and portable runtime retain complete 16-bit property
+references. Program schema 3 rejects older exports that may have truncated them.
+The registry resolves installed reference names and supports local `angle.vy`
+reads through its existing spatial owner. Other properties and writes remain
+explicitly unsupported. Public contracts and the installed shrine non-standing
+branch pass with explicit player pose and timing inputs. Final workspace/WASM
+verification and complete shrine interaction remain open.

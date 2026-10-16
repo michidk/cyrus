@@ -1038,3 +1038,63 @@ fn installed_player_arc_receiver_advances_with_distant_player() {
     assert!(world.actors()[receiver].failure().is_none());
     assert_eq!(world.flags(), flags);
 }
+
+#[test]
+fn installed_shrines_read_player_heading_before_nonstanding_branch() {
+    use cyrus_game::script::ScriptActorSource;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (SOUP shrine heading property)");
+        return;
+    }
+    let map =
+        rgpre::import::rgm::parse_rgm_file(&std::fs::read(root.join("maps/ISLAND.RGM")).unwrap())
+            .unwrap();
+    let scripts = cyrus_assets::script_export::prepare(&map, &root, 1).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let player_index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(player_index).unwrap();
+    world
+        .initialize_player_spatial(player, [0; 3], [0, 668, 0])
+        .unwrap();
+    let heading = i32::from(world.spatial(player).unwrap().local.angles[1]);
+    let support = world.model_support(player).unwrap();
+    assert!(support.actor.is_none());
+    let flags = world.flags().to_vec();
+    let shrines: Vec<_> = world
+        .actors()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, actor)| actor.name().starts_with("SHRINE").then_some(index))
+        .collect();
+    assert!(!shrines.is_empty());
+    for index in shrines {
+        let id = world.id(index).unwrap();
+        world
+            .advance(
+                id,
+                cyrus_game::script::ScriptStage::Body(cyrus_script::Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[index].runtime().unwrap().variables()[2],
+            heading
+        );
+        assert!(world.actors()[index].failure().is_none());
+    }
+    assert_eq!(world.flags(), flags);
+    assert_eq!(world.model_support(player).unwrap(), support);
+}

@@ -146,10 +146,10 @@ pub trait Host {
     fn cancel(&mut self, task: u64) -> Result<()> {
         anyhow::bail!("task {task} cancellation unsupported")
     }
-    fn read_property(&mut self, target: &Target, reference: u8) -> Result<i32> {
+    fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         anyhow::bail!("property {target:?}.{reference} unsupported")
     }
-    fn write_property(&mut self, target: &Target, reference: u8, _: i32) -> Result<()> {
+    fn write_property(&mut self, target: &Target, reference: u16, _: i32) -> Result<()> {
         anyhow::bail!("property {target:?}.{reference} unsupported")
     }
     /// Performs the researched End notifications before the invocation yields.

@@ -87,7 +87,7 @@ impl Host for NativeHost {
 
 fn code(name: &str, kind: CallKind, arguments: &[i32]) -> Arc<Program> {
     Arc::new(Program {
-        version: 2,
+        version: 3,
         entry: 0,
         variables: vec![],
         strings: vec![],

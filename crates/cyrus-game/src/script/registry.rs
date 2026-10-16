@@ -279,6 +279,7 @@ pub struct ScriptWorld {
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     in_combat_threshold: Option<i32>,
     attribute_names: Vec<String>,
+    reference_names: Vec<String>,
     names: BTreeMap<i16, usize>,
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
@@ -624,6 +625,7 @@ impl ScriptWorld {
             combat_attacks: scripts.combat_attacks.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
             attribute_names: scripts.definition.attributes.clone(),
+            reference_names: scripts.definition.references.clone(),
             names,
             actor_lists: None,
             markers: None,
@@ -1407,6 +1409,7 @@ impl ScriptWorld {
             generation: self.generation,
             actors: &mut self.actors,
             task_calls: &self.task_calls,
+            reference_names: &self.reference_names,
             ordinary_actors: self
                 .actor_lists
                 .as_ref()
@@ -1852,6 +1855,7 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     ordinary_actors: Option<&'a [ScriptActorId]>,
     in_combat_threshold: Option<i32>,
     task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
+    reference_names: &'a [String],
     names: &'a BTreeMap<i16, usize>,
     flag_state: &'a mut super::flags::Flags,
 }
@@ -2046,6 +2050,36 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 }
 impl Host for GameHost<'_, '_, '_, '_> {
+    fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
+        let name = self
+            .reference_names
+            .get(usize::from(reference))
+            .with_context(|| {
+                format!("property {target:?}.{reference}: installed reference absent")
+            })?;
+        anyhow::ensure!(
+            name.eq_ignore_ascii_case("angle.vy"),
+            "property {target:?}.{name} unsupported"
+        );
+        let index = if matches!(target, Target::Player) {
+            let player = self
+                .selected_player()
+                .context("Player.angle.vy selected player unavailable")?;
+            anyhow::ensure!(
+                player.generation == self.generation && player.index < self.actors.len(),
+                "Player.angle.vy selected player identity is stale"
+            );
+            player.index
+        } else {
+            self.target_index(target)?
+        };
+        let spatial = self
+            .spatial
+            .as_deref()
+            .context("angle.vy spatial owner unavailable")?
+            .actor(index)?;
+        Ok(i32::from(spatial.local.angles[1]))
+    }
     fn call(
         &mut self,
         target: &Target,
@@ -2881,6 +2915,7 @@ mod fighting_tests {
             ordinary_actors: Some(&traversal),
             in_combat_threshold: Some(threshold),
             task_calls: &BTreeMap::new(),
+            reference_names: &definition.references,
             names: &BTreeMap::new(),
             flag_state: &mut super::super::flags::Flags::prepare(&definition).unwrap(),
         };

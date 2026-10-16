@@ -172,7 +172,7 @@ fn installed_indices_are_checked_inside_nested_function_arguments() {
         }],
     };
     let mut program = Program {
-        version: 2,
+        version: 3,
         entry: 0,
         variables: vec![0],
         strings: vec![],
@@ -402,7 +402,7 @@ fn inventory_counts_nested_calls_references_and_unplaced_actors_without_support_
                 arguments: vec![],
             }),
             program: Program {
-                version: 2,
+                version: 3,
                 entry: 0,
                 variables: vec![],
                 strings: vec![],
@@ -649,7 +649,7 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
                 arguments: vec![],
             }),
             program: Program {
-                version: 2,
+                version: 3,
                 entry: 0,
                 variables: vec![],
                 strings: vec![],
@@ -773,7 +773,7 @@ fn authored_location_offsets_participate_in_content_identity() {
         instance_variables: vec![vec![]],
         location_offsets: vec![[1, 2, 3]],
         program: Program {
-            version: 2,
+            version: 3,
             entry: 0,
             variables: vec![],
             strings: vec![],
@@ -873,7 +873,7 @@ fn combat_taunt_records_participate_in_identity_and_require_the_complete_actor_l
             instance_variables: vec![vec![]],
             location_offsets: vec![],
             program: Program {
-                version: 2,
+                version: 3,
                 entry: 0,
                 variables: vec![],
                 strings: vec![],

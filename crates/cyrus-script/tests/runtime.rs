@@ -10,6 +10,7 @@ struct Service {
     ends: usize,
     polls: usize,
     property: i32,
+    property_references: Vec<u16>,
 }
 impl Host for Service {
     fn call(
@@ -46,10 +47,12 @@ impl Host for Service {
         self.ends += 1;
         Ok(())
     }
-    fn read_property(&mut self, _: &Target, _: u8) -> anyhow::Result<i32> {
+    fn read_property(&mut self, _: &Target, reference: u16) -> anyhow::Result<i32> {
+        self.property_references.push(reference);
         Ok(self.property)
     }
-    fn write_property(&mut self, _: &Target, _: u8, value: i32) -> anyhow::Result<()> {
+    fn write_property(&mut self, _: &Target, reference: u16, value: i32) -> anyhow::Result<()> {
+        self.property_references.push(reference);
         self.property = value;
         Ok(())
     }
@@ -79,7 +82,7 @@ fn call(name: &str, kind: CallKind) -> Operation {
 }
 fn program(entry: u32, ops: Vec<Operation>) -> Program {
     Program {
-        version: 2,
+        version: 3,
         entry,
         variables: vec![0],
         strings: vec![],
@@ -139,7 +142,7 @@ fn native_arguments_evaluate_backwards_but_retain_authored_positions() {
         fn end(&mut self, _: Thread) -> anyhow::Result<()> {
             Ok(())
         }
-        fn read_property(&mut self, _: &Target, _: u8) -> anyhow::Result<i32> {
+        fn read_property(&mut self, _: &Target, _: u16) -> anyhow::Result<i32> {
             self.reads += 1;
             Ok(self.reads)
         }
@@ -1204,4 +1207,48 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
         vm.receive(&call, &[], None, &mut host, &mut []).unwrap(),
         None
     );
+}
+
+#[test]
+fn property_references_reach_the_host_without_byte_truncation() {
+    let mut vm = runtime(vec![
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Read {
+                    place: Place::Property {
+                        object: Object::Me,
+                        reference: 294,
+                    },
+                },
+                rest: vec![],
+            },
+        },
+        assign(
+            Place::Property {
+                object: Object::Me,
+                reference: 65535,
+            },
+            23,
+        ),
+        Operation::End { target: 0 },
+    ]);
+    let mut host = Service {
+        property: 17,
+        ..Default::default()
+    };
+    vm.invoke(Thread::Main, &mut host, &mut [], 20).unwrap();
+    assert_eq!(vm.variables(), [17]);
+    assert_eq!(host.property, 23);
+    assert_eq!(host.property_references, [294, 65535]);
+}
+
+#[test]
+fn previously_truncated_program_versions_require_reexport() {
+    let mut old = program(0, vec![Operation::End { target: 0 }]);
+    old.version = 2;
+    let error = Runtime::new(old, "old exported program".into())
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("re-export"));
 }

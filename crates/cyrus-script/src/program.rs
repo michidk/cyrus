@@ -111,7 +111,7 @@ pub enum Object {
 pub enum Place {
     Flag { index: u16 },
     Local { index: u8 },
-    Property { object: Object, reference: u8 },
+    Property { object: Object, reference: u16 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -144,7 +144,7 @@ impl Program {
     /// Validates entry points and continuations before any host side effect.
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 2,
+            self.version == 3,
             "unsupported program version {}; re-export the world",
             self.version
         );
