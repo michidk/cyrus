@@ -475,6 +475,9 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
         app.world().resource::<ScriptStatus>(),
         ScriptStatus::NotRequested
     ));
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .begin_new_game();
     app.insert_resource(prepared());
     app.update();
     {
@@ -3438,6 +3441,9 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         source: replacement.animations.clone(),
         position: [256000, 0, 256000],
     });
+    app.world_mut()
+        .resource_mut::<ScriptActors>()
+        .begin_new_game();
     app.insert_resource(replacement);
     app.update();
     let replaced = snapshot(&app);
