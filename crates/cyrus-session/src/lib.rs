@@ -112,8 +112,6 @@ pub struct RuntimeSessionPlan<'a> {
     render_playback: Option<render_playback::RenderPlaybackSnapshot>,
     player_model: Option<cyrus_render::player_model::PlayerModelSnapshot>,
     world: u32,
-    player_content: String,
-    animation_content: String,
 }
 
 /// Prepared player assets and fresh entity chosen by the aggregate host.
@@ -502,6 +500,11 @@ impl RuntimeSessionSnapshot {
     pub fn current_world(&self) -> u32 {
         self.logical.current_world()
     }
+    /// Saved installed scene selection. Hosts must resolve it against WORLD.INI
+    /// and verify `current_world` before using it to prepare cache files.
+    pub fn current_scene_name(&self) -> &str {
+        &self.lifecycle.current_name
+    }
     pub fn entity_bindings(&self) -> &[EntityBindingSnapshot] {
         &self.entity_bindings
     }
@@ -596,17 +599,6 @@ impl RuntimeSessionSnapshot {
                 "session restoration world {id}: complete decoded player source absent"
             );
         }
-        let source = inputs
-            .sources
-            .get(&world)
-            .context("session current source absent")?;
-        let player_content = source
-            .player
-            .context("session player source absent")?
-            .source_identity
-            .clone()
-            .context("session player source has no decoded identity")?;
-        let animation_content = animation_identity(source.animations)?;
         let source_identities = sources::identities(inputs.sources)?;
         let logical = self.logical.plan(inputs)?;
         ensure!(
@@ -635,8 +627,6 @@ impl RuntimeSessionSnapshot {
             render_playback: self.render_playback,
             player_model: self.player_model,
             world,
-            player_content,
-            animation_content,
         })
     }
 }
@@ -748,13 +738,6 @@ impl RuntimeSessionPlan<'_> {
             _ => anyhow::bail!("session player model/prepared root census differs"),
         };
         let lifecycle = self.lifecycle.restore(prepared, live_world)?;
-        validate_player_assets(
-            live_world,
-            &player.scene,
-            &player.animation,
-            &self.player_content,
-            &self.animation_content,
-        )?;
         let saved_entities: std::collections::BTreeSet<_> = self
             .entity_bindings
             .iter()

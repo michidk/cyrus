@@ -125,3 +125,13 @@ frame without replacing its deadline. `state.textures` reports loaded image
 names, frame counts, selected frames and holds. The requested world must be
 ready, and the image/frame must exist. World replacement clears holds. These
 inspection controls do not change ordinary playback or establish cadence parity.
+
+Native diagnostic `session_load {path}` reads a cyrus document and prepares its
+installed current/visited worlds and service sources off-live. Poll
+`session_load_result` until it reports `committed` or a contextual error.
+Preparation alone is not success. Only one native load may be pending, and its
+terminal result remains available across repeated polls. Acknowledge it with
+`session_load_result {acknowledge: true}` before another request. Capture commands reject while
+that load owns the boundary. These diagnostics do not enable menu Load or
+establish original save eligibility. Installed rendered restoration and revisit
+acceptance remain unfinished.

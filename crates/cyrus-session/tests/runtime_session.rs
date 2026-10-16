@@ -198,13 +198,22 @@ impl cyrus_game::cheats::CheatStore for CheatStore {
 #[test]
 fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu)?;
-        exercise_runtime_session(true, from_menu)?;
+        exercise_runtime_session(false, from_menu, false)?;
+        exercise_runtime_session(true, from_menu, false)?;
     }
     Ok(())
 }
 
-fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
+#[test]
+fn asynchronous_load_waits_for_assets_and_preserves_live_state_on_rejection() -> Result<()> {
+    for from_menu in [false, true] {
+        exercise_runtime_session(false, from_menu, true)?;
+        exercise_runtime_session(true, from_menu, true)?;
+    }
+    Ok(())
+}
+
+fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) -> Result<()> {
     let mut scripts = scripts(vec![Operation::End { target: 0 }]);
     let mut player_script = scripts.actors["ACTOR"].clone();
     player_script.code_origin = 200;
@@ -235,6 +244,17 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
             collision: &collision,
         },
     )]);
+    let original_source_bytes = serde_json::to_vec(&(
+        &scripts,
+        &animations,
+        &collision,
+        scene.source_identity.as_deref(),
+    ))?;
+    assert_eq!(
+        sources[&17].identity()?,
+        blake3::hash(&original_source_bytes).to_hex().to_string(),
+        "buffered source hashing must preserve existing document identities"
+    );
     let hud_asset = hud_asset();
     let preferences = Preferences::new(Store);
     let hud = ScriptHud::default();
@@ -327,7 +347,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
     let map_node = app
         .world_mut()
         .spawn((
-            Name::new("B_0_ACTOR"),
+            Name::new("B_000_ACTOR"),
             Transform::from_xyz(12.0, -34.0, 56.0),
             Visibility::Hidden,
             cyrus_world::animation::AnimationPose {
@@ -962,6 +982,96 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
     let pose = (saved_pose.position, saved_pose.heading);
     let transform = *app.world().get::<Transform>(replacement).unwrap();
     let source = app.world().resource::<PlayerSceneRequest>().0.clone();
+    if via_load {
+        app.init_asset::<cyrus_assets::hud::HudAsset>();
+        app.insert_resource(preferences);
+        let hud_handle = app
+            .world()
+            .resource::<Assets<cyrus_assets::hud::HudAsset>>()
+            .reserve_handle();
+        let audio_handle = app
+            .world_mut()
+            .resource_mut::<Assets<AudioSource>>()
+            .add(music_source.clone());
+        let load_assets = cyrus_session::SessionLoadAssets {
+            sources: cyrus_session::SessionWorldAssets::from_loaded(
+                &saved,
+                BTreeMap::from([(17, (prepared(), scene_handle.clone()))]),
+            )?,
+            hud: hud_handle.clone(),
+            hud_images: None,
+            samples: effect_sources
+                .keys()
+                .map(|identity| (identity.clone(), audio_handle.clone()))
+                .collect(),
+            dialogue: BTreeMap::new(),
+            music: Some(audio_handle),
+        };
+        app.world_mut()
+            .resource_mut::<cyrus_session::SessionBoundary>()
+            .load(saved.clone(), load_assets.clone())?;
+        app.world_mut().run_schedule(Last);
+        assert!(
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .take_result()
+                .is_none()
+        );
+        assert!(app.world().get::<Player>(replacement).is_some());
+        assert!(
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .load(saved.clone(), load_assets.clone())
+                .is_err()
+        );
+        app.world_mut()
+            .resource_mut::<Assets<cyrus_assets::hud::HudAsset>>()
+            .insert(
+                &hud_handle,
+                serde_json::from_value(serde_json::to_value(&hud_asset)?)?,
+            )?;
+        app.world_mut().run_schedule(Last);
+        assert!(matches!(
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .take_result()
+                .unwrap()?,
+            cyrus_session::SessionBoundaryResult::Committed
+        ));
+        assert!(app.world().get_entity(replacement).is_err());
+        let loaded_player = app
+            .world_mut()
+            .query_filtered::<Entity, With<Player>>()
+            .single(app.world())?;
+        assert_eq!(
+            app.world()
+                .get::<PlayerPose>(loaded_player)
+                .unwrap()
+                .position,
+            pose.0
+        );
+        let live_count = app.world_mut().query::<Entity>().iter(app.world()).count();
+        let mut malformed = serde_json::to_value(&saved)?;
+        malformed["dialogue"]["generation"] = 999.into();
+        app.world_mut()
+            .resource_mut::<cyrus_session::SessionBoundary>()
+            .load(serde_json::from_value(malformed)?, load_assets)?;
+        app.world_mut().run_schedule(Last);
+        assert!(
+            app.world_mut()
+                .resource_mut::<cyrus_session::SessionBoundary>()
+                .take_result()
+                .unwrap()
+                .is_err()
+        );
+        assert!(app.world().get::<Player>(loaded_player).is_some());
+        assert_eq!(
+            app.world_mut().query::<Entity>().iter(app.world()).count(),
+            live_count
+        );
+        return Ok(());
+    }
+
     let script_assets = app
         .world_mut()
         .remove_resource::<Assets<Scripts>>()
@@ -1019,92 +1129,6 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool) -> Result<()> {
         1
     );
 
-    app.init_asset::<cyrus_assets::hud::HudAsset>();
-    app.insert_resource(preferences);
-    let hud_handle = app
-        .world()
-        .resource::<Assets<cyrus_assets::hud::HudAsset>>()
-        .reserve_handle();
-    let audio_handle = app
-        .world_mut()
-        .resource_mut::<Assets<AudioSource>>()
-        .add(music_source.clone());
-    let load_assets = cyrus_session::SessionLoadAssets {
-        sources: cyrus_session::SessionWorldAssets::from_loaded(
-            &saved,
-            BTreeMap::from([(17, (prepared(), scene_handle.clone()))]),
-        )?,
-        hud: hud_handle.clone(),
-        hud_images: None,
-        samples: effect_sources
-            .keys()
-            .map(|identity| (identity.clone(), audio_handle.clone()))
-            .collect(),
-        dialogue: BTreeMap::new(),
-        music: Some(audio_handle),
-    };
-    app.world_mut()
-        .resource_mut::<cyrus_session::SessionBoundary>()
-        .load(saved.clone(), load_assets.clone())?;
-    app.world_mut().run_schedule(Last);
-    assert!(
-        app.world_mut()
-            .resource_mut::<cyrus_session::SessionBoundary>()
-            .take_result()
-            .is_none()
-    );
-    assert!(app.world().get::<Player>(replacement).is_some());
-    assert!(
-        app.world_mut()
-            .resource_mut::<cyrus_session::SessionBoundary>()
-            .load(saved.clone(), load_assets.clone())
-            .is_err()
-    );
-    app.world_mut()
-        .resource_mut::<Assets<cyrus_assets::hud::HudAsset>>()
-        .insert(
-            &hud_handle,
-            serde_json::from_value(serde_json::to_value(&hud_asset)?)?,
-        )?;
-    app.world_mut().run_schedule(Last);
-    assert!(matches!(
-        app.world_mut()
-            .resource_mut::<cyrus_session::SessionBoundary>()
-            .take_result()
-            .unwrap()?,
-        cyrus_session::SessionBoundaryResult::Committed
-    ));
-    assert!(app.world().get_entity(replacement).is_err());
-    let loaded_player = app
-        .world_mut()
-        .query_filtered::<Entity, With<Player>>()
-        .single(app.world())?;
-    assert_eq!(
-        app.world()
-            .get::<PlayerPose>(loaded_player)
-            .unwrap()
-            .position,
-        pose.0
-    );
-    let live_count = app.world_mut().query::<Entity>().iter(app.world()).count();
-    let mut malformed = serde_json::to_value(&saved)?;
-    malformed["dialogue"]["generation"] = 999.into();
-    app.world_mut()
-        .resource_mut::<cyrus_session::SessionBoundary>()
-        .load(serde_json::from_value(malformed)?, load_assets)?;
-    app.world_mut().run_schedule(Last);
-    assert!(
-        app.world_mut()
-            .resource_mut::<cyrus_session::SessionBoundary>()
-            .take_result()
-            .unwrap()
-            .is_err()
-    );
-    assert!(app.world().get::<Player>(loaded_player).is_some());
-    assert_eq!(
-        app.world_mut().query::<Entity>().iter(app.world()).count(),
-        live_count
-    );
     if !with_camera && let Some(path) = std::env::var_os("CYRUS_SESSION_FIXTURE") {
         std::fs::write(path, &bytes)?;
     }

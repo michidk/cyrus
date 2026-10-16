@@ -2,6 +2,7 @@
 mod audit;
 mod control;
 mod scene;
+mod session;
 mod settings;
 mod subtitles;
 use crate::control::ControlAddr;

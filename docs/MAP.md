@@ -308,6 +308,7 @@ module where it is defined and regenerate.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Native atomic local-state persistence, outside the read-only install.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
+- `src/session.rs` — Native off-live document preparation; shared boundary owns validation and commit.
 - `src/settings.rs` — Local state lives in `cyrus-config/` next to the working directory, never in the install.
 - `src/storage.rs` — Native byte storage shared by local preferences and cheat persistence.
 - `src/subtitles.rs` — Connect native speech metadata to subtitle presentation without coupling the backends.

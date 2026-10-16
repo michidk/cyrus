@@ -218,15 +218,20 @@ render/audio staging, boundary capture/commit and asynchronous load preparation.
 Native and browser diagnostic capture hooks are present. This does not enable
 accepted end-to-end save/load.
 
-The latest shared-load integration test remains failing because completion stays
-pending after the fixture supplies its delayed HUD asset. The cause has not yet
-been verified. Earlier direct-candidate and active-audio replacement checks passed,
-but do not validate this new asynchronous path. Final workspace gates and browser
-checks have not been run for this checkpoint.
+The shared-load integration test passes after separating its fixture from the
+late plugin-registration check, which reinitializes source asset storage. Focused
+public tests cover delayed-asset waiting, commit, malformed-candidate rejection
+without live replacement, and direct-candidate/audio continuation. These synthetic
+contracts do not establish installed rendered load acceptance. Final workspace
+gates and browser checks have not been run for the current checkpoint.
 
-Remaining work includes resolving that test, implementing the native load caller,
-integrating the separately owned browser storage caller, and verifying installed
-live restoration, restart/reload and visited-world continuation. Revisit guards
+The native diagnostic load caller prepares installed current and visited sources
+off-live. Its malformed-document host test passes without live replacement.
+Terminal native load results remain available until explicitly acknowledged.
+Installed rendered restoration is still under verification; request acceptance
+does not establish successful publication. Remaining work includes integration
+of the separately owned browser storage caller, installed live restoration,
+restart/reload and visited-world continuation. Revisit guards
 remain until service cleanup and retained-task behavior are implemented and
 verified. Audio snapshots cover source-decoder continuation, not downstream
 converter/device queues. Complete gameplay and controller acceptance remain open.

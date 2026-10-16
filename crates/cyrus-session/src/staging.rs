@@ -59,7 +59,10 @@ impl SessionEntityStage {
                 "session staging saved entity duplicated"
             );
             let name = match binding.role() {
-                "map" => Some(format!("B_{}_{}", binding.actor().index, binding.name())),
+                "map" => Some(crate::entities::map_node_name(
+                    binding.actor().index,
+                    binding.name(),
+                )),
                 "player" => {
                     players += 1;
                     ensure!(

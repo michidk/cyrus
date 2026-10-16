@@ -47,7 +47,7 @@ pub fn check_loaded_staging(
                 "rgpre_render":{"version":1,"rob_attributes":null},
                 "rgpre_lighting":{"version":5,"radius_fixed":0,"solid_rgb":null,"vertices":[[0,0],[64,0],[255,0]]}
             }}]}],
-            "nodes":[{"name":"B_0_ACTOR","mesh":0}],
+            "nodes":[{"name":"B_000_ACTOR","mesh":0}],
             "scenes":[{"nodes":[0]}], "scene":0
         })
         .to_string(),

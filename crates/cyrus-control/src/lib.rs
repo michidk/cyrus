@@ -33,6 +33,15 @@ pub enum Command {
     SessionCapture,
     /// Take the pending capture result as one UTF-8 document without writing storage.
     SessionCaptureResult,
+    /// Native diagnostic load from a local document; does not establish menu eligibility.
+    SessionLoad {
+        path: String,
+    },
+    /// Inspect native load completion; acknowledge only after receiving a terminal result.
+    SessionLoadResult {
+        #[serde(default)]
+        acknowledge: bool,
+    },
     /// Capture the primary window to `path` (PNG). The file appears a frame or two later.
     Screenshot {
         path: String,

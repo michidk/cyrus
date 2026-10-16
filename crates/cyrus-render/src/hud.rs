@@ -175,6 +175,31 @@ pub struct HudPresentationAssets {
     pub powerup: Vec<Handle<Image>>,
 }
 
+impl HudPresentationAssets {
+    /// Request installed overlay frames without creating or changing HUD state.
+    pub fn request(hud: &HudAsset, assets: &AssetServer) -> Self {
+        let load = |name: &str, count: usize| -> Vec<Handle<Image>> {
+            (0..count)
+                .map(|f| {
+                    assets
+                        .load_builder()
+                        .with_settings(|settings: &mut ImageLoaderSettings| {
+                            settings.sampler = ImageSampler::nearest();
+                        })
+                        .load(format!("cache://hud/{name}-{f:02}.png"))
+                })
+                .collect()
+        };
+        // The exporter validates these frame counts.
+        Self {
+            candle: load("candle", 81),
+            compass: load("compass", 32),
+            logbook: load("logbook", 32),
+            powerup: load("powerup", hud.powerup_sizes.len()),
+        }
+    }
+}
+
 impl HudState {
     fn new(
         hud: &HudAsset,
@@ -539,25 +564,7 @@ fn update(
         return;
     };
     let Some(mut state) = state else {
-        let load = |name: &str, count: usize| -> Vec<Handle<Image>> {
-            (0..count)
-                .map(|f| {
-                    assets
-                        .load_builder()
-                        .with_settings(|settings: &mut ImageLoaderSettings| {
-                            settings.sampler = ImageSampler::nearest();
-                        })
-                        .load(format!("cache://hud/{name}-{f:02}.png"))
-                })
-                .collect()
-        };
-        // The exporter validates these frame counts.
-        let frames = HudPresentationAssets {
-            candle: load("candle", 81),
-            compass: load("compass", 32),
-            logbook: load("logbook", 32),
-            powerup: load("powerup", hud.powerup_sizes.len()),
-        };
+        let frames = HudPresentationAssets::request(hud, &assets);
         let preferences = HudPreferences::load(&preferences_store).unwrap_or_else(|e| {
             warn!("hud: {e:#}");
             None

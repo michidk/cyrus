@@ -466,8 +466,9 @@ impl WorldSnapshotSources<'_> {
             })
             .transpose()?;
         let mut digest = Digest(blake3::Hasher::new());
+        let mut buffered = std::io::BufWriter::new(&mut digest);
         serde_json::to_writer(
-            &mut digest,
+            &mut buffered,
             &(
                 self.scripts,
                 self.animations,
@@ -475,6 +476,8 @@ impl WorldSnapshotSources<'_> {
                 player_identity,
             ),
         )?;
+        std::io::Write::flush(&mut buffered)?;
+        drop(buffered);
         Ok(digest.0.finalize().to_hex().to_string())
     }
 

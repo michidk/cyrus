@@ -192,8 +192,7 @@ fn start_world_track(
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
     current: Res<CurrentScene>,
     #[cfg(target_arch = "wasm32")] bank: Option<Res<cyrus_assets::sound::MusicSettings>>,
-    settings: Option<Res<SoundSettings>>,
-    audio: Option<Res<Assets<AudioSource>>>,
+    (settings, audio): (Option<Res<SoundSettings>>, Option<Res<Assets<AudioSource>>>),
     mut music: ResMut<Music>,
     playing: Query<Entity, With<MusicPlayer>>,
 ) {
@@ -234,8 +233,10 @@ fn finish_track(
     #[cfg(target_arch = "wasm32")] audio: Option<Res<Assets<AudioSource>>>,
     mut transports: Option<ResMut<Assets<MusicTransport>>>,
     settings: Option<Res<SoundSettings>>,
-    playing: Query<Entity, With<MusicPlayer>>,
-    movie: Query<(), With<crate::CinematicAudio>>,
+    (playing, movie): (
+        Query<Entity, With<MusicPlayer>>,
+        Query<(), With<crate::CinematicAudio>>,
+    ),
     #[cfg(target_arch = "wasm32")] assets: Res<AssetServer>,
 ) {
     let (Some(load), Some(transports)) = (music.load.as_mut(), transports.as_mut()) else {

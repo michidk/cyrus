@@ -342,9 +342,10 @@ engine facts belong in redguard-preservation.
 
 Shared aggregate, registry/service replacements, rendered staging, capture hooks
 and asynchronous load preparation are committed as work in progress. The latest
-asynchronous load integration test remains pending instead of completing; its
-cause is unresolved. Final checkpoint gates have not run. Native load wiring,
-browser-owner integration, installed live restore/restart/reload/revisits and
+asynchronous load integration test passes after isolating its asset fixture from
+late plugin registration. Delayed-asset waiting and rejected-load preservation
+have synthetic coverage. Final checkpoint gates have not run. Native diagnostic load wiring is drafted but unverified.
+Browser-owner integration, installed live restore/restart/reload/revisits and
 complete gameplay acceptance remain unchecked. Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
 [SOUP completion plan](plans/2026-10-12-soup-completion.md#unfinished-session-checkpoint).

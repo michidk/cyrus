@@ -167,9 +167,11 @@ fn bind(
     request: Res<EnvironmentRequest>,
     mut images: ResMut<TextureAnimations>,
     meshes: Res<Assets<Mesh>>,
-    parents: Query<&ChildOf>,
-    names: Query<&Name>,
-    staged: Query<(), With<StagedRenderRoot>>,
+    (parents, names, staged): (
+        Query<&ChildOf>,
+        Query<&Name>,
+        Query<(), With<StagedRenderRoot>>,
+    ),
     candidates: Query<
         (
             Entity,

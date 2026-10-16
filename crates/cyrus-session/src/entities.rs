@@ -33,7 +33,7 @@ impl EntityBindingSnapshot {
             index: self.actor.1,
         }
     }
-    /// Authored actor name; map nodes use the existing exported B_index_name convention.
+    /// Authored actor name; exported map-node indices have a minimum width of three digits.
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -46,6 +46,11 @@ impl EntityBindingSnapshot {
         &self.role
     }
 }
+/// Matches the scene exporter's minimum-width map instance index.
+pub(crate) fn map_node_name(index: usize, name: &str) -> String {
+    format!("B_{index:03}_{name}")
+}
+
 fn role(source: &ScriptActorSource) -> &'static str {
     match source {
         ScriptActorSource::Map(_) => "map",
@@ -208,7 +213,7 @@ pub(super) fn restore(
                 "replacement entity {entity:?}: actor name/role differs"
             );
             if matches!(owner.source, ScriptActorSource::Map(_)) {
-                let expected = format!("B_{}_{}", actor.index, owner.name());
+                let expected = map_node_name(actor.index, owner.name());
                 ensure!(
                     live.get::<Name>(entity)
                         .is_some_and(|name| name.as_str() == expected),

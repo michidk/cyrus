@@ -24,6 +24,7 @@ cyrus-debug = { path = "../cyrus-debug" }
 cyrus-game.workspace = true
 cyrus-control.workspace = true
 anyhow.workspace = true
+blake3.workspace = true
 clap.workspace = true
 # Load libwayland at runtime instead of linking it, so the binary starts on hosts without it.
 winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }

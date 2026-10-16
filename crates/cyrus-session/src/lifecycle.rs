@@ -12,7 +12,7 @@ pub(super) struct LifecycleSnapshot {
     version: u32,
     world: u32,
     request: String,
-    current_name: String,
+    pub(super) current_name: String,
     scripts: String,
     error: Option<String>,
 }

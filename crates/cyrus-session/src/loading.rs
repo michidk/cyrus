@@ -123,7 +123,7 @@ impl SessionLoad {
         let prepared = self.assets.sources.current().0.clone();
         if self.snapshot.sky.is_some() {
             if self.environments.is_empty() {
-                let server = world.resource::<AssetServer>();
+                let server = crate::resource::<AssetServer>(world, "session load asset server")?;
                 self.environments = self
                     .assets
                     .sources
@@ -212,10 +212,13 @@ impl SessionLoad {
         let hud = loaded(world, &self.assets.hud, "HUD")?.context("session HUD disappeared")?;
         let plan = self.snapshot.clone().plan(LogicalSessionRestoreInputs {
             sources: &sources,
-            last_generation: world.resource::<ScriptActors>().generation_high_water(),
+            last_generation: crate::resource::<ScriptActors>(world, "session load registry")?
+                .generation_high_water(),
             hud,
-            preferences: world.resource::<Preferences>(),
-            bios_tick: cyrus_game::clock::bios_tick(world.resource::<Time<Real>>().elapsed()),
+            preferences: crate::resource::<Preferences>(world, "session load preferences")?,
+            bios_tick: cyrus_game::clock::bios_tick(
+                crate::resource::<Time<Real>>(world, "session load real clock")?.elapsed(),
+            ),
         })?;
         let audio = self
             .assets
@@ -247,9 +250,15 @@ impl SessionLoad {
                 entities: stage.bindings(),
                 source_audio: &audio,
                 dialogue: RestoredDialogueAssets {
-                    server: world.resource::<AssetServer>(),
-                    audio_sources: world.resource::<Assets<AudioSource>>(),
-                    loaded: world.resource::<Assets<DialogueClip>>(),
+                    server: crate::resource::<AssetServer>(world, "session load asset server")?,
+                    audio_sources: crate::resource::<Assets<AudioSource>>(
+                        world,
+                        "session load audio assets",
+                    )?,
+                    loaded: crate::resource::<Assets<DialogueClip>>(
+                        world,
+                        "session load dialogue assets",
+                    )?,
                     clips: &clips,
                     requests: &self.assets.dialogue,
                     hud: Some(self.assets.hud.clone()),

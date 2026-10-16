@@ -49,9 +49,10 @@ impl Plugin for ControlPlugin {
         app.insert_resource(Inbox(Mutex::new(rx)))
             .add_message::<cyrus_audio::sound::SoundRequest>()
             .init_resource::<TapRelease>()
+            .init_resource::<crate::session::NativeSessionLoad>()
             .add_systems(
                 PreUpdate,
-                (release_taps, handle)
+                (crate::session::poll, release_taps, handle)
                     .chain()
                     .after(bevy::input::InputSystems)
                     .before(cyrus_console::ConsoleInput),
@@ -109,10 +110,12 @@ fn handle(
     ),
     mut scene_request: ResMut<SceneRequest>,
     current: Res<CurrentScene>,
-    (state, mut next, mut session): (
+    (state, mut next, mut session, mut native_load, install): (
         Res<State<cyrus_game::AppState>>,
         ResMut<NextState<cyrus_game::AppState>>,
         Option<ResMut<cyrus_session::SessionBoundary>>,
+        ResMut<crate::session::NativeSessionLoad>,
+        Option<Res<cyrus_assets::install::GameInstall>>,
     ),
     (mut startup, menu): (
         Option<ResMut<cyrus_startup::StartupPresentation>>,
@@ -185,6 +188,26 @@ fn handle(
                     break;
                 }
             }
+            Command::SessionLoad { path } => install.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("native session install unavailable"))
+                .and_then(|install| native_load.start(path, (**install).clone()))
+                .map(|()| json!({"pending":true}))
+                .map_err(|error| format!("{error:#}")),
+            Command::SessionLoadResult { acknowledge } => {
+                let completion = native_load.completion();
+                if acknowledge && completion.is_none() {
+                    Err("native session load has no terminal result".into())
+                } else {
+                    if acknowledge { let _ = native_load.acknowledge(); }
+                    match completion {
+                        None => Ok(json!({"pending":true})),
+                        Some(Ok(())) => Ok(json!({"pending":false,"committed":true})),
+                        Some(Err(error)) => Err(error),
+                    }
+                }
+            },
+            Command::SessionCapture | Command::SessionCaptureResult if native_load.busy() =>
+                Err("native session load owns the pending boundary".into()),
             Command::SessionCapture => session.as_mut()
                 .ok_or_else(|| anyhow::anyhow!("session boundary unavailable"))
                 .and_then(|boundary| boundary.capture_live())

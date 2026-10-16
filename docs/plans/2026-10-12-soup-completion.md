@@ -125,8 +125,10 @@ HUD, source audio/CD and texture/terrain replacements have landed.
 visited worlds. Native typed publication/fresh-process readback and a typed
 Rust/WASM IndexedDB prototype preserve its exact document across reload and
 reject malformed or aborted writes. These checks establish document transport,
-not gameplay restoration. Shared aggregate preparation and live commit remain
-an unlanded SOUP draft. Complete installed restore, revisits, browser caller
+not gameplay restoration. Shared aggregate preparation and live commit are checkpointed as unfinished
+SOUP work. The native diagnostic load caller prepares sources off-live and
+retains completion until acknowledgement. Synthetic assembly and asynchronous
+rejection contracts pass; installed rendered load acceptance remains open. Complete installed restore, revisits, browser caller
 integration and downstream audio continuation remain open.
 
 Active boundaries are recorded in the roadmap. The SOUP owner retains
@@ -348,14 +350,16 @@ render/audio staging, boundary capture/commit and asynchronous load preparation.
 Native and browser diagnostic capture hooks are present. This does not enable
 accepted end-to-end save/load.
 
-The latest shared-load integration test remains failing because completion stays
-pending after the fixture supplies its delayed HUD asset. The cause has not yet
-been verified. Earlier direct-candidate and active-audio replacement checks passed,
-but do not validate this new asynchronous path. Final workspace gates and browser
-checks have not been run for this checkpoint.
+The shared-load integration test passes after separating its fixture from the
+late plugin-registration check, which reinitializes source asset storage. Focused
+public tests cover delayed-asset waiting, commit, malformed-candidate rejection
+without live replacement, and direct-candidate/audio continuation. These synthetic
+contracts do not establish installed rendered load acceptance. Final workspace
+gates and browser checks have not been run for the current checkpoint.
 
-Remaining work includes resolving that test, implementing the native load caller,
-integrating the separately owned browser storage caller, and verifying installed
+The native diagnostic load caller is implemented but not yet verified. Remaining
+work includes its host tests, integration of the separately owned browser storage
+caller, and installed
 live restoration, restart/reload and visited-world continuation. Revisit guards
 remain until service cleanup and retained-task behavior are implemented and
 verified. Audio snapshots cover source-decoder continuation, not downstream
