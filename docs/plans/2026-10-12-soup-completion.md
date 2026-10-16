@@ -461,5 +461,6 @@ matrices or attached poses. Other properties and angle writes remain explicitly
 unsupported. Four public position contracts pass, including signed limits,
 read-after-write, unchanged attached effective state and explicit rejection. Public contracts and the installed shrine non-standing
 branch pass with explicit player pose and timing inputs. The WASM check passes.
-Final workspace verification remains pending after correcting stale schema
-versions in native/render/session and animation-program test fixtures. Complete shrine interaction remains open.
+Final workspace verification passes 983 Rust test executions with zero installed
+data skips after correcting embedded native/render/session animation-program
+fixtures. Complete shrine interaction remains open.
