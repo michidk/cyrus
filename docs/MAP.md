@@ -74,8 +74,10 @@ module where it is defined and regenerate.
 
 - `src/music.rs` — Background music: Red Book audio tracks of the game CD, which the GOG
 - `src/music/checkpoint.rs` — CD track decoder checkpoints and off-live music replacement construction.
+- `src/persistence.rs` — Explicit host-prepared identity bindings shared by restored audio owners.
 - `src/sound.rs` — Sound effects from the install's `sound/MAIN.SFX`, addressed by their
 - `src/sound/dialogue.rs` — Portable, per-label dialogue assets and their audio dependencies.
+- `src/sound/persistence.rs` — Sample-pool and source-decoder replacements for coordinated session assembly.
 - `src/sound/samples.rs` — Synchronous sample-slot allocation; playback transport cannot own allocation order.
 - `src/sound/script.rs` — Scoped script feedback and queued native/browser cue consumption share Channels.
 - `src/sound/transport.rs` — Exact source-decoder continuation, separate from backend/device output buffers.
@@ -162,6 +164,7 @@ module where it is defined and regenerate.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.
 - `src/script/registry/overlap.rs` — Selected ordinary actor spheres remain separate from body-query working shapes.
+- `src/script/registry/persistence.rs` — Complete actor and world replacements are assembled away from live execution.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
@@ -189,6 +192,7 @@ module where it is defined and regenerate.
 
 - `src/animation.rs` — Mesh frame selection from rgpre's GLB source mapping and decoded model frames.
 - `src/camera.rs` — Inspection camera, independent of gameplay pose and input.
+- `src/camera/persistence.rs` — Camera replacement preserves view state without framing or player movement.
 - `src/camera/projection.rs` — Original Glide horizontal field of view, independent of viewport aspect ratio.
 - `src/console.rs` — Installed paper and bitmap-font presentation for the shared console editor.
 - `src/console_environment.rs` — Original sky-plane and wave console controls, owned by world presentation.
@@ -197,24 +201,32 @@ module where it is defined and regenerate.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/fog/clipping.rs` — Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
+- `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.
 - `src/fog/texture/checkpoint.rs` — Replacement of shared texture timelines against an independently prepared image census.
 - `src/fog/texture/frames.rs` — Retain authored texture frames during the original GLTF decode.
 - `src/hud.rs` — In-game overlay from installed HUD data: candle, compass, logbook icon, toggle notices,
+- `src/hud/persistence.rs` — Retained HUD presentation continuation, separate from inventory and journal owners.
 - `src/lighting.rs` — Authored model lighting inputs and quantized terrain normals from preservation.
 - `src/lighting/prelight.rs` — Retained static RGB from preservation's model-lighting arithmetic.
 - `src/lighting/runtime.rs` — Active authored object lights and quantized distance tables for model shaders.
+- `src/persistence.rs` — Presentation time continuation rebased independently of the host's real-time epoch.
+- `src/persistence/scene.rs` — Adoption of a fully prepared scene without replaying world presentation startup.
+- `src/persistence/source.rs` — Scene identity recorded by the same GLTF decode that creates render assets.
 - `src/player_model.rs` — Player frame-source replacement through the shared native/browser GLB loader.
+- `src/player_model/persistence.rs` — Adoption of a fully loaded player model without a second GLTF request.
 - `src/presentation_clock.rs` — Presentation time continuation rebased independently of the host real-time epoch.
 - `src/sampling.rs` — ROB sampling attributes and effective palette keys from preservation's GLTF contract.
 - `src/script_transform.rs` — Bound script actors retain their original affine matrices through scene presentation.
 - `src/sky.rs` — Glide sky material: a BSI plane projected behind scene geometry, per preservation's sky docs.
+- `src/sky/persistence.rs` — Sky continuation with caller-prepared images and no random draw or scroll advance.
 - `src/subtitles.rs` — Dialogue subtitles: the RTX text of a voice clip, drawn in `fonts/REDSEL.FNT`
 - `src/terrain.rs` — Private terrain mesh preparation after camera projection and wave updates.
 - `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 - `src/water/checkpoint.rs` — Off-live replacement of terrain history and its projected mesh presentation.
+- `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.
 
@@ -224,6 +236,20 @@ module where it is defined and regenerate.
 - `src/routing.rs` — Synchronous receiver dispatch preserves foreign task identity and native string context.
 - `src/tasks.rs` — Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
 - `src/values.rs` — SOUP formula and condition evaluation in the original integer domain.
+
+## `cyrus-session` — Shared off-live gameplay and audio assembly; native/browser storage stays host-owned.
+
+- `src/boundary.rs` — Exclusive host requests after ordinary frame updates; storage stays host-owned.
+- `src/document.rs` — Versioned UTF-8 document framing shared by native and browser storage.
+- `src/entities.rs` — Actor-backed entity census used to prepare map nodes and standalone roles.
+- `src/lifecycle.rs` — Settled world identity and prepared host references for coordinated replacement.
+- `src/loading.rs` — Frame-spanning hidden preparation before one exclusive session publication.
+- `src/music.rs` — CD census capture for the same completed session boundary as logical state.
+- `src/publication.rs` — Exclusive publication of the prepared runtime owners.
+- `src/render_playback.rs` — Texture and terrain continuation published with the shared presentation epoch.
+- `src/scene_instances.rs` — Hidden scene instances loaded without publishing a world entry request.
+- `src/sources.rs` — Host-resolved world sources retained independently of live world-entry resources.
+- `src/staging.rs` — Fresh actor targets with explicit ownership of cancellation cleanup.
 
 ## `cyrus-startup` — Installed splash, title, book menu, settings, cinematics and world-entry presentation.
 
