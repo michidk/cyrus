@@ -14,8 +14,8 @@ as a JSON string. Send `{"type":"save","id":1,"key":"slot"}` or
 `{"type":"load","id":2,"key":"slot"}`, then poll with
 `{"type":"result","id":3}` and read `window.__cyrusSessionResult`.
 Only one operation or unread result is accepted at a time. Saves use the
-`cyrus-sessions` IndexedDB database; preferences retain localStorage. Storage
-completion reports `stored`; a load reports `committed` only after shared
+`cyrus-sessions` IndexedDB database; preferences retain localStorage. Save transactions
+request strict IndexedDB durability and report `stored` only after completion. A load reports `committed` only after shared
 source validation and exclusive live replacement. Malformed documents, missing
 records and storage failures return contextual errors. These inspection requests
 do not enable menu save slots or establish complete gameplay restoration.

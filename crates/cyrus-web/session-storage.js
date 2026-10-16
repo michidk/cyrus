@@ -21,7 +21,9 @@ async function transact(name, key, mode, operation) {
   const db = await open(name);
   try {
     return await new Promise((resolve, reject) => {
-      const transaction = db.transaction('documents', mode);
+      const transaction = mode === 'readwrite'
+        ? db.transaction('documents', mode, { durability: 'strict' })
+        : db.transaction('documents', mode);
       let result;
       transaction.oncomplete = () => resolve(result);
       transaction.onabort = () => reject(new Error(`${mode} ${name}/${key}: ${transaction.error ?? 'transaction aborted'}`));
