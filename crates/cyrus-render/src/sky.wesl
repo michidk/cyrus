@@ -1,7 +1,7 @@
 import bevy_pbr::render::mesh_view_bindings::view;
 import constants::MATERIAL_BIND_GROUP;
 import bevy_render::color_operations::{linear_to_srgb, srgb_to_linear};
-import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer, framebuffer_rgb565, framebuffer_dither, framebuffer_blend_integer};
+import package::glide_fog::{fog_coordinate, fog_table_position, table_density, blend_fog, blend_fog_integer};
 
 @group(MATERIAL_BIND_GROUP) @binding(0) var sky: texture_2d<f32>;
 @group(MATERIAL_BIND_GROUP) @binding(1) var sky_sampler: sampler;
@@ -65,9 +65,6 @@ fn faithful_sun_sample(uv: vec2<f32>) -> u32 {
     return u32(top + floor((bottom - top) * fraction.y));
 }
 
-// Preservation sky.md: separately truncated terms and RGB565 dither subtraction.
-
-
 fn cloud_color(ray: vec3<f32>, near: vec3<f32>) -> vec3<f32> {
     if sky_parameters.plane.z == 0.0 { return srgb_to_linear(sky_parameters.fog_rgb.rgb); }
     if sky_parameters.scroll.z != 0.0 {
@@ -114,7 +111,6 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let near = near_h.xyz / near_h.w;
     let ray = (view.world_from_view * vec4(near, 0.0)).xyz;
     var color = cloud_color(ray, near);
-    if sky_parameters.scroll.w == 0.0 { color = framebuffer_rgb565(color, in.position.xy); }
     if sky_parameters.sun_position.w > 0.0 {
         let center = (view.view_from_world * vec4(sky_parameters.sun_position.xyz, 0.0)).xyz;
         let depth = -center.z;
@@ -129,13 +125,8 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
             } else {
                 opacity = textureSampleLevel(sun, sun_sampler, uv, 0.0).r;
             }
-            if sky_parameters.scroll.z == 0.0 && sky_parameters.scroll.w == 0.0 {
-                color = framebuffer_blend_integer(color, sky_parameters.sun_color.rgb, alpha, framebuffer_dither(in.position.xy));
-            } else {
-                color = srgb_to_linear(mix(linear_to_srgb(color), sky_parameters.sun_color.rgb, opacity));
-            }
+            color = srgb_to_linear(mix(linear_to_srgb(color), sky_parameters.sun_color.rgb, opacity));
         }
     }
-    if sky_parameters.scroll.w == 0.0 { color = framebuffer_rgb565(color, in.position.xy); }
     return vec4(color, 1.0);
 }

@@ -224,6 +224,7 @@ fn spawn(
     commands.spawn((
         ViewCamera,
         Camera3d::default(),
+        Msaa::Off,
         Projection::custom(projection::GameProjection::default()),
         Transform::from_xyz(0.0, 60.0, 0.0).looking_at(Vec3::new(100.0, 40.0, 100.0), Vec3::Y),
     ));
@@ -232,6 +233,16 @@ fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_camera_disables_multisampling() {
+        let mut app = App::new();
+        app.init_resource::<FlycamSettings>()
+            .add_systems(Update, spawn);
+        app.update();
+        let mut cameras = app.world_mut().query_filtered::<&Msaa, With<ViewCamera>>();
+        assert_eq!(*cameras.single(app.world()).unwrap(), Msaa::Off);
+    }
 
     #[test]
     fn entry_preserves_a_published_camera_and_controls() {
