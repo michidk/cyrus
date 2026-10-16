@@ -74,7 +74,10 @@ fn changed_sources_and_interrupted_cache_are_rebuilt() {
     std::fs::write(root.join("notes.def"), "first").unwrap();
     let install = GameInstall::open(&root).unwrap();
     let cache = scratch.0.join("cache");
-    assert_eq!(install.cache_path(&cache).unwrap(), cache);
+    assert_eq!(
+        install.cache_path(&cache).unwrap(),
+        scratch.0.canonicalize().unwrap().join("cache")
+    );
     assert!(install.cache_path(&root.join("new-cache")).is_err());
     assert!(!root.join("new-cache").exists());
     #[cfg(unix)]
