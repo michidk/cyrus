@@ -1,11 +1,11 @@
 //! Separate map records retain scripts/tasks and rebuild temporary actor attributes.
 use super::{ScriptActorId, ScriptInputs, ScriptStage, ScriptWorld};
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 
 impl ScriptWorld {
     /// Separate-record selection shares the cached view window and cell order.
     /// Activation does not grant persistent membership; ordinary border filters
-    /// do not apply. Type-six light eligibility remains unsupported by its caller.
+    /// do not apply. Light state remains with its separate record.
     pub fn separate_actors(&mut self, view: [i32; 2]) -> Result<&[ScriptActorId]> {
         self.ordinary_actors(view)?;
         Ok(self
@@ -15,10 +15,10 @@ impl ScriptWorld {
             .separate_selected())
     }
 
-    /// Run the admitted type-two script/task traversal after ordinary actors.
+    /// Run the separate script/task traversal after ordinary actors.
     /// Each invocation clears temporary attributes/control, while position, locals,
-    /// continuations and task state remain with the separate record. Type-six light
-    /// state and deferred separate-list relocation are not implemented here.
+    /// continuations and task state remain with the separate record. Light maintenance
+    /// runs after script/task processing. Deferred separate-list relocation remains unsupported.
     pub fn update_separate(
         &mut self,
         view: [i32; 2],
@@ -38,16 +38,6 @@ impl ScriptWorld {
         for id in selected {
             let actor = &mut self.actors[id.index];
             if actor.failure().is_some() || actor.unavailable().is_some() {
-                continue;
-            }
-            let placement = actor.placement().context("separate map placement absent")?;
-            if placement.object_type == 6 {
-                actor.update_failure = Some(format!(
-                    "world {} instance {} actor {}: separate light eligibility/lifecycle unavailable",
-                    self.world,
-                    id.index,
-                    actor.name()
-                ));
                 continue;
             }
             actor.attributes.fill(0);
@@ -72,6 +62,7 @@ impl ScriptWorld {
                         budget,
                     )?;
                 }
+                self.actors[id.index].maintain_light(inputs.nominal_ticks.unwrap());
                 Ok(())
             })();
             let actor = &mut self.actors[id.index];

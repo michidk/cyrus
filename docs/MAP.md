@@ -160,6 +160,7 @@ module where it is defined and regenerate.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
 - `src/script/registry/ground.rs` — Ordinary primary ground queries use retained models and never player fallback.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
+- `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.

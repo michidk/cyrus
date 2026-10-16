@@ -411,10 +411,13 @@ instances from installed definitions, after ordinary map actors. They have separ
 locals and task slots. Player defaults to CYRUS; Camera uses its own instance.
 `ScriptActorSource` distinguishes those roles from map placements. Type-2/type-6
 map records consume sequential authored locals without ordinary actor identifiers.
-Selected type-two records run their entry hook and enabled script/task pass after
-ordinary actors. Their attributes and control state are temporary; locals,
-continuations and tasks persist. Type-six light lifecycle and separate-record
-movement remain explicitly unsupported. Status `instances` counts logical entries,
+Selected type-two and type-six records run their entry hook and enabled script/task
+pass after ordinary actors. Their attributes and control state are temporary; locals,
+continuations and tasks persist. Authored type-six lights retain enabled/locked state
+and inactivity across replacement. `LightOff` disables an existing light without
+allocating one. Separate light maintenance runs even with tasks disabled; its wrapping
+byte counter releases disabled records above 32 ticks. Dynamic light creation,
+modulation, type-four light control and separate-record movement remain unsupported. Status `instances` counts logical entries,
 including standalone roles and unavailable map records.
 
 Native routing supports Me, Player, Camera and installed RANM names with ASCII

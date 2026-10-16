@@ -4,7 +4,7 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 14,
+        version: 15,
         combat_attacks: vec![],
         in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
@@ -105,6 +105,9 @@ fn portable_script_records_round_trip_with_the_same_identity() {
             active: 0,
             model_name: format!("MODEL{index}"),
             model_mode,
+            light_intensity: -123,
+            light_radius: 32767,
+            light_rgb: [-32768, 19, -7],
             map_position: [0; 3],
             angles: [0; 3],
         })
@@ -121,6 +124,18 @@ fn portable_script_records_round_trip_with_the_same_identity() {
             .map(|instance| (instance.model_name.as_str(), instance.model_mode))
             .collect::<Vec<_>>(),
         [("MODEL0", 0), ("MODEL1", 1), ("MODEL2", 2), ("MODEL3", 255)]
+    );
+    assert_eq!(decoded.instances[0].light_intensity, -123);
+    assert_eq!(decoded.instances[0].light_radius, 32767);
+    assert_eq!(decoded.instances[0].light_rgb, [-32768, 19, -7]);
+    let mut changed = decoded.clone();
+    changed.instances[0].light_rgb[0] = 0;
+    assert!(
+        changed
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
     );
     for change_name in [false, true] {
         let mut changed = decoded.clone();
@@ -243,6 +258,21 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         assert_eq!(scripts.instances.len(), placements.len());
         for (instance, placement) in scripts.instances.iter().zip(placements) {
             assert_eq!(instance.object_id, placement.id);
+            assert_eq!(
+                (
+                    instance.light_intensity,
+                    instance.light_radius,
+                    instance.light_rgb
+                ),
+                (
+                    placement.intensity,
+                    placement.radius,
+                    [placement.red, placement.green, placement.blue]
+                ),
+                "{} object {} authored light fields",
+                path.display(),
+                placement.id
+            );
             assert_eq!(
                 instance.model_name,
                 placement.model_name(),
@@ -560,7 +590,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 14);
+    assert_eq!(scripts.version, 15);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());

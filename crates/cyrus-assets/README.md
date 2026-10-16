@@ -62,7 +62,7 @@ unsupported model references remain explicit in the asset's `unsupported` map.
 Original animation payloads and the RASC, RAST, RASB and RAVA script inputs are
 retained too. Preservation supplies typed SOUP decoding; cyrus exports version-2 portable
 program descriptors with names from the installed SOUP386.DEF. The independent
-version-14 `.scripts` sidecar retains the validated SYSTEM.INI clock and ordinary-update switches, the installed actor-pool capacity, actor RASC
+version-15 `.scripts` sidecar retains the validated SYSTEM.INI clock and ordinary-update switches, the installed actor-pool capacity, actor RASC
 origins, definitions, fresh-game flag values, locals, strings,
 initialized attributes, typed native hooks and explicit unsupported records. Placement records retain
 the original model name and complete model-mode byte for actor initialization.
@@ -258,3 +258,6 @@ remain absent; combat decision execution must not treat them as implicit zero.
 
 Script caches retain the optional installed fighting-query threshold in Q8 units.
 Changing it changes the content identity; older caches require re-export.
+
+Script instances retain authored signed light intensity, radius and RGB before
+runtime object-kind admission. Older script caches require re-export.

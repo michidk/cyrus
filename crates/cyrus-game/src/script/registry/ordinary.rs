@@ -290,6 +290,13 @@ impl ScriptWorld {
                 if let Some(query) = player_query {
                     self.advance_player_walking(id, query, player_timing, true, sounds)?;
                 }
+                if !self.actors[id.index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| control.hidden)
+                {
+                    self.actors[id.index].maintain_light(ticks);
+                }
                 if self.actors[id.index].attributes[1] != 0 {
                     let collision = collision.ok_or_else(|| {
                         anyhow::anyhow!(

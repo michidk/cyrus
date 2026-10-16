@@ -1356,7 +1356,7 @@ mod dialogue_tests {
     fn maintenance_world(navigation: bool) -> cyrus_game::script::ScriptWorld {
         use cyrus_assets::{animation::Animations, script::Scripts};
         let mut scripts: Scripts = serde_json::from_value(serde_json::json!({
-            "version":14,"combat_attacks":[],"world":7,"content_id":"","actor_pool_capacity":32,
+            "version":15,"combat_attacks":[],"world":7,"content_id":"","actor_pool_capacity":32,
             "player_distance_override":false,
             "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,
                 "use_smooth_fps":true,"use_smooth_divisor":true},
@@ -1379,6 +1379,9 @@ mod dialogue_tests {
                 active: 1,
                 model_name: String::new(),
                 model_mode: 0,
+                light_intensity: 0,
+                light_radius: 0,
+                light_rgb: [0; 3],
                 map_position: [0; 3],
                 angles: [0; 3],
             })

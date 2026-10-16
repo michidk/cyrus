@@ -61,7 +61,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 14,
+        version: 15,
         combat_attacks: vec![],
         in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
@@ -130,6 +130,9 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
+                light_intensity: 0,
+                light_radius: 0,
+                light_rgb: [0; 3],
                 map_position: [0; 3],
                 angles: [0; 3],
             })

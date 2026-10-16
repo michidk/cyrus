@@ -306,6 +306,7 @@ impl SessionSceneInstances {
             fidelity,
             clipping,
             camera.position(),
+            &snapshot.logical.object_lights()?,
         )
     }
 

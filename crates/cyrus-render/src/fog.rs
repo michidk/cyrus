@@ -294,11 +294,23 @@ fn apply_scene_fog(
         Query<(Entity, &MeshMaterial3d<TerrainMaterial>)>,
         Query<&bevy::gltf::GltfExtras>,
         Query<&crate::flat::Flat>,
+        (
+            Option<Res<cyrus_game::script::ScriptActors>>,
+            Option<Res<cyrus_world::lifecycle::PreparedWorld>>,
+        ),
     ),
 ) {
     let (parents, staged) = hierarchy;
-    let (mut previous, mut lights, mut images, scene_handles, terrain_handles, node_extras, flats) =
-        runtime;
+    let (
+        mut previous,
+        mut lights,
+        mut images,
+        scene_handles,
+        terrain_handles,
+        node_extras,
+        flats,
+        light_owners,
+    ) = runtime;
     let (Some(environment), Some([near, far])) =
         (environments.get(&request.0), distance.effective(&fidelity))
     else {
@@ -308,7 +320,24 @@ fn apply_scene_fog(
         .iter()
         .find_map(|(_, transform)| transform.map(|t| t.translation))
         .unwrap_or_default();
-    let light_texture = lights.update(request.0.id(), environment, position, &mut images);
+    let retained_lights = light_owners
+        .0
+        .as_ref()
+        .zip(light_owners.1.as_ref())
+        .and_then(|(actors, prepared)| {
+            let current = actors.current.as_ref()?;
+            (prepared.world == Some(current.world)
+                && request.0.path() == Some(&prepared.environment_path))
+            .then(|| current.object_lights())
+        });
+    let light_texture = lights.update(
+        request.0.id(),
+        retained_lights
+            .as_deref()
+            .unwrap_or(&environment.object_lights),
+        position,
+        &mut images,
+    );
     for (mut projection, _) in &mut cameras {
         if let Projection::Custom(custom) = &mut *projection
             && let Some(crate::camera::projection::GameProjection(perspective)) = custom.get_mut()
@@ -885,7 +914,8 @@ mod tests {
                 environment_id,
                 &Fidelity::default(),
                 [7.0, 3800.0],
-                Vec3::ZERO
+                Vec3::ZERO,
+                &destination.object_lights,
             )
             .is_err()
         );
@@ -904,6 +934,7 @@ mod tests {
             &Fidelity::default(),
             [7.0, 3800.0],
             Vec3::ZERO,
+            &destination.object_lights,
         )
         .unwrap();
         validate_scene_materials(app.world(), &[staged_root]).unwrap();

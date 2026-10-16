@@ -383,3 +383,14 @@ dormant START unchanged; its 70 pre-existing failures persist. Complete gameplay
 revisit acceptance remains open.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.
+
+### Authored light lifecycle draft
+
+The current implementation retains authored type-six lights, applies `LightOff`,
+and preserves disabled state through logical replacement and material staging.
+Four public registry contracts, installed-map light projection and the renderer
+texture replacement test pass. Clippy and the WASM session check pass; full
+workspace tests and installed rendered light comparison remain pending.
+The rules follow the [published light lifecycle](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-light-lifecycle).
+Dynamic light creation, modulation, type-four light controls and separate-record
+movement remain unsupported. This does not complete the light/native-service row.

@@ -8,6 +8,7 @@ pub(super) mod falling;
 mod follow;
 pub(super) mod ground;
 mod late;
+mod light;
 pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
@@ -197,6 +198,7 @@ pub struct ScriptActor {
     model: model::ModelState,
     collision: Option<ground::OrdinaryCollisionShape>,
     player_movement: Option<player::PlayerMovement>,
+    light: Option<light::LightState>,
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
     animation: Option<ScriptAnimation>,
@@ -508,7 +510,14 @@ impl ScriptWorld {
                 _ => None,
             };
             let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6));
+            let light = match &source {
+                ScriptActorSource::Map(placement) if placement.object_type == 6 => {
+                    Some(light::LightState::authored(placement))
+                }
+                _ => None,
+            };
             ScriptActor {
+                light,
                 message_read: 0,
                 surface: (control.is_some()
                     || matches!(
@@ -1308,9 +1317,9 @@ impl ScriptWorld {
             anyhow::ensure!(
                 self.actors[index]
                     .placement()
-                    .is_some_and(|placement| placement.object_type == 2)
+                    .is_some_and(|placement| matches!(placement.object_type, 2 | 6))
                     && self.actors[index].control.is_some(),
-                "separate stage requires admitted type-two scratch state"
+                "separate stage requires admitted type-two or type-six scratch state"
             );
         }
         let nominal_ticks = inputs.nominal_ticks;
@@ -2058,6 +2067,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.globals.lineup_result = None;
             anyhow::bail!("PlayerLineUp alignment execution unavailable; shared result unknown");
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
+            anyhow::ensure!(arguments.is_empty(), "LightOff requires no arguments");
+            let actor = &mut self.actors[self.index];
+            anyhow::ensure!(
+                actor
+                    .placement()
+                    .is_none_or(|placement| placement.object_type != 4),
+                "LightOff type-four light initialization unavailable"
+            );
+            if let Some(light) = &mut actor.light {
+                light.locked = false;
+                light.enabled = false;
+                light.inactive_ticks = 0;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("beginCombat") {
             anyhow::ensure!(arguments.is_empty(), "beginCombat requires no arguments");
             let inputs = match self.inputs.combat_entry {
@@ -2760,6 +2785,7 @@ mod fighting_tests {
         };
         let mut actors: Vec<_> = (0..=positions.len())
             .map(|index| ScriptActor {
+                light: None,
                 message_read: 0,
                 source: ScriptActorSource::Map(Instance {
                     object_id: index as u32,
@@ -2768,6 +2794,9 @@ mod fighting_tests {
                     active: 0,
                     model_name: String::new(),
                     model_mode: 0,
+                    light_intensity: 0,
+                    light_radius: 0,
+                    light_rgb: [0; 3],
                     map_position: [0; 3],
                     angles: [0; 3],
                 }),

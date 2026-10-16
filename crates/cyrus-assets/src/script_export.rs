@@ -187,7 +187,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 14,
+        version: 15,
         in_combat_threshold: combat
             .as_ref()
             .and_then(|combat| combat.misc.in_combat_threshold)
@@ -222,6 +222,9 @@ pub fn prepare_source(
                 active: record.is_active,
                 model_name: record.model_name(),
                 model_mode: record.is_static,
+                light_intensity: record.intensity,
+                light_radius: record.radius,
+                light_rgb: [record.red, record.green, record.blue],
                 map_position: [
                     i64::from(record.pos_x),
                     i64::from(record.pos_y),

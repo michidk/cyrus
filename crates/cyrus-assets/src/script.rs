@@ -223,6 +223,10 @@ pub struct Instance {
     pub model_name: String,
     /// Raw MPOB model-mode byte, retained without boolean conversion.
     pub model_mode: u8,
+    /// Authored signed light fields, retained before object-kind admission.
+    pub light_intensity: i16,
+    pub light_radius: i16,
+    pub light_rgb: [i16; 3],
     /// Packed map coordinates retained in their original field units.
     pub map_position: [i64; 3],
     pub angles: [u32; 3],
@@ -272,7 +276,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 14,
+            self.version == 15,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

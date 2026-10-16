@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 14,
+        version: 15,
         combat_attacks: vec![],
         in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
@@ -142,6 +142,9 @@ fn cache() -> Scripts {
                 active: 0,
                 model_name: String::new(),
                 model_mode: 0,
+                light_intensity: 0,
+                light_radius: 0,
+                light_rgb: [0; 3],
                 map_position: [0; 3],
                 angles: [0; 3],
             })
@@ -1756,6 +1759,9 @@ fn nested_families_compose_original_positions_and_keep_generation_identity() {
             active: 0,
             model_name: String::new(),
             model_mode: 0,
+            light_intensity: 0,
+            light_radius: 0,
+            light_rgb: [0; 3],
             map_position: position,
             angles,
         });
@@ -5329,7 +5335,7 @@ fn ordinary_collision_preparation_precedes_script_and_admitted_late_response() {
         );
         for actor in world.actors().iter().take(2) {
             if available {
-                assert!(actor.failure().is_none(), "{:?}", actor.failure());
+                assert!(actor.failure().is_none());
             } else {
                 assert!(
                     actor
@@ -9232,7 +9238,7 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
         for actor in world.actors() {
             assert!(actor.control_state().is_none());
             assert!(actor.attributes().iter().all(|value| *value == 0));
-            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            assert!(actor.failure().is_none());
         }
     }
     let mut scripts = wait_cache(vec![
@@ -9364,7 +9370,7 @@ fn separate_attribute_writes_are_temporary_and_activation_does_not_bypass_view_s
 }
 
 #[test]
-fn separate_disabled_tasks_preserve_locals_and_lights_report_missing_lifecycle() {
+fn separate_disabled_tasks_preserve_locals_and_maintain_authored_lights() {
     use cyrus_game::script::ScriptInputs;
     for object_type in [2, 6] {
         let mut scripts = cache();
@@ -9394,16 +9400,7 @@ fn separate_disabled_tasks_preserve_locals_and_lights_report_missing_lifecycle()
                 [if index == 0 { 4 } else { 9 }]
             );
             assert!(actor.control_state().is_none());
-            if object_type == 6 {
-                assert!(
-                    actor
-                        .failure()
-                        .unwrap()
-                        .contains("separate light eligibility/lifecycle unavailable")
-                );
-            } else {
-                assert!(actor.failure().is_none());
-            }
+            assert!(actor.failure().is_none());
         }
     }
 }
@@ -10871,7 +10868,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
                 );
                 continue;
             }
-            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+            assert!(actor.failure().is_none());
             let control = actor.control_state().unwrap();
             assert_eq!(
                 (
@@ -11885,4 +11882,208 @@ fn restored_alternate_entity_survives_ordinary_binding_updates() {
         app.world().get::<ChildOf>(replacement).unwrap().parent(),
         player
     );
+}
+
+#[test]
+fn authored_light_off_survives_world_replacement_without_reenabling() {
+    use cyrus_game::script::{
+        GameplayGlobals, ScriptInputs, ScriptStage, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = random_scripts("LightOff", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.instances.truncate(1);
+    let placement = &mut scripts.instances[0];
+    placement.object_type = 6;
+    placement.light_intensity = 211;
+    placement.light_radius = 900;
+    placement.light_rgb = [-12, 34, 56];
+    placement.map_position = [100, -200, 300];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (_, _, animations) = revisit_test_app(&scripts);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let lights = world.object_lights();
+    assert_eq!(lights.len(), 1);
+    assert_eq!(lights[0].position, [100, -200, 300]);
+    assert_eq!(lights[0].radius, 900);
+    assert_eq!(lights[0].rgb, [-12, 34, 56]);
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert!(world.object_lights().is_empty());
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+    let snapshot = world.snapshot(&sources).unwrap();
+    let snapshot = serde_json::from_slice(&serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    let replacement = ScriptWorld::from_snapshot(
+        snapshot,
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert!(replacement.object_lights().is_empty());
+    assert_eq!(replacement.actors()[0].runtime().unwrap().variables(), [0]);
+    let mut saved = serde_json::to_value(replacement.snapshot(&sources).unwrap()).unwrap();
+    saved["actors"][0]["light"]["position"][0] = 101.into();
+    assert!(
+        ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 3,
+                globals: GameplayGlobals::default(),
+                samples: &BTreeMap::new()
+            },
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn light_off_without_a_record_returns_zero_without_creating_a_light() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = random_scripts("LightOff", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs::default(),
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert!(world.object_lights().is_empty());
+    assert_eq!(world.actors()[0].runtime().unwrap().variables(), [0]);
+}
+
+#[test]
+fn separate_light_cleanup_runs_with_tasks_disabled_and_uses_wrapping_byte_ticks() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage, WorldSnapshotSources};
+    for (ticks, retained) in [(32, true), (33, false), (256, true)] {
+        let mut scripts = random_scripts("LightOff", vec![], Object::Me);
+        scripts.definition.functions[1].param_count = 0;
+        scripts.updates.task_system = false;
+        scripts.instances.truncate(1);
+        scripts.instances[0].object_type = 6;
+        scripts.instances[0].map_position = [600, 0, 600];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (_, _, animations) = revisit_test_app(&scripts);
+        let collision = cyrus_assets::collision::CollisionScene::default();
+        let sources = WorldSnapshotSources {
+            player: None,
+            scripts: &scripts,
+            animations: &animations,
+            collision: &collision,
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs::default(),
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        world
+            .update_separate(
+                [600, 600],
+                ScriptInputs {
+                    nominal_ticks: Some(ticks),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        assert!(world.actors()[0].failure().is_none());
+        let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        assert_eq!(
+            !saved["actors"][0]["light"].is_null(),
+            retained,
+            "ticks {ticks}"
+        );
+        assert!(world.object_lights().is_empty());
+    }
+}
+
+#[test]
+fn installed_authored_lights_reach_logical_render_projection_in_map_order() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard");
+    if !root.join("RGFX.EXE").exists() {
+        eprintln!("skipped: no install (authored logical lights)");
+        return;
+    }
+    let mut count = 0;
+    for entry in std::fs::read_dir(root.join("maps")).unwrap() {
+        let path = entry.unwrap().path();
+        if !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("rgm"))
+        {
+            continue;
+        }
+        let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(&path).unwrap()).unwrap();
+        let expected: Vec<_> = map
+            .sections
+            .iter()
+            .filter_map(|section| match section {
+                rgpre::import::rgm::RgmSection::MpobParsed(_, records) => Some(records),
+                _ => None,
+            })
+            .flatten()
+            .filter(|record| record.object_type == 6)
+            .collect();
+        let scripts = cyrus_assets::script_export::prepare(&map, &root, 0).unwrap();
+        let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let lights = world.object_lights();
+        assert_eq!(
+            lights.len(),
+            expected.len(),
+            "{} light census",
+            path.display()
+        );
+        for (light, record) in lights.iter().zip(expected) {
+            assert_eq!(
+                light.radius,
+                record.radius,
+                "{} light radius",
+                path.display()
+            );
+            assert_eq!(
+                light.rgb,
+                [record.red, record.green, record.blue],
+                "{} light RGB",
+                path.display()
+            );
+        }
+        count += lights.len();
+    }
+    assert!(count > 0, "installed maps must exercise authored lights");
 }

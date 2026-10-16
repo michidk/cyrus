@@ -47,7 +47,7 @@ pub struct StaticLightingInstance {
     pub matrix: [i32; 9],
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 /// Signed authored light inputs, without conversion to a physical point light.
 pub struct LocalLight {
     /// Engine world coordinates.

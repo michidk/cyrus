@@ -7,7 +7,8 @@ It depends on the state owners, which never depend on this assembly crate.
 The runtime snapshot composes current and visited logical worlds, HUD, clock,
 RNG, toggles, fidelity modes, player placement and explicit-update state, sample playback and
 retained dialogue preparation, CD source transport, optional rendered HUD state, presentation-clock epoch, camera/framing state, sky continuation, texture deadlines/holds, terrain history/private meshes and per-world environment edits. Reconstruction uses a logical identity plan before
-binding audio and player presentation. No scripts, initialization or playback run
+binding audio and player presentation. Authored type-six light state belongs to each
+logical world; staged scene materials use the saved current world's enabled lights. No scripts, initialization or playback run
 during construction. Settled lifecycle capture validates prepared script bytes against
 the logical source, retains request/current identity and any scene-load error, and
 rejects in-flight preparation. Player replacements also retain the displayed

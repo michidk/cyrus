@@ -239,6 +239,7 @@ struct ActorSnapshot {
     model: model::ModelSnapshot,
     collision: Option<CollisionSnapshot>,
     player_movement: Option<player::PlayerMovementSnapshot>,
+    light: Option<super::light::LightState>,
     tasks: super::super::NativeTasksSnapshot,
     animation: Option<AnimationSnapshot>,
     animation_failure: Option<String>,
@@ -263,6 +264,7 @@ impl ActorSnapshot {
             attributes: actor.attributes.clone(),
             control: actor.control.as_ref().map(ControlSnapshot::capture),
             surface: actor.surface,
+            light: actor.light.clone(),
             model: actor.model.snapshot(),
             collision: actor.collision.as_ref().map(CollisionSnapshot::capture),
             player_movement: actor
@@ -334,6 +336,23 @@ impl ActorSnapshot {
             "saved actor {}: collision shape on unsupported role",
             self.name
         );
+        if let Some(light) = &self.light {
+            let placement = actor
+                .placement()
+                .filter(|placement| placement.object_type == 6)
+                .with_context(|| {
+                    format!(
+                        "saved actor {}: light allocation on unsupported role",
+                        self.name
+                    )
+                })?;
+            ensure!(
+                light.position == placement.map_position.map(|value| value as i32)
+                    && light.offset == [0; 3],
+                "saved actor {}: moving or offset object light unsupported",
+                self.name
+            );
+        }
         let animation = self
             .animation
             .map(|saved| -> Result<_> {
@@ -399,6 +418,7 @@ impl ActorSnapshot {
             .map(|saved| saved.restore(context.rebind))
             .transpose()?;
         actor.surface = self.surface;
+        actor.light = self.light;
         actor.model = model::ModelState::from_snapshot(
             self.model,
             context.animations,
@@ -944,6 +964,27 @@ pub struct LogicalSessionRestoreInputs<'a> {
     pub bios_tick: u32,
 }
 impl LogicalSessionSnapshot {
+    /// Saved enabled object lights for off-live material preparation. Source and
+    /// identity validation still belongs to the complete replacement plan.
+    pub fn object_lights(&self) -> Result<Vec<cyrus_assets::environment::LocalLight>> {
+        let current = self
+            .registry
+            .worlds
+            .iter()
+            .find(|world| world.world == self.registry.current)
+            .context("saved light world absent")?;
+        Ok(current
+            .actors
+            .iter()
+            .filter_map(|actor| {
+                actor
+                    .light
+                    .as_ref()
+                    .and_then(super::light::LightState::rendered)
+            })
+            .collect())
+    }
+
     /// World assets the host must prepare before validating a replacement.
     pub fn world_ids(&self) -> impl ExactSizeIterator<Item = u32> + '_ {
         self.registry.worlds.iter().map(|world| world.world)

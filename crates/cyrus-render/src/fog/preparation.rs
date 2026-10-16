@@ -31,6 +31,7 @@ pub fn prepare_scene_materials(
     fidelity: &Fidelity,
     clipping: [f32; 2],
     camera_position: Vec3,
+    object_lights: &[cyrus_assets::environment::LocalLight],
 ) -> Result<()> {
     ensure!(
         camera_position.is_finite()
@@ -174,7 +175,7 @@ pub fn prepare_scene_materials(
     }
     let light_texture = crate::lighting::runtime::RuntimeLights::default().update(
         environment_id,
-        environment,
+        object_lights,
         camera_position,
         &mut world.resource_mut::<Assets<Image>>(),
     );

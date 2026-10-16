@@ -10,6 +10,7 @@ use cyrus_assets::environment::{Environment, LocalLight};
 pub(crate) struct RuntimeLights {
     previous: Option<(AssetId<Environment>, [i32; 2])>,
     image: Handle<Image>,
+    previous_lights: Vec<LocalLight>,
 }
 
 pub(crate) fn region(target: [i32; 2]) -> [i32; 2] {
@@ -90,7 +91,7 @@ impl RuntimeLights {
     pub(crate) fn update(
         &mut self,
         source: AssetId<Environment>,
-        environment: &Environment,
+        lights: &[LocalLight],
         position: Vec3,
         images: &mut Assets<Image>,
     ) -> Handle<Image> {
@@ -98,8 +99,9 @@ impl RuntimeLights {
             (-f64::from(position.x) * 20.0).floor() as i32,
             (f64::from(position.z) * 20.0 + 65535.99609375).floor() as i32,
         ]);
-        if self.previous != Some((source, origin)) {
-            let image = texture(&selected(&environment.object_lights, origin));
+        if self.previous != Some((source, origin)) || self.previous_lights != lights {
+            let image = texture(&selected(lights, origin));
+            self.previous_lights = lights.to_vec();
             if let Some(mut old) = images.get_mut(&self.image) {
                 *old = image;
             } else {
@@ -114,6 +116,35 @@ impl RuntimeLights {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_light_changes_replace_texture_without_camera_or_source_change() {
+        let mut runtime = RuntimeLights::default();
+        let mut images = Assets::<Image>::default();
+        let source = Handle::<Environment>::default().id();
+        let position = Vec3::new(0.0, 0.0, -3276.7998);
+        let lights = [LocalLight {
+            position: [512, 0, 512],
+            radius: 100,
+            rgb: [20, -30, 40],
+        }];
+        let handle = runtime.update(source, &lights, position, &mut images);
+        assert_eq!(
+            images.get(&handle).unwrap().texture_descriptor.size.height,
+            257
+        );
+        let disabled = runtime.update(source, &[], position, &mut images);
+        assert_eq!(disabled, handle);
+        assert_eq!(
+            images.get(&handle).unwrap().texture_descriptor.size.height,
+            256
+        );
+        runtime.update(source, &lights, position, &mut images);
+        assert_eq!(
+            images.get(&handle).unwrap().texture_descriptor.size.height,
+            257
+        );
+    }
 
     #[test]
     fn region_clamps_edges_and_selects_row_order_without_corners() {
