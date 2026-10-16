@@ -485,5 +485,6 @@ Receiver and selected-player frame waits are implemented against the published
 Playback owns progress separately from its command cursor and includes it in
 collision rollback and animation snapshot version 2. Older animation snapshots
 require fresh captures. Missing preparation rejects explicitly. Four focused task contracts and eleven animation-persistence tests pass.
-Final verification is pending; installed shrine and full gameplay acceptance
-remain open.
+Final WASM and workspace verification passes 992 Rust test executions with zero
+failures, ignored tests or installed-data skips. Installed shrine and full gameplay
+acceptance remain open.
