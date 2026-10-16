@@ -11,6 +11,35 @@
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker, for the original game and for the virtual-display runner.
 
+### Native Windows verification
+
+Use the native Rust/MSVC toolchain and keep stable Rust current enough for the
+pinned Bevy release. In PowerShell, set the install and bound build parallelism:
+
+```powershell
+$env:REDGUARD_DIR = 'D:\Games\GOG Galaxy\Redguard\Redguard'
+$env:CARGO_BUILD_JOBS = '2'
+$env:RUST_MIN_STACK = '8388608'
+cargo build -p cyrus
+```
+
+For install-dependent tests, this variable names the inner game directory
+containing `RGFX.EXE`, `maps` and `fxart`, rather than its outer GOG folder.
+
+The default parallel workspace test build can exhaust Windows' paging-file
+capacity; two build jobs avoid starting many compiler processes together.
+The shell recipes require Git Bash and a working `python3.exe` on `PATH`, rather
+than the Windows Store execution alias. Invoke the gate with Git Bash explicitly:
+
+```powershell
+just --shell 'C:\Program Files\Git\bin\bash.exe' --shell-arg=-c gates
+```
+
+The POSIX cargo-wrapper test uses `pty`/`termios` and cannot run under native
+Windows Python. Container runners also require a running Docker Linux engine.
+Quit an owned native game before rebuilding its executable: Windows prevents
+the linker from replacing a running `cyrus.exe`.
+
 ## Link the install
 
 ```sh
