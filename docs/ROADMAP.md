@@ -158,6 +158,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [ ] Complete receivers, properties, variable references, scriptless objects, allocation/recycling and model-coupled attributes.
 - [ ] Complete NPC collision/support/response, model-state refresh, transient geometry and populated walk-map navigation/perception.
 - [ ] Complete hooks, synchronization, lights, visibility and remaining native services through the [SOUP checklist](plans/2026-10-12-soup-completion.md).
+  `PlayerLooking` now uses the published effective-position and signed angular-threshold rules. Three public contracts pass; final gates and installed automatic traversal remain pending.
   Authored type-six light retention, `LightOff`, delayed cleanup and renderer replacement are implemented in `fb06f4d`. Focused lifecycle tests, installed-map light projection, Clippy and the WASM session check pass; final workspace gates pass with zero installed skips. Installed rendered comparison remains pending. Dynamic creation, modulation and type-four light controls remain unsupported.
 - [ ] Handle script-requested world loads and verify removal/replacement with active scripts, tasks, meshes and sounds.
 - [ ] Sustain automatic scripts and rendered animation across every required world on native and browser hosts.

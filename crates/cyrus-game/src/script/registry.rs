@@ -2561,6 +2561,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
+            || function.eq_ignore_ascii_case("PlayerLooking")
         {
             let mut inputs = self
                 .inputs

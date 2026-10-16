@@ -395,3 +395,11 @@ remains pending.
 The rules follow the [published light lifecycle](https://github.com/michidk/redguard-preservation/compare/main...docs/soup-light-lifecycle).
 Dynamic light creation, modulation, type-four light controls and separate-record
 movement remain unsupported. This does not complete the light/native-service row.
+
+### Player-looking query draft
+
+`PlayerLooking` now routes through the existing spatial query owner. Its signed-width
+bearing helper matches 272 retained-instruction vectors, including signed-minimum
+differences. Three public argument, position-priority and script-dispatch tests pass.
+Final workspace gates, WASM check and installed automatic traversal remain pending.
+This does not establish perception, line of sight or complete installed traversal.

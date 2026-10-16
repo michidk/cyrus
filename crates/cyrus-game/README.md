@@ -400,7 +400,10 @@ mutation. Native wait tokens belong to each logical instance. Initial waits alwa
 completion applies on a later task pass, including duration zero and one. Function-encoded
 waits remain unsupported because their timing context is not established.
 Prepared spatial hosts also support `RotateByAxis`, `PlayerDistance`, and
-`PlayerFacing` with the explicit inputs and limits described below. Remaining
+`PlayerFacing` and `PlayerLooking` with explicit selected-player inputs.
+`PlayerLooking` uses the effective receiver position and signed angular tolerance,
+including equality, per the [published query contract](https://github.com/michidk/redguard-preservation/compare/main...docs/player-looking-contract).
+It does not perform a visibility query. Remaining
 native services are explicit failures. `IsInDeepWater` reads the receiver's stored
 surface state, with fresh map/player allocation values and grounded assignments
 shared through `ScriptWorld`. It does not issue a separate support query. End notifications with synchronization

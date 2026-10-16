@@ -398,7 +398,7 @@ impl ActorSpatial {
         Ok(())
     }
 
-    /// Evaluate published player distance/facing rules against explicit current inputs.
+    /// Evaluate published player distance/facing/looking rules against explicit current inputs.
     /// Unsupported query names return None; absent required state is an error.
     pub fn query(
         &self,
@@ -408,8 +408,31 @@ impl ActorSpatial {
     ) -> Result<Option<i32>> {
         let distance = name.eq_ignore_ascii_case("PlayerDistance");
         let facing = name.eq_ignore_ascii_case("PlayerFacing");
-        if !distance && !facing {
+        let looking = name.eq_ignore_ascii_case("PlayerLooking");
+        if !distance && !facing && !looking {
             return Ok(None);
+        }
+        if looking {
+            let [tolerance] = arguments else {
+                anyhow::bail!("PlayerLooking requires one argument");
+            };
+            let player = inputs
+                .player
+                .context("PlayerLooking selected-player input unavailable")?;
+            let receiver = if self.parent.is_some() {
+                self.query_pose()?.position
+            } else {
+                inputs
+                    .linked_position
+                    .context("PlayerLooking linked-position state unavailable")?
+                    .unwrap_or(self.local.position)
+            };
+            let x = player.position[0].wrapping_sub(receiver[0]);
+            let z = player.position[2].wrapping_sub(receiver[2]);
+            let bearing = query_bearing(x, z);
+            let target = (i32::from(player.heading) + 1024) & 2047;
+            let difference = (target - i32::from(bearing) + 1024).rem_euclid(2048) - 1024;
+            return Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)));
         }
         if distance {
             ensure!(arguments.is_empty(), "PlayerDistance requires no arguments");
@@ -661,4 +684,35 @@ impl SpatialWorld {
             order: snapshot.order,
         })
     }
+}
+
+/// Signed runtime-coordinate bearing per preservation's PlayerLooking contract.
+fn query_bearing(x: i32, z: i32) -> u16 {
+    let (mut ax, mut az) = (x.wrapping_abs(), z.wrapping_abs());
+    while ax > 511 || az > 511 {
+        ax >>= 1;
+        az >>= 1;
+    }
+    if ax == 0 {
+        return if z < 0 { 1024 } else { 0 };
+    }
+    if az == 0 {
+        return if x < 0 { 512 } else { 1536 };
+    }
+    let mut angle = if ax == az {
+        if ax.wrapping_add(az) == 0 { 0 } else { 256 }
+    } else {
+        let (small, large) = if az > ax { (ax, az) } else { (az, ax) };
+        let index = ((small.wrapping_shl(10) >> 1) / large) & 511;
+        #[allow(clippy::approx_constant)] // Published original angle-table constant.
+        let octant = ((f64::from(index) / 512.0).atan() * 65536.0 / 3.141592654) as i32 >> 6;
+        if az < ax { 512 - octant } else { octant }
+    };
+    angle = match (x < 0, z < 0) {
+        (true, true) => angle + 1024,
+        (true, false) => -angle,
+        (false, true) => 1024 - angle,
+        (false, false) => angle,
+    };
+    ((-angle) & 2047) as u16
 }

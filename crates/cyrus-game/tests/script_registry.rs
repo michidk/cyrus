@@ -12087,3 +12087,119 @@ fn installed_authored_lights_reach_logical_render_projection_in_map_order() {
     }
     assert!(count > 0, "installed maps must exercise authored lights");
 }
+
+#[test]
+fn player_looking_uses_signed_tolerance_and_quantized_position_bearing() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    let mut world = ScriptWorld::prepare(&cache(), 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut actor = world.spatial(world.id(0).unwrap()).unwrap().clone();
+    actor.local.position = [0; 3];
+    for (position, heading, tolerance, expected) in [
+        ([0, 900, 100], 1024, 0, 1),
+        ([0, -900, 100], 1023, 0, 0),
+        ([0, 0, 100], 1023, 1, 1),
+        ([100, 0, 100], 768, 0, 1),
+        ([100, 0, 100], 770, 1, 0),
+        ([0, 0, 100], 1024, -1, 0),
+        ([i32::MIN, 0, 1], 1024, 0, 1),
+        ([i32::MIN, 0, i32::MIN], 0, 0, 1),
+    ] {
+        let inputs = QueryInputs {
+            player: Some(PlayerQuery { position, heading }),
+            distance_override: None,
+            fallback_position: None,
+            linked_position: Some(None),
+        };
+        assert_eq!(
+            actor
+                .query("PlayerLooking", &[Argument::Integer(tolerance)], inputs)
+                .unwrap(),
+            Some(expected),
+            "{position:?}/{heading}/{tolerance}"
+        );
+    }
+}
+
+#[test]
+fn player_looking_preserves_attached_then_linked_position_priority() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    let mut world = ScriptWorld::prepare(&cache(), 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut actor = world.spatial(world.id(0).unwrap()).unwrap().clone();
+    actor.local.position = [100, 0, 0];
+    let mut inputs = QueryInputs {
+        player: Some(PlayerQuery {
+            position: [0, 0, 100],
+            heading: 1024,
+        }),
+        distance_override: None,
+        fallback_position: None,
+        linked_position: Some(Some([0; 3])),
+    };
+    let args = [Argument::Integer(0)];
+    assert_eq!(
+        actor.query("PlayerLooking", &args, inputs).unwrap(),
+        Some(1)
+    );
+    inputs.linked_position = Some(None);
+    assert_eq!(
+        actor.query("PlayerLooking", &args, inputs).unwrap(),
+        Some(0)
+    );
+    inputs.linked_position = None;
+    assert!(actor.query("PlayerLooking", &args, inputs).is_err());
+    actor.parent = Some(1);
+    actor.effective = None;
+    assert!(actor.query("PlayerLooking", &args, inputs).is_err());
+    let mut effective = actor.local;
+    effective.position = [0; 3];
+    actor.effective = Some(effective);
+    assert_eq!(
+        actor.query("PlayerLooking", &args, inputs).unwrap(),
+        Some(1)
+    );
+    inputs.player = None;
+    assert!(actor.query("PlayerLooking", &args, inputs).is_err());
+    assert!(actor.query("PlayerLooking", &[], inputs).is_err());
+}
+
+#[test]
+fn player_looking_dispatch_returns_result_to_script_local() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs, ScriptInputs, ScriptStage};
+    for (heading, expected) in [(1024, 1), (1023, 0)] {
+        let scripts = random_scripts(
+            "PlayerLooking",
+            vec![Value::Integer { value: 0 }],
+            Object::Me,
+        );
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let origin = world.spatial(id).unwrap().local.position;
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    player_query: Some(QueryInputs {
+                        player: Some(PlayerQuery {
+                            position: [origin[0], origin[1], origin[2].wrapping_add(100)],
+                            heading,
+                        }),
+                        distance_override: None,
+                        fallback_position: None,
+                        linked_position: None,
+                    }),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().variables(), [expected]);
+    }
+}
