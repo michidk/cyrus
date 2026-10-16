@@ -23,9 +23,14 @@ impl LoadAssets {
         let prepared = snapshot
             .world_ids()
             .map(|id| {
+                let name = if id == snapshot.current_world() {
+                    snapshot.current_scene_name().to_owned()
+                } else {
+                    id.to_string()
+                };
                 (
                     id,
-                    cyrus_world::lifecycle::PreparedWorld::from_cache(id.to_string(), server),
+                    cyrus_world::lifecycle::PreparedWorld::from_cache(name, server),
                 )
             })
             .collect();
