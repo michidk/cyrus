@@ -121,18 +121,22 @@ unchecked milestones below describe complete behavior, not absence of component
 work. VM, native tasks, animation, clock, flags, inventory, journal, dialogue,
 HUD, source audio/CD and texture/terrain replacements have landed.
 
-**Verified:** an installed native START-to-ISLAND capture represents current and
-visited worlds. Native typed publication/fresh-process readback and a typed
-Rust/WASM IndexedDB prototype preserve its exact document across reload and
-reject malformed or aborted writes. These checks establish document transport,
-not gameplay restoration. Shared aggregate preparation and live commit are checkpointed as unfinished
-SOUP work. The native diagnostic load caller prepares sources off-live and
-retains completion until acknowledgement. Synthetic assembly and asynchronous
-rejection contracts pass. Installed native load reaches ready ISLAND gameplay
-from START and recaptures current ISLAND plus retained START; dormant START
-matches after actor-generation rebinding. Complete rendered continuation and
-revisit execution remain open. Complete installed restore, revisits, browser caller
-integration and downstream audio continuation remain open.
+**Verified:** the corrected-export native capture represents current ISLAND and
+visited START, including 173 ordinary model associations and the player model.
+Fresh-process native load and recapture preserve both worlds after actor-generation
+rebinding. The integrated browser diagnostic caller passes CPU-only typed
+IndexedDB restore, save and fresh-page reload using matching independent exports.
+Integrity-valid current and dormant source mismatches reject without changing
+accepted registry, player, HUD or model state. Failed and aborted publication
+preserves the accepted document.
+
+Shared aggregate preparation, rendered replacement and coordinated commit remain
+an unfinished gameplay checkpoint. Native ISLAND-to-START-to-ISLAND revisits
+retain actor/task state, but pre-existing controller/combat and unsupported-service
+failures remain. Browser revisits, complete rendered/audio continuation and
+end-to-end gameplay restoration remain open. Source-decoder checkpoints do not
+include downstream converter/device queues. The native diagnostic load caller
+prepares sources off-live and retains completion until acknowledgement.
 
 Active boundaries are recorded in the roadmap. The SOUP owner retains
 `cyrus-game/src/script`, shared session assembly and the native load caller.
