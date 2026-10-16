@@ -937,5 +937,5 @@ sample-reset flag. It does not request periodic walk-node cleanup. Cleanup or
 restoration failure remains sticky. The ordinary audio host now initializes entry roles, validates retained actors
 off-live, clears services and adopts the retained world before maintenance and
 traversal. Unsupported hosts retain an explicit traversal guard. Leaving an
-unrestored entry preserves its retained world. Installed revisit acceptance and
-final workspace verification remain unfinished.
+unrestored entry preserves its retained world. Final workspace gates pass with
+zero installed-data skips. Installed revisit acceptance remains unfinished.

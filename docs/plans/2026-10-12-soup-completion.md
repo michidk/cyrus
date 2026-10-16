@@ -373,7 +373,8 @@ continuation remain unverified.
 The diagnostic browser caller is integrated. Remaining work includes complete
 rendered/audio restoration, restart/reload and visited-world continuation. The revisit draft now initializes entry roles, validates retained actors, clears
 shared sound services and restores saved execution state before traversal.
-Cancellation preserves the retained world. Installed continuation and final
-workspace verification remain pending.
+Cancellation preserves the retained world. Final workspace verification passed
+955 Rust test executions with zero failures, ignored tests or installed-data
+skips. Installed revisit continuation remains pending.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.

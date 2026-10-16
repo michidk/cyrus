@@ -362,8 +362,9 @@ rejection preservation and installed revisits remain pending. The unfinished
 revisit integration initializes
 entry roles, validates retained actors and clears shared sound services before
 restoring saved execution state. Focused registry/task and audio cleanup tests,
-WASM Clippy and the native build pass. Its final workspace gate and installed
-revisit acceptance remain pending.
+WASM Clippy and the native build pass. The final workspace gate passed 955 Rust
+test executions with zero failures, ignored tests or installed-data skips.
+Installed revisit acceptance remains pending.
 The diagnostic browser storage caller is connected; successful installed
 restart/reload/revisits and complete gameplay acceptance remain unchecked.
 Source-decoder audio checkpoints
