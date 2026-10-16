@@ -1981,6 +1981,33 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             })
     }
 
+    fn frame_wait_call(&self) -> super::tasks::FrameWaitCall {
+        let sample = |index: usize| -> Result<(i32, i32, u8)> {
+            self.actors[index]
+                .animation
+                .as_ref()
+                .with_context(|| {
+                    format!("actor {index}: animation frame wait requires prepared playback")
+                })?
+                .playback
+                .frame_wait_state()
+        };
+        let player = (|| -> Result<Option<(i32, i32, u8)>> {
+            let Some(player) = self.selected_player() else {
+                return Ok(None);
+            };
+            anyhow::ensure!(
+                player.generation == self.generation && player.index < self.actors.len(),
+                "animation frame wait selected player identity is stale"
+            );
+            sample(player.index).map(Some)
+        })();
+        super::tasks::FrameWaitCall {
+            receiver: sample(self.index).map_err(|error| format!("{error:#}")),
+            player: player.map_err(|error| format!("{error:#}")),
+        }
+    }
+
     fn player_dialogue_call(&self) -> super::tasks::PlayerDialogueCall<'input> {
         super::tasks::PlayerDialogueCall {
             source: self.inputs.dialogue_source,
@@ -2362,6 +2389,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
+        let frame_wait = self.frame_wait_call();
         let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -2416,6 +2444,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 ambient: Some(&ambient),
                 dialogue: self.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
+                frame_wait: Some(frame_wait),
             },
         )? {
             return Ok(result);
@@ -2727,6 +2756,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         };
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
+        let frame_wait = self.frame_wait_call();
         let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -2781,6 +2811,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 ambient: Some(&ambient),
                 dialogue: self.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
+                frame_wait: Some(frame_wait),
             },
         )
     }

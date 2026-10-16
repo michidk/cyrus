@@ -105,7 +105,11 @@ pending request, counters, delays, exit/translation/sound latches and failures.
 `from_snapshot` builds a replacement after matching actor context and exact installed
 groups, validating selected groups and command cursors. It decodes immutable commands
 without executing them. Restoration makes no initialization requests or sound calls.
-The versioned snapshot is an internal format, not an original save record.
+The versioned snapshot is an internal format, not an original save record. Snapshot
+version 2 retains the separate wrapping frame-progress byte used by SOUP frame
+waits. Version 1 snapshots cannot reconstruct that counter and are rejected;
+existing session documents containing them need fresh captures. Collision rollback
+also preserves progress. Command cursor loops do not reset it.
 
 **Verified:** headless serialization/resume contracts retain pending/default requests,
 finite loops, wrapped byte countdowns, delays, exit tails and sticky failures.

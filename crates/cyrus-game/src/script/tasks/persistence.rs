@@ -144,6 +144,12 @@ impl NativeTasks {
                             "restored dialogue owner unavailable"
                         );
                     }
+                    Task::AnimationFrame { player: false } => {
+                        ensure!(
+                            bindings.animation.is_some(),
+                            "restored frame-wait animation owner unavailable"
+                        );
+                    }
                     Task::Animation { group, .. } => {
                         ensure!(
                             *group <= i16::MAX as u16,
@@ -171,6 +177,10 @@ impl Task {
     fn contract(self) -> (&'static str, usize, Option<CallKind>) {
         match self {
             Self::Dialogue => ("WaitOnDialog", 0, Some(CallKind::Task)),
+            Self::AnimationFrame { player: false } => ("WaitAnimFrame", 2, Some(CallKind::Task)),
+            Self::AnimationFrame { player: true } => {
+                ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))
+            }
             Self::PlayerDialogue { .. } => ("RTXp", 1, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
             Self::Movement { .. } => ("MoveByAxis", 3, None),

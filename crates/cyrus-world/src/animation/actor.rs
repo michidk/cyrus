@@ -14,6 +14,7 @@ pub struct ActorAnimation {
     default: u16,
     current: Option<(u16, FrameSequence)>,
     pending: Option<(u16, u8)>,
+    frame_progress: u8,
     failure: Option<String>,
 }
 
@@ -24,6 +25,7 @@ pub struct ActorAnimationCheckpoint {
     context: String,
     current: Option<(u16, FrameSequence)>,
     pending: Option<(u16, u8)>,
+    frame_progress: u8,
 }
 
 /// Complete, versioned playback state with exact installed group definitions.
@@ -37,6 +39,7 @@ pub struct ActorAnimationSnapshot {
     default: u16,
     current: Option<(u16, SequenceSnapshot)>,
     pending: Option<(u16, u8)>,
+    frame_progress: u8,
     failure: Option<String>,
 }
 
@@ -45,7 +48,7 @@ impl ActorAnimation {
     /// This does not advance commands or dispatch sounds, and is distinct from collision rollback.
     pub fn snapshot(&self) -> ActorAnimationSnapshot {
         ActorAnimationSnapshot {
-            version: 1,
+            version: 2,
             context: self.context.clone(),
             groups: self.groups.clone(),
             default: self.default,
@@ -54,6 +57,7 @@ impl ActorAnimation {
                 .as_ref()
                 .map(|(group, sequence)| (*group, sequence.snapshot())),
             pending: self.pending,
+            frame_progress: self.frame_progress,
             failure: self.failure.clone(),
         }
     }
@@ -69,7 +73,7 @@ impl ActorAnimation {
         let context = format!("world {} actor {actor} animation restore", data.world);
         let restore = || -> anyhow::Result<Self> {
             anyhow::ensure!(
-                snapshot.version == 1,
+                snapshot.version == 2,
                 "unsupported snapshot version {}",
                 snapshot.version
             );
@@ -103,6 +107,7 @@ impl ActorAnimation {
                 ));
             }
             animation.pending = snapshot.pending;
+            animation.frame_progress = snapshot.frame_progress;
             animation.failure = snapshot.failure;
             Ok(animation)
         };
@@ -116,6 +121,7 @@ impl ActorAnimation {
             context: self.context.clone(),
             current: self.current.clone(),
             pending: self.pending,
+            frame_progress: self.frame_progress,
         })
     }
 
@@ -134,6 +140,7 @@ impl ActorAnimation {
         );
         self.current = checkpoint.current.clone();
         self.pending = checkpoint.pending;
+        self.frame_progress = checkpoint.frame_progress;
         Ok(())
     }
 
@@ -185,6 +192,7 @@ impl ActorAnimation {
             default,
             current: None,
             pending: None,
+            frame_progress: 0,
             failure: None,
         })
     }
@@ -219,6 +227,20 @@ impl ActorAnimation {
             frame = self.request_with_sounds(group, 0, ticks, sounds)?.or(frame);
         }
         Ok(frame)
+    }
+
+    /// Current and pending signed groups plus the wrapping frame-progress byte.
+    /// This is independent of the command cursor and displayed model frame.
+    /// Follows preservation's engine/animation.md frame-wait contract.
+    pub fn frame_wait_state(&self) -> anyhow::Result<(i32, i32, u8)> {
+        self.check_failure()?;
+        Ok((
+            self.current_group()
+                .map_or(-1, |group| i32::from(group as i16)),
+            self.pending_group()
+                .map_or(-1, |group| i32::from(group as i16)),
+            self.frame_progress,
+        ))
     }
 
     /// The caller-selected playback default, distinct from the model's attribute default.
@@ -458,6 +480,7 @@ impl ActorAnimation {
                     .groups
                     .get(&group)
                     .with_context(|| format!("{} group {group}: absent", self.context))?;
+                self.frame_progress = 0;
                 self.current = Some((
                     group,
                     FrameSequence::from_group(
@@ -470,7 +493,12 @@ impl ActorAnimation {
             }
             if let Some((group, sequence)) = &mut self.current {
                 let exiting = self.pending.is_some_and(|(pending, _)| pending != *group);
-                if let Some(reference) = sequence.advance_with_sounds(ticks, exiting, sounds)? {
+                if let Some(reference) = sequence.advance_with_progress(
+                    ticks,
+                    exiting,
+                    sounds,
+                    &mut self.frame_progress,
+                )? {
                     return Ok(Some(reference));
                 }
                 if !sequence.is_finished() {

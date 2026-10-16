@@ -293,10 +293,20 @@ impl FrameSequence {
         exit_requested: bool,
         sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
+        self.advance_with_progress(ticks, exit_requested, sounds, &mut 0)
+    }
+
+    pub(super) fn advance_with_progress(
+        &mut self,
+        ticks: u32,
+        exit_requested: bool,
+        sounds: &mut SoundDispatcher<'_>,
+        progress: &mut u8,
+    ) -> anyhow::Result<Option<u32>> {
         if let Some(message) = &self.failure {
             anyhow::bail!("{message}");
         }
-        let result = self.advance_current(ticks, exit_requested, sounds);
+        let result = self.advance_current(ticks, exit_requested, sounds, progress);
         if let Err(error) = &result {
             self.failure = Some(error.to_string());
         }
@@ -323,6 +333,7 @@ impl FrameSequence {
         ticks: u32,
         exit_requested: bool,
         sounds: &mut SoundDispatcher<'_>,
+        progress: &mut u8,
     ) -> anyhow::Result<Option<u32>> {
         if self.ended || self.waiting_for_delay(ticks) {
             return Ok(None);
@@ -331,6 +342,7 @@ impl FrameSequence {
         if ticks != 0 {
             if self.countdown == 0 {
                 self.command += 1;
+                *progress = progress.wrapping_add(1);
                 self.translation_suppressed = false;
                 self.countdown = self.speed;
                 skip = ticks - 1;
@@ -354,6 +366,7 @@ impl FrameSequence {
                         return Ok(Some(reference));
                     }
                     skip -= 1;
+                    *progress = progress.wrapping_add(1);
                     self.command += 1;
                     self.translation_suppressed = false;
                     visited.clear();

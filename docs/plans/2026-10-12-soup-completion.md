@@ -477,3 +477,13 @@ All nine property contracts pass. Combined verification passes 986 Rust test
 executions with zero installed-data skips.
 Animation-property writes,
 complete shrine interaction and full gameplay acceptance remain open.
+
+### Animation frame waits
+
+Receiver and selected-player frame waits are implemented against the published
+[predicate and progress rules](https://github.com/michidk/redguard-preservation/blob/fix/soup-property-references/docs/engine/animation.md#frame-waits).
+Playback owns progress separately from its command cursor and includes it in
+collision rollback and animation snapshot version 2. Older animation snapshots
+require fresh captures. Missing preparation rejects explicitly. Four focused task contracts and eleven animation-persistence tests pass.
+Final verification is pending; installed shrine and full gameplay acceptance
+remain open.

@@ -967,3 +967,13 @@ off-live, clears services and adopts the retained world before maintenance and
 traversal. Unsupported hosts retain an explicit traversal guard. Leaving an
 unrestored entry preserves its retained world. Final workspace gates pass with
 zero installed-data skips. Installed revisit acceptance remains unfinished.
+
+`WaitAnimFrame` and `WaitPlayerAnimFrame` poll the receiver and selected-player
+animation owners respectively, without advancing playback. The registry still
+requires its usual explicit nominal-tick input for animation-bound worlds; zero
+is sufficient for these tasks. They retain full signed group/frame arguments and compare against the
+separate wrapping progress counter, following preservation's
+[frame-wait rules](https://github.com/michidk/redguard-preservation/blob/fix/soup-property-references/docs/engine/animation.md#frame-waits).
+Unprepared animation owners reject explicitly. A missing selected actor completes
+the player predicate. Task operands are reevaluated on subsequent invocations;
+completion still follows the VM's normal task-slot scheduling.

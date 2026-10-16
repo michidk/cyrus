@@ -43,8 +43,15 @@ pub(super) struct AmbientCall<'a> {
 #[derive(Default)]
 pub(super) struct NativeServices<'a> {
     pub ambient: Option<&'a AmbientCall<'a>>,
+    pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
     pub player_dialogue: Option<PlayerDialogueCall<'a>>,
+}
+
+/// Read-only animation state, sampled independently of playback tick availability.
+pub(super) struct FrameWaitCall {
+    pub receiver: Result<(i32, i32, u8), String>,
+    pub player: Result<Option<(i32, i32, u8)>, String>,
 }
 
 pub(super) struct PlayerDialogueCall<'a> {
@@ -56,6 +63,7 @@ pub(super) struct PlayerDialogueCall<'a> {
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     Dialogue,
+    AnimationFrame { player: bool },
     PlayerDialogue { started: bool },
     Ambient { channel: Option<u8> },
     Movement { target: i32 },
@@ -117,6 +125,30 @@ impl Task {
                     }
                 }
                 !dialogue.line_active(Some(0))
+            }
+            Self::AnimationFrame { player } => {
+                let [group, threshold] = arguments else {
+                    anyhow::bail!("animation frame wait requires two arguments");
+                };
+                let (group, threshold) = (group.integer()?, threshold.integer()?);
+                let input = services
+                    .frame_wait
+                    .context("animation frame wait inputs unavailable")?;
+                let state = if *player {
+                    input.player.map_err(anyhow::Error::msg)?
+                } else {
+                    Some(input.receiver.map_err(anyhow::Error::msg)?)
+                };
+                match state {
+                    None => true,
+                    Some((current, pending, progress)) => {
+                        if current == group {
+                            i32::from(progress) >= threshold
+                        } else {
+                            pending != group
+                        }
+                    }
+                }
             }
             Self::Dialogue => {
                 anyhow::ensure!(arguments.is_empty(), "WaitOnDialog requires no arguments");
@@ -640,6 +672,13 @@ impl NativeTasks {
             Task::Tasks
         } else if function.eq_ignore_ascii_case("WaitNonMulti") {
             Task::Blocking
+        } else if function.eq_ignore_ascii_case("WaitAnimFrame")
+            || function.eq_ignore_ascii_case("WaitPlayerAnimFrame")
+        {
+            anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
+            Task::AnimationFrame {
+                player: function.eq_ignore_ascii_case("WaitPlayerAnimFrame"),
+            }
         } else if function.eq_ignore_ascii_case("PushAnimation") {
             Task::Animation {
                 group: 0,
@@ -692,5 +731,77 @@ impl NativeTasks {
             Task::Animation { group, .. } => Some(*group),
             _ => None,
         })
+    }
+}
+
+#[cfg(test)]
+mod frame_wait_tests {
+    use super::*;
+
+    #[test]
+    fn frame_wait_poll_uses_full_arguments_and_current_before_pending() {
+        for (current, pending, progress, group, threshold, expected) in [
+            (7, -1, 0, 7, 1, false),
+            (7, -1, 1, 7, 1, true),
+            (7, -1, 255, 7, 256, false),
+            (7, -1, 0, 7, i32::MIN, true),
+            (7, -1, 255, 7, i32::MAX, false),
+            (8, 7, 255, 7, 0, false),
+            (8, 9, 0, 7, 255, true),
+            (7, 7, 1, 7, 1, true),
+            (-32768, -1, 1, -32768, 1, true),
+            (-32768, -1, 0, 32768, 1, true),
+            (-1, -1, 0, 65535, 1, true),
+        ] {
+            for player in [false, true] {
+                let mut tasks = NativeTasks::default();
+                let function = if player {
+                    "WaitPlayerAnimFrame"
+                } else {
+                    "WaitAnimFrame"
+                };
+                let inputs = || NativeServices {
+                    frame_wait: Some(FrameWaitCall {
+                        receiver: if player {
+                            Err("caller must not be read".into())
+                        } else {
+                            Ok((current, pending, progress))
+                        },
+                        player: if player {
+                            Ok(Some((current, pending, progress)))
+                        } else {
+                            Err("player must not be read".into())
+                        },
+                    }),
+                    ..Default::default()
+                };
+                let invocation = Invocation {
+                    elapsed: None,
+                    unpaused_tasks: 0,
+                    unpaused_blocking_tasks: 0,
+                };
+                let args = [Argument::Integer(group), Argument::Integer(threshold)];
+                let Some(CallResult::Pending(token)) = tasks
+                    .call(
+                        (function, CallKind::Task),
+                        &args,
+                        invocation,
+                        &mut None,
+                        &mut None,
+                        inputs(),
+                    )
+                    .unwrap()
+                else {
+                    panic!("task must allocate continuation")
+                };
+                assert_eq!(
+                    tasks
+                        .poll(token, &args, invocation, &mut None, &mut None, inputs())
+                        .unwrap(),
+                    expected,
+                    "{function}: current={current}, pending={pending}, progress={progress}, group={group}, threshold={threshold}"
+                );
+            }
+        }
     }
 }

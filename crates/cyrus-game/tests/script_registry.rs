@@ -13060,3 +13060,164 @@ fn animation_and_torch_properties_reject_unprepared_owners_and_animation_writes(
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [4]);
     }
 }
+
+#[test]
+fn animation_frame_waits_resume_from_the_correct_owner_without_advancing_playback() {
+    use cyrus_assets::animation::Animations;
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (function, selected) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
+        let mut scripts = wait_cache(vec![
+            wait(
+                1,
+                function,
+                CallKind::Task,
+                vec![Value::Integer { value: 7 }, Value::Integer { value: 1 }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions[1] = Function {
+            name: function.into(),
+            param_count: 2,
+            kind: CallKind::Task,
+        };
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let caller = world.id(0).unwrap();
+        let receiver = world.id(if selected { 2 } else { 0 }).unwrap();
+        let data = Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,"actors":[{
+                "script_name":world.actors()[receiver.index].name(),
+                "animation_groups":[{"group_index":7,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},{"opcode":2,"value":0}]}]
+            }]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        world.bind_animation(receiver, &data, 7).unwrap();
+        world
+            .advance(
+                receiver,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                0,
+            )
+            .unwrap();
+        let before = world.inspect(receiver.index, 1)["actors"][0]["animation"].clone();
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        world
+            .advance(
+                caller,
+                ScriptStage::Tasks,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                0,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+        assert_eq!(
+            world.inspect(receiver.index, 1)["actors"][0]["animation"],
+            before
+        );
+        world
+            .advance(
+                receiver,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                0,
+            )
+            .unwrap();
+        world
+            .advance(
+                caller,
+                ScriptStage::Tasks,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                0,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        world
+            .advance(
+                caller,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(world.flags(), [7]);
+    }
+}
+
+#[test]
+fn animation_frame_wait_rejects_unprepared_owner_but_absent_selected_player_completes() {
+    for (function, completes) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
+        let mut scripts = wait_cache(vec![
+            wait(
+                1,
+                function,
+                CallKind::Task,
+                vec![Value::Integer { value: 7 }, Value::Integer { value: 1 }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions[1] = Function {
+            name: function.into(),
+            param_count: 2,
+            kind: CallKind::Task,
+        };
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        let result = world.step(world.id(0).unwrap(), Thread::Main, 20);
+        if completes {
+            result.unwrap();
+            world.step_tasks(world.id(0).unwrap(), Some(256)).unwrap();
+            world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+            assert_eq!(world.flags(), [7]);
+        } else {
+            assert!(format!("{:#}", result.unwrap_err()).contains("requires prepared playback"));
+        }
+    }
+}

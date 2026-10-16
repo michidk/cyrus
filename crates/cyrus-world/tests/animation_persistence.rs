@@ -248,7 +248,7 @@ fn malformed_state_and_changed_sources_reject_without_changing_live_playback() {
     let actor = pending_sound(&data);
     let snapshot = serde_json::to_value(actor.snapshot()).unwrap();
     for (pointer, value) in [
-        ("/version", json!(2)),
+        ("/version", json!(u32::MAX)),
         ("/context", json!("another world")),
         ("/current/0", json!(99)),
         ("/pending/0", json!(99)),
@@ -289,4 +289,47 @@ fn inactive_snapshot_does_not_initialize_or_select_a_default() {
         serde_json::to_value(restored.snapshot()).unwrap(),
         serde_json::to_value(actor.snapshot()).unwrap()
     );
+}
+
+#[test]
+fn frame_progress_survives_loops_snapshot_and_collision_rollback() {
+    let data = asset(json!([
+        {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":900},{"opcode":2,"value":0}]}
+    ]));
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    assert_eq!(actor.advance(0).unwrap(), Some(900));
+    assert_eq!(actor.frame_wait_state().unwrap(), (0, -1, 0));
+    assert_eq!(actor.advance(1).unwrap(), Some(900));
+    assert_eq!(actor.frame_wait_state().unwrap(), (0, -1, 0));
+    for progress in 1..=255 {
+        assert_eq!(actor.advance(1).unwrap(), Some(900));
+        assert_eq!(actor.frame_wait_state().unwrap(), (0, -1, progress));
+    }
+    let checkpoint = actor.checkpoint().unwrap();
+    let mut restored = resume(&data, &actor);
+    for playback in [&mut actor, &mut restored] {
+        assert_eq!(playback.advance(1).unwrap(), Some(900));
+        assert_eq!(playback.frame_wait_state().unwrap(), (0, -1, 0));
+        playback.restore_checkpoint(&checkpoint).unwrap();
+        assert_eq!(playback.frame_wait_state().unwrap(), (0, -1, 255));
+    }
+}
+
+#[test]
+fn old_animation_snapshot_cannot_invent_frame_progress() {
+    let data = sound_asset();
+    let actor = pending_sound(&data);
+    let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
+    saved["version"] = json!(1);
+    assert!(
+        ActorAnimation::from_snapshot(
+            &data,
+            "ACTOR",
+            serde_json::from_value(saved.clone()).unwrap()
+        )
+        .is_err()
+    );
+    saved.as_object_mut().unwrap().remove("frame_progress");
+    assert!(serde_json::from_value::<ActorAnimationSnapshot>(saved).is_err());
 }

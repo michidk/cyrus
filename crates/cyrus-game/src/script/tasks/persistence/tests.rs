@@ -16,6 +16,7 @@ struct NativeHost {
     updates: Vec<usize>,
     calls: usize,
     polls: usize,
+    frame_progress: u8,
 }
 impl Host for NativeHost {
     fn call(
@@ -47,7 +48,13 @@ impl Host for NativeHost {
                 invocation,
                 &mut None,
                 &mut Some(spatial),
-                NativeServices::default(),
+                NativeServices {
+                    frame_wait: Some(crate::script::tasks::FrameWaitCall {
+                        receiver: Ok((7, -1, self.frame_progress)),
+                        player: Ok(Some((7, -1, self.frame_progress))),
+                    }),
+                    ..Default::default()
+                },
             )?
             .context("test native call absent")
     }
@@ -77,7 +84,13 @@ impl Host for NativeHost {
             invocation,
             &mut None,
             &mut Some(spatial),
-            NativeServices::default(),
+            NativeServices {
+                frame_wait: Some(crate::script::tasks::FrameWaitCall {
+                    receiver: Ok((7, -1, self.frame_progress)),
+                    player: Ok(Some((7, -1, self.frame_progress))),
+                }),
+                ..Default::default()
+            },
         )
     }
     fn end(&mut self, _: Thread) -> Result<()> {
@@ -796,5 +809,87 @@ fn empty_restore_preserves_allocator_history_and_exhaustion() {
             assert!(format!("{:#}", result.unwrap_err()).contains("identity exhausted"));
             assert!(host.native.tasks.is_empty());
         }
+    }
+}
+
+#[test]
+fn frame_wait_restore_preserves_variant_and_reevaluates_operands() {
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: 17,
+        metadata: json!({"actors":[{"script_name":"ACTOR","animation_groups":[
+            {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let animation = ActorAnimation::from_asset(&data, "ACTOR", 7).unwrap();
+    for (name, player) in [("WaitAnimFrame", false), ("WaitPlayerAnimFrame", true)] {
+        let (vm, host, sources) = begin(name, &[7, 10]);
+        let saved = vm.snapshot(&sources).unwrap();
+        let tokens = BTreeMap::from([(1, 100)]);
+        let bindings = || NativeTaskBindings {
+            animation: Some(&animation),
+            ..Default::default()
+        };
+        let bytes = serde_json::to_vec(&host.native.snapshot()).unwrap();
+        let mut native = NativeTasks::from_snapshot(
+            serde_json::from_slice(&bytes).unwrap(),
+            &saved,
+            &tokens,
+            bindings(),
+        )
+        .unwrap();
+        let wrong = one(Task::AnimationFrame { player: !player });
+        assert!(NativeTasks::from_snapshot(wrong, &saved, &tokens, bindings()).is_err());
+        if !player {
+            assert!(
+                NativeTasks::from_snapshot(
+                    host.native.snapshot(),
+                    &saved,
+                    &tokens,
+                    NativeTaskBindings::default()
+                )
+                .is_err()
+            );
+        }
+        let inputs = || NativeServices {
+            frame_wait: Some(crate::script::tasks::FrameWaitCall {
+                receiver: Ok((7, -1, 5)),
+                player: Ok(Some((7, -1, 5))),
+            }),
+            ..Default::default()
+        };
+        let invocation = Invocation {
+            elapsed: Some(1),
+            unpaused_tasks: 1,
+            unpaused_blocking_tasks: 1,
+        };
+        assert!(
+            !native
+                .poll(
+                    100,
+                    &[Argument::Integer(7), Argument::Integer(10)],
+                    invocation,
+                    &mut None,
+                    &mut None,
+                    inputs()
+                )
+                .unwrap()
+        );
+        assert!(
+            native
+                .poll(
+                    100,
+                    &[Argument::Integer(7), Argument::Integer(5)],
+                    invocation,
+                    &mut None,
+                    &mut None,
+                    inputs()
+                )
+                .unwrap()
+        );
     }
 }
