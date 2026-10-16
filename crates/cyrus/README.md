@@ -51,7 +51,6 @@ Shared browser/CLI options use exactly the same names:
 | `--scene START` | `?scene=START` | Load a map stem or WORLD.INI ID directly |
 | `--view=x,y,z,qx,qy,qz,qw` | `?view=x,y,z,qx,qy,qz,qw` | First-world scene-space inspection camera pose; accepts menu entry and requires a unit quaternion |
 | `--skip-startup` | `?skip-startup=true` | Bypass the splash |
-| `--water modern` | `?water=modern` | Water fidelity mode |
 | `--fog modern` | `?fog=modern` | Fog fidelity mode |
 | `--sky modern` | `?sky=modern` | Sky fidelity mode |
 

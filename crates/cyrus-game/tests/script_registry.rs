@@ -3121,11 +3121,13 @@ fn visibility_calls_return_zero_without_disabling_the_receivers_script() {
 #[test]
 fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
+    // Bevy's prelude adds a `Function` trait when reflect functions are enabled.
     use cyrus_assets::animation::Animations;
     use cyrus_game::{
         AppState,
         script::{ScriptActors, ScriptPlugin, ScriptView},
     };
+    use cyrus_script::program::Function;
     use cyrus_world::{
         animation::{AnimationRequest, AnimationTick},
         lifecycle::PreparedWorld,

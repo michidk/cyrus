@@ -14,6 +14,25 @@ use cyrus_game::fidelity::Area;
 use cyrus_game::fidelity::Fidelity;
 use cyrus_game::fidelity::Mode;
 
+/// Wave heights supplied by a mod in place of the original table wave.
+/// The host publishes the animated water vertices in the camera window each frame;
+/// a provider answers with one height per position for the same `generation`.
+/// Heights are taken every frame, so a provider that stops writing hands water back.
+#[derive(Resource, Default)]
+pub struct WaterWaves {
+    /// Changes whenever `positions` are republished.
+    pub generation: u32,
+    /// Base positions of animated water vertices, in exported scene units.
+    pub positions: Vec<[f32; 3]>,
+    /// The world's wave parameters `[amplitude, speed, frequency]` in WLD units.
+    pub parameters: [f32; 3],
+    /// Presentation clock in seconds.
+    pub seconds: f32,
+    /// Vertical offsets in exported scene units for `generation`, one per position.
+    pub heights: Option<(u32, Vec<f32>)>,
+    vertices: Vec<usize>,
+}
+
 // Preservation's exporter uses 20 engine units per unit and 256 per grid cell.
 const CELL_SIZE: f32 = 256.0 / 20.0;
 const BIOS_TICKS_PER_SECOND: f64 = 1_193_182.0 / 65_536.0;
@@ -36,7 +55,8 @@ pub struct WaterPlayback {
     terrain: Vec<TerrainMesh>,
     tick: Option<u64>,
     window: Option<crate::terrain::Window>,
-    mode: Mode,
+    /// Whether the last grid used mod-supplied wave heights.
+    overridden: bool,
     grid: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     dirty_normals: Vec<bool>,
@@ -77,15 +97,6 @@ fn dirty_normals(water: &Water, window: crate::terrain::Window) -> Vec<bool> {
     dirty
 }
 
-/// Modern art-style preset: two smooth crossing waves around the original mean height.
-fn modern_displacement(water: &Water, position: [f32; 3], seconds: f32) -> f32 {
-    let phase = (position[0] + position[2] * 0.35) / (CELL_SIZE * 6.0) * std::f32::consts::TAU
-        - seconds * 0.8;
-    let cross = (position[2] - position[0] * 0.6) / (CELL_SIZE * 2.5) * std::f32::consts::TAU
-        - seconds * 1.3;
-    water.parameters[0] / 20.0 * (0.5 + 0.35 * phase.sin() + 0.15 * cross.sin())
-}
-
 /// Vertical offset for a grid vertex in exported units with positive Y up.
 /// `vertex` must be within the validated square grid; timing uses BIOS ticks.
 /// Phase starts at the application's clock origin; scene changes do not reset it.
@@ -121,7 +132,10 @@ pub(crate) fn animate_water(
     ),
     cameras: Query<(&Camera, &GlobalTransform), With<crate::camera::ViewCamera>>,
     transforms: Query<&GlobalTransform>,
-    distance: Option<Res<crate::fog::RenderDistance>>,
+    (distance, mut waves): (
+        Option<Res<crate::fog::RenderDistance>>,
+        Option<ResMut<WaterWaves>>,
+    ),
     mut preparation: Local<crate::terrain::Preparation>,
     mut camera_grid: Local<Vec<[f32; 3]>>,
 ) {
@@ -228,35 +242,60 @@ pub(crate) fn animate_water(
     }
     let elapsed = crate::presentation_clock::PresentationClock::elapsed(clock.as_deref(), &time);
     let ticks = (elapsed.as_secs_f64() * BIOS_TICKS_PER_SECOND).floor() as u64;
-    let mode = fidelity.mode(Area::Water);
+    let heights = waves.as_deref_mut().and_then(|waves| {
+        let supplied = waves.heights.take();
+        let water = water?;
+        let vertices: Vec<usize> = (0..water.animated_vertices.len())
+            .filter(|&v| water.animated_vertices[v] && window.contains(v))
+            .collect();
+        let positions: Vec<_> = vertices.iter().map(|&v| playback.base[v]).collect();
+        if vertices != waves.vertices || positions != waves.positions {
+            waves.generation = waves.generation.wrapping_add(1);
+            waves.positions = positions;
+            waves.vertices = vertices;
+        }
+        waves.parameters = water.parameters;
+        waves.seconds = elapsed.as_secs_f32();
+        let (generation, heights) = supplied?;
+        (generation == waves.generation && heights.len() == waves.vertices.len()).then(|| {
+            waves
+                .vertices
+                .iter()
+                .copied()
+                .zip(heights)
+                .collect::<Vec<_>>()
+        })
+    });
+    let overridden = heights.is_some();
+    if overridden {
+        info_once!("water: mod-supplied wave heights active");
+    }
     let update_grid = rebuild
         || playback.tick.is_none()
-        || (water.is_some()
-            && (mode != Mode::Faithful || playback.mode != mode || playback.tick != Some(ticks)));
+        || (water.is_some() && (overridden || playback.overridden || playback.tick != Some(ticks)));
     if update_grid {
         if water.is_some()
-            && mode == Mode::Faithful
-            && (rebuild || playback.tick.is_none() || playback.mode != mode)
+            && !overridden
+            && (rebuild || playback.tick.is_none() || playback.overridden)
         {
             playback.normals = crate::lighting::grid_normals(&playback.base, side);
         }
         playback.tick = Some(ticks);
-        playback.mode = mode;
+        playback.overridden = overridden;
         let mut grid = playback.base.clone();
-        for (vertex, position) in grid.iter_mut().enumerate() {
-            if let Some(water) =
-                water.filter(|w| w.animated_vertices[vertex] && window.contains(vertex))
-            {
-                position[1] += match mode {
-                    Mode::Faithful => displacement(water, vertex, ticks),
-                    Mode::Modern => {
-                        modern_displacement(water, playback.base[vertex], elapsed.as_secs_f32())
-                    }
-                };
+        if let Some(heights) = heights {
+            for (vertex, height) in heights {
+                grid[vertex][1] += height;
+            }
+        } else if let Some(water) = water {
+            for (vertex, position) in grid.iter_mut().enumerate() {
+                if water.animated_vertices[vertex] && window.contains(vertex) {
+                    position[1] += displacement(water, vertex, ticks);
+                }
             }
         }
         let normals = crate::lighting::grid_normals(&grid, side);
-        if water.is_some() && mode == Mode::Faithful {
+        if water.is_some() && !overridden {
             // Every changed face is admitted; unmarked vertex normals retain the base grid's values.
             for (vertex, normal) in normals.into_iter().enumerate() {
                 if window.contains(vertex) && playback.dirty_normals[vertex] {
@@ -397,6 +436,17 @@ mod tests {
     use bevy::asset::RenderAssetUsages;
     use bevy::mesh::PrimitiveTopology;
     use std::time::Duration;
+
+    /// Publishes positions, then answers them with a constant mod-supplied height.
+    fn supply_waves(app: &mut App) {
+        app.init_resource::<WaterWaves>();
+        app.update();
+        let mut waves = app.world_mut().resource_mut::<WaterWaves>();
+        let heights = (waves.generation, vec![1.0; waves.positions.len()]);
+        assert!(!heights.1.is_empty());
+        waves.heights = Some(heights);
+        app.update();
+    }
 
     #[test]
     fn documented_wave_samples_have_the_bias_and_export_sign() {
@@ -683,19 +733,14 @@ mod tests {
             .advance_by(Duration::from_millis(110));
         app.update();
         assert_eq!(sample(&app, 18), retained);
-        app.world_mut()
-            .resource_mut::<Fidelity>()
-            .set(Area::Water, Mode::Modern);
-        app.update();
+        supply_waves(&mut app);
         assert_ne!(sample(&app, 18).0, retained.0);
-        app.world_mut()
-            .resource_mut::<Fidelity>()
-            .set(Area::Water, Mode::Faithful);
+        // A provider that stops writing hands water back to the original wave.
         app.update();
         assert_eq!(
             sample(&app, 18),
             retained,
-            "Modern normals must not enter Faithful retention"
+            "mod normals must not enter faithful retention"
         );
 
         let mut next = app
@@ -829,18 +874,13 @@ mod tests {
         };
         assert_eq!(normal(&animated, 1), normal(&animated_other, 0));
         assert_ne!(normal(&animated, 1), [0.0, 1.0, 0.0]);
-        app.world_mut()
-            .resource_mut::<Fidelity>()
-            .set(Area::Water, Mode::Modern);
-        app.update();
+        supply_waves(&mut app);
         assert!(positions(&app, &animated)[1][1] >= 0.0);
         assert_eq!(positions(&app, &animated)[0], a[0]);
         assert_eq!(positions(&app, &first), a);
-        app.world_mut()
-            .resource_mut::<Fidelity>()
-            .set(Area::Water, Mode::Faithful);
+        // A provider that stops writing hands water back to the original wave.
         app.update();
-        // Returning to Faithful within the same tick restores its exact displacement.
+        // Returning to the original wave within the same tick restores its exact displacement.
         assert!((positions(&app, &animated)[1][1] + 0.6).abs() < 0.00001);
         // Render updates in the same BIOS tick leave the mesh unchanged.
         app.update();

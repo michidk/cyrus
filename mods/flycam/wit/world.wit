@@ -1,0 +1,10 @@
+package cyrus:flycam;
+
+world guest {
+    use wasvy:ecs/app@0.0.9.{query};
+    use cyrus:mods/components@0.1.0.{camera, input};
+
+    export fly: func(query: query);
+
+    include wasvy:ecs/guest@0.0.9;
+}

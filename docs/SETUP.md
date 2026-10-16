@@ -171,7 +171,7 @@ to build what releases ship.
 Without a `scene` query, the page runs startup through the book menu. Native and
 browser hosts compose this presentation through `cyrus-startup`; scene graphics
 and listener poses remain in `cyrus-render`, and playback remains in `cyrus-audio`.
-Native `--scene`, `--skip-startup`, `--water`, `--fog`, and `--sky` map directly
+Native `--scene`, `--skip-startup`, `--fog`, and `--sky` map directly
 to the same URL parameter names. Viewer `--asset`, `--file`, and `--palette` map
 to URL parameters or existing fragment links. `--install PATH` maps to
 `?install=URL` for the browser, where URL serves `manifest.json` and original bytes.
@@ -344,7 +344,8 @@ Local lights and complete static-prelighting behavior remain unsupported.
 ### Sky, fog, and water
 
 Re-export worlds to regenerate `.environment` sidecars. F1 provides independent
-Faithful/Modern buttons for Water, Fog, and Sky. All default to Faithful.
+Faithful/Modern buttons for Fog and Sky. Both default to Faithful. Water has no
+switch: the original wave runs unless a native mod replaces it (see Mods below).
 
 **Verified:** Faithful sky uses the installed BSI/COL texture, camera-relative
 plane mapping, per-world scrolling speed, and BIOS timer documented by
@@ -363,12 +364,21 @@ the view. F1's distance control selects Modern Fog; Original resets the distance
 and returns Fog to Faithful. Water and Sky are unaffected.
 
 **Verified:** Faithful water follows preservation's vertex selection, waveform,
-bias, spatial phase, and BIOS-rate clock. Modern water keeps the same selected
-vertices and installed texture, with smooth crossing waves, small texture
-ripples, and a subtle view-dependent sheen. These are optional artistic effects,
-not recovered engine behavior. Returning to Faithful restores the original
-wave at the current clock tick. Terrain placement, base heights, and lighting
-retain the existing export limitations.
+bias, spatial phase, and BIOS-rate clock. The bundled `modern-water` mod keeps
+the same selected vertices and installed texture, with smooth crossing waves,
+small texture ripples, and a subtle view-dependent sheen. These are optional
+artistic effects, not recovered engine behavior. Deactivating the mod restores
+the original wave at the current clock tick. Terrain placement, base heights,
+and lighting retain the existing export limitations.
+
+### Mods
+
+The native game loads WebAssembly mods from `cyrus-config/mods/<id>/`; the
+browser build has none. `just mods` builds the bundled mods under `mods/`
+(`modern-water`, `flycam`) and installs them there. F1 opens a Mods window next
+to the debug menu; ticking a mod activates it and saves the choice in
+`cyrus-config/mods.json`. Active mod files are reloaded when they change on
+disk. `mods/README.md` describes the mod API and how to write one.
 
 ## The original game
 

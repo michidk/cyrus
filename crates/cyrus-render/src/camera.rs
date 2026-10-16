@@ -27,6 +27,11 @@ impl Default for FlycamSettings {
     }
 }
 
+/// Camera pose a mod drives this frame. Taken every frame, so a mod that stops
+/// writing hands the camera back; while set, player input is suppressed.
+#[derive(Resource, Default)]
+pub struct CameraTakeover(pub Option<Transform>);
+
 /// Frame the inspection camera on a freshly loaded scene, without moving the player.
 #[derive(Resource, Default)]
 pub struct FrameScene(pub bool);
@@ -139,6 +144,7 @@ impl Plugin for CameraPlugin {
         app.init_resource::<crate::fog::RenderDistance>()
             .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
+            .init_resource::<CameraTakeover>()
             .init_resource::<InputSuppressed>()
             .add_systems(OnEnter(AppState::InGame), spawn)
             .add_systems(Update, suppress.before(InputSample))
@@ -162,7 +168,10 @@ impl Plugin for CameraPlugin {
                     ),
                     follow_player
                         .after(cyrus_game::player::placement::PlayerPlacement)
-                        .run_if(|f: Res<FlycamSettings>| !f.enabled),
+                        .run_if(|f: Res<FlycamSettings>, t: Res<CameraTakeover>| {
+                            !f.enabled && t.0.is_none()
+                        }),
+                    apply_takeover,
                 )
                     .chain()
                     .run_if(in_state(AppState::InGame)),
@@ -206,8 +215,21 @@ pub(crate) fn script_view(
     });
 }
 
-fn suppress(flycam: Res<FlycamSettings>, mut suppressed: ResMut<InputSuppressed>) {
-    suppressed.0 = flycam.enabled;
+fn suppress(
+    flycam: Res<FlycamSettings>,
+    takeover: Res<CameraTakeover>,
+    mut suppressed: ResMut<InputSuppressed>,
+) {
+    suppressed.0 = flycam.enabled || takeover.0.is_some();
+}
+
+fn apply_takeover(
+    mut takeover: ResMut<CameraTakeover>,
+    mut camera: Query<&mut Transform, With<ViewCamera>>,
+) {
+    if let (Some(pose), Ok(mut camera)) = (takeover.0.take(), camera.single_mut()) {
+        *camera = pose;
+    }
 }
 fn spawn(
     mut commands: Commands,

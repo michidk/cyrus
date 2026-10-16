@@ -21,6 +21,7 @@ cyrus-session.workspace = true
 cyrus-startup.workspace = true
 bevy = { workspace = true, features = ["default"] }
 cyrus-debug = { path = "../cyrus-debug" }
+cyrus-mods = { path = "../cyrus-mods" }
 cyrus-game.workspace = true
 cyrus-control.workspace = true
 anyhow.workspace = true

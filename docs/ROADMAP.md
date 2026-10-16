@@ -116,7 +116,7 @@ world playback remains unfinished.
 
 ### Rendering
 
-- [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky, fog and water exist; Modern lighting reuses Faithful results.
+- [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky and fog exist; Modern lighting reuses Faithful results. Modern water is the bundled native `modern-water` mod.
 - [x] Installed model lighting, static map-light baking, authored object lights and ROB filtering attributes.
 - [x] Finite terrain window, clipping, fixed-point texture sampling, fog and water-edge normal retention.
 - [x] Resizable World Inspector with a scrollable entity viewport. **Verified:** the egui pointer-drag regression checks window and viewport growth; headless browser v0.1.12 START captures at 1000×800 confirm growth and shrinkage with the entity viewport filling the resized window.

@@ -23,7 +23,7 @@ mod water;
 use bevy::prelude::*;
 pub use water::{
     PreparedTerrainMesh, TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot,
-    WaterPlayback,
+    WaterPlayback, WaterWaves,
 };
 /// Shared world presentation for native and browser hosts.
 pub struct WorldRenderPlugin;

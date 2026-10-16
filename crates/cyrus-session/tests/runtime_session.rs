@@ -268,10 +268,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     let player_actor = current.id(2)?;
     registry.current = Some(current);
     let mut app = App::new();
-    app.insert_resource(cyrus_game::fidelity::Fidelity {
-        water: cyrus_game::fidelity::Mode::Modern,
-        ..Default::default()
-    });
+    app.init_resource::<cyrus_game::fidelity::Fidelity>();
     app.add_plugins((
         MinimalPlugins,
         bevy::state::app::StatesPlugin,

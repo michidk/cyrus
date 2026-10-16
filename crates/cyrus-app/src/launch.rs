@@ -50,9 +50,6 @@ pub struct GameOptions {
     /// Bypass the splash while preparing the book menu behind the title.
     #[arg(long)]
     pub skip_startup: bool,
-    /// Water presentation mode.
-    #[arg(long, value_parser = ["faithful", "modern"])]
-    pub water: Option<String>,
     /// Fog presentation mode.
     #[arg(long, value_parser = ["faithful", "modern"])]
     pub fog: Option<String>,
