@@ -136,7 +136,7 @@ world playback remains unfinished.
 
 ### Rendering
 
-- [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky, fog and water exist; Modern lighting reuses Faithful results.
+- [x] World geometry, terrain, textures, palettes, horizontal camera projection and independent fidelity controls. Optional Modern sky and fog exist; Modern lighting reuses Faithful results. Modern water is the bundled native `modern-water` mod.
 - [x] Installed model lighting, static map-light baking, authored object lights and ROB filtering attributes.
 - [x] Compare held Cyrus and START Brennan shading with isolated normal and skin controls. **Verified:** sampled sleeve RGB error falls from 37.91 to 3.60 for Cyrus and 5.32 to 2.42 for Brennan when only normals change; the wrong-skin control raises Brennan shirt error from 2.94 to 44.03. Presentation resampling and unmatched boat state limit acceptance. Brightness and lighting inputs stay fixed; no production correction ships. [Bounded comparison](https://github.com/michidk/redguard-decomp/tree/1e19412b230b142643bb042804a1b6355d36d2d0/research/supplements/2026-10-16-held-actor-shading).
 - [ ] Preserve authored vertex-normal selection during animated mesh updates, including invalid-normal face fallback, then verify ordinary native/browser actors.

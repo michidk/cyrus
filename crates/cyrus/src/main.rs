@@ -96,7 +96,6 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         cyrus_assets::music::export(install.as_ref().unwrap(), &Settings::cache_dir())?;
     }
     for (area, value) in [
-        (cyrus_game::fidelity::Area::Water, args.launch.water),
         (cyrus_game::fidelity::Area::Fog, args.launch.fog),
         (cyrus_game::fidelity::Area::Sky, args.launch.sky),
         (cyrus_game::fidelity::Area::Music, args.launch.music),
@@ -155,6 +154,9 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         preferences::LocalPreferences,
     ));
     crate::scene::register_cache_source(&mut app)?;
+    if !args.headless {
+        cyrus_mods::register_source(&mut app);
+    }
     if args.headless {
         app.add_plugins((
             MinimalPlugins,
@@ -178,6 +180,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
             cyrus_render::WorldRenderPlugin,
             cyrus_render::hud::HudPlugin,
             cyrus_debug::DebugMenuPlugin,
+            cyrus_mods::ModsPlugin,
         ));
         app.add_systems(
             Update,

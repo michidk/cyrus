@@ -224,6 +224,7 @@ impl Plugin for FogPlugin {
         load_shader_library!(app, "model_lights.wesl");
         load_shader_library!(app, "sampling.wesl");
         load_shader_library!(app, "terrain_texture.wesl");
+        load_shader_library!(app, "water_surface.wesl");
         embedded_asset!(app, "scene_fog.wesl");
         embedded_asset!(app, "terrain.wesl");
         app.init_resource::<RenderDistance>()
@@ -622,12 +623,7 @@ fn fog_extension(
             u8::from(fidelity.mode(Area::Fog) == Mode::Modern) as f32,
             0.0,
         ),
-        water: Vec4::new(
-            u8::from(fidelity.mode(Area::Water) == Mode::Modern) as f32,
-            0.0,
-            0.0,
-            0.0,
-        ),
+        water: Vec4::ZERO,
         table: environment
             .fog_table
             .map(|values| Vec4::from_array(values.map(|value| value as f32))),

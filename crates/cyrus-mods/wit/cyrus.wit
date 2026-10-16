@@ -1,0 +1,55 @@
+/// The cyrus mod API: one resource per hook. Mods query the component of the
+/// same name (it lives on a single host entity) and wrap it with the resource.
+/// Query `water` and `camera` with `QueryFor::Mut` and `input` with `QueryFor::Ref`;
+/// wasvy rejects method calls through the other mutability. Method names are
+/// single words because wasvy looks host methods up by their WIT name verbatim.
+package cyrus:mods@0.1.0;
+
+interface components {
+  use wasvy:ecs/app@0.0.9.{component};
+
+  /// Wave heights in place of the original table wave.
+  /// Heights must answer the current generation and be written every frame;
+  /// when a mod stops writing, water returns to the original wave.
+  /// wasvy:type-path=cyrus_mods::api::Water
+  resource water {
+    constructor(component: component);
+    /// Changes whenever the published positions change.
+    generation: func() -> u32;
+    /// Base positions of animated water vertices as x, y, z triples, in scene units.
+    positions: func() -> list<f32>;
+    /// The world's wave parameters: amplitude, speed, frequency (WLD units).
+    parameters: func() -> list<f32>;
+    /// Presentation clock in seconds.
+    seconds: func() -> f32;
+    /// One vertical offset per position, in scene units, for `generation`.
+    answer: func(generation: u32, heights: list<f32>);
+  }
+
+  /// The view camera. A mod that takes it over each frame suppresses player input.
+  /// wasvy:type-path=cyrus_mods::api::Camera
+  resource camera {
+    constructor(component: component);
+    /// Current view pose: x, y, z, then rotation quaternion x, y, z, w.
+    pose: func() -> list<f32>;
+    /// Drive the camera this frame with a pose in the same layout as `pose`.
+    drive: func(pose: list<f32>);
+  }
+
+  /// Keyboard and mouse this frame; `tapped` means pressed this frame. Keys use Bevy `KeyCode` names such as
+  /// "KeyW", "Space", "ShiftLeft" or "F3".
+  /// wasvy:type-path=cyrus_mods::api::Input
+  resource input {
+    constructor(component: component);
+    pressed: func(key: string) -> bool;
+    tapped: func(key: string) -> bool;
+    /// Mouse motion since the last frame in pixels: x, y.
+    mouse: func() -> list<f32>;
+    /// Seconds since the last frame.
+    delta: func() -> f32;
+  }
+}
+
+world host {
+  import components;
+}

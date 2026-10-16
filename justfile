@@ -28,6 +28,17 @@ genmap:
 build:
     cargo build --workspace
 
+# build the bundled native mods (mods/*) for wasm32-wasip2 and install them into cyrus-config/mods
+mods:
+    for dir in mods/*/; do \
+        id="$(basename "$dir")"; \
+        (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../target/mods" cargo build --release --target wasm32-wasip2); \
+        mkdir -p "cyrus-config/mods/$id"; \
+        cp "$dir/mod.toml" "cyrus-config/mods/$id/"; \
+        cp "target/mods/wasm32-wasip2/release/${id//-/_}.wasm" "cyrus-config/mods/$id/mod.wasm"; \
+        if [ -f "$dir/water_surface.wesl" ]; then cp "$dir/water_surface.wesl" "cyrus-config/mods/$id/"; fi; \
+    done
+
 run *ARGS:
     cargo run -p cyrus -- {{ARGS}}
 

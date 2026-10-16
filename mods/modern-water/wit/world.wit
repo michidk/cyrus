@@ -1,0 +1,10 @@
+package cyrus:modern-water;
+
+world guest {
+    use wasvy:ecs/app@0.0.9.{query};
+    use cyrus:mods/components@0.1.0.{water};
+
+    export waves: func(query: query);
+
+    include wasvy:ecs/guest@0.0.9;
+}

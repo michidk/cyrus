@@ -32,4 +32,5 @@ Render distance starts at the installed game's value. Changing it selects
 Modern Fog; Original clears the override and returns Fog to Faithful. Modern Fog
 also expands terrain and water submission to the selected distance. Modern Fog
 defaults to four times the original distance with a gradual distant fade.
-Water, Fog, and Sky have independent Faithful/Modern buttons.
+Fog and Sky have independent Faithful/Modern buttons. Water changes only
+through native mods; `cyrus-mods` adds its Mods window while this menu is open.

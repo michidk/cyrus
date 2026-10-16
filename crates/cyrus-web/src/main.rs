@@ -53,11 +53,6 @@ fn main() {
             }),
     )
     .insert_resource(Fidelity {
-        water: if options.water.as_deref() == Some("modern") {
-            Mode::Modern
-        } else {
-            Mode::Faithful
-        },
         fog: if options.fog.as_deref() == Some("modern") {
             Mode::Modern
         } else {

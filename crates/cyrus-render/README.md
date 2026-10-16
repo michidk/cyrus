@@ -260,10 +260,12 @@ editing it switches Fog to Modern. Faithful uses the original range and fog
 tables. Modern Fog expands the camera-centered terrain and water window to cover the
 selected far frustum. Faithful Fog retains the original terrain window.
 Modern Fog defaults to four times the far distance and a gradual distant
-fade. Modern Sky is camera-centered; Modern Water adds smooth crossing waves,
-fine texture ripples, and view-dependent sheen while retaining the installed
-textures. Water, Fog, and Sky are independently switchable and default to
-Faithful. Re-export environments after this change.
+fade. Modern Sky is camera-centered. Fog and Sky are independently switchable
+and default to Faithful. Water has two mod hooks instead of a mode: `WaterWaves`
+takes per-vertex heights in place of the original wave for each frame a provider
+answers, and the `water_surface.wesl` library (texture offset and final colour)
+keeps the original look until a mod replaces its source. `CameraTakeover`
+drives the view camera for a frame and suppresses player input. Re-export environments after this change.
 The fog curve follows preservation's [fog documentation](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/fog.md).
 Faithful fog uses the Voodoo 1 integer lookup and channel blend, with RGB565
 framebuffer dithering for the sky and opaque/cutout scene materials. Vulkan
@@ -392,7 +394,7 @@ The production sampler matches compiled-original interpolation on synthetic
 wrapped texture samples. Prepared terrain uses the published
 [fixed-plane and reciprocal contract](https://github.com/michidk/redguard-preservation/blob/837f22c/docs/engine/terrain-lighting.md)
 and selects four-bit texture samples in integers before float normalization and
-row reversal. Modern water adds its existing ripples after this selection.
+row reversal. A water-surface mod's texture offset applies after this selection.
 Original-instruction comparisons cover CPU setup; Vulkan checks cover the
 production shader arithmetic. Full pixel parity remains unverified.
 

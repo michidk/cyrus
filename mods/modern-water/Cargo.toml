@@ -1,0 +1,16 @@
+[package]
+name = "modern_water"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Built on its own for wasm32-wasip2 by `just mods`, outside the game workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.58"
+# Same revision as crates/cyrus-mods.
+wasvy_macros = { git = "https://github.com/wasvy-org/wasvy", rev = "20d7832e0c5c1e867586f7a8aec06073551f5612" }

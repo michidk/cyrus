@@ -70,7 +70,6 @@ native exporter is required.
 | `?scene=START` | `--scene START` |
 | `?view=x,y,z,qx,qy,qz,qw` | `--view=x,y,z,qx,qy,qz,qw` |
 | `?skip-startup=true` | `--skip-startup` |
-| `?water=modern` | `--water modern` |
 | `?fog=modern` | `--fog modern` |
 | `?sky=modern` | `--sky modern` |
 
