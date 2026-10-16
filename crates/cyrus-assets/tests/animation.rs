@@ -8,7 +8,7 @@ fn asset() -> Animations {
         "metadata": {"actors": [{"script_name": "ACTOR", "raan_entries": [{"file_path": "fxart/test.3dc", "frame_count": 2}], "animation_groups": [{"group_index": 7, "commands": [{"opcode": 4, "sound_param": 9}]}]}]},
         "models": {"TEST": {
             "base_positions": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
-            "base_normals": [[0, 0, 1]], "faces": [[0, 1, 2]],
+            "base_normals": [[0, 0, 1]], "faces": [[0, 1, 2]], "corner_normals": [[null, null, null]],
             "encoding": "animated_i16",
             "positions": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 2], [1, 0, 2], [0, 1, 2]]],
             "normals": [[], [[0, 0, 1]]]
@@ -136,4 +136,18 @@ fn placed_frame_sources_belong_to_instances_and_preserve_table_bounds() {
     data.metadata["actors"][0]["raan_entries"] =
         serde_json::json!([{ "file_path":"other.3dc", "frame_count":2 }]);
     assert_eq!(data.resolve_map_frame(0, 1).unwrap().model, "OTHER");
+}
+
+#[test]
+fn actor_texture_set_comes_from_raex_and_names_a_separate_frame_source() {
+    use cyrus_assets::animation::{actor_texture_set, frame_source_file};
+    let skin = serde_json::json!({"script_name": "A", "raex": {"texture_id": 454}});
+    let plain = serde_json::json!({"script_name": "B", "raex": {"texture_id": 0}});
+    let absent = serde_json::json!({"script_name": "C"});
+    assert_eq!(actor_texture_set(&skin).unwrap(), Some(454));
+    assert_eq!(actor_texture_set(&plain).unwrap(), None);
+    assert_eq!(actor_texture_set(&absent).unwrap(), None);
+    assert!(actor_texture_set(&serde_json::json!({"raex": {"texture_id": -1}})).is_err());
+    assert_eq!(frame_source_file("THUGA003", Some(454)), "THUGA003-454.glb");
+    assert_eq!(frame_source_file("THUGA003", None), "THUGA003.glb");
 }

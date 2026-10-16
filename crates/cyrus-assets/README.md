@@ -81,12 +81,16 @@ Embedded ROB models are retained when matching archive payloads agree; conflicti
 payloads remain unsupported rather than selecting an archive without evidence.
 Native and browser scene loading retain this data. Re-export worlds for schema 2
 and the GLB source vertex/face mapping. Older sidecars are rejected with a
-re-export error. In `cyrus-render`, explicit model poses update private meshes, normals, and bounds;
+re-export error. Each model also retains authored corner normals, resolved by
+preservation's shading selection and shared by every frame; caches without them are
+rejected. In `cyrus-render`, explicit model poses update private meshes, normals, and bounds;
 removing a pose or changing worlds restores the original mesh.
 
 World export also prepares every actor's RAAN frame-source models under
 `<world>.player-models/`, with the world's palette, textures and source geometry
-mappings. The existing cache directory name is shared by player and ordinary actor
+mappings. An actor with a RAEX texture set gets its own copy, `<MODEL>-<set>.glb`, with
+preservation's [actor texture sets](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md#actor-texture-sets)
+applied; actors without one share `<MODEL>.glb`. The existing cache directory name is shared by player and ordinary actor
 models. The `.player` sidecar retains only CYRUS's authored model-header radii in map
 units for collision candidate selection. Frame tables and replacement geometry use
 the same placed, standalone or embedded ROB source selection. Missing or conflicting

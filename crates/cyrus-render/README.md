@@ -336,8 +336,12 @@ frames verify decoded export; projection has a separate contract test. Live
 visual parity remains unchecked.
 
 `PlayerModelPlugin` consumes explicit `AnimationPose` components on the player.
-It loads the matching textured GLB from the world's `.player-models/` cache,
-applies the requested frame, and replaces the model when the source changes.
+It loads the matching textured GLB from the world's `.player-models/` cache, using
+the bound actor's installed texture set, applies the requested frame, and replaces the
+model when the source or texture set changes. A bound actor waits until its world and
+animation data name the set, so its default skin never shows first.
+Animated corners keep their authored vertex normals in every frame; only corners without
+a valid authored normal use the frame's face normal.
 Removing the pose or player removes its model. The model stays hidden until its
 pose reaches the loaded node. Native and browser use the same loader path.
 This adds no animation interpreter, actor activation, or simulation clock.

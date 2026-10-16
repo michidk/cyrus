@@ -840,6 +840,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
                 base_positions: vec![],
                 base_normals: vec![],
                 faces: vec![],
+                corner_normals: vec![],
                 encoding: "animated_i32".into(),
                 positions: vec![vec![]; 32],
                 normals: vec![vec![]; 32],

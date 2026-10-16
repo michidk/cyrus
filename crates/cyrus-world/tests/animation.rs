@@ -8,7 +8,7 @@ fn asset() -> Animations {
         "metadata": {"actors": [{"script_name": "ACTOR", "raan_entries": [{"file_path": "fxart/test.3dc", "frame_count": 2}], "animation_groups": [{"group_index": 7, "commands": [{"opcode": 4, "sound_param": 9}]}]}]},
         "models": {"TEST": {
             "base_positions": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
-            "base_normals": [[0, 0, 1]], "faces": [[0, 1, 2]],
+            "base_normals": [[0, 0, 1]], "faces": [[0, 1, 2]], "corner_normals": [[null, null, null]],
             "encoding": "animated_i16",
             "positions": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 2], [1, 0, 2], [0, 1, 2]]],
             "normals": [[], [[0, 0, 1]]]

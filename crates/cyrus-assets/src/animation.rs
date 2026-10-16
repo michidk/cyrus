@@ -35,6 +35,10 @@ pub struct AnimationModel {
     pub base_normals: Vec<[f32; 3]>,
     /// Original polygon vertex indices, before GLB triangulation or vertex duplication.
     pub faces: Vec<Vec<u32>>,
+    /// Authored normals by face and polygon corner, shared by every frame; `None`
+    /// selects the frame's face normal. Resolved by rgpre's model shading selection.
+    #[serde(default)]
+    pub corner_normals: Vec<Vec<Option<[f32; 3]>>>,
     /// Original frame encoding, required before interpreting animated coordinates.
     pub encoding: String,
     /// Frame-table order, including frame zero. Values are retained exactly as rgpre decodes them.
@@ -98,6 +102,15 @@ impl Animations {
                     .all(|&i| (i as usize) < model.base_positions.len()),
                 "{context}: face vertex out of range"
             );
+            anyhow::ensure!(
+                model.corner_normals.len() == model.faces.len()
+                    && model
+                        .corner_normals
+                        .iter()
+                        .zip(&model.faces)
+                        .all(|(normals, face)| normals.len() == face.len()),
+                "{context}: corner normal table absent or inconsistent; re-export the world"
+            );
             for (index, positions) in model.positions.iter().enumerate() {
                 anyhow::ensure!(
                     positions.len() == model.base_positions.len(),
@@ -116,6 +129,7 @@ impl Animations {
                     .chain(&model.base_normals)
                     .chain(model.positions.iter().flatten())
                     .chain(model.normals.iter().flatten())
+                    .chain(model.corner_normals.iter().flatten().flatten())
                     .flatten()
                     .all(|v| v.is_finite()),
                 "{context}: nonfinite geometry"
@@ -146,6 +160,35 @@ impl AssetLoader for AnimationLoader {
     fn extensions(&self) -> &[&str] {
         &["animations"]
     }
+}
+
+/// Cache filename of a frame-source model drawn with an actor texture set.
+/// `None` keeps the model's own textures; the name stays a flat path component.
+pub fn frame_source_file(model: &str, texture_set: Option<u16>) -> String {
+    match texture_set {
+        Some(set) => format!("{model}-{set}.glb"),
+        None => format!("{model}.glb"),
+    }
+}
+
+/// RAEX `texture_id` of an actor metadata record, applied by preservation's
+/// [actor texture sets](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/RGM.md#actor-texture-sets).
+/// An absent RAEX record or zero keeps the models' own textures.
+pub fn actor_texture_set(actor: &serde_json::Value) -> anyhow::Result<Option<u16>> {
+    let value = &actor["raex"]["texture_id"];
+    if value.is_null() {
+        return Ok(None);
+    }
+    let set = value
+        .as_u64()
+        .and_then(|set| u16::try_from(set).ok())
+        .with_context(|| {
+            format!(
+                "actor {}: invalid RAEX texture_id {value}",
+                actor["script_name"]
+            )
+        })?;
+    Ok((set != 0).then_some(set))
 }
 
 /// A resolved RAAN model/frame pair; this is not an attachment vertex selection.

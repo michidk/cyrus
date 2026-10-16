@@ -14,6 +14,9 @@ pub struct PlayerModelSnapshot {
     source: SceneSourceIdentity,
     transform: Transform,
     visibility: u8,
+    /// Installed actor texture set of the frame source; absent in older snapshots.
+    #[serde(default)]
+    texture_set: Option<u16>,
 }
 
 pub struct PlayerModelCandidate {
@@ -88,7 +91,7 @@ impl PlayerModelSnapshot {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'_'),
             "player model source key invalid"
         );
-        Ok(model_source(prepared, &self.model))
+        Ok(model_source(prepared, &self.model, self.texture_set))
     }
 
     pub fn capture(world: &World, player: Entity) -> Result<Option<Self>> {
@@ -120,7 +123,7 @@ impl PlayerModelSnapshot {
         let prepared = world
             .get_resource::<PreparedWorld>()
             .ok_or_else(|| anyhow::anyhow!("player model capture: prepared world absent"))?;
-        let expected_source = model_source(prepared, &pose.model);
+        let expected_source = model_source(prepared, &pose.model, owner.texture_set);
         ensure!(
             owner.source == expected_source,
             "player model capture: source differs from prepared world"
@@ -170,6 +173,7 @@ impl PlayerModelSnapshot {
             source: SceneSourceIdentity::capture(world, root)?,
             transform,
             visibility,
+            texture_set: owner.texture_set,
         }))
     }
 
@@ -317,6 +321,7 @@ impl PlayerModelCandidate {
                 player: self.player,
                 source: self.source,
                 model: self.saved.model,
+                texture_set: self.saved.texture_set,
             },
             self.saved.transform,
             visibility,
@@ -341,7 +346,7 @@ mod tests {
             scene_path: "test.glb".into(),
             environment_path: "test.environment".into(),
         };
-        let source = model_source(&prepared, "TEST");
+        let source = model_source(&prepared, "TEST", None);
         app.insert_resource(prepared);
         let player = app
             .world_mut()
@@ -377,6 +382,7 @@ mod tests {
                 source: identity,
                 transform: Transform::from_xyz(1.0, 2.0, 3.0),
                 visibility: 1,
+                texture_set: None,
             },
         };
         let mut queue = bevy::ecs::world::CommandQueue::default();
@@ -454,7 +460,7 @@ mod tests {
             serde_json::json!({
                 "version":2,"world":17,"metadata":{},"sections":{},
                 "models":{"TEST":{"base_positions":[[0.0,0.0,0.0],[-20.0,0.0,0.0],[0.0,-20.0,0.0]],
-                    "base_normals":[[0.0,0.0,1.0]], "faces":[[0,1,2]],"encoding":"animated_i16_absolute",
+                    "base_normals":[[0.0,0.0,1.0]], "faces":[[0,1,2]],"corner_normals":[[null,null,null]],"encoding":"animated_i16_absolute",
                     "positions":[[[0.0,0.0,0.0],[-20.0,0.0,0.0],[0.0,-20.0,0.0]],
                                  [[0.0,0.0,40.0],[-20.0,0.0,40.0],[0.0,-20.0,40.0]]],
                     "normals":[[[0.0,0.0,1.0]],[[0.0,0.0,1.0]]]}},

@@ -146,12 +146,37 @@ fn verify_exported_models(
     animations: &cyrus_assets::animation::Animations,
     names: &[&str],
 ) {
+    // Every actor drawing a frame source gets the copy for its installed texture set.
+    let sets = |name: &str| -> std::collections::BTreeSet<Option<u16>> {
+        animations.metadata["actors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|actor| {
+                actor["raan_entries"].as_array().is_some_and(|entries| {
+                    entries.iter().any(|entry| {
+                        let path = entry["file_path"].as_str().unwrap();
+                        let file = path.rsplit(['/', '\\']).next().unwrap();
+                        file.split('.').next().unwrap().eq_ignore_ascii_case(name)
+                    })
+                })
+            })
+            .map(|actor| cyrus_assets::animation::actor_texture_set(actor).unwrap())
+            .collect()
+    };
     for &name in names {
-        let bytes = std::fs::read(
-            path.with_extension("player-models")
-                .join(format!("{name}.glb")),
-        )
-        .unwrap();
+        assert!(
+            !sets(name).is_empty(),
+            "{name}: no actor draws this frame source"
+        );
+    }
+    for (name, set) in names
+        .iter()
+        .flat_map(|&name| sets(name).into_iter().map(move |set| (name, set)))
+    {
+        let file = cyrus_assets::animation::frame_source_file(name, set);
+        let bytes = std::fs::read(path.with_extension("player-models").join(&file))
+            .unwrap_or_else(|error| panic!("{file}: {error}"));
         let glb = bevy::gltf::gltf::Gltf::from_slice(&bytes).unwrap();
         let node = glb.nodes().find(|node| node.name() == Some(name)).unwrap();
         let mesh = node.mesh().unwrap();
@@ -186,6 +211,23 @@ fn verify_exported_models(
                 .unwrap()
                 .collect();
             assert_eq!(positions, base.positions);
+            // Animated corners keep the same authored-normal selection as preservation's export.
+            let normals: Vec<_> = primitive
+                .reader(|_| glb.blob.as_deref())
+                .read_normals()
+                .unwrap()
+                .collect();
+            assert_eq!(normals, base.normals, "{name}: frame-zero normals");
+            // Installed actor models author every vertex normal; no frame may substitute faces.
+            let model = &animations.models[name];
+            if model.corner_normals.iter().flatten().all(Option::is_some) {
+                for frame in 1..model.positions.len() {
+                    let animated =
+                        cyrus_render::animation::FrameGeometry::from_model(model, frame, &binding)
+                            .unwrap();
+                    assert_eq!(animated.normals, base.normals, "{name} frame {frame}");
+                }
+            }
             assert!(
                 cyrus_render::animation::FrameGeometry::from_model(
                     &animations.models[name],

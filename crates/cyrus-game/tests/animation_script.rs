@@ -6,7 +6,7 @@ fn asset() -> Animations {
         "version":2, "world":17, "sections":{}, "unsupported":{},
         "models":{"TEST":{
             "base_positions":[[0,0,0],[1,0,0],[0,1,0]],
-            "base_normals":[[0,0,1]], "faces":[[0,1,2]], "encoding":"animated_i32",
+            "base_normals":[[0,0,1]], "faces":[[0,1,2]],"corner_normals":[[null,null,null]], "encoding":"animated_i32",
             "positions":[[[0,0,0],[1,0,0],[0,1,0]],[[0,0,2],[1,0,2],[0,1,2]]],
             "normals":[[],[[0,0,1]]]
         }},

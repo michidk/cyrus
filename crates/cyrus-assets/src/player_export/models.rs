@@ -30,6 +30,7 @@ pub(crate) fn prepare(
             anyhow::ensure!(actor_name != "CYRUS", "CYRUS: missing frame sources");
             continue;
         };
+        let texture_set = crate::animation::actor_texture_set(actor)?;
         for entry in entries {
             let path = entry["file_path"]
                 .as_str()
@@ -44,19 +45,23 @@ pub(crate) fn prepare(
             if actor_name == "CYRUS" {
                 player_names.insert(name.clone());
             }
-            names.insert(name);
+            names.insert((name, texture_set));
         }
     }
     let directory = out.with_extension("player-models");
     let mut radii = BTreeMap::new();
-    for name in names {
+    for (name, texture_set) in names {
         let model = crate::animation_export::resolve_model(&name, placed, registry)
             .with_context(|| format!("actor model {name}"))?;
         if player_names.contains(&name) {
             radii.insert(name.clone(), model.header.radius as f32 / 256.0);
         }
+        let mut model = model.into_owned();
+        if let Some(set) = texture_set {
+            rgm::apply_texture_override(&mut model, set);
+        }
         let model = rgm::PositionedModel {
-            model: model.into_owned(),
+            model,
             transform: [
                 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
             ],
@@ -67,9 +72,11 @@ pub(crate) fn prepare(
         };
         let (root, buffer) =
             convert_positioned_models_to_gltf(&[model], &[], Some(palette), Some(textures), false)
-                .with_context(|| format!("actor model {name}: GLB export"))?;
+                .with_context(|| {
+                    format!("actor model {name} texture set {texture_set:?}: GLB export")
+                })?;
         output.publish(
-            &directory.join(format!("{name}.glb")),
+            &directory.join(crate::animation::frame_source_file(&name, texture_set)),
             &to_glb(&root, &buffer)?,
         )?;
     }

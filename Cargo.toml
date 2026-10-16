@@ -21,7 +21,7 @@ clap = { version = "4", features = ["derive", "env"] }
 log = "0.4"
 smk = { version = "0.1", path = "dev/vendor/smk" }
 # Keep the browser-safe bitmap font generator until the published dependency supports WASM.
-redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "2c560727d0b51eb1c9dcb60935d705ce0903d916" }
+redguard-preservation = { git = "https://github.com/michidk/redguard-preservation", rev = "27c3519e32791cd45e0cf878654333582bdfc29f" }
 cyrus-console = { path = "crates/cyrus-console" }
 cyrus-control = { path = "crates/cyrus-control" }
 cyrus-world = { path = "crates/cyrus-world" }

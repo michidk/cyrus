@@ -4450,6 +4450,7 @@ fn world_snapshot_resumes_displayed_animation_and_native_completion_together() {
             base_positions: vec![],
             base_normals: vec![],
             faces: vec![],
+            corner_normals: vec![],
             encoding: "static_3d".into(),
             positions: vec![vec![], vec![]],
             normals: vec![vec![], vec![]],

@@ -42,6 +42,7 @@ fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
             .iter()
             .map(|face| face.face_vertices.iter().map(|v| v.vertex_index).collect())
             .collect(),
+        corner_normals: corner_normals(model),
         encoding: encoding.into(),
         positions: model
             .frame_vertex_data
@@ -54,6 +55,36 @@ fn model_data(model: &Model3DFile) -> anyhow::Result<AnimationModel> {
             .map(|frame| frame.face_normals.iter().map(|v| [v.x, v.y, v.z]).collect())
             .collect(),
     })
+}
+
+/// Mirrors rgpre's shading selection: the indirection table when present, otherwise
+/// direct vertex lookup; zero, subnormal or non-finite normals fall back to the face.
+fn corner_normals(model: &Model3DFile) -> Vec<Vec<Option<[f32; 3]>>> {
+    let mut corner = 0;
+    model
+        .face_data
+        .iter()
+        .map(|face| {
+            face.face_vertices
+                .iter()
+                .map(|vertex| {
+                    let index = if model.normal_indices.is_empty() {
+                        usize::try_from(vertex.vertex_index).ok()
+                    } else {
+                        model
+                            .normal_indices
+                            .get(corner)
+                            .and_then(|&index| usize::try_from(index).ok())
+                    };
+                    corner += 1;
+                    index
+                        .and_then(|index| model.vertex_normals.get(index))
+                        .filter(|n| (n.x * n.x + n.y * n.y + n.z * n.z).is_normal())
+                        .map(|n| [n.x, n.y, n.z])
+                })
+                .collect()
+        })
+        .collect()
 }
 
 fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<Model3DFile> {

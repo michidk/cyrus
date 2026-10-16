@@ -24,7 +24,7 @@ pub struct MeshFrameBinding {
 pub struct FrameGeometry {
     /// Positions use rgpre's export axes and twenty engine units per GLB unit.
     pub positions: Vec<[f32; 3]>,
-    /// Decoded face normals use the export axes, without invented interpolation.
+    /// Authored corner normals, or the frame's face normal where none is valid, in export axes.
     pub normals: Vec<[f32; 3]>,
 }
 
@@ -70,16 +70,24 @@ impl FrameGeometry {
                 .faces
                 .get(face as usize)
                 .with_context(|| format!("frame {frame}: source face {face} out of range"))?;
-            anyhow::ensure!(
-                polygon.contains(&vertex),
-                "frame {frame}: vertex {vertex} does not belong to face {face}"
-            );
+            let corner = polygon.iter().position(|&v| v == vertex).with_context(|| {
+                format!("frame {frame}: vertex {vertex} does not belong to face {face}")
+            })?;
             let &[x, y, z] = positions
                 .get(vertex as usize)
                 .with_context(|| format!("frame {frame}: source vertex {vertex} out of range"))?;
-            let &[nx, ny, nz] = normals
+            // Frames carry only positions and face normals; authored corner normals stay fixed.
+            let authored = model
+                .corner_normals
                 .get(face as usize)
-                .with_context(|| format!("frame {frame}: normal for face {face} absent"))?;
+                .and_then(|corners| corners.get(corner))
+                .with_context(|| format!("frame {frame}: corner normals for face {face} absent"))?;
+            let &[nx, ny, nz] = match authored {
+                Some(normal) => normal,
+                None => normals
+                    .get(face as usize)
+                    .with_context(|| format!("frame {frame}: normal for face {face} absent"))?,
+            };
             output.positions.push([-x / 20.0, -y / 20.0, z / 20.0]);
             output.normals.push([-nx, -ny, nz]);
         }

@@ -8,7 +8,7 @@ fn asset() -> Animations {
         "metadata": {"actors": [{"script_name": "ACTOR", "raan_entries": [{"file_path": "fxart/test.3dc", "frame_count": 2}], "animation_groups": [{"group_index": 7, "commands": [{"opcode": 4, "sound_param": 9}]}]}]},
         "models": {"TEST": {
             "base_positions": [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
-            "base_normals": [[0, 0, 1]], "faces": [[0, 1, 2]],
+            "base_normals": [[0, 0, 1]], "faces": [[0, 1, 2]], "corner_normals": [[null, null, null]],
             "encoding": "animated_i16",
             "positions": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 2], [1, 0, 2], [0, 1, 2]]],
             "normals": [[], [[0, 0, 1]]]
@@ -42,6 +42,28 @@ fn frame_projection_keeps_coincident_source_vertices_distinct() {
         ]
     );
     assert_eq!(frame.normals, [[0.0, -1.0, 0.0]; 4]);
+}
+
+#[test]
+fn frame_projection_keeps_authored_corner_normals_with_face_fallback() {
+    use cyrus_render::animation::MeshFrameBinding;
+    let mut input = asset();
+    let model = input.models.get_mut("TEST").unwrap();
+    model.encoding = "animated_i32".into();
+    model.normals[1][0] = [0.0, 1.0, 0.0];
+    model.corner_normals[0] = vec![Some([1.0, 0.0, 0.0]), None, Some([0.0, 0.0, 2.0])];
+    let binding = MeshFrameBinding {
+        version: 1,
+        source_vertices: vec![[0, 0], [1, 0], [2, 0]],
+    };
+    let frame = cyrus_render::animation::FrameGeometry::from_model(model, 1, &binding).unwrap();
+    // Magnitude is retained; only the missing corner uses this frame's face normal.
+    assert_eq!(
+        frame.normals,
+        [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 2.0]]
+    );
+    model.corner_normals.clear();
+    assert!(cyrus_render::animation::FrameGeometry::from_model(model, 1, &binding).is_err());
 }
 
 #[test]
