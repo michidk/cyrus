@@ -223,7 +223,8 @@ late plugin-registration check, which reinitializes source asset storage. Focuse
 public tests cover delayed-asset waiting, commit, malformed-candidate rejection
 without live replacement, and direct-candidate/audio continuation. These synthetic
 contracts do not establish complete installed rendered load acceptance. The
-full workspace gate is running after a corrected native lint failure.
+full workspace gate for runtime checkpoint `66340ca` passed 947 Rust test
+executions, with zero failures, ignored tests or installed-data skips.
 
 The native diagnostic load caller prepares installed current and visited sources
 off-live. Its malformed-document host test passes without live replacement.

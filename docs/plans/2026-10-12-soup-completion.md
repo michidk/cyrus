@@ -353,17 +353,20 @@ render/audio staging, boundary capture/commit and asynchronous load preparation.
 Native and browser diagnostic capture hooks are present. This does not enable
 accepted end-to-end save/load.
 
-The shared-load integration test passes after separating its fixture from the
-late plugin-registration check, which reinitializes source asset storage. Focused
-public tests cover delayed-asset waiting, commit, malformed-candidate rejection
-without live replacement, and direct-candidate/audio continuation. These synthetic
-contracts do not establish installed rendered load acceptance. Final workspace
-gates and browser checks have not been run for the current checkpoint.
+Focused public tests cover delayed-asset waiting, commit, malformed-candidate
+rejection without live replacement, and direct-candidate/audio continuation.
+The full gate for runtime checkpoint `66340ca` passed 947 Rust test executions,
+with zero failures, ignored tests or installed-data skips.
 
-The native diagnostic load caller is implemented but not yet verified. Remaining
-work includes its host tests, integration of the separately owned browser storage
-caller, and installed
-live restoration, restart/reload and visited-world continuation. Revisit guards
-remain until service cleanup and retained-task behavior are implemented and
-verified. Audio snapshots cover source-decoder continuation, not downstream
-converter/device queues. Complete gameplay and controller acceptance remain open.
+Native diagnostic load reached ready ISLAND gameplay from START and recaptured
+both worlds. Retained START matches after actor-generation rebinding. An altered
+retained-world source is rejected while the accepted world and generation remain
+live. These checks do not establish complete rendered continuation. Ordinary map
+actors can select another animation model without replacing their original scene
+geometry; that model-replacement owner is still missing.
+
+Remaining work includes browser caller integration, complete rendered/audio
+restoration, restart/reload and visited-world continuation. Revisit guards remain
+until service cleanup and retained-task behavior are implemented and verified.
+Audio snapshots cover source-decoder continuation, not downstream converter/device
+queues. Complete gameplay and controller acceptance remain open.

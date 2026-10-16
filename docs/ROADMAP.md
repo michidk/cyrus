@@ -348,7 +348,10 @@ have synthetic coverage. Native diagnostic load reached ready ISLAND gameplay
 from START and recaptured both worlds. Retained START matches the input after
 actor-generation rebinding. This does not establish revisit execution or complete
 render/audio continuation. Native malformed-document rejection and retained-result
-polling pass. The full gate is running after a corrected lint failure.
+polling pass. The full gate for runtime checkpoint `66340ca` passed 947 Rust
+test executions with zero failures, ignored tests or installed-data skips.
+Ordinary actor model changes still need matching rendered model replacement;
+the native load probe exposed this existing gap.
 Browser-owner integration, installed restart/reload/revisits and
 complete gameplay acceptance remain unchecked. Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
