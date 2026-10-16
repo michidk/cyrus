@@ -286,6 +286,10 @@ module where it is defined and regenerate.
 - `src/console.rs` — Browser console preferences retain CPF bytes in local storage; logs download as text.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/preferences.rs` — Browser local-state persistence using the existing storage keys.
+- `src/session.rs` — Diagnostic browser save/load with one outstanding host operation.
+- `src/session/document.rs` — Typed browser documents; source admission and live replacement remain separate.
+- `src/session/load_assets.rs` — Browser cache preparation without publishing a world or starting gameplay.
+- `src/session/storage.rs` — Asynchronous browser session publication; callers own document validation.
 - `src/storage.rs` — Shared browser document storage for preferences, cheats and future save records.
 
 ## `cyrus-world` — World lifetime, explicit animation execution and actor transforms.

@@ -256,7 +256,7 @@ Requires the player controller.
 - [x] Exact source-decoder replacement checkpoints for effects, speech and CD music retain cursor, gains, looping and pause state. **Verified:** public continuation/rejection contracts, installed effects/CD through the headless host, unchanged CD PCM and browser compilation. Channel/dialogue assembly and downstream output buffers remain open.
 - [x] Document [original restoration audio lifecycle](https://github.com/michidk/redguard-preservation/pull/83). **Verified:** original instructions and altered controls cover cleanup, reset-flag lifetime, saved native-task continuation and CD track-selection paths. Live music continuity and installed runtime revisit acceptance remain open.
 - [ ] Complete session candidate and coordinated live commit. **Verified:** focused logical-world/native-task continuation and first-plugin-update checks preserve current/visited identities, clock and player entry state. Focused sample-pool tests retain source-decoder progress, pause and silent animation ownership while rejecting incomplete replacements. Focused presentation replacement checks retain HUD continuation, camera/framing, sky scrolling, the presentation epoch and per-world environment edits. Complete rendered publication, full audio/backend policy, installed host assembly, revisits and restart acceptance remain open.
-- [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. **Verified:** native publication and fresh-process typed readback preserve the complete installed current-plus-visited document; malformed input and failed writes preserve accepted bytes. Writer-interruption controls pass before sync and rename. **Verified:** the installed START session document exceeds localStorage capacity in Chrome; failed publication preserves the accepted record across reload. The typed Rust/WASM IndexedDB prototype retains the complete two-world document across reload; malformed candidates and aborted writes preserve accepted bytes. Production browser integration, complete session restoration and power-loss durability remain open. Format readers/writers belong in preservation.
+- [ ] Safe native/browser persistence for world, player, NPC, object, quest, inventory, script and HUD state. **Verified:** complete current-plus-visited documents survive native fresh-process readback and typed Rust/WASM IndexedDB reload; malformed candidates, failed writes and interruption/abort controls preserve accepted bytes. The diagnostic browser caller connects storage to the shared session boundary and passes busy-request/malformed-record rejection checks. Successful live restoration, complete session acceptance and power-loss durability remain open. Format readers/writers belong in preservation.
 
 Done when a reference route uses an item, chooses dialogue, transitions worlds,
 saves, restarts and resumes with matching state and control.
@@ -348,11 +348,11 @@ have synthetic coverage. Native diagnostic load reached ready ISLAND gameplay
 from START and recaptured both worlds. Retained START matches the input after
 actor-generation rebinding. This does not establish revisit execution or complete
 render/audio continuation. Native malformed-document rejection and retained-result
-polling pass. The full gate for runtime checkpoint `66340ca` passed 947 Rust
-test executions with zero failures, ignored tests or installed-data skips.
-Ordinary actor model changes still need matching rendered model replacement;
-the native load probe exposed this existing gap.
-Browser-owner integration, installed restart/reload/revisits and
-complete gameplay acceptance remain unchecked. Source-decoder audio checkpoints
+polling pass. Full workspace gates pass with the browser caller and zero
+installed-data skips. Ordinary actor model changes still need matching rendered
+model replacement; the native load probe exposed this existing gap.
+The diagnostic browser storage caller is connected; successful installed
+restart/reload/revisits and complete gameplay acceptance remain unchecked.
+Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
 [SOUP completion plan](plans/2026-10-12-soup-completion.md#unfinished-session-checkpoint).

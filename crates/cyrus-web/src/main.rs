@@ -9,6 +9,8 @@ mod cheats;
 mod console;
 mod debug;
 mod preferences;
+#[cfg(target_arch = "wasm32")]
+mod session;
 mod storage;
 
 use bevy::prelude::*;

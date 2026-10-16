@@ -8,7 +8,7 @@ pub fn register(app: &mut App) {
         .and_then(|query| web_sys::UrlSearchParams::new_with_str(&query).ok())
         .is_some_and(|query| query.has("capture"));
     if enabled {
-        app.add_systems(PreUpdate, session_request);
+        super::session::register(app);
         app.add_systems(
             Update,
             (sync_sky, sync_texture).run_if(in_state(cyrus_game::AppState::InGame)),
@@ -167,72 +167,5 @@ fn observe(
     })();
     if let Err(error) = result {
         error!("browser capture observation: {error:?}");
-    }
-}
-
-#[derive(serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-enum SessionRequest {
-    Capture { id: u32 },
-    Result { id: u32 },
-}
-
-fn session_request(mut boundary: ResMut<cyrus_session::SessionBoundary>) {
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let operation = (|| -> Result<(), JsValue> {
-        let key = JsValue::from_str("__cyrusSessionRequest");
-        let value = js_sys::Reflect::get(&window, &key)?;
-        if value.is_null() || value.is_undefined() {
-            return Ok(());
-        }
-        js_sys::Reflect::set(&window, &key, &JsValue::NULL)?;
-        let mut id = None;
-        let result = (|| -> anyhow::Result<serde_json::Value> {
-            let text = value
-                .as_string()
-                .ok_or_else(|| anyhow::anyhow!("session request must be a JSON string"))?;
-            let request: SessionRequest = serde_json::from_str(&text)?;
-            match request {
-                SessionRequest::Capture { id: request_id } => {
-                    id = Some(request_id);
-                    boundary.capture_live()?;
-                    Ok(serde_json::json!({"pending":true}))
-                }
-                SessionRequest::Result { id: request_id } => {
-                    id = Some(request_id);
-                    match boundary.take_result() {
-                        None => Ok(serde_json::json!({"pending":true})),
-                        Some(Err(error)) => Err(error),
-                        Some(Ok(cyrus_session::SessionBoundaryResult::Captured(snapshot))) => {
-                            let document = snapshot.encode_document()?;
-                            Ok(
-                                serde_json::json!({"pending":false,"bytes":document.len(),"document":String::from_utf8(document)?}),
-                            )
-                        }
-                        Some(Ok(cyrus_session::SessionBoundaryResult::Committed)) => {
-                            Ok(serde_json::json!({"pending":false,"committed":true}))
-                        }
-                    }
-                }
-            }
-        })();
-        let response = match result {
-            Ok(mut result) => {
-                result["id"] = serde_json::json!(id);
-                result
-            }
-            Err(error) => serde_json::json!({"id":id,"pending":false,"error":format!("{error:#}")}),
-        };
-        js_sys::Reflect::set(
-            &window,
-            &"__cyrusSessionResult".into(),
-            &js_sys::JSON::parse(&response.to_string())?,
-        )?;
-        Ok(())
-    })();
-    if let Err(error) = operation {
-        error!("browser session capture: {error:?}");
     }
 }

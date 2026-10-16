@@ -1,0 +1,225 @@
+//! Diagnostic browser save/load with one outstanding host operation.
+use anyhow::{Context, Result, ensure};
+use bevy::{
+    log::error,
+    prelude::{App, AssetServer, Mut, PreUpdate, Resource, World},
+};
+use cyrus_session::{RuntimeSessionSnapshot, SessionBoundary, SessionBoundaryResult};
+use serde_json::{Value, json};
+use std::sync::{Mutex, mpsc};
+use wasm_bindgen::JsValue;
+
+#[path = "session/load_assets.rs"]
+mod load_assets;
+#[path = "session/document.rs"]
+mod session_storage;
+#[path = "session/storage.rs"]
+mod storage;
+
+const DATABASE: &str = "cyrus-sessions";
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+enum Request {
+    Capture { id: u32 },
+    Save { id: u32, key: String },
+    Load { id: u32, key: String },
+    Result { id: u32 },
+}
+
+impl Request {
+    fn id(&self) -> u32 {
+        match self {
+            Self::Capture { id }
+            | Self::Save { id, .. }
+            | Self::Load { id, .. }
+            | Self::Result { id } => *id,
+        }
+    }
+}
+
+enum IoResult {
+    Read(Box<RuntimeSessionSnapshot>),
+    Written,
+}
+type Io = Mutex<mpsc::Receiver<Result<IoResult>>>;
+enum Phase {
+    Capture(Option<String>),
+    Io(Io),
+    Prepare(Box<RuntimeSessionSnapshot>, Box<load_assets::LoadAssets>),
+    Commit,
+}
+#[derive(Resource, Default)]
+struct Host {
+    phase: Option<Phase>,
+    result: Option<Result<Value>>,
+}
+
+pub fn register(app: &mut App) {
+    app.init_resource::<Host>().add_systems(PreUpdate, update);
+}
+
+fn task(future: impl Future<Output = Result<IoResult>> + 'static) -> Io {
+    let (sender, receiver) = mpsc::channel();
+    wasm_bindgen_futures::spawn_local(async move {
+        let _ = sender.send(future.await);
+    });
+    Mutex::new(receiver)
+}
+
+impl Host {
+    fn request(&mut self, request: Request, world: &mut World) -> Result<Value> {
+        if let Request::Result { id } = request {
+            return match self.result.take() {
+                Some(result) => result.map(|mut value| {
+                    value["id"] = json!(id);
+                    value
+                }),
+                None => Ok(json!({"id":id,"pending":self.phase.is_some()})),
+            };
+        }
+        ensure!(
+            self.phase.is_none() && self.result.is_none(),
+            "browser session operation pending or result unread"
+        );
+        let id = match request {
+            Request::Capture { id } => {
+                world.resource_mut::<SessionBoundary>().capture_live()?;
+                self.phase = Some(Phase::Capture(None));
+                id
+            }
+            Request::Save { id, key } => {
+                ensure!(!key.is_empty(), "session storage key is empty");
+                world.resource_mut::<SessionBoundary>().capture_live()?;
+                self.phase = Some(Phase::Capture(Some(key)));
+                id
+            }
+            Request::Load { id, key } => {
+                ensure!(!key.is_empty(), "session storage key is empty");
+                self.phase = Some(Phase::Io(task(async move {
+                    let snapshot = session_storage::read(DATABASE, &key)
+                        .await?
+                        .with_context(|| format!("session {DATABASE}/{key} absent"))?;
+                    Ok(IoResult::Read(Box::new(snapshot)))
+                })));
+                id
+            }
+            Request::Result { .. } => unreachable!(),
+        };
+        Ok(json!({"id":id,"pending":true}))
+    }
+
+    fn advance(&mut self, phase: Phase, world: &mut World) -> Result<Option<Phase>> {
+        match phase {
+            Phase::Capture(key) => {
+                let Some(result) = world.resource_mut::<SessionBoundary>().take_result() else {
+                    return Ok(Some(Phase::Capture(key)));
+                };
+                let SessionBoundaryResult::Captured(snapshot) = result? else {
+                    anyhow::bail!("browser capture received a commit result");
+                };
+                if let Some(key) = key {
+                    Ok(Some(Phase::Io(task(async move {
+                        session_storage::write(DATABASE, &key, &snapshot).await?;
+                        Ok(IoResult::Written)
+                    }))))
+                } else {
+                    let bytes = snapshot.encode_document()?;
+                    self.result = Some(Ok(
+                        json!({"pending":false,"bytes":bytes.len(),"document":String::from_utf8(bytes)?}),
+                    ));
+                    Ok(None)
+                }
+            }
+            Phase::Io(receiver) => {
+                let received = receiver
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("session storage result lock poisoned"))?
+                    .try_recv();
+                match received {
+                    Ok(result) => match result? {
+                        IoResult::Written => {
+                            self.result = Some(Ok(json!({"pending":false,"stored":true})));
+                            Ok(None)
+                        }
+                        IoResult::Read(snapshot) => {
+                            let assets = load_assets::LoadAssets::request(
+                                &snapshot,
+                                world.resource::<AssetServer>(),
+                            )?;
+                            Ok(Some(Phase::Prepare(snapshot, Box::new(assets))))
+                        }
+                    },
+                    Err(mpsc::TryRecvError::Empty) => Ok(Some(Phase::Io(receiver))),
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        anyhow::bail!("session storage task ended without a result")
+                    }
+                }
+            }
+            Phase::Prepare(snapshot, mut assets) => {
+                let Some(prepared) = assets.poll(&snapshot, world)? else {
+                    return Ok(Some(Phase::Prepare(snapshot, assets)));
+                };
+                world
+                    .resource_mut::<SessionBoundary>()
+                    .load(*snapshot, prepared)?;
+                Ok(Some(Phase::Commit))
+            }
+            Phase::Commit => {
+                let Some(result) = world.resource_mut::<SessionBoundary>().take_result() else {
+                    return Ok(Some(Phase::Commit));
+                };
+                ensure!(
+                    matches!(result?, SessionBoundaryResult::Committed),
+                    "browser load received a capture result"
+                );
+                self.result = Some(Ok(json!({"pending":false,"committed":true})));
+                Ok(None)
+            }
+        }
+    }
+}
+
+fn update(world: &mut World) {
+    world.resource_scope(|world, mut host: Mut<Host>| {
+        if let Some(phase) = host.phase.take() {
+            match host.advance(phase, world) {
+                Ok(phase) => host.phase = phase,
+                Err(error) => host.result = Some(Err(error)),
+            }
+        }
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let operation = (|| -> Result<(), JsValue> {
+            let key = JsValue::from_str("__cyrusSessionRequest");
+            let value = js_sys::Reflect::get(&window, &key)?;
+            if value.is_null() || value.is_undefined() {
+                return Ok(());
+            }
+            js_sys::Reflect::set(&window, &key, &JsValue::NULL)?;
+            let mut id = None;
+            let result = (|| -> Result<Value> {
+                let text = value
+                    .as_string()
+                    .context("session request must be a JSON string")?;
+                let request: Request = serde_json::from_str(&text)?;
+                id = Some(request.id());
+                host.request(request, world)
+            })();
+            let response = match result {
+                Ok(response) => response,
+                Err(error) => json!({"id":id,"pending":false,"error":format!("{error:#}")}),
+            };
+            js_sys::Reflect::set(
+                &window,
+                &"__cyrusSessionResult".into(),
+                &js_sys::JSON::parse(&response.to_string())?,
+            )?;
+            Ok(())
+        })();
+        if let Err(error) = operation {
+            error!("browser session request: {error:?}");
+        }
+    });
+}
