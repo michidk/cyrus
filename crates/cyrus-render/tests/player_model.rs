@@ -44,8 +44,8 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
         .get_path(handle.0.id())
         .unwrap();
     assert_eq!(
-        path.to_string(),
-        "cache://ISLAND.player-models/CYRSA001.glb#Scene0"
+        path,
+        bevy::asset::AssetPath::parse("cache://ISLAND.player-models/CYRSA001.glb#Scene0")
     );
     assert_eq!(
         *app.world().get::<Visibility>(root).unwrap(),
@@ -83,9 +83,8 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
         app.world()
             .resource::<AssetServer>()
             .get_path(handle.0.id())
-            .unwrap()
-            .to_string(),
-        "cache://ISLAND.player-models/CYRSA012.glb#Scene0"
+            .unwrap(),
+        bevy::asset::AssetPath::parse("cache://ISLAND.player-models/CYRSA012.glb#Scene0")
     );
     app.world_mut().resource_mut::<PreparedWorld>().scene_path = "cache://PALACE.glb".into();
     app.update();
@@ -98,9 +97,8 @@ fn player_pose_binds_updates_replaces_and_removes_its_model() {
         app.world()
             .resource::<AssetServer>()
             .get_path(handle.0.id())
-            .unwrap()
-            .to_string(),
-        "cache://PALACE.player-models/CYRSA012.glb#Scene0"
+            .unwrap(),
+        bevy::asset::AssetPath::parse("cache://PALACE.player-models/CYRSA012.glb#Scene0")
     );
     app.world_mut().entity_mut(player).remove::<AnimationPose>();
     app.update();
