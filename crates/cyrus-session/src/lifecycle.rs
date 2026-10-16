@@ -53,9 +53,10 @@ impl LifecycleSnapshot {
         let actual = super::resource::<Assets<Scripts>>(world, "script assets")?
             .get(&prepared.scripts)
             .context("session capture: prepared scripts absent")?;
+        let same_source = std::ptr::eq(actual, scripts);
         let scripts = identity(scripts)?;
         ensure!(
-            identity(actual)? == scripts,
+            same_source || identity(actual)? == scripts,
             "session capture: prepared scripts differ from validated source"
         );
         Ok(Self {

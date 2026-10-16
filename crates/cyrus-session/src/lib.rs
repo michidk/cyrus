@@ -398,7 +398,7 @@ impl RuntimeSessionSnapshot {
                 .source_identity
                 .as_deref()
                 .context("session player source has no decoded identity")?,
-            &animation_identity(source.animations)?,
+            source.animations,
         )?;
         let lifecycle =
             lifecycle::LifecycleSnapshot::capture(world, current.world, source.scripts)?;
@@ -1037,7 +1037,7 @@ fn validate_player_assets(
     scene: &Handle<cyrus_game::player::data::PlayerScene>,
     animation: &Handle<Animations>,
     expected_player: &str,
-    expected_animation: &str,
+    expected_animation: &Animations,
 ) -> Result<()> {
     let scene = resource::<Assets<cyrus_game::player::data::PlayerScene>>(world, "player assets")?
         .get(scene)
@@ -1050,7 +1050,8 @@ fn validate_player_assets(
         .get(animation)
         .context("session prepared animation asset absent")?;
     ensure!(
-        animation_identity(animation)? == expected_animation,
+        std::ptr::eq(animation, expected_animation)
+            || animation_identity(animation)? == animation_identity(expected_animation)?,
         "session prepared animation asset differs from validated source"
     );
     Ok(())

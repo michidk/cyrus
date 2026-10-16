@@ -478,6 +478,46 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     cheats.execute("neversaydie", Some(42))?;
     app.insert_resource(cheats);
     let saved = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
+    let shared_sources = BTreeMap::from([(
+        17,
+        WorldSnapshotSources {
+            player: Some(&scene),
+            scripts: app
+                .world()
+                .resource::<Assets<cyrus_assets::script::Scripts>>()
+                .get(&script_handle)
+                .unwrap(),
+            animations: app
+                .world()
+                .resource::<Assets<Animations>>()
+                .get(&animation_handle)
+                .unwrap(),
+            collision: &collision,
+        },
+    )]);
+    assert_eq!(
+        RuntimeSessionSnapshot::capture(app.world(), &shared_sources, &hud_asset)?
+            .encode_document()?,
+        saved.encode_document()?,
+        "shared and separately decoded sources must produce identical documents"
+    );
+    app.world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .get_mut(&animation_handle)
+        .unwrap()
+        .models
+        .get_mut("TEST")
+        .unwrap()
+        .positions[1][0][0] += 1.0;
+    assert!(RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset).is_err());
+    app.world_mut()
+        .resource_mut::<Assets<Animations>>()
+        .get_mut(&animation_handle)
+        .unwrap()
+        .models
+        .get_mut("TEST")
+        .unwrap()
+        .positions[1][0][0] -= 1.0;
     let effect_sources = BTreeMap::from([(
         saved
             .sample_playback()
@@ -685,6 +725,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
         .clock
         .normal_frame_rate += 1;
     assert!(candidate.validate_publication(app.world()).is_err());
+    assert!(RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset).is_err());
     assert!(app.world().get::<Player>(player).is_some());
     app.world_mut()
         .resource_mut::<Assets<cyrus_assets::script::Scripts>>()

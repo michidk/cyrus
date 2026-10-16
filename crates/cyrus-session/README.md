@@ -257,3 +257,7 @@ actor-generation binding. Installed missing-model and mismatched-frame candidate
 reject without replacing the logical session, entity identities or captured
 non-presentation owners. Presentation state continues advancing. Pixel comparison
 and complete installed revisit acceptance remain pending.
+
+Capture compares shared immutable source references without serializing the same
+asset twice. Separately decoded sources still require complete content comparison;
+saved source fingerprints and document compatibility are unchanged.

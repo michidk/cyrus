@@ -365,6 +365,12 @@ engine facts belong in redguard-preservation.
 
 ### Unfinished SOUP/session checkpoint
 
+Session capture avoids duplicate content serialization when source references
+identify the same immutable asset. Shared and separately decoded sources produce
+identical documents; changed source content still rejects. Focused contracts,
+WASM checking and full workspace gates pass. Optimized browser capture/load timing
+remains open; this does not complete save/load acceptance.
+
 Shared aggregate, registry/service replacements, rendered staging, capture hooks
 and asynchronous load preparation are committed as work in progress. The latest
 asynchronous load integration test passes after isolating its asset fixture from
