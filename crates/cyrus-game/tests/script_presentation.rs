@@ -252,7 +252,14 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     app.insert_resource(prepared());
     app.update();
     let registry = app.world().resource::<ScriptActors>();
-    assert!(registry.current.is_none());
+    assert!(registry.has_pending_revisit());
+    assert_ne!(
+        registry.current.as_ref().unwrap().id(0).unwrap().generation,
+        id.generation
+    );
+    assert!(app.world().get::<ScriptBinding>(node).is_none());
+    assert!(app.world().get::<SoundSurface>(node).is_none());
+    assert!(app.world().get::<AnimationPose>(node).is_none());
     app.world_mut()
         .resource_mut::<ScriptActors>()
         .begin_new_game();
