@@ -280,6 +280,19 @@ impl Inventory {
         path.pop();
         Ok(())
     }
+    /// Drop every owned item in id order, then clear the selection. The original walks ids
+    /// zero up to the item count, so a definition gap is an error rather than skipped.
+    pub(super) fn drop_all(&mut self) -> Result<()> {
+        let count = u16::try_from(self.items.len()).context("item definitions exceed u16")?;
+        for id in 0..count {
+            let owned = self.count(id)?;
+            if owned != 0 {
+                self.remove(id, i32::try_from(owned).context("item count exceeds i32")?)?;
+            }
+        }
+        self.selected = None;
+        Ok(())
+    }
     pub(super) fn select(&mut self, id: u16) -> Result<()> {
         self.count(id)?;
         self.selected = Some(id);

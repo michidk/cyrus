@@ -2898,6 +2898,25 @@ fn inventory_removal_traverses_only_remaining_owned_sources_and_honors_flags() {
 }
 
 #[test]
+fn drop_all_items_removes_every_owned_item_and_clears_the_selection() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let mut asset = inventory_fixture(&[(0, 0), (1, 2), (2, 5)]);
+    asset.selected = Some(1);
+    asset.inventory.get_mut(&1).unwrap().remove_drop_items = vec![0];
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    assert_eq!(hud_call(Some(&hud), "DropAllItems", &[]).unwrap(), 0);
+    let view = hud.inventory(None).unwrap();
+    assert_eq!(view.counts, [(0, 0), (1, 0), (2, 0)].into());
+    assert_eq!(view.selected, None);
+    // An id gap fails like the original's missing-record path.
+    let gap = inventory_fixture(&[(0, 1), (2, 1)]);
+    let hud = ScriptHud::default();
+    hud.configure(&gap, &Preferences::default());
+    assert!(hud_call(Some(&hud), "DropAllItems", &[]).is_err());
+}
+
+#[test]
 fn inventory_startup_uses_ordered_shared_acquisition_and_retains_initial_selection() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let mut asset = inventory_fixture(&[(0, 0), (1, 0), (2, 52), (4, 5), (18, 0)]);

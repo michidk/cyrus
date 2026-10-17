@@ -338,6 +338,7 @@ impl ScriptHud {
             "UnShowBitmap",
             "AddLog",
             "DropItem",
+            "DropAllItems",
             "HaveItem",
             "SelectItem",
         ]
@@ -347,6 +348,21 @@ impl ScriptHud {
 
     pub(super) fn call(&self, function: &str, arguments: &[Argument]) -> Result<i32> {
         let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if function.eq_ignore_ascii_case("DropAllItems") {
+            anyhow::ensure!(arguments.is_empty(), "DropAllItems requires no arguments");
+            if state.inventory.is_none() && state.inventory_error.is_none() {
+                return Ok(0);
+            }
+            if let Some(error) = &state.inventory_error {
+                anyhow::bail!("inventory initialization: {error}");
+            }
+            state
+                .inventory
+                .as_mut()
+                .context("installed inventory data unavailable")?
+                .drop_all()?;
+            return Ok(0);
+        }
         if ["DropItem", "HaveItem", "SelectItem"]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
