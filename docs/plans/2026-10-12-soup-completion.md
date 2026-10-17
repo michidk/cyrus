@@ -520,10 +520,11 @@ acceptance remain open.
 The preservation decoder and portable runtime retain complete 16-bit property
 references. Program schema 3 rejects older exports that may have truncated them.
 The registry resolves installed reference names and supports local `angle.vy`
-reads through its existing spatial owner. Local `pos.vx`, `pos.vy` and `pos.vz`
-reads/writes use the same signed coordinate owner without immediately refreshing
-matrices or attached poses. Other properties and angle writes remain explicitly
-unsupported. Four public position contracts pass, including signed limits,
+reads through its existing spatial owner. Local `pos.*` and `angle.vx/vy/vz`
+reads/writes use the same coordinate owner without immediately refreshing
+matrices or attached poses. Angle writes outside 0..2048 are rejected because the
+local angle field is stored wrapped (the published 32-bit field has no owner here).
+Other properties remain explicitly unsupported. Four public position contracts pass, including signed limits,
 read-after-write, unchanged attached effective state and explicit rejection. Public contracts and the installed shrine non-standing
 branch pass with explicit player pose and timing inputs. The WASM check passes.
 Final workspace verification passes 983 Rust test executions with zero installed

@@ -12525,7 +12525,7 @@ fn heading_property_reads_installed_name_with_full_reference_and_receiver() {
 }
 
 #[test]
-fn heading_property_rejects_missing_owner_unknown_name_and_writes() {
+fn heading_property_rejects_missing_owner_unknown_name_and_unrepresentable_writes() {
     for (spatial, name, write, expected) in [
         (false, "angle.vy", false, "spatial owner unavailable"),
         (true, "unknown", false, "unsupported"),
@@ -12548,7 +12548,7 @@ fn heading_property_rejects_missing_owner_unknown_name_and_writes() {
                     reference: 294,
                 },
                 formula: Formula {
-                    first: Value::Integer { value: 512 },
+                    first: Value::Integer { value: 4096 },
                     rest: vec![],
                 },
             };
@@ -12578,6 +12578,57 @@ fn heading_property_rejects_missing_owner_unknown_name_and_writes() {
         if spatial {
             assert_eq!(world.spatial(caller).unwrap().local.angles[1], 1536);
         }
+    }
+}
+
+#[test]
+fn local_angle_properties_read_and_write_each_axis_without_refreshing_pose() {
+    for (axis, name) in ["angle.vx", "angle.vy", "angle.vz"].into_iter().enumerate() {
+        let mut scripts = heading_property_scripts(294, Object::Me);
+        scripts.definition.references[294] = name.into();
+        scripts.instances[0].angles = [100, 1536, 300];
+        let step = scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap();
+        step.operation = Operation::Assign {
+            destination: Place::Property {
+                object: Object::Me,
+                reference: 294,
+            },
+            formula: Formula {
+                first: Value::Integer { value: 512 },
+                rest: vec![],
+            },
+        };
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        world.prepare_spatial().unwrap();
+        let caller = world.id(0).unwrap();
+        let before = world.spatial(caller).unwrap().local;
+        world
+            .advance(
+                caller,
+                cyrus_game::script::ScriptStage::Body(Thread::Main),
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        let after = world.spatial(caller).unwrap().local;
+        let mut expected = before.angles;
+        expected[axis] = 512;
+        assert_eq!(after.angles, expected, "{name}");
+        assert_eq!(after.position, before.position);
     }
 }
 

@@ -2097,6 +2097,18 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         index.with_context(|| format!("object target {target:?}: receiver absent"))
     }
 }
+enum PoseProperty {
+    Position(usize),
+    Angle(usize),
+}
+
+fn pose_property(name: &str) -> Option<PoseProperty> {
+    let find = |names: [&str; 3]| names.iter().position(|n| name.eq_ignore_ascii_case(n));
+    find(["pos.vx", "pos.vy", "pos.vz"])
+        .map(PoseProperty::Position)
+        .or_else(|| find(["angle.vx", "angle.vy", "angle.vz"]).map(PoseProperty::Angle))
+}
+
 impl Host for GameHost<'_, '_, '_, '_> {
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         let name = self.property_name(target, reference)?;
@@ -2119,22 +2131,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("torch_timer control owner unavailable")?;
             return Ok(i32::from(control.torch_burning));
         }
-        let position_axis = ["pos.vx", "pos.vy", "pos.vz"]
-            .iter()
-            .position(|candidate| name.eq_ignore_ascii_case(candidate));
-        anyhow::ensure!(
-            position_axis.is_some() || name.eq_ignore_ascii_case("angle.vy"),
-            "property {target:?}.{name} unsupported"
-        );
+        let pose = pose_property(name)
+            .with_context(|| format!("property {target:?}.{name} unsupported"))?;
         let index = self.property_receiver(target)?;
         let spatial = self
             .spatial
             .as_deref()
             .with_context(|| format!("property {target:?}.{name}: spatial owner unavailable"))?
             .actor(index)?;
-        Ok(match position_axis {
-            Some(axis) => spatial.local.position[axis],
-            None => i32::from(spatial.local.angles[1]),
+        Ok(match pose {
+            PoseProperty::Position(axis) => spatial.local.position[axis],
+            PoseProperty::Angle(axis) => i32::from(spatial.local.angles[axis]),
         })
     }
 
@@ -2149,17 +2156,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
             control.torch_burning = value as u8;
             return Ok(());
         }
-        let axis = ["pos.vx", "pos.vy", "pos.vz"]
-            .iter()
-            .position(|candidate| name.eq_ignore_ascii_case(candidate))
+        let name = name.to_owned();
+        let pose = pose_property(&name)
             .with_context(|| format!("property {target:?}.{name} write unsupported"))?;
         let index = self.property_receiver(target)?;
-        self.spatial
+        let local = &mut self
+            .spatial
             .as_deref_mut()
             .with_context(|| format!("property {target:?}.{reference}: spatial owner unavailable"))?
             .actor_mut(index)?
-            .local
-            .position[axis] = value;
+            .local;
+        match pose {
+            PoseProperty::Position(axis) => local.position[axis] = value,
+            // The local angle field is stored wrapped; a wider assigned value has no owner yet.
+            PoseProperty::Angle(axis) => {
+                local.angles[axis] = u16::try_from(value)
+                    .ok()
+                    .filter(|angle| *angle < 2048)
+                    .with_context(|| {
+                        format!(
+                            "property {target:?}.{name}: angle {value} outside 0..2048 unsupported"
+                        )
+                    })?;
+            }
+        }
         Ok(())
     }
 
