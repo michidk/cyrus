@@ -1021,9 +1021,35 @@ fn camera_settings_read_every_installed_key_and_reject_a_missing_one() {
         (100, 15)
     );
     assert_eq!(settings.modes[5].angle_offset, [60, 61, 62]);
-    let error = parse(Some("camera_hang_max_vel")).unwrap_err();
+    // An absent per-mode rate is zero (keep the copied rate); other keys are required.
+    assert_eq!(
+        parse(Some("camera_hang_max_vel")).unwrap().modes[1].max_vel,
+        0
+    );
+    let error = parse(Some("camera_hang_distance")).unwrap_err();
     assert!(
-        format!("{error:#}").contains("camera_hang_max_vel"),
+        format!("{error:#}").contains("camera_hang_distance"),
         "{error:#}"
     );
+}
+
+#[test]
+fn installed_system_ini_supplies_every_required_camera_setting() {
+    use std::path::{Path, PathBuf};
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let path = ["SYSTEM.INI", "system.ini"]
+        .into_iter()
+        .map(|name| root.join(name))
+        .find(|path| path.is_file());
+    let Some(path) = path else {
+        eprintln!("skipped: no install (camera settings)");
+        return;
+    };
+    let text = String::from_utf8_lossy(&std::fs::read(path).unwrap()).into_owned();
+    let system = rgpre::import::system_ini::SystemIni::parse(&text).unwrap();
+    let settings = cyrus_assets::script::CameraSettings::from_system(&system)
+        .unwrap_or_else(|error| panic!("installed SYSTEM.INI [camera]: {error:#}"));
+    assert!(settings.distance > 0 && settings.max_vel > 0);
 }

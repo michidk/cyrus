@@ -137,7 +137,8 @@ impl CameraSettings {
                         need(camera.$z, concat!($prefix, "_angle_offset_z"))?,
                     ],
                     distance: need(camera.$distance, concat!($prefix, "_distance"))?,
-                    max_vel: need(camera.$max_vel, concat!($prefix, "_max_vel"))?,
+                    // The original reads an absent rate as zero, and zero keeps the copied rate.
+                    max_vel: camera.$max_vel.unwrap_or(0),
                 }
             };
         }
