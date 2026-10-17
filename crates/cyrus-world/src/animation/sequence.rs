@@ -50,6 +50,9 @@ pub struct FrameSequence {
     translation_suppressed: bool,
     delay: u8,
     type_one: bool,
+    type_two: bool,
+    /// Transient: whether the pending request is the actor's default group, set per advance.
+    pending_default: bool,
     sound_requested: bool,
 }
 
@@ -156,7 +159,7 @@ impl FrameSequence {
         )
         .with_context(|| format!("{context}: group type outside u16 range"))?;
         anyhow::ensure!(
-            group_type.to_le_bytes()[0] <= 1,
+            group_type.to_le_bytes()[0] <= 2,
             "{context}: group type unsupported"
         );
         let speed = u16::try_from(
@@ -226,6 +229,8 @@ impl FrameSequence {
             translation_suppressed: false,
             delay: 0,
             type_one: group_type.to_le_bytes()[0] == 1,
+            type_two: group_type.to_le_bytes()[0] == 2,
+            pending_default: false,
             sound_requested: false,
         })
     }
@@ -239,7 +244,11 @@ impl FrameSequence {
     }
 
     pub(super) fn replace_after_exit(&self) -> bool {
-        self.type_one && self.exit_reached
+        (self.type_one || self.type_two) && self.exit_reached
+    }
+
+    pub(super) fn set_pending_default(&mut self, pending_default: bool) {
+        self.pending_default = pending_default;
     }
 
     pub(super) fn forget_sound(&mut self, sounds: &mut SoundDispatcher<'_>) -> anyhow::Result<()> {
@@ -391,7 +400,10 @@ impl FrameSequence {
                     self.translation_suppressed = false;
                 }
                 Command::Future(target) => {
-                    if self.loops == 0 && (exit_requested || self.exit_reached) {
+                    // A type-two group ignores a pending default, even after its exit marker is set.
+                    let exits = (exit_requested || self.exit_reached)
+                        && !(self.type_two && self.pending_default);
+                    if self.loops == 0 && exits {
                         self.exit_reached = true;
                         self.command = target;
                         self.translation_suppressed = false;

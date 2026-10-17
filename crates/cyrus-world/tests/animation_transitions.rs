@@ -361,3 +361,38 @@ fn collision_checkpoint_restores_cursor_pending_and_sound_state_but_keeps_defaul
         .unwrap();
     assert!(events[count..].contains(&AnimationSound::Stop));
 }
+
+fn type_two_asset() -> Animations {
+    asset(json!([
+        {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":9}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":8}]},
+        {"group_index":7,"anim_id":1,"anim_type":2,"commands":[
+            {"opcode":0,"frame_reference":0},{"opcode":3,"value":3},
+            {"opcode":0,"frame_reference":1},{"opcode":5},
+            {"opcode":0,"frame_reference":2},{"opcode":1}]}
+    ]))
+}
+
+#[test]
+fn type_two_ignores_a_pending_default_at_go_to_future() {
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&type_two_asset(), "ACTOR", 0).unwrap();
+    assert_eq!(actor.request(7, 0, 1).unwrap(), Some(0));
+    actor.request(0, 0, 1).unwrap();
+    // Type one would jump to the exit tail (frame 2); type two plays frame 1 first.
+    assert_eq!(actor.advance(1).unwrap(), Some(1));
+    assert!(!actor.exit_reached());
+    assert_eq!(actor.current_group(), Some(7));
+}
+
+#[test]
+fn type_two_exits_for_a_pending_non_default_group() {
+    let mut actor =
+        cyrus_world::animation::ActorAnimation::from_asset(&type_two_asset(), "ACTOR", 0).unwrap();
+    assert_eq!(actor.request(7, 0, 1).unwrap(), Some(0));
+    actor.request(8, 0, 0).unwrap();
+    assert_eq!(actor.advance(1).unwrap(), Some(2));
+    assert!(actor.exit_reached());
+    assert_eq!(actor.advance(1).unwrap(), Some(8));
+    assert_eq!(actor.current_group(), Some(8));
+}

@@ -195,7 +195,7 @@ fn forced_current_request_cancels_pending_without_restarting_and_other_force_rep
 #[test]
 fn unsupported_replacement_is_sticky_and_empty_default_cycles_fail() {
     let mut data = request_asset();
-    data.metadata["actors"][0]["animation_groups"][3]["anim_type"] = 2.into();
+    data.metadata["actors"][0]["animation_groups"][3]["anim_type"] = 3.into();
     let mut state = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 1).unwrap();
     state.request(7, 0, 1).unwrap();
     state.request(20, 0, 0).unwrap();

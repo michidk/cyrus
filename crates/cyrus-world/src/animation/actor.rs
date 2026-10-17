@@ -493,6 +493,10 @@ impl ActorAnimation {
             }
             if let Some((group, sequence)) = &mut self.current {
                 let exiting = self.pending.is_some_and(|(pending, _)| pending != *group);
+                sequence.set_pending_default(
+                    self.pending
+                        .is_some_and(|(pending, _)| pending == self.default),
+                );
                 if let Some(reference) = sequence.advance_with_progress(
                     ticks,
                     exiting,
