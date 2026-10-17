@@ -13519,3 +13519,53 @@ fn animation_frame_wait_rejects_unprepared_owner_but_absent_selected_player_comp
         }
     }
 }
+
+#[test]
+fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
+    use cyrus_assets::collision::{CollisionScene, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::OrdinaryObstacleQuery;
+    // Actors sit 262144 Q8 units apart along X; the optional wall stands between them.
+    for (wall, limit, expected) in [
+        (true, i32::MAX, false),
+        (false, i32::MAX, true),
+        (false, 262_144, true),
+        (false, 262_143, false),
+    ] {
+        let (mut world, data) = overlap_response_fixture(128, 0, 1024);
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        world.snapshot_spatial(ids[0]).unwrap();
+        let (_, _, models) = static_model_fixture(cache());
+        let mut scene = ordinary_collision_scene(world.world, models);
+        scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            placements: wall
+                .then(|| StaticPlacement {
+                    id: 1,
+                    model: "WALL".into(),
+                    position: [604, 20, 30],
+                    rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+                })
+                .into_iter()
+                .collect(),
+            models: BTreeMap::from([("WALL".into(), ordinary_forward_wall_model())]),
+            ..Default::default()
+        };
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &[ids[0], ids[1]])
+            .unwrap();
+        let query = OrdinaryObstacleQuery {
+            scene: &scene,
+            animations: &data,
+            prepared: &prepared,
+            vertical_offset: 0,
+            respond: false,
+        };
+        assert_eq!(
+            world.actor_in_sight(ids[0], ids[1], limit, query).unwrap(),
+            expected,
+            "wall {wall}, limit {limit}"
+        );
+    }
+}

@@ -23,6 +23,7 @@ pub(super) mod prevalidation;
 pub(super) mod queued;
 pub(super) mod recovery;
 mod separate;
+mod sight;
 pub(super) mod slope;
 pub(super) mod transition;
 pub(super) mod vertical;
