@@ -250,8 +250,10 @@ For agent work, choose the entry point explicitly:
 Control `state` reports `SelectingInstall`, `Loading`, `Menu`, or `InGame`. Check it before driving
 player input. Menu navigation uses Up/Down and Enter or the installed primary menu key.
 **Verified:** the original default book menu has no pointer hover/click selection; do not add
-label hit boxes. Mouse/joystick rebinding needs separate device handling and is
-currently unsupported. Book turns, cover crossings and successful direction/key
+label hit boxes. Controls capture accepts a left or right mouse-button release (codes 128
+and 129), and a binding to either reads as the original's release edge: true for the update in
+which the button goes up, never while held. Joystick codes (132 and up) and mouse-bound
+inventory, log, map and sword actions are unsupported. Book turns, cover crossings and successful direction/key
 capture feedback dispatch installed effects through the shared native/browser
 sound path, using preservation's [cue rules](https://github.com/michidk/redguard-preservation/pull/34).
 Animation sounds use installed SURFACE.INI remaps on native/browser when the actor

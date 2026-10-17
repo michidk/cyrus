@@ -204,11 +204,18 @@ pub(super) fn paint(book: &MenuAsset, state: &MenuState) -> anyhow::Result<RgbaI
                     &book.key_names
                         [usize::from(preferences.bindings[(entry.item.action - 710) as usize])]
                 };
+                let font = &book.fonts[usize::from(capturing)];
+                let shown = drawn_characters(
+                    font,
+                    &label.to_ascii_uppercase(),
+                    entry.output_position[0],
+                    (entry.output_justify == 0).then_some(BINDING_PEN_LIMIT),
+                );
                 text(
                     surface,
-                    &book.fonts[usize::from(capturing)],
+                    font,
                     &book.palette,
-                    label,
+                    label.get(..shown).unwrap_or(label),
                     entry.output_position,
                     entry.output_justify,
                     if capturing { 0 } else { 1 },
@@ -257,6 +264,24 @@ fn picture(surface: &mut PageTexture, picture: &MenuPicture, position: [i32; 2])
     }
 }
 
+/// Controls binding names draw no glyph whose pen starts at or beyond this column of
+/// the 256-pixel page surface. **Verified:** original captures of `NUM MINUS`, `LEFT MOUSE`,
+/// `RIGHT MOUSE` and wide/narrow test names (pen 246 drawn, 247 omitted).
+const BINDING_PEN_LIMIT: i32 = 247;
+
+/// Number of leading characters of `label` drawn from pen `start`: glyphs stop at the first
+/// whose pen reaches `limit`.
+fn drawn_characters(font: &cyrus_text::Font, label: &str, start: i32, limit: Option<i32>) -> usize {
+    let mut pen = start;
+    for (index, ch) in label.bytes().enumerate() {
+        if limit.is_some_and(|limit| pen >= limit) {
+            return index;
+        }
+        pen += font.advance(ch);
+    }
+    label.len()
+}
+
 fn text(
     surface: &mut PageTexture,
     font: &cyrus_text::Font,
@@ -302,6 +327,27 @@ fn text(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binding_names_stop_at_the_first_glyph_whose_pen_reaches_the_limit() {
+        let font = cyrus_text::Font {
+            start: u16::from(b'A'),
+            line_height: 1,
+            glyphs: vec![cyrus_text::Glyph {
+                enabled: true,
+                width: 20,
+                height: 1,
+                offset: [0, 0],
+                pixels: vec![1; 20],
+            }],
+            palette: Vec::new(),
+        };
+        // Advance 21: pens 120, 141 ... 246 (draws), 267 (omitted).
+        assert_eq!(drawn_characters(&font, "AAAAAAAAAA", 120, Some(247)), 7);
+        assert_eq!(drawn_characters(&font, "AAAAAAAAAA", 120, Some(246)), 6);
+        assert_eq!(drawn_characters(&font, "AAAAAAAAAA", 120, None), 10);
+        assert_eq!(drawn_characters(&font, "AAA", 120, Some(247)), 3);
+    }
 
     #[test]
     fn back_of_a_turned_page_does_not_cover_its_visible_surface() {

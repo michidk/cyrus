@@ -5,6 +5,7 @@ use super::fit_image;
 use super::settings::{adjust_value, apply_bindings, persist};
 use bevy::{
     asset::{AssetLoader, LoadContext, io::Reader},
+    input::mouse::MouseButton,
     prelude::*,
 };
 use cyrus_assets::menu::MenuAsset;
@@ -153,10 +154,19 @@ fn setup(
     });
 }
 
+/// Frame time, keyboard, real time and mouse buttons (absent in headless hosts;
+/// Controls capture reads their releases).
+type Inputs<'w> = (
+    Res<'w, Time>,
+    Res<'w, ButtonInput<KeyCode>>,
+    Res<'w, Time<Real>>,
+    Option<Res<'w, ButtonInput<MouseButton>>>,
+);
+
 pub(super) fn drive(
     assets: (Res<AssetServer>, Res<Assets<MenuAsset>>),
     clock: Option<ResMut<SimulationClock>>,
-    input: (Res<Time>, Res<ButtonInput<KeyCode>>, Res<Time<Real>>),
+    input: Inputs,
     mut menu: ResMut<MenuState>,
     rendering: (
         ResMut<Assets<Image>>,
@@ -291,7 +301,13 @@ pub(super) fn drive(
                 let captured = keys
                     .get_just_pressed()
                     .filter_map(|key| cyrus_game::player::input::scan_code(*key))
-                    .min();
+                    .min()
+                    .or_else(|| {
+                        input
+                            .3
+                            .as_deref()
+                            .and_then(cyrus_game::player::input::mouse_release_code)
+                    });
                 if let Some(code) = captured {
                     if matches!(code, 12 | 13 | 15 | 28 | 59..=68 | 87 | 88) {
                         menu.unavailable = Some("That key is reserved.".into());

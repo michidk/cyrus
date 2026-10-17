@@ -1,3 +1,4 @@
+use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use cyrus_game::AppState;
 use cyrus_game::fidelity::Fidelity;
@@ -43,11 +44,38 @@ fn keyboard_input_preserves_opposing_actions_and_releases() {
         }
     );
     keys.release_all();
-    assert!(PlayerBindings::from_codes([128; 8]).is_err());
+    assert!(PlayerBindings::from_codes([130; 8]).is_err());
     assert!(PlayerBindings::from_codes([76; 8]).is_err());
     assert_eq!(
         PlayerBindings::from_codes([0; 8]).unwrap().sample(&keys),
         PlayerInput::default()
+    );
+}
+
+#[test]
+fn mouse_bindings_read_the_release_edge_not_the_held_button() {
+    // Codes 128 and 129 are the left and right button release, one update each.
+    let bindings = PlayerBindings::from_codes([72, 80, 75, 77, 42, 57, 56, 128]).unwrap();
+    let keys = ButtonInput::<KeyCode>::default();
+    let mut mouse = ButtonInput::<MouseButton>::default();
+    let action =
+        |mouse: &ButtonInput<MouseButton>| bindings.sample_with_mouse(&keys, Some(mouse)).action;
+    mouse.press(MouseButton::Left);
+    assert!(!action(&mouse), "held button does not read as pressed");
+    mouse.clear();
+    assert!(!action(&mouse));
+    mouse.release(MouseButton::Left);
+    assert!(action(&mouse), "release reads as pressed for one update");
+    mouse.clear();
+    assert!(!action(&mouse));
+    // Without a mouse resource the binding stays inactive.
+    assert!(!bindings.sample(&keys).action);
+    assert_eq!(cyrus_game::player::input::mouse_release_code(&mouse), None);
+    mouse.press(MouseButton::Right);
+    mouse.release(MouseButton::Right);
+    assert_eq!(
+        cyrus_game::player::input::mouse_release_code(&mouse),
+        Some(129)
     );
 }
 

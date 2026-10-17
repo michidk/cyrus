@@ -1,7 +1,9 @@
-//! Keyboard input only. Binding semantics and scan codes are documented in
-//! redguard-preservation's `docs/config/keys-ini.md`.
+//! Keyboard and mouse-button input. Binding semantics, scan codes and the input state
+//! table are documented in redguard-preservation's `docs/config/keys-ini.md`.
+//! Joystick codes (132 and up) remain unavailable until a device adapter exists.
 
 use crate::fidelity::{Fidelity, Mode};
+use bevy::input::mouse::MouseButton;
 use bevy::prelude::*;
 use serde::Serialize;
 
@@ -28,31 +30,39 @@ pub struct PlayerToggles {
     pub auto_defend: bool,
 }
 
-/// Keyboard bindings in up/down/left/right/a/b/c/d order. Empty until loaded.
+/// One bound input. Mouse buttons read as the original's release edge: true for the
+/// update in which the button goes up, never while it is held.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Binding {
+    Key(KeyCode),
+    MouseRelease(MouseButton),
+}
+
+/// Bindings in up/down/left/right/a/b/c/d order. Empty until loaded.
 #[derive(Resource, Default)]
-pub struct PlayerBindings([Option<KeyCode>; 8]);
+pub struct PlayerBindings([Option<Binding>; 8]);
 
 /// Configured keyboard key_a before Modern movement interpretation.
-/// Joystick input remains unavailable until its device adapter is supported.
 #[derive(Resource, Default)]
 pub struct DialogueSkip(pub bool);
 
 impl PlayerBindings {
-    /// Translate documented PC AT input codes into Bevy physical keys.
-    /// Zero is unbound. Unsupported device/unknown codes return an error,
-    /// rather than silently substituting a different control scheme.
+    /// Translate documented input codes into Bevy physical keys and mouse buttons
+    /// (128 left, 129 right). Zero is unbound. Unsupported device/unknown codes
+    /// return an error, rather than silently substituting a different control scheme.
     pub fn from_codes(codes: [u8; 8]) -> Result<Self, String> {
         let mut keys = [None; 8];
         for (i, code) in codes.into_iter().enumerate() {
-            keys[i] = if code == 0 {
-                None
-            } else {
-                Some(scan_key(code).ok_or_else(|| {
+            keys[i] = match code {
+                0 => None,
+                128 => Some(Binding::MouseRelease(MouseButton::Left)),
+                129 => Some(Binding::MouseRelease(MouseButton::Right)),
+                _ => Some(Binding::Key(scan_key(code).ok_or_else(|| {
                     format!(
                         "KEYS.INI [input] key_{}[0]: unsupported input code {code}",
                         ["up", "down", "left", "right", "a", "b", "c", "d"][i]
                     )
-                })?)
+                })?)),
             };
         }
         Ok(Self(keys))
@@ -61,8 +71,23 @@ impl PlayerBindings {
     /// Sample held keys without imposing movement priorities or cancelling
     /// opposing inputs; those belong to the original controller state machine.
     pub fn sample(&self, keys: &ButtonInput<KeyCode>) -> PlayerInput {
+        self.sample_with_mouse(keys, None)
+    }
+
+    /// As [`Self::sample`], also reading mouse-button bindings from `mouse` when supplied.
+    pub fn sample_with_mouse(
+        &self,
+        keys: &ButtonInput<KeyCode>,
+        mouse: Option<&ButtonInput<MouseButton>>,
+    ) -> PlayerInput {
         let [forward, backward, left, right, walk, jump, look, action] =
-            self.0.map(|key| key.is_some_and(|key| keys.pressed(key)));
+            self.0.map(|binding| match binding {
+                Some(Binding::Key(key)) => keys.pressed(key),
+                Some(Binding::MouseRelease(button)) => {
+                    mouse.is_some_and(|mouse| mouse.just_released(button))
+                }
+                None => false,
+            });
         PlayerInput {
             forward,
             backward,
@@ -135,10 +160,20 @@ pub fn scan_code(key: KeyCode) -> Option<u8> {
     (1..=127).find(|code| scan_key(*code) == Some(key))
 }
 
+/// Input code of a mouse button released this update, for Controls capture:
+/// 128 for the left button, else 129 for the right, as the original checks them.
+pub fn mouse_release_code(mouse: &ButtonInput<MouseButton>) -> Option<u8> {
+    [(MouseButton::Left, 128), (MouseButton::Right, 129)]
+        .into_iter()
+        .find(|(button, _)| mouse.just_released(*button))
+        .map(|(_, code)| code)
+}
+
 // Bevy supplies the independent input locks and output resources.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn sample(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Option<Res<ButtonInput<MouseButton>>>,
     bindings: Res<PlayerBindings>,
     suppressed: Res<InputSuppressed>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
@@ -155,7 +190,7 @@ pub(super) fn sample(
         dialogue_skip.0 = false;
         return;
     }
-    *input = bindings.sample(&keys);
+    *input = bindings.sample_with_mouse(&keys, mouse.as_deref());
     dialogue_skip.0 = input.walk;
     if fidelity.player_controller == Mode::Modern {
         input.forward = keys.pressed(KeyCode::KeyW);
