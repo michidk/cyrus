@@ -139,6 +139,7 @@ module where it is defined and regenerate.
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
+- `src/script/camera.rs` — Retained logical camera records; pose correction and publication share this owner.
 - `src/script/combat.rs` — Combat state, taunt presentation services and class-message queues.
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.

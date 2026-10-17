@@ -6,6 +6,8 @@ pub use activation::{
 };
 mod animation;
 mod attributes;
+/// Logical camera preparation; installed initialization and live publication are host-owned.
+pub mod camera;
 mod combat;
 pub use combat::{
     CombatControlState, CombatMessage, CombatMessages, CombatTauntPlayback, CombatTauntSource,

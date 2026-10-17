@@ -711,7 +711,7 @@ impl SpatialWorld {
 }
 
 /// Signed runtime-coordinate bearing per preservation's PlayerLooking contract.
-fn query_bearing(x: i32, z: i32) -> u16 {
+pub(super) fn query_bearing(x: i32, z: i32) -> u16 {
     let (mut ax, mut az) = (x.wrapping_abs(), z.wrapping_abs());
     while ax > 511 || az > 511 {
         ax >>= 1;

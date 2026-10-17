@@ -977,3 +977,14 @@ separate wrapping progress counter, following preservation's
 Unprepared animation owners reject explicitly. A missing selected actor completes
 the player predicate. Task operands are reevaluated on subsequent invocations;
 completion still follows the VM's normal task-slot scheduling.
+
+`script::camera` prepares logical camera replacements off-live from explicitly
+initialized records and a host-supplied geometry reader. It retains ordered
+segment hits, contact response, movement limits, terrain correction, pose history
+and actor position writes. Terrain queries select one retained or map source for
+the whole triangle and reject unavailable retained heights without falling back.
+The host must validate actor bindings before publishing the replacement. This
+boundary does not initialize missing installed settings, establish camera model
+eligibility, bind renderer terrain, or enable automatic/scripted camera updates.
+The implemented calculations follow preservation's
+[camera rules](https://github.com/michidk/redguard-preservation/pull/95).
