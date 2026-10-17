@@ -3635,6 +3635,9 @@ fn routed_weapon_queries_use_receiver_animation_and_preserve_early_holding_attri
         ("IsSheathingSword", 0, Some(129), true, Some(false), 1),
         ("IsSheathingSword", 0, Some(91), true, Some(false), 0),
         ("IsDrawingSword", 1, None, true, None, 0),
+        ("IsDrawingOrSheathing", 0, Some(91), true, Some(false), 1),
+        ("IsDrawingOrSheathing", 0, Some(129), true, Some(false), 1),
+        ("IsDrawingOrSheathing", 0, Some(1), true, Some(false), 0),
     ] {
         let mut data = scripts(vec![
             Operation::Assign {

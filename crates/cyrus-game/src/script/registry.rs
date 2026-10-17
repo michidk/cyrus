@@ -2700,9 +2700,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
-        if ["IsHoldingWeapon", "IsDrawingSword", "IsSheathingSword"]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+        if [
+            "IsHoldingWeapon",
+            "IsDrawingSword",
+            "IsSheathingSword",
+            "IsDrawingOrSheathing",
+        ]
+        .iter()
+        .any(|name| function.eq_ignore_ascii_case(name))
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
@@ -2710,6 +2715,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 holding
             } else if function.eq_ignore_ascii_case("IsDrawingSword") {
                 drawing
+            } else if function.eq_ignore_ascii_case("IsDrawingOrSheathing") {
+                drawing || sheathing
             } else {
                 sheathing
             };
