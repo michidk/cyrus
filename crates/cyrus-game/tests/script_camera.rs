@@ -324,3 +324,13 @@ fn initial_records_follow_the_documented_installed_setting_mapping() {
     };
     assert!(CameraState::initial_records(&negative, player).is_err());
 }
+
+#[test]
+fn location_offsets_convert_attribute_bytes_for_the_selected_record_only() {
+    let mut camera = state();
+    camera.set_location_offsets([0, 127, 255, 1, 128, 0]);
+    let record = &camera.records[1];
+    assert_eq!(record.target_offset, [0, 0, 64_000]);
+    assert_eq!(record.position_offset, [-63_000, 500, 0]);
+    assert_eq!(camera.records[0].target_offset, [0; 3]);
+}

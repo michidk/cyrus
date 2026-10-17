@@ -256,6 +256,22 @@ impl CameraState {
         }
     }
 
+    /// Location-camera setup: the actor's six attribute bytes (target x/y/z, then camera
+    /// x/y/z) replace the selected record's target and position offsets.
+    /// Each zero byte stays zero; any other becomes `(byte - 127) * 500`.
+    pub fn set_location_offsets(&mut self, attributes: [u8; 6]) {
+        let convert = |byte: u8| {
+            if byte == 0 {
+                0
+            } else {
+                (i32::from(byte) - 127) * 500
+            }
+        };
+        let record = &mut self.records[usize::from(self.selected.0)];
+        record.target_offset = std::array::from_fn(|axis| convert(attributes[axis]));
+        record.position_offset = std::array::from_fn(|axis| convert(attributes[axis + 3]));
+    }
+
     /// Whether scripted ownership or the current record prevents reselection.
     pub fn reselection_inhibited(&self) -> bool {
         self.scripted_active != 0 || self.records[usize::from(self.selected.0)].flags & 0x20 != 0
