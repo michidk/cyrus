@@ -271,3 +271,10 @@ Changing it changes the content identity; older caches require re-export.
 
 Script instances retain authored signed light intensity, radius and RGB before
 runtime object-kind admission. Older script caches require re-export.
+
+Environment exports retain the complete terrain height grid in engine units,
+including the signed per-world height offset supplied by preservation's
+[terrain parser](https://github.com/michidk/redguard-preservation/pull/99).
+Terrain playback does not recover those values from GLB positions. Re-export
+older environments and recapture session documents before loading them with
+this height-aware terrain owner; incomplete terrain sources reject explicitly.

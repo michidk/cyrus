@@ -228,6 +228,8 @@ fn world_exports_include_declared_terrain_and_textures() {
         assert_eq!(environment.sky.is_some(), terrain);
         assert_eq!(environment.water.is_some(), terrain);
         assert_eq!(environment.terrain_lighting.is_some(), terrain);
+        assert_eq!(environment.terrain_heights.is_some(), terrain);
+        environment.validate().unwrap();
         for name in environment.prelighting.instances.keys() {
             assert!(
                 nodes
@@ -477,6 +479,19 @@ fn water_exports_preserve_selected_vertices_and_world_wave_parameters() {
         let environment: cyrus_assets::environment::Environment =
             serde_json::from_slice(&std::fs::read(path.with_extension("environment")).unwrap())
                 .unwrap();
+        environment.validate().unwrap();
+        let heights = environment.terrain_heights.as_ref().unwrap();
+        assert_eq!(heights.side, 256);
+        assert_eq!(heights.heights.len(), 256 * 256);
+        assert_eq!(heights.offset, 0);
+        let mut missing = serde_json::to_value(&environment).unwrap();
+        missing["terrain_heights"] = serde_json::Value::Null;
+        assert!(
+            serde_json::from_value::<cyrus_assets::environment::Environment>(missing)
+                .unwrap()
+                .validate()
+                .is_err()
+        );
         let water = environment.water.unwrap();
         assert_eq!(water.parameters, parameters, "world {world}");
         assert_eq!(water.side, 256);

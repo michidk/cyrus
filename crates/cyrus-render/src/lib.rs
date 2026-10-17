@@ -22,8 +22,8 @@ pub use terrain::TextureAdmission as TerrainTextureAdmission;
 mod water;
 use bevy::prelude::*;
 pub use water::{
-    PreparedTerrainMesh, TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot,
-    WaterPlayback,
+    CameraTerrainView, PreparedTerrainMesh, TerrainCandidate, TerrainMeshReplacement,
+    TerrainPlaybackSnapshot, WaterPlayback,
 };
 /// Shared world presentation for native and browser hosts.
 pub struct WorldRenderPlugin;

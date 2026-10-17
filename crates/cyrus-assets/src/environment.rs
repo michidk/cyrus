@@ -17,6 +17,8 @@ pub struct Environment {
     pub clipping: [f32; 2],
     /// The 64-entry Glide scene fog density table, packed in groups of four.
     pub fog_table: [[u8; 4]; 16],
+    /// Exact terrain source heights before wave updates or renderer scaling.
+    pub terrain_heights: Option<TerrainHeights>,
     /// Terrain water mask and original wave parameters, if declared.
     pub water: Option<Water>,
     /// Original per-world terrain shading inputs, absent for worlds without terrain.
@@ -103,6 +105,28 @@ pub struct Water {
     pub animated_vertices: Vec<bool>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+/// Full square WLD grid in original row order, with the installed height offset.
+pub struct TerrainHeights {
+    pub side: usize,
+    /// Signed WORLD.INI terrain offset, in engine units with positive Y down.
+    pub offset: i16,
+    /// Shifted height-table values, before waves and renderer scaling.
+    pub heights: Vec<f32>,
+}
+
+impl TerrainHeights {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            (2..=256).contains(&self.side)
+                && self.heights.len() == self.side * self.side
+                && self.heights.iter().all(|height| height.is_finite()),
+            "invalid terrain engine-height grid"
+        );
+        Ok(())
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 /// Model RGB strengths and direction in exported axes, per preservation's model-lighting rules.
 pub struct ModelLighting {
@@ -116,6 +140,23 @@ pub struct ModelLighting {
 
 impl Environment {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if let Some(terrain) = &self.terrain_heights {
+            terrain.validate()?;
+        }
+        for side in self
+            .terrain_lighting
+            .as_ref()
+            .map(|l| l.side)
+            .into_iter()
+            .chain(self.water.as_ref().map(|w| w.side))
+        {
+            anyhow::ensure!(
+                self.terrain_heights
+                    .as_ref()
+                    .is_some_and(|t| t.side == side),
+                "terrain engine heights missing or grid differs; re-export environment"
+            );
+        }
         let lighting = &self.model_lighting;
         anyhow::ensure!(
             lighting

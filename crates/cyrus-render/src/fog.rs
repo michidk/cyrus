@@ -725,6 +725,11 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side: 2,
+                offset: 0,
+                heights: vec![0.0; 4],
+            }),
             texture_scale: [1, 1],
             object_lights: vec![cyrus_assets::environment::LocalLight {
                 position: [512, 0, 512],

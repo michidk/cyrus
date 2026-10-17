@@ -1,7 +1,9 @@
 //! Private terrain meshes, shading normals and wave playback from preservation.
 mod checkpoint;
+mod heights;
 mod preparation;
 pub use checkpoint::{TerrainCandidate, TerrainMeshReplacement, TerrainPlaybackSnapshot};
+pub use heights::CameraTerrainView;
 pub use preparation::PreparedTerrainMesh;
 
 use crate::environment::EnvironmentRequest;
@@ -38,6 +40,7 @@ pub struct WaterPlayback {
     window: Option<crate::terrain::Window>,
     mode: Mode,
     grid: Vec<[f32; 3]>,
+    engine_heights: Vec<f32>,
     normals: Vec<[f32; 3]>,
     dirty_normals: Vec<bool>,
     rgb: Vec<[f32; 3]>,
@@ -86,17 +89,23 @@ fn modern_displacement(water: &Water, position: [f32; 3], seconds: f32) -> f32 {
     water.parameters[0] / 20.0 * (0.5 + 0.35 * phase.sin() + 0.15 * cross.sin())
 }
 
-/// Vertical offset for a grid vertex in exported units with positive Y up.
+/// Wave height in engine units, rounded only after the complete expression.
 /// `vertex` must be within the validated square grid; timing uses BIOS ticks.
 /// Phase starts at the application's clock origin; scene changes do not reset it.
-fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
+fn wave_height(water: &Water, vertex: usize, ticks: u64, base: f32) -> f32 {
     let x = (vertex % water.side) as i64 - (water.side / 2) as i64;
     let row = (vertex / water.side) as i64 - (water.side / 2) as i64;
     let [amplitude, speed, frequency] = water.parameters;
     let spatial = (x * x + row * row) * frequency as i64;
     let phase = (spatial as u64).wrapping_add(ticks.wrapping_mul((speed as i64) as u64)) & 2047;
     let sample = cyrus_world::transform::rotation_sample((phase + 512) as usize);
-    -(sample * amplitude - amplitude * 0.5) / 20.0
+    let bias = amplitude * 0.5;
+    (f64::from(sample) * f64::from(amplitude) + f64::from(base) - f64::from(bias)) as f32
+}
+
+#[cfg(test)]
+fn displacement(water: &Water, vertex: usize, ticks: u64) -> f32 {
+    -wave_height(water, vertex, ticks, 0.0) / 20.0
 }
 
 // Rendering assets, scene hierarchy, and clock are independent Bevy resources.
@@ -152,9 +161,10 @@ pub(crate) fn animate_water(
         .water
         .as_ref()
         .filter(|w| w.parameters[0] != 0.0);
-    let Some(side) = lighting.map(|l| l.side).or_else(|| water.map(|w| w.side)) else {
+    let Some(heights) = environment.terrain_heights.as_ref() else {
         return;
     };
+    let side = heights.side;
     if playback.terrain.is_empty() {
         let terrain: Vec<_> = entities
             .iter()
@@ -239,15 +249,36 @@ pub(crate) fn animate_water(
         }
         playback.tick = Some(ticks);
         playback.mode = mode;
+        playback.engine_heights = heights
+            .heights
+            .iter()
+            .enumerate()
+            .map(|(vertex, &base)| {
+                if let Some(water) = water
+                    .filter(|w| w.animated_vertices[vertex] && window.faithful_contains(vertex))
+                {
+                    wave_height(water, vertex, ticks, base)
+                } else {
+                    base
+                }
+            })
+            .collect();
         let mut grid = playback.base.clone();
         for (vertex, position) in grid.iter_mut().enumerate() {
             if let Some(water) =
                 water.filter(|w| w.animated_vertices[vertex] && window.contains(vertex))
             {
-                position[1] += match mode {
-                    Mode::Faithful => displacement(water, vertex, ticks),
+                position[1] = match mode {
+                    Mode::Faithful => {
+                        -wave_height(water, vertex, ticks, heights.heights[vertex]) / 20.0
+                    }
                     Mode::Modern => {
-                        modern_displacement(water, playback.base[vertex], elapsed.as_secs_f32())
+                        playback.base[vertex][1]
+                            + modern_displacement(
+                                water,
+                                playback.base[vertex],
+                                elapsed.as_secs_f32(),
+                            )
                     }
                 };
             }
@@ -445,6 +476,11 @@ mod tests {
         let mut selected = vec![false; 40 * 40];
         selected[20 * 40 + 20] = true;
         let environment = environments.add(Environment {
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side: 40,
+                offset: 0,
+                heights: vec![0.0; 1600],
+            }),
             texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
@@ -498,6 +534,23 @@ mod tests {
             .id();
         app.update();
         let animated = app.world().get::<Mesh3d>(terrain).unwrap().0.clone();
+        let camera_height = |app: &App| {
+            let source = app.world().resource::<EnvironmentRequest>().0.id();
+            let environment = app
+                .world()
+                .resource::<Assets<Environment>>()
+                .get(source)
+                .unwrap();
+            let view = app
+                .world()
+                .resource::<WaterPlayback>()
+                .camera_terrain(source, environment)
+                .unwrap();
+            cyrus_game::script::camera::sample_terrain([20 * 256, 20 * 256], &view)
+                .unwrap()
+                .0
+        };
+        assert_eq!(camera_height(&app), 12.0);
         assert_eq!(positions(&app, &animated)[820][1], -0.6);
         let normal = |app: &App| {
             let mesh = app
@@ -522,6 +575,7 @@ mod tests {
             )));
         app.update();
         assert_eq!(positions(&app, &animated)[820][1], 0.0);
+        assert_eq!(camera_height(&app), 0.0);
         assert_eq!(normal(&app), [0.0, 0.99609375, 0.0]);
         app.world_mut()
             .entity_mut(camera)
@@ -554,6 +608,11 @@ mod tests {
             .resource_mut::<crate::fog::RenderDistance>()
             .override_far = Some(7600.0);
         app.update();
+        assert_eq!(
+            camera_height(&app),
+            0.0,
+            "Modern frustum must not expand camera retained-height admission"
+        );
         assert_eq!(positions(&app, &animated)[820][1], -0.6);
         app.world_mut()
             .resource_mut::<Fidelity>()
@@ -600,6 +659,11 @@ mod tests {
         };
         water.animated_vertices[12] = true;
         let environment = Environment {
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side: 5,
+                offset: 0,
+                heights: vec![0.0; 25],
+            }),
             texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
@@ -729,6 +793,11 @@ mod tests {
             .id();
         let mut environments = Assets::<Environment>::default();
         let outdoor = environments.add(Environment {
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side: 2,
+                offset: 0,
+                heights: vec![0.0; 4],
+            }),
             texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
@@ -863,6 +932,11 @@ mod tests {
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                    side: 2,
+                    offset: 0,
+                    heights: vec![0.0; 4],
+                }),
                 texture_scale: [1, 1],
                 object_lights: Vec::new(),
                 prelighting: Default::default(),
@@ -880,12 +954,18 @@ mod tests {
             });
         app.world_mut().resource_mut::<EnvironmentRequest>().0 = disabled;
         app.update();
-        assert_eq!(app.world().get::<Mesh3d>(entity).unwrap().0, first);
+        let disabled_mesh = &app.world().get::<Mesh3d>(entity).unwrap().0;
+        assert_eq!(positions(&app, disabled_mesh), a);
         assert_eq!(positions(&app, &first), a);
         let dry = app
             .world_mut()
             .resource_mut::<Assets<Environment>>()
             .add(Environment {
+                terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                    side: 2,
+                    offset: 0,
+                    heights: vec![0.0; 4],
+                }),
                 texture_scale: [1, 1],
                 object_lights: Vec::new(),
                 prelighting: Default::default(),

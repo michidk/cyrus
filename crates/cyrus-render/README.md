@@ -406,6 +406,14 @@ requests for that image until resumed; selection preserves its deadline.
 World replacement clears the hold with the image timeline. Ordinary playback
 has no hold. Explicit gameplay frame requests remain unsupported.
 
+Terrain playback retains source and animated heights in engine units before
+converting each final height to mesh coordinates. `WaterPlayback::camera_terrain`
+borrows that settled owner for logical camera queries. The original retained
+window stays separate from Modern frustum expansion and wave styling.
+Terrain snapshots retain these heights with the source, phase and window;
+replacement rejects mismatched history. Earlier terrain snapshot versions
+require a new capture. This reader does not enable automatic scripted cameras.
+
 Texture and terrain playback expose opaque replacement snapshots for session
 assembly. Capture follows completed binding and deferred render writes, together
 with the presentation clock. Texture replacement validates the prepared image

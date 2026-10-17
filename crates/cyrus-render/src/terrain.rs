@@ -121,6 +121,14 @@ impl Window {
         self
     }
 
+    pub(super) fn engine_center(self) -> [i32; 2] {
+        [self.center[0], self.side as i32 - self.center[1]]
+    }
+
+    pub(super) fn faithful_contains(self, vertex: usize) -> bool {
+        Self { radius: 16, ..self }.contains(vertex)
+    }
+
     pub fn contains(self, vertex: usize) -> bool {
         let x = (vertex % self.side) as i32 - self.center[0];
         let row = (vertex / self.side) as i32 - self.center[1];

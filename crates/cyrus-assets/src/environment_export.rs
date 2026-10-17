@@ -380,7 +380,22 @@ pub(crate) fn prepare(
         .text_scale
         .unwrap_or([4, 2]);
     rgpre::import::bsi::GlideTextureLayout::new([1, 1], Some(texture_scale))?;
+    let terrain_heights = terrain
+        .map(|terrain| -> anyhow::Result<_> {
+            let raw = terrain.combined_map(0)?;
+            let offset = rgpre::import::world_ini::terrain_height_offset(&ini, entry.index)?;
+            Ok(crate::environment::TerrainHeights {
+                side: raw.len().isqrt(),
+                offset,
+                heights: raw
+                    .into_iter()
+                    .map(|value| f32::from(offset) + f32::from(wld::decode_height(value)))
+                    .collect(),
+            })
+        })
+        .transpose()?;
     let environment = Environment {
+        terrain_heights,
         texture_scale,
         prelighting,
         object_lights,

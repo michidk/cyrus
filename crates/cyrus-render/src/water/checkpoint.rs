@@ -18,6 +18,7 @@ pub struct TerrainPlaybackSnapshot {
     window: Option<crate::terrain::Window>,
     mode: Mode,
     grid: Vec<[f32; 3]>,
+    engine_heights: Vec<f32>,
     normals: Vec<[f32; 3]>,
     dirty_normals: Vec<bool>,
     rgb: Vec<[f32; 3]>,
@@ -112,13 +113,14 @@ impl WaterPlayback {
             });
         }
         let saved = TerrainPlaybackSnapshot {
-            version: 1,
+            version: 2,
             environment: digest(environment)?,
             base: digest(&self.base)?,
             tick: self.tick,
             window: self.window,
             mode: self.mode,
             grid: self.grid.clone(),
+            engine_heights: self.engine_heights.clone(),
             normals: self.normals.clone(),
             dirty_normals: self.dirty_normals.clone(),
             rgb: self.rgb.clone(),
@@ -166,6 +168,7 @@ impl WaterPlayback {
         prepared.window = snapshot.window;
         prepared.mode = snapshot.mode;
         prepared.grid = snapshot.grid;
+        prepared.engine_heights = snapshot.engine_heights;
         prepared.normals = snapshot.normals;
         prepared.dirty_normals = snapshot.dirty_normals;
         prepared.rgb = snapshot.rgb;
@@ -294,8 +297,9 @@ fn validate(
     prepared: &WaterPlayback,
     environment: &Environment,
 ) -> Result<()> {
+    environment.validate()?;
     ensure!(
-        saved.version == 1,
+        saved.version == 2,
         "terrain snapshot version {} unsupported",
         saved.version
     );
@@ -316,15 +320,15 @@ fn validate(
         .as_ref()
         .filter(|water| water.parameters[0] != 0.0);
     let side = environment
-        .terrain_lighting
+        .terrain_heights
         .as_ref()
-        .map(|lighting| lighting.side)
-        .or_else(|| water.map(|water| water.side));
+        .map(|terrain| terrain.side);
     let Some(side) = side else {
         ensure!(
             saved.meshes.is_empty()
                 && prepared.base.is_empty()
                 && saved.grid.is_empty()
+                && saved.engine_heights.is_empty()
                 && saved.normals.is_empty()
                 && saved.rgb.is_empty()
                 && saved.dirty_normals.is_empty()
@@ -348,6 +352,7 @@ fn validate(
     ensure!(
         prepared.base.len() == count
             && saved.grid.len() == count
+            && saved.engine_heights.len() == count
             && saved.normals.len() == count
             && saved.rgb.len() == count,
         "terrain history grid lengths differ"
@@ -376,6 +381,29 @@ fn validate(
                 .all(|v| v.is_finite() && (0.0..=255.0).contains(v)),
         "terrain history contains invalid geometry or lighting"
     );
+    let heights = environment.terrain_heights.as_ref().unwrap();
+    for (i, &base) in heights.heights.iter().enumerate() {
+        let expected = water
+            .filter(|w| w.animated_vertices[i] && saved.window.unwrap().faithful_contains(i))
+            .map_or(base, |w| {
+                super::wave_height(w, i, saved.tick.unwrap(), base)
+            });
+        ensure!(
+            saved.engine_heights[i].to_bits() == expected.to_bits(),
+            "terrain grid vertex {i}: retained engine height differs from saved phase/source"
+        );
+        if saved.mode == Mode::Faithful {
+            let rendered = water
+                .filter(|w| w.animated_vertices[i] && saved.window.unwrap().contains(i))
+                .map_or(base, |w| {
+                    super::wave_height(w, i, saved.tick.unwrap(), base)
+                });
+            ensure!(
+                saved.grid[i][1] == -rendered / 20.0,
+                "terrain grid vertex {i}: mesh height differs from engine height"
+            );
+        }
+    }
     for (i, (position, base)) in saved.grid.iter().zip(&prepared.base).enumerate() {
         ensure!(
             position[0] == base[0] && position[2] == base[2],
@@ -385,7 +413,8 @@ fn validate(
             .filter(|water| water.animated_vertices[i] && saved.window.unwrap().contains(i))
             .map_or(0.0, |water| water.parameters[0].abs() * 1.5 / 20.0);
         ensure!(
-            position[1] >= base[1] - amplitude && position[1] <= base[1] + amplitude,
+            saved.mode == Mode::Faithful
+                || (position[1] >= base[1] - amplitude && position[1] <= base[1] + amplitude),
             "terrain grid vertex {i}: height outside authored wave range"
         );
         let expected = environment
@@ -460,6 +489,11 @@ mod tests {
             .id();
         let mut environments = Assets::default();
         let env = environments.add(Environment {
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side: 4,
+                offset: 0,
+                heights: vec![0.0; 16],
+            }),
             texture_scale: [1, 1],
             object_lights: Vec::new(),
             prelighting: Default::default(),
@@ -569,6 +603,61 @@ mod tests {
             .resource::<WaterPlayback>()
             .snapshot_playback(environment(app), app.world())
             .unwrap()
+    }
+
+    fn camera_sample(app: &App) -> (f32, [i32; 3]) {
+        let owner = app.world().resource::<WaterPlayback>();
+        let source = app.world().resource::<EnvironmentRequest>().0.id();
+        let view = owner.camera_terrain(source, environment(app)).unwrap();
+        cyrus_game::script::camera::sample_terrain([512, 512], &view).unwrap()
+    }
+
+    #[test]
+    fn camera_reads_engine_height_without_inverse_mesh_scaling() -> Result<()> {
+        use cyrus_game::script::camera::CameraTerrainHeights;
+        for mode in [Mode::Faithful, Mode::Modern] {
+            let (mut app, _, _) = fixture(mode, false);
+            let source = app.world().resource::<EnvironmentRequest>().0.clone();
+            {
+                let mut environments = app.world_mut().resource_mut::<Assets<Environment>>();
+                let mut environment = environments.get_mut(&source).unwrap();
+                environment
+                    .terrain_heights
+                    .as_mut()
+                    .unwrap()
+                    .heights
+                    .fill(-680.0);
+                environment.water.as_mut().unwrap().parameters = [24.0, 28.0, 5.0];
+            }
+            app.world_mut().resource_mut::<WaterPlayback>().invalidate();
+            app.world_mut()
+                .resource_mut::<Time<Real>>()
+                .advance_by(Duration::from_millis(171));
+            app.update();
+            let owner = app.world().resource::<WaterPlayback>();
+            let view = owner.camera_terrain(source.id(), environment(&app))?;
+            assert_eq!(view.map_height([2, 2])?, -680.0);
+            let sampled = view.retained_height([2, 2])?;
+            assert_ne!(sampled, -680.0);
+            assert_eq!(camera_sample(&app).0, sampled);
+            assert!(view.map_height([-1, 2]).is_err());
+            assert!(
+                owner
+                    .camera_terrain(Handle::<Environment>::default().id(), environment(&app))
+                    .is_err()
+            );
+            if mode == Mode::Faithful {
+                assert_eq!(owner.grid[10][1], -sampled / 20.0);
+                assert_ne!(
+                    owner.grid[10][1] * -20.0,
+                    sampled,
+                    "inverse mesh scaling loses a bit needed by the camera source"
+                );
+            }
+            let saved = snapshot(&app);
+            assert_eq!(saved.engine_heights[10], sampled);
+        }
+        Ok(())
     }
 
     fn mesh_state(app: &App) -> Vec<String> {
@@ -692,6 +781,7 @@ mod tests {
                 )?;
                 fresh.insert_resource(clock);
                 publish(&mut fresh, candidate);
+                assert_eq!(camera_sample(&fresh), camera_sample(&live));
                 assert_eq!(mesh_state(&fresh), mesh_state(&live));
                 assert_eq!(
                     serde_json::to_value(snapshot(&fresh))?,
@@ -723,6 +813,7 @@ mod tests {
                         }
                         app.update();
                     }
+                    assert_eq!(camera_sample(&fresh), camera_sample(&live));
                     assert_eq!(mesh_state(&fresh), mesh_state(&live));
                     assert_eq!(
                         serde_json::to_value(snapshot(&fresh))?,
@@ -741,8 +832,9 @@ mod tests {
         let live_meshes = mesh_state(&live);
         let mut invalid = Vec::new();
         for (field, value) in [
-            ("version", serde_json::json!(2)),
+            ("version", serde_json::json!(1)),
             ("grid", serde_json::json!([])),
+            ("engine_heights", serde_json::json!([])),
             ("dirty_normals", serde_json::json!([])),
             ("window", serde_json::Value::Null),
             ("meshes", serde_json::json!([])),
@@ -751,6 +843,9 @@ mod tests {
             case[field] = value;
             invalid.push(case);
         }
+        let mut case = saved.clone();
+        case["engine_heights"][10] = serde_json::json!(123.0);
+        invalid.push(case);
         let mut case = saved.clone();
         case["window"]["side"] = serde_json::json!(0);
         invalid.push(case);
@@ -836,6 +931,7 @@ mod tests {
         );
         foreign.water = None;
         foreign.terrain_lighting = None;
+        foreign.terrain_heights = None;
         let empty = WaterPlayback::default().snapshot_playback(&foreign, &World::new())?;
         let (playback, meshes) = WaterPlayback::from_snapshot(
             WaterPlayback::default(),

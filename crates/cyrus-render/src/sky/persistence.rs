@@ -162,6 +162,7 @@ mod tests {
     use bevy::prelude::{App, Real, Time, Update};
     fn environment() -> Environment {
         Environment {
+            terrain_heights: None,
             texture_scale: [1, 1],
             sky: None,
             background: [0; 3],

@@ -264,6 +264,11 @@ mod tests {
 
     fn environment() -> Environment {
         Environment {
+            terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
+                side: 2,
+                offset: 0,
+                heights: vec![0.0; 4],
+            }),
             texture_scale: [1, 1],
             sky: Some(crate::environment::SkyImage {
                 width: 1,
@@ -279,8 +284,8 @@ mod tests {
             fog_table: [[0; 4]; 16],
             water: Some(crate::environment::Water {
                 parameters: [24.0, 1.0, 2.0],
-                side: 1,
-                animated_vertices: vec![true],
+                side: 2,
+                animated_vertices: vec![true; 4],
             }),
             terrain_lighting: None,
             model_lighting: default(),
