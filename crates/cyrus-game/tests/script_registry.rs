@@ -2840,6 +2840,13 @@ fn assign_call(next: u32, function_id: u16, function: &str, arguments: &[i32]) -
 
 /// Runs the given native calls in order on one logical actor and returns its first local.
 fn run_native_calls(calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
+    Ok(run_native_world(calls)?.actors()[0]
+        .runtime()
+        .unwrap()
+        .variables()[0])
+}
+
+fn run_native_world(calls: &[(&str, &[i32])]) -> anyhow::Result<ScriptWorld> {
     let mut scripts = random_scripts("Rnd", vec![], Object::Me);
     scripts.definition.functions.clear();
     scripts.definition.functions.push(Function {
@@ -2887,7 +2894,7 @@ fn run_native_calls(calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
         None,
         100,
     )?;
-    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+    Ok(world)
 }
 
 #[test]
@@ -2906,6 +2913,24 @@ fn potion_counters_start_zero_keep_values_per_index_and_reject_unknown_indices()
         let error = run_native_calls(&[call]).unwrap_err();
         assert!(format!("{error:#}").contains("outside 0..4"), "{error:#}");
     }
+}
+
+#[test]
+fn hook_toggles_set_and_clear_only_the_native_hook_suppression_bit() {
+    let hook_bit = |calls: &[(&str, &[i32])]| {
+        let world = run_native_world(calls).unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        (
+            control.script_control,
+            world.actors()[1].control_state().unwrap().script_control,
+        )
+    };
+    assert_eq!(hook_bit(&[("DisableHook", &[])]), (2, 0));
+    assert_eq!(
+        hook_bit(&[("DisableHook", &[]), ("EnableHook", &[])]),
+        (0, 0)
+    );
+    assert_eq!(hook_bit(&[("EnableHook", &[])]), (0, 0));
 }
 
 #[test]

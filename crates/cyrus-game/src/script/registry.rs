@@ -2580,6 +2580,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        if function.eq_ignore_ascii_case("DisableHook")
+            || function.eq_ignore_ascii_case("EnableHook")
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let control = self.actors[self.index]
+                .control
+                .as_mut()
+                .with_context(|| format!("{function}: receiver script-control unavailable"))?;
+            // Bit 0x02 of the script-control byte suppresses the native hook.
+            if function.eq_ignore_ascii_case("DisableHook") {
+                control.script_control |= 2;
+            } else {
+                control.script_control &= !2;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("SetPotion") || function.eq_ignore_ascii_case("GetPotion")
         {
             let set = function.eq_ignore_ascii_case("SetPotion");
