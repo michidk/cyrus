@@ -13730,3 +13730,12 @@ fn step_hazard_is_a_steep_destination_surface_unless_both_points_are_floors() {
         );
     }
 }
+
+#[test]
+fn lifecycle_byte_queries_read_the_fresh_receiver_state() {
+    for name in ["MyAIType", "MyAIMode", "IsOnEdge"] {
+        assert_eq!(run_native_calls(&[(name, &[])]).unwrap(), 0, "{name}");
+        let error = run_native_calls(&[(name, &[1])]).unwrap_err();
+        assert!(format!("{error:#}").contains("no arguments"), "{name}");
+    }
+}

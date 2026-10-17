@@ -3008,6 +3008,23 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("{function} actor surface state unavailable"))?;
             return Ok(CallResult::Complete(i32::from(test(surface))));
         }
+        // Receiver lifecycle bytes: MyAIType is the lifecycle selector, MyAIMode the death
+        // notification byte; IsOnEdge holds for living states 10 through 19.
+        let control_test: Option<fn(&ActorControlState) -> i32> =
+            match function.to_ascii_lowercase().as_str() {
+                "myaitype" => Some(|control| i32::from(control.death_selector)),
+                "myaimode" => Some(|control| i32::from(control.death_response)),
+                "isonedge" => Some(|control| i32::from((10..=19).contains(&control.living_state))),
+                _ => None,
+            };
+        if let Some(test) = control_test {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let control = self.actors[self.index]
+                .control
+                .as_ref()
+                .with_context(|| format!("{function}: receiver control state unavailable"))?;
+            return Ok(CallResult::Complete(test(control)));
+        }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
             || function.eq_ignore_ascii_case("PlayerLooking")
