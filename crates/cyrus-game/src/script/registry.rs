@@ -2697,6 +2697,52 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("PlayAnimation") {
+            let [group, modifier] = arguments else {
+                anyhow::bail!("PlayAnimation requires two arguments")
+            };
+            let group = u16::try_from(group.integer()?)
+                .context("PlayAnimation group outside supported range")?;
+            anyhow::ensure!(
+                group <= i16::MAX as u16,
+                "PlayAnimation signed group unsupported"
+            );
+            // The modifier is stored as one byte.
+            let modifier = modifier.integer()? as u8;
+            let excluded = self.actors[self.index]
+                .control
+                .as_ref()
+                .is_some_and(|control| control.object_update_excluded);
+            if !self.animation_system || excluded || self.actors[self.index].animation.is_none() {
+                return Ok(CallResult::Complete(0));
+            }
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .context("PlayAnimation requires nominal_ticks")?;
+            let position = animation_sound_position(self.spatial.as_deref(), self.index);
+            let surface = self.actors[self.index].surface;
+            let mut emit = |sound| match &mut self.sounds {
+                Some(sounds) => sounds(
+                    id,
+                    super::ScriptSound::Animation {
+                        sound,
+                        surface,
+                        position,
+                    },
+                ),
+                None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+            };
+            let animation = self.actors[self.index]
+                .animation
+                .as_mut()
+                .expect("checked animation");
+            let frame = animation
+                .playback
+                .request_with_sounds(group, modifier, ticks, &mut emit)?;
+            animation.frame = frame.or(animation.frame);
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("GetFramePassed") {
             anyhow::ensure!(arguments.is_empty(), "GetFramePassed requires no arguments");
             let ticks = self

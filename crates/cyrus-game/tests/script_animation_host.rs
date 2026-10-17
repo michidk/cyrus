@@ -4637,3 +4637,70 @@ fn face_player_turns_toward_the_selected_player_over_its_duration() {
     }
     assert_eq!(world.spatial(id).unwrap().local.position, origin);
 }
+
+fn play_animation_scripts(arguments: [i32; 2]) -> Scripts {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Function,
+                target: Object::Me,
+                function: "PlayAnimation".into(),
+                arguments: arguments.map(|value| Value::Integer { value }).to_vec(),
+            },
+        },
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "PlayAnimation".into(),
+        param_count: 2,
+        kind: CallKind::Function,
+    });
+    data.content_id = data.content_identity().unwrap();
+    data
+}
+
+#[test]
+fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
+    let data = play_animation_scripts([1, 0]);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &animations(&data, false), 7)
+        .unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(
+        world.animation_frame(id).unwrap(),
+        Some(0),
+        "group 1 started"
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.flags(), [9], "the script continued in the same stage");
+    // A receiver without prepared animation ignores the request and also continues.
+    let data = play_animation_scripts([1, 0]);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    let id = world.id(0).unwrap();
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+    // Negative groups are not represented.
+    let data = play_animation_scripts([-1, 0]);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    let id = world.id(0).unwrap();
+    assert!(
+        world
+            .advance(
+                id,
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .is_err()
+    );
+}
