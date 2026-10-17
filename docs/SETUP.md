@@ -104,6 +104,8 @@ The browser parses them in a worker and generates selected previews in memory.
 
 The game and viewer share `target/web`, the loader, Cache Storage, and the
 selected read-only install service. Both prepare assets in browser memory.
+Set `CARGO_TARGET_DIR` to build the wasm outside the checkout (for example on a
+volume that is not cleaned); the web root stays in `target/web`.
 See [cyrus-viewer](../crates/cyrus-viewer/README.md) for controls and limits.
 
 ## Releases
