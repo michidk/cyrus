@@ -431,6 +431,13 @@ Next, in order (checklist step 5, "Interaction"):
 1. Camera-specific model admission that reuses stored model poses; do not reuse
    ordinary collision admission as camera eligibility.
 2. Installed camera settings read through preservation, not Rust tables.
+   **Blocked on evidence (2026-10-17):** preservation parses `[camera]`
+   (`SystemIni.camera`) and documents the copy order of the nine records, but
+   no published fact maps the INI keys to record fields (offsets, distances,
+   maximum movement, slot-three combat offsets) or states their unit
+   conversions. The private archive has no such mapping either. Research it
+   from the original, publish it in preservation, then build the record
+   initializer; do not infer the mapping from key names.
 3. Actor rebinding for the camera and coordinated live publication with the
    session commit.
 4. Live camera scheduling driven by SOUP camera requests, then the headless
