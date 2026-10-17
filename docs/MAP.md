@@ -173,6 +173,7 @@ module where it is defined and regenerate.
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.
 - `src/script/registry/separate.rs` — Separate map records retain scripts/tasks and rebuild temporary actor attributes.
+- `src/script/registry/sight.rs` — Line of sight between two actors follows preservation's combat decision "In sight" rules.
 - `src/script/registry/slope.rs` — Ordinary slope response follows preservation's player engine rules.
 - `src/script/registry/transition.rs` — Obstacle motion transitions follow preservation's ordinary forward wrapper.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
