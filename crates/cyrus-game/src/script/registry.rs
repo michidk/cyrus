@@ -2247,6 +2247,74 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.globals.lineup_result = None;
             anyhow::bail!("PlayerLineUp alignment execution unavailable; shared result unknown");
         }
+        if kind == CallKind::Function
+            && [
+                "Light",
+                "LightRadius",
+                "LightIntensity",
+                "LightOffset",
+                "LightFlicker",
+                "FlickerLight",
+                "LightFlickerOff",
+            ]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            let actor = &mut self.actors[self.index];
+            let placement = actor.placement();
+            anyhow::ensure!(
+                actor.light.is_some()
+                    || placement.is_none_or(|placement| placement.object_type != 4),
+                "{function}: type-four light initialization unavailable"
+            );
+            let position = placement
+                .map(|placement| placement.map_position.map(|value| value as i32))
+                .unwrap_or_default();
+            let light = actor
+                .light
+                .get_or_insert_with(|| light::LightState::dynamic(position));
+            let values = arguments
+                .iter()
+                .map(|argument| argument.integer())
+                .collect::<Result<Vec<_>>>()?;
+            let name = function.to_ascii_lowercase();
+            let expected = match name.as_str() {
+                "light" | "lightflicker" => 2,
+                "lightoffset" => 3,
+                "lightflickeroff" => 0,
+                _ => 1,
+            };
+            anyhow::ensure!(values.len() == expected, "{function}: wrong argument count");
+            // Stored values keep their low sixteen bits, as the original's word stores do.
+            match name.as_str() {
+                "light" => {
+                    light.enabled = true;
+                    light.starting_radius = values[0] as i16;
+                    light.radius = values[0] as i16;
+                    light.starting_intensity = values[1] as i16;
+                    light.intensity = values[1] as i16;
+                }
+                "lightradius" => {
+                    light.starting_radius = values[0] as i16;
+                    light.radius = values[0] as i16;
+                    light.enabled = true;
+                    light.inactive_ticks = 0;
+                }
+                "lightintensity" => {
+                    light.starting_intensity = values[0] as i16;
+                    light.intensity = values[0] as i16;
+                    light.enabled = true;
+                    light.inactive_ticks = 0;
+                }
+                "lightoffset" => {
+                    light.offset = [values[0] as i16, values[1] as i16, values[2] as i16]
+                }
+                "lightflicker" => light.flicker = [values[0] as u16, 0, values[1] as u16],
+                "flickerlight" => light.flicker = [values[0] as u16, 0, 1],
+                _ => light.flicker[0] = 0,
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
             anyhow::ensure!(arguments.is_empty(), "LightOff requires no arguments");
             let actor = &mut self.actors[self.index];

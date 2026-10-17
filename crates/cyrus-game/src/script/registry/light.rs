@@ -15,6 +15,9 @@ pub(super) struct LightState {
     pub starting_radius: i16,
     pub radius: i16,
     pub rgb: [i16; 3],
+    /// Script flicker parameters (`LightFlicker`): first value, phase, second value.
+    #[serde(default)]
+    pub flicker: [u16; 3],
 }
 
 impl LightState {
@@ -30,11 +33,37 @@ impl LightState {
             starting_radius: placement.light_radius,
             radius: placement.light_radius,
             rgb: placement.light_rgb,
+            flicker: [0; 3],
+        }
+    }
+
+    /// A script-created record: disabled and unlocked, intensity 256, radius 100, no offset.
+    /// Position and colour maintenance for such lights is not implemented.
+    pub fn dynamic(position: [i32; 3]) -> Self {
+        Self {
+            locked: false,
+            enabled: false,
+            inactive_ticks: 0,
+            offset: [0; 3],
+            position,
+            starting_intensity: 256,
+            intensity: 256,
+            starting_radius: 100,
+            radius: 100,
+            rgb: [0; 3],
+            flicker: [0; 3],
         }
     }
 }
 
 impl super::ScriptActor {
+    /// The actor's retained light record as inspection JSON, when it has one.
+    pub fn light_state(&self) -> Option<serde_json::Value> {
+        self.light
+            .as_ref()
+            .map(|light| serde_json::to_value(light).expect("light state serializes"))
+    }
+
     pub(super) fn maintain_light(&mut self, ticks: u32) {
         let Some(light) = &mut self.light else {
             return;

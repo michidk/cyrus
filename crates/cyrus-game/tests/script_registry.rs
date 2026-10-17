@@ -2948,6 +2948,51 @@ fn in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners() 
 }
 
 #[test]
+fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores() {
+    let light = |calls: &[(&str, &[i32])]| {
+        run_native_world(calls).unwrap().actors()[0]
+            .light_state()
+            .unwrap()
+    };
+    let fresh = light(&[("LightOffset", &[1, 2, 3])]);
+    assert_eq!(fresh["enabled"], false);
+    assert_eq!(
+        (fresh["intensity"].clone(), fresh["radius"].clone()),
+        (256.into(), 100.into())
+    );
+    assert_eq!(fresh["offset"], serde_json::json!([1, 2, 3]));
+    let lit = light(&[("Light", &[50, 200])]);
+    assert_eq!(lit["enabled"], true);
+    assert_eq!(
+        (lit["radius"].clone(), lit["intensity"].clone()),
+        (50.into(), 200.into())
+    );
+    assert_eq!(lit["starting_radius"], 50);
+    assert_eq!(
+        light(&[("LightIntensity", &[65537])])["intensity"],
+        1,
+        "low word kept"
+    );
+    assert_eq!(light(&[("LightRadius", &[70])])["enabled"], true);
+    assert_eq!(
+        light(&[("LightFlicker", &[7, 9])])["flicker"],
+        serde_json::json!([7, 0, 9])
+    );
+    assert_eq!(
+        light(&[("FlickerLight", &[7])])["flicker"],
+        serde_json::json!([7, 0, 1])
+    );
+    assert_eq!(
+        light(&[("LightFlicker", &[7, 9]), ("LightFlickerOff", &[])])["flicker"],
+        serde_json::json!([0, 0, 9])
+    );
+    assert!(
+        run_native_world(&[("Light", &[1])]).is_err(),
+        "wrong argument count"
+    );
+}
+
+#[test]
 fn frame_passed_reports_the_shared_nominal_tick_increment() {
     assert_eq!(run_native_calls(&[("GetFramePassed", &[])]).unwrap(), 3);
 }
