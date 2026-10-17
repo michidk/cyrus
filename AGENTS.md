@@ -144,6 +144,9 @@ untracked working memory. Each crate has a `README.md` with its commands.
   **Unknown**. An unlabelled claim is Unknown.
 - Keep `docs/` and this file in sync with behaviour changes. Do not add new
   top-level markdown files without a reason stated in the commit.
+- Never commit or push plans (implementation plans, generated planning
+  output, `docs/plans/`). Keep them in untracked working memory or in the
+  conversation; only the resulting changes and `docs/` facts belong in git.
 - Bevy is pinned in `Cargo.toml` (`0.20`); do not migrate minor versions as a
   side effect. The `bevy-ecs` project skill carries the API conventions.
 

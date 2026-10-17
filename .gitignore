@@ -12,3 +12,5 @@
 /.claude/
 /.codex/
 /.agents/skills/magic-*
+# Implementation plans stay out of git.
+/docs/plans/
