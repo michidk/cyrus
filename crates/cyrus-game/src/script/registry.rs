@@ -2094,6 +2094,29 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     /// Receiver weapon predicates as (holding, drawing, sheathing); all false while the
     /// inventory or the receiver's animation is not ready.
+    /// `IsCombatCapable`, and `PlayerArmed` when `armed`, which also needs the drawn weapon
+    /// not to be sheathing. The original's transition lock and world-active globals are
+    /// **Inferred** clear and set respectively; cyrus has no transition state yet.
+    fn combat_capable(&self, index: usize, armed: bool) -> Result<bool> {
+        let actor = &self.actors[index];
+        if actor.attributes[110] != 0 {
+            return Ok(true);
+        }
+        let (Some(control), Some(animation)) = (actor.control.as_ref(), actor.animation.as_ref())
+        else {
+            return Ok(false);
+        };
+        if control.combat.is_none() {
+            return Ok(false);
+        }
+        if !armed {
+            return Ok(true);
+        }
+        let sheathing =
+            control.living_state == 21 || animation.playback.current_group() == Some(129);
+        Ok(control.weapon_drawn && !sheathing)
+    }
+
     fn receiver_weapon_predicates(&self, function: &str) -> Result<(bool, bool, bool)> {
         let actor = &self.actors[self.index];
         if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
@@ -2691,6 +2714,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 sheathing
             };
             return Ok(CallResult::Complete(i32::from(result)));
+        }
+        if function.eq_ignore_ascii_case("IsCombatCapable")
+            || function.eq_ignore_ascii_case("PlayerArmed")
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let armed = function.eq_ignore_ascii_case("PlayerArmed");
+            let index = if armed {
+                self.selected_player()
+                    .context("PlayerArmed: selected player unavailable")?
+                    .index
+            } else {
+                self.index
+            };
+            return Ok(CallResult::Complete(i32::from(
+                self.combat_capable(index, armed)?,
+            )));
         }
         if function.eq_ignore_ascii_case("DisableHook")
             || function.eq_ignore_ascii_case("EnableHook")
