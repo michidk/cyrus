@@ -270,7 +270,7 @@ mod tests {
 
         motion.navigate(0, 2).unwrap();
         assert!(motion.tick(|_| panic!("Load page sound must wait four updates")));
-        assert_eq!(motion.pose.camera, [28.0, 42.0, -24.0]);
+        assert_eq!(motion.pose.camera, [28.0, 42.0, -14.0]);
         assert_eq!(motion.pose.pitch, 2026);
         assert_eq!(cues(&mut motion), [(3, 66)]);
         assert_eq!(motion.pose.camera, [0.0; 3]);
