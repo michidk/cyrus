@@ -1025,6 +1025,31 @@ mod tests {
     }
 
     #[test]
+    fn compass_frames_match_the_original_at_observed_headings() {
+        // (world_compass, heading shown by the original's debug overlay, compass frame it drew):
+        // START 2046/1865, ISLAND 1978/1885/1759/1705, BELLTOWR (512) 0/1983/1880/1738/1603.
+        for (world, heading, drawn) in [
+            (0, 2046, 0),
+            (0, 1865, 2),
+            (0, 1978, 1),
+            (0, 1885, 2),
+            (0, 1759, 4),
+            (0, 1705, 5),
+            (512, 0, 24),
+            (512, 1983, 25),
+            (512, 1880, 26),
+            (512, 1738, 28),
+            (512, 1603, 30),
+        ] {
+            assert_eq!(
+                compass_frame(heading, world),
+                drawn,
+                "world_compass {world}, heading {heading}"
+            );
+        }
+    }
+
+    #[test]
     fn show_timer_and_logbook_follow_their_triggers() {
         let mut state = HudState::new(&asset(0), None, HudPresentationAssets::default());
         state.set_health(80);
