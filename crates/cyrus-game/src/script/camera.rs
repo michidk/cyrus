@@ -124,6 +124,93 @@ impl CameraSlot {
     }
 }
 
+/// Installed `[camera]` values consumed by record initialization, unscaled as stored in
+/// SYSTEM.INI. Preservation documents the mapping in its "Camera record installed
+/// settings" section (<https://github.com/michidk/redguard-preservation/pull/100>).
+#[derive(Clone, Debug, Default)]
+pub struct CameraSettings {
+    pub offset_pos: [i32; 3],
+    pub offset_angle: [i32; 3],
+    pub target_offset: [i32; 3],
+    pub distance: i32,
+    pub min_distance: i32,
+    pub max_vel: i32,
+    /// Slots three through eight: combat, hang, rope, rope above, rope below, debug.
+    pub modes: [CameraModeSettings; 6],
+}
+
+/// Slot-specific overrides applied after record zero is copied.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CameraModeSettings {
+    pub angle_offset: [i32; 3],
+    pub distance: i32,
+    /// Zero keeps the copied record-zero rate.
+    pub max_vel: i32,
+}
+
+impl CameraRecord {
+    fn cleared(actor: super::ScriptActorId) -> Self {
+        Self {
+            actor,
+            position_offset: [0; 3],
+            angle_offset: [0; 3],
+            request: [0; 3],
+            target_offset: [0; 3],
+            bound_position_history: [0; 3],
+            basis: [[0; 3]; 2],
+            distance: 0,
+            minimum_distance: 0,
+            maximum_movement: 0,
+            flags: 0,
+        }
+    }
+}
+
+impl CameraState {
+    /// The nine records as camera setup leaves them. Runtime fields start cleared; the
+    /// debug slot's second and third angle offsets keep the record-zero copy.
+    /// Pose, selection and actor identities come from the session's bound actors.
+    pub fn initial_records(
+        settings: &CameraSettings,
+        player: super::ScriptActorId,
+    ) -> Result<[CameraRecord; 9]> {
+        let mut zero = CameraRecord::cleared(player);
+        zero.position_offset = settings.offset_pos;
+        zero.angle_offset = settings.offset_angle;
+        zero.distance = settings.distance;
+        zero.minimum_distance = settings.min_distance;
+        zero.maximum_movement = u32::try_from(settings.max_vel).map_err(|_| {
+            anyhow::anyhow!("camera max_vel {}: negative unsupported", settings.max_vel)
+        })?;
+        zero.flags = 0x40;
+        let mut records: [CameraRecord; 9] = std::array::from_fn(|_| zero.clone());
+        records[0].target_offset = settings.target_offset;
+        for (index, mode) in settings.modes.iter().enumerate() {
+            let slot = index + 3;
+            let record = &mut records[slot];
+            if slot == 8 {
+                record.angle_offset[0] = mode.angle_offset[2];
+            } else {
+                record.angle_offset = mode.angle_offset;
+            }
+            record.distance = mode.distance;
+            if mode.max_vel != 0 {
+                record.maximum_movement = u32::try_from(mode.max_vel).map_err(|_| {
+                    anyhow::anyhow!(
+                        "camera slot {slot} max_vel {}: negative unsupported",
+                        mode.max_vel
+                    )
+                })?;
+            }
+            if matches!(slot, 6 | 7) {
+                record.flags = 0x40;
+            }
+        }
+        records[3].target_offset = settings.target_offset;
+        Ok(records)
+    }
+}
+
 /// Session-owned camera state. Construction requires established initial values.
 #[derive(Clone, Debug)]
 pub struct CameraState {

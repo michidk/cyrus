@@ -269,3 +269,58 @@ fn request_precedence_and_distance_update_precede_geometry() {
         [1000, 2000, 440]
     );
 }
+
+#[test]
+fn initial_records_follow_the_documented_installed_setting_mapping() {
+    let player = ScriptActorId {
+        generation: 1,
+        index: 2,
+    };
+    let mode = |base: i32, max_vel| CameraModeSettings {
+        angle_offset: [base, base + 1, base + 2],
+        distance: base * 10,
+        max_vel,
+    };
+    let settings = CameraSettings {
+        offset_pos: [1, 2, 3],
+        offset_angle: [4, 5, 6],
+        target_offset: [7, 8, 9],
+        distance: 250,
+        min_distance: 120,
+        max_vel: 900,
+        modes: [
+            mode(10, 0),
+            mode(20, 5),
+            mode(30, 0),
+            mode(40, 0),
+            mode(50, 0),
+            mode(60, 7),
+        ],
+    };
+    let records = CameraState::initial_records(&settings, player).unwrap();
+    assert_eq!(records[0].target_offset, [7, 8, 9]);
+    assert_eq!(records[3].target_offset, [7, 8, 9]);
+    assert_eq!(records[1].target_offset, [0; 3]);
+    assert_eq!(records[2].position_offset, [1, 2, 3]);
+    assert_eq!(
+        (records[3].angle_offset, records[3].distance),
+        ([10, 11, 12], 100)
+    );
+    assert_eq!(
+        records[3].maximum_movement, 900,
+        "zero keeps the record-zero rate"
+    );
+    assert_eq!(records[4].maximum_movement, 5);
+    assert_eq!(records[6].flags, 0x40);
+    assert_eq!(
+        records[8].angle_offset,
+        [62, 5, 6],
+        "debug stores land in the first field"
+    );
+    assert_eq!(records[8].maximum_movement, 7);
+    let negative = CameraSettings {
+        max_vel: -1,
+        ..settings
+    };
+    assert!(CameraState::initial_records(&negative, player).is_err());
+}
