@@ -2639,6 +2639,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 i32::try_from(ticks).context("GetFramePassed ticks exceed the signed range")?,
             ));
         }
+        if function.eq_ignore_ascii_case("InRectangle") {
+            let [x1, z1, x2, z2] = arguments else {
+                anyhow::bail!("InRectangle requires four arguments")
+            };
+            let (x1, z1, x2, z2) = (x1.integer()?, z1.integer()?, x2.integer()?, z2.integer()?);
+            let position = self.fighting_position(self.index)?;
+            let inside = |value: i32, a: i32, b: i32| (a.min(b)..=a.max(b)).contains(&value);
+            return Ok(CallResult::Complete(i32::from(
+                inside(position[0], x1, x2) && inside(position[2], z1, z2),
+            )));
+        }
         if function.eq_ignore_ascii_case("SheathSword") {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
             let selected = self.selected_player() == Some(id);

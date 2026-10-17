@@ -2847,6 +2847,10 @@ fn run_native_calls(calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
 }
 
 fn run_native_world(calls: &[(&str, &[i32])]) -> anyhow::Result<ScriptWorld> {
+    run_native_world_with(calls, false)
+}
+
+fn run_native_world_with(calls: &[(&str, &[i32])], spatial: bool) -> anyhow::Result<ScriptWorld> {
     let mut scripts = random_scripts("Rnd", vec![], Object::Me);
     scripts.definition.functions.clear();
     scripts.definition.functions.push(Function {
@@ -2882,6 +2886,9 @@ fn run_native_world(calls: &[(&str, &[i32])]) -> anyhow::Result<ScriptWorld> {
     scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps;
     scripts.content_id = scripts.content_identity().unwrap();
     let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    if spatial {
+        world.prepare_spatial().unwrap();
+    }
     let id = world.id(0).unwrap();
     world.advance(
         id,
@@ -2914,6 +2921,29 @@ fn potion_counters_start_zero_keep_values_per_index_and_reject_unknown_indices()
         let error = run_native_calls(&[call]).unwrap_err();
         assert!(format!("{error:#}").contains("outside 0..4"), "{error:#}");
     }
+}
+
+#[test]
+fn in_rectangle_tests_the_receiver_position_with_normalized_inclusive_corners() {
+    let origin = {
+        let world = run_native_world_with(&[], true).unwrap();
+        world.spatial(world.id(0).unwrap()).unwrap().local.position
+    };
+    let (x, z) = (origin[0], origin[2]);
+    let call = |x1: i32, z1: i32, x2: i32, z2: i32| {
+        let world = run_native_world_with(&[("InRectangle", &[x1, z1, x2, z2])], true).unwrap();
+        world.actors()[0].runtime().unwrap().variables()[0]
+    };
+    assert_eq!(call(x - 1, z - 1, x + 1, z + 1), 1);
+    assert_eq!(
+        call(x + 1, z + 1, x - 1, z - 1),
+        1,
+        "corners are normalized"
+    );
+    assert_eq!(call(x, z, x, z), 1, "edges are inclusive");
+    assert_eq!(call(x + 1, z - 1, x + 5, z + 1), 0);
+    assert_eq!(call(x - 1, z + 1, x + 1, z + 5), 0);
+    assert!(run_native_world(&[("InRectangle", &[0, 0, 1, 1])]).is_err());
 }
 
 #[test]
