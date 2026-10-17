@@ -28,8 +28,6 @@ pub struct MovieMetadata {
     pub frame_micros: u32,
     pub has_audio: bool,
     pub font: cyrus_text::Font,
-    pub line_height: u16,
-    pub font_color: [u8; 3],
 }
 
 /// Read-only native cinematic location. CD sector interpretation belongs to preservation.
@@ -111,7 +109,7 @@ impl MovieMetadata {
             self.definition.name
         );
         anyhow::ensure!(
-            self.line_height > 0
+            self.font.line_height > 0
                 && self
                     .font
                     .glyphs
@@ -149,9 +147,10 @@ mod tests {
             frames: 20,
             frame_micros: 66660,
             has_audio: false,
-            font: cyrus_text::Font::default(),
-            line_height: 2,
-            font_color: [240; 3],
+            font: cyrus_text::Font {
+                line_height: 2,
+                ..Default::default()
+            },
         };
         valid.validate().unwrap();
         let mut bad = valid.clone();

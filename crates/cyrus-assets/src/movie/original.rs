@@ -103,18 +103,11 @@ pub fn prepare(source: &dyn ReadAssets, index: usize) -> Result<OriginalMovie> {
         "movie {}: unsupported viewport/frame count",
         definition.name
     );
-    let font_name = crate::sound::ini_value(&system, "system", "gui_low_font")
-        .context("movie: SYSTEM.INI gui_low_font missing")?;
-    let font = cyrus_text::Font::from(&parse_fnt(&crate::preparation::read(source, font_name)?)?);
-    let line_height = font
-        .glyph(b'W')
-        .filter(|g| g.width > 0)
-        .context("movie: gui_low_font has no W glyph for line spacing")?
-        .width;
-    let palette = rgpre::import::palette::Palette::parse(&crate::preparation::read(
+    // The player uses its own copy of the startup REDSEL font, not a SYSTEM.INI font.
+    let font = cyrus_text::Font::from(&parse_fnt(&crate::preparation::read(
         source,
-        "fxart/REDGUARD.COL",
-    )?)?;
+        "fonts/REDSEL.FNT",
+    )?)?);
     let metadata = MovieMetadata {
         definition: MovieDefinition {
             name: definition.name,
@@ -134,8 +127,6 @@ pub fn prepare(source: &dyn ReadAssets, index: usize) -> Result<OriginalMovie> {
         frame_micros: header.frame_micros,
         has_audio: header.has_audio,
         font,
-        line_height,
-        font_color: palette.colors[161],
     };
     metadata.validate()?;
     Ok(OriginalMovie { metadata, location })

@@ -141,12 +141,25 @@ impl Font {
         width: usize,
         text: &str,
         at: [i32; 2],
+        alpha: [u8; 2],
+    ) {
+        self.draw_shadowed_by(rgba, width, text, at, alpha, 1);
+    }
+
+    /// [`Self::draw_shadowed`] with the shadow copy `shadow_offset` pixels right and down.
+    pub fn draw_shadowed_by(
+        &self,
+        rgba: &mut [u8],
+        width: usize,
+        text: &str,
+        at: [i32; 2],
         [main, shadow]: [u8; 2],
+        shadow_offset: i32,
     ) {
         let height = rgba.len() / 4 / width;
         let mut pen = at[0];
         for ch in text.bytes() {
-            for (offset, alpha, shadow_copy) in [(1, shadow, true), (0, main, false)] {
+            for (offset, alpha, shadow_copy) in [(shadow_offset, shadow, true), (0, main, false)] {
                 self.draw_glyph(ch, [pen + offset, at[1] + offset], &mut |x, y, index| {
                     if (0..width as i32).contains(&x) && (0..height as i32).contains(&y) {
                         let colour = if shadow_copy {

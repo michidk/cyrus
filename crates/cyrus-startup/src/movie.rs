@@ -331,9 +331,11 @@ fn drive(
                     if let Some(status) = menu.movie.as_mut() {
                         status.loading = true;
                     }
+                    // The old stream goes, but the movie stays active so the CD does not resume mid-skip.
                     for entity in &audio_players {
                         commands.entity(entity).despawn();
                     }
+                    commands.spawn(CinematicAudio);
                 }
                 Err(error) => failure = Some(error.to_string()),
             }
@@ -413,8 +415,6 @@ fn drive(
         paint_subtitles(
             &mut pixels,
             &playing.movie.metadata.font,
-            playing.movie.metadata.line_height,
-            playing.movie.metadata.font_color,
             &playing.movie.metadata.definition,
             frame,
             subtitles,
@@ -488,11 +488,13 @@ fn subtitle_lines(text: &str) -> Vec<&str> {
     lines
 }
 
+/// The player's REDSEL copy draws main alpha 180 and shadow alpha 199, shadow offset (2, 2).
+const SUBTITLE_ALPHA: [u8; 2] = [180, 199];
+const SUBTITLE_SHADOW: i32 = 2;
+
 fn paint_subtitles(
     pixels: &mut [u8],
     font: &cyrus_text::Font,
-    line_height: u16,
-    color: [u8; 3],
     movie: &MovieDefinition,
     frame: u32,
     enabled: bool,
@@ -507,13 +509,8 @@ fn paint_subtitles(
     let lines = subtitle_lines(&subtitle.text);
     for (row, line) in lines.iter().enumerate() {
         let x = 320 - font.width(line) / 2;
-        let y = 470 - (lines.len() - row) as i32 * i32::from(line_height);
-        font.draw(line, [x, y], |px, py, _| {
-            if (0..640).contains(&px) && (0..480).contains(&py) {
-                let offset = (py as usize * 640 + px as usize) * 4;
-                pixels[offset..offset + 4].copy_from_slice(&[color[0], color[1], color[2], 255]);
-            }
-        });
+        let y = 470 - (lines.len() - row) as i32 * i32::from(font.line_height);
+        font.draw_shadowed_by(pixels, 640, line, [x, y], SUBTITLE_ALPHA, SUBTITLE_SHADOW);
     }
 }
 
@@ -578,8 +575,6 @@ mod tests {
                             frame_micros: 1000,
                             has_audio: false,
                             font: default(),
-                            line_height: 26,
-                            font_color: [255; 3],
                         },
                     },
                     decoder: Decoder {
@@ -749,7 +744,7 @@ mod tests {
             },
             palette: rgpre::import::fnt::FntPalette {
                 tag: *b"FPAL",
-                colors: vec![],
+                colors: vec![[63, 62, 10]; 8],
             },
             glyphs: vec![rgpre::import::fnt::FntGlyph {
                 enabled: 1,
@@ -777,8 +772,6 @@ mod tests {
             paint_subtitles(
                 &mut pixels,
                 &cyrus_text::Font::from(&font),
-                2,
-                [240, 240, 240],
                 movie,
                 frame,
                 enabled,
@@ -788,7 +781,7 @@ mod tests {
         let offset = (468 * 640 + 319) * 4;
         assert_eq!(
             &draw(&movie, 10, true)[offset..offset + 4],
-            &[240, 240, 240, 255]
+            &[252, 248, 40, 180]
         );
         assert!(draw(&movie, 9, true).iter().all(|v| *v == 0));
         assert!(draw(&movie, 20, true).iter().all(|v| *v == 0));
@@ -796,7 +789,7 @@ mod tests {
         movie.subtitles[0].always = true;
         assert_eq!(
             &draw(&movie, 10, false)[offset..offset + 4],
-            &[240, 240, 240, 255]
+            &[252, 248, 40, 180]
         );
 
         let mut font = font;
@@ -812,13 +805,11 @@ mod tests {
         paint_subtitles(
             &mut pixels,
             &cyrus_text::Font::from(&font),
-            2,
-            [240; 3],
             &movie,
             10,
             true,
         );
         let offset = (468 * 640 + 322) * 4;
-        assert_eq!(&pixels[offset..offset + 4], &[240, 240, 240, 255]);
+        assert_eq!(&pixels[offset..offset + 4], &[252, 248, 40, 180]);
     }
 }

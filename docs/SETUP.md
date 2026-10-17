@@ -266,10 +266,10 @@ builds, and to native speech. The book menu plays its installed CD track. Cinema
 Movies browses the initially unlocked entries and installed previews. Native
 playback reads the configured movie file or GOG `game.gog` beside the install
 through a bounded sequential reader; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
-stream, uses the installed subtitle definitions and GUI font, and applies the
+stream, uses the installed subtitle definitions and the REDSEL font with its shadow ([preservation#110](https://github.com/michidk/redguard-preservation/pull/110)), and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
 skip point, or finishes after the last one. Playback returns to the same menu
-selection. Native playback does not write movie data to `cache/`.
+selection. Native playback does not write movie data to `cache/`. Browser movie caches exported before the REDSEL subtitle font need re-export.
 Browser playback reads the selected cinematic's compressed original ranges on
 demand. The shared codec decodes indexed frames and first-track PCM together;
 Web Audio plays bounded PCM blocks using its sample clock. Playback starts with
