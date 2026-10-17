@@ -2888,6 +2888,7 @@ fn run_native_world(calls: &[(&str, &[i32])]) -> anyhow::Result<ScriptWorld> {
         cyrus_game::script::ScriptStage::OrdinaryMain,
         cyrus_game::script::ScriptInputs {
             frame_scale: Some(256),
+            nominal_ticks: Some(3),
             ..Default::default()
         },
         None,
@@ -2913,6 +2914,11 @@ fn potion_counters_start_zero_keep_values_per_index_and_reject_unknown_indices()
         let error = run_native_calls(&[call]).unwrap_err();
         assert!(format!("{error:#}").contains("outside 0..4"), "{error:#}");
     }
+}
+
+#[test]
+fn frame_passed_reports_the_shared_nominal_tick_increment() {
+    assert_eq!(run_native_calls(&[("GetFramePassed", &[])]).unwrap(), 3);
 }
 
 #[test]

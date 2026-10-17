@@ -2629,6 +2629,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if function.eq_ignore_ascii_case("GetFramePassed") {
+            anyhow::ensure!(arguments.is_empty(), "GetFramePassed requires no arguments");
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .context("GetFramePassed requires nominal_ticks input")?;
+            return Ok(CallResult::Complete(
+                i32::try_from(ticks).context("GetFramePassed ticks exceed the signed range")?,
+            ));
+        }
         if function.eq_ignore_ascii_case("SheathSword") {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
             let selected = self.selected_player() == Some(id);
