@@ -86,6 +86,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
+| Mouse-button rebinding: original capture/polling behavior, then Controls capture and gameplay consumption of left/right mouse bindings | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-mouse-rebinding/` |
 
 Other rendering follow-ups and HUD integration are unassigned.
 Player-controller implementation and walking acceptance belong to the controller owner.
