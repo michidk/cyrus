@@ -382,6 +382,13 @@ The retro runner needs a writable copy of the GOG `app/` directory (the game
 writes saves); `dev/scripts/run-retro.sh` makes one under `magic/retro-run/` and
 copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
+The disc is mounted from `game.gog` through a `game.cue` copy of `game.ins`: stock DOSBox-X
+reads a cue sheet only by its `.cue` extension, and without the disc every movie is skipped.
+The default copy keeps debug settings (`final_version=0`) and starts in the first world.
+`RETRO_PRISTINE=1 just retro` uses the install's own `SYSTEM.INI` and an empty `SAVEGAME`
+(under `magic/retro-pristine/`), so the original starts as a player sees it: title, Introduction,
+then the book menu, where Movies plays the cinematics. From the first world, Escape
+did not open the menu; the book menu appeared once the opening duel played out.
 
 ## Logs
 

@@ -9,6 +9,8 @@ sleep 1
 x11vnc -display :1 -nopw -forever -shared -quiet -bg -rfbport 5900
 websockify --web /usr/share/novnc 6080 localhost:5900 &
 cd /game
+# Stock DOSBox-X reads a cue sheet only by its .cue extension; GOG's launcher accepts game.ins.
+[ -s game.cue ] || cp game.ins game.cue
 # The game writes saves, so it needs a writable tree; the caller decides whether
 # /game is a copy or the real install.
 if [ ! -f Redguard/glide2x.ovl ]; then
