@@ -6174,6 +6174,15 @@ fn overlap_response_fixture(
     other_weight: u8,
     offset: i32,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    overlap_response_fixture_with(weight, other_weight, offset, 8)
+}
+
+fn overlap_response_fixture_with(
+    weight: u8,
+    other_weight: u8,
+    offset: i32,
+    attr_1: u8,
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
     scripts.definition.functions.push(Function {
@@ -6185,7 +6194,7 @@ fn overlap_response_fixture(
     actor.instances = 1;
     actor.instance_variables = vec![vec![4]];
     actor.attributes.insert("attr_6".into(), weight);
-    actor.attributes.insert("attr_1".into(), 8);
+    actor.attributes.insert("attr_1".into(), attr_1);
     actor.program.steps = BTreeMap::from([
         (
             0,
@@ -13597,4 +13606,117 @@ fn blocked_ahead_is_false_without_a_combat_record_and_fighting_group() {
     };
     // Neither fixture actor has a combat record, so the probe never runs.
     assert!(!world.blocked_ahead(ids[0], 100, query).unwrap());
+}
+
+fn tilted_surface_model(
+    normal: [f32; 3],
+    vertices: Vec<[f32; 3]>,
+) -> cyrus_assets::collision::CollisionModel {
+    use cyrus_assets::collision::{CollisionGeometry, CollisionModel, CollisionSubobject};
+    CollisionModel {
+        flags: 0,
+        geometry: CollisionGeometry {
+            version: Some(*b"v5.0"),
+            radius: 1000.0,
+            vertices,
+            normals: vec![normal],
+            faces: vec![vec![0, 1, 2, 3]],
+            textures: None,
+            subobjects: vec![CollisionSubobject {
+                center: [0.0; 3],
+                radius: 1000.0,
+                extents: Some([1.0; 3]),
+                faces: vec![0],
+            }],
+        },
+    }
+}
+
+#[test]
+fn step_hazard_is_a_steep_destination_surface_unless_both_points_are_floors() {
+    use cyrus_assets::collision::{CollisionScene, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::OrdinaryObstacleQuery;
+    let model = |kind: &str| match kind {
+        "floor" => tilted_surface_model(
+            [0.0, -1.0, 0.0],
+            vec![
+                [-10.0, 0.0, -10.0],
+                [10.0, 0.0, -10.0],
+                [10.0, 0.0, 10.0],
+                [-10.0, 0.0, 10.0],
+            ],
+        ),
+        _ => tilted_surface_model(
+            [-0.866, -0.5, 0.0],
+            vec![
+                [-5.0, 8.66, -10.0],
+                [5.0, -8.66, -10.0],
+                [5.0, -8.66, 10.0],
+                [-5.0, 8.66, 10.0],
+            ],
+        ),
+    };
+    for (surface, attr_1, expected) in [
+        (Some("slope"), 10, true),
+        (Some("floor"), 10, false),
+        (Some("slope"), 8, false),
+        (None, 10, false),
+    ] {
+        let (mut world, data) = overlap_response_fixture_with(128, 0, 1024, attr_1);
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        world.snapshot_spatial(ids[0]).unwrap();
+        let (_, _, models) = static_model_fixture(cache());
+        let mut scene = ordinary_collision_scene(world.world, models);
+        let current = world.spatial(ids[0]).unwrap().local.position;
+        let destination = [current[0] + 594 * 256, current[1], current[2]];
+        // The body shape is prepared with the first admission, so read its extent from an
+        // empty scene before placing the surface.
+        scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            ..Default::default()
+        };
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &[ids[0], ids[1]])
+            .unwrap();
+        let centre = (destination[1] >> 8)
+            + world
+                .ordinary_collision_shape(ids[0])
+                .unwrap()
+                .positive_extent[1];
+        scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            placements: surface
+                .map(|_| StaticPlacement {
+                    id: 1,
+                    model: "SURFACE".into(),
+                    position: [destination[0] >> 8, centre, destination[2] >> 8],
+                    rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+                })
+                .into_iter()
+                .collect(),
+            models: surface
+                .map(|kind| BTreeMap::from([("SURFACE".into(), model(kind))]))
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &[ids[0], ids[1]])
+            .unwrap();
+        let query = OrdinaryObstacleQuery {
+            scene: &scene,
+            animations: &data,
+            prepared: &prepared,
+            vertical_offset: 0,
+            respond: false,
+        };
+        assert_eq!(
+            world.step_hazard(ids[0], None, destination, query).unwrap(),
+            expected,
+            "surface {} attr_1 {attr_1}",
+            surface.is_some()
+        );
+    }
 }

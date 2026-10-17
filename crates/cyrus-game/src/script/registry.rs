@@ -7,6 +7,7 @@ mod dialogue;
 pub(super) mod falling;
 mod follow;
 pub(super) mod ground;
+mod hazard;
 mod late;
 mod light;
 pub(super) mod model;

@@ -7,7 +7,7 @@ use cyrus_collision::{distance::rounded_distance, ground::SupportSource};
 impl ScriptWorld {
     /// The actor's query position: the attached pose, the linked position, or the local
     /// position, in that order (the selection shared by the fighting query).
-    fn sight_position(&self, index: usize) -> Result<[i32; 3]> {
+    pub(super) fn sight_position(&self, index: usize) -> Result<[i32; 3]> {
         let actor = self
             .spatial
             .as_ref()
