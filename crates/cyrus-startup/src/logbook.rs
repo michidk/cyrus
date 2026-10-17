@@ -167,6 +167,17 @@ fn draw(
     }
 }
 
+/// Normal-font reader glyphs are drawn at half their palette colour; the selected font
+/// keeps its colour. Observed against the original reader at 640×480: the colour weight is
+/// 0.39 (half of the 200/255 alpha) for the normal font and 1.0 for the selected font.
+fn reader_glyph_colour(selected: bool, colour: [u8; 3]) -> [u8; 3] {
+    if selected {
+        colour
+    } else {
+        colour.map(|c| c / 2)
+    }
+}
+
 fn paint(
     artwork: &LogbookArtwork,
     book: &cyrus_game::logbook::Logbook,
@@ -195,7 +206,7 @@ fn paint(
             let color = if font.palette.is_empty() {
                 artwork.palette[usize::from(index)]
             } else {
-                font.colour(index)
+                reader_glyph_colour(selected, font.colour(index))
             };
             let pixel = image.get_pixel_mut(x as u32, y as u32);
             for c in 0..3 {
@@ -259,6 +270,12 @@ fn paint(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    #[test]
+    fn only_the_normal_reader_font_is_halved() {
+        assert_eq!(reader_glyph_colour(false, [220, 164, 132]), [110, 82, 66]);
+        assert_eq!(reader_glyph_colour(true, [220, 164, 132]), [220, 164, 132]);
+    }
+
     #[test]
     fn installed_reader_exports_and_draws_both_targets_from_the_same_asset() {
         let root = std::env::var_os("REDGUARD_DIR")

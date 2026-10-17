@@ -107,6 +107,7 @@ it; gameplay resumes after those keys are released. The game owns the input lock
 and simulation checkpoint. Existing audio continues. Native control state exposes
 `logbook` readiness, scroll position and errors. Malformed stored entries remain
 unchanged. Font styles other than normal 7 and selected 9, manual entry editing,
-new-game resets and save integration remain unsupported. Scroll lighting and
-pixel-exact filtering still need fidelity work. Rules follow the
+new-game resets and save integration remain unsupported. Normal-font glyphs draw at
+half their palette colour, as in the original. Scroll lighting is unsupported (the
+original's light inputs are unknown) and pixel-exact filtering still needs fidelity work. Rules follow the
 [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).
