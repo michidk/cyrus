@@ -170,6 +170,7 @@ module where it is defined and regenerate.
 - `src/script/registry/persistence.rs` — Complete actor and world replacements are assembled away from live execution.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
+- `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.
 - `src/script/registry/recovery.rs` — Ordinary collision rollback restores separately owned position and receiver state.
 - `src/script/registry/separate.rs` — Separate map records retain scripts/tasks and rebuild temporary actor attributes.
@@ -302,6 +303,7 @@ module where it is defined and regenerate.
 
 - `src/animation.rs` — Retained animation inputs; playback timing and actor activation are not inferred.
 - `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
+- `src/animation/class.rs` — Animation group classes follow preservation's `engine/animation.md#animation-group-classes`.
 - `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
 - `src/animation/sequence.rs` — Forward current-group playback from preservation's engine/animation.md.
 - `src/lifecycle.rs` — Shared world identity and prepared cache references.

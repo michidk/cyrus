@@ -14,6 +14,7 @@ pub(super) mod obstacle;
 pub(super) mod ordinary;
 pub(super) mod overlap;
 mod persistence;
+mod probe;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
     LogicalSessionSnapshot, WorldRestoreContext, WorldSnapshot, WorldSnapshotSources,

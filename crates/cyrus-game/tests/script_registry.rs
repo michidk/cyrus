@@ -13569,3 +13569,32 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
         );
     }
 }
+
+#[test]
+fn blocked_ahead_is_false_without_a_combat_record_and_fighting_group() {
+    use cyrus_assets::collision::CollisionScene;
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::OrdinaryObstacleQuery;
+    let (mut world, data) = overlap_response_fixture(128, 0, 1024);
+    let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+    world.snapshot_spatial(ids[0]).unwrap();
+    let (_, _, models) = static_model_fixture(cache());
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.collision = CollisionScene {
+        sphere_object_scale: Some(256),
+        ..Default::default()
+    };
+    scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &[ids[0], ids[1]])
+        .unwrap();
+    let query = OrdinaryObstacleQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        vertical_offset: 0,
+        respond: false,
+    };
+    // Neither fixture actor has a combat record, so the probe never runs.
+    assert!(!world.blocked_ahead(ids[0], 100, query).unwrap());
+}

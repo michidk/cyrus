@@ -2,9 +2,11 @@
 use bevy::prelude::*;
 
 mod actor;
+mod class;
 mod playback;
 mod sequence;
 pub use actor::{ActorAnimation, ActorAnimationCheckpoint, ActorAnimationSnapshot};
+pub use class::group_class;
 pub use playback::{AnimationPlayback, AnimationTick};
 pub use sequence::{AnimationSound, FrameSequence};
 
