@@ -229,6 +229,7 @@ module where it is defined and regenerate.
 - `src/terrain/prepare.rs` — Camera-space clipping and fixed terrain color and texture planes from preservation's Glide contract.
 - `src/water.rs` — Private terrain meshes, shading normals and wave playback from preservation.
 - `src/water/checkpoint.rs` — Off-live replacement of terrain history and its projected mesh presentation.
+- `src/water/heights.rs` — Read-only binding of exact engine heights to logical camera terrain sampling.
 - `src/water/preparation.rs` — Terrain source binding shared by ordinary entry and off-live preparation.
 
 ## `cyrus-script` — Explicit SOUP invocation, continuations and values from preservation's engine contract.

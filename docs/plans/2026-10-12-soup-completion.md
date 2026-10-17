@@ -398,6 +398,49 @@ revisit acceptance remains open.
 Audio snapshots cover source-decoder continuation, not downstream converter/device
 queues. Complete gameplay and controller acceptance remain open.
 
+### Handoff: terrain and camera ownership (2026-10-17)
+
+Unclaimed; any agent may resume. Local `magic/` working files of the previous
+session are not available; this section and the private research archive carry
+the state.
+
+Landed on `t3/soup-implementation-roadmap`:
+
+- Environment exports retain the full WLD height grid (`TerrainHeights`: side,
+  signed WORLD.INI offset, shifted heights) from preservation
+  [PR 99](https://github.com/michidk/redguard-preservation/pull/99), pinned at
+  its merge commit in `Cargo.toml`.
+- Terrain playback keeps source and animated engine heights before mesh scaling
+  (`crates/cyrus-render/src/water/heights.rs`). `WaterPlayback::camera_terrain`
+  borrows the settled owner for logical camera queries. Replacement snapshots
+  validate source, phase and the original window, independent of Modern
+  rendering.
+- **Verified:** ten focused `cyrus-render` water tests (retained heights without
+  inverse mesh scaling, rebinding with rebased time, malformed candidates leaving
+  live state untouched, terrain-free and foreign bindings rejected explicitly).
+  **Unknown:** no headless run or original-game comparison of terrain height
+  against the installed game has been done; unit tests alone do not establish
+  fidelity.
+- Older environment caches and terrain snapshots are rejected and need
+  re-export and recapture.
+- **Verified:** `just gates` on the rebased tree: 1006 test executions, zero
+  failures, zero ignored, zero installed-data skips.
+
+Next, in order (checklist step 5, "Interaction"):
+
+1. Camera-specific model admission that reuses stored model poses; do not reuse
+   ordinary collision admission as camera eligibility.
+2. Installed camera settings read through preservation, not Rust tables.
+3. Actor rebinding for the camera and coordinated live publication with the
+   session commit.
+4. Live camera scheduling driven by SOUP camera requests, then the headless
+   replay and original-game comparison for terrain-relative camera height.
+5. Remaining roadmap-row items: automatic combat, dialogue, lifecycle, other
+   script services and surface-sound acceptance (steps 3 to 6 above).
+
+Working notes: the toolchain script is bash-only (`source dev/scripts/toolchain.sh`
+fails under zsh); use a separate `CARGO_TARGET_DIR` per worktree.
+
 ### Authored light lifecycle draft
 
 The current implementation retains authored type-six lights, applies `LightOff`,

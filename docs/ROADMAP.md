@@ -84,7 +84,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| SOUP integration: complete session candidate/commit, camera/terrain ownership, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
+| SOUP integration: complete session candidate/commit, camera/terrain ownership, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | Unclaimed, resume here | Released by Codex, Integrate SOUP Runtime Services. State and ordered next steps: [SOUP plan handoff](plans/2026-10-12-soup-completion.md#handoff-terrain-and-camera-ownership-2026-10-17); branch `t3/soup-implementation-roadmap`; research archived in `redguard-decomp` under `research/supplements/2026-10-17-soup-terrain-camera-handoff` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 
 Other rendering follow-ups, HUD integration and the save-slot menu are unassigned.
