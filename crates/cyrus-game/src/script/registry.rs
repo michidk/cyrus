@@ -2994,12 +2994,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 self.actors[player.index].model.support.actor == Some(receiver),
             )));
         }
-        if function.eq_ignore_ascii_case("IsInDeepWater") {
-            anyhow::ensure!(arguments.is_empty(), "IsInDeepWater requires no arguments");
+        // Surface classes 1..=4 are the water classes, 2 and 4 the deep ones, 5 lava.
+        let surface_test: Option<fn(u8) -> bool> = match function.to_ascii_lowercase().as_str() {
+            "isindeepwater" => Some(|surface| matches!(surface, 2 | 4)),
+            "isinwater" => Some(|surface| (1..=4).contains(&surface)),
+            "isinlava" => Some(|surface| surface == 5),
+            _ => None,
+        };
+        if let Some(test) = surface_test {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let surface = self.actors[self.index]
                 .surface
-                .context("IsInDeepWater actor surface state unavailable")?;
-            return Ok(CallResult::Complete(i32::from(matches!(surface, 2 | 4))));
+                .with_context(|| format!("{function} actor surface state unavailable"))?;
+            return Ok(CallResult::Complete(i32::from(test(surface))));
         }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")

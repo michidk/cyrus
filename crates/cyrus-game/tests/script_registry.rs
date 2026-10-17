@@ -4066,61 +4066,71 @@ fn placed_distance_queries_use_receiver_owned_initial_link_state() {
 }
 
 #[test]
-fn deep_water_query_reads_receivers_stored_surface_without_a_support_query() {
-    let mut scripts = cache();
-    scripts.definition.functions.push(Function {
-        name: "IsInDeepWater".into(),
-        param_count: 0,
-        kind: CallKind::Function,
-    });
-    scripts
-        .actors
-        .get_mut("LOGIC")
-        .unwrap()
-        .program
-        .steps
-        .get_mut(&0)
-        .unwrap()
-        .operation = Operation::Assign {
-        destination: Place::Local { index: 0 },
-        formula: Formula {
-            first: Value::Call {
-                call: Box::new(Call {
-                    function_id: 1,
-                    target: Object::Me,
-                    kind: CallKind::Function,
-                    function: "IsInDeepWater".into(),
-                    arguments: vec![],
-                }),
+fn surface_class_queries_read_receivers_stored_surface_without_a_support_query() {
+    let cases = [
+        (
+            "IsInDeepWater",
+            (|surface| surface == 2 || surface == 4) as fn(u8) -> bool,
+        ),
+        ("IsInWater", |surface| (1..=4).contains(&surface)),
+        ("IsInLava", |surface| surface == 5),
+    ];
+    for (name, hit) in cases {
+        let mut scripts = cache();
+        scripts.definition.functions.push(Function {
+            name: name.into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id: 1,
+                        target: Object::Me,
+                        kind: CallKind::Function,
+                        function: name.into(),
+                        arguments: vec![],
+                    }),
+                },
+                rest: vec![],
             },
-            rest: vec![],
-        },
-    };
-    scripts.content_id = scripts.content_identity().unwrap();
-    for surface in 0..=u8::MAX {
-        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-        let first = world.id(0).unwrap();
-        let second = world.id(1).unwrap();
-        world.set_actor_surface(first, surface).unwrap();
-        world.step(first, Thread::Main, 20).unwrap();
-        assert_eq!(world.flags(), [i32::from(surface == 2 || surface == 4)]);
-        world.step(second, Thread::Main, 20).unwrap();
-        assert_eq!(
-            world.flags(),
-            [0],
-            "another actor retains its allocation surface"
-        );
-        assert!(
-            world
-                .set_actor_surface(
-                    cyrus_game::script::ScriptActorId {
-                        generation: 2,
-                        index: 0
-                    },
-                    surface
-                )
-                .is_err()
-        );
+        };
+        scripts.content_id = scripts.content_identity().unwrap();
+        for surface in 0..=u8::MAX {
+            let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+            let first = world.id(0).unwrap();
+            let second = world.id(1).unwrap();
+            world.set_actor_surface(first, surface).unwrap();
+            world.step(first, Thread::Main, 20).unwrap();
+            assert_eq!(world.flags(), [i32::from(hit(surface))]);
+            world.step(second, Thread::Main, 20).unwrap();
+            assert_eq!(
+                world.flags(),
+                [0],
+                "another actor retains its allocation surface"
+            );
+            assert!(
+                world
+                    .set_actor_surface(
+                        cyrus_game::script::ScriptActorId {
+                            generation: 2,
+                            index: 0
+                        },
+                        surface
+                    )
+                    .is_err()
+            );
+        }
     }
 }
 
