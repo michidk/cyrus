@@ -434,7 +434,9 @@ Next, in order (checklist step 5, "Interaction"):
    **Verified (2026-10-17):** the key-to-record mapping is published in
    [preservation PR 100](https://github.com/michidk/redguard-preservation/pull/100)
    and `CameraState::initial_records` applies it from a `CameraSettings` value.
-   Remaining: export `[camera]` through `cyrus-assets` (cache schema bump), the
+   The PR also adds the five missing per-mode `*_max_vel` keys to `SystemIni`, so the
+   export waits for its merge and a `Cargo.toml` pin bump. Remaining: export `[camera]`
+   through `cyrus-assets` (use `CameraSettings` there as the single owner), the
    record-zero left/right limit fields (no consumer yet) and the session caller.
 3. Actor rebinding for the camera and coordinated live publication with the
    session commit.
