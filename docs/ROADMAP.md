@@ -86,8 +86,9 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | --- | --- | --- |
 | SOUP integration: complete session candidate/commit, camera/terrain ownership, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | Unclaimed, resume here; camera record initialization is blocked on a preservation fact (INI key to record field mapping), see the plan handoff | Released by Codex, Integrate SOUP Runtime Services. State and ordered next steps: [SOUP plan handoff](plans/2026-10-12-soup-completion.md#handoff-terrain-and-camera-ownership-2026-10-17); branch `t3/soup-implementation-roadmap`; research archived in `redguard-decomp` under `research/supplements/2026-10-17-soup-terrain-camera-handoff` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
+| Save-slot menu: installed row labels, positions and selection, then description editing and dialogs | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-save-slot-menu/` |
 
-Other rendering follow-ups, HUD integration and the save-slot menu are unassigned.
+Other rendering follow-ups and HUD integration are unassigned.
 Player-controller implementation and walking acceptance belong to the controller owner.
 SOUP consumes that owner through the existing ordinary-stage and snapshot contracts.
 Shared load preparation and the native caller belong to the SOUP owner.
