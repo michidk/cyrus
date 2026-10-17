@@ -291,6 +291,39 @@ pub(super) fn begin_sheathing(control: &mut super::registry::ActorControlState) 
     combat.cooldown = 24;
 }
 
+/// Whether `control` is a valid combat target for the actor `own` (preservation's "Valid target"
+/// rule): not killed while in lifecycle state 8, has a combat record, and does not target itself.
+pub(super) fn combat_target_valid(
+    control: &super::registry::ActorControlState,
+    own: super::ScriptActorId,
+) -> bool {
+    !(control.death_selector == 8 && control.killed)
+        && control
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.target != Some(own))
+}
+
+/// How an actor decides it is engaged with its target ("Engagement" rule).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Engagement {
+    /// `attr_combat_ignore_in_sight` is set.
+    Always,
+    /// In sight within this distance (Q8 units).
+    InSightWithin(i32),
+}
+
+/// Attribute 121 (`attr_combat_ignore_in_sight`) and 123 (`attr_combat_long_sight`).
+pub(super) fn engagement(attributes: &[u8]) -> Engagement {
+    if attributes[121] != 0 {
+        Engagement::Always
+    } else if attributes[123] != 0 {
+        Engagement::InSightWithin(0x80000)
+    } else {
+        Engagement::InSightWithin(0x40000)
+    }
+}
+
 #[cfg(test)]
 mod sheath_tests {
     use super::*;
@@ -335,5 +368,66 @@ mod sheath_tests {
         let combat = control.combat.unwrap();
         assert_eq!((control.living_state, control.motion_companion), (21, 0));
         assert_eq!((combat.flags, combat.cooldown), (0x03, 24));
+    }
+}
+
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+    use crate::script::{ScriptActorId, registry::ActorControlState};
+
+    fn id(index: usize) -> ScriptActorId {
+        ScriptActorId {
+            generation: 1,
+            index,
+        }
+    }
+
+    fn with_target(target: Option<ScriptActorId>) -> ActorControlState {
+        ActorControlState {
+            combat: Some(CombatControlState {
+                target,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_valid_target_has_a_combat_record_does_not_target_itself_and_is_not_dead_and_killed() {
+        assert!(combat_target_valid(&with_target(Some(id(2))), id(1)));
+        assert!(combat_target_valid(&with_target(None), id(1)));
+        assert!(
+            !combat_target_valid(&with_target(Some(id(1))), id(1)),
+            "self target"
+        );
+        assert!(
+            !combat_target_valid(&ActorControlState::default(), id(1)),
+            "no combat record"
+        );
+        let mut dead = with_target(None);
+        dead.death_selector = 8;
+        assert!(
+            combat_target_valid(&dead, id(1)),
+            "state 8 alone is still valid"
+        );
+        dead.killed = true;
+        assert!(!combat_target_valid(&dead, id(1)), "state 8 and killed");
+        let mut killed = with_target(None);
+        killed.killed = true;
+        assert!(
+            combat_target_valid(&killed, id(1)),
+            "killed alone is still valid"
+        );
+    }
+
+    #[test]
+    fn engagement_follows_the_ignore_and_long_sight_attributes() {
+        let mut attributes = vec![0u8; 256];
+        assert_eq!(engagement(&attributes), Engagement::InSightWithin(0x40000));
+        attributes[123] = 1;
+        assert_eq!(engagement(&attributes), Engagement::InSightWithin(0x80000));
+        attributes[121] = 1;
+        assert_eq!(engagement(&attributes), Engagement::Always);
     }
 }
