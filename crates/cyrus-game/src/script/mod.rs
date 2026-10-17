@@ -25,6 +25,7 @@ mod journal;
 pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};
 pub use inventory::{Inventory, InventorySnapshot, InventoryView};
 pub use journal::{Journal, JournalSnapshot};
+pub mod locomotion;
 mod maintenance;
 mod markers;
 pub use maintenance::{SoundMaintenance, SoundResetStage};
