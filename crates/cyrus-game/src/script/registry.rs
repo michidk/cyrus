@@ -3015,6 +3015,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "myaitype" => Some(|control| i32::from(control.death_selector)),
                 "myaimode" => Some(|control| i32::from(control.death_response)),
                 "isonedge" => Some(|control| i32::from((10..=19).contains(&control.living_state))),
+                // The original also answers 0 while its transition lock (global word read by
+                // dozens of routines) is set; cyrus has no transition state, so it is clear.
+                "isinair" => Some(|control| {
+                    i32::from(
+                        control.sliding_state != 0
+                            || control.falling_state != 0
+                            || control.queued_motion != 0
+                            || (27..=29).contains(&control.living_state),
+                    )
+                }),
                 _ => None,
             };
         if let Some(test) = control_test {
