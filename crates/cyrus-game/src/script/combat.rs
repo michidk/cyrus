@@ -253,3 +253,82 @@ impl CombatMessages {
         Ok(Self { classes })
     }
 }
+
+/// Whether `SheathSword` acts: a combat record with no cooldown, no weapon-move state and
+/// no draw or sheathe in progress, and a held weapon. Animation and task-system readiness
+/// are checked by the caller.
+pub(super) fn sheath_eligible(
+    control: &super::registry::ActorControlState,
+    holding: bool,
+    drawing: bool,
+    sheathing: bool,
+) -> bool {
+    control
+        .combat
+        .as_ref()
+        .is_some_and(|combat| combat.cooldown == 0)
+        && !(27..=32).contains(&control.living_state)
+        && !drawing
+        && !sheathing
+        && holding
+}
+
+/// Enter the sheathing state: lifecycle byte 21, companion byte cleared, combat flag 0x04
+/// cleared and a 24-tick cooldown.
+pub(super) fn begin_sheathing(control: &mut super::registry::ActorControlState) {
+    control.living_state = 21;
+    control.motion_companion = 0;
+    let combat = control
+        .combat
+        .as_mut()
+        .expect("eligible actor has combat state");
+    combat.flags &= !4;
+    combat.cooldown = 24;
+}
+
+#[cfg(test)]
+mod sheath_tests {
+    use super::*;
+    use crate::script::registry::ActorControlState;
+
+    fn armed() -> ActorControlState {
+        ActorControlState {
+            combat: Some(CombatControlState {
+                flags: 0x07,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn sheathing_requires_combat_no_cooldown_a_held_weapon_and_no_weapon_motion() {
+        assert!(sheath_eligible(&armed(), true, false, false));
+        let mut no_combat = armed();
+        no_combat.combat = None;
+        let mut cooling = armed();
+        cooling.combat.as_mut().unwrap().cooldown = 1;
+        let mut moving = armed();
+        moving.living_state = 27;
+        for (control, holding, drawing, sheathing) in [
+            (&no_combat, true, false, false),
+            (&cooling, true, false, false),
+            (&moving, true, false, false),
+            (&armed(), false, false, false),
+            (&armed(), true, true, false),
+            (&armed(), true, false, true),
+        ] {
+            assert!(!sheath_eligible(control, holding, drawing, sheathing));
+        }
+    }
+
+    #[test]
+    fn begin_sheathing_sets_state_clears_the_combat_flag_and_starts_the_cooldown() {
+        let mut control = armed();
+        control.motion_companion = 9;
+        begin_sheathing(&mut control);
+        let combat = control.combat.unwrap();
+        assert_eq!((control.living_state, control.motion_companion), (21, 0));
+        assert_eq!((combat.flags, combat.cooldown), (0x03, 24));
+    }
+}

@@ -1424,6 +1424,7 @@ impl ScriptWorld {
             spatial: self.spatial.as_mut(),
             markers: self.markers.as_ref(),
             walk_map_count: self.walk_nodes.as_ref().map(|nodes| nodes.map_count()),
+            task_system: self.updates.task_system,
             map_updates: &mut self.map_updates,
             activation: &mut self.activation,
             globals: &mut self.globals,
@@ -1842,6 +1843,7 @@ pub(super) fn prepare(
 struct GameHost<'a, 'sound, 'input, 'random> {
     world: u32,
     animation_system: bool,
+    task_system: bool,
     map_updates: &'a mut Vec<usize>,
     activation: &'a mut super::ActivationState,
     globals: &'a mut super::GameplayGlobals,
@@ -2054,6 +2056,45 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         )?;
         animation.frame = frame.or(animation.frame);
         Ok(())
+    }
+
+    /// Receiver weapon predicates as (holding, drawing, sheathing); all false while the
+    /// inventory or the receiver's animation is not ready.
+    fn receiver_weapon_predicates(&self, function: &str) -> Result<(bool, bool, bool)> {
+        let actor = &self.actors[self.index];
+        if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
+            return Ok((true, false, false));
+        }
+        let ready = self
+            .inputs
+            .hud
+            .with_context(|| format!("{function}: inventory owner unavailable"))?
+            .inventory_ready()?;
+        if !ready || actor.animation.is_none() {
+            return Ok((false, false, false));
+        }
+        let shell = self
+            .inputs
+            .shell_execution
+            .with_context(|| format!("{function}: shell context unavailable"))?;
+        let control = actor
+            .control
+            .as_ref()
+            .with_context(|| format!("{function}: receiver control unavailable"))?;
+        Ok(super::activation::weapon_predicates(
+            control.living_state,
+            actor
+                .animation
+                .as_ref()
+                .map(|animation| super::ActivationAnimation {
+                    group: animation.playback.current_group(),
+                }),
+            control.combat.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            ready,
+            shell,
+        ))
     }
 
     fn property_name(&self, target: &Target, reference: u16) -> Result<&str> {
@@ -2522,40 +2563,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .any(|name| function.eq_ignore_ascii_case(name))
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let actor = &self.actors[self.index];
-            if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
-                return Ok(CallResult::Complete(1));
-            }
-            let ready = self
-                .inputs
-                .hud
-                .with_context(|| format!("{function}: inventory owner unavailable"))?
-                .inventory_ready()?;
-            if !ready || actor.animation.is_none() {
-                return Ok(CallResult::Complete(0));
-            }
-            let shell = self
-                .inputs
-                .shell_execution
-                .with_context(|| format!("{function}: shell context unavailable"))?;
-            let control = actor
-                .control
-                .as_ref()
-                .with_context(|| format!("{function}: receiver control unavailable"))?;
-            let (holding, drawing, sheathing) = super::activation::weapon_predicates(
-                control.living_state,
-                actor
-                    .animation
-                    .as_ref()
-                    .map(|animation| super::ActivationAnimation {
-                        group: animation.playback.current_group(),
-                    }),
-                control.combat.is_some(),
-                control.weapon_drawn,
-                actor.attributes[110],
-                ready,
-                shell,
-            );
+            let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
             let result = if function.eq_ignore_ascii_case("IsHoldingWeapon") {
                 holding
             } else if function.eq_ignore_ascii_case("IsDrawingSword") {
@@ -2564,6 +2572,29 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 sheathing
             };
             return Ok(CallResult::Complete(i32::from(result)));
+        }
+        if function.eq_ignore_ascii_case("SheathSword") {
+            anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
+            let selected = self.selected_player() == Some(id);
+            let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
+            let actor = &mut self.actors[self.index];
+            let Some(control) = actor.control.as_mut() else {
+                return Ok(CallResult::Complete(0));
+            };
+            let eligible = self.task_system
+                && actor.animation.is_some()
+                && super::combat::sheath_eligible(control, holding, drawing, sheathing);
+            if !eligible {
+                return Ok(CallResult::Complete(0));
+            }
+            // The selected player also resets the HUD health-display timer and selects
+            // camera slot zero; neither owner is wired here.
+            anyhow::ensure!(
+                !selected,
+                "SheathSword selected-player HUD timer and camera selection unavailable"
+            );
+            super::combat::begin_sheathing(control);
+            return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("isFighting") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
@@ -3027,6 +3058,7 @@ mod fighting_tests {
         let host = GameHost {
             world: 1,
             animation_system: true,
+            task_system: true,
             map_updates: &mut vec![],
             activation: &mut Default::default(),
             globals: &mut Default::default(),
