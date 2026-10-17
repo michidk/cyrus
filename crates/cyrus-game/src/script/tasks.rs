@@ -48,6 +48,16 @@ pub(super) struct NativeServices<'a> {
     pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
     pub player_dialogue: Option<PlayerDialogueCall<'a>>,
+    pub locomotion: Option<LocomotionCall<'a>>,
+}
+
+/// Receiver state sampled for locomotion tasks. Fallible reads surface only when used.
+pub(super) struct LocomotionCall<'a> {
+    pub state: Result<super::locomotion::BackwardState, String>,
+    /// The blocked-ahead probe at distance 30, supplied by the owning update.
+    pub blocked_ahead_30: Option<bool>,
+    pub animation_system: bool,
+    pub motion_direction: Option<&'a mut u8>,
 }
 
 /// Read-only animation state, sampled independently of playback tick availability.
@@ -76,6 +86,7 @@ enum Task {
     ScaledRotation { origin: i32 },
     ScaledRelativeRotation { origin: i32 },
     FacePlayer,
+    Backward,
     Location,
     Duration,
     Tasks,
@@ -241,6 +252,74 @@ impl Task {
                 };
                 input.angles[1] = (heading & 0x7ff) as u16;
                 elapsed >= duration.wrapping_sub(1)
+            }
+            Self::Backward => {
+                use super::locomotion::{
+                    BACKWARD_MOTION_DIRECTION, BackwardAdmission, backward_admission,
+                    backward_translation, continues,
+                };
+                let [duration] = arguments else {
+                    anyhow::bail!("MoveBackward requires one argument")
+                };
+                let duration = duration.integer()?;
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveBackward requires elapsed input")?;
+                let motion = services
+                    .locomotion
+                    .context("MoveBackward locomotion state unavailable")?;
+                let state = motion.state.map_err(anyhow::Error::msg)?;
+                let mut probe_needed = false;
+                let admission = backward_admission(state, || {
+                    probe_needed = true;
+                    motion.blocked_ahead_30.unwrap_or(false)
+                });
+                anyhow::ensure!(
+                    !(probe_needed && motion.blocked_ahead_30.is_none()),
+                    "MoveBackward blocked-ahead probe input unavailable"
+                );
+                if admission == BackwardAdmission::Refused {
+                    return Ok(true);
+                }
+                *motion
+                    .motion_direction
+                    .context("MoveBackward motion state unavailable")? = BACKWARD_MOTION_DIRECTION;
+                let BackwardAdmission::Proceed { group, step } = admission else {
+                    return Ok(true);
+                };
+                let input = animation.as_mut().context(
+                    "MoveBackward requires prepared animation and explicit nominal ticks",
+                )?;
+                let spatial = spatial
+                    .as_mut()
+                    .context("MoveBackward requires receiver pose and frame_scale")?;
+                if input.animation.has_group(group) {
+                    let frame = match &mut input.sounds {
+                        Some(sounds) => {
+                            input
+                                .animation
+                                .request_with_sounds(group, 0, input.ticks, *sounds)?
+                        }
+                        None => input.animation.request(group, 0, input.ticks)?,
+                    };
+                    *input.frame = frame.or(*input.frame);
+                    if motion.animation_system && input.animation.current_group() != Some(group) {
+                        return Ok(!continues(duration, elapsed));
+                    }
+                    if let Some((heading, distance)) = backward_translation(
+                        spatial.angles[1],
+                        step,
+                        spatial.frame_scale as i32,
+                        input.animation.translation_suppressed(),
+                    ) {
+                        *spatial.position = cyrus_world::transform::translate_forward(
+                            *spatial.position,
+                            heading,
+                            distance,
+                        )?;
+                    }
+                }
+                !continues(duration, elapsed)
             }
             Self::Location => {
                 let [location, duration] = arguments else {
@@ -700,6 +779,8 @@ impl NativeTasks {
             Task::ScaledRelativeRotation { origin: 0 }
         } else if function.eq_ignore_ascii_case("FacePlayer") {
             Task::FacePlayer
+        } else if function.eq_ignore_ascii_case("MoveBackward") {
+            Task::Backward
         } else if function.eq_ignore_ascii_case("MoveObjectAxis") {
             Task::ObjectMovement {
                 target: 0,

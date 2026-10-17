@@ -4704,3 +4704,133 @@ fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
             .is_err()
     );
 }
+
+fn move_backward_scripts(step: u8) -> Scripts {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Task,
+                target: Object::Me,
+                function: "MoveBackward".into(),
+                arguments: vec![Value::Integer { value: 4 }],
+            },
+        },
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "MoveBackward".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    data.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_9".into(), step);
+    data.content_id = data.content_identity().unwrap();
+    data
+}
+
+fn locomotion_stage(
+    world: &mut ScriptWorld,
+    id: ScriptActorId,
+    stage: ScriptStage,
+    hud: &cyrus_game::script::ScriptHud,
+) {
+    world
+        .advance(
+            id,
+            stage,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                hud: Some(hud),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            None,
+            None,
+            30,
+        )
+        .unwrap();
+}
+
+fn locomotion_hud() -> cyrus_game::script::ScriptHud {
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(
+        &inventory_fixture(&[(1, 1)]),
+        &cyrus_game::preferences::Preferences::default(),
+    );
+    hud
+}
+
+fn move_backward_animations(data: &Scripts, groups: &[u16]) -> Animations {
+    let mut animation = animations(data, false);
+    animation.metadata["actors"][0]["animation_groups"] = serde_json::Value::Array(
+        groups
+            .iter()
+            .map(|group| {
+                json!({"group_index":group,"anim_type":0,"anim_id":1,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]})
+            })
+            .collect(),
+    );
+    animation
+}
+
+#[test]
+fn move_backward_requests_the_walk_group_then_steps_along_the_reversed_heading() {
+    let data = move_backward_scripts(8);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &move_backward_animations(&data, &[0, 19]), 0)
+        .unwrap();
+    let hud = locomotion_hud();
+    let start = world.spatial(id).unwrap().local.position;
+    let mut moved = 0;
+    for index in 0..4 {
+        locomotion_stage(&mut world, id, if index == 0 { BODY } else { TASKS }, &hud);
+        let position = world.spatial(id).unwrap().local.position;
+        moved += (0..3)
+            .map(|axis| i64::from(position[axis]) - i64::from(start[axis]))
+            .map(i64::abs)
+            .sum::<i64>()
+            - moved;
+    }
+    // Eight units per step: 2048 Q8 units each time the walk group is current and unsuppressed.
+    assert!(moved >= 2048 && moved % 2048 == 0, "moved {moved}");
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().motion_direction,
+        7
+    );
+    stage(&mut world, id, BODY);
+    assert_eq!(
+        world.flags(),
+        [9],
+        "the task completed after four invocations"
+    );
+}
+
+#[test]
+fn move_backward_without_the_group_never_moves_and_still_completes() {
+    let data = move_backward_scripts(8);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &move_backward_animations(&data, &[0]), 0)
+        .unwrap();
+    let hud = locomotion_hud();
+    let start = world.spatial(id).unwrap().local.position;
+    for index in 0..4 {
+        locomotion_stage(&mut world, id, if index == 0 { BODY } else { TASKS }, &hud);
+    }
+    assert_eq!(world.spatial(id).unwrap().local.position, start);
+    locomotion_stage(&mut world, id, BODY, &hud);
+    assert_eq!(world.flags(), [9]);
+}

@@ -116,6 +116,9 @@ pub struct ScriptInputs<'a> {
     pub dialogue_source: Option<&'a dyn super::DialogueSource>,
     /// Explicit shared sample-reset flag from the owning engine update.
     pub sound_reset: Option<bool>,
+    /// The blocked-ahead probe at distance 30, evaluated by the owning ordinary update for
+    /// combat actors; required only by `MoveBackward` in combat stance.
+    pub blocked_ahead_30: Option<bool>,
 }
 
 pub(crate) struct ScriptAnimation {
@@ -1987,6 +1990,34 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             })
     }
 
+    /// Receiver state for locomotion tasks; fallible reads surface only when a task uses them.
+    fn locomotion_state(&self) -> Result<super::locomotion::BackwardState, String> {
+        let actor = &self.actors[self.index];
+        let control = actor
+            .control
+            .as_ref()
+            .ok_or("locomotion control state unavailable")?;
+        let (holding_weapon, _, _) = self
+            .receiver_weapon_predicates("MoveBackward")
+            .map_err(|error| format!("{error:#}"))?;
+        Ok(super::locomotion::BackwardState {
+            rope_attached: control.rope_attached,
+            sliding_state: control.sliding_state,
+            falling_state: control.falling_state,
+            queued_motion: control.queued_motion,
+            living_state: control.living_state,
+            holding_weapon,
+            combat_mode: control
+                .combat
+                .as_ref()
+                .is_some_and(|combat| combat.flags & 4 != 0),
+            surface: actor.surface.unwrap_or(0),
+            torch_burning: control.torch_burning != 0,
+            step_attribute: actor.attributes[9],
+            combat_step_attribute: actor.attributes[18],
+        })
+    }
+
     fn frame_wait_call(&self) -> super::tasks::FrameWaitCall {
         let sample = |index: usize| -> Result<(i32, i32, u8)> {
             self.actors[index]
@@ -2523,6 +2554,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
+        let locomotion_state = self.locomotion_state();
         let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -2585,6 +2617,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 dialogue: self.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
                 frame_wait: Some(frame_wait),
+                locomotion: Some(super::tasks::LocomotionCall {
+                    state: locomotion_state,
+                    blocked_ahead_30: self.inputs.blocked_ahead_30,
+                    animation_system: self.animation_system,
+                    motion_direction: actor
+                        .control
+                        .as_mut()
+                        .map(|control| &mut control.motion_direction),
+                }),
             },
         )? {
             return Ok(result);
@@ -3021,6 +3062,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
+        let locomotion_state = self.locomotion_state();
         let position = animation_sound_position(self.spatial.as_deref(), self.index);
         let surface = self.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -3083,6 +3125,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 dialogue: self.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
                 frame_wait: Some(frame_wait),
+                locomotion: Some(super::tasks::LocomotionCall {
+                    state: locomotion_state,
+                    blocked_ahead_30: self.inputs.blocked_ahead_30,
+                    animation_system: self.animation_system,
+                    motion_direction: actor
+                        .control
+                        .as_mut()
+                        .map(|control| &mut control.motion_direction),
+                }),
             },
         )
     }

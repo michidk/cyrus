@@ -191,6 +191,7 @@ impl Task {
             Self::ScaledRotation { .. } => ("sRotateToAxis", 3, None),
             Self::ScaledRelativeRotation { .. } => ("sRotateByAxis", 3, None),
             Self::FacePlayer => ("FacePlayer", 1, None),
+            Self::Backward => ("MoveBackward", 1, None),
             Self::Location => ("MoveToLocation", 2, None),
             Self::Duration => ("Wait", 1, None),
             Self::Tasks => ("WaitOnTasks", 0, None),
