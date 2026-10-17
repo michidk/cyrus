@@ -35,6 +35,8 @@ struct ControlSnapshot {
     held_item: Option<u8>,
     object_update_excluded: bool,
     hidden: bool,
+    #[serde(default)]
+    killed: bool,
     combat_death_default: Option<i32>,
     combat: Option<CombatSnapshot>,
 }
@@ -88,6 +90,7 @@ impl ControlSnapshot {
             held_item: control.held_item,
             object_update_excluded: control.object_update_excluded,
             hidden: control.hidden,
+            killed: control.killed,
             combat_death_default: control.combat_death_default,
             combat: control.combat.as_ref().map(CombatSnapshot::capture),
         }
@@ -128,6 +131,7 @@ impl ControlSnapshot {
             held_item: self.held_item,
             object_update_excluded: self.object_update_excluded,
             hidden: self.hidden,
+            killed: self.killed,
             combat_death_default: self.combat_death_default,
             combat: self.combat.map(|saved| saved.restore(rebind)).transpose()?,
         })

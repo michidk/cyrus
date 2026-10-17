@@ -3119,6 +3119,39 @@ fn visibility_calls_return_zero_without_disabling_the_receivers_script() {
 }
 
 #[test]
+fn kill_me_marks_the_receiver_dead_hides_its_model_and_stops_its_sounds() {
+    use cyrus_game::script::{ScriptInputs, ScriptSound, ScriptStage};
+    let mut scripts = random_scripts("KillMe", vec![], Object::Me);
+    scripts.definition.functions[1].param_count = 0;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let mut sounds = Vec::new();
+    let mut record = |actor, sound| {
+        sounds.push((actor, sound));
+        Ok(())
+    };
+    world
+        .advance(
+            id,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut record),
+            None,
+            100,
+        )
+        .unwrap();
+    let control = world.actors()[0].control_state().unwrap();
+    assert!(control.killed);
+    assert_eq!(control.death_selector, 8);
+    assert!(!world.actors()[1].control_state().unwrap().killed);
+    assert!(matches!(sounds.as_slice(), [(actor, ScriptSound::StopOwned)] if *actor == id));
+}
+
+#[test]
 fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     use bevy::{asset::AssetApp, prelude::*, state::app::StatesPlugin};
     use cyrus_assets::animation::Animations;

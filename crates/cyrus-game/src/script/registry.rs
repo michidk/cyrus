@@ -177,6 +177,8 @@ pub struct ActorControlState {
     pub object_update_excluded: bool,
     /// Presentation hidden state; this does not exclude script or animation updates.
     pub hidden: bool,
+    /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
+    pub killed: bool,
     pub combat_death_default: Option<i32>,
     pub combat: Option<super::CombatControlState>,
 }
@@ -2474,6 +2476,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        if function.eq_ignore_ascii_case("KillMe") {
+            anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
+            // Walk-node release needs actor-side reservation indices; navigation maps stay
+            // unsupported, so no actor can hold a reservation here (shortcut: revisit with maps).
+            let control = self.actors[self.index]
+                .control
+                .as_mut()
+                .context("KillMe: receiver lifecycle unavailable")?;
+            control.killed = true;
+            control.death_selector = 8;
+            self.actors[self.index].model.current = None;
+            self.sounds
+                .as_mut()
+                .context("script sound handler absent")?(
+                id, super::ScriptSound::StopOwned
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("HideMe") || function.eq_ignore_ascii_case("ShowMe") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let control = self.actors[self.index].control.as_mut().with_context(|| {
