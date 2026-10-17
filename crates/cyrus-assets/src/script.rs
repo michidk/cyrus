@@ -97,6 +97,123 @@ impl UpdateSettings {
     }
 }
 
+/// Installed `[camera]` values for camera record initialization, unscaled as stored in
+/// SYSTEM.INI. The key-to-record mapping is preservation's "Camera record installed settings".
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CameraSettings {
+    pub offset_pos: [i32; 3],
+    pub offset_angle: [i32; 3],
+    pub target_offset: [i32; 3],
+    pub distance: i32,
+    pub min_distance: i32,
+    pub max_vel: i32,
+    /// Slots three through eight: combat, hang, rope, rope above, rope below, debug.
+    pub modes: [CameraModeSettings; 6],
+}
+
+/// Slot-specific overrides applied after record zero is copied.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CameraModeSettings {
+    pub angle_offset: [i32; 3],
+    pub distance: i32,
+    /// Zero keeps the copied record-zero rate.
+    pub max_vel: i32,
+}
+
+impl CameraSettings {
+    /// Missing keys are unsupported rather than assigned invented defaults.
+    #[cfg(feature = "parsers")]
+    pub fn from_system(settings: &rgpre::import::system_ini::SystemIni) -> anyhow::Result<Self> {
+        let camera = &settings.camera;
+        let need = |value: Option<i32>, key: &str| {
+            value.with_context(|| format!("SYSTEM.INI [camera] {key} missing"))
+        };
+        macro_rules! mode {
+            ($prefix:literal, $x:ident, $y:ident, $z:ident, $distance:ident, $max_vel:ident) => {
+                CameraModeSettings {
+                    angle_offset: [
+                        need(camera.$x, concat!($prefix, "_angle_offset_x"))?,
+                        need(camera.$y, concat!($prefix, "_angle_offset_y"))?,
+                        need(camera.$z, concat!($prefix, "_angle_offset_z"))?,
+                    ],
+                    distance: need(camera.$distance, concat!($prefix, "_distance"))?,
+                    max_vel: need(camera.$max_vel, concat!($prefix, "_max_vel"))?,
+                }
+            };
+        }
+        Ok(Self {
+            offset_pos: [
+                need(camera.offset_pos_x, "offset_pos_x")?,
+                need(camera.offset_pos_y, "offset_pos_y")?,
+                need(camera.offset_pos_z, "offset_pos_z")?,
+            ],
+            offset_angle: [
+                need(camera.offset_angle_x, "offset_angle_x")?,
+                need(camera.offset_angle_y, "offset_angle_y")?,
+                need(camera.offset_angle_z, "offset_angle_z")?,
+            ],
+            target_offset: [
+                need(camera.target_offset_x, "target_offset_x")?,
+                need(camera.target_offset_y, "target_offset_y")?,
+                need(camera.target_offset_z, "target_offset_z")?,
+            ],
+            distance: need(camera.camera_distance, "camera_distance")?,
+            min_distance: need(camera.camera_min_distance, "camera_min_distance")?,
+            max_vel: need(camera.max_vel, "max_vel")?,
+            modes: [
+                mode!(
+                    "camera_combat",
+                    camera_combat_angle_offset_x,
+                    camera_combat_angle_offset_y,
+                    camera_combat_angle_offset_z,
+                    camera_combat_distance,
+                    camera_combat_max_vel
+                ),
+                mode!(
+                    "camera_hang",
+                    camera_hang_angle_offset_x,
+                    camera_hang_angle_offset_y,
+                    camera_hang_angle_offset_z,
+                    camera_hang_distance,
+                    camera_hang_max_vel
+                ),
+                mode!(
+                    "camera_rope",
+                    camera_rope_angle_offset_x,
+                    camera_rope_angle_offset_y,
+                    camera_rope_angle_offset_z,
+                    camera_rope_distance,
+                    camera_rope_max_vel
+                ),
+                mode!(
+                    "camera_rope_above",
+                    camera_rope_above_angle_offset_x,
+                    camera_rope_above_angle_offset_y,
+                    camera_rope_above_angle_offset_z,
+                    camera_rope_above_distance,
+                    camera_rope_above_max_vel
+                ),
+                mode!(
+                    "camera_rope_below",
+                    camera_rope_below_angle_offset_x,
+                    camera_rope_below_angle_offset_y,
+                    camera_rope_below_angle_offset_z,
+                    camera_rope_below_distance,
+                    camera_rope_below_max_vel
+                ),
+                mode!(
+                    "camera_debug",
+                    camera_debug_angle_offset_x,
+                    camera_debug_angle_offset_y,
+                    camera_debug_angle_offset_z,
+                    camera_debug_distance,
+                    camera_debug_max_vel
+                ),
+            ],
+        })
+    }
+}
+
 /// Installed gameplay dialogue settings, distinct from the startup book menu.
 /// Effective allocation minima follow preservation's engine/sound.md.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -241,6 +358,9 @@ pub struct Scripts {
     pub in_combat_threshold: Option<i32>,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
+    /// Required in exported caches (schema 16); the default only serves synthetic fixtures.
+    #[serde(default)]
+    pub camera: CameraSettings,
     pub dialogue: DialogueSettings,
     /// Initial `neversaydie` cheat state, loaded from optional REDGUARD.CHT.
     pub player_distance_override: bool,
@@ -263,6 +383,7 @@ impl Scripts {
             self.in_combat_threshold,
             &self.clock,
             &self.updates,
+            &self.camera,
             &self.dialogue,
             self.player_distance_override,
             self.actor_pool_capacity,
@@ -276,7 +397,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 15,
+            self.version == 16,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

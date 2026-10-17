@@ -441,7 +441,8 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 15,
+        version: 16,
+        camera: Default::default(),
         combat_attacks: vec![],
         in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {

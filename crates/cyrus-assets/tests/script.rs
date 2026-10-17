@@ -4,7 +4,8 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 15,
+        version: 16,
+        camera: Default::default(),
         combat_attacks: vec![],
         in_combat_threshold: None,
         dialogue: cyrus_assets::script::DialogueSettings {
@@ -547,7 +548,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     }
     let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
-        let system = format!("[system]\nmax_active_objects=10\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n").into_bytes();
+        let system = format!("[system]\nmax_active_objects=10\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
         let mut source = Source {
             manifest: Manifest {
                 files: vec![
@@ -590,7 +591,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 15);
+    assert_eq!(scripts.version, 16);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -946,5 +947,83 @@ fn fighting_threshold_is_retained_and_part_of_content_identity() {
             .unwrap_err()
             .to_string()
             .contains("identity mismatch")
+    );
+}
+
+fn camera_ini(skip: Option<&str>) -> String {
+    let modes = [
+        "combat",
+        "hang",
+        "rope",
+        "rope_above",
+        "rope_below",
+        "debug",
+    ];
+    let mut keys = vec![
+        ("offset_pos_x", 1),
+        ("offset_pos_y", 2),
+        ("offset_pos_z", 3),
+        ("offset_angle_x", 4),
+        ("offset_angle_y", 5),
+        ("offset_angle_z", 6),
+        ("target_offset_x", 7),
+        ("target_offset_y", 8),
+        ("target_offset_z", 9),
+        ("camera_distance", 250),
+        ("camera_min_distance", 120),
+        ("max_vel", 900),
+    ];
+    let mut names = Vec::new();
+    for (slot, mode) in modes.iter().enumerate() {
+        let base = 10 * (slot as i32 + 1);
+        for (suffix, value) in [
+            ("angle_offset_x", base),
+            ("angle_offset_y", base + 1),
+            ("angle_offset_z", base + 2),
+            ("distance", base * 10),
+            ("max_vel", base + 5),
+        ] {
+            names.push((format!("camera_{mode}_{suffix}"), value));
+        }
+    }
+    let mut text = String::from("[system]\n[camera]\n");
+    for (key, value) in keys.drain(..) {
+        if Some(key) != skip {
+            text += &format!("{key}={value}\n");
+        }
+    }
+    for (key, value) in names {
+        if Some(key.as_str()) != skip {
+            text += &format!("{key}={value}\n");
+        }
+    }
+    text
+}
+
+#[test]
+fn camera_settings_read_every_installed_key_and_reject_a_missing_one() {
+    use cyrus_assets::script::CameraSettings;
+    let parse = |skip| {
+        CameraSettings::from_system(
+            &rgpre::import::system_ini::SystemIni::parse(&camera_ini(skip)).unwrap(),
+        )
+    };
+    let settings = parse(None).unwrap();
+    assert_eq!(settings.offset_pos, [1, 2, 3]);
+    assert_eq!(settings.target_offset, [7, 8, 9]);
+    assert_eq!(
+        (settings.distance, settings.min_distance, settings.max_vel),
+        (250, 120, 900)
+    );
+    assert_eq!(settings.modes[0].angle_offset, [10, 11, 12]);
+    assert_eq!(
+        (settings.modes[0].distance, settings.modes[0].max_vel),
+        (100, 15)
+    );
+    assert_eq!(settings.modes[5].angle_offset, [60, 61, 62]);
+    let error = parse(Some("camera_hang_max_vel")).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("camera_hang_max_vel"),
+        "{error:#}"
     );
 }

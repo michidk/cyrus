@@ -36,6 +36,8 @@ pub fn prepare_source(
         .with_context(|| format!("world {world} script clock"))?;
     let updates = UpdateSettings::from_system(&system)
         .with_context(|| format!("world {world} script update settings"))?;
+    let camera = crate::script::CameraSettings::from_system(&system)
+        .with_context(|| format!("world {world} script camera settings"))?;
     let dialogue = crate::script::DialogueSettings::from_system(&system)
         .with_context(|| format!("world {world} script dialogue settings"))?;
     let player_distance_override = player_distance_override(source)
@@ -187,7 +189,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 15,
+        version: 16,
         in_combat_threshold: combat
             .as_ref()
             .and_then(|combat| combat.misc.in_combat_threshold)
@@ -201,6 +203,7 @@ pub fn prepare_source(
         player_distance_override,
         clock,
         updates,
+        camera,
         dialogue,
         actor_pool_capacity: config.actor_pool_capacity,
         world,

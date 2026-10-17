@@ -124,29 +124,7 @@ impl CameraSlot {
     }
 }
 
-/// Installed `[camera]` values consumed by record initialization, unscaled as stored in
-/// SYSTEM.INI. Preservation documents the mapping in its "Camera record installed
-/// settings" section (<https://github.com/michidk/redguard-preservation/pull/100>).
-#[derive(Clone, Debug, Default)]
-pub struct CameraSettings {
-    pub offset_pos: [i32; 3],
-    pub offset_angle: [i32; 3],
-    pub target_offset: [i32; 3],
-    pub distance: i32,
-    pub min_distance: i32,
-    pub max_vel: i32,
-    /// Slots three through eight: combat, hang, rope, rope above, rope below, debug.
-    pub modes: [CameraModeSettings; 6],
-}
-
-/// Slot-specific overrides applied after record zero is copied.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CameraModeSettings {
-    pub angle_offset: [i32; 3],
-    pub distance: i32,
-    /// Zero keeps the copied record-zero rate.
-    pub max_vel: i32,
-}
+pub use cyrus_assets::script::{CameraModeSettings, CameraSettings};
 
 impl CameraRecord {
     fn cleared(actor: super::ScriptActorId) -> Self {
