@@ -8,6 +8,48 @@ extern "C" {
     async fn read_document(database: &str, key: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = write)]
     async fn write_document(database: &str, key: &str, value: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = operateSlots)]
+    async fn operate_slots(
+        database: &str,
+        request: &str,
+        document: &str,
+    ) -> Result<JsValue, JsValue>;
+}
+
+/// Manual slot operations; revision tokens reject lists made stale by another tab.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum SlotRequest {
+    List,
+    Create {
+        description: String,
+    },
+    Overwrite {
+        slot: u16,
+        revision: String,
+        description: String,
+    },
+    Load {
+        slot: u16,
+        revision: String,
+    },
+    Delete {
+        slot: u16,
+        revision: String,
+    },
+}
+
+pub async fn slots(request: &SlotRequest, document: &str) -> Result<serde_json::Value> {
+    let database = "cyrus-save-slots";
+    let request = serde_json::to_string(request)?;
+    let value = operate_slots(database, &request, document)
+        .await
+        .map_err(|error| anyhow::anyhow!("{error:?}"))
+        .with_context(|| format!("session slots {database}"))?;
+    let text = value
+        .as_string()
+        .context("session slot result is not text")?;
+    serde_json::from_str(&text).context("decoding session slot result")
 }
 
 pub async fn read(database: &str, key: &str) -> Result<Option<String>> {

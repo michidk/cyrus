@@ -15,6 +15,7 @@ mod load_assets;
 mod session_storage;
 #[path = "session/storage.rs"]
 mod storage;
+use storage::SlotRequest;
 
 const DATABASE: &str = "cyrus-sessions";
 
@@ -24,6 +25,7 @@ enum Request {
     Capture { id: u32 },
     Save { id: u32, key: String },
     Load { id: u32, key: String },
+    Slots { id: u32, operation: SlotRequest },
     Result { id: u32 },
 }
 
@@ -33,6 +35,7 @@ impl Request {
             Self::Capture { id }
             | Self::Save { id, .. }
             | Self::Load { id, .. }
+            | Self::Slots { id, .. }
             | Self::Result { id } => *id,
         }
     }
@@ -41,10 +44,15 @@ impl Request {
 enum IoResult {
     Read(Box<RuntimeSessionSnapshot>),
     Written,
+    Response(Value),
+}
+enum SaveTarget {
+    Named(String),
+    Slot(SlotRequest),
 }
 type Io = Mutex<mpsc::Receiver<Result<IoResult>>>;
 enum Phase {
-    Capture(Option<String>),
+    Capture(Option<SaveTarget>),
     Io(Io),
     Prepare(Box<RuntimeSessionSnapshot>, Box<load_assets::LoadAssets>),
     Commit,
@@ -91,7 +99,7 @@ impl Host {
             Request::Save { id, key } => {
                 ensure!(!key.is_empty(), "session storage key is empty");
                 world.resource_mut::<SessionBoundary>().capture_live()?;
-                self.phase = Some(Phase::Capture(Some(key)));
+                self.phase = Some(Phase::Capture(Some(SaveTarget::Named(key))));
                 id
             }
             Request::Load { id, key } => {
@@ -102,6 +110,31 @@ impl Host {
                         .with_context(|| format!("session {DATABASE}/{key} absent"))?;
                     Ok(IoResult::Read(Box::new(snapshot)))
                 })));
+                id
+            }
+            Request::Slots { id, operation } => {
+                if matches!(
+                    operation,
+                    SlotRequest::Create { .. } | SlotRequest::Overwrite { .. }
+                ) {
+                    world.resource_mut::<SessionBoundary>().capture_live()?;
+                    self.phase = Some(Phase::Capture(Some(SaveTarget::Slot(operation))));
+                } else {
+                    self.phase = Some(Phase::Io(task(async move {
+                        let mut value = storage::slots(&operation, "").await?;
+                        if matches!(operation, SlotRequest::Load { .. }) {
+                            let document = value["document"].take();
+                            let text = document
+                                .as_str()
+                                .context("slot load omitted its document")?;
+                            let snapshot = RuntimeSessionSnapshot::decode_document(text.as_bytes())
+                                .context("decoding browser save slot")?;
+                            Ok(IoResult::Read(Box::new(snapshot)))
+                        } else {
+                            Ok(IoResult::Response(value))
+                        }
+                    })));
+                }
                 id
             }
             Request::Result { .. } => unreachable!(),
@@ -118,10 +151,20 @@ impl Host {
                 let SessionBoundaryResult::Captured(snapshot) = result? else {
                     anyhow::bail!("browser capture received a commit result");
                 };
-                if let Some(key) = key {
+                if let Some(target) = key {
                     Ok(Some(Phase::Io(task(async move {
-                        session_storage::write(DATABASE, &key, &snapshot).await?;
-                        Ok(IoResult::Written)
+                        match target {
+                            SaveTarget::Named(key) => {
+                                session_storage::write(DATABASE, &key, &snapshot).await?;
+                                Ok(IoResult::Written)
+                            }
+                            SaveTarget::Slot(operation) => {
+                                let document = String::from_utf8(snapshot.encode_document()?)?;
+                                Ok(IoResult::Response(
+                                    storage::slots(&operation, &document).await?,
+                                ))
+                            }
+                        }
                     }))))
                 } else {
                     let bytes = snapshot.encode_document()?;
@@ -138,6 +181,11 @@ impl Host {
                     .try_recv();
                 match received {
                     Ok(result) => match result? {
+                        IoResult::Response(mut value) => {
+                            value["pending"] = json!(false);
+                            self.result = Some(Ok(value));
+                            Ok(None)
+                        }
                         IoResult::Written => {
                             self.result = Some(Ok(json!({"pending":false,"stored":true})));
                             Ok(None)

@@ -70,7 +70,7 @@ pub(crate) fn prepare_menu(
     let ini = std::str::from_utf8(&ini_bytes).context("menu: MENU.INI is not UTF-8")?;
     let general = menu_ini::MenuGeneral::parse(ini).map_err(anyhow::Error::msg)?;
     let mut pages = BTreeMap::new();
-    for id in [0, 3, 4, 5, 6, 7] {
+    for id in 0..=7 {
         let mut page = menu_ini::MenuPage::parse(ini, id).map_err(anyhow::Error::msg)?;
         if id == 0 {
             for entry in &mut page.entries {
@@ -170,7 +170,7 @@ pub(crate) fn prepare_menu(
     let directory = Path::new("menu");
     let mut fingerprint = DefaultHasher::new();
     (
-        13u32,
+        14u32,
         &ini_bytes,
         (&world_bytes, &flash_bytes, &loading_font_bytes),
         &keys_bytes,

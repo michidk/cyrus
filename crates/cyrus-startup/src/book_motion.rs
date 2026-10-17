@@ -87,6 +87,16 @@ impl BookMotion {
     pub fn navigate(&mut self, from: u8, to: u8) -> Result<(), String> {
         debug_assert!(!self.busy());
         match (from, to) {
+            (0, 1) => self.request([336.0, 0.0, 0.0], 0, 0.15),
+            (1, 0) => self.request([0.0; 3], 0, 0.15),
+            (0, 2) => {
+                self.sweep([0.0; 3]);
+                self.turn(1, self.frame_counts[1], 4);
+            }
+            (2, 0) => {
+                self.sweep([0.0; 3]);
+                self.turn(1, 0, 4);
+            }
             (0, 3) => {
                 self.sweep([336.0, 0.0, 0.0]);
                 self.turn(1, self.frame_counts[1], 4);
@@ -242,6 +252,35 @@ mod tests {
         assert_eq!(motion.pose.frames[0], 9);
         motion.turn(0, 0, 2);
         assert_eq!(cues(&mut motion), [(11, 64)]);
+    }
+
+    #[test]
+    fn save_camera_moves_without_turning_and_load_turns_the_first_page() {
+        let mut motion = settled();
+        motion.navigate(0, 1).unwrap();
+        assert!(motion.tick(|_| panic!("Save must not turn a page")));
+        assert_eq!(motion.pose.camera, [50.0, 0.0, 0.0]);
+        assert!(cues(&mut motion).is_empty());
+        assert_eq!(motion.pose.camera, [336.0, 0.0, 0.0]);
+        assert_eq!(motion.pose.frames, [0; 5]);
+        motion.navigate(1, 0).unwrap();
+        assert!(cues(&mut motion).is_empty());
+        assert_eq!(motion.pose.camera, [0.0; 3]);
+        assert_eq!(motion.pose.frames, [0; 5]);
+
+        motion.navigate(0, 2).unwrap();
+        assert!(motion.tick(|_| panic!("Load page sound must wait four updates")));
+        assert_eq!(motion.pose.camera, [28.0, 42.0, -24.0]);
+        assert_eq!(motion.pose.pitch, 2026);
+        assert_eq!(cues(&mut motion), [(3, 66)]);
+        assert_eq!(motion.pose.camera, [0.0; 3]);
+        assert_eq!(motion.pose.pitch, 0);
+        assert_eq!(motion.pose.frames, [0, 9, 0, 0, 0]);
+        motion.navigate(2, 0).unwrap();
+        assert_eq!(cues(&mut motion), [(4, 66)]);
+        assert_eq!(motion.pose.camera, [0.0; 3]);
+        assert_eq!(motion.pose.pitch, 0);
+        assert_eq!(motion.pose.frames, [0; 5]);
     }
 
     #[test]

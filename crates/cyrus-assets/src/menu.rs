@@ -109,9 +109,7 @@ impl MenuAsset {
             "menu: invalid palette/key-name count"
         );
         ensure!(
-            [0, 3, 4, 5, 6, 7]
-                .iter()
-                .all(|id| self.pages.contains_key(id)),
+            (0..=7).all(|id| self.pages.contains_key(&id)),
             "menu: missing supported page"
         );
         ensure!(

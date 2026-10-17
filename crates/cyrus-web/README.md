@@ -21,6 +21,22 @@ request strict IndexedDB durability and report `stored` only after completion. A
 source validation and exclusive live replacement. Malformed documents, missing
 records and storage failures return contextual errors. These inspection requests
 do not enable menu save slots or establish complete gameplay restoration.
+The same diagnostic bridge accepts `{"type":"slots","id":4,"operation":{"type":"list"}}`.
+Slot operations are `list`, `create` with `description`, `overwrite` with
+`slot`, `revision` and `description`, and `load` or `delete` with `slot` and
+`revision`. Poll `result` as above. Creation and overwrite capture the current
+session. Load uses the same source preparation and exclusive commit as named loads.
+The separate `cyrus-save-slots` database publishes metadata and complete session
+text in one strict transaction. Listing reads metadata only, newest timestamp
+first with ascending slot numbers on ties. Creation allocates the first free
+manual slot from 2 through 299 inside the write transaction. Revision tokens reject
+stale overwrite, load and delete requests. Descriptions currently support 1–64
+printable ASCII characters; other text is explicitly unsupported. Named diagnostic
+snapshots are unchanged. These operations do not provide the book's dialogs,
+thumbnails, quick saves, autosaves or complete gameplay save eligibility.
+Run `testSessionStorage()` and `testSessionSlots()` from
+`dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify
+atomic publication, concurrent allocation, stale revisions and failed-write protection.
 Browser load preparation resolves each saved world ID only after its decoded
 script, animation and player sources agree. Rendered sources still require exact
 compatibility with the saved document.

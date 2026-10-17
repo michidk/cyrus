@@ -84,6 +84,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
+| Save-slot menu and browser storage integration | In progress | Codex, storage; `magic/artifacts/2026-10-16-save-slot-menu/` |
 | SOUP integration: complete session candidate/commit, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | In progress | Codex, Integrate SOUP Runtime Services, `t3/soup-implementation-roadmap`; `magic/artifacts/2026-10-15-session-candidate/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 
@@ -298,6 +299,10 @@ Requires the player controller.
   **Verified:** `script::camera` now provides off-live pose preparation, ordered hit retention, movement/contact/terrain correction and logical actor writes. Five public contracts pass for correction order, rejection without live mutation, task/selection state, request precedence and model admission filtering. Full integration remains unfinished. [Camera and terrain contracts](https://github.com/michidk/redguard-preservation/pull/95) and [draft evidence](https://github.com/michidk/redguard-decomp/tree/786417821979b357282033449f87a9e4fe98d93d/research/supplements/2026-10-16-camera-model-filter) are published. Camera-specific candidate eligibility, retained terrain queries, installed initialization, actor rebinding and live publication remain unfinished. Ordinary collision admission excludes the selected player and is not the camera admission contract.
 - [ ] Authored world transitions and old sound/script/transient cleanup.
 - [ ] Pause/resume of simulation and audio; original save-slot menus.
+- [x] Prepare installed Save/Load pages and atomic browser slot storage. **Verified:**
+  installed page/motion contracts and compiled browser capture, failed-save protection,
+  fresh-page restore and revision-safe deletion. Book dialogs, thumbnails and
+  gameplay save eligibility remain open.
 - [x] Publish [quick-save request and reserved-slot rules](https://github.com/michidk/redguard-preservation/commit/efb9deabefcb41665dfb3528bac38c16a8fb4a26) and document [gameplay book shortcuts](https://github.com/michidk/redguard-preservation/pull/79) and [menu-before-quick-save ordering](https://github.com/michidk/redguard-preservation/pull/84). **Verified:** original input/consumer instructions and rejected altered-branch controls. Complete save eligibility remains open.
 - [x] Document [save-list ordering](https://github.com/michidk/redguard-preservation/pull/82). **Verified:** original x86 ranking on synthetic records, save-file timestamp provenance and rejected ordering mutations. Live menu comparison remains open.
 - [x] Publish [Save/Continue context restrictions](https://github.com/michidk/redguard-preservation/commit/2f0e0eedb4d61259e9a9293e74950dcaa78a3c6d), [death restrictions](https://github.com/michidk/redguard-preservation/commit/7e70b7c66c0dd754f6c071112de7f6a704a95106), [Escape/death restrictions](https://github.com/michidk/redguard-preservation/commit/d37c93d) and [Quit autosave lifecycle](https://github.com/michidk/redguard-preservation/commit/c42034e). **Verified:** original context/death branches, installed entry mapping and twelve bounded x86 cases with three rejected inverted-branch controls. Other save eligibility and runtime handlers remain open.

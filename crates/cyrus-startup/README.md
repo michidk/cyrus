@@ -2,6 +2,9 @@
 
 Installed splash/title presentation, the book menu and settings, cinematic playback,
 world-entry loading, and the installed logbook reader. Book motion, rasterization and helpers remain internal.
+Book motion includes the documented Save camera movement and reversible Load
+page turn. Save-slot dialogs and activation remain unavailable; the temporary
+fresh-world Load action is unchanged.
 The crate depends on assets/game/world/text/audio/media/app and Bevy; it does not
 depend on cyrus-render. Preservation owns installed parsing and rendering facts.
 

@@ -92,6 +92,31 @@ fn installed_menu_labels_change_without_changing_action_handlers() {
     let mut old = menu.clone();
     old.as_object_mut().unwrap().remove("clock");
     assert!(serde_json::from_value::<cyrus_assets::menu::MenuAsset>(old).is_err());
+    let mut missing_save_page = menu.clone();
+    missing_save_page["pages"]
+        .as_object_mut()
+        .unwrap()
+        .remove("1");
+    assert!(
+        serde_json::from_value::<cyrus_assets::menu::MenuAsset>(missing_save_page)
+            .unwrap()
+            .validate()
+            .is_err()
+    );
+    for page_id in [1, 2] {
+        let installed = rgpre::import::menu_ini::MenuPage::parse(&ini, page_id).unwrap();
+        let exported = menu["pages"][page_id.to_string()]["entries"]
+            .as_array()
+            .unwrap();
+        assert_eq!(exported.len(), installed.entries.len());
+        for (exported, installed) in exported.iter().zip(&installed.entries) {
+            assert_eq!(exported["item"]["text"], installed.text);
+            assert_eq!(exported["item"]["action"], installed.action);
+            assert_eq!(exported["item"]["selectable"], installed.selectable);
+            assert_eq!(exported["item"]["grayed"], installed.grayed);
+            assert_eq!(exported["position"], serde_json::json!(installed.position));
+        }
+    }
     assert_eq!(menu["new_game"]["world"], 1);
     assert_eq!(menu["new_game"]["marker"], 3);
     assert_eq!(menu["new_game"]["loading"].as_array().unwrap().len(), 6);

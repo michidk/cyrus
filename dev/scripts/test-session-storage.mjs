@@ -1,4 +1,4 @@
-import { read, write } from '../../crates/cyrus-web/session-storage.js';
+import { read, write, operateSlots } from '../../crates/cyrus-web/session-storage.js';
 
 // Run in a browser with real IndexedDB; deletes only its unique fixture database.
 export async function testSessionStorage() {
@@ -29,6 +29,130 @@ export async function testSessionStorage() {
     assert(writes.length === 2 && writes.every(value => value === 'strict'), 'replacement did not use strict durability');
     return { passed: true, durability: 'strict', failedWritePreserved: true };
   } finally {
+    IDBDatabase.prototype.transaction = originalTransaction;
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error(`deleting ${name}: fixture database still open`));
+    });
+  }
+}
+
+export async function testSessionSlots(operate = operateSlots) {
+  const name = `cyrus-slot-contract-${crypto.randomUUID()}`;
+  const originalPut = IDBObjectStore.prototype.put;
+  const originalDelete = IDBObjectStore.prototype.delete;
+  const originalGet = IDBObjectStore.prototype.get;
+  const originalTransaction = IDBDatabase.prototype.transaction;
+  const originalNow = Date.now;
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const operation = async (request, document) => JSON.parse(await operate(name, JSON.stringify(request), document));
+  const rejected = async (request, document) => {
+    try { await operation(request, document); }
+    catch (error) { assert(String(error).includes(name), 'error lacks database context'); return; }
+    throw new Error(`accepted invalid operation ${request.type}`);
+  };
+  let abortPut = false;
+  let abortDelete = false;
+  let listing = false;
+  const durability = [];
+  IDBDatabase.prototype.transaction = function (...args) {
+    const transaction = originalTransaction.apply(this, args);
+    if (this.name === name && args[1] === 'readwrite') durability.push(transaction.durability);
+    return transaction;
+  };
+  IDBObjectStore.prototype.put = function (...args) {
+    const pending = originalPut.apply(this, args);
+    if (this.transaction.db.name === name && abortPut && args[1]?.[0] === 'payload') {
+      pending.addEventListener('success', () => this.transaction.abort());
+    }
+    return pending;
+  };
+  IDBObjectStore.prototype.delete = function (...args) {
+    const pending = originalDelete.apply(this, args);
+    if (this.transaction.db.name === name && abortDelete) {
+      pending.addEventListener('success', () => this.transaction.abort());
+    }
+    return pending;
+  };
+  IDBObjectStore.prototype.get = function (...args) {
+    assert(!(listing && this.transaction.db.name === name && args[0]?.[0] === 'payload'), 'catalog copied a session payload');
+    return originalGet.apply(this, args);
+  };
+  try {
+    Date.now = () => 1000;
+    await write(name, 'diagnostic', 'accepted named snapshot');
+    assert((await operation({ type: 'list' })).slots.length === 0, 'new catalog not empty');
+    const created = await Promise.all(Array.from({ length: 5 }, (_, index) =>
+      operation({ type: 'create', description: `SAVE ${index}` }, `session ${index}`)));
+    const numbers = created.map(value => value.slot.slot).sort((a, b) => a - b);
+    assert(JSON.stringify(numbers) === '[2,3,4,5,6]', 'concurrent allocation overwrote a slot');
+    listing = true;
+    const tied = (await operation({ type: 'list' })).slots;
+    listing = false;
+    assert(JSON.stringify(tied.map(value => value.slot)) === '[2,3,4,5,6]', 'timestamp ties not ordered by slot');
+    for (const value of created) {
+      const loaded = await operation({ type: 'load', ...value.slot });
+      assert(loaded.document === `session ${value.slot.description.slice(-1)}`, 'concurrent payload mismatch');
+    }
+    const accepted = tied[0];
+    const payload = (await operation({ type: 'load', ...accepted })).document;
+    abortPut = true;
+    await rejected({ type: 'overwrite', ...accepted, description: 'FAILED' }, 'unaccepted payload');
+    await rejected({ type: 'create', description: 'FAILED NEW' }, 'unaccepted new payload');
+    abortPut = false;
+    assert((await operation({ type: 'load', ...accepted })).document === payload, 'aborted overwrite replaced payload');
+    assert(JSON.stringify((await operation({ type: 'list' })).slots) === JSON.stringify(tied), 'aborted publication changed catalog');
+    abortDelete = true;
+    await rejected({ type: 'delete', ...accepted });
+    abortDelete = false;
+    assert((await operation({ type: 'load', ...accepted })).document === payload, 'aborted deletion removed payload');
+    Date.now = () => 2000;
+    const replacement = (await operation({ type: 'overwrite', ...accepted, description: 'UPDATED' }, 'replacement')).slot;
+    assert(replacement.revision !== accepted.revision, 'overwrite retained stale revision');
+    for (const type of ['load', 'delete', 'overwrite']) await rejected({ type, ...accepted }, 'stale');
+    assert((await operation({ type: 'load', ...replacement })).document === 'replacement', 'overwrite not retained');
+    assert((await operation({ type: 'list' })).slots[0].slot === replacement.slot, 'newest slot not first');
+    for (const description of ['', 'x'.repeat(65), 'bad\ntext']) {
+      await rejected({ type: 'create', description }, 'bad');
+    }
+    for (const slot of [-1, 300, 1.5]) await rejected({ type: 'delete', slot, revision: 'x' });
+    const max = await operation({ type: 'create', description: 'x'.repeat(64) }, 'max description');
+    assert(max.slot.slot === 7, 'failed new save consumed its slot');
+    await operation({ type: 'delete', ...replacement });
+    const reused = await operation({ type: 'create', description: 'REUSED' }, 'reused');
+    assert(reused.slot.slot === 2, 'first free manual slot not reused');
+    assert(await read(name, 'diagnostic') === 'accepted named snapshot', 'slot operations touched named snapshots');
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(name, 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction('documents', 'readwrite', { durability: 'strict' });
+      const store = transaction.objectStore('documents');
+      for (let slot = 0; slot <= 299; slot++) {
+        if (slot >= 2 && slot <= 7) continue;
+        store.put({ slot, description: 'RESERVED OR FULL', modified_ms: 0, revision: `seed-${slot}` }, ['metadata', slot]);
+        store.put('seed', ['payload', slot]);
+      }
+      transaction.oncomplete = resolve;
+      transaction.onabort = () => reject(transaction.error);
+    });
+    db.close();
+    await rejected({ type: 'create', description: 'FULL' }, 'overflow');
+    await rejected({ type: 'overwrite', slot: 0, revision: 'seed-0', description: 'QUICK' }, 'forbidden');
+    assert((await operation({ type: 'list' })).slots.length === 300, 'full catalog was changed');
+    assert(durability.length > 0 && durability.every(value => value === 'strict'), 'slot write used relaxed durability');
+    return { passed: true, concurrentSlots: numbers, abortedPublicationPreserved: true,
+      abortedDeletePreserved: true, staleRevisionRejected: true, fullCatalogPreserved: true,
+      namedSnapshotPreserved: true, durability: 'strict' };
+  } finally {
+    Date.now = originalNow;
+    IDBObjectStore.prototype.put = originalPut;
+    IDBObjectStore.prototype.delete = originalDelete;
+    IDBObjectStore.prototype.get = originalGet;
     IDBDatabase.prototype.transaction = originalTransaction;
     await new Promise((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name);

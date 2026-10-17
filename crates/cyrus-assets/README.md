@@ -72,6 +72,9 @@ initialized attributes, typed native hooks and explicit unsupported records. Pla
 the original model name and complete model-mode byte for actor initialization.
 The menu cache also carries the clock settings, using the same typed conversion
 and validation as world scripts. Its source stamp invalidates older menu exports.
+Preparation includes installed pages 0 through 7, including Save and Load layout.
+Older caches missing those pages require preparation again. Page data alone does
+not enable save-slot handlers.
 Actor-load defaults come from preservation [PR #59](https://github.com/michidk/redguard-preservation/pull/59)
 and installed SYSTEM.INI; model-path message-group assignment remains separate. Its content identity rejects
 changed metadata. Animation metadata retains the same script identity; preparation
