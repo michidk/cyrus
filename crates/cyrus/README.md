@@ -109,6 +109,8 @@ world reference.
 
 Native `state.scene_ready` reports that the current rendered world has finished spawning. `InGame` alone does not establish that its asynchronous scene dependencies have loaded.
 
+Native `state.music_track` is the CD track playing or loading, and `state.music_paused` whether its sink is paused (a cinematic is playing, or the Music slider is at 0); it is `null` while no sink exists (no track has started, or the host has no audio device).
+
 Console preferences restore from `cyrus-config/REDGUARD.CPF`, then the installed
 file when local state is absent. `console save` writes only the local CPF;
 `console write` exports retained output to `cyrus-config/CONSOLE.LOG`. Malformed
