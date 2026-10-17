@@ -2580,6 +2580,39 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        if function.eq_ignore_ascii_case("SetPotion") || function.eq_ignore_ascii_case("GetPotion")
+        {
+            let set = function.eq_ignore_ascii_case("SetPotion");
+            anyhow::ensure!(
+                arguments.len() == 1 + usize::from(set),
+                "{function}: wrong argument count"
+            );
+            let slot = usize::try_from(arguments[0].integer()?)
+                .ok()
+                .filter(|slot| *slot < self.globals.potions.len())
+                .with_context(|| format!("{function}: potion index outside 0..4 unsupported"))?;
+            if set {
+                self.globals.potions[slot] = arguments[1].integer()?;
+                return Ok(CallResult::Complete(1));
+            }
+            return Ok(CallResult::Complete(self.globals.potions[slot]));
+        }
+        if function.eq_ignore_ascii_case("setStrength") || function.eq_ignore_ascii_case("setArmor")
+        {
+            anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
+            let value = arguments[0].integer()?;
+            let combat = self.actors[self.index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .with_context(|| format!("{function}: receiver combat record unavailable"))?;
+            if function.eq_ignore_ascii_case("setStrength") {
+                combat.strength = value;
+            } else {
+                combat.armor = value;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("SheathSword") {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
             let selected = self.selected_player() == Some(id);

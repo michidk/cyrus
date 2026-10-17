@@ -154,6 +154,9 @@ pub struct GameplayGlobals {
     dialogue_state: Option<u16>,
     highlighted_choice: Option<String>,
     candle_show_requested: bool,
+    /// Script potion counters (`SetPotion`, `GetPotion`); shipped scripts use indices 0 to 3.
+    /// The engine table starts zero-filled.
+    pub(super) potions: [i32; 4],
 }
 impl GameplayGlobals {
     /// Fresh executable-session values from preservation's player initialization
@@ -793,6 +796,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     dialogue_state: Option<u16>,
     highlighted_choice: Option<String>,
     candle_show_requested: bool,
+    #[serde(default)]
+    potions: [i32; 4],
 }
 impl GameplayGlobals {
     pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
@@ -809,6 +814,7 @@ impl GameplayGlobals {
             dialogue_state: self.dialogue_state,
             highlighted_choice: self.highlighted_choice.clone(),
             candle_show_requested: self.candle_show_requested,
+            potions: self.potions,
         }
     }
 
@@ -859,6 +865,7 @@ impl GameplayGlobals {
             dialogue_state: saved.dialogue_state,
             highlighted_choice: saved.highlighted_choice,
             candle_show_requested: saved.candle_show_requested,
+            potions: saved.potions,
         })
     }
 }

@@ -26,6 +26,9 @@ pub struct CombatControlState {
     pub taunt_cache: Option<usize>,
     pub taunt_dialogue: Option<usize>,
     pub taunt_active: i32,
+    /// Script-assigned strength and armor values (`setStrength`, `setArmor`).
+    pub strength: i32,
+    pub armor: i32,
 }
 impl Default for CombatControlState {
     fn default() -> Self {
@@ -42,6 +45,8 @@ impl Default for CombatControlState {
             taunt_cache: None,
             taunt_dialogue: Some(0),
             taunt_active: 0,
+            strength: 0,
+            armor: 0,
         }
     }
 }

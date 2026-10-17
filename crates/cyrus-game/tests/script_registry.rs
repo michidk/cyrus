@@ -2814,6 +2814,111 @@ fn random_scripts(function: &str, arguments: Vec<Value>, target: Object) -> Scri
     scripts
 }
 
+fn assign_call(next: u32, function_id: u16, function: &str, arguments: &[i32]) -> Step {
+    Step {
+        next,
+        operation: Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(Call {
+                        function_id,
+                        function: function.into(),
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        arguments: arguments
+                            .iter()
+                            .map(|&value| Value::Integer { value })
+                            .collect(),
+                    }),
+                },
+                rest: vec![],
+            },
+        },
+    }
+}
+
+/// Runs the given native calls in order on one logical actor and returns its first local.
+fn run_native_calls(calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
+    let mut scripts = random_scripts("Rnd", vec![], Object::Me);
+    scripts.definition.functions.clear();
+    scripts.definition.functions.push(Function {
+        name: "NullFunction".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let mut ids = BTreeMap::new();
+    for (name, arguments) in calls {
+        ids.entry(*name).or_insert_with(|| {
+            scripts.definition.functions.push(Function {
+                name: (*name).into(),
+                param_count: arguments.len() as u8,
+                kind: CallKind::Function,
+            });
+            scripts.definition.functions.len() as u16 - 1
+        });
+    }
+    let mut steps = BTreeMap::new();
+    for (index, (name, arguments)) in calls.iter().enumerate() {
+        steps.insert(
+            index as u32,
+            assign_call(index as u32 + 1, ids[name], name, arguments),
+        );
+    }
+    steps.insert(
+        calls.len() as u32,
+        Step {
+            next: calls.len() as u32 + 1,
+            operation: Operation::End { target: 0 },
+        },
+    );
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = steps;
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.advance(
+        id,
+        cyrus_game::script::ScriptStage::OrdinaryMain,
+        cyrus_game::script::ScriptInputs {
+            frame_scale: Some(256),
+            ..Default::default()
+        },
+        None,
+        None,
+        100,
+    )?;
+    Ok(world.actors()[0].runtime().unwrap().variables()[0])
+}
+
+#[test]
+fn potion_counters_start_zero_keep_values_per_index_and_reject_unknown_indices() {
+    assert_eq!(run_native_calls(&[("GetPotion", &[2])]).unwrap(), 0);
+    assert_eq!(run_native_calls(&[("SetPotion", &[2, 7])]).unwrap(), 1);
+    assert_eq!(
+        run_native_calls(&[("SetPotion", &[2, 7]), ("GetPotion", &[2])]).unwrap(),
+        7
+    );
+    assert_eq!(
+        run_native_calls(&[("SetPotion", &[2, 7]), ("GetPotion", &[3])]).unwrap(),
+        0
+    );
+    for call in [("GetPotion", &[4][..]), ("SetPotion", &[-1, 1][..])] {
+        let error = run_native_calls(&[call]).unwrap_err();
+        assert!(format!("{error:#}").contains("outside 0..4"), "{error:#}");
+    }
+}
+
+#[test]
+fn strength_and_armor_need_a_combat_record() {
+    for name in ["setStrength", "setArmor"] {
+        let error = run_native_calls(&[(name, &[100][..])]).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("receiver combat record unavailable"),
+            "{error:#}"
+        );
+    }
+}
+
 #[test]
 fn random_stream_is_shared_by_routed_actors_and_survives_world_replacement() {
     use cyrus_game::{random::EngineRandom, script::ScriptStage};
