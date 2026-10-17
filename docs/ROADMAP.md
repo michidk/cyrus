@@ -76,7 +76,7 @@ complete player-lineup execution and installed SOUP traversal acceptance.
 - Compare original, native and browser behavior and audible output. Verify the
   selected-player idle/walk/release path before extending the controller.
 
-The [SOUP completion checklist](plans/2026-10-12-soup-completion.md) owns detailed
+The SOUP completion checklist (kept as local working memory) owns detailed
 script dependencies. [MAP.md](MAP.md) owns module boundaries;
 [SETUP.md](SETUP.md) owns launch, cache and comparison instructions.
 
@@ -84,7 +84,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 
 | Work | Status | Session |
 | --- | --- | --- |
-| SOUP integration: complete session candidate/commit, camera/terrain ownership, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | Unclaimed, resume here; camera record initialization landed (`CameraState::initial_records`), export and session wiring next, see the plan handoff | Released by Codex, Integrate SOUP Runtime Services. State and ordered next steps: [SOUP plan handoff](plans/2026-10-12-soup-completion.md#handoff-terrain-and-camera-ownership-2026-10-17); branch `t3/soup-implementation-roadmap`; research archived in `redguard-decomp` under `research/supplements/2026-10-17-soup-terrain-camera-handoff` |
+| SOUP integration: complete session candidate/commit, camera/terrain ownership, automatic combat, dialogue, lifecycle, remaining script services and surface-sound acceptance | Unclaimed, resume here; camera record initialization (`CameraState::initial_records`) and location-offset conversion landed; next: `[camera]` export through `cyrus-assets` (needs [preservation PR 100](https://github.com/michidk/redguard-preservation/pull/100) merged and the pin bumped), camera-specific model admission, actor rebinding, live camera scheduling driven by SOUP requests | Released by Codex, Integrate SOUP Runtime Services. Ordered next steps are in this row (the plan file is no longer tracked); branch `t3/soup-implementation-roadmap`; research archived in `redguard-decomp` under `research/supplements/2026-10-17-soup-terrain-camera-handoff` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 
 Other rendering follow-ups, HUD integration and the save-slot menu are unassigned.
@@ -200,7 +200,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [ ] Complete receivers, properties, variable references, scriptless objects, allocation/recycling and model-coupled attributes.
   Full-width property references, installed-name local-heading reads and signed local-position reads/writes are implemented. Heading public/installed shrine non-standing contracts and WASM check pass; four local-position contracts pass; the combined gate passes 983 Rust test executions with zero installed-data skips. Remaining embedded animation/session program fixtures now use the current schema. Program schema 3 requires re-export of older script caches. Current-animation reads and shared torch-counter reads/writes are implemented; all nine property contracts pass; combined verification passes 986 Rust test executions with zero installed-data skips. Receiver/player animation frame waits and retained progress are implemented; four focused task contracts and eleven animation-persistence tests pass; final WASM and workspace verification passes 992 Rust test executions with zero installed-data skips. Animation snapshot version 2 rejects older captures that lack progress.
 - [ ] Complete NPC collision/support/response, model-state refresh, transient geometry and populated walk-map navigation/perception.
-- [ ] Complete hooks, synchronization, lights, visibility and remaining native services through the [SOUP checklist](plans/2026-10-12-soup-completion.md).
+- [ ] Complete hooks, synchronization, lights, visibility and remaining native services through the SOUP completion checklist.
   `PlayerLooking` now uses the published effective-position and signed angular-threshold rules. Three public contracts, WASM checking and final workspace gates pass; installed automatic traversal remains pending.
   `PlayerStand` now reads the selected player's retained supporting actor without a new collision query. Public contracts, the installed non-standing branch, WASM verification and final workspace gates pass; complete standing interaction remains pending.
   `PlayerArc` now routes the published receiver-relative angular query through the existing spatial owner. Three public contracts, the installed distant-player branch, WASM checking and final workspace gates pass with zero installed skips; complete gameplay acceptance remains pending.
@@ -474,4 +474,4 @@ runtime and the document is 17,248,094 bytes. Restoration of this refreshed fixt
 remains pending; preceding checks used the earlier animation schema.
 Source-decoder audio checkpoints
 do not include downstream converter/device buffers. See the
-[SOUP completion plan](plans/2026-10-12-soup-completion.md#unfinished-session-checkpoint).
+SOUP completion plan (local working memory).
