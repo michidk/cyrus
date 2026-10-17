@@ -244,9 +244,13 @@ the playable acceptance blocked until that dependency is resumed.
   Camera pose composition and correction order are now in `script::camera`,
   with five passing public off-live replacement contracts;
   this does not complete scripted camera ownership. Integration still requires
-  camera-specific model admission, retained terrain state, installed settings,
+  camera-specific model admission, installed settings,
   actor rebinding and coordinated live publication. Reuse stored model poses,
   but do not reuse ordinary collision admission as camera eligibility.
+  The terrain owner now retains exact source and animated engine heights, exposes
+  a settled camera reader and validates them during replacement. Original-window
+  camera admission remains independent of Modern rendering; complete live camera
+  scheduling and publication still need integration.
 - [ ] Gameplay: navigation/perception, combat/projectiles, health/death,
   puzzles, cinematics, and script-requested world transitions.
 - [ ] Give every used handler a verified contract, success scenario, and relevant
