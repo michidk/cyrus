@@ -35,6 +35,10 @@ struct MoviePlayback {
 struct Playing {
     movie: Prepared,
     decoder: Decoder,
+    /// One decoder per skip point, already decoded up to it and waiting on its bounded
+    /// channel, so a skip swaps decoders instead of decoding every frame before it.
+    #[cfg(not(target_arch = "wasm32"))]
+    prefetched: Vec<(u32, Decoder)>,
     image: Handle<Image>,
     #[cfg(not(target_arch = "wasm32"))]
     audio: Option<Handle<StreamingAudio>>,
@@ -248,9 +252,20 @@ fn drive(
         playback.load = None;
         match result.and_then(|movie| {
             let decoder = decode(&movie, 1)?;
+            // A failed prefetch only loses the shortcut: the skip decodes it again and reports.
+            #[cfg(not(target_arch = "wasm32"))]
+            let prefetched = movie
+                .metadata
+                .definition
+                .keys
+                .iter()
+                .filter_map(|&key| Some((key, decode(&movie, key).ok()?)))
+                .collect();
             Ok(Playing {
                 movie,
                 decoder,
+                #[cfg(not(target_arch = "wasm32"))]
+                prefetched,
                 image: Handle::default(),
                 #[cfg(not(target_arch = "wasm32"))]
                 audio: None,
@@ -316,7 +331,11 @@ fn drive(
         let current = menu.movie.as_ref().map_or(0, |m| m.frame);
         if let Some(frame) = skip_point(&playing.movie.metadata.definition, current) {
             #[cfg(not(target_arch = "wasm32"))]
-            let sought = decode(&playing.movie, frame).map(|decoder| {
+            let sought = match playing.prefetched.iter().position(|(key, _)| *key == frame) {
+                Some(index) => Ok(playing.prefetched.remove(index).1),
+                None => decode(&playing.movie, frame),
+            }
+            .map(|decoder| {
                 playing.decoder = decoder;
                 playing.audio = None;
             });
@@ -581,6 +600,7 @@ mod tests {
                         frames: Mutex::new(receiver),
                         audio: None,
                     },
+                    prefetched: Vec::new(),
                     image: default(),
                     audio: None,
                     elapsed: if complete { 0.001 } else { 0.0 },

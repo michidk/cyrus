@@ -268,7 +268,7 @@ playback reads the configured movie file or GOG `game.gog` beside the install
 through a bounded sequential reader; the native virtual-display runner mounts the CD image read-only. It decodes video and the first embedded audio
 stream, uses the installed subtitle definitions and the REDSEL font with its shadow ([preservation#110](https://github.com/michidk/redguard-preservation/pull/110)), and applies the
 saved subtitle/interlace preferences. A key press advances to the next installed
-skip point, or finishes after the last one. Playback returns to the same menu
+skip point, or finishes after the last one. Native playback decodes toward every skip point in the background, so a skip does not wait for the frames before it. Playback returns to the same menu
 selection. Native playback does not write movie data to `cache/`. Browser movie caches exported before the REDSEL subtitle font need re-export.
 Browser playback reads the selected cinematic's compressed original ranges on
 demand. The shared codec decodes indexed frames and first-track PCM together;
