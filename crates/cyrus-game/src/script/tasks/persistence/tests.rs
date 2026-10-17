@@ -38,6 +38,7 @@ impl Host for NativeHost {
             slave: false,
             locations: &[[100, 200, 300]],
             effective_position: None,
+            player_position: None,
             actor_index: 0,
             map_updates: &mut self.updates,
         };
@@ -75,6 +76,7 @@ impl Host for NativeHost {
             slave: false,
             locations: &[[100, 200, 300]],
             effective_position: None,
+            player_position: None,
             actor_index: 0,
             map_updates: &mut self.updates,
         };

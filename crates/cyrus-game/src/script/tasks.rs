@@ -25,6 +25,8 @@ pub(super) struct SpatialCall<'a> {
     pub slave: bool,
     pub locations: &'a [[i32; 3]],
     pub effective_position: Option<[i32; 3]>,
+    /// Selected player's local position, when the caller supplies the player query.
+    pub player_position: Option<[i32; 3]>,
     pub actor_index: usize,
     pub map_updates: &'a mut Vec<usize>,
 }
@@ -73,6 +75,7 @@ enum Task {
     AbsoluteRotation { movement: i32, accumulator: i32 },
     ScaledRotation { origin: i32 },
     ScaledRelativeRotation { origin: i32 },
+    FacePlayer,
     Location,
     Duration,
     Tasks,
@@ -198,6 +201,46 @@ impl Task {
                 );
                 *channel = updated.channel;
                 !updated.active
+            }
+            Self::FacePlayer => {
+                let [duration] = arguments else {
+                    anyhow::bail!("FacePlayer requires one argument")
+                };
+                let duration = duration.integer()?;
+                let elapsed = invocation
+                    .elapsed
+                    .context("FacePlayer requires elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("FacePlayer requires receiver pose")?;
+                let player = input
+                    .player_position
+                    .context("FacePlayer selected-player position unavailable")?;
+                let bearing = i32::from(super::spatial::query_bearing(
+                    player[0].wrapping_sub(input.position[0]),
+                    player[2].wrapping_sub(input.position[2]),
+                ));
+                let heading = i32::from(input.angles[1]);
+                let mut delta = heading.wrapping_neg().wrapping_sub(bearing) & 0x7ff;
+                if delta == 0 {
+                    return Ok(true);
+                }
+                let remaining = elapsed.wrapping_sub(duration).wrapping_abs().max(1);
+                let backwards = delta > 0x400;
+                if backwards {
+                    delta = (-delta - 0x400) & 0x3ff;
+                }
+                let step = ((delta << 8) / remaining) >> 8;
+                if step == 0 {
+                    return Ok(true);
+                }
+                let heading = if backwards {
+                    heading - step
+                } else {
+                    heading + step
+                };
+                input.angles[1] = (heading & 0x7ff) as u16;
+                elapsed >= duration.wrapping_sub(1)
             }
             Self::Location => {
                 let [location, duration] = arguments else {
@@ -655,6 +698,8 @@ impl NativeTasks {
             Task::ScaledRotation { origin: 0 }
         } else if function.eq_ignore_ascii_case("sRotateByAxis") {
             Task::ScaledRelativeRotation { origin: 0 }
+        } else if function.eq_ignore_ascii_case("FacePlayer") {
+            Task::FacePlayer
         } else if function.eq_ignore_ascii_case("MoveObjectAxis") {
             Task::ObjectMovement {
                 target: 0,

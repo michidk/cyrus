@@ -4563,3 +4563,57 @@ fn world_snapshot_rejects_changed_player_settings_terrain_and_missing_source() {
     };
     assert!(ScriptWorld::from_snapshot(saved, &absent, context()).is_err());
 }
+
+#[test]
+fn face_player_turns_toward_the_selected_player_over_its_duration() {
+    use cyrus_game::script::{PlayerQuery, QueryInputs};
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Task,
+                target: Object::Me,
+                function: "FacePlayer".into(),
+                arguments: vec![Value::Integer { value: 4 }],
+            },
+        },
+        flag(),
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "FacePlayer".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    data.instances[0].angles[1] = 1024;
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let origin = world.spatial(id).unwrap().local.position;
+    let inputs = || cyrus_game::script::ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        player_query: Some(QueryInputs {
+            player: Some(PlayerQuery {
+                position: [origin[0], origin[1], origin[2] + 512],
+                heading: 0,
+            }),
+            linked_position: None,
+            distance_override: None,
+            fallback_position: None,
+        }),
+        ..Default::default()
+    };
+    // Bearing zero: the heading closes a 1024-unit gap in four equal steps and wraps to zero.
+    for (index, angle) in [1280, 1536, 1792, 0].into_iter().enumerate() {
+        let stage = if index == 0 { BODY } else { TASKS };
+        world.advance(id, stage, inputs(), None, None, 30).unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], angle, "{index}");
+        assert_eq!(
+            world.actors()[0].runtime().unwrap().active_tasks(),
+            usize::from(index < 3)
+        );
+    }
+    assert_eq!(world.spatial(id).unwrap().local.position, origin);
+}

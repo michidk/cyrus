@@ -2478,6 +2478,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
+        let player_position = self
+            .inputs
+            .player_query
+            .as_ref()
+            .and_then(|query| query.player.as_ref())
+            .map(|player| player.position);
         let mut spatial_call = self
             .spatial
             .as_deref_mut()
@@ -2488,6 +2494,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     matrix: spatial.local.matrix,
                     locations: &spatial.locations,
                     effective_position: spatial.effective.map(|pose| pose.position),
+                    player_position,
                     slave: actor.attributes[26] != 0,
                     actor_index: self.index,
                     map_updates: self.map_updates,
@@ -2853,6 +2860,12 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
+        let player_position = self
+            .inputs
+            .player_query
+            .as_ref()
+            .and_then(|query| query.player.as_ref())
+            .map(|player| player.position);
         let mut spatial_call = self
             .spatial
             .as_deref_mut()
@@ -2863,6 +2876,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     matrix: spatial.local.matrix,
                     locations: &spatial.locations,
                     effective_position: spatial.effective.map(|pose| pose.position),
+                    player_position,
                     slave: actor.attributes[26] != 0,
                     actor_index: self.index,
                     map_updates: self.map_updates,
