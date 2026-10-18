@@ -279,10 +279,39 @@ impl ScriptWorld {
                     };
                     self.maintain_map_combat(id, ticks, transition, shell)?;
                 }
+                // The blocked-ahead probe the nonplayer steppers read in combat stance. A probe
+                // that cannot run leaves the input absent, and a stepper that needs it reports so.
+                let main_inputs = match (&collision, scene) {
+                    (Some(prepared), Some(scene))
+                        if !selected_player
+                            && self.actors[id.index]
+                                .control
+                                .as_ref()
+                                .is_some_and(|control| control.combat.is_some()) =>
+                    {
+                        ScriptInputs {
+                            blocked_ahead_30: self
+                                .blocked_ahead(
+                                    id,
+                                    30,
+                                    super::obstacle::OrdinaryObstacleQuery {
+                                        scene,
+                                        animations: data,
+                                        prepared,
+                                        vertical_offset: 0,
+                                        respond: false,
+                                    },
+                                )
+                                .ok(),
+                            ..inputs
+                        }
+                    }
+                    _ => inputs,
+                };
                 self.advance(
                     id,
                     ScriptStage::OrdinaryMain,
-                    inputs,
+                    main_inputs,
                     Some(sounds),
                     Some(random),
                     budget,
