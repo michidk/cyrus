@@ -2802,6 +2802,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("IsWithinMap") {
             return Ok(CallResult::Complete(1));
         }
+        // MyId is the actor's signed 16-bit runtime identifier (pool index plus three).
+        if function.eq_ignore_ascii_case("MyId") {
+            return Ok(CallResult::Complete(i32::from(
+                self.actors[self.index]
+                    .runtime_identifier
+                    .context("MyId: runtime identifier unavailable")?,
+            )));
+        }
         // Animal ignores its arguments and returns zero.
         if function.eq_ignore_ascii_case("Animal") {
             return Ok(CallResult::Complete(0));

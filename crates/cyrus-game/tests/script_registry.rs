@@ -13958,3 +13958,11 @@ fn dialog_and_menu_natives_write_their_mode_words() {
     assert_eq!(state(&[("MenuBegin", &[]), ("MenuEnd", &[])]), (None, 0));
     assert!(run_native_calls(&[("DialogBegin", &[1])]).is_err());
 }
+
+#[test]
+fn my_id_reads_the_runtime_identifier() {
+    let world = run_native_world(&[("MyId", &[])]).unwrap();
+    let actor = &world.actors()[0];
+    let expected = i32::from(actor.runtime_identifier.unwrap());
+    assert_eq!(actor.runtime().unwrap().variables()[0], expected);
+}
