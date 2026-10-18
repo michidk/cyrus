@@ -361,6 +361,12 @@ absent animation and deferred relocation. Script exports retain the installed
 unscaled neighbor-spacing threshold. Automatic fight spacing and selected-player
 camera feedback remain open.
 
+**Verified:** explicit left, right and backward destination checks reuse the live
+body, hazard and support owners with preservation's directional offsets and
+refusal bits. Headless contracts cover body short-circuiting, retained status,
+unchanged position and rope/lifecycle results before geometry access. Automatic
+spacing and complete physical movement comparison remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

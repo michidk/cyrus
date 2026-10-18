@@ -40,6 +40,7 @@ pub use registry::falling::{
     ordinary_landing_decision, ordinary_landing_request,
 };
 pub use registry::ground::{OrdinaryCollisionShape, OrdinaryGroundQuery, OrdinaryStableProbe};
+pub use registry::hazard::OrdinaryStepDirection;
 pub use registry::model::{
     ModelPresentation, ModelSupportOwners, OrdinaryCollisionQuery, StableRecoveryQuery,
 };

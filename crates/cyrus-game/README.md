@@ -1080,3 +1080,10 @@ math and animation owner, returning the signed angle before the step or zero
 on a snap. The caller supplies established weapon/combat predicates and timing.
 Selected-player camera feedback remains explicitly unavailable. This operation
 does not enable automatic combat traversal.
+
+`ScriptWorld::ordinary_step_clear` supplies explicit receiver-relative left, right,
+backward and WalkForward admission through the shared body, hazard and support
+owners. **Verified:** directional refusal retains existing status bits and leaves
+position unchanged; rope and lifecycle bypasses precede geometry. Preservation's
+SOUP directional-admission rules own offsets and refusal masks. Automatic combat
+spacing and full movement fidelity remain unavailable.

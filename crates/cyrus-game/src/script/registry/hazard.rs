@@ -2,6 +2,16 @@
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
 
+/// Receiver-relative destination check. Forward is WalkForward's admission;
+/// the other directions follow preservation's fight-spacing admission rules.
+#[derive(Clone, Copy, Debug)]
+pub enum OrdinaryStepDirection {
+    Forward,
+    Left,
+    Right,
+    Backward,
+}
+
 /// Surface class of a contact normal's Y component (scale 256, negative up): 4 for floors,
 /// 2 for steep slopes, 8 for ceilings and 1 otherwise.
 fn surface_class(normal_y: i32) -> u8 {
@@ -38,11 +48,31 @@ impl ScriptWorld {
         environment: super::transition::ObstacleEnvironment,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<bool> {
+        self.ordinary_step_clear(
+            id,
+            OrdinaryStepDirection::Forward,
+            query,
+            environment,
+            sounds,
+        )
+    }
+
+    /// Check a receiver-relative destination without translating the receiver.
+    /// Body, hazard and support queries short-circuit in that order. Refusal
+    /// retains existing status bits and marks only the requested direction.
+    pub fn ordinary_step_clear(
+        &mut self,
+        id: ScriptActorId,
+        direction: OrdinaryStepDirection,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
         let index = self.resolve(id)?;
         let control = self.actors[index]
             .control
             .as_ref()
-            .context("WalkForward step control unavailable")?;
+            .context("directional step control unavailable")?;
         if control.rope_attached {
             return Ok(false);
         }
@@ -51,10 +81,24 @@ impl ScriptWorld {
         }
         self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let spatial = self.spatial(id)?;
-        let offset = i32::from(self.actors[index].attributes[12])
-            .wrapping_add(self.ordinary_collision_shape(id)?.positive_extent[2])
+        let shape = self.ordinary_collision_shape(id)?;
+        let attributes = &self.actors[index].attributes;
+        let (axis, attribute, extent, reverse) = match direction {
+            OrdinaryStepDirection::Forward => (2, 12, shape.positive_extent[2], false),
+            OrdinaryStepDirection::Left => (0, 10, shape.negative_extent[0], true),
+            OrdinaryStepDirection::Right => (0, 10, shape.positive_extent[0], false),
+            OrdinaryStepDirection::Backward => (2, 13, shape.negative_extent[2], true),
+        };
+        let amount = i32::from(attributes[attribute])
+            .wrapping_add(extent)
             .wrapping_mul(256);
-        let rotated = spatial.local.matrix.transform([0, 0, offset])?;
+        let mut offset = [0; 3];
+        offset[axis] = if reverse {
+            amount.wrapping_neg()
+        } else {
+            amount
+        };
+        let rotated = spatial.local.matrix.transform(offset)?;
         let mut destination = spatial.local.position;
         destination[0] = destination[0].wrapping_add(rotated[0]);
         destination[2] = destination[2].wrapping_add(rotated[2]);
@@ -69,11 +113,17 @@ impl ScriptWorld {
             && !self.step_hazard(id, environment.selected_player, destination, obstacle())?
             && self.admit_ordinary_destination(id, destination, query, environment, sounds)?;
         if !clear {
+            let (byte, mask) = match direction {
+                OrdinaryStepDirection::Forward => (0, 0x80),
+                OrdinaryStepDirection::Left => (0, 0x20),
+                OrdinaryStepDirection::Right => (0, 0x40),
+                OrdinaryStepDirection::Backward => (1, 0x01),
+            };
             self.actors[index]
                 .control
                 .as_mut()
-                .context("WalkForward step control unavailable")?
-                .collision_response_auxiliary[0] |= 0x80;
+                .context("directional step control unavailable")?
+                .collision_response_auxiliary[byte] |= mask;
         }
         Ok(clear)
     }

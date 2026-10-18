@@ -15559,6 +15559,148 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
 }
 
 #[test]
+fn directional_body_refusal_retains_markers_and_skips_support_without_translation() {
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery, OrdinaryStepDirection};
+    let (mut world, data, models) = static_model_fixture_at(cache(), Some(20.0), [10, 20, 30]);
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    world
+        .refresh_model_presentations(&data, &[id, other])
+        .unwrap();
+    let saved = world.spatial(id).unwrap().local.position;
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    for (direction, markers) in [
+        (OrdinaryStepDirection::Left, [0x20, 0]),
+        (OrdinaryStepDirection::Right, [0x60, 0]),
+        (OrdinaryStepDirection::Backward, [0x60, 1]),
+    ] {
+        assert!(
+            !world
+                .ordinary_step_clear(
+                    id,
+                    direction,
+                    OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: u32::MAX,
+                        sidedness: false
+                    },
+                    ObstacleEnvironment {
+                        selected_player: None,
+                        auto_grab: false,
+                        item_system_ready: true,
+                        shell_execution: false,
+                        ticks: 0
+                    },
+                    &mut |_, _| panic!("body refusal must not reach response sounds"),
+                )
+                .unwrap(),
+            "{direction:?}"
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, saved);
+        assert_eq!(
+            world.actors()[id.index]
+                .control_state()
+                .unwrap()
+                .collision_response_auxiliary,
+            markers
+        );
+    }
+}
+
+#[test]
+fn directional_early_results_precede_geometry_and_preserve_status_bytes() {
+    use cyrus_game::script::{
+        ObstacleEnvironment, OrdinaryGroundQuery, OrdinaryStepDirection, WorldRestoreContext,
+        WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+        instance.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (world, data, models) = static_model_fixture_at(scripts.clone(), Some(20.0), [10, 20, 30]);
+    let scene = ordinary_collision_scene(world.world, models);
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    for rope in [false, true] {
+        for direction in [
+            OrdinaryStepDirection::Left,
+            OrdinaryStepDirection::Right,
+            OrdinaryStepDirection::Backward,
+        ] {
+            let mut snapshot = saved.clone();
+            snapshot["actors"][0]["control"]["rope_attached"] = rope.into();
+            snapshot["actors"][0]["control"]["death_selector"] = 7.into();
+            snapshot["actors"][0]["control"]["collision_response_auxiliary"] =
+                serde_json::json!([0x95, 0xA2]);
+            let mut world = ScriptWorld::from_snapshot(
+                serde_json::from_value(snapshot).unwrap(),
+                &sources,
+                WorldRestoreContext {
+                    generation: 2,
+                    globals: Default::default(),
+                    samples: &BTreeMap::new(),
+                },
+            )
+            .unwrap();
+            let id = world.id(0).unwrap();
+            let other = world.id(1).unwrap();
+            world
+                .refresh_model_presentations(&data, &[id, other])
+                .unwrap();
+            let prepared = world
+                .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+                .unwrap();
+            // A mismatched scene must never be read by either early branch.
+            let (_, _, unrelated_models) = static_model_fixture(cache());
+            let unavailable = ordinary_collision_scene(999, unrelated_models);
+            assert_eq!(
+                world
+                    .ordinary_step_clear(
+                        id,
+                        direction,
+                        OrdinaryGroundQuery {
+                            scene: &unavailable,
+                            animations: &data,
+                            prepared: &prepared,
+                            distance: u32::MAX,
+                            sidedness: false
+                        },
+                        ObstacleEnvironment {
+                            selected_player: None,
+                            auto_grab: false,
+                            item_system_ready: false,
+                            shell_execution: false,
+                            ticks: 0
+                        },
+                        &mut |_, _| panic!("early result reached sounds")
+                    )
+                    .unwrap(),
+                !rope
+            );
+            assert_eq!(
+                world.actors()[0]
+                    .control_state()
+                    .unwrap()
+                    .collision_response_auxiliary,
+                [0x95, 0xA2]
+            );
+        }
+    }
+}
+
+#[test]
 fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
     use cyrus_game::script::{
         LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, ScriptInputs, ScriptStage,
