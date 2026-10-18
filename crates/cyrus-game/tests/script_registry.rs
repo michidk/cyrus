@@ -13936,6 +13936,7 @@ fn session_request_natives_raise_requests_for_the_host() {
         HostRequests::default()
     );
     assert_eq!(run_native_calls(&[("IsWithinMap", &[1])]).unwrap(), 1);
+    assert_eq!(run_native_calls(&[("Animal", &[5])]).unwrap(), 0);
     assert!(run_native_calls(&[("LoadWorld", &[1])]).is_err());
 }
 

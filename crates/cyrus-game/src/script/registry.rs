@@ -2802,6 +2802,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("IsWithinMap") {
             return Ok(CallResult::Complete(1));
         }
+        // Animal ignores its arguments and returns zero.
+        if function.eq_ignore_ascii_case("Animal") {
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("LoadWorld") {
             let [world, a, b] = arguments else {
                 anyhow::bail!("LoadWorld requires three arguments")
