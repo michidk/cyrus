@@ -271,11 +271,11 @@ fn drive(
             let book = Logbook::new(&lines)?;
             for line in book.lines() {
                 anyhow::ensure!(line.text.is_ascii(), "logbook: unsupported non-ASCII text");
-                // Styles 1, 2 (gui_low_font) and 5 are not decoded; the rest follow the reader style table.
+                // Style 5 has no initialised entry in the original; the rest follow the reader style table.
                 anyhow::ensure!(
                     matches!(
                         line.style,
-                        None | Some(b'0' | b'3' | b'4' | b'6' | b'7' | b'8' | b'9')
+                        None | Some(b'0'..=b'4' | b'6'..=b'9')
                     ),
                     "logbook: unsupported font style {:?}",
                     line.style

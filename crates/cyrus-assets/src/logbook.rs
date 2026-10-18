@@ -9,7 +9,7 @@ pub struct LogbookArtwork {
     pub scroll: MenuModel,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
-    /// Reader fonts: small normal, small selected, REDSEL and FONTNORM.
+    /// Reader fonts: small normal, small selected, REDSEL, FONTNORM and `gui_low_font`.
     pub fonts: Vec<cyrus_text::Font>,
     /// Style table by prefix digit 0-9; `None` where the original's entry is not decoded.
     /// Absent in caches written before the table existed, which `validate` rejects.
@@ -25,6 +25,10 @@ pub struct ReaderStyle {
     pub font: usize,
     pub scale: u8,
     pub alpha: u8,
+    /// Glyph indices select page-palette colours (the `gui_low_font` entries) instead of the
+    /// font's own palette, and the colour factor does not apply.
+    #[serde(default)]
+    pub page_palette: bool,
 }
 impl LogbookArtwork {
     pub fn validate(&self) -> anyhow::Result<()> {
@@ -52,7 +56,7 @@ impl LogbookArtwork {
             "logbook: invalid scroll texture dimensions"
         );
         anyhow::ensure!(
-            self.fonts.len() == 4
+            self.fonts.len() == 5
                 && self.styles.len() == 10
                 && self
                     .styles
@@ -122,20 +126,27 @@ pub(crate) fn prepare(
             }
         }
     }
-    let fonts = ["FONTNORS", "FONTSELS", "REDSEL", "FONTNORM"]
-        .into_iter()
-        .map(|name| -> anyhow::Result<_> {
-            Ok(cyrus_text::Font::from(&parse_fnt(&read(&format!(
-                "fonts/{name}.FNT"
-            ))?)?))
-        })
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    let glide = rgpre::import::system_ini::SystemIni::parse(&crate::preparation::text(
+    let system = rgpre::import::system_ini::SystemIni::parse(&crate::preparation::text(
         source,
         "SYSTEM.INI",
     )?)
-    .map_err(anyhow::Error::msg)?
-    .glide;
+    .map_err(anyhow::Error::msg)?;
+    let glide = system.glide;
+    let low_font = system
+        .system
+        .gui_low_font
+        .context("logbook: SYSTEM.INI [system] gui_low_font missing")?
+        .replace('\\', "/");
+    let fonts = [
+        "fonts/FONTNORS.FNT",
+        "fonts/FONTSELS.FNT",
+        "fonts/REDSEL.FNT",
+        "fonts/FONTNORM.FNT",
+        &low_font,
+    ]
+    .into_iter()
+    .map(|path| -> anyhow::Result<_> { Ok(cyrus_text::Font::from(&parse_fnt(&read(path)?)?)) })
+    .collect::<anyhow::Result<Vec<_>>>()?;
     let pair = |value: Option<[i32; 2]>, key: &str| -> anyhow::Result<[u8; 2]> {
         let [a, b] = value.with_context(|| format!("logbook: SYSTEM.INI [3dfx] {key} missing"))?;
         Ok([u8::try_from(a)?, u8::try_from(b)?])
@@ -145,13 +156,20 @@ pub(crate) fn prepare(
         pair(glide.font_norm, "font_norm")?,
         pair(glide.font_used, "font_used")?,
     );
-    // Indices follow preservation's reader style table; 1, 2 (gui_low_font) and 5 are not decoded.
+    // Indices follow preservation's reader style table; 5 has no initialised entry in the original.
     // The reader sets the alpha of the small fonts behind 7 and 9 to 200 and 255.
-    let style = |font, [scale, alpha]: [u8; 2]| Some(ReaderStyle { font, scale, alpha });
+    let style = |font, [scale, alpha]: [u8; 2]| {
+        Some(ReaderStyle {
+            font,
+            scale,
+            alpha,
+            page_palette: font == 4,
+        })
+    };
     let styles = vec![
         style(2, sel),
-        None,
-        None,
+        style(4, [255, 255]),
+        style(4, [255, 255]),
         style(2, norm),
         style(2, used),
         None,

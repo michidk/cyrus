@@ -223,7 +223,7 @@ fn paint(
                 if !(0..640).contains(&x) || !(0..480).contains(&y) {
                     return;
                 }
-                let color = if font.palette.is_empty() {
+                let color = if style.page_palette || font.palette.is_empty() {
                     artwork.palette[usize::from(index)]
                 } else {
                     scale_colour(font.colour(index), style.scale)
@@ -315,13 +315,15 @@ mod tests {
             serde_json::from_slice(&files["logbook/reader.logbook"]).unwrap();
         artwork.validate().unwrap();
         assert_eq!(artwork.bindings[12], 38);
-        // Preservation's reader style table: 1, 2 and 5 undecoded; 7 and 9 use the small fonts.
+        // Preservation's reader style table: 5 uninitialised; 1 and 2 use gui_low_font; 7 and 9 use the small fonts.
         let styles: Vec<_> = artwork
             .styles
             .iter()
             .map(|style| style.map(|s| (s.font, s.scale, s.alpha)))
             .collect();
-        assert_eq!(styles[1..3], [None, None]);
+        assert_eq!(styles[1..3], [Some((4, 255, 255)); 2]);
+        assert!(artwork.styles[1].is_some_and(|s| s.page_palette));
+        assert!(artwork.styles[7].is_some_and(|s| !s.page_palette));
         assert_eq!(styles[5], None);
         assert_eq!(styles[6], Some((2, 255, 180)));
         assert_eq!(styles[7].map(|s| (s.0, s.2)), Some((0, 200)));
