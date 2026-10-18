@@ -507,8 +507,8 @@ fn subtitle_lines(text: &str) -> Vec<&str> {
     lines
 }
 
-/// The player's REDSEL copy draws main alpha 180 and shadow alpha 199, shadow offset (2, 2).
-const SUBTITLE_ALPHA: [u8; 2] = [180, 199];
+/// The player's REDSEL copy (value pair 255,180): main alpha 180, shadow alpha 180 × 200 / 256 = 140, offset (2, 2).
+const SUBTITLE_ALPHA: [u8; 2] = [180, 140];
 const SUBTITLE_SHADOW: i32 = 2;
 
 fn paint_subtitles(

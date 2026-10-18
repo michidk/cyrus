@@ -15,7 +15,7 @@ fn install(check: &str) -> Option<GameInstall> {
 #[test]
 fn subtitles_wrap_and_place_like_the_original() {
     assert_eq!(font_alpha("255,255"), Ok([255, 199]), "NPC copy");
-    assert_eq!(font_alpha("125,255"), Ok([255, 97]), "Cyrus copy");
+    assert_eq!(font_alpha("125,255"), Ok([255, 199]), "Cyrus copy");
     assert!(font_alpha("255").is_err());
     let Some(install) = install("subtitle") else {
         return;

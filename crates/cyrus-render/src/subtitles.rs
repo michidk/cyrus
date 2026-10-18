@@ -64,7 +64,7 @@ impl Plugin for SubtitlePlugin {
 pub struct SubtitleFont {
     font: Font,
     max_width: i32,
-    /// Main and shadow alpha of the NPC copy: `B` and `A × 200 / 256` of `[3dfx] font_sel`.
+    /// Main and shadow alpha of the NPC copy: `B` and `B × 200 / 256` of `[3dfx] font_sel`.
     alpha: [u8; 2],
     slots: Vec<Option<Line>>,
     shown: Option<usize>,

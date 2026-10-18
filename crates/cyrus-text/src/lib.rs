@@ -177,7 +177,8 @@ impl Font {
     }
 }
 
-/// SYSTEM.INI `[3dfx] font_*` "A,B" → `[main alpha B, shadow alpha A × 200 / 256]`.
+/// SYSTEM.INI `[3dfx] font_*` "A,B" → `[main alpha B, shadow alpha B × 200 / 256]`; the glyph draw reads the shadow
+/// value from the same field as the main value, and `A` does not enter the alpha.
 pub fn font_alpha(value: &str) -> Result<[u8; 2], String> {
     let parts: Vec<u32> = value
         .split(',')
@@ -187,7 +188,8 @@ pub fn font_alpha(value: &str) -> Result<[u8; 2], String> {
         return Err(format!("{value}: expected two values"));
     };
     let byte = |v: u32| u8::try_from(v).map_err(|_| format!("{value}: {v} exceeds 255"));
-    Ok([byte(b)?, byte(a * 200 / 256)?])
+    byte(a)?;
+    Ok([byte(b)?, byte(b * 200 / 256)?])
 }
 
 /// Composites `colour` at `alpha` over the pixel (source-over, straight alpha).
@@ -266,7 +268,8 @@ mod tests {
     #[test]
     fn font_sel_pairs_become_main_and_shadow_alpha() {
         assert_eq!(font_alpha("255,255"), Ok([255, 199]));
-        assert_eq!(font_alpha("125,255"), Ok([255, 97]));
+        assert_eq!(font_alpha("125,255"), Ok([255, 199]), "A does not enter the alpha");
+        assert_eq!(font_alpha("255,180"), Ok([180, 140]), "the movie copy");
         assert!(font_alpha("255").is_err());
     }
 }
