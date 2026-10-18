@@ -384,7 +384,8 @@ copies DOSBox-X's `glide2x_emu.ovl` next to `RGFX.EXE` so the 3dfx build
 renders through the emulated Voodoo. Sound is off in the container.
 The disc is mounted from `game.gog` through a `game.cue` copy of `game.ins`: stock DOSBox-X
 reads a cue sheet only by its `.cue` extension, and without the disc every movie is skipped.
-The default copy keeps debug settings (`final_version=0`) and starts in the first world.
+The default copy keeps `final_version=0`, which makes the original skip the Introduction and start in the first
+world; `final_version=1` plays it, with or without the debug-text flags (**Verified**, Linux, 2026-10-18).
 `RETRO_PRISTINE=1 just retro` uses the install's own `SYSTEM.INI` and an empty `SAVEGAME`
 (under `magic/retro-pristine/`), so the original starts as a player sees it: title, Introduction,
 then the book menu, where Movies plays the cinematics. From the first world, Escape
