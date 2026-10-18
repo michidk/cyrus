@@ -244,7 +244,7 @@ records and fifteen-draw consumption; early-stop and unsigned-pacing controls fa
 Public request coverage verifies world restore, period retention after attribute
 changes, dead/distance rejection, the unsupported one-past draw and presentation
 failure without setting type-nine state. This service does not enable ordinary
-combat traversal; live defence execution remains open. Full workspace gates pass
+combat traversal; ordinary defence traversal remains open. Full workspace gates pass
 with 1,101 Rust test executions and zero installed-data skips.
 
 The world owns the combat allocation counter. First construction consumes an
@@ -256,8 +256,17 @@ allocation index; the wrong-owner control fails four cases. These bounded checks
 do not establish original map/player construction order or live duel acceptance.
 **Verified:** 4,320 linked defence-executor state/effect comparisons match original
 calls with controlled animation and taunt services. Current-motion and omitted
-loop-count controls fail; the live animation/audio binding remains open.
+loop-count controls fail. These comparisons cover state/effect intent; public live
+binding contracts follow below.
 Full workspace gates pass with 1,102 Rust test executions and zero installed-data skips.
+
+An explicitly selected receiver defence now binds to live animation, synchronous
+sound and timed-taunt services. **Verified:** public synthetic start, following-motion
+chain, absent-next-motion cleanup and service-failure contracts pass. The loop
+countdown is set through the animation interpreter after the request; timed-taunt
+failure retains committed combat state. This does not enable ordinary selection
+or establish automatic START duel acceptance. Full workspace gates pass with
+1,103 Rust test executions and zero installed-data skips.
 
 Next, in dependency order:
 

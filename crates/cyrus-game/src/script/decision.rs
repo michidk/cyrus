@@ -340,7 +340,7 @@ pub fn attack_step(
 pub struct DefenceEffect {
     /// Request this animation group with flag zero.
     pub request_group: Option<i32>,
-    /// Mark the animation record: its flag byte at offset 15 becomes one.
+    /// Set the animation interpreter's finite loop countdown to one.
     pub mark_animation: bool,
     /// The taunt request of kind one follows a defence start.
     pub taunt_kind_one: bool,
@@ -354,7 +354,7 @@ pub struct DefenceView<'a> {
     pub pending_group: Option<i32>,
     /// Animation group of the selected defence for a move selector.
     pub defence_group: &'a dyn Fn(i32) -> Option<i32>,
-    /// Whether the selected defence's chain entry for a move selector has type one.
+    /// Whether the motion following this selector has type one.
     pub entry_type_one: &'a dyn Fn(i32) -> bool,
 }
 
@@ -396,6 +396,28 @@ pub fn defence_step(
     requested: i32,
     view: &DefenceView<'_>,
 ) -> Result<DefenceStep> {
+    defence_step_with_animation(
+        decision,
+        flags,
+        selected,
+        defence_selector,
+        requested,
+        view,
+        &mut |_| Ok(()),
+    )
+}
+
+/// Execute animation services before committing start flags/state, preserving partial state
+/// on failure. The caller dispatches the returned taunt after these writes are visible.
+pub(crate) fn defence_step_with_animation(
+    decision: &mut CombatDecision,
+    flags: &mut u8,
+    selected: &mut i32,
+    defence_selector: &mut i32,
+    requested: i32,
+    view: &DefenceView<'_>,
+    request_animation: &mut dyn FnMut(i32) -> Result<()>,
+) -> Result<DefenceStep> {
     let mut effect = DefenceEffect::default();
     let group_for = |selector: i32| -> Result<i32> {
         (view.defence_group)(selector)
@@ -416,6 +438,7 @@ pub fn defence_step(
             decision.move_selector = 0;
             let group = group_for(0)?;
             if view.current_group != Some(group) {
+                request_animation(group)?;
                 start(decision, flags, group);
                 decision.attack_state = 1;
                 effect.taunt_kind_one = true;
@@ -430,6 +453,7 @@ pub fn defence_step(
                 if *flags & 0x10 != 0 && matches!(next, 0x6b | 0x6c) {
                     end_defence(decision, selected, defence_selector);
                 } else {
+                    request_animation(next)?;
                     start(decision, flags, next);
                 }
             } else if view.pending_group != Some(expected) {

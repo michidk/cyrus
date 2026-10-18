@@ -97,7 +97,13 @@ separately from action and executor state. They retain the signed period across
 world snapshots and later attribute writes. Requests beyond the actor's pointer
 list reject explicitly; old world snapshots missing the period or allocation
 ownership are rejected. This service does not enable the ordinary combat decision
-stage or complete defence execution.
+stage.
+
+`ScriptWorld::execute_combat_defence` executes an already selected receiver-owned
+attack through the shared animation, sound and timed-taunt services. It tests the
+following motion for chains, sets the finite loop countdown after requesting
+animation and retains earlier writes when a synchronous service fails. This does
+not yet connect ordinary defence selection or establish live duel acceptance.
 
 `DialogueState::snapshot` retains ordered records, formatted text, remaining
 lifetimes, skip latch and presentation selection. `from_snapshot` returns a

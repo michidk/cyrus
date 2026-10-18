@@ -14395,3 +14395,188 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         }
     }
 }
+
+#[test]
+fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    #[derive(Debug)]
+    struct RejectTaunt;
+    impl cyrus_game::script::CombatTauntSource for RejectTaunt {
+        fn with_playback(
+            &self,
+            _: &mut dyn FnMut(
+                &mut dyn cyrus_game::script::CombatTauntPlayback,
+            ) -> anyhow::Result<()>,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("injected defence taunt failure")
+        }
+    }
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
+    scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
+        ("attr_14".into(), 1),
+        ("attr_70".into(), 1),
+        ("attr_87".into(), 127),
+        ("attr_num_taunts".into(), 1),
+    ]);
+    scripts.actors.get_mut("LOGIC").unwrap().combat_taunts = vec![CombatTaunt {
+        trigger: 1,
+        label: *b"TEST",
+        animation: 0,
+    }];
+    scripts.instances[0].object_type = 1;
+    scripts.combat_attacks = vec![
+        cyrus_assets::script::combat::Attack {
+            is_combo: false,
+            motions: vec![],
+            min_range: 0,
+            max_range: 0,
+        },
+        cyrus_assets::script::combat::Attack {
+            is_combo: true,
+            motions: (0..2)
+                .map(|motion| {
+                    serde_json::from_value(serde_json::json!({
+                        "section":motion,"kind":motion,"animation_group":100+motion,
+                        "min_range":0,"max_range":100,"first_collide_frame":0,"collide_duration":0
+                    }))
+                    .unwrap()
+                })
+                .collect(),
+            min_range: 0,
+            max_range: 100,
+        },
+    ];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "mpob_objects":[{"script_name":"LOGIC"},{"script_name":"LOGIC"}],
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "raan_entries":[{"frame_count":1,"file_path":"TEST.3D"}],
+                "animation_groups":[
+                    {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
+                        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+                    {"group_index":100,"anim_id":1,"anim_type":0,"commands":[
+                        {"opcode":4,"sound_param":-17,"volume_shift":0},
+                        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+                    {"group_index":101,"anim_id":1,"anim_type":0,"commands":[
+                        {"opcode":4,"sound_param":-18,"volume_shift":0},
+                        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]}),
+        sections: Default::default(),
+        models: BTreeMap::from([(
+            "TEST".into(),
+            cyrus_assets::animation::AnimationModel {
+                radius: Some(1.0),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "static_3d".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        )]),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    let combat = &mut saved["actors"][0]["control"]["combat"];
+    combat["action"] = 0.into();
+    combat["retained_action_indices"] = serde_json::json!([-1, 0]);
+    combat["flags"] = 48.into();
+    combat["decision"]["aggression"] = 50.into();
+    combat["decision"]["move_selector"] = 2.into();
+    for (
+        state,
+        motion,
+        fail,
+        taunt_failure,
+        expected_motion,
+        expected_aggression,
+        expected_active,
+    ) in [
+        (0, 2, false, false, 0, 40, true),
+        (0, 2, true, false, 0, 50, false),
+        (1, 0, false, false, 1, 40, true),
+        (1, 0, true, false, 1, 50, false),
+        (1, 1, false, false, 1, 50, false),
+        (0, 2, false, true, 0, 40, true),
+    ] {
+        let mut snapshot = saved.clone();
+        snapshot["actors"][0]["control"]["combat"]["decision"]["attack_state"] = state.into();
+        snapshot["actors"][0]["control"]["combat"]["decision"]["move_selector"] = motion.into();
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        let mut cues = 0;
+        let result = world.execute_combat_defence(
+            id,
+            0,
+            if taunt_failure { 0 } else { 1 },
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                combat_taunts: Some(&RejectTaunt),
+                ..Default::default()
+            },
+            &mut Default::default(),
+            &mut |owner, _| {
+                assert_eq!(owner, id);
+                cues += 1;
+                anyhow::ensure!(!fail, "injected defence sound failure");
+                Ok(())
+            },
+        );
+        if fail {
+            assert!(
+                format!("{:#}", result.unwrap_err()).contains("injected defence sound failure")
+            );
+        } else if taunt_failure {
+            assert!(
+                format!("{:#}", result.unwrap_err()).contains("injected defence taunt failure")
+            );
+        } else {
+            assert_eq!(result.unwrap(), expected_active);
+        }
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.decision.move_selector, combat.decision.aggression),
+            (expected_motion, expected_aggression)
+        );
+        assert_eq!(combat.flags, if fail || !expected_active { 48 } else { 1 });
+        assert_eq!(cues, if motion == 1 { 0 } else { 1 });
+        if !fail && expected_active {
+            let snapshot = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+            assert_eq!(
+                snapshot["actors"][0]["animation"]["playback"]["current"][1]["loops"],
+                1
+            );
+        }
+    }
+}

@@ -3,6 +3,7 @@ use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
 pub(super) mod body;
 pub(super) mod bounds;
+mod defence;
 mod dialogue;
 pub(super) mod falling;
 mod follow;
