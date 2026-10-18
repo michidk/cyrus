@@ -459,7 +459,7 @@ fn retained_world_rebinds_actors_after_service_cleanup_without_restarting_script
         let mut actors = app.world_mut().resource_mut::<ScriptActors>();
         let world = actors.current.as_mut().unwrap();
         let id = world.id(0).unwrap();
-        step_main_spatial(world, id);
+        world.step(id, Thread::Main, 20).unwrap();
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
         id
     };
@@ -525,7 +525,7 @@ fn retained_world_rebinds_actors_after_service_cleanup_without_restarting_script
         assert!(world.step(old, Thread::Main, 20).is_err());
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [5]);
         let fresh = world.id(0).unwrap();
-        step_main_spatial(world, fresh);
+        world.step(fresh, Thread::Main, 20).unwrap();
         assert_eq!(world.actors()[0].runtime().unwrap().variables(), [6]);
         assert!(
             !actors
@@ -588,21 +588,8 @@ fn retained_world_wait_task_continues_its_saved_invocation_counter() {
         let mut actors = app.world_mut().resource_mut::<ScriptActors>();
         let world = actors.current.as_mut().unwrap();
         let id = world.id(0).unwrap();
-        step_main_spatial(world, id);
-        world
-            .advance(
-                id,
-                cyrus_game::script::ScriptStage::Tasks,
-                cyrus_game::script::ScriptInputs {
-                    frame_scale: Some(512),
-                    nominal_ticks: Some(3),
-                    ..Default::default()
-                },
-                None,
-                None,
-                100,
-            )
-            .unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        world.step_tasks(id, Some(512)).unwrap();
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
         assert_eq!(world.flags(), [12]);
     }
@@ -617,12 +604,11 @@ fn retained_world_wait_task_continues_its_saved_invocation_counter() {
     let world = actors.current.as_mut().unwrap();
     let id = world.id(0).unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
-    use cyrus_game::script::ScriptStage::{OrdinaryMain, Tasks};
-    step_stage_spatial(world, id, Tasks, 0);
-    step_stage_spatial(world, id, OrdinaryMain, 0);
+    world.step_tasks(id, Some(0)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
     assert_eq!(world.flags(), [12]);
-    step_stage_spatial(world, id, Tasks, 256);
-    step_stage_spatial(world, id, OrdinaryMain, 0);
+    world.step_tasks(id, Some(256)).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
     assert_eq!(world.flags(), [7]);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
@@ -735,7 +721,7 @@ fn bevy_world_removal_and_same_handle_reload_expire_actor_ids() {
                 .contains("stale")
         );
         let fresh = world.id(0).unwrap();
-        step_main_spatial(world, fresh);
+        world.step(fresh, Thread::Main, 20).unwrap();
         assert_eq!(world.flags(), [5]);
     }
     app.world_mut()
@@ -2854,39 +2840,6 @@ fn assign_call(next: u32, function_id: u16, function: &str, arguments: &[i32]) -
 }
 
 /// Runs the given native calls in order on one logical actor and returns its first local.
-/// One stage invocation for worlds the load path prepared with spatial state.
-fn step_stage_spatial(
-    world: &mut ScriptWorld,
-    id: cyrus_game::script::ScriptActorId,
-    stage: cyrus_game::script::ScriptStage,
-    frame_scale: u32,
-) {
-    world
-        .advance(
-            id,
-            stage,
-            cyrus_game::script::ScriptInputs {
-                frame_scale: Some(frame_scale),
-                nominal_ticks: Some(0),
-                ..Default::default()
-            },
-            None,
-            None,
-            100,
-        )
-        .unwrap();
-}
-
-/// One ordinary main step for worlds the load path prepared with spatial state.
-fn step_main_spatial(world: &mut ScriptWorld, id: cyrus_game::script::ScriptActorId) {
-    step_stage_spatial(
-        world,
-        id,
-        cyrus_game::script::ScriptStage::OrdinaryMain,
-        256,
-    );
-}
-
 fn run_native_calls(calls: &[(&str, &[i32])]) -> anyhow::Result<i32> {
     Ok(run_native_world(calls)?.actors()[0]
         .runtime()
@@ -4569,10 +4522,9 @@ fn static_model_fixture_session(
             .take()
             .unwrap()
     } else {
-        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
-        world.prepare_spatial().unwrap();
-        world
+        ScriptWorld::prepare(&scripts, 1).unwrap()
     };
+    world.prepare_spatial().unwrap();
     world.prepare_model_resources(&data, &statics).unwrap();
     (world, data, statics)
 }
