@@ -4,6 +4,70 @@ use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
 
 impl ScriptWorld {
+    /// Read the current motion's zero-based counter-attack reference.
+    /// Missing combat or action -1/nine returns zero without resolving move metadata.
+    /// Active actions use the retained defence attack slot and current motion, not
+    /// the action selector as a table index, following preservation's open-pick query.
+    pub fn current_combat_counter_attack(&self, id: ScriptActorId) -> Result<i32> {
+        let result = (|| -> Result<i32> {
+            let index = self.resolve(id)?;
+            let Some(combat) = self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+            else {
+                return Ok(0);
+            };
+            if matches!(combat.action, -1 | 9) {
+                return Ok(0);
+            }
+            let slot = usize::try_from(combat.retained_action_indices[1])
+                .context("negative current attack slot")?;
+            let motion = usize::try_from(combat.decision.move_selector)
+                .context("negative current motion selector")?;
+            let attack = self
+                .combat_attack(id, slot)?
+                .with_context(|| format!("attack slot {slot}: unpopulated"))?;
+            let motion_data = attack
+                .motions
+                .get(motion)
+                .with_context(|| format!("attack slot {slot} motion {motion}: unavailable"))?;
+            let counter = motion_data.defense.with_context(|| {
+                format!("attack slot {slot} motion {motion}: counter-attack reference unavailable")
+            })?;
+            Ok(counter.wrapping_sub(1))
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} current counter-attack",
+                self.world, id.index
+            )
+        })
+    }
+
+    /// Pick best/open defence using live receiver slots. Best never reads counter
+    /// references; open reads the current counter only after an admitted slot.
+    pub fn pick_combat_defence(
+        &self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        distance: i32,
+        open: bool,
+    ) -> Result<Option<i32>> {
+        self.resolve(id)?;
+        self.resolve(target)?;
+        crate::script::decision::pick_defence_with_queries(
+            &mut LivePacedQueries {
+                world: self,
+                id,
+                target,
+            },
+            distance,
+            open,
+        )
+        .with_context(|| format!("world {} instance {} defence pick", self.world, id.index))
+    }
+
     /// Pick from this receiver's attack slots, querying only fields used by each branch.
     /// The caller supplies the shared draw, distance and stance sample at invocation time.
     /// The receiver's live pacing and counter state are read here; counter writes survive
@@ -39,6 +103,59 @@ impl ScriptWorld {
             .expect("admitted combat")
             .decision = decision;
         result.with_context(|| format!("world {} instance {index} paced defence", self.world))
+    }
+
+    /// Run one caller-admitted defence selection against live receiver state.
+    /// Inputs are sampled by the scheduler; starts execute synchronously with the shared
+    /// random stream. Every service retains earlier decision, animation and sound writes
+    /// on failure. This explicit operation does not enable automatic combat traversal.
+    #[allow(clippy::too_many_arguments)] // One invocation shares scheduler and executor services.
+    pub fn select_combat_defence(
+        &mut self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        selection: crate::script::decision::DefenceSelectionInput,
+        weapon: super::WeaponInputs,
+        frame_value: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        movement: &mut dyn FnMut(&mut Self, ScriptActorId, i32, i32) -> Result<()>,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        self.resolve(target)?;
+        let combat = self.actors[index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("defence selection: receiver combat unavailable")?;
+        let mut decision = combat.decision;
+        let mut flags = combat.flags;
+        let mut owner = LiveDefenceSelection {
+            world: self,
+            id,
+            target,
+            selection,
+            weapon,
+            frame_value,
+            inputs,
+            random,
+            movement,
+            sounds,
+        };
+        let result = crate::script::decision::defence_selection(
+            &mut decision,
+            &mut flags,
+            &selection,
+            &mut owner,
+        );
+        owner.store(decision, flags);
+        result.with_context(|| {
+            format!(
+                "world {} instance {} defence selection",
+                owner.world.world, id.index
+            )
+        })
     }
 
     /// Start this receiver's authored defence synchronously, including live executor services.
@@ -371,5 +488,132 @@ impl crate::script::decision::PacedDefenceQueries for LivePacedQueries<'_> {
 
     fn near_timing(&mut self, slot: usize) -> Result<i32> {
         Ok(self.motion(slot)?.first_collide_frame)
+    }
+}
+
+impl crate::script::decision::DefenceQueries for LivePacedQueries<'_> {
+    fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>> {
+        crate::script::decision::PacedDefenceQueries::window(self, slot)
+    }
+    fn near_timing(&mut self, slot: usize) -> Result<i32> {
+        crate::script::decision::PacedDefenceQueries::near_timing(self, slot)
+    }
+    fn counter_attack(&mut self, slot: usize) -> Result<i32> {
+        self.motion(slot)?
+            .defense
+            .with_context(|| format!("attack slot {slot}: counter-attack reference unavailable"))
+    }
+    fn current_counter_attack(&mut self) -> Result<i32> {
+        self.world.current_combat_counter_attack(self.id)
+    }
+}
+
+struct LiveDefenceSelection<'a, 'inputs> {
+    world: &'a mut ScriptWorld,
+    id: ScriptActorId,
+    target: ScriptActorId,
+    selection: crate::script::decision::DefenceSelectionInput,
+    weapon: super::WeaponInputs,
+    frame_value: i32,
+    inputs: ScriptInputs<'inputs>,
+    random: &'a mut crate::random::EngineRandom,
+    movement: &'a mut dyn FnMut(&mut ScriptWorld, ScriptActorId, i32, i32) -> Result<()>,
+    sounds: &'a mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+}
+
+impl LiveDefenceSelection<'_, '_> {
+    fn store(&mut self, decision: crate::script::combat::CombatDecision, flags: u8) {
+        let combat = self.world.actors[self.id.index]
+            .control
+            .as_mut()
+            .expect("admitted control")
+            .combat
+            .as_mut()
+            .expect("admitted combat");
+        combat.decision = decision;
+        combat.flags = flags;
+    }
+    fn read(&self) -> (crate::script::combat::CombatDecision, u8) {
+        let combat = self.world.actors[self.id.index]
+            .control
+            .as_ref()
+            .expect("admitted control")
+            .combat
+            .as_ref()
+            .expect("admitted combat");
+        (combat.decision, combat.flags)
+    }
+}
+
+impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<'_, '_> {
+    fn best(
+        &mut self,
+        decision: &mut crate::script::combat::CombatDecision,
+        flags: u8,
+    ) -> Result<Option<i32>> {
+        self.store(*decision, flags);
+        self.world
+            .pick_combat_defence(self.id, self.target, self.selection.distance, false)
+    }
+    fn open(
+        &mut self,
+        decision: &mut crate::script::combat::CombatDecision,
+        flags: u8,
+    ) -> Result<Option<i32>> {
+        self.store(*decision, flags);
+        self.world
+            .pick_combat_defence(self.id, self.target, self.selection.distance, true)
+    }
+    fn paced(
+        &mut self,
+        decision: &mut crate::script::combat::CombatDecision,
+        flags: u8,
+    ) -> Result<Option<i32>> {
+        self.store(*decision, flags);
+        let result = self.world.pick_combat_paced_defence(
+            self.id,
+            self.target,
+            crate::script::decision::PacedDefenceInput {
+                distance: self.selection.distance,
+                random_draw: self.random.draw() as u16,
+                pacing_sum: self.selection.pacing_sum,
+                facing_alike: self.selection.facing_alike,
+                target_in_combat_stance: self.selection.target_in_combat_stance,
+                attribute_58: self.selection.attribute_58,
+            },
+        );
+        *decision = self.read().0;
+        result.map(Some)
+    }
+    fn in_reach(&mut self, kind: i32) -> Result<bool> {
+        let slot = usize::try_from(kind).context("negative defence kind")?;
+        crate::script::decision::PacedDefenceQueries::in_reach(
+            &mut LivePacedQueries {
+                world: self.world,
+                id: self.id,
+                target: self.target,
+            },
+            slot,
+        )
+    }
+    fn start(
+        &mut self,
+        decision: &mut crate::script::combat::CombatDecision,
+        flags: &mut u8,
+        kind: i32,
+    ) -> Result<()> {
+        self.store(*decision, *flags);
+        let result = self.world.start_combat_defence(
+            self.id,
+            kind,
+            self.weapon,
+            self.frame_value,
+            self.inputs,
+            self.random,
+            &mut *self.movement,
+            self.sounds,
+        );
+        (*decision, *flags) = self.read();
+        result.map(|_| ())
     }
 }

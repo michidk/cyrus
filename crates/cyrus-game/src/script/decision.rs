@@ -61,24 +61,80 @@ pub fn open_defence(
     pick_defence(slots, distance, Some(current_counter_attack))
 }
 
+/// Lazy first-motion queries for best/open selection. Counter metadata is required
+/// only by open selection after the slot passes its strict distance window.
+pub trait DefenceQueries {
+    fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>>;
+    fn near_timing(&mut self, slot: usize) -> Result<i32>;
+    fn counter_attack(&mut self, slot: usize) -> Result<i32>;
+    fn current_counter_attack(&mut self) -> Result<i32>;
+}
+
+/// Scan nine slots, preserving open's per-admitted-slot counter query before timing.
+/// `open` excludes the live current counter; best selection never queries counters.
+pub fn pick_defence_with_queries(
+    queries: &mut impl DefenceQueries,
+    distance: i32,
+    open: bool,
+) -> Result<Option<i32>> {
+    let mut best_timing = 65536;
+    let mut best_kind = None;
+    for slot in 0..9 {
+        let Some((min, max)) = queries.window(slot)? else {
+            continue;
+        };
+        if distance <= min || distance >= max {
+            continue;
+        }
+        if open {
+            let counter = queries.counter_attack(slot)?.wrapping_sub(1);
+            if queries.current_counter_attack()? == counter {
+                continue;
+            }
+        }
+        let timing = queries.near_timing(slot)?;
+        if timing < best_timing {
+            best_timing = timing;
+            best_kind = Some(if slot >= 6 { 4 } else { slot as i32 });
+        }
+    }
+    Ok(best_kind)
+}
+
 fn pick_defence(
     slots: &[Option<DefenceCandidate>; 9],
     distance: i32,
     excluded_counter_attack: Option<i32>,
 ) -> Option<i32> {
-    let mut best_timing = 65536;
-    let mut best_kind = None;
-    for (slot, candidate) in slots.iter().enumerate() {
-        let Some(candidate) = candidate else { continue };
-        if candidate.usable_at(distance)
-            && excluded_counter_attack != Some(candidate.counter_attack.wrapping_sub(1))
-            && candidate.near_timing < best_timing
-        {
-            best_timing = candidate.near_timing;
-            best_kind = Some(if slot >= 6 { 4 } else { slot as i32 });
+    struct Sampled<'a> {
+        slots: &'a [Option<DefenceCandidate>; 9],
+        counter: Option<i32>,
+    }
+    impl DefenceQueries for Sampled<'_> {
+        fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>> {
+            Ok(self.slots[slot].map(|c| (c.min_range, c.max_range)))
+        }
+        fn near_timing(&mut self, slot: usize) -> Result<i32> {
+            Ok(self.slots[slot].context("absent defence slot")?.near_timing)
+        }
+        fn counter_attack(&mut self, slot: usize) -> Result<i32> {
+            Ok(self.slots[slot]
+                .context("absent defence slot")?
+                .counter_attack)
+        }
+        fn current_counter_attack(&mut self) -> Result<i32> {
+            self.counter.context("absent current counter")
         }
     }
-    best_kind
+    pick_defence_with_queries(
+        &mut Sampled {
+            slots,
+            counter: excluded_counter_attack,
+        },
+        distance,
+        excluded_counter_attack.is_some(),
+    )
+    .expect("sampled defence queries are complete")
 }
 
 /// One slot's paced-selection facts. Geometry queries must use this receiver and target.
@@ -680,24 +736,20 @@ pub struct DefenceSelectionInput {
     pub own_selector: i32,
 }
 
-/// A defence picker reads the current decision state and combat flags.
-pub type DefencePicker<'a> = &'a mut dyn FnMut(&CombatDecision, u8) -> Option<i32>;
-
-/// Synchronous defence starts may update the decision state and combat flags.
-pub type DefenceStarter<'a> = &'a mut dyn FnMut(&mut CombatDecision, &mut u8, i32);
-
-/// Host services used by the selection. A start completes before the next picker runs.
-pub struct DefencePickers<'a> {
-    /// The best usable defence.
-    pub best: DefencePicker<'a>,
-    /// An open defence.
-    pub open: DefencePicker<'a>,
-    /// The paced defence.
-    pub paced: DefencePicker<'a>,
-    /// Whether the chosen defence kind is within reach.
-    pub in_reach: &'a mut dyn FnMut(i32) -> bool,
-    /// Apply the defence starter immediately, including its decision and flag changes.
-    pub start: DefenceStarter<'a>,
+/// One mutable owner for defence queries and synchronous starts.
+/// Calls observe earlier decision/flag writes. Errors stop selection immediately
+/// while retaining those writes and any changes made by the failing service.
+pub trait DefenceSelectionServices {
+    /// Best usable defence from the receiver's nine attack slots.
+    fn best(&mut self, decision: &mut CombatDecision, flags: u8) -> Result<Option<i32>>;
+    /// Best usable defence excluding the current counter-attack index.
+    fn open(&mut self, decision: &mut CombatDecision, flags: u8) -> Result<Option<i32>>;
+    /// Paced selection may update the receiver's defence counter.
+    fn paced(&mut self, decision: &mut CombatDecision, flags: u8) -> Result<Option<i32>>;
+    /// Elevation admission for the selected kind.
+    fn in_reach(&mut self, kind: i32) -> Result<bool>;
+    /// Complete the starter and executor before another service runs.
+    fn start(&mut self, decision: &mut CombatDecision, flags: &mut u8, kind: i32) -> Result<()>;
 }
 
 /// Select and synchronously start defences using preservation's
@@ -715,7 +767,7 @@ pub fn defence_selection(
     decision: &mut CombatDecision,
     flags: &mut u8,
     input: &DefenceSelectionInput,
-    pickers: DefencePickers<'_>,
+    services: &mut impl DefenceSelectionServices,
 ) -> Result<()> {
     let i = input;
     if !i.armed || !i.lockout_clear {
@@ -738,17 +790,17 @@ pub fn defence_selection(
             if !matches!(i.target_selected, -1 | 9) {
                 if i.target_frame > i.target_near.wrapping_add(i.target_third) {
                     raise_intent(flags);
-                    if let Some(kind) = (pickers.best)(decision, *flags)
-                        && (pickers.in_reach)(kind)
+                    if let Some(kind) = services.best(decision, *flags)?
+                        && services.in_reach(kind)?
                     {
-                        (pickers.start)(decision, flags, kind);
+                        services.start(decision, flags, kind)?;
                     }
                 }
             } else if i.target_selected == 9
-                && let Some(kind) = (pickers.open)(decision, *flags)
-                && (pickers.in_reach)(kind)
+                && let Some(kind) = services.open(decision, *flags)?
+                && services.in_reach(kind)?
             {
-                (pickers.start)(decision, flags, kind);
+                services.start(decision, flags, kind)?;
             }
         }
         if i.pacing_sum
@@ -757,10 +809,10 @@ pub fn defence_selection(
             == 0
         {
             raise_intent(flags);
-            if let Some(kind) = (pickers.paced)(decision, *flags)
-                && (pickers.in_reach)(kind)
+            if let Some(kind) = services.paced(decision, *flags)?
+                && services.in_reach(kind)?
             {
-                (pickers.start)(decision, flags, kind);
+                services.start(decision, flags, kind)?;
             }
         }
     } else {
@@ -772,11 +824,11 @@ pub fn defence_selection(
             match i.own_selector {
                 0 => {
                     raise_intent(flags);
-                    (pickers.start)(decision, flags, 1);
+                    services.start(decision, flags, 1)?;
                 }
                 1 => {
                     raise_intent(flags);
-                    (pickers.start)(decision, flags, 2);
+                    services.start(decision, flags, 2)?;
                 }
                 _ => {}
             }
@@ -787,6 +839,34 @@ pub fn defence_selection(
 
 #[cfg(test)]
 mod tests {
+
+    type DefencePicker<'a> = &'a mut dyn FnMut(&mut CombatDecision, u8) -> Option<i32>;
+    type DefenceStarter<'a> = &'a mut dyn FnMut(&mut CombatDecision, &mut u8, i32);
+    struct DefencePickers<'a> {
+        best: DefencePicker<'a>,
+        open: DefencePicker<'a>,
+        paced: DefencePicker<'a>,
+        in_reach: &'a mut dyn FnMut(i32) -> bool,
+        start: DefenceStarter<'a>,
+    }
+    impl DefenceSelectionServices for DefencePickers<'_> {
+        fn best(&mut self, d: &mut CombatDecision, f: u8) -> Result<Option<i32>> {
+            Ok((self.best)(d, f))
+        }
+        fn open(&mut self, d: &mut CombatDecision, f: u8) -> Result<Option<i32>> {
+            Ok((self.open)(d, f))
+        }
+        fn paced(&mut self, d: &mut CombatDecision, f: u8) -> Result<Option<i32>> {
+            Ok((self.paced)(d, f))
+        }
+        fn in_reach(&mut self, kind: i32) -> Result<bool> {
+            Ok((self.in_reach)(kind))
+        }
+        fn start(&mut self, d: &mut CombatDecision, f: &mut u8, kind: i32) -> Result<()> {
+            (self.start)(d, f, kind);
+            Ok(())
+        }
+    }
     #[test]
     fn defence_geometry_uses_bounds_centres_and_strict_band_edges() {
         assert_eq!(super::combat_bounds_coordinate(101, 3, 1), -205);
@@ -1240,6 +1320,77 @@ mod tests {
         assert!(candidate.usable_at(-9));
         assert!(candidate.usable_at(9));
         assert!(!candidate.usable_at(10));
+    }
+
+    #[test]
+    fn best_and_open_query_only_admitted_metadata_in_original_order() {
+        struct Queries {
+            calls: Vec<String>,
+            fail: &'static str,
+        }
+        impl DefenceQueries for Queries {
+            fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>> {
+                self.calls.push(format!("window{slot}"));
+                Ok(match slot {
+                    0 => Some((100, 200)),
+                    1 | 2 => Some((0, 100)),
+                    _ => None,
+                })
+            }
+            fn near_timing(&mut self, slot: usize) -> Result<i32> {
+                self.calls.push(format!("timing{slot}"));
+                Ok(12)
+            }
+            fn counter_attack(&mut self, slot: usize) -> Result<i32> {
+                self.calls.push(format!("counter{slot}"));
+                ensure!(self.fail != "counter", "counter failure");
+                Ok(slot as i32)
+            }
+            fn current_counter_attack(&mut self) -> Result<i32> {
+                self.calls.push("current".into());
+                ensure!(self.fail != "current", "current failure");
+                Ok(0)
+            }
+        }
+        for (open, expected, calls) in [
+            (
+                false,
+                1,
+                vec![
+                    "window0", "window1", "timing1", "window2", "timing2", "window3", "window4",
+                    "window5", "window6", "window7", "window8",
+                ],
+            ),
+            (
+                true,
+                2,
+                vec![
+                    "window0", "window1", "counter1", "current", "window2", "counter2", "current",
+                    "timing2", "window3", "window4", "window5", "window6", "window7", "window8",
+                ],
+            ),
+        ] {
+            let mut queries = Queries {
+                calls: vec![],
+                fail: "",
+            };
+            assert_eq!(
+                pick_defence_with_queries(&mut queries, 50, open).unwrap(),
+                Some(expected)
+            );
+            assert_eq!(queries.calls, calls);
+        }
+        for (fail, calls) in [
+            ("counter", vec!["window0", "window1", "counter1"]),
+            ("current", vec!["window0", "window1", "counter1", "current"]),
+        ] {
+            let mut queries = Queries {
+                calls: vec![],
+                fail,
+            };
+            assert!(pick_defence_with_queries(&mut queries, 50, true).is_err());
+            assert_eq!(queries.calls, calls);
+        }
     }
 
     #[test]
@@ -1774,7 +1925,7 @@ mod tests {
             decision,
             flags,
             input,
-            DefencePickers {
+            &mut DefencePickers {
                 best: &mut |_, _| best,
                 open: &mut |_, _| open,
                 paced: &mut |_, _| paced,
@@ -1977,7 +2128,7 @@ mod tests {
             &mut decision,
             &mut flags,
             &input,
-            DefencePickers {
+            &mut DefencePickers {
                 best: &mut |_, flags| {
                     assert_eq!(flags, 0xa1);
                     Some(3)
@@ -2056,7 +2207,7 @@ mod tests {
                 &mut decision,
                 &mut flags,
                 &input,
-                DefencePickers {
+                &mut DefencePickers {
                     best: &mut |_, _| panic!("invalid division must not pick"),
                     open: &mut |_, _| panic!("invalid division must not pick"),
                     paced: &mut |_, _| panic!("invalid division must not pick"),
@@ -2102,5 +2253,143 @@ mod tests {
             );
             assert_eq!(actual_flags, flags);
         }
+    }
+    #[derive(Default)]
+    struct FallibleSelectionServices {
+        fail: &'static str,
+        events: Vec<String>,
+    }
+    impl FallibleSelectionServices {
+        fn visit(&mut self, name: String) -> Result<()> {
+            self.events.push(name.clone());
+            anyhow::ensure!(name != self.fail, "injected {name}");
+            Ok(())
+        }
+    }
+    impl DefenceSelectionServices for FallibleSelectionServices {
+        fn best(&mut self, d: &mut CombatDecision, flags: u8) -> Result<Option<i32>> {
+            assert_eq!(flags, 0xa1);
+            d.near_state = 11;
+            self.visit("best".into())?;
+            Ok(Some(3))
+        }
+        fn open(&mut self, _: &mut CombatDecision, _: u8) -> Result<Option<i32>> {
+            anyhow::bail!("unadmitted open")
+        }
+        fn paced(&mut self, d: &mut CombatDecision, flags: u8) -> Result<Option<i32>> {
+            assert_eq!((d.attack_state, flags), (3, 0xb1));
+            d.defence_counter = 7;
+            self.visit("paced".into())?;
+            Ok(Some(4))
+        }
+        fn in_reach(&mut self, kind: i32) -> Result<bool> {
+            self.visit(format!("reach{kind}"))?;
+            Ok(true)
+        }
+        fn start(&mut self, d: &mut CombatDecision, flags: &mut u8, kind: i32) -> Result<()> {
+            if kind == 4 {
+                assert_eq!(d.defence_counter, 7);
+            }
+            d.attack_state = kind;
+            *flags |= 0x10;
+            self.visit(format!("start{kind}"))
+        }
+    }
+    fn fallible_selection_input() -> DefenceSelectionInput {
+        DefenceSelectionInput {
+            armed: true,
+            lockout_clear: true,
+            own_selected: -1,
+            target_in_arc: true,
+            distance: 50,
+            own_window_far: 400,
+            facing_alike: true,
+            target_in_combat_stance: true,
+            attribute_58: 29,
+            pacing_sum: 10,
+            defence_pacing: 5,
+            target_selected: 2,
+            target_frame: 20,
+            target_near: 6,
+            target_third: 8,
+            own_selector: 0,
+        }
+    }
+    #[test]
+    fn synchronous_starts_and_paced_mutations_are_visible() {
+        let (mut d, mut flags, mut owner) = (
+            CombatDecision::default(),
+            0xa0,
+            FallibleSelectionServices::default(),
+        );
+        defence_selection(&mut d, &mut flags, &fallible_selection_input(), &mut owner).unwrap();
+        assert_eq!(
+            owner.events,
+            ["best", "reach3", "start3", "paced", "reach4", "start4"]
+        );
+        assert_eq!(
+            (d.attack_state, d.defence_counter, d.near_state, flags),
+            (4, 7, 11, 0xb1)
+        );
+    }
+    #[test]
+    fn each_service_error_stops_later_work_without_rollback() {
+        let all = ["best", "reach3", "start3", "paced", "reach4", "start4"];
+        for (index, fail) in all.iter().enumerate() {
+            let (mut d, mut flags) = (CombatDecision::default(), 0xa0);
+            let mut owner = FallibleSelectionServices {
+                fail,
+                ..Default::default()
+            };
+            assert!(
+                defence_selection(&mut d, &mut flags, &fallible_selection_input(), &mut owner)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(fail)
+            );
+            assert_eq!(owner.events, all[..=index]);
+            assert_eq!(d.near_state, 11);
+            assert_eq!(d.defence_counter, if index >= 3 { 7 } else { 1 });
+            assert_eq!(flags, if index >= 2 { 0xb1 } else { 0xa1 });
+            assert_eq!(
+                d.attack_state,
+                if index >= 5 {
+                    4
+                } else if index >= 2 {
+                    3
+                } else {
+                    0
+                }
+            );
+        }
+    }
+    #[test]
+    fn selected_move_uses_the_same_fallible_starter() {
+        let (mut d, mut flags) = (
+            CombatDecision {
+                defence_counter: 5,
+                ..Default::default()
+            },
+            0xa0,
+        );
+        let mut owner = FallibleSelectionServices {
+            fail: "start2",
+            ..Default::default()
+        };
+        assert!(
+            defence_selection(
+                &mut d,
+                &mut flags,
+                &DefenceSelectionInput {
+                    own_selected: 2,
+                    own_selector: 1,
+                    ..fallible_selection_input()
+                },
+                &mut owner
+            )
+            .is_err()
+        );
+        assert_eq!(owner.events, ["start2"]);
+        assert_eq!((d.attack_state, flags), (2, 0xb1));
     }
 }

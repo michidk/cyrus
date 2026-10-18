@@ -1021,3 +1021,12 @@ boundary does not initialize missing installed settings, establish camera model
 eligibility, bind renderer terrain, or enable automatic/scripted camera updates.
 The implemented calculations follow preservation's
 [camera rules](https://github.com/michidk/redguard-preservation/pull/95).
+
+`ScriptWorld::select_combat_defence` runs an explicit caller-admitted selection
+against one mutable live owner. Best/open queries resolve receiver attack slots
+lazily; paced selection and synchronous starters consume the same supplied RNG.
+Earlier writes survive later failures, including executor errors. Inputs remain
+caller-sampled and ordinary combat traversal remains unavailable. The current
+counter-attack query uses the retained attack slot and motion, with idle actions
+returning zero without metadata reads, following preservation's
+[selection rules](https://github.com/michidk/redguard-preservation/blob/86e5b96a091150556e3ce9dc8a84e95e0c572061/docs/engine/SOUP.md#best-and-open-defence-picks).

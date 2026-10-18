@@ -14477,7 +14477,9 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         label: *b"TEST",
         animation: 0,
     }];
-    scripts.instances[0].object_type = 1;
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
     scripts.combat_attacks = vec![
         cyrus_assets::script::combat::Attack {
             is_combo: false,
@@ -14769,5 +14771,382 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
             combat.decision.attack_state,
             i32::from(expected && !fail_sound)
         );
+    }
+    // The live selection owner must reload executor writes even after a sound error.
+    for fail_sound in [false, true] {
+        let mut snapshot = saved.clone();
+        let combat = &mut snapshot["actors"][0]["control"]["combat"];
+        combat["action"] = (-1).into();
+        combat["attack_indices"][1] = combat["attack_indices"][0].clone();
+        combat["decision"]["attack_state"] = 0.into();
+        combat["decision"]["defence_counter"] = 1.into();
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        let target = world.id(1).unwrap();
+        assert_eq!(
+            world.pick_combat_defence(id, target, 50, false).unwrap(),
+            Some(0)
+        );
+        assert!(
+            format!(
+                "{:#}",
+                world.pick_combat_defence(id, target, 50, true).unwrap_err()
+            )
+            .contains("counter-attack reference unavailable")
+        );
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        let mut cues = 0;
+        let result = world.select_combat_defence(
+            id,
+            target,
+            cyrus_game::script::decision::DefenceSelectionInput {
+                armed: true,
+                lockout_clear: true,
+                own_selected: 0,
+                target_in_arc: false,
+                distance: 0,
+                own_window_far: 0,
+                facing_alike: false,
+                target_in_combat_stance: false,
+                attribute_58: 0,
+                pacing_sum: 0,
+                defence_pacing: 0,
+                target_selected: -1,
+                target_frame: 0,
+                target_near: 0,
+                target_third: 0,
+                own_selector: 0,
+            },
+            cyrus_game::script::WeaponInputs {
+                selected_player: target,
+                item_system_ready: true,
+                shell_execution: false,
+            },
+            1,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _, _, _| anyhow::bail!("unexpected movement"),
+            &mut |_, _| {
+                cues += 1;
+                anyhow::ensure!(!fail_sound, "selection sound failure");
+                Ok(())
+            },
+        );
+        if fail_sound {
+            assert!(format!("{:#}", result.unwrap_err()).contains("selection sound failure"));
+        } else {
+            result.unwrap();
+        }
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!((combat.action, combat.retained_action_indices[1]), (1, 1));
+        assert_eq!(combat.decision.move_selector, 0);
+        assert_eq!(combat.decision.attack_state, i32::from(!fail_sound));
+        assert_eq!(combat.decision.aggression, if fail_sound { 50 } else { 40 });
+        assert_eq!(cues, 1);
+        assert_eq!(random.state(), if fail_sound { 42 } else { 1974836613 });
+    }
+    let mut snapshot = saved.clone();
+    snapshot["actors"][0]["control"]["combat"]["action"] = (-1).into();
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(snapshot).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let id = world.id(0).unwrap();
+    let target = world.id(1).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let error = world
+        .select_combat_defence(
+            id,
+            target,
+            cyrus_game::script::decision::DefenceSelectionInput {
+                armed: true,
+                lockout_clear: true,
+                own_selected: -1,
+                target_in_arc: true,
+                distance: 50,
+                own_window_far: 100,
+                facing_alike: false,
+                target_in_combat_stance: true,
+                attribute_58: 29,
+                pacing_sum: 100,
+                defence_pacing: 3,
+                target_selected: -1,
+                target_frame: 0,
+                target_near: 0,
+                target_third: 0,
+                own_selector: 0,
+            },
+            cyrus_game::script::WeaponInputs {
+                selected_player: target,
+                item_system_ready: true,
+                shell_execution: false,
+            },
+            1,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _, _, _| anyhow::bail!("unexpected movement"),
+            &mut |_, _| anyhow::bail!("unexpected sound"),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("attack slot 0: arc unavailable"));
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(combat.decision.defence_counter, 100);
+    assert_eq!(combat.flags, 49);
+    assert_eq!(combat.action, -1);
+    assert_eq!(random.state(), 3397979675);
+    // Best starts synchronously before paced selection consumes the next shared draw.
+    let mut snapshot = saved.clone();
+    let combat = &mut snapshot["actors"][0]["control"]["combat"];
+    combat["action"] = (-1).into();
+    combat["decision"]["attack_state"] = 0.into();
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(snapshot).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let id = world.id(0).unwrap();
+    let target = world.id(1).unwrap();
+    let (_, _, models) = static_model_fixture(cache());
+    let scene = ordinary_collision_scene(world.world, models);
+    for actor in [id, target] {
+        world
+            .prepare_ordinary_collision_shape(actor, &data, &scene)
+            .unwrap();
+    }
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let mut cues = 0;
+    let error = world
+        .select_combat_defence(
+            id,
+            target,
+            cyrus_game::script::decision::DefenceSelectionInput {
+                armed: true,
+                lockout_clear: true,
+                own_selected: -1,
+                target_in_arc: true,
+                distance: 50,
+                own_window_far: 100,
+                facing_alike: false,
+                target_in_combat_stance: true,
+                attribute_58: 29,
+                pacing_sum: 100,
+                defence_pacing: 1,
+                target_selected: 0,
+                target_frame: 1,
+                target_near: 0,
+                target_third: 0,
+                own_selector: 0,
+            },
+            cyrus_game::script::WeaponInputs {
+                selected_player: target,
+                item_system_ready: true,
+                shell_execution: false,
+            },
+            1,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _, _, _| anyhow::bail!("unexpected movement"),
+            &mut |_, _| {
+                cues += 1;
+                Ok(())
+            },
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("attack slot 0: arc unavailable"));
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!((combat.action, combat.retained_action_indices[1]), (0, 0));
+    assert_eq!(combat.decision.move_selector, 0);
+    assert_eq!(combat.decision.attack_state, 1);
+    assert_eq!(combat.decision.aggression, 40);
+    assert_eq!(combat.decision.defence_counter, 100);
+    assert_eq!(combat.flags, 1);
+    assert_eq!(cues, 1);
+    assert_eq!(random.state(), 238077914);
+}
+
+#[test]
+fn current_combat_counter_query_uses_retained_slot_motion_and_idle_gate() {
+    use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
+    scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
+        ("attr_14".into(), 1),
+        ("attr_73".into(), 1),
+        ("attr_75".into(), 2),
+    ]);
+    scripts.instances[0].object_type = 1;
+    scripts.combat_attacks = [
+        vec![],
+        vec![Some(0), Some(i32::MIN), Some(1), None],
+        vec![Some(99), Some(3)],
+    ]
+    .into_iter()
+    .map(|references| cyrus_assets::script::combat::Attack {
+        is_combo: true,
+        min_range: 0,
+        max_range: 100,
+        motions: references
+            .into_iter()
+            .enumerate()
+            .map(|(section, counter)| {
+                serde_json::from_value(serde_json::json!({
+                    "section":section,"kind":0,"animation_group":0,"min_range":0,"max_range":100,
+                    "first_collide_frame":0,"collide_duration":0,"defense":counter
+                }))
+                .unwrap()
+            })
+            .collect(),
+    })
+    .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "mpob_objects":[{"script_name":"LOGIC"},{"script_name":"LOGIC"}],
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "raan_entries":[{"frame_count":1,"file_path":"TEST.3D"}],
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]}),
+        sections: Default::default(),
+        models: BTreeMap::from([(
+            "TEST".into(),
+            cyrus_assets::animation::AnimationModel {
+                radius: Some(1.0),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "static_3d".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        )]),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    assert_eq!(world.current_combat_counter_attack(id).unwrap(), 0);
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    world.prepare_spatial().unwrap();
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    for (action, slot, motion, expected) in [
+        (-1, -99, -88, Ok(0)),
+        (9, -99, -88, Ok(0)),
+        (0, 5, 1, Ok(2)),
+        (7, 5, 1, Ok(2)),
+        (0, 3, 2, Ok(0)),
+        (0, 3, 0, Ok(-1)),
+        (0, 3, 1, Ok(i32::MAX)),
+        (
+            0,
+            3,
+            3,
+            Err("attack slot 3 motion 3: counter-attack reference unavailable"),
+        ),
+        (0, 3, 4, Err("attack slot 3 motion 4: unavailable")),
+        (0, 4, 0, Err("attack slot 4: unpopulated")),
+    ] {
+        let mut snapshot = saved.clone();
+        let combat = &mut snapshot["actors"][0]["control"]["combat"];
+        combat["action"] = action.into();
+        combat["retained_action_indices"] = serde_json::json!([-1, slot]);
+        combat["decision"]["move_selector"] = motion.into();
+        let restored = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let own = restored.id(0).unwrap();
+        let target = restored.id(1).unwrap();
+        // Rejected windows never query active metadata; best never needs counters.
+        assert_eq!(
+            restored
+                .pick_combat_defence(own, target, 200, true)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            restored
+                .pick_combat_defence(own, target, 50, false)
+                .unwrap(),
+            Some(3)
+        );
+        let open = restored.pick_combat_defence(own, target, 50, true);
+        match expected {
+            Ok(counter) => assert_eq!(open.unwrap(), Some(if counter == -1 { 5 } else { 3 })),
+            Err(_) => assert!(open.is_err()),
+        }
+        let result = restored.current_combat_counter_attack(restored.id(0).unwrap());
+        match expected {
+            Ok(expected) => assert_eq!(result.unwrap(), expected),
+            Err(expected) => {
+                let error = format!("{:#}", result.unwrap_err());
+                assert!(error.contains(expected), "{error}");
+                assert!(
+                    error.contains("instance 0 current counter-attack"),
+                    "{error}"
+                );
+            }
+        }
+        assert!(restored.current_combat_counter_attack(id).is_err());
     }
 }

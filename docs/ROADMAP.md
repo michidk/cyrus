@@ -300,10 +300,22 @@ The [query rules](https://github.com/michidk/redguard-preservation/blob/992803b5
 are published. This does not connect ordinary selection or establish live duels.
 Full workspace gates pass with 1,106 Rust test executions and zero installed-data skips.
 
+Explicit defence selection now uses one mutable live service owner for best/open/
+paced queries, shared RNG and synchronous starters. Errors retain earlier decision,
+selector, animation and sound writes. Best/open queries read optional counter
+metadata only when used. The current-counter query resolves the retained attack
+slot and current motion independently of its action gate.
+**Verified:** controlled original query-order probes and public registry contracts
+cover lazy metadata and synchronous service failure. This API still requires
+caller-sampled inputs and does not enable ordinary traversal or establish duels.
+The [query rules](https://github.com/michidk/redguard-preservation/blob/86e5b96a091150556e3ce9dc8a84e95e0c572061/docs/engine/SOUP.md#best-and-open-defence-picks)
+are published. Workspace gate checks pass with 1,107 distinct Rust tests and zero
+installed-data skips after resuming an interrupted test run.
+
 Next, in dependency order:
 
-1. Bind the lazy paced picker and synchronous starters to the selection's shared
-   live service owner, propagating service errors and preserving earlier writes.
+1. Supply the live selection owner with ordinary scheduler admission, receiver/target
+   combat and animation samples, preserving branch-specific metadata reads.
    Compare installed START allocation assignments before claiming automatic actor pacing.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
