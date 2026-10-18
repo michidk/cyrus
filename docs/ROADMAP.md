@@ -268,11 +268,23 @@ failure retains committed combat state. This does not enable ordinary selection
 or establish automatic START duel acceptance. Full workspace gates pass with
 1,103 Rust test executions and zero installed-data skips.
 
+Receiver-owned defence starters now call the live executor synchronously. They
+read authored slots, action, cooldown and weapon transitions from the logical actor.
+**Verified:** public synthetic contracts cover selected-player/NPC chain admission,
+blocked starts, selector visibility before selected-player movement, and committed
+selectors after animation sound failure. Selected-player kind-four movement remains
+a required caller service; ordinary combat does not substitute a successful no-op.
+**Verified:** rooted original loading and controlled bulk-placement execution establish
+authored model-construction order before standalone player roles, matching the
+current initialization sequence. The [construction fact](https://github.com/michidk/redguard-preservation/blob/cecc337abf825a549de02c074d69c5c5b67f98f5/docs/engine/SOUP.md#combat-maintenance)
+is published; installed START allocation assignments remain unchecked.
+Full workspace gates pass with 1,103 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
 1. Invoke the paced picker with the receiver-owned prepared candidates and
-   connect synchronous starters to the live executor and its timed-taunt service.
-   Verify original map/player construction order before claiming automatic actor pacing.
+   invoke the bound synchronous starters and their timed-taunt service.
+   Compare installed START allocation assignments before claiming automatic actor pacing.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain

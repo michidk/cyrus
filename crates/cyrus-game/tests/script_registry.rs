@@ -14415,6 +14415,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
     scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
     scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
         ("attr_14".into(), 1),
+        ("attr_16".into(), 17),
         ("attr_70".into(), 1),
         ("attr_87".into(), 127),
         ("attr_num_taunts".into(), 1),
@@ -14578,5 +14579,117 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
                 1
             );
         }
+    }
+
+    // Exercise the world starter against live receiver ownership, not caller-provided admission.
+    for (kind, selected_player, action, cooldown, living, fail_movement, expected) in [
+        (0, true, -1, 0, 0, false, true),
+        (0, true, 0, 0, 0, false, false),
+        (1, false, 5, 0, 0, false, true),
+        (1, true, 5, 0, 0, false, false),
+        (4, true, -1, 1, 0, false, false),
+        (4, true, -1, 0, 20, false, false),
+        (4, true, -1, 0, 0, true, false),
+        (4, true, -1, 0, 0, false, true),
+        (4, false, -1, 0, 0, false, true),
+        (8, true, -1, 0, 0, false, true),
+        (6, true, -1, 0, 0, false, true),
+        (7, true, -1, 0, 0, false, false),
+        (9, true, -1, 0, 0, false, false),
+    ] {
+        let mut snapshot = saved.clone();
+        let control = &mut snapshot["actors"][0]["control"];
+        control["living_state"] = living.into();
+        let combat = &mut control["combat"];
+        combat["action"] = action.into();
+        combat["retained_action_indices"][1] = (-1).into();
+        combat["cooldown"] = cooldown.into();
+        let attack = combat["attack_indices"][0].clone();
+        for slot in [1, 4, 6, 8] {
+            combat["attack_indices"][slot] = attack.clone();
+        }
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        let selected = if selected_player {
+            id
+        } else {
+            world.id(1).unwrap()
+        };
+        let fail_sound = kind == 6;
+        let mut moved = false;
+        let mut cues = 0;
+        let result = world.start_combat_defence(
+            id,
+            kind,
+            cyrus_game::script::WeaponInputs {
+                selected_player: selected,
+                item_system_ready: true,
+                shell_execution: false,
+            },
+            1,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut Default::default(),
+            |world, owner, distance, mode| {
+                assert_eq!(owner, id);
+                assert_eq!((distance, mode), (17 << 8, 1));
+                let combat = world.actors()[0]
+                    .control_state()
+                    .unwrap()
+                    .combat
+                    .as_ref()
+                    .unwrap();
+                assert_eq!((combat.action, combat.retained_action_indices[1]), (-1, -1));
+                moved = true;
+                anyhow::ensure!(!fail_movement, "injected starter movement failure");
+                Ok(())
+            },
+            &mut |_, _| {
+                cues += 1;
+                anyhow::ensure!(!fail_sound, "injected starter sound failure");
+                Ok(())
+            },
+        );
+        if fail_movement {
+            assert!(
+                format!("{:#}", result.unwrap_err()).contains("injected starter movement failure")
+            );
+        } else if fail_sound {
+            assert!(
+                format!("{:#}", result.unwrap_err()).contains("injected starter sound failure")
+            );
+        } else {
+            assert_eq!(result.unwrap(), expected, "kind {kind}");
+        }
+        assert_eq!(
+            moved,
+            kind == 4 && selected_player && cooldown == 0 && living == 0
+        );
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.action, combat.retained_action_indices[1]),
+            if expected { (kind, kind) } else { (action, -1) }
+        );
+        assert_eq!(cues, usize::from(expected));
+        assert_eq!(
+            combat.decision.attack_state,
+            i32::from(expected && !fail_sound)
+        );
     }
 }

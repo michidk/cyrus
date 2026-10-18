@@ -104,6 +104,11 @@ attack through the shared animation, sound and timed-taunt services. It tests th
 following motion for chains, sets the finite loop countdown after requesting
 animation and retains earlier writes when a synchronous service fails. This does
 not yet connect ordinary defence selection or establish live duel acceptance.
+`ScriptWorld::start_combat_defence` reads admission from the receiver's live attack
+slots, selected move, cooldown and weapon transition state, then calls that executor
+before returning. Selected-player kind-four movement is a caller-owned synchronous
+service, invoked before selector writes; an unavailable movement service must return
+an error. This binding does not supply ordinary combat traversal or movement.
 
 `DialogueState::snapshot` retains ordered records, formatted text, remaining
 lifetimes, skip latch and presentation selection. `from_snapshot` returns a
