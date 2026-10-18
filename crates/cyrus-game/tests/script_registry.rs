@@ -9313,10 +9313,16 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
         (0, [1, 2, 3, 4], [None; 4]),
     ] {
         let mut scripts = cache();
-        scripts.combat_attacks = (0..57)
+        scripts.combat_attacks = (0..65)
             .map(|index| cyrus_assets::script::combat::Attack {
                 is_combo: true,
-                motions: vec![],
+                motions: vec![
+                    serde_json::from_value(serde_json::json!({
+                        "section":index,"kind":0,"animation_group":0,
+                        "min_range":0,"max_range":0,"first_collide_frame":0,"collide_duration":0
+                    }))
+                    .unwrap(),
+                ],
                 min_range: 65535,
                 max_range: index,
             })
@@ -9413,7 +9419,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
                 .combat_defence_candidate(first, 2)
                 .unwrap_err()
                 .to_string()
-                .contains("first motion unavailable")
+                .contains("counter-attack reference unavailable")
         );
         assert!(world.combat_defence_candidate(second, 0).is_err());
 
@@ -9421,12 +9427,9 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             world.combat_attack(first, 2).unwrap().unwrap().max_range,
             56
         );
-        assert!(
-            world
-                .combat_attack(first, 8)
-                .unwrap_err()
-                .to_string()
-                .contains("attack64 definition unavailable")
+        assert_eq!(
+            world.combat_attack(first, 8).unwrap().unwrap().max_range,
+            64
         );
         assert!(world.combat_attack(first, 9).is_err());
         assert!(world.combat_attack(second, 0).is_err());
@@ -14018,7 +14021,7 @@ fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() 
             .enumerate()
             .map(|(index, damage)| {
                 serde_json::from_value(serde_json::json!({
-                    "section":index,"kind":0,"animation_group":97,
+                    "section":index,"kind":1,"animation_group":97,
                     "min_range":if index == 0 {10} else {-999},
                     "max_range":if index == 0 {100} else {9999},
                     "first_collide_frame":7,"collide_duration":3,"defense":2,
@@ -14059,6 +14062,16 @@ fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() 
         world
             .initialize_map_animation(own, &data, 1, &mut |_, _| Ok(()))
             .unwrap();
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .spacing_ranges,
+            [-999, 9999, 4500]
+        );
         world.prepare_spatial().unwrap();
         let stale = cyrus_game::script::ScriptActorId {
             generation: 2,
@@ -14494,7 +14507,25 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         animations: &data,
         collision: &collision,
     };
+    let constructed = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(constructed.spacing_ranges, [10000, 30000, 20000]);
+    assert_eq!(constructed.spacing_period, 129);
     let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    for field in ["spacing_ranges", "spacing_period"] {
+        let mut incomplete = saved.clone();
+        incomplete["actors"][0]["control"]["combat"]
+            .as_object_mut()
+            .unwrap()
+            .remove(field);
+        assert!(serde_json::from_value::<cyrus_game::script::WorldSnapshot>(incomplete).is_err());
+    }
+    saved["actors"][0]["control"]["combat"]["spacing_ranges"] = serde_json::json!([10, 90, 25]);
+    saved["actors"][0]["control"]["combat"]["spacing_period"] = (-7).into();
     let combat = &mut saved["actors"][0]["control"]["combat"];
     combat["action"] = 0.into();
     combat["retained_action_indices"] = serde_json::json!([-1, 0]);
@@ -14530,6 +14561,14 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
             },
         )
         .unwrap();
+        let restored = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(restored.spacing_ranges, [10, 90, 25]);
+        assert_eq!(restored.spacing_period, -7);
         let id = world.id(0).unwrap();
         let mut cues = 0;
         let result = world.execute_combat_defence(

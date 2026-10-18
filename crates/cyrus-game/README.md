@@ -104,6 +104,11 @@ attack through the shared animation, sound and timed-taunt services. It tests th
 following motion for chains, sets the finite loop countdown after requesting
 animation and retains earlier writes when a synchronous service fails. This does
 not yet connect ordinary defence selection or establish live duel acceptance.
+Combat construction derives the retained near, far and averaged-midpoint spacing
+ranges from the receiver's nine attack slots, and the spacing divisor from
+attribute 88. Map actors and standalone player roles use the same constructor.
+Missing attack definitions or first motions fail with world, instance and slot
+context. Snapshots retain these values and reject records that omit them.
 `ScriptWorld::start_combat_defence` reads admission from the receiver's live attack
 slots, selected move, cooldown and weapon transition state, then calls that executor
 before returning. Selected-player kind-four movement is a caller-owned synchronous

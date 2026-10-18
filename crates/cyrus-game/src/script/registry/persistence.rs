@@ -56,6 +56,8 @@ struct CombatSnapshot {
     taunt_dialogue: Option<usize>,
     taunt_active: i32,
     taunt_period: i32,
+    spacing_ranges: [i32; 3],
+    spacing_period: i32,
     #[serde(default)]
     strength: i32,
     #[serde(default)]
@@ -160,6 +162,8 @@ impl CombatSnapshot {
             taunt_dialogue: combat.taunt_dialogue,
             taunt_active: combat.taunt_active,
             taunt_period: combat.taunt_period,
+            spacing_ranges: combat.spacing_ranges,
+            spacing_period: combat.spacing_period,
             strength: combat.strength,
             armor: combat.armor,
             decision: combat.decision,
@@ -187,6 +191,8 @@ impl CombatSnapshot {
             taunt_dialogue: self.taunt_dialogue,
             taunt_active: self.taunt_active,
             taunt_period: self.taunt_period,
+            spacing_ranges: self.spacing_ranges,
+            spacing_period: self.spacing_period,
             strength: self.strength,
             armor: self.armor,
             decision: self.decision,

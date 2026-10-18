@@ -1189,7 +1189,11 @@ impl ScriptWorld {
                     &actor.attributes,
                     control.combat.as_ref(),
                     &mut self.next_combat_index,
-                );
+                    &self.combat_attacks,
+                )
+                .with_context(|| {
+                    format!("world {} instance {index} combat construction", self.world)
+                })?;
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 Ok(())
             }
@@ -1349,7 +1353,14 @@ impl ScriptWorld {
             &actor.attributes,
             control.combat.as_ref(),
             &mut self.next_combat_index,
-        );
+            &self.combat_attacks,
+        )
+        .with_context(|| {
+            format!(
+                "world {} instance {index} player combat construction",
+                self.world
+            )
+        })?;
         match crate::player::placement::initial_role_animation(data, actor.name(), ticks, sounds) {
             Ok((playback, frame)) => {
                 actor.animation = Some(ScriptAnimation { playback, frame });

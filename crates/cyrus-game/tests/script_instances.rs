@@ -1098,3 +1098,74 @@ fn installed_shrines_read_player_heading_before_nonstanding_branch() {
     assert_eq!(world.flags(), flags);
     assert_eq!(world.model_support(player).unwrap(), support);
 }
+
+#[test]
+fn installed_start_combat_constructors_retain_original_spacing_ranges() {
+    let root = std::env::var_os("REDGUARD_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../redguard"));
+    let Ok(install) = cyrus_assets::install::GameInstall::locate(Some(&root)) else {
+        eprintln!("skipped: no install (START combat constructor spacing)");
+        return;
+    };
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../cyrus-config/tests")
+        .join(format!("start-combat-spacing-{}", std::process::id()));
+    let path = directory.join("START.glb");
+    cyrus_assets::scene::export_scene(&install, "START", &path).unwrap();
+    let scripts: cyrus_assets::script::Scripts =
+        serde_json::from_slice(&std::fs::read(path.with_extension("scripts")).unwrap()).unwrap();
+    let data: cyrus_assets::animation::Animations =
+        serde_json::from_slice(&std::fs::read(path.with_extension("animations")).unwrap()).unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut names = Vec::new();
+    for index in 0..world.actors().len() {
+        if world.actors()[index].attributes()[14] == 0 {
+            continue;
+        }
+        let id = world.id(index).unwrap();
+        match world.actors()[index].source {
+            ScriptActorSource::Map(_) => world
+                .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+                .unwrap(),
+            ScriptActorSource::Player | ScriptActorSource::AlternatePlayer => world
+                .initialize_player_animation(id, &data, 0, &mut |_| Ok(()))
+                .unwrap(),
+            ScriptActorSource::Camera => panic!("camera unexpectedly has combat attributes"),
+        }
+        let actor = &world.actors()[index];
+        let combat = actor.control_state().unwrap().combat.as_ref().unwrap();
+        // Original constructor execution with the installed START attack definitions.
+        assert_eq!(
+            combat.spacing_ranges,
+            [10000, 30000, 20000],
+            "{}",
+            actor.name()
+        );
+        assert_eq!(
+            combat.spacing_period,
+            if matches!(actor.name(), "SPIRATE1" | "SPIRATE2") {
+                29
+            } else {
+                129
+            }
+        );
+        eprintln!(
+            "START constructor {}: ranges {:?}, period {}",
+            actor.name(),
+            combat.spacing_ranges,
+            combat.spacing_period
+        );
+        names.push(actor.name().to_owned());
+    }
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "CYRUS", "GREMLIN", "SBRENNAN", "SPIRATE1", "SPIRATE2", "SPIRATE3", "SPIRATE4",
+            "SPIRATE5", "SVANDAR"
+        ]
+    );
+    std::fs::remove_dir_all(directory).unwrap();
+}

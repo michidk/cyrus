@@ -280,6 +280,16 @@ current initialization sequence. The [construction fact](https://github.com/mich
 is published; installed START allocation assignments remain unchecked.
 Full workspace gates pass with 1,103 Rust test executions and zero installed-data skips.
 
+Combat construction now retains the receiver's spacing ranges and attribute-88
+period for map actors and standalone player roles, including snapshot restoration.
+**Verified:** eight controlled original constructor cases establish slot counting,
+motion/attack range ownership and wrapping arithmetic. The [spacing rules](https://github.com/michidk/redguard-preservation/blob/035f1aacfa45a80bb4b658418c4f690658e65be3/docs/engine/SOUP.md#combat-maintenance)
+are published. This supplies state for spacing; it does not enable movement or
+ordinary combat decisions. **Verified:** the installed START constructor test
+matches original-derived ranges for all nine combat-capable actors, including
+both pirates and standalone player roles. Automatic/rendered combat remains open.
+Full workspace gates pass with 1,105 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
 1. Invoke the paced picker with the receiver-owned prepared candidates and

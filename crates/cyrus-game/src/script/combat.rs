@@ -75,6 +75,10 @@ pub struct CombatControlState {
     pub taunt_active: i32,
     /// Signed constructor-owned timed-taunt divisor: 129 minus attribute 87.
     pub taunt_period: i32,
+    /// Constructor near, far and averaged-midpoint ranges in runtime position units.
+    pub spacing_ranges: [i32; 3],
+    /// Signed spacing divisor: 129 minus attribute 88.
+    pub spacing_period: i32,
     /// Script-assigned strength and armor values (`setStrength`, `setArmor`).
     pub strength: i32,
     pub armor: i32,
@@ -97,6 +101,8 @@ impl Default for CombatControlState {
             taunt_dialogue: Some(0),
             taunt_active: 0,
             taunt_period: 0,
+            spacing_ranges: [10000, 30000, 20000],
+            spacing_period: 0,
             strength: 0,
             armor: 0,
             decision: CombatDecision::default(),
@@ -110,10 +116,13 @@ impl CombatControlState {
         attributes: &[u8],
         previous: Option<&Self>,
         next_index: &mut i32,
-    ) -> Option<Self> {
+        attacks: &[cyrus_assets::script::combat::Attack],
+    ) -> Result<Option<Self>> {
         if attributes[14] == 0 {
-            return None;
+            return Ok(None);
         }
+        let mut record = Self::from_attributes(attributes);
+        record.spacing_ranges = record.derive_spacing_ranges(attacks)?;
         let allocation_index = previous.map_or_else(
             || {
                 let index = *next_index;
@@ -122,9 +131,46 @@ impl CombatControlState {
             },
             |record| record.allocation_index,
         );
-        Some(Self {
-            allocation_index,
-            ..Self::from_attributes(attributes)
+        record.allocation_index = allocation_index;
+        Ok(Some(record))
+    }
+
+    /// Aggregate authored slots using preservation's combat-construction rules.
+    fn derive_spacing_ranges(
+        &self,
+        attacks: &[cyrus_assets::script::combat::Attack],
+    ) -> Result<[i32; 3]> {
+        let mut near = i32::MAX;
+        let mut far = 0;
+        let mut midpoint_sum = 0i32;
+        let mut populated = 0;
+        let mut matched = false;
+        for (slot, index) in self.attack_indices.iter().enumerate() {
+            let Some(index) = index else { continue };
+            let attack = attacks.get(usize::from(*index)).with_context(|| {
+                format!("combat spacing slot {slot}: attack{index:02} definition unavailable")
+            })?;
+            let motion = attack.motions.first().with_context(|| {
+                format!("combat spacing slot {slot}: attack{index:02} first motion unavailable")
+            })?;
+            populated += 1;
+            if motion.kind != 1 {
+                continue;
+            }
+            matched = true;
+            near = near.min(attack.min_range);
+            if motion.max_range > far {
+                far = attack.max_range;
+            }
+            let midpoint = attack
+                .min_range
+                .wrapping_add(attack.max_range.wrapping_sub(attack.min_range) / 2);
+            midpoint_sum = midpoint_sum.wrapping_add(midpoint);
+        }
+        Ok(if matched {
+            [near, far, midpoint_sum / populated]
+        } else {
+            [10000, 30000, 20000]
         })
     }
 
@@ -148,6 +194,7 @@ impl CombatControlState {
             strength: i32::from(attributes[2]),
             armor: i32::from(attributes[4]),
             taunt_period: 129 - i32::from(attributes[87]),
+            spacing_period: 129 - i32::from(attributes[88]),
             decision: CombatDecision::from_attributes(attributes),
             ..Self::default()
         }
@@ -574,13 +621,24 @@ mod constructor_tests {
     fn reinitialization_retains_allocation_but_resets_executor_state() {
         let mut attributes = [0; 256];
         let mut next = 7;
-        assert!(CombatControlState::initialize(&attributes, None, &mut next).is_none());
+        assert!(
+            CombatControlState::initialize(&attributes, None, &mut next, &[])
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(next, 7);
         attributes[14] = 1;
-        let mut record = CombatControlState::initialize(&attributes, None, &mut next).unwrap();
+        let mut record = CombatControlState::initialize(&attributes, None, &mut next, &[])
+            .unwrap()
+            .unwrap();
         record.decision.attack_state = 2;
+        record.spacing_ranges = [-1; 3];
+        record.spacing_period = -1;
         attributes[87] = 124;
-        let record = CombatControlState::initialize(&attributes, Some(&record), &mut next).unwrap();
+        attributes[88] = 126;
+        let record = CombatControlState::initialize(&attributes, Some(&record), &mut next, &[])
+            .unwrap()
+            .unwrap();
         assert_eq!(
             (
                 record.allocation_index,
@@ -590,6 +648,87 @@ mod constructor_tests {
             ),
             (7, 8, 0, 5)
         );
+        assert_eq!(record.spacing_ranges, [10000, 30000, 20000]);
+        assert_eq!(record.spacing_period, 3);
+    }
+
+    #[test]
+    fn constructor_spacing_matches_original_slot_aggregation() {
+        use cyrus_assets::script::combat::{Attack, Motion};
+        let cases: &[(&[[i32; 4]], [i32; 3])] = &[
+            (&[], [10000, 30000, 20000]),
+            (&[[2, 10, 90, 90]], [10000, 30000, 20000]),
+            (&[[1, 10, 90, 90]], [10, 90, 50]),
+            (&[[1, 10, 90, 90], [2, 100, 200, 200]], [10, 90, 25]),
+            (&[[1, 10, 90, 100], [1, 20, 200, 95]], [10, 200, 80]),
+            (&[[1, -9, -2, 10]], [-9, -2, -6]),
+            (
+                &[[1, 2147483640, -2147483640, 2147483647]],
+                [2147483640, -2147483640, i32::MIN],
+            ),
+            (
+                &[[1, 2147483640, 2147483646, 2147483647]; 2],
+                [2147483640, 2147483646, -5],
+            ),
+        ];
+        for &(slots, expected) in cases {
+            let mut attributes = [0; 256];
+            attributes[14] = 1;
+            attributes[88] = 127;
+            let mut attacks = vec![Attack {
+                is_combo: false,
+                motions: vec![],
+                min_range: 0,
+                max_range: 0,
+            }];
+            for (slot, &[kind, min_range, max_range, motion_max]) in slots.iter().enumerate() {
+                attributes[70 + slot] = attacks.len() as u8;
+                let motion: Motion = serde_json::from_value(serde_json::json!({
+                    "section":1,"kind":kind,"animation_group":0,
+                    "min_range":0,"max_range":motion_max,
+                    "first_collide_frame":0,"collide_duration":0
+                }))
+                .unwrap();
+                attacks.push(Attack {
+                    is_combo: false,
+                    motions: vec![motion],
+                    min_range,
+                    max_range,
+                });
+            }
+            let mut next = 0;
+            let record = CombatControlState::initialize(&attributes, None, &mut next, &attacks)
+                .unwrap()
+                .unwrap();
+            assert_eq!(record.spacing_ranges, expected, "slots {slots:?}");
+            assert_eq!(record.spacing_period, 2);
+            assert_eq!(next, 1);
+        }
+        let mut attributes = [0; 256];
+        attributes[14] = 1;
+        attributes[70] = 9;
+        let mut next = 5;
+        let error = CombatControlState::initialize(&attributes, None, &mut next, &[]).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("slot 0: attack09 definition unavailable")
+        );
+        assert_eq!(next, 5);
+        let empty = cyrus_assets::script::combat::Attack {
+            is_combo: true,
+            motions: vec![],
+            min_range: 0,
+            max_range: 0,
+        };
+        let error = CombatControlState::initialize(&attributes, None, &mut next, &vec![empty; 10])
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("slot 0: attack09 first motion unavailable")
+        );
+        assert_eq!(next, 5);
     }
 
     #[test]
