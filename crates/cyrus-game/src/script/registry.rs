@@ -2863,6 +2863,24 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(self.globals.potions[slot]));
         }
+        if function.eq_ignore_ascii_case("AdjustStrength")
+            || function.eq_ignore_ascii_case("AdjustArmor")
+        {
+            anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
+            let delta = arguments[0].integer()?;
+            let combat = self.actors[self.index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .with_context(|| format!("{function}: receiver combat record unavailable"))?;
+            let value = if function.eq_ignore_ascii_case("AdjustStrength") {
+                &mut combat.strength
+            } else {
+                &mut combat.armor
+            };
+            *value = value.wrapping_add(delta);
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("setStrength") || function.eq_ignore_ascii_case("setArmor")
         {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");

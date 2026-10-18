@@ -3017,7 +3017,7 @@ fn hook_toggles_set_and_clear_only_the_native_hook_suppression_bit() {
 
 #[test]
 fn strength_and_armor_need_a_combat_record() {
-    for name in ["setStrength", "setArmor"] {
+    for name in ["setStrength", "setArmor", "AdjustStrength", "AdjustArmor"] {
         let error = run_native_calls(&[(name, &[100][..])]).unwrap_err();
         assert!(
             format!("{error:#}").contains("receiver combat record unavailable"),
