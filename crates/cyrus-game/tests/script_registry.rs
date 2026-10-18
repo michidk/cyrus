@@ -78,6 +78,7 @@ fn cache() -> Scripts {
         camera: Default::default(),
         combat_attacks: vec![],
         in_combat_threshold: None,
+        non_engaged_spacing: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -15678,6 +15679,275 @@ fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
         assert_eq!(
             world.actors()[id.index].runtime().unwrap().active_tasks(),
             0
+        );
+    }
+}
+
+fn facing_world(
+    heading: u32,
+    destination: [i64; 3],
+    group: Option<u16>,
+) -> (
+    ScriptWorld,
+    cyrus_game::script::ScriptActorId,
+    cyrus_game::script::ScriptActorId,
+) {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let mut scripts = cache();
+    scripts.instances[0].map_position = [0, 5, 0];
+    scripts.instances[0].angles[1] = heading;
+    scripts.instances[1].map_position = destination;
+    for (attribute, value) in [
+        (8, 4),
+        (9, 5),
+        (10, 6),
+        (12, 2),
+        (13, 3),
+        (15, 16),
+        (17, 8),
+        (19, 7),
+        (21, 32),
+    ] {
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert(format!("attr_{attribute}"), value);
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let target = world.id(1).unwrap();
+    if let Some(group) = group {
+        let mut groups = vec![group, 14, 15, 16, 17, 96, 97];
+        groups.sort_unstable();
+        groups.dedup();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,
+                "actors":[{"script_name":"LOGIC","animation_groups":groups.into_iter().map(|group| serde_json::json!({
+                    "group_index":group,"anim_id":group+1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":group},{"opcode":2,"value":0}]
+                })).collect::<Vec<_>>()}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        world.bind_animation(id, &data, group).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+    }
+    (world, id, target)
+}
+
+#[test]
+fn ordinary_facing_snaps_at_each_current_group_speed_boundary_and_preserves_y_and_heading() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    for (group, units) in [
+        (None, 1),
+        (Some(0), 1),
+        (Some(18), 5),
+        (Some(30), 5),
+        (Some(142), 5),
+        (Some(19), 6),
+        (Some(143), 6),
+        (Some(20), 3),
+        (Some(21), 3),
+        (Some(22), 4),
+        (Some(23), 4),
+        (Some(24), 7),
+        (Some(25), 7),
+        (Some(26), 7),
+        (Some(27), 7),
+        (Some(31), 8),
+        (Some(92), 9),
+        (Some(93), 9),
+    ] {
+        let (mut world, id, target) = facing_world(400, [units, -3, 0], group);
+        let previous_frame = world.animation_frame(id).unwrap();
+        let angle = world
+            .face_ordinary_target(
+                id,
+                target,
+                OrdinarySlopeInputs {
+                    selected_player: None,
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: 256,
+                    ticks: 0,
+                },
+                &mut |_, _| panic!("arrival must not request animation sounds"),
+            )
+            .unwrap();
+        assert_eq!(angle, 0, "{group:?}");
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [units as i32 * 256, 1280, 0],
+            "{group:?}"
+        );
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], 400);
+        assert_eq!(world.animation_frame(id).unwrap(), previous_frame);
+    }
+}
+
+#[test]
+fn ordinary_facing_returns_pre_turn_angle_and_uses_independent_weapon_rate_and_groups() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    for (heading, weapon, combat, expected_heading, expected_angle, expected_group) in [
+        (384, false, false, 400, 128, 14),
+        (640, false, false, 624, -128, 15),
+        (384, false, true, 416, 128, 14),
+        (384, true, false, 416, 128, 96),
+        (640, true, true, 608, -128, 97),
+        (496, false, false, 512, 0, 0),
+    ] {
+        let (mut world, id, target) = facing_world(heading, [10, -3, 0], Some(0));
+        assert_eq!(
+            world
+                .face_ordinary_target(
+                    id,
+                    target,
+                    OrdinarySlopeInputs {
+                        selected_player: None,
+                        holding_weapon: weapon,
+                        combat_active: combat,
+                        frame_scale: 256,
+                        ticks: 0,
+                    },
+                    &mut |_, _| Ok(())
+                )
+                .unwrap(),
+            expected_angle
+        );
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], expected_heading);
+        assert_eq!(world.animation_frame(id).unwrap(), Some(expected_group));
+        assert_eq!(world.spatial(id).unwrap().local.position, [0, 1280, 0]);
+    }
+}
+
+#[test]
+fn ordinary_facing_handles_absent_animation_wrapping_scale_and_selected_player_rejection() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    let (mut world, id, target) = facing_world(400, [2, -3, 0], None);
+    assert_eq!(
+        world
+            .face_ordinary_target(
+                id,
+                target,
+                OrdinarySlopeInputs {
+                    selected_player: None,
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: 256,
+                    ticks: 0,
+                },
+                &mut |_, _| panic!("absent animation requested sound")
+            )
+            .unwrap(),
+        112
+    );
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 416);
+    let before = world.spatial(id).unwrap().local;
+    let error = world
+        .face_ordinary_target(
+            id,
+            target,
+            OrdinarySlopeInputs {
+                selected_player: Some(id),
+                holding_weapon: false,
+                combat_active: false,
+                frame_scale: 256,
+                ticks: 0,
+            },
+            &mut |_, _| Ok(()),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("selected-player facing camera unavailable"));
+    assert_eq!(world.spatial(id).unwrap().local.position, before.position);
+    assert_eq!(world.spatial(id).unwrap().local.angles, before.angles);
+    let (mut world, id, target) = facing_world(400, [0, -3, 0], None);
+    assert_eq!(
+        world
+            .face_ordinary_target(
+                id,
+                target,
+                OrdinarySlopeInputs {
+                    selected_player: None,
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: u32::MAX,
+                    ticks: 0,
+                },
+                &mut |_, _| Ok(())
+            )
+            .unwrap(),
+        -400
+    );
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 392);
+    assert_eq!(world.spatial(id).unwrap().local.position, [0, 1280, 0]);
+}
+
+#[test]
+fn ordinary_facing_arrival_registers_cell_movement_until_the_deferred_pass() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    for excluded in [false, true] {
+        let mut scripts = cache();
+        scripts.instances[0].map_position = [512, 5, 512];
+        scripts.instances[1].map_position = [511, -3, 512];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let target = world.id(1).unwrap();
+        world.ordinary_actors([0, 0]).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                world
+                    .face_ordinary_target(
+                        id,
+                        target,
+                        OrdinarySlopeInputs {
+                            selected_player: None,
+                            holding_weapon: false,
+                            combat_active: false,
+                            frame_scale: 256,
+                            ticks: 0,
+                        },
+                        &mut |_, _| Ok(())
+                    )
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [130816, 1280, 131072]
+        );
+        world.flush_map_updates([0; 3], excluded).unwrap();
+        world.ordinary_actors([6000, 6000]).unwrap();
+        assert_eq!(
+            world
+                .ordinary_actors([0, 0])
+                .unwrap()
+                .iter()
+                .map(|id| id.index)
+                .collect::<Vec<_>>(),
+            if excluded { vec![1, 0] } else { vec![0, 1] }
         );
     }
 }

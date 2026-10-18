@@ -353,6 +353,14 @@ geometry and snapshot token restoration.
 Selected-player walking, routed candidate rebinding, full deep-water movement and
 original/native/browser combat acceptance remain open.
 
+**Verified:** explicit ordinary target facing reads live local positions and current
+animation speed, snaps X/Z before turning, preserves Y and heading on arrival,
+and registers deferred cell movement. Turn results retain the pre-step signed
+angle. Headless contracts cover speed groups, boundaries, weapon/rate branches,
+absent animation and deferred relocation. Script exports retain the installed
+unscaled neighbor-spacing threshold. Automatic fight spacing and selected-player
+camera feedback remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

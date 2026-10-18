@@ -357,6 +357,8 @@ pub struct Scripts {
     pub combat_attacks: Vec<combat::Attack>,
     /// Installed fighting-query horizontal threshold in Q8 units, with wrapping conversion.
     pub in_combat_threshold: Option<i32>,
+    /// Installed multiple-attacker angular spacing threshold, without scaling.
+    pub non_engaged_spacing: Option<i32>,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
     /// Required in exported caches (schema 16); the default only serves synthetic fixtures.
@@ -382,6 +384,7 @@ impl Scripts {
             self.version,
             &self.combat_attacks,
             self.in_combat_threshold,
+            self.non_engaged_spacing,
             &self.clock,
             &self.updates,
             &self.camera,

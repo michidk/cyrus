@@ -95,7 +95,7 @@ pub fn ordinary_slope_turn(
     }
 }
 
-/// Caller-established predicates for an admitted nonplayer slope stage.
+/// Caller-established predicates and timing for nonplayer slope and facing operations.
 /// Combat mode is separate from the existence of a combat record. The caller
 /// supplies the weapon predicate after item/shell services and actor overrides.
 pub struct OrdinarySlopeInputs {
@@ -107,6 +107,112 @@ pub struct OrdinarySlopeInputs {
 }
 
 impl ScriptWorld {
+    /// Face a target from local Q8 X/Z, following preservation's combat-maintenance
+    /// facing rule. Arrival snaps X/Z and registers a deferred map update without
+    /// changing Y or heading. Otherwise return the signed pre-turn difference,
+    /// or zero when the ordinary turn snaps. Selected-player camera feedback
+    /// requires its own owner and is rejected before writes.
+    pub fn face_ordinary_target(
+        &mut self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let result = (|| -> Result<i32> {
+            let index = self.resolve(id)?;
+            self.resolve(target)?;
+            ensure!(
+                inputs.selected_player != Some(id),
+                "selected-player facing camera unavailable"
+            );
+            let actor = &self.actors[index];
+            let group = actor
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group());
+            let speed_attribute = match group {
+                Some(18 | 30 | 142) => Some(8),
+                Some(19 | 143) => Some(9),
+                Some(20 | 21) => Some(12),
+                Some(22 | 23) => Some(13),
+                Some(24..=27) => Some(10),
+                Some(31) => Some(19),
+                Some(92 | 93) => Some(17),
+                _ => None,
+            };
+            let speed = speed_attribute
+                .map(|attribute| actor.attributes[attribute])
+                .unwrap_or(0);
+            let origin = self.spatial(id)?.local;
+            let destination = self.spatial(target)?.local.position;
+            let x = destination[0].wrapping_sub(origin.position[0]);
+            let z = destination[2].wrapping_sub(origin.position[2]);
+            let distance = cyrus_collision::distance::rounded_distance([x, 0, z])?;
+            let threshold =
+                ((i32::from(speed) + 1) << 8).wrapping_mul(inputs.frame_scale as i32) >> 8;
+            if distance <= threshold {
+                let position = &mut self
+                    .spatial
+                    .as_mut()
+                    .context("spatial owner unavailable")?
+                    .actor_mut(index)?
+                    .local
+                    .position;
+                position[0] = destination[0];
+                position[2] = destination[2];
+                if !self.map_updates.contains(&index) {
+                    self.map_updates.push(index);
+                }
+                return Ok(0);
+            }
+            let desired = super::super::spatial::query_bearing(x, z).wrapping_neg() & 2047;
+            let torch = actor
+                .control
+                .as_ref()
+                .context("facing control unavailable")?
+                .torch_burning
+                != 0;
+            let turn = ordinary_slope_turn(
+                origin.angles[1],
+                desired,
+                actor.attributes[if inputs.holding_weapon || inputs.combat_active {
+                    21
+                } else {
+                    15
+                }],
+                inputs.frame_scale,
+                inputs.holding_weapon,
+                torch,
+            );
+            if actor.animation.is_some()
+                && let Some(group) = turn.group
+            {
+                self.request_slope_group(id, group, false, inputs.ticks, sounds)?;
+            }
+            self.spatial
+                .as_mut()
+                .context("spatial owner unavailable")?
+                .actor_mut(index)?
+                .local
+                .angles[1] = turn.heading;
+            Ok(if turn.group.is_none() {
+                0
+            } else {
+                super::super::decision::heading_difference(
+                    i32::from(desired),
+                    i32::from(origin.angles[1]),
+                )
+            })
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} target {} facing",
+                self.world, id.index, target.index
+            )
+        })
+    }
+
     fn request_slope_group(
         &mut self,
         id: ScriptActorId,

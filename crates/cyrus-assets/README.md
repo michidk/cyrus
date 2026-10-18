@@ -266,8 +266,9 @@ Script caches retain contiguous combat attack definitions, ordered combo motions
 resolved animation groups and authored optional fields. Omitted numeric fields
 remain absent; combat decision execution must not treat them as implicit zero.
 
-Script caches retain the optional installed fighting-query threshold in Q8 units.
-Changing it changes the content identity; older caches require re-export.
+Script caches retain the optional installed fighting-query threshold in Q8 units
+and the unscaled `COMBAT.INI` neighbor-spacing threshold. Both participate in
+content identity; older caches require re-export.
 
 Script instances retain authored signed light intensity, radius and RGB before
 runtime object-kind admission. Older script caches require re-export.

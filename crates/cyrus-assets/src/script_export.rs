@@ -194,6 +194,9 @@ pub fn prepare_source(
             .as_ref()
             .and_then(|combat| combat.misc.in_combat_threshold)
             .map(|value| value.wrapping_shl(8)),
+        non_engaged_spacing: combat
+            .as_ref()
+            .and_then(|combat| combat.misc.non_engaged_spacing),
         combat_attacks: combat
             .as_ref()
             .map(crate::script::combat::prepare)

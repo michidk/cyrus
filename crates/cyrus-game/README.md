@@ -1071,3 +1071,12 @@ attribute 8 in Q8 units. Headless contracts cover call/poll refusal, query
 ownership, movement arithmetic, group selection and task snapshot restoration.
 Selected-player WalkForward, routed candidate rebinding, full deep-water movement
 and original/native/browser combat acceptance remain unsupported or unverified.
+
+`ScriptWorld::face_ordinary_target` supplies the nonplayer facing operation needed
+by fight spacing. It uses live local X/Z and the current animation group's
+installed speed attribute. Arrival snaps X/Z, preserves Y and heading, and
+registers deferred map movement. Otherwise it uses the existing ordinary turn
+math and animation owner, returning the signed angle before the step or zero
+on a snap. The caller supplies established weapon/combat predicates and timing.
+Selected-player camera feedback remains explicitly unavailable. This operation
+does not enable automatic combat traversal.

@@ -8,6 +8,7 @@ fn cache() -> Scripts {
         camera: Default::default(),
         combat_attacks: vec![],
         in_combat_threshold: None,
+        non_engaged_spacing: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -232,6 +233,12 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         return;
     }
     let definition = rgpre::import::soup_def::load_soup_def(&root).unwrap();
+    let spacing = rgpre::import::combat_ini::CombatIni::parse(
+        &std::fs::read_to_string(root.join("COMBAT.INI")).unwrap(),
+    )
+    .unwrap()
+    .misc
+    .non_engaged_spacing;
     let mut maps = 0;
     let mut taunts = 0;
     for file in std::fs::read_dir(root.join("maps")).unwrap() {
@@ -246,6 +253,9 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         let scripts = cyrus_assets::script_export::prepare(&map, &root, 0)
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         scripts.validate().unwrap();
+        if !scripts.combat_attacks.is_empty() {
+            assert_eq!(scripts.non_engaged_spacing, spacing, "{}", path.display());
+        }
         assert!(!scripts.actors.is_empty());
         let placements: Vec<_> = map
             .sections
@@ -1052,4 +1062,24 @@ fn installed_system_ini_supplies_every_required_camera_setting() {
     let settings = cyrus_assets::script::CameraSettings::from_system(&system)
         .unwrap_or_else(|error| panic!("installed SYSTEM.INI [camera]: {error:#}"));
     assert!(settings.distance > 0 && settings.max_vel > 0);
+}
+
+#[test]
+fn neighbor_spacing_retains_signed_unscaled_values_and_invalidates_old_identity() {
+    let mut scripts = cache();
+    let original = scripts.content_id.clone();
+    scripts.non_engaged_spacing = Some(-123);
+    scripts.content_id = scripts.content_identity().unwrap();
+    assert_ne!(scripts.content_id, original);
+    let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(decoded.non_engaged_spacing, Some(-123));
+    scripts.non_engaged_spacing = None;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
 }

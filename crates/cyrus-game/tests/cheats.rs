@@ -445,6 +445,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
         camera: Default::default(),
         combat_attacks: vec![],
         in_combat_threshold: None,
+        non_engaged_spacing: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
