@@ -59,6 +59,8 @@ struct CombatSnapshot {
     strength: i32,
     #[serde(default)]
     armor: i32,
+    #[serde(default)]
+    decision: super::super::combat::CombatDecision,
 }
 
 impl ControlSnapshot {
@@ -158,6 +160,7 @@ impl CombatSnapshot {
             taunt_active: combat.taunt_active,
             strength: combat.strength,
             armor: combat.armor,
+            decision: combat.decision,
         }
     }
 
@@ -183,6 +186,7 @@ impl CombatSnapshot {
             taunt_active: self.taunt_active,
             strength: self.strength,
             armor: self.armor,
+            decision: self.decision,
         })
     }
 }

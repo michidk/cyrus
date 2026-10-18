@@ -5,6 +5,53 @@ use serde::Serialize;
 
 const QUEUE_CAPACITY: usize = 8;
 
+/// Retained values of the nonplayer decision stage, set by combat construction (see preservation's
+/// engine/SOUP.md "Combat maintenance") and changed by the stage and its attack and defence helpers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct CombatDecision {
+    /// Attack and defence executor state: 0 idle, 1 defending, 2 attacking.
+    pub attack_state: i32,
+    /// First move-table selector (the attack list index of the current move).
+    pub move_selector: i32,
+    /// Aggression budget: starts at 50, refilled by the stage and spent by each attack.
+    pub aggression: i32,
+    /// Near state of the attacker slot (0 or 1) and the ticks spent far from the target.
+    pub near_state: i32,
+    pub far_ticks: i32,
+    /// Pacing divisors: 129 minus attributes 63 (attack) and 62 (defence); the defence counter
+    /// starts at 129 minus attribute 58.
+    pub attack_pacing: i32,
+    pub defence_pacing: i32,
+    pub defence_counter: i32,
+}
+
+impl Default for CombatDecision {
+    fn default() -> Self {
+        Self {
+            attack_state: 0,
+            move_selector: 0,
+            aggression: 50,
+            near_state: 0,
+            far_ticks: 0,
+            attack_pacing: 0,
+            defence_pacing: 0,
+            defence_counter: 0,
+        }
+    }
+}
+
+impl CombatDecision {
+    /// Combat construction: the pacing values are 129 minus actor attributes 63, 62 and 58.
+    pub(crate) fn from_attributes(attributes: &[u8]) -> Self {
+        Self {
+            attack_pacing: 129 - i32::from(attributes[63]),
+            defence_pacing: 129 - i32::from(attributes[62]),
+            defence_counter: 129 - i32::from(attributes[58]),
+            ..Self::default()
+        }
+    }
+}
+
 /// Constructor-owned combat state, separate from animation and death-default selection.
 #[derive(Debug, Serialize)]
 pub struct CombatControlState {
@@ -29,6 +76,8 @@ pub struct CombatControlState {
     /// Script-assigned strength and armor values (`setStrength`, `setArmor`).
     pub strength: i32,
     pub armor: i32,
+    /// Nonplayer decision-stage state; see [`CombatDecision`].
+    pub decision: CombatDecision,
 }
 impl Default for CombatControlState {
     fn default() -> Self {
@@ -47,6 +96,7 @@ impl Default for CombatControlState {
             taunt_active: 0,
             strength: 0,
             armor: 0,
+            decision: CombatDecision::default(),
         }
     }
 }
@@ -71,6 +121,7 @@ impl CombatControlState {
             // The constructor copies attributes 2 and 4 into the strength and armor values.
             strength: i32::from(attributes[2]),
             armor: i32::from(attributes[4]),
+            decision: CombatDecision::from_attributes(attributes),
             ..Self::default()
         }
     }
@@ -448,5 +499,21 @@ mod constructor_tests {
         assert_eq!((combat.strength, combat.armor), (7, 9));
         let blank = CombatControlState::from_attributes(&[0u8; 256]);
         assert_eq!((blank.strength, blank.armor), (0, 0));
+        // The decision values: aggression 50, pacing divisors 129 minus attributes 63, 62 and 58.
+        attributes[63] = 9;
+        attributes[62] = 29;
+        attributes[58] = 100;
+        let decision = CombatControlState::from_attributes(&attributes).decision;
+        assert_eq!(
+            (
+                decision.aggression,
+                decision.attack_pacing,
+                decision.defence_pacing,
+                decision.defence_counter,
+                decision.attack_state,
+                decision.near_state
+            ),
+            (50, 120, 100, 29, 0, 0)
+        );
     }
 }

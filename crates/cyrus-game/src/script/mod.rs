@@ -10,7 +10,8 @@ mod attributes;
 pub mod camera;
 mod combat;
 pub use combat::{
-    CombatControlState, CombatMessage, CombatMessages, CombatTauntPlayback, CombatTauntSource,
+    CombatControlState, CombatDecision, CombatMessage, CombatMessages, CombatTauntPlayback,
+    CombatTauntSource,
 };
 mod dialogue;
 pub use dialogue::{
