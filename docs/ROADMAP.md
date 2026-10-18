@@ -238,7 +238,7 @@ establish live duel acceptance. Full workspace gates pass with
 1,098 Rust test executions and zero installed-data skips.
 
 Timed combat taunts now bind non-ordered requests to live receiver/target state,
-the retained maintenance phase and constructor-owned period, shared RNG and synchronous
+the retained allocation index and constructor-owned period, shared RNG and synchronous
 playback services. **Verified:** 2,160 linked production selections match original
 records and fifteen-draw consumption; early-stop and unsigned-pacing controls fail.
 Public request coverage verifies world restore, period retention after attribute
@@ -247,12 +247,23 @@ failure without setting type-nine state. This service does not enable ordinary
 combat traversal; live defence execution remains open. Full workspace gates pass
 with 1,101 Rust test executions and zero installed-data skips.
 
+The world owns the combat allocation counter. First construction consumes an
+index; reinitialization and world snapshots retain it. Selected-player maintenance
+shares the attack/defence executor state, with no duplicate phase field.
+**Verified:** synthetic public construction/restore/wrapping and ordinary-walking
+contracts pass. Twelve original selected-reset cases separate executor state from
+allocation index; the wrong-owner control fails four cases. These bounded checks
+do not establish original map/player construction order or live duel acceptance.
+**Verified:** 4,320 linked defence-executor state/effect comparisons match original
+calls with controlled animation and taunt services. Current-motion and omitted
+loop-count controls fail; the live animation/audio binding remains open.
+Full workspace gates pass with 1,102 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
 1. Invoke the paced picker with the receiver-owned prepared candidates and
    connect synchronous starters to the live executor and its timed-taunt service.
-   Constructor allocation of maintenance phases remains unsupported; explicit
-   restored-phase requests do not establish automatic actor pacing.
+   Verify original map/player construction order before claiming automatic actor pacing.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain

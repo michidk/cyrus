@@ -91,10 +91,13 @@ preserve accepted state; altered latch/notification controls fail as expected.
 
 `ScriptWorld::request_timed_combat_taunt` binds non-ordered taunt requests to live
 receiver/target state, shared RNG and synchronous native/browser playback services.
-It retains the constructor-owned signed period across world snapshots and later
-attribute writes. Requests beyond the actor's pointer list reject explicitly;
-old world snapshots missing the period are rejected. This service does not enable
-the ordinary combat decision stage or complete defence execution.
+The world owns the combat allocation counter; first construction consumes it and
+reinitialization retains the assigned index. Timed requests read that index
+separately from action and executor state. They retain the signed period across
+world snapshots and later attribute writes. Requests beyond the actor's pointer
+list reject explicitly; old world snapshots missing the period or allocation
+ownership are rejected. This service does not enable the ordinary combat decision
+stage or complete defence execution.
 
 `DialogueState::snapshot` retains ordered records, formatted text, remaining
 lifetimes, skip latch and presentation selection. `from_snapshot` returns a

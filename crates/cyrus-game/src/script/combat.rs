@@ -63,8 +63,8 @@ pub struct CombatControlState {
     pub flags: u8,
     pub action: i32,
     pub cooldown: u32,
-    /// Selected maintenance phase, separate from the nominal-tick cooldown.
-    pub maintenance_phase: i32,
+    /// World object-pool allocation index, retained across combat reinitialization.
+    pub allocation_index: i32,
     /// Fighting-query eligibility state; exactly one admits the candidate.
     pub attacker_selection_state: i32,
     /// Retained action indices; their broader selection semantics are unsupported.
@@ -90,7 +90,7 @@ impl Default for CombatControlState {
             flags: 0,
             action: -1,
             cooldown: 0,
-            maintenance_phase: 0,
+            allocation_index: 0,
             attacker_selection_state: 0,
             retained_action_indices: [-1; 2],
             taunt_cache: None,
@@ -105,6 +105,29 @@ impl Default for CombatControlState {
 }
 
 impl CombatControlState {
+    /// Allocate only for a new combat record; reinitialization retains its index.
+    pub(crate) fn initialize(
+        attributes: &[u8],
+        previous: Option<&Self>,
+        next_index: &mut i32,
+    ) -> Option<Self> {
+        if attributes[14] == 0 {
+            return None;
+        }
+        let allocation_index = previous.map_or_else(
+            || {
+                let index = *next_index;
+                *next_index = next_index.wrapping_add(1);
+                index
+            },
+            |record| record.allocation_index,
+        );
+        Some(Self {
+            allocation_index,
+            ..Self::from_attributes(attributes)
+        })
+    }
+
     /// Bind authored slots following preservation's COMBAT.INI actor move selection.
     pub(crate) fn from_attributes(attributes: &[u8]) -> Self {
         let attack_indices = std::array::from_fn(|slot| {
@@ -134,7 +157,7 @@ impl CombatControlState {
 /// Select a timed taunt for an already admitted request outside the ordered family.
 /// Follows preservation's [selection rules](https://github.com/michidk/redguard-preservation/pull/113).
 /// Consumes fifteen inclusive 0..=32767 draws even after selecting a record. The
-/// caller supplies the wrapping maintenance-phase/frame sum and the retained signed period.
+/// caller supplies the wrapping allocation-index/frame sum and the retained signed period.
 /// The actor list has no one-past sentinel: that draw rejects after consumption.
 /// An invalid period rejects only if a matching nonempty record was selected.
 pub fn select_timed_combat_taunt(
@@ -546,6 +569,28 @@ mod decision_tests {
 #[cfg(test)]
 mod constructor_tests {
     use super::*;
+
+    #[test]
+    fn reinitialization_retains_allocation_but_resets_executor_state() {
+        let mut attributes = [0; 256];
+        let mut next = 7;
+        assert!(CombatControlState::initialize(&attributes, None, &mut next).is_none());
+        assert_eq!(next, 7);
+        attributes[14] = 1;
+        let mut record = CombatControlState::initialize(&attributes, None, &mut next).unwrap();
+        record.decision.attack_state = 2;
+        attributes[87] = 124;
+        let record = CombatControlState::initialize(&attributes, Some(&record), &mut next).unwrap();
+        assert_eq!(
+            (
+                record.allocation_index,
+                next,
+                record.decision.attack_state,
+                record.taunt_period
+            ),
+            (7, 8, 0, 5)
+        );
+    }
 
     #[test]
     fn construction_copies_attributes_two_and_four_into_strength_and_armor() {

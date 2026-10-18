@@ -49,7 +49,7 @@ struct CombatSnapshot {
     flags: u8,
     action: i32,
     cooldown: u32,
-    maintenance_phase: i32,
+    allocation_index: i32,
     attacker_selection_state: i32,
     retained_action_indices: [i32; 2],
     taunt_cache: Option<usize>,
@@ -153,7 +153,7 @@ impl CombatSnapshot {
             flags: combat.flags,
             action: combat.action,
             cooldown: combat.cooldown,
-            maintenance_phase: combat.maintenance_phase,
+            allocation_index: combat.allocation_index,
             attacker_selection_state: combat.attacker_selection_state,
             retained_action_indices: combat.retained_action_indices,
             taunt_cache: combat.taunt_cache,
@@ -180,7 +180,7 @@ impl CombatSnapshot {
             flags: self.flags,
             action: self.action,
             cooldown: self.cooldown,
-            maintenance_phase: self.maintenance_phase,
+            allocation_index: self.allocation_index,
             attacker_selection_state: self.attacker_selection_state,
             retained_action_indices: self.retained_action_indices,
             taunt_cache: self.taunt_cache,
@@ -554,6 +554,7 @@ pub struct WorldSnapshot {
     actor_lists: Option<super::super::order::ActorListsSnapshot>,
     markers_prepared: bool,
     walk_nodes: Option<super::super::navigation::WalkNodeSnapshot>,
+    next_combat_index: i32,
     ordinary_prepared: bool,
     model_admission: Option<model::ModelAdmissionSnapshot>,
     map_updates: Vec<usize>,
@@ -594,6 +595,7 @@ impl WorldSnapshot {
                 .walk_nodes
                 .as_ref()
                 .map(super::super::navigation::WalkNodeReservations::snapshot),
+            next_combat_index: world.next_combat_index,
             ordinary_prepared: world.ordinary_prepared,
             model_admission: world
                 .model_admission
@@ -744,6 +746,7 @@ impl WorldSnapshot {
             );
         }
         candidate.map_updates = self.map_updates;
+        candidate.next_combat_index = self.next_combat_index;
         candidate.ordinary_prepared = self.ordinary_prepared;
         candidate.surface_veto = self.surface_veto;
         candidate.globals = super::super::GameplayGlobals::default();

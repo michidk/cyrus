@@ -72,7 +72,7 @@ impl ScriptWorld {
     }
 
     /// Request a non-ordered combat taunt from live receiver/target state.
-    /// Reads the constructor-owned period and retained maintenance phase, consumes the shared RNG,
+    /// Reads the constructor-owned period and retained allocation index, consumes the shared RNG,
     /// then presents synchronously through the supplied native/browser services.
     /// Type nine sets its retained flag only after successful presentation.
     pub fn request_timed_combat_taunt(
@@ -136,7 +136,7 @@ impl ScriptWorld {
             let chosen = super::super::combat::select_timed_combat_taunt(
                 &actor.combat_taunts,
                 trigger,
-                combat.maintenance_phase.wrapping_add(frame_value),
+                combat.allocation_index.wrapping_add(frame_value),
                 combat.taunt_period,
                 &mut || random.draw(),
             )?;

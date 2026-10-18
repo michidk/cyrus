@@ -295,6 +295,7 @@ pub struct ScriptWorld {
     actor_lists: Option<super::order::ActorLists>,
     markers: Option<super::markers::Markers>,
     walk_nodes: Option<super::navigation::WalkNodeReservations>,
+    next_combat_index: i32,
     ordinary_prepared: bool,
     model_admission: Option<model::AdmissionState>,
     map_updates: Vec<usize>,
@@ -566,7 +567,7 @@ impl ScriptWorld {
         let combat = control.combat.as_mut().expect("admitted combat");
         if selected {
             anyhow::ensure!(
-                combat.maintenance_phase == 0,
+                combat.decision.attack_state == 0,
                 "selected-player combat nonzero maintenance phase unsupported"
             );
             if combat.action != 0 {
@@ -771,6 +772,7 @@ impl ScriptWorld {
             actor_lists: None,
             markers: None,
             walk_nodes: None,
+            next_combat_index: 0,
             ordinary_prepared: false,
             surface_veto: None,
             model_admission: None,
@@ -1181,12 +1183,12 @@ impl ScriptWorld {
                     .as_mut()
                     .expect("type-one map actor has allocation state")
                     .combat_death_default = (actor.attributes[14] != 0).then_some(0);
-                actor
-                    .control
-                    .as_mut()
-                    .expect("allocated map control")
-                    .combat = (actor.attributes[14] != 0)
-                    .then(|| super::CombatControlState::from_attributes(&actor.attributes));
+                let control = actor.control.as_mut().expect("allocated map control");
+                control.combat = super::CombatControlState::initialize(
+                    &actor.attributes,
+                    control.combat.as_ref(),
+                    &mut self.next_combat_index,
+                );
                 actor.animation = Some(ScriptAnimation { playback, frame });
                 Ok(())
             }
@@ -1342,8 +1344,11 @@ impl ScriptWorld {
             .expect("player role has allocation state");
         self.globals.initialize_player_controller();
         control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
-        control.combat = (actor.attributes[14] != 0)
-            .then(|| super::CombatControlState::from_attributes(&actor.attributes));
+        control.combat = super::CombatControlState::initialize(
+            &actor.attributes,
+            control.combat.as_ref(),
+            &mut self.next_combat_index,
+        );
         match crate::player::placement::initial_role_animation(data, actor.name(), ticks, sounds) {
             Ok((playback, frame)) => {
                 actor.animation = Some(ScriptAnimation { playback, frame });

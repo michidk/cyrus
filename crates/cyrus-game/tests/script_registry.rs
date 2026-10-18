@@ -12037,7 +12037,7 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
         .as_ref()
         .unwrap();
     assert_eq!(
-        (combat.maintenance_phase, combat.action, combat.cooldown),
+        (combat.decision.attack_state, combat.action, combat.cooldown),
         (0, -1, 0)
     );
     assert_eq!(combat.retained_action_indices, [-1; 2]);
@@ -14189,6 +14189,10 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         );
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         world.prepare_spatial().unwrap();
+        // Construction order, rather than runtime actor index, owns the allocation index.
+        world
+            .initialize_map_animation(world.id(1).unwrap(), &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
         let id = world.id(0).unwrap();
         world
             .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
@@ -14210,8 +14214,50 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
             animations: &data,
             collision: &collision,
         };
+        let allocation = |world: &ScriptWorld, index: usize| {
+            world.actors()[index]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .allocation_index
+        };
+        assert_eq!((allocation(&world, 0), allocation(&world, 1)), (1, 0));
         let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
-        saved["actors"][0]["control"]["combat"]["maintenance_phase"] = (-1).into();
+        assert_eq!(saved["next_combat_index"], 2);
+        let mut missing_counter = saved.clone();
+        missing_counter
+            .as_object_mut()
+            .unwrap()
+            .remove("next_combat_index");
+        assert!(
+            serde_json::from_value::<cyrus_game::script::WorldSnapshot>(missing_counter).is_err()
+        );
+        let mut continued = saved.clone();
+        continued["actors"][1]["control"]["combat"] = serde_json::Value::Null;
+        continued["actors"][1]["animation"] = serde_json::Value::Null;
+        continued["next_combat_index"] = i32::MAX.into();
+        let mut continued = ScriptWorld::from_snapshot(
+            serde_json::from_value(continued).unwrap(),
+            &sources,
+            cyrus_game::script::WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        continued
+            .initialize_map_animation(continued.id(1).unwrap(), &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(allocation(&continued, 1), i32::MAX);
+        assert_eq!(
+            serde_json::to_value(continued.snapshot(&sources).unwrap()).unwrap()["next_combat_index"],
+            i32::MIN
+        );
+
+        saved["actors"][0]["control"]["combat"]["allocation_index"] = (-1).into();
         saved["actors"][0]["control"]["combat"]["action"] = 0.into();
         let mut missing = saved.clone();
         missing["actors"][0]["control"]["combat"]
@@ -14300,7 +14346,7 @@ fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
         };
         let mut random = cyrus_game::random::EngineRandom::default();
         let initial = random.state();
-        // Phase -1 plus frame zero is off-period; action zero must not admit it.
+        // Allocation index -1 is off-period; action and attack state zero must not admit it.
         world
             .request_timed_combat_taunt(id, 9, 0, inputs, &mut random, &mut |_, _| Ok(()))
             .unwrap();
