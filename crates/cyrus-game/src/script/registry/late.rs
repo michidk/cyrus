@@ -44,6 +44,86 @@ impl ScriptWorld {
         Ok(())
     }
 
+    fn query_ordinary_point_support(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<(
+        super::super::OrdinaryGroundPrevalidation,
+        Option<SelectedSupport>,
+    )> {
+        let prevalidation = self.query_ordinary_ground_prevalidation(id, query, false)?;
+        self.apply_ordinary_ground_prevalidation(
+            id,
+            prevalidation,
+            query.animations,
+            environment,
+            sounds,
+        )?;
+        let support = self.query_ordinary_ground(id, query)?;
+        if self.actors[id.index].attributes[1] & 4 != 0 {
+            self.assign_ordinary_support_surface(id, query.scene, support.as_ref())?;
+        }
+        Ok((prevalidation, support))
+    }
+
+    /// Check nonplayer support at a proposed local Q8 position, restoring XYZ
+    /// while retaining collision writes, including rollback and surface state.
+    /// Linked actors and selected-player feedback remain unavailable.
+    pub fn admit_ordinary_destination(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        ensure!(
+            !matches!(self.actors[index].source, super::ScriptActorSource::Player)
+                && environment.selected_player != Some(id),
+            "world {} instance {index}: selected-player destination collision unavailable",
+            self.world,
+        );
+        let spatial = self.spatial(id)?;
+        ensure!(
+            spatial.parent.is_none() && spatial.linked_position.is_none(),
+            "world {} instance {index}: linked destination collision unavailable",
+            self.world,
+        );
+        let saved = spatial.local.position;
+        self.spatial
+            .as_mut()
+            .context("destination spatial owner unavailable")?
+            .actor_mut(index)?
+            .local
+            .position = destination;
+        let result = self.query_ordinary_point_support(id, query, environment, sounds);
+        self.spatial
+            .as_mut()
+            .context("destination spatial owner unavailable")?
+            .actor_mut(index)?
+            .local
+            .position = saved;
+        let (_, support) = result?;
+        let Some(support) = support else {
+            return Ok(false);
+        };
+        if self.actors[index].attributes[1] & 2 != 0
+            && matches!(support, SelectedSupport::Primary { support, .. } if support.classification() == 2)
+        {
+            return Ok(false);
+        }
+        Ok(!self.surface_veto.with_context(|| {
+            format!(
+                "world {} instance {index}: destination shared surface veto unavailable",
+                self.world,
+            )
+        })?)
+    }
+
     pub(super) fn resolve_ordinary_late_collision(
         &mut self,
         id: ScriptActorId,
@@ -84,24 +164,9 @@ impl ScriptWorld {
         if mask & 8 != 0 {
             self.resolve_ordinary_overlap_stage(id, obstacle_query(), environment, sounds)?;
         }
-        let ground_query = || super::ground::OrdinaryGroundQuery {
-            scene: query.scene,
-            animations: query.animations,
-            prepared: query.prepared,
-            distance: query.distance,
-            sidedness: query.sidedness,
-        };
-        let prevalidation = self.query_ordinary_ground_prevalidation(id, ground_query(), false)?;
-        self.apply_ordinary_ground_prevalidation(
-            id,
-            prevalidation,
-            query.animations,
-            environment,
-            sounds,
-        )?;
-        let support = self.query_ordinary_ground(id, ground_query())?;
+        let (prevalidation, support) =
+            self.query_ordinary_point_support(id, query, environment, sounds)?;
         if mask & 4 != 0 {
-            self.assign_ordinary_support_surface(id, query.scene, support.as_ref())?;
             let living_state = self.actors[id.index]
                 .control
                 .as_ref()

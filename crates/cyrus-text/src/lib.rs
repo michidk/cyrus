@@ -273,7 +273,11 @@ mod tests {
     #[test]
     fn font_sel_pairs_become_main_and_shadow_alpha() {
         assert_eq!(font_alpha("255,255"), Ok([255, 199]));
-        assert_eq!(font_alpha("125,255"), Ok([255, 199]), "A does not enter the alpha");
+        assert_eq!(
+            font_alpha("125,255"),
+            Ok([255, 199]),
+            "A does not enter the alpha"
+        );
         assert_eq!(font_alpha("255,180"), Ok([180, 140]), "the movie copy");
         assert!(font_alpha("255").is_err());
     }

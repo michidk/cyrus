@@ -1460,59 +1460,52 @@ impl ScriptWorld {
         } else {
             false
         };
+        let ordinary_actors = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.retained_selected())
+            .map(<[_]>::to_vec);
         let mut host = GameHost {
             world: self.world,
             animation_system: self.updates.animation_system,
+            task_system: self.updates.task_system,
             index,
             generation: self.generation,
-            actors: &mut self.actors,
-            task_calls: &self.task_calls,
-            reference_names: &self.reference_names,
-            ordinary_actors: self
-                .actor_lists
-                .as_ref()
-                .and_then(|lists| lists.retained_selected()),
-            in_combat_threshold: self.in_combat_threshold,
-            names: &self.names,
-            flag_state: &mut self.flag_state,
+            ordinary_actors: ordinary_actors.as_deref(),
+            walk_map_count: self.walk_nodes.as_ref().map(|nodes| nodes.map_count()),
+            registry: self,
             sounds,
             random,
-            spatial: self.spatial.as_mut(),
-            markers: self.markers.as_ref(),
-            walk_map_count: self.walk_nodes.as_ref().map(|nodes| nodes.map_count()),
-            task_system: self.updates.task_system,
-            map_updates: &mut self.map_updates,
-            activation: &mut self.activation,
-            globals: &mut self.globals,
             inputs,
         };
         if matches!(stage, ScriptStage::Animation) {
             anyhow::ensure!(
-                host.actors[index].animation.is_some(),
+                host.registry.actors[index].animation.is_some(),
                 "world {} instance {index}: actor animation not prepared",
-                self.world
+                host.world
             );
             return host.advance_animation().map_err(|error| {
                 let message = format!(
                     "world {} instance {index} animation stage: {error:#}",
-                    self.world
+                    host.world
                 );
-                host.actors[index].animation_failure = Some(message.clone());
+                host.registry.actors[index].animation_failure = Some(message.clone());
                 anyhow::anyhow!(message)
             });
         }
-        let native_hook = host.actors[index].native_hook.clone();
-        let actor = &mut host.actors[index];
+        let native_hook = host.registry.actors[index].native_hook.clone();
+        let actor = &mut host.registry.actors[index];
         let mut runtime = actor.runtime.take().with_context(|| {
             actor
                 .unavailable
                 .clone()
                 .unwrap_or_else(|| "program absent".into())
         })?;
+        let mut flags = std::mem::take(&mut host.registry.flags);
         let result = match stage {
             ScriptStage::OrdinaryMain | ScriptStage::SeparateMain => runtime.invoke_main_stage(
                 &mut host,
-                &mut self.flags,
+                &mut flags,
                 inputs.frame_scale.unwrap(),
                 budget,
                 bypass_tasks,
@@ -1520,21 +1513,20 @@ impl ScriptWorld {
             ScriptStage::NativeHook | ScriptStage::OrdinaryHook | ScriptStage::SeparateHook => {
                 match native_hook {
                     Some(call) => runtime
-                        .invoke_native_hook(&call, &mut host, &mut self.flags)
+                        .invoke_native_hook(&call, &mut host, &mut flags)
                         .map(|_| ()),
                     None => Ok(()),
                 }
             }
-            ScriptStage::Entry => runtime.invoke_entry(&mut host, &mut self.flags, budget),
-            ScriptStage::Body(thread) => {
-                runtime.invoke_body(thread, &mut host, &mut self.flags, budget)
-            }
+            ScriptStage::Entry => runtime.invoke_entry(&mut host, &mut flags, budget),
+            ScriptStage::Body(thread) => runtime.invoke_body(thread, &mut host, &mut flags, budget),
             ScriptStage::Tasks => {
-                runtime.invoke_tasks_timed(&mut host, &mut self.flags, inputs.frame_scale.unwrap())
+                runtime.invoke_tasks_timed(&mut host, &mut flags, inputs.frame_scale.unwrap())
             }
             ScriptStage::Animation => unreachable!(),
         };
-        host.actors[index].runtime = Some(runtime);
+        host.registry.flags = flags;
+        host.registry.actors[index].runtime = Some(runtime);
         result?;
         if matches!(stage, ScriptStage::OrdinaryMain) {
             self.finish_ordinary_script_response(id, nominal_ticks)?;
@@ -1897,27 +1889,17 @@ pub(super) fn prepare(
 }
 
 struct GameHost<'a, 'sound, 'input, 'random> {
+    registry: &'a mut ScriptWorld,
     world: u32,
     animation_system: bool,
     task_system: bool,
-    map_updates: &'a mut Vec<usize>,
-    activation: &'a mut super::ActivationState,
-    globals: &'a mut super::GameplayGlobals,
-    spatial: Option<&'a mut super::spatial::SpatialWorld>,
-    markers: Option<&'a super::markers::Markers>,
-    walk_map_count: Option<usize>,
     inputs: ScriptInputs<'input>,
     index: usize,
     generation: u64,
     sounds: Option<&'sound mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>>,
     random: Option<&'random mut crate::random::EngineRandom>,
-    actors: &'a mut [ScriptActor],
     ordinary_actors: Option<&'a [ScriptActorId]>,
-    in_combat_threshold: Option<i32>,
-    task_calls: &'a BTreeMap<(CodeOrigin, u32), Call>,
-    reference_names: &'a [String],
-    names: &'a BTreeMap<i16, usize>,
-    flag_state: &'a mut super::flags::Flags,
+    walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
     fn actor_is_dead(&self, index: usize) -> Result<bool> {
@@ -1927,13 +1909,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 index,
             })
             && self
+                .registry
                 .globals
                 .player_death_override()
                 .context("IsDead: selected-player override unavailable")?
         {
             return Ok(true);
         }
-        Ok(self.actors[index]
+        Ok(self.registry.actors[index]
             .control
             .as_ref()
             .context("IsDead: actor death lifecycle unavailable")?
@@ -1943,8 +1926,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     fn fighting_position(&self, index: usize) -> Result<[i32; 3]> {
         let actor = self
+            .registry
             .spatial
-            .as_deref()
+            .as_ref()
             .context("isFighting: spatial owner unavailable")?
             .actor(index)?;
         if actor.parent.is_some() {
@@ -1966,13 +1950,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let mut bound = 65535;
         for &candidate in traversal {
             anyhow::ensure!(
-                candidate.generation == self.generation && candidate.index < self.actors.len(),
+                candidate.generation == self.generation
+                    && candidate.index < self.registry.actors.len(),
                 "isFighting: stale ordinary actor {candidate:?}"
             );
             if candidate == receiver {
                 continue;
             }
-            let Some(combat) = self.actors[candidate.index]
+            let Some(combat) = self.registry.actors[candidate.index]
                 .control
                 .as_ref()
                 .and_then(|control| control.combat.as_ref())
@@ -1998,14 +1983,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             return Ok(false);
         };
         let threshold = self
+            .registry
             .in_combat_threshold
             .context("isFighting: installed combat threshold unavailable")?;
         Ok(cyrus_collision::distance::rounded_distance([x, 0, z])? < threshold)
     }
 
     fn ambient_call(&self) -> super::tasks::AmbientCall<'input> {
-        let actor = &self.actors[self.index];
-        let position = self.spatial.as_deref().and_then(|world| {
+        let actor = &self.registry.actors[self.index];
+        let position = self.registry.spatial.as_ref().and_then(|world| {
             let spatial = world.actor(self.index).ok()?;
             if spatial.parent.is_some() {
                 Some(spatial.effective?.position)
@@ -2031,7 +2017,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .activation
             .map(|inputs| inputs.player)
             .or_else(|| {
-                self.actors
+                self.registry
+                    .actors
                     .iter()
                     .position(|actor| matches!(actor.source, ScriptActorSource::Player))
                     .map(|index| ScriptActorId {
@@ -2043,7 +2030,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     /// Receiver state for locomotion tasks; fallible reads surface only when a task uses them.
     fn locomotion_state(&self) -> Result<super::locomotion::BackwardState, String> {
-        let actor = &self.actors[self.index];
+        let actor = &self.registry.actors[self.index];
         let control = actor
             .control
             .as_ref()
@@ -2080,7 +2067,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
 
     fn frame_wait_call(&self) -> super::tasks::FrameWaitCall {
         let sample = |index: usize| -> Result<(i32, i32, u8)> {
-            self.actors[index]
+            self.registry.actors[index]
                 .animation
                 .as_ref()
                 .with_context(|| {
@@ -2094,7 +2081,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 return Ok(None);
             };
             anyhow::ensure!(
-                player.generation == self.generation && player.index < self.actors.len(),
+                player.generation == self.generation && player.index < self.registry.actors.len(),
                 "animation frame wait selected player identity is stale"
             );
             sample(player.index).map(Some)
@@ -2122,8 +2109,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .inputs
             .nominal_ticks
             .context("animation requires nominal_ticks")?;
-        let position = animation_sound_position(self.spatial.as_deref(), self.index);
-        let surface = self.actors[self.index].surface;
+        let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
+        let surface = self.registry.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
             Some(sounds) => sounds(
                 id,
@@ -2135,7 +2122,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
-        let animation = self.actors[self.index]
+        let animation = self.registry.actors[self.index]
             .animation
             .as_mut()
             .context("actor animation not prepared")?;
@@ -2157,7 +2144,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     /// not to be sheathing. The original's transition lock and world-active globals are
     /// **Inferred** clear and set respectively; cyrus has no transition state yet.
     fn combat_capable(&self, index: usize, armed: bool) -> Result<bool> {
-        let actor = &self.actors[index];
+        let actor = &self.registry.actors[index];
         if actor.attributes[110] != 0 {
             return Ok(true);
         }
@@ -2177,7 +2164,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     fn receiver_weapon_predicates(&self, function: &str) -> Result<(bool, bool, bool)> {
-        let actor = &self.actors[self.index];
+        let actor = &self.registry.actors[self.index];
         if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
             return Ok((true, false, false));
         }
@@ -2214,7 +2201,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     fn property_name(&self, target: &Target, reference: u16) -> Result<&str> {
-        self.reference_names
+        self.registry
+            .reference_names
             .get(usize::from(reference))
             .map(String::as_str)
             .with_context(|| format!("property {target:?}.{reference}: installed reference absent"))
@@ -2228,7 +2216,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .selected_player()
             .context("Player property selected player unavailable")?;
         anyhow::ensure!(
-            player.generation == self.generation && player.index < self.actors.len(),
+            player.generation == self.generation && player.index < self.registry.actors.len(),
             "Player property selected player identity is stale"
         );
         Ok(player.index)
@@ -2237,17 +2225,19 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     fn target_index(&self, target: &Target) -> Result<usize> {
         let index = match target {
             Target::Me => return Ok(self.index),
-            Target::Named(name) => self.names.values().copied().find(|&index| {
-                self.actors[index]
+            Target::Named(name) => self.registry.names.values().copied().find(|&index| {
+                self.registry.actors[index]
                     .namespace
                     .as_ref()
                     .is_some_and(|namespace| namespace.eq_ignore_ascii_case(name))
             }),
             Target::Player => self
+                .registry
                 .actors
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Player)),
             Target::Camera => self
+                .registry
                 .actors
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Camera)),
@@ -2273,7 +2263,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let name = self.property_name(target, reference)?;
         if name.eq_ignore_ascii_case("anim.current") {
             let index = self.property_receiver(target)?;
-            let animation = self.actors[index]
+            let animation = self.registry.actors[index]
                 .animation
                 .as_ref()
                 .context("anim.current animation owner unavailable")?;
@@ -2284,7 +2274,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if name.eq_ignore_ascii_case("torch_timer") {
             let index = self.property_receiver(target)?;
-            let control = self.actors[index]
+            let control = self.registry.actors[index]
                 .control
                 .as_ref()
                 .context("torch_timer control owner unavailable")?;
@@ -2294,8 +2284,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .with_context(|| format!("property {target:?}.{name} unsupported"))?;
         let index = self.property_receiver(target)?;
         let spatial = self
+            .registry
             .spatial
-            .as_deref()
+            .as_ref()
             .with_context(|| format!("property {target:?}.{name}: spatial owner unavailable"))?
             .actor(index)?;
         Ok(match pose {
@@ -2308,7 +2299,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let name = self.property_name(target, reference)?;
         if name.eq_ignore_ascii_case("torch_timer") {
             let index = self.property_receiver(target)?;
-            let control = self.actors[index]
+            let control = self.registry.actors[index]
                 .control
                 .as_mut()
                 .context("torch_timer control owner unavailable")?;
@@ -2320,8 +2311,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .with_context(|| format!("property {target:?}.{name} write unsupported"))?;
         let index = self.property_receiver(target)?;
         let local = &mut self
+            .registry
             .spatial
-            .as_deref_mut()
+            .as_mut()
             .with_context(|| format!("property {target:?}.{reference}: spatial owner unavailable"))?
             .actor_mut(index)?
             .local;
@@ -2360,7 +2352,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             index: self.index,
         };
         if function.eq_ignore_ascii_case("PlayerLineUp") {
-            self.globals.lineup_result = None;
+            self.registry.globals.lineup_result = None;
             anyhow::bail!("PlayerLineUp alignment execution unavailable; shared result unknown");
         }
         if kind == CallKind::Function
@@ -2376,7 +2368,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
         {
-            let actor = &mut self.actors[self.index];
+            let actor = &mut self.registry.actors[self.index];
             let placement = actor.placement();
             anyhow::ensure!(
                 actor.light.is_some()
@@ -2433,7 +2425,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
             anyhow::ensure!(arguments.is_empty(), "LightOff requires no arguments");
-            let actor = &mut self.actors[self.index];
+            let actor = &mut self.registry.actors[self.index];
             anyhow::ensure!(
                 actor
                     .placement()
@@ -2459,7 +2451,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         id != selected_player,
                         "beginCombat selected-player death override unavailable"
                     );
-                    let actor = &self.actors[self.index];
+                    let actor = &self.registry.actors[self.index];
                     anyhow::ensure!(
                         actor.model.prepared,
                         "beginCombat receiver model state unavailable"
@@ -2490,13 +2482,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             anyhow::ensure!(
                 inputs.weapon.selected_player.generation == self.generation
-                    && inputs.weapon.selected_player.index < self.actors.len(),
+                    && inputs.weapon.selected_player.index < self.registry.actors.len(),
                 "beginCombat selected actor belongs to an expired or absent world"
             );
-            let position = animation_sound_position(self.spatial.as_deref(), self.index);
+            let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
             let mut receiver = weapon::CombatReceiver::new(
-                &mut self.actors[self.index],
-                self.globals,
+                &mut self.registry.actors[self.index],
+                &mut self.registry.globals,
                 self.world,
                 id,
                 position,
@@ -2529,7 +2521,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 u16::try_from(item.integer()?).context("AddItem item ID outside u16 range")?;
             let player = self.selected_player();
             let generation = self.generation;
-            let actors = &mut self.actors;
+            let actors = &mut self.registry.actors;
             hud.add_item(item, amount.integer()?, &mut |weapon| {
                 let player = player.context("AddItem fallback selected player unavailable")?;
                 anyhow::ensure!(
@@ -2559,7 +2551,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .hud
                 .context("HandItem inventory host unavailable")?;
             if hud.inventory_ready()? {
-                self.actors[self.index].hand_item(
+                self.registry.actors[self.index].hand_item(
                     item.integer()?,
                     hud,
                     self.inputs.shell_execution,
@@ -2581,13 +2573,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .activation
                 .map(|inputs| inputs.player.index)
                 .or_else(|| {
-                    self.actors
+                    self.registry
+                        .actors
                         .iter()
                         .position(|actor| matches!(actor.source, ScriptActorSource::Player))
                 })
                 .context("LockoutPlayer selected player unavailable")?;
-            let lockout = self.globals.lockout_player(value);
-            apply_player_lockout(self.actors, self.activation, Some(player), lockout);
+            let lockout = self.registry.globals.lockout_player(value);
+            apply_player_lockout(
+                &mut self.registry.actors,
+                &mut self.registry.activation,
+                Some(player),
+                lockout,
+            );
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function {
@@ -2606,9 +2604,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .hud
                     .context("activation HUD owner unavailable")?;
                 automatic = activation::ordinary_inputs(
-                    self.actors,
+                    &self.registry.actors,
                     self.generation,
-                    self.globals,
+                    &self.registry.globals,
                     hud,
                     use_held,
                     Some((self.index, arguments)),
@@ -2619,16 +2617,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             let selected_player = activation.map(|inputs| {
                 (
-                    &self.actors[inputs.player.index],
-                    self.globals.lockout().unwrap_or(inputs.lockout),
+                    &self.registry.actors[inputs.player.index],
+                    self.registry.globals.lockout().unwrap_or(inputs.lockout),
                 )
             });
-            if let Some(value) = self.activation.call(
+            if let Some(value) = self.registry.activation.call(
                 id,
                 function,
                 arguments,
                 activation,
-                &self.actors[self.index].attributes,
+                &self.registry.actors[self.index].attributes,
                 selected_player,
             )? {
                 return Ok(CallResult::Complete(value));
@@ -2638,8 +2636,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
         let locomotion_state = self.locomotion_state();
-        let position = animation_sound_position(self.spatial.as_deref(), self.index);
-        let surface = self.actors[self.index].surface;
+        let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
+        let surface = self.registry.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
             Some(sounds) => sounds(
                 id,
@@ -2651,7 +2649,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
-        let actor = &mut self.actors[self.index];
+        let actor = &mut self.registry.actors[self.index];
         let mut animation =
             actor
                 .animation
@@ -2670,8 +2668,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .and_then(|query| query.player.as_ref())
             .map(|player| player.position);
         let mut spatial_call = self
+            .registry
             .spatial
-            .as_deref_mut()
+            .as_mut()
             .and_then(|spatial| spatial.actor_mut(self.index).ok())
             .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
             .map(
@@ -2682,7 +2681,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     player_position,
                     slave: actor.attributes[26] != 0,
                     actor_index: self.index,
-                    map_updates: self.map_updates,
+                    map_updates: &mut self.registry.map_updates,
                     position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
@@ -2697,7 +2696,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             &mut spatial_call,
             super::tasks::NativeServices {
                 ambient: Some(&ambient),
-                dialogue: self.globals.dialogue.as_mut(),
+                dialogue: self.registry.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
@@ -2712,7 +2711,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                             direction: &mut control.motion_direction,
                             counters: &mut control.movement_flags,
                         }),
-                    called: &mut self.globals.locomotion_called,
+                    called: &mut self.registry.globals.locomotion_called,
                 }),
             },
         )? {
@@ -2727,13 +2726,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             // Walk-node release needs actor-side reservation indices; navigation maps stay
             // unsupported, so no actor can hold a reservation here (shortcut: revisit with maps).
-            let control = self.actors[self.index]
+            let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .context("KillMe: receiver lifecycle unavailable")?;
             control.killed = true;
             control.death_selector = 8;
-            self.actors[self.index].model.current = None;
+            self.registry.actors[self.index].model.current = None;
             self.sounds
                 .as_mut()
                 .context("script sound handler absent")?(
@@ -2743,22 +2742,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if function.eq_ignore_ascii_case("HideMe") || function.eq_ignore_ascii_case("ShowMe") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let control = self.actors[self.index].control.as_mut().with_context(|| {
-                format!("{function}: receiver visibility lifecycle unavailable")
-            })?;
+            let control = self.registry.actors[self.index]
+                .control
+                .as_mut()
+                .with_context(|| {
+                    format!("{function}: receiver visibility lifecycle unavailable")
+                })?;
             control.hidden = function.eq_ignore_ascii_case("HideMe");
             if control.hidden {
-                self.actors[self.index].model.current = None;
-            } else if self.actors[self.index].model.static_radius.is_some() {
+                self.registry.actors[self.index].model.current = None;
+            } else if self.registry.actors[self.index]
+                .model
+                .static_radius
+                .is_some()
+            {
                 let spatial = self
+                    .registry
                     .spatial
-                    .as_deref_mut()
+                    .as_mut()
                     .context("ShowMe: model spatial state unavailable")?;
                 let state = spatial.actor_mut(self.index)?;
                 if state.parent.is_none() {
                     state.refresh_transform()?;
                 }
-                self.actors[self.index]
+                self.registry.actors[self.index]
                     .model
                     .show_static(state.query_pose()?);
             }
@@ -2797,7 +2804,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let selected = self
                 .selected_player()
                 .is_some_and(|player| player.index == self.index);
-            let attributes = &mut self.actors[self.index].attributes;
+            let attributes = &mut self.registry.actors[self.index].attributes;
             // Attribute 120 (nonzero) ignores health changes. Attribute 97 gates on a combat
             // record bit, the selected player updates the HUD, and death starts a sequence;
             // none of those owners exist, so they stay unavailable instead of guessed.
@@ -2831,8 +2838,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .selected_player()
                 .context("PlayerMoved: selected player unavailable")?;
             let spatial = self
+                .registry
                 .spatial
-                .as_deref()
+                .as_ref()
                 .context("spatial state not prepared")?
                 .actor(player.index)?;
             return Ok(CallResult::Complete(i32::from(
@@ -2855,9 +2863,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }) {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             match (dialogue, begin) {
-                (true, begin) => self.globals.set_dialogue_state(begin),
-                (false, true) => self.globals.begin_topic_menu(),
-                (false, false) => self.globals.end_topic_menu(),
+                (true, begin) => self.registry.globals.set_dialogue_state(begin),
+                (false, true) => self.registry.globals.begin_topic_menu(),
+                (false, false) => self.registry.globals.end_topic_menu(),
             }
             return Ok(CallResult::Complete(0));
         }
@@ -2869,7 +2877,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         // MyId is the actor's signed 16-bit runtime identifier (pool index plus three).
         if function.eq_ignore_ascii_case("MyId") {
             return Ok(CallResult::Complete(i32::from(
-                self.actors[self.index]
+                self.registry.actors[self.index]
                     .runtime_identifier
                     .context("MyId: runtime identifier unavailable")?,
             )));
@@ -2882,17 +2890,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [world, a, b] = arguments else {
                 anyhow::bail!("LoadWorld requires three arguments")
             };
-            self.globals.request_mut().load_world =
+            self.registry.globals.request_mut().load_world =
                 Some([world.integer()?, a.integer()?, b.integer()?]);
             return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("WonGame") {
-            self.globals.request_mut().won_game = true;
+            self.registry.globals.request_mut().won_game = true;
             return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("PushPlayer") || function.eq_ignore_ascii_case("PopPlayer")
         {
-            let request = self.globals.request_mut();
+            let request = self.registry.globals.request_mut();
             if function.eq_ignore_ascii_case("PushPlayer") {
                 request.push_player = true;
             } else {
@@ -2909,7 +2917,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 26
             };
             return Ok(CallResult::Complete(i32::from(
-                self.actors[self.index].attributes[attribute] != 0,
+                self.registry.actors[self.index].attributes[attribute] != 0,
             )));
         }
         if function.eq_ignore_ascii_case("TrueFunction") {
@@ -2922,7 +2930,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
             let value = arguments[0].integer()? as u8;
-            let control = self.actors[self.index]
+            let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
@@ -2956,7 +2964,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let selected = self
                 .selected_player()
                 .is_some_and(|player| player.index == index);
-            let actor = &mut self.actors[index];
+            let actor = &mut self.registry.actors[index];
             let value = match lower.as_str() {
                 "health" | "playerhealth" => i32::from(actor.attributes[3]),
                 "replenishhealth" => {
@@ -3008,7 +3016,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             || function.eq_ignore_ascii_case("EnableHook")
         {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let control = self.actors[self.index]
+            let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .with_context(|| format!("{function}: receiver script-control unavailable"))?;
@@ -3029,20 +3037,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
             );
             let slot = usize::try_from(arguments[0].integer()?)
                 .ok()
-                .filter(|slot| *slot < self.globals.potions.len())
+                .filter(|slot| *slot < self.registry.globals.potions.len())
                 .with_context(|| format!("{function}: potion index outside 0..4 unsupported"))?;
             if set {
-                self.globals.potions[slot] = arguments[1].integer()?;
+                self.registry.globals.potions[slot] = arguments[1].integer()?;
                 return Ok(CallResult::Complete(1));
             }
-            return Ok(CallResult::Complete(self.globals.potions[slot]));
+            return Ok(CallResult::Complete(self.registry.globals.potions[slot]));
         }
         if function.eq_ignore_ascii_case("AdjustStrength")
             || function.eq_ignore_ascii_case("AdjustArmor")
         {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
             let delta = arguments[0].integer()?;
-            let combat = self.actors[self.index]
+            let combat = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
@@ -3059,7 +3067,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         {
             anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
             let value = arguments[0].integer()?;
-            let combat = self.actors[self.index]
+            let combat = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .and_then(|control| control.combat.as_mut())
@@ -3083,19 +3091,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             );
             // The modifier is stored as one byte.
             let modifier = modifier.integer()? as u8;
-            let excluded = self.actors[self.index]
+            let excluded = self.registry.actors[self.index]
                 .control
                 .as_ref()
                 .is_some_and(|control| control.object_update_excluded);
-            if !self.animation_system || excluded || self.actors[self.index].animation.is_none() {
+            if !self.animation_system
+                || excluded
+                || self.registry.actors[self.index].animation.is_none()
+            {
                 return Ok(CallResult::Complete(0));
             }
             let ticks = self
                 .inputs
                 .nominal_ticks
                 .context("PlayAnimation requires nominal_ticks")?;
-            let position = animation_sound_position(self.spatial.as_deref(), self.index);
-            let surface = self.actors[self.index].surface;
+            let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
+            let surface = self.registry.actors[self.index].surface;
             let mut emit = |sound| match &mut self.sounds {
                 Some(sounds) => sounds(
                     id,
@@ -3107,7 +3118,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 ),
                 None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
             };
-            let animation = self.actors[self.index]
+            let animation = self.registry.actors[self.index]
                 .animation
                 .as_mut()
                 .expect("checked animation");
@@ -3142,7 +3153,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
             let selected = self.selected_player() == Some(id);
             let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
-            let actor = &mut self.actors[self.index];
+            let actor = &mut self.registry.actors[self.index];
             let Some(control) = actor.control.as_mut() else {
                 return Ok(CallResult::Complete(0));
             };
@@ -3203,7 +3214,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         });
         if let Some((enable, bit)) = control_bit {
             anyhow::ensure!(arguments.is_empty(), "{function}: wrong argument count");
-            let control = self.actors[self.index]
+            let control = self.registry.actors[self.index]
                 .control
                 .as_mut()
                 .with_context(|| format!("{function}: script-control lifecycle unavailable"))?;
@@ -3219,8 +3230,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("Sound requires three arguments")
             };
             let spatial = self
+                .registry
                 .spatial
-                .as_deref()
+                .as_ref()
                 .context("Sound receiver pose unavailable")?
                 .actor(self.index)?;
             let position = if spatial.parent.is_some() {
@@ -3250,7 +3262,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("script sound handler absent")?(id, sound)?;
             return Ok(CallResult::Complete(0));
         }
-        if self.actors[self.index].runtime_identifier.is_none()
+        if self.registry.actors[self.index]
+            .runtime_identifier
+            .is_none()
             && [
                 "Wander",
                 "MoveByAxis",
@@ -3278,7 +3292,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     == 0,
                 "Wander movement through walk-node maps unsupported"
             );
-            let home = self.actors[self.index]
+            let home = self.registry.actors[self.index]
                 .placement()
                 .context("Wander home unavailable for standalone actor")?
                 .map_position;
@@ -3289,8 +3303,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .frame_scale
                 .context("Wander requires frame_scale")?;
             let spatial = self
+                .registry
                 .spatial
-                .as_deref_mut()
+                .as_mut()
                 .context("Wander spatial state not prepared")?
                 .actor_mut(self.index)?;
             let random = self
@@ -3299,7 +3314,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("Wander shared engine random stream unavailable")?;
             let result =
                 super::navigation::wander_without_maps(home, radius, frame_scale, spatial, random)?;
-            self.actors[self.index].attributes[94] = 1;
+            self.registry.actors[self.index].attributes[94] = 1;
             return Ok(CallResult::Complete(result));
         }
         if function.eq_ignore_ascii_case("AtNodeMarker") {
@@ -3307,14 +3322,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("AtNodeMarker requires two arguments")
             };
             let position = self
+                .registry
                 .spatial
-                .as_deref()
+                .as_ref()
                 .context("AtNodeMarker spatial state not prepared")?
                 .actor(self.index)?
                 .local
                 .position;
             let result = self
+                .registry
                 .markers
+                .as_ref()
                 .context("AtNodeMarker markers not prepared")?
                 .contains(marker.integer()?, position, distance.integer()?)?;
             return Ok(CallResult::Complete(i32::from(result)));
@@ -3325,7 +3343,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .selected_player()
                 .context("PlayerStand selected player unavailable")?;
             anyhow::ensure!(
-                player.generation == self.generation && player.index < self.actors.len(),
+                player.generation == self.generation && player.index < self.registry.actors.len(),
                 "PlayerStand selected player identity is stale"
             );
             let receiver = ScriptActorId {
@@ -3333,7 +3351,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 index: self.index,
             };
             return Ok(CallResult::Complete(i32::from(
-                self.actors[player.index].model.support.actor == Some(receiver),
+                self.registry.actors[player.index].model.support.actor == Some(receiver),
             )));
         }
         // Surface classes 1..=4 are the water classes, 2 and 4 the deep ones, 5 lava.
@@ -3345,7 +3363,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         };
         if let Some(test) = surface_test {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let surface = self.actors[self.index]
+            let surface = self.registry.actors[self.index]
                 .surface
                 .with_context(|| format!("{function} actor surface state unavailable"))?;
             return Ok(CallResult::Complete(i32::from(test(surface))));
@@ -3371,7 +3389,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
         if let Some(test) = control_test {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
-            let control = self.actors[self.index]
+            let control = self.registry.actors[self.index]
                 .control
                 .as_ref()
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
@@ -3387,8 +3405,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .player_query
                 .context("player query inputs unavailable")?;
             let spatial = self
+                .registry
                 .spatial
-                .as_deref()
+                .as_ref()
                 .context("spatial state not prepared")?
                 .actor(self.index)?;
             inputs.linked_position = Some(spatial.linked_position);
@@ -3398,10 +3417,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .context("spatial query absent")?,
             ));
         }
-        if let Some(value) = self.flag_state.call(function, arguments, flags)? {
+        if let Some(value) = self.registry.flag_state.call(function, arguments, flags)? {
             return Ok(CallResult::Complete(value));
         }
-        if self.spatial.is_some()
+        if self.registry.spatial.is_some()
             && (function.eq_ignore_ascii_case("SetAttribute")
                 || function.eq_ignore_ascii_case("SetMyAttr"))
             && let Some(index) = arguments.first()
@@ -3411,7 +3430,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "{function}: attachment/rotation attribute lifecycle unsupported after spatial preparation"
             );
         }
-        let actor = &mut self.actors[self.index];
+        let actor = &mut self.registry.actors[self.index];
         if let Some(value) = super::attributes::call(
             function,
             arguments,
@@ -3440,8 +3459,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
         let locomotion_state = self.locomotion_state();
-        let position = animation_sound_position(self.spatial.as_deref(), self.index);
-        let surface = self.actors[self.index].surface;
+        let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
+        let surface = self.registry.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
             Some(sounds) => sounds(
                 id,
@@ -3453,7 +3472,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
-        let actor = &mut self.actors[self.index];
+        let actor = &mut self.registry.actors[self.index];
         let mut animation =
             actor
                 .animation
@@ -3472,8 +3491,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .and_then(|query| query.player.as_ref())
             .map(|player| player.position);
         let mut spatial_call = self
+            .registry
             .spatial
-            .as_deref_mut()
+            .as_mut()
             .and_then(|spatial| spatial.actor_mut(self.index).ok())
             .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
             .map(
@@ -3484,7 +3504,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     player_position,
                     slave: actor.attributes[26] != 0,
                     actor_index: self.index,
-                    map_updates: self.map_updates,
+                    map_updates: &mut self.registry.map_updates,
                     position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
@@ -3499,7 +3519,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             &mut spatial_call,
             super::tasks::NativeServices {
                 ambient: Some(&ambient),
-                dialogue: self.globals.dialogue.as_mut(),
+                dialogue: self.registry.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
@@ -3514,13 +3534,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
                             direction: &mut control.motion_direction,
                             counters: &mut control.movement_flags,
                         }),
-                    called: &mut self.globals.locomotion_called,
+                    called: &mut self.registry.globals.locomotion_called,
                 }),
             },
         )
     }
     fn cancel(&mut self, token: u64) -> Result<()> {
-        self.actors[self.index].tasks.cancel(token)
+        self.registry.actors[self.index].tasks.cancel(token)
     }
     fn route(
         &mut self,
@@ -3531,17 +3551,17 @@ impl Host for GameHost<'_, '_, '_, '_> {
         flags: &mut [i32],
     ) -> Result<Route> {
         let index = self.target_index(target)?;
-        if let Some(error) = self.actors[index].failure() {
+        if let Some(error) = self.registry.actors[index].failure() {
             anyhow::bail!("{error}");
         }
         anyhow::ensure!(
-            self.actors[index].animation.is_none() || self.inputs.nominal_ticks.is_some(),
+            self.registry.actors[index].animation.is_none() || self.inputs.nominal_ticks.is_some(),
             "receiver instance {index}: animation requires nominal_ticks"
         );
         if index == self.index {
             return Ok(Route::Here);
         }
-        let actor = &mut self.actors[index];
+        let actor = &mut self.registry.actors[index];
         let mut runtime = actor.runtime.take().with_context(|| {
             format!(
                 "receiver instance {index} {}: {}",
@@ -3555,19 +3575,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let caller = std::mem::replace(&mut self.index, index);
         let result = runtime.receive(call, strings, source, self, flags);
         self.index = caller;
-        self.actors[index].runtime = Some(runtime);
+        self.registry.actors[index].runtime = Some(runtime);
         result.map(Route::Complete)
     }
     fn task_call(&mut self, origin: CodeOrigin, instruction: u32) -> Result<Call> {
-        self.task_calls
+        self.registry
+            .task_calls
             .get(&(origin, instruction))
             .cloned()
             .with_context(|| format!("task source {} instruction {instruction} absent", origin.0))
     }
     fn end(&mut self, _: Thread) -> Result<()> {
         anyhow::ensure!(
-            self.actors[self.index].attributes[29] == 0
-                && self.actors[self.index].attributes[30] == 0,
+            self.registry.actors[self.index].attributes[29] == 0
+                && self.registry.actors[self.index].attributes[30] == 0,
             "synchronization channels unsupported"
         );
         Ok(())
@@ -3627,7 +3648,7 @@ mod fighting_tests {
             generation: 1,
             index: 0,
         };
-        let mut actors: Vec<_> = (0..=positions.len())
+        let actors: Vec<_> = (0..=positions.len())
             .map(|index| ScriptActor {
                 light: None,
                 message_read: 0,
@@ -3688,28 +3709,50 @@ mod fighting_tests {
             references: vec![],
             attributes: vec![],
         };
+        let mut registry = ScriptWorld {
+            world: 1,
+            content_id: String::new(),
+            generation: 1,
+            flags: Vec::new(),
+            flag_state: super::super::flags::Flags::prepare(&definition).unwrap(),
+            updates: cyrus_assets::script::UpdateSettings {
+                task_system: true,
+                animation_system: true,
+                disable_slaves: false,
+                disable_master_slaves: false,
+            },
+            player_distance_override: false,
+            actors,
+            spatial: Some(spatial),
+            activation: Default::default(),
+            globals: Default::default(),
+            task_calls: BTreeMap::new(),
+            combat_attacks: Vec::new(),
+            in_combat_threshold: Some(threshold),
+            attribute_names: Vec::new(),
+            reference_names: definition.references,
+            names: BTreeMap::new(),
+            actor_lists: None,
+            markers: None,
+            walk_nodes: None,
+            next_combat_index: 0,
+            ordinary_prepared: false,
+            model_admission: None,
+            map_updates: Vec::new(),
+            surface_veto: None,
+        };
         let host = GameHost {
+            registry: &mut registry,
             world: 1,
             animation_system: true,
             task_system: true,
-            map_updates: &mut vec![],
-            activation: &mut Default::default(),
-            globals: &mut Default::default(),
-            spatial: Some(&mut spatial),
-            markers: None,
             walk_map_count: None,
             inputs: Default::default(),
             index: 0,
             generation: 1,
             sounds: None,
             random: None,
-            actors: &mut actors,
             ordinary_actors: Some(&traversal),
-            in_combat_threshold: Some(threshold),
-            task_calls: &BTreeMap::new(),
-            reference_names: &definition.references,
-            names: &BTreeMap::new(),
-            flag_state: &mut super::super::flags::Flags::prepare(&definition).unwrap(),
         };
         host.is_fighting().unwrap()
     }

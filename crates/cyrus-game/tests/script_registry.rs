@@ -15298,3 +15298,172 @@ fn ground_prevalidation_does_not_turn_an_unsupported_first_query_into_success() 
         .unwrap_err();
     assert!(format!("{error:#}").contains("earlier unsupported query"));
 }
+
+#[test]
+fn native_failure_preserves_written_flags_and_restores_runtime() {
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "PlayerLineUp".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: set_flag(73),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: wait(1, "PlayerLineUp", CallKind::Function, vec![]),
+            },
+        ),
+        (
+            2,
+            Step {
+                next: 3,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    let error = world.step(id, Thread::Main, 20).unwrap_err();
+    assert!(format!("{error:#}").contains("PlayerLineUp"));
+    assert_eq!(world.flags(), [73]);
+    assert!(world.actors()[0].runtime().unwrap().failure().is_some());
+    assert!(world.step(id, Thread::Main, 20).is_err());
+    assert_eq!(world.flags(), [73]);
+}
+
+#[test]
+fn destination_support_restores_all_position_axes_on_success_miss_and_error() {
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
+    for outcome in ["support", "miss", "error"] {
+        let mut scripts = cache();
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_1".into(), 4);
+        let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [10, 20, 30]);
+        let id = world.id(0).unwrap();
+        let other = world.id(1).unwrap();
+        world
+            .refresh_model_presentations(&data, &[id, other])
+            .unwrap();
+        world.snapshot_spatial(id).unwrap();
+        let saved = world.spatial(id).unwrap().local.position;
+        let mut scene = ordinary_collision_scene(world.world, models);
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+            .unwrap();
+        if outcome == "error" {
+            scene.actor_collision = None;
+        }
+        let destination = if outcome == "miss" {
+            [2000 * 256, 21 * 256, 2000 * 256]
+        } else {
+            [11 * 256, 21 * 256, 31 * 256]
+        };
+        let result = world.admit_ordinary_destination(
+            id,
+            destination,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 50,
+                sidedness: false,
+            },
+            ObstacleEnvironment {
+                selected_player: None,
+                auto_grab: false,
+                item_system_ready: true,
+                shell_execution: false,
+                ticks: 0,
+            },
+            &mut |_, _| Ok(()),
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            saved,
+            "{outcome}"
+        );
+        match outcome {
+            "support" => {
+                assert!(result.unwrap());
+                assert_eq!(world.model_support(id).unwrap().actor, Some(other));
+            }
+            "miss" => assert!(!result.unwrap()),
+            _ => {
+                assert!(format!("{:#}", result.unwrap_err()).contains("live geometry unavailable"))
+            }
+        }
+    }
+}
+
+#[test]
+fn destination_support_rejects_steep_ground_after_prevalidation_bypass() {
+    use cyrus_collision::ground::{SelectedSupport, TerrainGround};
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
+    let mut scripts = cache();
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_1".into(), 2);
+    let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [600, 2400, 600]);
+    let id = world.id(0).unwrap();
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    world.snapshot_spatial(id).unwrap();
+    let saved = world.spatial(id).unwrap().local.position;
+    let mut scene = ordinary_collision_scene(world.world, models);
+    scene.settings.post_collide_height = 5000;
+    let heights = (0_usize..256 * 256)
+        .map(|index| ((index % 256).min(16) * 1024) as i16)
+        .collect();
+    scene.terrain = Some(TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap());
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [600, 600], &[id])
+        .unwrap();
+    let query = || OrdinaryGroundQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        distance: 5000,
+        sidedness: false,
+    };
+    let selected = world.query_ordinary_ground(id, query()).unwrap().unwrap();
+    assert!(
+        matches!(selected, SelectedSupport::Primary { support, .. } if support.classification() == 2)
+    );
+    world
+        .query_ordinary_ground_prevalidation(id, query(), true)
+        .unwrap();
+    assert!(
+        !world
+            .admit_ordinary_destination(
+                id,
+                saved,
+                query(),
+                ObstacleEnvironment {
+                    selected_player: None,
+                    auto_grab: false,
+                    item_system_ready: true,
+                    shell_execution: false,
+                    ticks: 0
+                },
+                &mut |_, _| Ok(()),
+            )
+            .unwrap()
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, saved);
+}

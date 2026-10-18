@@ -1,4 +1,4 @@
-//! Ordinary primary ground queries use retained models and never player fallback.
+//! Ordinary ground queries retain model ownership and selected-player fallback history.
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_collision::{
@@ -259,8 +259,8 @@ impl ScriptWorld {
     }
 
     /// Query primary support from static and stored live models, retaining the
-    /// selected face owner. This performs neither motion response nor player
-    /// fallback/history or surface-response transitions. The admitted ordinary
+    /// selected face owner and selected-player fallback/history. This performs
+    /// neither motion response nor surface-response transitions. The admitted ordinary
     /// boundary owns clearing prior support. Follows preservation's ordinary
     /// primary support and supporting-model lifetime rules.
     pub fn query_ordinary_ground(

@@ -163,7 +163,7 @@ module where it is defined and regenerate.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
-- `src/script/registry/ground.rs` — Ordinary primary ground queries use retained models and never player fallback.
+- `src/script/registry/ground.rs` — Ordinary ground queries retain model ownership and selected-player fallback history.
 - `src/script/registry/hazard.rs` — The nonplayer step hazard test follows the original's destination surface classification.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.

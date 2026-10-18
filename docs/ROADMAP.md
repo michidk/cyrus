@@ -330,6 +330,13 @@ query cannot become a silent success. The
 [guard rules](https://github.com/michidk/redguard-preservation/blob/59cb6b1/docs/engine/player.md#ordinary-ground-prevalidation)
 are published. Full point collision and `WalkForward` remain open.
 
+
+**Verified:** nonplayer destination support admission now shares the ordinary
+point-support stages with late collision. It restores local XYZ after support,
+a miss or an error, while retaining support ownership and collision state.
+Linked actors and selected-player destination feedback remain unsupported.
+Native `WalkForward` binding and full combat movement acceptance remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target
