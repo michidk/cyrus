@@ -9,6 +9,7 @@ mod attributes;
 /// Logical camera preparation; installed initialization and live publication are host-owned.
 pub mod camera;
 mod combat;
+pub mod decision;
 pub use combat::{
     CombatControlState, CombatDecision, CombatMessage, CombatMessages, CombatTauntPlayback,
     CombatTauntSource,

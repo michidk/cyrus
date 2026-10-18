@@ -141,6 +141,7 @@ module where it is defined and regenerate.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
 - `src/script/camera.rs` — Retained logical camera records; pose correction and publication share this owner.
 - `src/script/combat.rs` — Combat state, taunt presentation services and class-message queues.
+- `src/script/decision.rs` — Nonplayer decision-stage executors. The pure state machines follow the original's attack
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
 - `src/script/hud.rs` — Session inventory, compass use, power-up slots and accepted logbook writes.
