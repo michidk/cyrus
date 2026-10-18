@@ -59,7 +59,13 @@ pub(super) struct LocomotionCall<'a> {
     /// The forward step check of `MoveForward`, supplied by the owning update.
     pub forward_step_clear: Option<bool>,
     pub animation_system: bool,
-    pub motion_direction: Option<&'a mut u8>,
+    pub motion: Option<MotionCall<'a>>,
+    pub called: &'a mut u8,
+}
+
+pub(super) struct MotionCall<'a> {
+    pub direction: &'a mut u8,
+    pub counters: &'a mut u8,
 }
 
 /// Read-only animation state, sampled independently of playback tick availability.
@@ -285,9 +291,10 @@ impl Task {
                 if admission == BackwardAdmission::Refused {
                     return Ok(true);
                 }
-                *motion
-                    .motion_direction
-                    .context("MoveBackward motion state unavailable")? = BACKWARD_MOTION_DIRECTION;
+                let receiver = motion
+                    .motion
+                    .context("MoveBackward motion state unavailable")?;
+                *receiver.direction = BACKWARD_MOTION_DIRECTION;
                 let BackwardAdmission::Proceed { group, step } = admission else {
                     return Ok(true);
                 };
@@ -310,9 +317,16 @@ impl Task {
                     if motion.animation_system && input.animation.current_group() != Some(group) {
                         return Ok(!continues(duration, elapsed));
                     }
+                    *motion.called |= 8;
+                    let distance = super::locomotion::initial_step_distance(
+                        receiver.counters,
+                        6,
+                        state.step_adjustment,
+                        i32::from(step) << 8,
+                    );
                     if let Some((heading, distance)) = backward_translation(
                         spatial.angles[1],
-                        step,
+                        distance,
                         spatial.frame_scale as i32,
                         input.animation.translation_suppressed(),
                     ) {
@@ -344,17 +358,17 @@ impl Task {
                 if !forward_admitted(&state) {
                     return Ok(true);
                 }
-                // The original skips this check after three steps; the step counter is not
-                // modelled, so it runs on every invocation.
-                if !motion
-                    .forward_step_clear
-                    .context("MoveForward forward step check input unavailable")?
+                let receiver = motion
+                    .motion
+                    .context("MoveForward motion state unavailable")?;
+                if (*receiver.counters >> 4) & 3 < 3
+                    && !motion
+                        .forward_step_clear
+                        .context("MoveForward forward step check input unavailable")?
                 {
                     return Ok(true);
                 }
-                *motion
-                    .motion_direction
-                    .context("MoveForward motion state unavailable")? = FORWARD_MOTION_DIRECTION;
+                *receiver.direction = FORWARD_MOTION_DIRECTION;
                 let (group, step) = match forward_plan(&state) {
                     ForwardPlan::Done => return Ok(true),
                     ForwardPlan::NeedsEdgeProbe => anyhow::bail!(
@@ -381,9 +395,16 @@ impl Task {
                     if motion.animation_system && input.animation.current_group() != Some(group) {
                         return Ok(!continues(duration, elapsed));
                     }
+                    *motion.called |= 4;
+                    let distance = super::locomotion::initial_step_distance(
+                        receiver.counters,
+                        4,
+                        state.step_adjustment,
+                        i32::from(step) << 8,
+                    );
                     if let Some((heading, distance)) = forward_translation(
                         spatial.angles[1],
-                        step,
+                        distance,
                         spatial.frame_scale as i32,
                         input.animation.translation_suppressed(),
                     ) {
@@ -420,9 +441,9 @@ impl Task {
                     return Ok(true);
                 }
                 *motion
-                    .motion_direction
-                    .with_context(|| format!("{name} motion state unavailable"))? =
-                    strafe.motion_direction();
+                    .motion
+                    .with_context(|| format!("{name} motion state unavailable"))?
+                    .direction = strafe.motion_direction();
                 let StrafeAdmission::Combat { group, step, turn } = admission else {
                     anyhow::bail!(
                         "{name} outside combat stance unsupported: lateral step check, edge probe and hanging-edge test"

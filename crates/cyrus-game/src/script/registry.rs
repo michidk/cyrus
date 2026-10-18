@@ -155,7 +155,7 @@ pub struct ActorControlState {
     pub motion_classification: u8,
     /// Allocator-zero directional-state bytes; low bits gate surface assignment.
     pub directional_state: [u8; 2],
-    /// Retained directional motion bits, allocated as zero.
+    /// Packed left/right/forward/backward counters, two bits each; directional motion saturates its field.
     pub movement_flags: u8,
     /// Retained integer motion components; obstacle interruption only clears them here.
     pub motion_vector: [i32; 3],
@@ -2064,6 +2064,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .is_some_and(|combat| combat.flags & 4 != 0),
             surface: actor.surface.unwrap_or(0),
             torch_burning: control.torch_burning != 0,
+            step_adjustment: actor.attributes[11],
             step_attribute: actor.attributes[9],
             combat_step_attribute: actor.attributes[18],
             strafe_step_attribute: actor.attributes[83],
@@ -2704,10 +2705,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     blocked_ahead_30: self.inputs.blocked_ahead_30,
                     forward_step_clear: self.inputs.forward_step_clear,
                     animation_system: self.animation_system,
-                    motion_direction: actor
+                    motion: actor
                         .control
                         .as_mut()
-                        .map(|control| &mut control.motion_direction),
+                        .map(|control| super::tasks::MotionCall {
+                            direction: &mut control.motion_direction,
+                            counters: &mut control.movement_flags,
+                        }),
+                    called: &mut self.globals.locomotion_called,
                 }),
             },
         )? {
@@ -3502,10 +3507,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     blocked_ahead_30: self.inputs.blocked_ahead_30,
                     forward_step_clear: self.inputs.forward_step_clear,
                     animation_system: self.animation_system,
-                    motion_direction: actor
+                    motion: actor
                         .control
                         .as_mut()
-                        .map(|control| &mut control.motion_direction),
+                        .map(|control| super::tasks::MotionCall {
+                            direction: &mut control.motion_direction,
+                            counters: &mut control.movement_flags,
+                        }),
+                    called: &mut self.globals.locomotion_called,
                 }),
             },
         )

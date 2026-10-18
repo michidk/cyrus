@@ -1030,3 +1030,13 @@ caller-sampled and ordinary combat traversal remains unavailable. The current
 counter-attack query uses the retained attack slot and motion, with idle actions
 returning zero without metadata reads, following preservation's
 [selection rules](https://github.com/michidk/redguard-preservation/blob/86e5b96a091150556e3ce9dc8a84e95e0c572061/docs/engine/SOUP.md#best-and-open-defence-picks).
+
+**Verified:** forward/backward native tasks use the existing packed directional movement byte
+for their initial two-bit step counters. Attribute 11 selects the distance ramp
+before frame scaling. Ordinary wrapper entry resets shared direction-called flags;
+cleanup after collision clears unused counters. Directional motion and sliding
+mark the same counters and flags, and routed tasks use the receiver's state.
+Headless registry contracts cover the backward ramp, snapshot continuation,
+receiver routing, ordinary cleanup and forward step-check bypass at counter three.
+Full fight spacing, remaining collision reset branches and installed combat
+movement acceptance remain incomplete.

@@ -5001,3 +5001,216 @@ fn move_forward_without_a_step_check_input_reports_it() {
     let error = forward_stage(&mut world, id, BODY, &hud, None).unwrap_err();
     assert!(format!("{error:#}").contains("forward step check input unavailable"));
 }
+fn counter_animations(data: &Scripts) -> Animations {
+    let mut animation = move_backward_animations(data, &[0, 19]);
+    animation.metadata["actors"][1]["animation_groups"] =
+        animation.metadata["actors"][0]["animation_groups"].clone();
+    for actor in animation.metadata["actors"].as_array_mut().unwrap() {
+        actor["raan_entries"] = json!([{"frame_count":1,"file_path":"TEST.3D"}]);
+    }
+    animation.metadata["mpob_objects"] = json!([
+        {"script_name":"ACTOR"}, {"script_name":"OTHER"}
+    ]);
+    animation.models.insert(
+        "TEST".into(),
+        cyrus_assets::animation::AnimationModel {
+            radius: Some(1.0),
+            base_positions: vec![],
+            base_normals: vec![],
+            faces: vec![],
+            corner_normals: vec![],
+            encoding: "static_3d".into(),
+            positions: vec![vec![]],
+            normals: vec![vec![]],
+        },
+    );
+    animation
+}
+
+#[test]
+fn backward_attribute_ramp_survives_task_passes_and_world_restoration() {
+    use cyrus_game::script::{GameplayGlobals, WorldRestoreContext, WorldSnapshotSources};
+    let mut data = move_backward_scripts(8);
+    data.updates.animation_system = false;
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_11".into(), 1);
+    data.content_id = data.content_identity().unwrap();
+    let animation = counter_animations(&data);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &data,
+        animations: &animation,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut id = world.id(0).unwrap();
+    world.bind_animation(id, &animation, 0).unwrap();
+    let hud = locomotion_hud();
+    for (index, (z, counter)) in [(-512, 64), (-1194, 128), (-2218, 192), (-4266, 192)]
+        .into_iter()
+        .enumerate()
+    {
+        locomotion_stage(&mut world, id, if index == 0 { BODY } else { TASKS }, &hud);
+        assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, z]);
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().movement_flags,
+            counter
+        );
+        if index == 0 {
+            let saved = serde_json::to_vec(&world.snapshot(&sources).unwrap()).unwrap();
+            world = ScriptWorld::from_snapshot(
+                serde_json::from_slice(&saved).unwrap(),
+                &sources,
+                WorldRestoreContext {
+                    generation: 2,
+                    globals: GameplayGlobals::default(),
+                    samples: &BTreeMap::new(),
+                },
+            )
+            .unwrap();
+            id = world.id(0).unwrap();
+        }
+    }
+}
+
+#[test]
+fn routed_backward_task_advances_only_the_receivers_counter() {
+    let mut data = move_backward_scripts(8);
+    data.updates.animation_system = false;
+    let step = data
+        .actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap();
+    let Operation::Call { mut call } = step.operation.clone() else {
+        unreachable!()
+    };
+    call.target = Object::Named { string: 0 };
+    step.operation = Operation::ObjectCall { call };
+    let receiver = data.actors.get_mut("OTHER").unwrap();
+    receiver.attributes.insert("attr_9".into(), 8);
+    receiver.attributes.insert("attr_11".into(), 3);
+    data.content_id = data.content_identity().unwrap();
+    let animation = counter_animations(&data);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let caller = world.id(0).unwrap();
+    let receiver = world.id(1).unwrap();
+    world.bind_animation(receiver, &animation, 0).unwrap();
+    let hud = locomotion_hud();
+    locomotion_stage(&mut world, caller, BODY, &hud);
+    assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
+    assert_eq!(
+        world.actors()[1].control_state().unwrap().movement_flags,
+        64
+    );
+    for z in [0, -1024, -3072] {
+        locomotion_stage(&mut world, receiver, TASKS, &hud);
+        assert_eq!(world.spatial(receiver).unwrap().local.position, [0, 0, z]);
+    }
+    assert_eq!(world.spatial(caller).unwrap().local.position, [0; 3]);
+}
+
+#[test]
+fn forward_task_stops_reading_the_step_check_after_three_steps() {
+    let (mut world, id, _) = move_forward_world(8);
+    let hud = locomotion_hud();
+    for index in 0..3 {
+        forward_stage(
+            &mut world,
+            id,
+            if index == 0 { BODY } else { TASKS },
+            &hud,
+            Some(true),
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().movement_flags,
+        48
+    );
+    let before = world.spatial(id).unwrap().local.position;
+    forward_stage(&mut world, id, TASKS, &hud, None).unwrap();
+    assert_eq!(
+        world.spatial(id).unwrap().local.position,
+        [before[0], before[1], before[2] + 2048]
+    );
+}
+
+#[test]
+fn directional_motion_and_forward_tasks_share_the_same_packed_counter() {
+    let (mut world, id, _) = move_forward_world(8);
+    world.set_actor_surface(id, 0).unwrap();
+    assert_eq!(
+        world.apply_ordinary_directional_motion(id, 2, 0).unwrap(),
+        Some(2)
+    );
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().movement_flags,
+        48
+    );
+    assert_eq!(
+        serde_json::to_value(world.globals()).unwrap()["locomotion_called"],
+        4
+    );
+    forward_stage(&mut world, id, BODY, &locomotion_hud(), None).unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, 2048]);
+}
+
+#[test]
+fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut data = scripts(vec![Operation::End { target: 0 }]);
+    for placement in &mut data.instances {
+        placement.object_type = 1;
+        placement.active = 1;
+    }
+    data.content_id = data.content_identity().unwrap();
+    let animation = animations(&data, false);
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    for index in 0..2 {
+        let id = world.id(index).unwrap();
+        world.bind_animation(id, &animation, 1).unwrap();
+        world.set_actor_surface(id, 0).unwrap();
+        world.apply_ordinary_directional_motion(id, 3, 0).unwrap();
+        assert_eq!(
+            world.actors()[index]
+                .control_state()
+                .unwrap()
+                .movement_flags,
+            192
+        );
+    }
+    world
+        .update_ordinary(
+            &animation,
+            [0; 2],
+            OrdinaryInputs {
+                scripts: ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&locomotion_hud()),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                scene: None,
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    for actor in world.actors() {
+        assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        assert_eq!(actor.control_state().unwrap().movement_flags, 0);
+    }
+}

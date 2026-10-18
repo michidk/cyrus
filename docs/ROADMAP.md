@@ -314,9 +314,13 @@ installed-data skips after resuming an interrupted test run.
 
 **Verified:** original-executable contracts establish attribute-11 initial movement
 scaling, selective directional-counter retention and first/next attacker admission.
-The [movement and attacker rules](https://github.com/michidk/redguard-preservation/blob/137975b/docs/engine/SOUP.md#movebackward)
-are published. These prerequisite facts do not establish runtime movement support;
-packed-counter ownership, per-point collision and automatic combat remain open.
+The [movement and attacker rules](https://github.com/michidk/redguard-preservation/blob/85ead3d/docs/engine/SOUP.md#movebackward)
+are published. Forward/backward tasks now share the retained directional movement
+byte with directional and sliding motion, apply attribute-11 initial scaling and
+skip the forward step check at counter three. Ordinary cleanup clears unused
+counters after collision. Headless contracts cover the ramp, snapshot continuation,
+receiver routing and cleanup. Full spacing, remaining collision reset branches,
+per-point collision and automatic combat remain open.
 
 Next, in dependency order:
 

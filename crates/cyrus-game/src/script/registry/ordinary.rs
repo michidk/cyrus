@@ -132,6 +132,7 @@ impl ScriptWorld {
             if control.object_update_excluded || control.script_control & 8 != 0 {
                 continue;
             }
+            self.globals.locomotion_called = 0;
             let result = (|| -> anyhow::Result<()> {
                 if selected_player {
                     if !self.actors[id.index].model.prepared {
@@ -400,6 +401,14 @@ impl ScriptWorld {
                         "ordinary late collision response",
                     )?;
                 }
+                super::super::locomotion::finish_step_counters(
+                    &mut self.actors[id.index]
+                        .control
+                        .as_mut()
+                        .expect("admitted control")
+                        .movement_flags,
+                    self.globals.locomotion_called,
+                );
                 self.follow_ordinary_support(id, None)?;
                 self.restore_axis_locks(id)?;
                 if self.spatial(id)?.parent.is_none() {

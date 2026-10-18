@@ -141,6 +141,8 @@ struct ControllerPrelude {
 /// The host retains these globals while replacing the logical world registry.
 #[derive(Default, Debug, Serialize)]
 pub struct GameplayGlobals {
+    /// Shared direction-called flags, reset at ordinary wrapper entry.
+    pub(super) locomotion_called: u8,
     /// Engine message queues persist independently of a logical world registry.
     pub(super) combat_messages: super::CombatMessages,
     pub(super) dialogue: Option<super::DialogueState>,
@@ -814,6 +816,7 @@ mod idle_tests {
 /// Session-only state is captured once, independently of retained world records.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct GameplayGlobalsSnapshot {
+    locomotion_called: u8,
     lineup_result: Option<i32>,
     combat_messages: super::combat::CombatMessagesSnapshot,
     dialogue: Option<super::DialogueSnapshot>,
@@ -832,6 +835,7 @@ pub(super) struct GameplayGlobalsSnapshot {
 impl GameplayGlobals {
     pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
         GameplayGlobalsSnapshot {
+            locomotion_called: self.locomotion_called,
             lineup_result: self.lineup_result,
             combat_messages: self.combat_messages.snapshot(),
             dialogue: self.dialogue.as_ref().map(super::DialogueState::snapshot),
@@ -883,6 +887,7 @@ impl GameplayGlobals {
             })
             .transpose()?;
         Ok(Self {
+            locomotion_called: saved.locomotion_called,
             combat_messages,
             dialogue,
             lockout: saved.lockout,

@@ -26,6 +26,8 @@ pub struct BackwardState {
     pub forward_combat_step_attribute: u8,
     /// A combat move is already selected (the action selector is not -1).
     pub move_selected: bool,
+    /// Attribute 11 selects the initial distance ramp, independently of animation suppression.
+    pub step_adjustment: u8,
 }
 
 /// Outcome of `MoveBackward`'s admission and animation choice.
@@ -211,26 +213,26 @@ pub fn forward_plan(state: &BackwardState) -> ForwardPlan {
 }
 
 /// One forward step: the heading is the receiver's local Y angle and the distance the step in
-/// whole units times 256, scaled by the frame scale; `None` when no movement happens.
+/// Q8 units, scaled by the frame scale; `None` when no movement happens.
 pub fn forward_translation(
     angle_y: u16,
-    step: u8,
+    distance: i32,
     frame_scale: i32,
     translation_suppressed: bool,
 ) -> Option<(u16, i32)> {
     if translation_suppressed {
         return None;
     }
-    let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
+    let distance = distance.wrapping_mul(frame_scale) >> 8;
     (distance > 0).then_some((angle_y & 2047, distance))
 }
 
 /// One backward step: the heading (local Y angle plus 1024, wrapped) and the distance, or `None`
-/// when no movement happens. `step` is in whole units; the translation-suppression marker blocks
+/// when no movement happens. `distance` is in Q8 units; the translation-suppression marker blocks
 /// movement; the scale is the shared frame scale applied with an arithmetic shift right of eight.
 pub fn backward_translation(
     angle_y: u16,
-    step: u8,
+    distance: i32,
     frame_scale: i32,
     translation_suppressed: bool,
 ) -> Option<(u16, i32)> {
@@ -238,8 +240,38 @@ pub fn backward_translation(
         return None;
     }
     let heading = angle_y.wrapping_add(1024) & 2047;
-    let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
+    let distance = distance.wrapping_mul(frame_scale) >> 8;
     (distance > 0).then_some((heading, distance))
+}
+
+/// Adjust and advance one packed directional counter before frame scaling.
+/// `shift` is 0/2/4/6 for left/right/forward/backward. Arithmetic follows
+/// preservation's SOUP movement contract; multiplication wraps before shifting.
+pub fn initial_step_distance(packed: &mut u8, shift: u8, mode: u8, distance: i32) -> i32 {
+    let counter = (*packed >> shift) & 3;
+    if counter == 3 {
+        return distance;
+    }
+    *packed = (*packed & !(3 << shift)) | ((counter + 1) << shift);
+    match (mode, counter) {
+        (1, 0) => distance >> 2,
+        (1, 1) => distance / 3,
+        (1, 2) => distance >> 1,
+        (2, 0) | (3, 0..=1) => 0,
+        (2, 1) => distance.wrapping_mul(85) >> 8,
+        (2, 2) => distance.wrapping_mul(170) >> 8,
+        (3, 2) => distance >> 1,
+        _ => distance,
+    }
+}
+
+/// Clear only directions not called during this ordinary wrapper.
+pub fn finish_step_counters(packed: &mut u8, called: u8) {
+    for direction in 0..4 {
+        if called & (1 << direction) == 0 {
+            *packed &= !(3 << (direction * 2));
+        }
+    }
 }
 
 /// The task result: one (continue) while `duration - 1 > elapsed`, zero otherwise.
@@ -250,6 +282,37 @@ pub fn continues(duration: i32, elapsed: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn initial_distance_ramps_preserve_other_directions_and_stop_at_three() {
+        for (mode, expected) in [
+            (0, [2048, 2048, 2048, 2048]),
+            (1, [512, 682, 1024, 2048]),
+            (2, [0, 680, 1360, 2048]),
+            (3, [0, 0, 1024, 2048]),
+            (255, [2048; 4]),
+        ] {
+            let mut packed = 0b0000_1111;
+            for distance in expected {
+                assert_eq!(initial_step_distance(&mut packed, 6, mode, 2048), distance);
+                assert_eq!(packed & 63, 15);
+            }
+            assert_eq!(packed, 207);
+        }
+        let mut packed = 0;
+        assert_eq!(initial_step_distance(&mut packed, 4, 1, -1025), -257);
+        assert_eq!(initial_step_distance(&mut packed, 4, 1, -1025), -341);
+        assert_eq!(initial_step_distance(&mut packed, 4, 1, -1025), -513);
+    }
+
+    #[test]
+    fn ordinary_cleanup_retains_only_called_directions() {
+        let mut packed = 255;
+        finish_step_counters(&mut packed, 0b1010);
+        assert_eq!(packed, 0b1100_1100);
+        finish_step_counters(&mut packed, 0);
+        assert_eq!(packed, 0);
+    }
 
     fn ready() -> BackwardState {
         BackwardState {
@@ -365,11 +428,17 @@ mod tests {
 
     #[test]
     fn translation_scales_the_step_and_wraps_the_heading() {
-        assert_eq!(backward_translation(0, 8, 256, false), Some((1024, 2048)));
-        assert_eq!(backward_translation(1500, 8, 128, false), Some((476, 1024)));
-        assert_eq!(backward_translation(0, 8, 256, true), None);
+        assert_eq!(
+            backward_translation(0, 2048, 256, false),
+            Some((1024, 2048))
+        );
+        assert_eq!(
+            backward_translation(1500, 2048, 128, false),
+            Some((476, 1024))
+        );
+        assert_eq!(backward_translation(0, 2048, 256, true), None);
         assert_eq!(backward_translation(0, 0, 256, false), None);
-        assert_eq!(backward_translation(0, 8, 0, false), None);
+        assert_eq!(backward_translation(0, 2048, 0, false), None);
     }
 
     #[test]
@@ -537,9 +606,15 @@ mod tests {
 
     #[test]
     fn forward_translation_uses_the_unoffset_heading() {
-        assert_eq!(forward_translation(300, 8, 256, false), Some((300, 2048)));
-        assert_eq!(forward_translation(2100, 8, 128, false), Some((52, 1024)));
-        assert_eq!(forward_translation(0, 8, 256, true), None);
+        assert_eq!(
+            forward_translation(300, 2048, 256, false),
+            Some((300, 2048))
+        );
+        assert_eq!(
+            forward_translation(2100, 2048, 128, false),
+            Some((52, 1024))
+        );
+        assert_eq!(forward_translation(0, 2048, 256, true), None);
         assert_eq!(forward_translation(0, 0, 256, false), None);
     }
 }

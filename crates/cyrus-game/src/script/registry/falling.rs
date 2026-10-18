@@ -486,6 +486,13 @@ impl ScriptWorld {
             .context("ordinary directional control unavailable")?;
         control.motion_direction = action.direction;
         control.movement_flags |= action.movement_bits;
+        self.globals.locomotion_called |= match action.direction {
+            2 => 4,
+            3 => 8,
+            4 => 1,
+            5 => 2,
+            _ => unreachable!("directional policy supplies directions two through five"),
+        };
         if let Some(position) = translated {
             self.spatial
                 .as_mut()
