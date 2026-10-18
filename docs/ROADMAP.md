@@ -83,8 +83,8 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 ### Active assignments
 
 | Work | Status | Session |
-| SOUP defence ownership, paced selection, geometry and starts | In progress | Codex five-task goal; `magic/artifacts/2026-10-18-live-paced-picker/` |
 | --- | --- | --- |
+| SOUP defence integration and combat movement | In progress | Codex five-task goal; `magic/artifacts/2026-10-18-combat-movement/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Logbook reader scroll lighting: recover the shading rule from matched original/native captures | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-book-lighting/` |
 | Actor pose recovery for a matched-pose Cyrus/Brennan shading comparison; logbook reader font styles other than 7 and 9 (scroll lighting stays with the row above) | In progress | Claude, feeble-panther-1c; `magic/artifacts/2026-10-16-actor-fixes/` (`GOAL2.md`) |
@@ -311,6 +311,12 @@ caller-sampled inputs and does not enable ordinary traversal or establish duels.
 The [query rules](https://github.com/michidk/redguard-preservation/blob/86e5b96a091150556e3ce9dc8a84e95e0c572061/docs/engine/SOUP.md#best-and-open-defence-picks)
 are published. Workspace gate checks pass with 1,107 distinct Rust tests and zero
 installed-data skips after resuming an interrupted test run.
+
+**Verified:** original-executable contracts establish attribute-11 initial movement
+scaling, selective directional-counter retention and first/next attacker admission.
+The [movement and attacker rules](https://github.com/michidk/redguard-preservation/blob/137975b/docs/engine/SOUP.md#movebackward)
+are published. These prerequisite facts do not establish runtime movement support;
+packed-counter ownership, per-point collision and automatic combat remain open.
 
 Next, in dependency order:
 
