@@ -90,7 +90,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | SOUP defence integration and combat movement | In progress | Codex five-task goal; `magic/artifacts/2026-10-18-combat-movement/` |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Logbook reader scroll lighting: recover the shading rule from matched original/native captures | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-book-lighting/` |
-| Logbook reader font styles (landing, then styles 1, 2 and 5) and original actor pose recovery for a matched-pose Cyrus/Brennan shading comparison (scroll lighting stays with the row above) | In progress | Claude, feeble-panther-1c; `magic/artifacts/2026-10-16-actor-fixes/` (`GOAL3.md`) |
+| Characterise the original-vs-native Cyrus placement gap at spawn (diagnose and report, no camera or controller changes) and logbook reader style 5 | In progress | Claude, feeble-panther-1c; `magic/artifacts/2026-10-16-actor-fixes/` (`GOAL4.md`) |
 
 Other rendering follow-ups, HUD integration and the save-slot menu are unassigned.
 Player-controller implementation and walking acceptance belong to the controller owner.
