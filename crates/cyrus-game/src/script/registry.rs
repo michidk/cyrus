@@ -173,7 +173,7 @@ pub struct ActorControlState {
     /// Ordered body response marks; cleared only by their owning update stage.
     pub body_response_flags: u8,
     pub collision_transition_flags: u8,
-    /// Other bytes in the packed response record; retained until script-wrapper cleanup.
+    /// Blocked-step byte followed by the remaining auxiliary response byte; both clear at wrapper cleanup.
     pub collision_response_auxiliary: [u8; 2],
     /// Allocator-zero collision-response age, incremented before clearing prior marks.
     pub collision_response_age: u8,

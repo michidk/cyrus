@@ -15467,3 +15467,92 @@ fn destination_support_rejects_steep_ground_after_prevalidation_bypass() {
     );
     assert_eq!(world.spatial(id).unwrap().local.position, saved);
 }
+
+#[test]
+fn destination_body_checks_models_without_moving_the_receiver() {
+    use cyrus_game::script::OrdinaryObstacleQuery;
+    let (mut world, data, models) = static_model_fixture_at(cache(), Some(20.0), [10, 20, 30]);
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    world
+        .refresh_model_presentations(&data, &[id, other])
+        .unwrap();
+    let saved = world.spatial(id).unwrap().local.position;
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    for (height, expected) in [(20, false), (100, true)] {
+        assert_eq!(
+            world
+                .ordinary_destination_body_clear(
+                    id,
+                    [10 * 256, height * 256, 30 * 256],
+                    OrdinaryObstacleQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        vertical_offset: 0,
+                        respond: false
+                    },
+                )
+                .unwrap(),
+            expected
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, saved);
+    }
+}
+
+#[test]
+fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
+    use cyrus_game::script::{ObstacleEnvironment, OrdinaryGroundQuery};
+    let (mut world, data, models) = static_model_fixture_at(cache(), Some(20.0), [10, 20, 30]);
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    world
+        .refresh_model_presentations(&data, &[id, other])
+        .unwrap();
+    let saved = world.spatial(id).unwrap().local.position;
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    assert!(
+        !world
+            .walk_forward_step_clear(
+                id,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: u32::MAX,
+                    sidedness: false
+                },
+                ObstacleEnvironment {
+                    selected_player: None,
+                    auto_grab: false,
+                    item_system_ready: true,
+                    shell_execution: false,
+                    ticks: 0
+                },
+                &mut |_, _| Ok(()),
+            )
+            .unwrap()
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, saved);
+    assert_eq!(
+        world.actors()[id.index]
+            .control_state()
+            .unwrap()
+            .collision_response_auxiliary[0],
+        0x80
+    );
+    world.finish_ordinary_script_response(id, Some(1)).unwrap();
+    assert_eq!(
+        world.actors()[id.index]
+            .control_state()
+            .unwrap()
+            .collision_response_auxiliary[0],
+        0
+    );
+}

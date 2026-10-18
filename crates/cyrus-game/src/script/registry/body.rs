@@ -251,6 +251,54 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Test a nonplayer destination against retained model candidates, stopping
+    /// at the first blocker. The receiver keeps its current collision orientation
+    /// and original sphere shape; stored position and support state are untouched.
+    pub fn ordinary_destination_body_clear(
+        &self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        query: super::obstacle::OrdinaryObstacleQuery<'_>,
+    ) -> Result<bool> {
+        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
+        let poses = self.ordinary_collision_poses(query.prepared)?;
+        let spheres = self
+            .ordinary_collision_shape(id)?
+            .body
+            .iter()
+            .map(|sphere| {
+                (
+                    Vec3::from_array(sphere.center.map(|value| value as f32)),
+                    sphere.radius as f32,
+                )
+            })
+            .collect::<Vec<_>>();
+        let spatial = self.spatial(id)?;
+        let rows = cyrus_world::transform::Matrix::collision_orientation(spatial.local.angles)
+            .0
+            .map(Vec3::from_array);
+        let control = self.actors[id.index]
+            .control
+            .as_ref()
+            .context("destination body control unavailable")?;
+        Ok(!query.scene.static_collision.runtime_blocks_body(
+            &query.prepared.candidates,
+            query
+                .scene
+                .actor_collision
+                .as_ref()
+                .context("destination body live geometry unavailable; re-export world")?,
+            &poses,
+            &BodyProbe {
+                position: destination.map(i64::from),
+                rotation: Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
+                spheres: &spheres,
+                sidedness: false,
+            },
+            (control.queued_motion == 24).then_some(128),
+        )?)
+    }
+
     /// Collect primary contacts in retained model order with original integer
     /// normals and owners. Rebuilds collision orientation from current local
     /// angles and initial body spheres; other models retain presentation poses.

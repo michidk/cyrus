@@ -66,7 +66,10 @@ impl RuntimeBodyContact {
 }
 
 impl StaticCollision {
-    pub(super) fn runtime_blocks_body(
+    /// Test retained models in order and stop at the first blocking contact.
+    /// Excluded types and misses do not inspect later state until needed;
+    /// terrain and primary-response contact collection are separate queries.
+    pub fn runtime_blocks_body(
         &self,
         candidates: &CollisionCandidates,
         actors: &ActorModelCollision,

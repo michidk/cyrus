@@ -1054,3 +1054,8 @@ point-support stages with late collision. It restores local XYZ after support,
 a miss or an error, while retaining support ownership and collision state.
 Linked actors and selected-player destination feedback remain unsupported.
 Native `WalkForward` binding and full combat movement acceptance remain open.
+
+The explicit `ScriptWorld::walk_forward_step_clear` service checks destination
+body contact, hazard and support in order. Refusal marks transient step state;
+ordinary response cleanup clears it. It requires a receiver-owned retained
+collision query. Native `WalkForward` dispatch remains unavailable.

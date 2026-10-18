@@ -28,6 +28,55 @@ const UNFOUND_Y: i32 = 9_999_999;
 const UNFOUND_METRIC: i32 = 999_999;
 
 impl ScriptWorld {
+    /// Run WalkForward's body, hazard and support admission in order. Failed
+    /// geometry marks the transient blocked-step byte; rope refusal and the
+    /// lifecycle bypass preserve it. Positions are local Q8 coordinates.
+    pub fn walk_forward_step_clear(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        environment: super::transition::ObstacleEnvironment,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .context("WalkForward step control unavailable")?;
+        if control.rope_attached {
+            return Ok(false);
+        }
+        if control.death_selector == 7 && self.actors[index].attributes[1] & 1 == 0 {
+            return Ok(true);
+        }
+        let spatial = self.spatial(id)?;
+        let offset = i32::from(self.actors[index].attributes[12])
+            .wrapping_add(self.ordinary_collision_shape(id)?.positive_extent[2])
+            .wrapping_mul(256);
+        let rotated = spatial.local.matrix.transform([0, 0, offset])?;
+        let mut destination = spatial.local.position;
+        destination[0] = destination[0].wrapping_add(rotated[0]);
+        destination[2] = destination[2].wrapping_add(rotated[2]);
+        let obstacle = || OrdinaryObstacleQuery {
+            scene: query.scene,
+            animations: query.animations,
+            prepared: query.prepared,
+            vertical_offset: 0,
+            respond: false,
+        };
+        let clear = self.ordinary_destination_body_clear(id, destination, obstacle())?
+            && !self.step_hazard(id, environment.selected_player, destination, obstacle())?
+            && self.admit_ordinary_destination(id, destination, query, environment, sounds)?;
+        if !clear {
+            self.actors[index]
+                .control
+                .as_mut()
+                .context("WalkForward step control unavailable")?
+                .collision_response_auxiliary[0] |= 0x80;
+        }
+        Ok(clear)
+    }
+
     /// `MoveForward`'s forward step check. `None` when the check needs the collision query and
     /// none was supplied. Passes outright for a receiver whose lifecycle byte is 7 and whose
     /// attribute 1 has bit 0 clear, and for one whose attribute 1 has bit 1 clear (no hazard test);

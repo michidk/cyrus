@@ -335,7 +335,12 @@ are published. Full point collision and `WalkForward` remain open.
 point-support stages with late collision. It restores local XYZ after support,
 a miss or an error, while retaining support ownership and collision state.
 Linked actors and selected-player destination feedback remain unsupported.
-Native `WalkForward` binding and full combat movement acceptance remain open.
+**Verified:** destination body admission reuses retained model candidates and the
+original body shape without moving the receiver. The explicit `WalkForward` step
+service orders body, hazard and support checks and retains the transient blocked
+marker until response cleanup. Headless geometry contracts cover blocking, clear
+destinations and refusal before a later ground query. Native `WalkForward` binding
+and full combat movement acceptance remain open.
 
 Next, in dependency order:
 
