@@ -13745,3 +13745,36 @@ fn lifecycle_byte_queries_read_the_fresh_receiver_state() {
         assert!(format!("{error:#}").contains("no arguments"), "{name}");
     }
 }
+
+#[test]
+fn health_strength_and_armor_queries_read_the_receiver() {
+    assert_eq!(run_native_calls(&[("Health", &[])]).unwrap(), 0);
+    assert_eq!(
+        run_native_calls(&[("SetMyAttr", &[3, 40]), ("Health", &[])]).unwrap(),
+        40
+    );
+    assert_eq!(
+        run_native_calls(&[("SetMyAttr", &[3, 40]), ("ReplenishHealth", &[])]).unwrap(),
+        1
+    );
+    assert_eq!(
+        run_native_calls(&[
+            ("SetMyAttr", &[3, 40]),
+            ("ReplenishHealth", &[]),
+            ("Health", &[])
+        ])
+        .unwrap(),
+        100
+    );
+    assert_eq!(
+        run_native_calls(&[("SetMyAttr", &[3, 100]), ("ReplenishHealth", &[])]).unwrap(),
+        0
+    );
+    for name in ["Strength", "Armor"] {
+        let error = run_native_calls(&[(name, &[])]).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("receiver combat record unavailable"),
+            "{error:#}"
+        );
+    }
+}

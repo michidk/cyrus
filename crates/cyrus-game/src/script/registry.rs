@@ -2722,6 +2722,61 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        // `attr_health` is attribute 3; Strength and Armor read the combat record.
+        if [
+            "Health",
+            "PlayerHealth",
+            "Strength",
+            "Armor",
+            "ReplenishHealth",
+        ]
+        .iter()
+        .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let lower = function.to_ascii_lowercase();
+            let index = if lower == "playerhealth" {
+                self.selected_player()
+                    .context("PlayerHealth: selected player unavailable")?
+                    .index
+            } else {
+                self.index
+            };
+            let selected = self
+                .selected_player()
+                .is_some_and(|player| player.index == index);
+            let actor = &mut self.actors[index];
+            let value = match lower.as_str() {
+                "health" | "playerhealth" => i32::from(actor.attributes[3]),
+                "replenishhealth" => {
+                    anyhow::ensure!(
+                        !selected,
+                        "ReplenishHealth selected-player HUD health timer unavailable"
+                    );
+                    i32::from(
+                        actor.attributes[3] < 100 && {
+                            actor.attributes[3] = 100;
+                            true
+                        },
+                    )
+                }
+                _ => {
+                    let combat = actor
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .with_context(|| {
+                            format!("{function}: receiver combat record unavailable")
+                        })?;
+                    if lower == "strength" {
+                        combat.strength
+                    } else {
+                        combat.armor
+                    }
+                }
+            };
+            return Ok(CallResult::Complete(value));
+        }
         if function.eq_ignore_ascii_case("IsCombatCapable")
             || function.eq_ignore_ascii_case("PlayerArmed")
         {
