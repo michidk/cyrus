@@ -322,6 +322,14 @@ counters after collision. Headless contracts cover the ramp, snapshot continuati
 receiver routing and cleanup. Full spacing, remaining collision reset branches,
 per-point collision and automatic combat remain open.
 
+**Verified:** ordinary ground prevalidation now retains one shared admission guard
+and rollback/sliding result across receiver and candidate changes. The first call
+replaces results, bypass clears them, and the next wrapper resets admission.
+Snapshot and headless geometry contracts cover retention; an unsupported first
+query cannot become a silent success. The
+[guard rules](https://github.com/michidk/redguard-preservation/blob/59cb6b1/docs/engine/player.md#ordinary-ground-prevalidation)
+are published. Full point collision and `WalkForward` remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

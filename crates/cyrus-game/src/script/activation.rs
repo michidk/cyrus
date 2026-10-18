@@ -143,6 +143,8 @@ struct ControllerPrelude {
 pub struct GameplayGlobals {
     /// Shared direction-called flags, reset at ordinary wrapper entry.
     pub(super) locomotion_called: u8,
+    pub(super) ground_prevalidation_used: bool,
+    pub(super) ground_prevalidation: Option<super::OrdinaryGroundPrevalidation>,
     /// Engine message queues persist independently of a logical world registry.
     pub(super) combat_messages: super::CombatMessages,
     pub(super) dialogue: Option<super::DialogueState>,
@@ -579,6 +581,37 @@ mod idle_tests {
     }
 
     #[test]
+    fn session_snapshot_retains_prevalidation_admission_and_results() {
+        for used in [false, true] {
+            for result in [
+                None,
+                Some(super::super::OrdinaryGroundPrevalidation {
+                    rollback: true,
+                    sliding: false,
+                }),
+                Some(super::super::OrdinaryGroundPrevalidation {
+                    rollback: false,
+                    sliding: true,
+                }),
+            ] {
+                let mut globals = controller_globals();
+                globals.ground_prevalidation_used = used;
+                globals.ground_prevalidation = result;
+                let saved = serde_json::to_vec(&globals.snapshot()).unwrap();
+                let restored = GameplayGlobals::from_snapshot(
+                    serde_json::from_slice(&saved).unwrap(),
+                    &controller_settings(),
+                    &[],
+                    &(0..16).map(|channel| (channel, channel)).collect(),
+                )
+                .unwrap();
+                assert_eq!(restored.ground_prevalidation_used, used);
+                assert_eq!(restored.ground_prevalidation, result);
+            }
+        }
+    }
+
+    #[test]
     fn replacement_preserves_known_and_unknown_lineup_results() {
         for result in [None, Some(0), Some(-1), Some(17)] {
             let mut globals = controller_globals();
@@ -817,6 +850,8 @@ mod idle_tests {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct GameplayGlobalsSnapshot {
     locomotion_called: u8,
+    ground_prevalidation_used: bool,
+    ground_prevalidation: Option<super::OrdinaryGroundPrevalidation>,
     lineup_result: Option<i32>,
     combat_messages: super::combat::CombatMessagesSnapshot,
     dialogue: Option<super::DialogueSnapshot>,
@@ -836,6 +871,8 @@ impl GameplayGlobals {
     pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
         GameplayGlobalsSnapshot {
             locomotion_called: self.locomotion_called,
+            ground_prevalidation_used: self.ground_prevalidation_used,
+            ground_prevalidation: self.ground_prevalidation,
             lineup_result: self.lineup_result,
             combat_messages: self.combat_messages.snapshot(),
             dialogue: self.dialogue.as_ref().map(super::DialogueState::snapshot),
@@ -888,6 +925,8 @@ impl GameplayGlobals {
             .transpose()?;
         Ok(Self {
             locomotion_called: saved.locomotion_called,
+            ground_prevalidation_used: saved.ground_prevalidation_used,
+            ground_prevalidation: saved.ground_prevalidation,
             combat_messages,
             dialogue,
             lockout: saved.lockout,

@@ -133,6 +133,7 @@ impl ScriptWorld {
                 continue;
             }
             self.globals.locomotion_called = 0;
+            self.globals.ground_prevalidation_used = false;
             let result = (|| -> anyhow::Result<()> {
                 if selected_player {
                     if !self.actors[id.index].model.prepared {

@@ -3,8 +3,8 @@ use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result};
 use cyrus_collision::ground::{GroundProbe, GroundSupport};
 
-/// Retained prevalidation results for the prepared candidate list.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Shared results retained until the first ground prevalidation of the next wrapper.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OrdinaryGroundPrevalidation {
     pub rollback: bool,
     pub sliding: bool,
@@ -48,10 +48,31 @@ pub fn ordinary_ground_prevalidation(
 }
 
 impl ScriptWorld {
-    /// Query slope prevalidation once at the owning admitted stage. This retains
-    /// candidate membership and reads stored poses, without changing actor state.
+    /// The first call in an ordinary wrapper updates shared slope results.
+    /// Later calls retain them even when the receiver or candidates change.
     /// `alternate_selected_player` is true only for the selected player's mode.
     pub fn query_ordinary_ground_prevalidation(
+        &mut self,
+        id: ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+        alternate_selected_player: bool,
+    ) -> Result<OrdinaryGroundPrevalidation> {
+        self.resolve(id)?;
+        if self.globals.ground_prevalidation_used {
+            return self.globals.ground_prevalidation.with_context(|| format!(
+                "world {} instance {} ordinary ground prevalidation unavailable after an earlier unsupported query",
+                self.world, id.index,
+            ));
+        }
+        self.globals.ground_prevalidation_used = true;
+        self.globals.ground_prevalidation = None;
+        let result =
+            self.calculate_ordinary_ground_prevalidation(id, query, alternate_selected_player)?;
+        self.globals.ground_prevalidation = Some(result);
+        Ok(result)
+    }
+
+    fn calculate_ordinary_ground_prevalidation(
         &self,
         id: ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,

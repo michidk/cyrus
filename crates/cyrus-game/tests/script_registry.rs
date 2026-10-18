@@ -15150,3 +15150,151 @@ fn current_combat_counter_query_uses_retained_slot_motion_and_idle_gate() {
         assert!(restored.current_combat_counter_attack(id).is_err());
     }
 }
+
+#[test]
+fn ground_prevalidation_retains_shared_results_after_destination_and_receiver_changes() {
+    use cyrus_collision::ground::TerrainGround;
+    use cyrus_game::script::{OrdinaryGroundPrevalidation, OrdinaryGroundQuery};
+    for bypass_first in [false, true] {
+        let mut scripts = cache();
+        for placement in &mut scripts.instances {
+            placement.active = 1;
+        }
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("attr_1".into(), 2);
+        let (mut world, data, models) =
+            static_model_fixture_at(scripts, Some(20.0), [600, 2400, 600]);
+        let id = world.id(0).unwrap();
+        let other = world.id(1).unwrap();
+        world
+            .refresh_model_presentations(&data, &[id, other])
+            .unwrap();
+        world.snapshot_spatial(id).unwrap();
+        let mut scene = ordinary_collision_scene(world.world, models);
+        scene.settings.post_collide_height = 5000;
+        let heights = (0_usize..256 * 256)
+            .map(|index| ((index % 256).min(16) * 1024) as i16)
+            .collect();
+        scene.terrain = Some(TerrainGround::new(heights, vec![false; 256 * 256], None).unwrap());
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [600, 600], &[id])
+            .unwrap();
+        let result = world
+            .query_ordinary_ground_prevalidation(
+                id,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 1,
+                    sidedness: false,
+                },
+                bypass_first,
+            )
+            .unwrap();
+        assert_eq!(
+            result,
+            OrdinaryGroundPrevalidation {
+                rollback: false,
+                sliding: !bypass_first
+            }
+        );
+        let models = scene.actor_collision.take();
+        scene.terrain = None;
+        assert_eq!(
+            world
+                .query_ordinary_ground_prevalidation(
+                    other,
+                    OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 1,
+                        sidedness: false,
+                    },
+                    false
+                )
+                .unwrap(),
+            result
+        );
+        scene.actor_collision = models;
+        scene.terrain =
+            Some(TerrainGround::new(vec![2400; 256 * 256], vec![false; 256 * 256], None).unwrap());
+        world
+            .update_ordinary(
+                &data,
+                [600, 600],
+                cyrus_game::script::OrdinaryInputs {
+                    scripts: cyrus_game::script::ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    scene: Some(&scene),
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        for actor in world.actors() {
+            assert!(actor.failure().is_none(), "{:?}", actor.failure());
+        }
+        assert_eq!(
+            world
+                .query_ordinary_ground_prevalidation(
+                    id,
+                    OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 1,
+                        sidedness: false,
+                    },
+                    false
+                )
+                .unwrap(),
+            OrdinaryGroundPrevalidation::default()
+        );
+    }
+}
+
+#[test]
+fn ground_prevalidation_does_not_turn_an_unsupported_first_query_into_success() {
+    use cyrus_game::script::OrdinaryGroundQuery;
+    let mut scripts = cache();
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_1".into(), 2);
+    let (mut world, data, models) = static_model_fixture_at(scripts, Some(20.0), [10, 20, 30]);
+    let id = world.id(0).unwrap();
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    world.snapshot_spatial(id).unwrap();
+    let mut scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id])
+        .unwrap();
+    scene.actor_collision = None;
+    let query = || OrdinaryGroundQuery {
+        scene: &scene,
+        animations: &data,
+        prepared: &prepared,
+        distance: 1,
+        sidedness: false,
+    };
+    let error = world
+        .query_ordinary_ground_prevalidation(id, query(), false)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("live geometry unavailable"));
+    let error = world
+        .query_ordinary_ground_prevalidation(id, query(), true)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("earlier unsupported query"));
+}

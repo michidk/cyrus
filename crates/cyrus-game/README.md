@@ -1040,3 +1040,11 @@ Headless registry contracts cover the backward ramp, snapshot continuation,
 receiver routing, ordinary cleanup and forward step-check bypass at counter three.
 Full fight spacing, remaining collision reset branches and installed combat
 movement acceptance remain incomplete.
+
+**Verified:** ordinary ground prevalidation shares one session guard and retained
+rollback/sliding result. Wrapper entry resets admission; the first query replaces
+the results, including bypass clearing. Later receiver or candidate changes reuse
+them. Snapshots retain this state. An unsupported query keeps later calls
+explicitly unavailable. This follows preservation's
+[ground prevalidation rules](https://github.com/michidk/redguard-preservation/blob/59cb6b1/docs/engine/player.md#ordinary-ground-prevalidation).
+Full destination collision and `WalkForward` remain unavailable.
