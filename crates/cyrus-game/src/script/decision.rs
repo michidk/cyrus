@@ -184,6 +184,125 @@ pub fn defence_step(
     })
 }
 
+/// Facts the counter-attack selection reads, sampled by the caller from the combat records.
+#[derive(Clone, Copy, Debug)]
+pub struct CounterAttackInput {
+    /// The actor is armed (weapon drawn, not sheathing).
+    pub armed: bool,
+    /// The distance to the combat target and the target's two window bounds.
+    pub distance: i32,
+    pub target_window: (i32, i32),
+    /// The facing and range test of the actor against its target passed.
+    pub facing_ok: bool,
+    /// The target's and the actor's selected move indices.
+    pub target_selected: i32,
+    pub own_selected: i32,
+    /// The actor has an attack in its first four slots.
+    pub has_attack: bool,
+    /// The target already carries the attacked mark (flag `0x10`).
+    pub target_marked: bool,
+    /// Frames until the target's selected move reaches its near and far range values.
+    pub gap_near: i32,
+    pub gap_far: i32,
+    /// The counter attack index the target's selected move names, and that attack's ranges.
+    pub counter_index: i32,
+    pub attack_min: i32,
+    pub attack_max: i32,
+    /// The actor's per-actor value plus the shared tick counter, and the attack pacing divisor.
+    pub pacing_sum: i32,
+    pub attack_pacing: i32,
+    /// The target's second selector.
+    pub target_selector: i32,
+}
+
+/// A sideways or backward step the selection falls back to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sidestep {
+    Right,
+    Left,
+    Back,
+}
+
+/// Outcome of the counter-attack selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CounterAttack {
+    /// Nothing is chosen and nothing moves.
+    Idle,
+    /// Attack with the move `index`: the intent field becomes two, the pending move is set,
+    /// the attack starts and the target gains the attacked mark.
+    Attack { index: i32 },
+    /// The window did not fit: step as given (move one, with argument one).
+    Sidestep(Sidestep),
+}
+
+/// The counter-attack selection. `draw` yields the original's random values (zero through 0x7fff).
+///
+/// With the pacing remainder at most one, the chosen attack must fit both gaps: its minimum range
+/// below the far gap (or the far gap not positive), its reach (minimum plus maximum) beyond both
+/// gaps and its minimum below the near gap. A miss steps sideways when the target's second
+/// selector is 3 or 4 (right on an even pacing sum, left on an odd one) and backward otherwise.
+/// With a larger remainder two random extensions of zero through four must keep the minimum plus
+/// the first extension below the near gap and the near gap plus the second below the reach,
+/// compared unsigned; a miss does nothing.
+pub fn counter_attack(
+    input: &CounterAttackInput,
+    mut draw: impl FnMut() -> i32,
+) -> Result<CounterAttack> {
+    let i = input;
+    if !i.armed
+        || i.distance <= i.target_window.0
+        || i.distance >= i.target_window.1
+        || !i.facing_ok
+        || matches!(i.target_selected, -1 | 9)
+        || i.own_selected != -1
+        || !i.has_attack
+        || i.target_marked
+    {
+        return Ok(CounterAttack::Idle);
+    }
+    ensure!(
+        i.attack_pacing != 0,
+        "counter attack: pacing divisor is zero"
+    );
+    let reach = i.attack_min.wrapping_add(i.attack_max);
+    let attack = CounterAttack::Attack {
+        index: i.counter_index,
+    };
+    if i.pacing_sum % i.attack_pacing <= 1 {
+        let fits = (i.attack_min < i.gap_far || i.gap_far <= 0)
+            && reach > i.gap_far
+            && i.attack_min < i.gap_near
+            && reach > i.gap_near;
+        if fits {
+            return Ok(attack);
+        }
+        return Ok(CounterAttack::Sidestep(
+            if matches!(i.target_selector, 3 | 4) {
+                if i.pacing_sum % 2 == 0 {
+                    Sidestep::Right
+                } else {
+                    Sidestep::Left
+                }
+            } else {
+                Sidestep::Back
+            },
+        ));
+    }
+    let mut extension = || -> u32 {
+        let scaled = (draw() as u32).wrapping_mul(i.attack_pacing as u32) / 0x7fff;
+        scaled.wrapping_mul(5) / (i.attack_pacing as u32)
+    };
+    let first = extension();
+    if (i.attack_min as u32).wrapping_add(first) >= i.gap_near as u32 {
+        return Ok(CounterAttack::Idle);
+    }
+    let second = extension();
+    if (i.gap_near as u32).wrapping_add(second) >= reach as u32 {
+        return Ok(CounterAttack::Idle);
+    }
+    Ok(attack)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,5 +558,169 @@ mod tests {
             assert_eq!(selected, 9);
             assert!(!step.active);
         }
+    }
+
+    fn counter_input() -> CounterAttackInput {
+        CounterAttackInput {
+            armed: true,
+            distance: 500,
+            target_window: (100, 900),
+            facing_ok: true,
+            target_selected: 2,
+            own_selected: -1,
+            has_attack: true,
+            target_marked: false,
+            gap_near: 6,
+            gap_far: 12,
+            counter_index: 3,
+            attack_min: 4,
+            attack_max: 20,
+            pacing_sum: 10,
+            attack_pacing: 10,
+            target_selector: 0,
+        }
+    }
+
+    fn never() -> i32 {
+        panic!("no random draw expected")
+    }
+
+    #[test]
+    fn the_counter_attack_needs_every_admission_gate() {
+        let base = counter_input();
+        for blocked in [
+            CounterAttackInput {
+                armed: false,
+                ..base
+            },
+            CounterAttackInput {
+                distance: 100,
+                ..base
+            },
+            CounterAttackInput {
+                distance: 900,
+                ..base
+            },
+            CounterAttackInput {
+                facing_ok: false,
+                ..base
+            },
+            CounterAttackInput {
+                target_selected: -1,
+                ..base
+            },
+            CounterAttackInput {
+                target_selected: 9,
+                ..base
+            },
+            CounterAttackInput {
+                own_selected: 0,
+                ..base
+            },
+            CounterAttackInput {
+                has_attack: false,
+                ..base
+            },
+            CounterAttackInput {
+                target_marked: true,
+                ..base
+            },
+        ] {
+            assert_eq!(
+                counter_attack(&blocked, never).unwrap(),
+                CounterAttack::Idle
+            );
+        }
+        assert!(
+            counter_attack(
+                &CounterAttackInput {
+                    attack_pacing: 0,
+                    ..base
+                },
+                never
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_fitting_window_attacks_with_the_counter_index() {
+        // Remainder 0: min 4 < far 12, reach 24 beyond both gaps, min below the near gap.
+        assert_eq!(
+            counter_attack(&counter_input(), never).unwrap(),
+            CounterAttack::Attack { index: 3 }
+        );
+        // A far gap that is not positive also satisfies the first test.
+        assert_eq!(
+            counter_attack(
+                &CounterAttackInput {
+                    gap_far: -2,
+                    attack_min: 9,
+                    gap_near: 20,
+                    ..counter_input()
+                },
+                never
+            )
+            .unwrap(),
+            CounterAttack::Attack { index: 3 }
+        );
+    }
+
+    #[test]
+    fn a_missed_window_sidesteps_by_the_targets_selector_and_pacing_parity() {
+        let miss = CounterAttackInput {
+            attack_min: 30,
+            ..counter_input()
+        };
+        assert_eq!(
+            counter_attack(&miss, never).unwrap(),
+            CounterAttack::Sidestep(Sidestep::Back)
+        );
+        for (sum, selector, expected) in [
+            (10, 3, Sidestep::Right),
+            (10, 4, Sidestep::Right),
+            (11, 3, Sidestep::Left),
+            (11, 4, Sidestep::Left),
+        ] {
+            // Remainder 0 (sum 10) and 1 (sum 11) both take the first branch.
+            let input = CounterAttackInput {
+                pacing_sum: sum,
+                target_selector: selector,
+                ..miss
+            };
+            assert_eq!(
+                counter_attack(&input, never).unwrap(),
+                CounterAttack::Sidestep(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn a_larger_remainder_uses_two_bounded_random_extensions() {
+        let base = CounterAttackInput {
+            pacing_sum: 12,
+            ..counter_input()
+        };
+        // Remainder 2: both draws zero give extensions of zero: 4 < 6 and 6 + 0 < 24.
+        let mut zeros = [0, 0].into_iter();
+        assert_eq!(
+            counter_attack(&base, || zeros.next().unwrap()).unwrap(),
+            CounterAttack::Attack { index: 3 }
+        );
+        // The largest draw gives an extension of four: 4 + 4 = 8 is not below the near gap 6.
+        assert_eq!(
+            counter_attack(&base, || 0x7fff).unwrap(),
+            CounterAttack::Idle
+        );
+        // A reach no larger than the near gap plus the second extension idles.
+        let short = CounterAttackInput {
+            attack_max: 1,
+            ..base
+        };
+        let mut zeros = [0, 0].into_iter();
+        assert_eq!(
+            counter_attack(&short, || zeros.next().unwrap()).unwrap(),
+            CounterAttack::Idle
+        );
     }
 }
