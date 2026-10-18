@@ -2722,6 +2722,43 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        if function.eq_ignore_ascii_case("SetHealth")
+            || function.eq_ignore_ascii_case("AdjustHealth")
+        {
+            let set = function.eq_ignore_ascii_case("SetHealth");
+            anyhow::ensure!(
+                arguments.len() == if set { 1 } else { 2 },
+                "{function}: wrong argument count"
+            );
+            let selected = self
+                .selected_player()
+                .is_some_and(|player| player.index == self.index);
+            let attributes = &mut self.actors[self.index].attributes;
+            // Attribute 120 (nonzero) ignores health changes. Attribute 97 gates on a combat
+            // record bit, the selected player updates the HUD, and death starts a sequence;
+            // none of those owners exist, so they stay unavailable instead of guessed.
+            if attributes[120] != 0 {
+                return Ok(CallResult::Complete(0));
+            }
+            anyhow::ensure!(
+                attributes[97] == 0 && !selected,
+                "{function}: invulnerability gate and selected-player health unavailable"
+            );
+            let value = arguments[0].integer()?;
+            let delta = if set {
+                value.wrapping_sub(i32::from(attributes[3]))
+            } else {
+                value
+            };
+            let health = i32::from(attributes[3]).wrapping_add(delta);
+            let damage = set || arguments[1].integer()? == 1;
+            anyhow::ensure!(
+                health > 0 || !damage,
+                "{function}: death sequence unavailable"
+            );
+            attributes[3] = health.clamp(0, 255) as u8;
+            return Ok(CallResult::Complete(0));
+        }
         // `attr_health` is attribute 3; Strength and Armor read the combat record.
         if [
             "Health",

@@ -13778,3 +13778,36 @@ fn health_strength_and_armor_queries_read_the_receiver() {
         );
     }
 }
+
+#[test]
+fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
+    let health = |calls: &[(&str, &[i32])]| {
+        let mut calls = calls.to_vec();
+        calls.push(("Health", &[]));
+        run_native_calls(&calls)
+    };
+    assert_eq!(health(&[("SetHealth", &[60])]).unwrap(), 60);
+    assert_eq!(
+        health(&[("SetHealth", &[60]), ("AdjustHealth", &[-20, 1])]).unwrap(),
+        40
+    );
+    assert_eq!(health(&[("AdjustHealth", &[300, 0])]).unwrap(), 255);
+    assert_eq!(health(&[("AdjustHealth", &[-5, 0])]).unwrap(), 0);
+    for calls in [
+        &[("AdjustHealth", &[-5, 1][..])][..],
+        &[("SetHealth", &[0][..])][..],
+    ] {
+        let error = health(calls).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("death sequence unavailable"),
+            "{error:#}"
+        );
+    }
+    // Attribute 120 ignores changes; attribute 97 needs the combat-record gate.
+    assert_eq!(
+        health(&[("SetMyAttr", &[120, 1]), ("SetHealth", &[60])]).unwrap(),
+        0
+    );
+    let error = health(&[("SetMyAttr", &[97, 1]), ("SetHealth", &[60])]).unwrap_err();
+    assert!(format!("{error:#}").contains("invulnerability gate"));
+}
