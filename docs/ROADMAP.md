@@ -42,8 +42,11 @@ Next rendering work after the Windows validation batch:
    Authored animated normals and installed actor skins are implemented ([evidence](https://github.com/michidk/redguard-decomp/tree/0ba74a93f72d81dd77343eed395987155ab09ab4/research/supplements/2026-10-16-actor-fixes)).
    **Verified:** held Cyrus and START Brennan controls favor authored vertex normals; production
    now selects them. Native and browser START show Brennan and the VANDA pirates with their
-   installed skins. **Unknown:** production actor pixel parity at matched pose and viewport; the
-   improvement figures below were measured on the diagnostic control, not on production pixels.
+   installed skins. **Verified (weak, pose not matched):** against five frozen original samples the vest pixel error is lower with
+   authored normals (6.35-6.84) than with the face-normal control (6.85-7.13). **Verified:** at identical camera and
+   player numbers the original renders Cyrus about 7 px higher and 2 px left than native at 640×480; cause unknown
+   (camera or player model origin, owners elsewhere). **Unknown:** matched-pose pixel parity; the idle frame is not
+   recoverable from silhouettes ([evidence](https://github.com/michidk/redguard-decomp/tree/e28e5bcc/research/supplements/2026-10-18-actor-pose-final)); the improvement figures below were measured on the diagnostic control.
 2. Compare follow-camera placement and movement with the original, including the
    confirmed player/model intersection. Camera implementation stays with its owner.
 3. Compare original candle timing under representative runtime conditions; bounded native/browser cadence
