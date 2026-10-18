@@ -390,6 +390,27 @@ impl TerrainGround {
         })
     }
 
+    /// The terrain half of the nonplayer deep-water and edge probe. A position fully covered by
+    /// the blend mask (coverage 256) or without terrain is never blocked; a partly covered one
+    /// reports the shoreline class and is not blocked either. Only an uncovered rock position
+    /// (surface 10, coverage 0) is blocked, and only where the terrain slope class is 2.
+    /// Position keeps the original eight fractional bits.
+    pub fn edge_blocked(
+        &self,
+        position: [i64; 3],
+        assignments: &std::collections::BTreeMap<u16, u8>,
+    ) -> anyhow::Result<bool> {
+        let Some(material) = self.material(position, assignments)? else {
+            return Ok(false);
+        };
+        if material.coverage != 0 || material.surface != 10 {
+            return Ok(false);
+        }
+        Ok(self
+            .sample(position)
+            .is_some_and(|support| support.classification() == 2))
+    }
+
     /// Original packed Map 3 texture and rotation at an actor's runtime position.
     /// Coordinates retain eight fractional bits; lookup follows preservation's
     /// engine/player.md terrain material rules.

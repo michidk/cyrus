@@ -101,3 +101,30 @@ fn shoreline_materials_keep_partial_and_full_water_distinct() {
         );
     }
 }
+
+#[test]
+fn edge_probe_blocks_only_uncovered_rock_on_a_class_two_slope() {
+    use std::collections::BTreeMap;
+    // Image 31 is uncovered rock (surface 10) near the cell edge and fully covered beyond it.
+    let slope: Vec<i16> = (0..256 * 256)
+        .map(|index| ((index % 256) * 512).min(32767) as i16)
+        .collect();
+    let textures = vec![31u8; 256 * 256];
+    let terrain =
+        TerrainGround::new(slope, vec![false; 256 * 256], Some(textures.clone())).unwrap();
+    let flat =
+        TerrainGround::new(vec![0; 256 * 256], vec![false; 256 * 256], Some(textures)).unwrap();
+    let assignments = BTreeMap::new();
+    let near_edge = [258 << 8, 0, 1000 << 8];
+    let covered = [300 << 8, 0, 1000 << 8];
+    assert_eq!(
+        terrain.sample(near_edge).unwrap().classification(),
+        2,
+        "the fixture slope must be class two"
+    );
+    assert!(terrain.edge_blocked(near_edge, &assignments).unwrap());
+    assert!(!terrain.edge_blocked(covered, &assignments).unwrap());
+    assert!(!flat.edge_blocked(near_edge, &assignments).unwrap());
+    let no_textures = TerrainGround::new(vec![0; 256 * 256], vec![false; 256 * 256], None).unwrap();
+    assert!(no_textures.edge_blocked(near_edge, &assignments).is_err());
+}
