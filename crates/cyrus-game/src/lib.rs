@@ -41,7 +41,7 @@ impl Plugin for GamePlugin {
                 script::ScriptPlugin,
                 console::GameConsolePlugin,
             ))
-            .add_systems(Update, (log_state_changes, log_fidelity))
+            .add_systems(Update, log_state_changes)
             .add_systems(
                 Last,
                 clear_restored_entry.run_if(in_state(AppState::InGame)),
@@ -56,20 +56,5 @@ fn clear_restored_entry(mut commands: Commands) {
 fn log_state_changes(mut transitions: MessageReader<StateTransitionEvent<AppState>>) {
     for transition in transitions.read() {
         info!("state: {:?} -> {:?}", transition.exited, transition.entered);
-    }
-}
-
-/// Logs the initial modes and every later change, naming the areas that deviate from the original.
-fn log_fidelity(fidelity: Res<fidelity::Fidelity>) {
-    if fidelity.is_changed() {
-        let modern: Vec<_> = fidelity::Area::ALL
-            .iter()
-            .filter(|area| fidelity.mode(**area) == fidelity::Mode::Modern)
-            .collect();
-        if modern.is_empty() {
-            info!("fidelity: faithful in every area");
-        } else {
-            info!("fidelity: modern in {modern:?}");
-        }
     }
 }
