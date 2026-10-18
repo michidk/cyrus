@@ -25,6 +25,62 @@ pub fn facing_alike(own_heading: i32, target_heading: i32) -> bool {
     heading_difference(own_heading, target_heading).abs() < 0x100
 }
 
+/// Facts read from one populated defence slot. Timing values are nominal animation frames;
+/// range values use the same signed distance units as the actor-to-target distance query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DefenceCandidate {
+    pub min_range: i32,
+    pub max_range: i32,
+    pub near_timing: i32,
+    /// Authored one-based counter-attack reference, before wrapping subtraction.
+    pub counter_attack: i32,
+}
+
+impl DefenceCandidate {
+    /// A defence admits only distances strictly inside its authored range window.
+    pub fn usable_at(self, distance: i32) -> bool {
+        distance > self.min_range && distance < self.max_range
+    }
+}
+
+/// Best usable defence kind from nine slots, following preservation's
+/// [picker rules](https://github.com/michidk/redguard-preservation/pull/112).
+/// Slots six through eight return kind four; equal timings retain the first slot.
+/// The caller supplies the original actor-to-target distance query result.
+pub fn best_defence(slots: &[Option<DefenceCandidate>; 9], distance: i32) -> Option<i32> {
+    pick_defence(slots, distance, None)
+}
+
+/// Best usable defence excluding the receiver's current counter-attack index.
+/// `current_counter_attack` is already zero-based, as returned by the current-move query.
+pub fn open_defence(
+    slots: &[Option<DefenceCandidate>; 9],
+    distance: i32,
+    current_counter_attack: i32,
+) -> Option<i32> {
+    pick_defence(slots, distance, Some(current_counter_attack))
+}
+
+fn pick_defence(
+    slots: &[Option<DefenceCandidate>; 9],
+    distance: i32,
+    excluded_counter_attack: Option<i32>,
+) -> Option<i32> {
+    let mut best_timing = 65536;
+    let mut best_kind = None;
+    for (slot, candidate) in slots.iter().enumerate() {
+        let Some(candidate) = candidate else { continue };
+        if candidate.usable_at(distance)
+            && excluded_counter_attack != Some(candidate.counter_attack.wrapping_sub(1))
+            && candidate.near_timing < best_timing
+        {
+            best_timing = candidate.near_timing;
+            best_kind = Some(if slot >= 6 { 4 } else { slot as i32 });
+        }
+    }
+    best_kind
+}
+
 /// What the attack executor asks its caller to do besides updating the record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttackEffect {
@@ -463,6 +519,77 @@ pub fn defence_selection(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn defence_range_is_strict_and_signed() {
+        let candidate = super::DefenceCandidate {
+            min_range: -10,
+            max_range: 10,
+            near_timing: 0,
+            counter_attack: 1,
+        };
+        assert!(!candidate.usable_at(-10));
+        assert!(candidate.usable_at(-9));
+        assert!(candidate.usable_at(9));
+        assert!(!candidate.usable_at(10));
+    }
+
+    #[test]
+    fn best_defence_retains_first_tie_and_rejects_timing_ceiling() {
+        let candidate = super::DefenceCandidate {
+            min_range: 0,
+            max_range: 100,
+            near_timing: 65536,
+            counter_attack: 1,
+        };
+        let mut slots = [None; 9];
+        assert_eq!(super::best_defence(&slots, 50), None);
+        slots[0] = Some(candidate);
+        assert_eq!(super::best_defence(&slots, 50), None);
+        slots[2] = Some(super::DefenceCandidate {
+            near_timing: -1,
+            ..candidate
+        });
+        slots[3] = slots[2];
+        assert_eq!(super::best_defence(&slots, 50), Some(2));
+        assert_eq!(super::best_defence(&slots, 100), None);
+    }
+
+    #[test]
+    fn extended_defence_slots_map_to_kind_four() {
+        for slot in 6..9 {
+            let mut slots = [None; 9];
+            slots[slot] = Some(super::DefenceCandidate {
+                min_range: 0,
+                max_range: 100,
+                near_timing: 1,
+                counter_attack: 2,
+            });
+            assert_eq!(super::best_defence(&slots, 50), Some(4));
+            assert_eq!(super::open_defence(&slots, 50, -1), Some(4));
+        }
+    }
+
+    #[test]
+    fn open_defence_excludes_current_counter_with_wrapping_subtraction() {
+        let candidate = super::DefenceCandidate {
+            min_range: 0,
+            max_range: 100,
+            near_timing: 0,
+            counter_attack: i32::MIN,
+        };
+        let mut slots = [None; 9];
+        slots[0] = Some(candidate);
+        slots[5] = Some(super::DefenceCandidate {
+            near_timing: 1,
+            counter_attack: 3,
+            ..candidate
+        });
+        assert_eq!(super::open_defence(&slots, 50, i32::MAX), Some(5));
+        assert_eq!(super::open_defence(&slots, 50, 2), Some(0));
+        slots[5] = None;
+        assert_eq!(super::open_defence(&slots, 50, i32::MAX), None);
+    }
+
     use super::*;
 
     fn run(

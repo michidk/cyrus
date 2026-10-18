@@ -221,11 +221,19 @@ Full workspace gates pass with 1,086 Rust test executions and zero installed-dat
 The selection is not connected to ordinary traversal. Full SOUP support and a playable
 opening duel remain incomplete.
 
+Best/open defence pickers and strict signed distance admission are implemented.
+**Verified:** 29 decision-module contracts pass; 310 best/open pairs through the
+production helpers match original execution with controlled distance and current-move
+queries. A wrong-distance control fails. Equal timings retain the first slot;
+open picks exclude the current counter-attack index. These helpers still require
+host-owned prepared slots and do not enable ordinary combat traversal. Full workspace
+gates pass with 1,090 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
-1. Complete the best, open and paced defence pickers, reach/arc tests and defence
-   starters. Preserve synchronous state changes and publish the remaining recovered
-   rules before implementing them.
+1. Prepare receiver-owned defence slots and complete the paced picker, reach/arc
+   tests and defence starters. Preserve synchronous state changes and publish
+   remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain
    edge probe exists; retain explicit errors for unsupported ledge/non-combat paths.
