@@ -2759,6 +2759,39 @@ impl Host for GameHost<'_, '_, '_, '_> {
             attributes[3] = health.clamp(0, 255) as u8;
             return Ok(CallResult::Complete(0));
         }
+        // IsMaster and IsSlave test attributes 25 and 26; TrueFunction ignores both arguments.
+        if function.eq_ignore_ascii_case("IsMaster") || function.eq_ignore_ascii_case("IsSlave") {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let attribute = if function.eq_ignore_ascii_case("IsMaster") {
+                25
+            } else {
+                26
+            };
+            return Ok(CallResult::Complete(i32::from(
+                self.actors[self.index].attributes[attribute] != 0,
+            )));
+        }
+        if function.eq_ignore_ascii_case("TrueFunction") {
+            anyhow::ensure!(arguments.len() == 2, "TrueFunction: wrong argument count");
+            return Ok(CallResult::Complete(1));
+        }
+        // SetAIType and SetAIMode store the low byte of their argument in the bytes that
+        // MyAIType and MyAIMode read back.
+        if function.eq_ignore_ascii_case("SetAIType") || function.eq_ignore_ascii_case("SetAIMode")
+        {
+            anyhow::ensure!(arguments.len() == 1, "{function}: wrong argument count");
+            let value = arguments[0].integer()? as u8;
+            let control = self.actors[self.index]
+                .control
+                .as_mut()
+                .with_context(|| format!("{function}: receiver control state unavailable"))?;
+            if function.eq_ignore_ascii_case("SetAIType") {
+                control.death_selector = value;
+            } else {
+                control.death_response = value;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         // `attr_health` is attribute 3; Strength and Armor read the combat record.
         if [
             "Health",

@@ -13811,3 +13811,25 @@ fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
     let error = health(&[("SetMyAttr", &[97, 1]), ("SetHealth", &[60])]).unwrap_err();
     assert!(format!("{error:#}").contains("invulnerability gate"));
 }
+
+#[test]
+fn ai_setters_master_slave_and_true_function_follow_their_bytes() {
+    assert_eq!(
+        run_native_calls(&[("SetAIType", &[300]), ("MyAIType", &[])]).unwrap(),
+        44
+    );
+    assert_eq!(
+        run_native_calls(&[("SetAIMode", &[7]), ("MyAIMode", &[])]).unwrap(),
+        7
+    );
+    assert_eq!(run_native_calls(&[("IsMaster", &[])]).unwrap(), 0);
+    assert_eq!(
+        run_native_calls(&[("SetMyAttr", &[26, 3]), ("IsSlave", &[])]).unwrap(),
+        1
+    );
+    assert_eq!(
+        run_native_calls(&[("SetMyAttr", &[25, 3]), ("IsMaster", &[])]).unwrap(),
+        1
+    );
+    assert_eq!(run_native_calls(&[("TrueFunction", &[0, 5])]).unwrap(), 1);
+}
