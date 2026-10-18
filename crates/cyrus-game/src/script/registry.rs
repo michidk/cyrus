@@ -2775,6 +2775,28 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.local.position != spatial.previous_local_position,
             )));
         }
+        // The dialogue and topic-menu mode words. DialogBegin also clears one retained byte whose
+        // owner is not yet identified; that write is not modelled.
+        if let Some((dialogue, begin)) = [
+            ("DialogBegin", true, true),
+            ("DialogEnd", true, false),
+            ("MenuBegin", false, true),
+            ("MenuEnd", false, false),
+        ]
+        .into_iter()
+        .find_map(|(name, dialogue, begin)| {
+            function
+                .eq_ignore_ascii_case(name)
+                .then_some((dialogue, begin))
+        }) {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            match (dialogue, begin) {
+                (true, begin) => self.globals.set_dialogue_state(begin),
+                (false, true) => self.globals.begin_topic_menu(),
+                (false, false) => self.globals.end_topic_menu(),
+            }
+            return Ok(CallResult::Complete(0));
+        }
         // IsWithinMap is constant true. LoadWorld, WonGame, PushPlayer and PopPlayer only raise
         // a request that the original's main loop consumes; the host takes it from the globals.
         if function.eq_ignore_ascii_case("IsWithinMap") {

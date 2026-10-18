@@ -13938,3 +13938,22 @@ fn session_request_natives_raise_requests_for_the_host() {
     assert_eq!(run_native_calls(&[("IsWithinMap", &[1])]).unwrap(), 1);
     assert!(run_native_calls(&[("LoadWorld", &[1])]).is_err());
 }
+
+#[test]
+fn dialog_and_menu_natives_write_their_mode_words() {
+    let state = |calls: &[(&str, &[i32])]| {
+        let world = run_native_world(calls).unwrap();
+        (
+            world.globals().dialogue_state(),
+            world.globals().menu_state(),
+        )
+    };
+    assert_eq!(state(&[("DialogBegin", &[])]), (Some(1), 0));
+    assert_eq!(
+        state(&[("DialogBegin", &[]), ("DialogEnd", &[])]),
+        (Some(0), 0)
+    );
+    assert_eq!(state(&[("MenuBegin", &[])]), (None, 1));
+    assert_eq!(state(&[("MenuBegin", &[]), ("MenuEnd", &[])]), (None, 0));
+    assert!(run_native_calls(&[("DialogBegin", &[1])]).is_err());
+}

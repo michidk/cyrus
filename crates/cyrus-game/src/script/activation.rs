@@ -333,6 +333,11 @@ impl GameplayGlobals {
         self.dialogue_state
     }
 
+    /// `DialogBegin` and `DialogEnd` write one and zero to the dialogue-mode word.
+    pub(super) fn set_dialogue_state(&mut self, active: bool) {
+        self.dialogue_state = Some(u16::from(active));
+    }
+
     /// Retained SOUP topic-menu state, distinct from the startup book menu and
     /// dialogue state. Engine initialization starts it at zero; world replacement
     /// retains it. See preservation engine/sound.md.
