@@ -102,14 +102,66 @@ pub struct PacedDefenceInput {
     pub attribute_58: u8,
 }
 
+/// Receiver-owned queries sampled only when the paced picker reaches their branch.
+/// Slots are zero-based. Geometry must use the same receiver and target throughout a pick.
+pub trait PacedDefenceQueries {
+    /// First-motion strict distance window; an unpopulated slot returns `None`.
+    fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>>;
+    /// First-motion horizontal arc admission.
+    fn in_arc(&mut self, slot: usize) -> Result<bool>;
+    /// First-motion elevation admission using bounds-query coordinates.
+    fn in_reach(&mut self, slot: usize) -> Result<bool>;
+    /// Signed wrapping sum of all authored motion damage values.
+    fn damage(&mut self, slot: usize) -> Result<i32>;
+    /// First-motion near timing in nominal animation frames.
+    fn near_timing(&mut self, slot: usize) -> Result<i32>;
+}
+
+impl PacedDefenceQueries for [Option<PacedDefenceCandidate>; 9] {
+    fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>> {
+        Ok(self[slot].map(|candidate| (candidate.defence.min_range, candidate.defence.max_range)))
+    }
+    fn in_arc(&mut self, slot: usize) -> Result<bool> {
+        Ok(self[slot].context("paced defence: absent arc slot")?.in_arc)
+    }
+    fn in_reach(&mut self, slot: usize) -> Result<bool> {
+        Ok(self[slot]
+            .context("paced defence: absent reach slot")?
+            .in_reach)
+    }
+    fn damage(&mut self, slot: usize) -> Result<i32> {
+        Ok(self[slot]
+            .context("paced defence: absent damage slot")?
+            .damage)
+    }
+    fn near_timing(&mut self, slot: usize) -> Result<i32> {
+        Ok(self[slot]
+            .context("paced defence: absent timing slot")?
+            .defence
+            .near_timing)
+    }
+}
+
+/// Paced selection from already sampled candidates. Live owners use
+/// [`paced_defence_with_queries`] to preserve branch-specific field reads.
+pub fn paced_defence(
+    decision: &mut CombatDecision,
+    slots: &[Option<PacedDefenceCandidate>; 9],
+    input: PacedDefenceInput,
+) -> Result<i32> {
+    let mut queries = *slots;
+    paced_defence_with_queries(decision, &mut queries, input)
+}
+
 /// Paced defence choice following preservation's
 /// [picker rules](https://github.com/michidk/redguard-preservation/pull/112).
 /// Returns zero even when no slot qualifies. The armed, differently-facing branch
 /// updates the counter and timing threshold without replacing the fallback choice.
-/// Divisor admission is required only when a candidate consumes a remainder.
-pub fn paced_defence(
+/// Queries and divisors are consumed only on admitted branches. An error preserves
+/// earlier decision writes, including the armed branch's counter reset.
+pub fn paced_defence_with_queries(
     decision: &mut CombatDecision,
-    slots: &[Option<PacedDefenceCandidate>; 9],
+    queries: &mut impl PacedDefenceQueries,
     input: PacedDefenceInput,
 ) -> Result<i32> {
     ensure!(
@@ -117,39 +169,50 @@ pub fn paced_defence(
         "paced defence: random draw exceeds 32767"
     );
     let fallback = usize::from(input.random_draw) * 6 / 32767;
-    let mut chosen = if slots[fallback].is_some_and(|slot| slot.defence.usable_at(input.distance)) {
+    let mut chosen = if queries
+        .window(fallback)?
+        .is_some_and(|(near, far)| input.distance > near && input.distance < far)
+    {
         fallback as i32
     } else {
         0
     };
     let mut damage = 0;
     let mut near_timing = 65536;
-    for (index, slot) in slots.iter().enumerate().take(6) {
-        let Some(slot) = slot else { continue };
-        if !slot.defence.usable_at(input.distance) || !slot.in_arc || !slot.in_reach {
+    for index in 0..6 {
+        let Some((near, far)) = queries.window(index)? else {
+            continue;
+        };
+        if input.distance <= near
+            || input.distance >= far
+            || !queries.in_arc(index)?
+            || !queries.in_reach(index)?
+        {
             continue;
         }
         if input.facing_alike || !input.target_in_combat_stance {
-            if slot.damage > damage
+            let candidate_damage = queries.damage(index)?;
+            if candidate_damage > damage
                 && input
                     .pacing_sum
                     .checked_rem(decision.defence_pacing)
                     .context("paced defence: invalid defence pacing divisor")?
                     == 0
             {
-                damage = slot.damage;
+                damage = candidate_damage;
                 chosen = index as i32;
             }
         } else {
             decision.defence_counter = 129 - i32::from(input.attribute_58);
-            if slot.defence.near_timing < near_timing
+            let candidate_timing = queries.near_timing(index)?;
+            if candidate_timing < near_timing
                 && input
                     .pacing_sum
                     .checked_rem(decision.defence_pacing)
                     .context("paced defence: invalid defence pacing divisor")?
                     == 0
             {
-                near_timing = slot.defence.near_timing;
+                near_timing = candidate_timing;
             }
         }
     }
@@ -849,6 +912,163 @@ mod tests {
             .is_err()
         );
         assert_eq!((selected, selector), (-1, 4));
+    }
+
+    #[test]
+    fn live_paced_queries_are_lazy_and_retain_counter_writes_on_failure() {
+        use super::{PacedDefenceQueries, paced_defence_with_queries};
+        struct Queries {
+            events: Vec<(usize, &'static str)>,
+            arc: bool,
+            reach: bool,
+            fail_damage: bool,
+            fail_timing: bool,
+        }
+        impl PacedDefenceQueries for Queries {
+            fn window(&mut self, slot: usize) -> anyhow::Result<Option<(i32, i32)>> {
+                self.events.push((slot, "window"));
+                Ok(matches!(slot, 1 | 6).then_some((10, 100)))
+            }
+            fn in_arc(&mut self, slot: usize) -> anyhow::Result<bool> {
+                self.events.push((slot, "arc"));
+                Ok(self.arc)
+            }
+            fn in_reach(&mut self, slot: usize) -> anyhow::Result<bool> {
+                self.events.push((slot, "reach"));
+                Ok(self.reach)
+            }
+            fn damage(&mut self, slot: usize) -> anyhow::Result<i32> {
+                self.events.push((slot, "damage"));
+                anyhow::ensure!(!self.fail_damage, "damage unavailable");
+                Ok(3)
+            }
+            fn near_timing(&mut self, slot: usize) -> anyhow::Result<i32> {
+                self.events.push((slot, "timing"));
+                anyhow::ensure!(!self.fail_timing, "timing unavailable");
+                Ok(7)
+            }
+        }
+        for (distance, arc, reach, alike, fail_damage, fail_timing, expected, counter, fields) in [
+            (10, true, true, true, true, true, Some(0), 77, vec![]),
+            (100, true, true, true, true, true, Some(0), 77, vec![]),
+            (50, false, true, true, true, true, Some(0), 77, vec!["arc"]),
+            (
+                50,
+                true,
+                false,
+                true,
+                true,
+                true,
+                Some(0),
+                77,
+                vec!["arc", "reach"],
+            ),
+            (
+                50,
+                true,
+                true,
+                true,
+                false,
+                true,
+                Some(1),
+                77,
+                vec!["arc", "reach", "damage"],
+            ),
+            (
+                50,
+                true,
+                true,
+                false,
+                true,
+                false,
+                Some(0),
+                100,
+                vec!["arc", "reach", "timing"],
+            ),
+            (
+                50,
+                true,
+                true,
+                false,
+                true,
+                true,
+                None,
+                100,
+                vec!["arc", "reach", "timing"],
+            ),
+            (
+                50,
+                true,
+                true,
+                true,
+                true,
+                false,
+                None,
+                77,
+                vec!["arc", "reach", "damage"],
+            ),
+        ] {
+            let mut queries = Queries {
+                events: vec![],
+                arc,
+                reach,
+                fail_damage,
+                fail_timing,
+            };
+            let mut decision = super::CombatDecision {
+                defence_pacing: 5,
+                defence_counter: 77,
+                ..Default::default()
+            };
+            let result = paced_defence_with_queries(
+                &mut decision,
+                &mut queries,
+                super::PacedDefenceInput {
+                    distance,
+                    facing_alike: alike,
+                    ..paced_input()
+                },
+            );
+            match expected {
+                Some(expected) => assert_eq!(result.unwrap(), expected),
+                None => assert!(result.is_err()),
+            }
+            assert_eq!(decision.defence_counter, counter);
+            assert_eq!(
+                queries
+                    .events
+                    .iter()
+                    .filter(|(_, field)| *field != "window")
+                    .map(|(slot, field)| {
+                        assert_eq!(*slot, 1);
+                        *field
+                    })
+                    .collect::<Vec<_>>(),
+                fields
+            );
+        }
+        let mut queries = Queries {
+            events: vec![],
+            arc: false,
+            reach: true,
+            fail_damage: true,
+            fail_timing: true,
+        };
+        let mut decision = super::CombatDecision::default();
+        assert_eq!(
+            paced_defence_with_queries(
+                &mut decision,
+                &mut queries,
+                super::PacedDefenceInput {
+                    random_draw: 32767,
+                    ..paced_input()
+                }
+            )
+            .unwrap(),
+            6
+        );
+        assert_eq!(queries.events.first(), Some(&(6, "window")));
+        assert!(!queries.events.contains(&(6, "arc")));
     }
 
     fn paced_slot(damage: i32) -> super::PacedDefenceCandidate {

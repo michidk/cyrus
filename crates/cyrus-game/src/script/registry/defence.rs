@@ -1,9 +1,46 @@
-//! Live defence execution binds receiver-owned attacks to animation, sound and timed taunts.
+//! Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use crate::script::decision::{DefenceView, defence_step_with_animation};
 use anyhow::{Context, Result};
 
 impl ScriptWorld {
+    /// Pick from this receiver's attack slots, querying only fields used by each branch.
+    /// The caller supplies the shared draw, distance and stance sample at invocation time.
+    /// The receiver's live pacing and counter state are read here; counter writes survive
+    /// later query failures. This does not start a defence or enable ordinary traversal.
+    pub fn pick_combat_paced_defence(
+        &mut self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        input: crate::script::decision::PacedDefenceInput,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        let mut decision = self.actors[index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .with_context(|| format!("world {} instance {index}: combat unavailable", self.world))?
+            .decision;
+        let result = crate::script::decision::paced_defence_with_queries(
+            &mut decision,
+            &mut LivePacedQueries {
+                world: self,
+                id,
+                target,
+            },
+            input,
+        );
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("admitted control")
+            .combat
+            .as_mut()
+            .expect("admitted combat")
+            .decision = decision;
+        result.with_context(|| format!("world {} instance {index} paced defence", self.world))
+    }
+
     /// Start this receiver's authored defence synchronously, including live executor services.
     /// Caller-established weapon gates use a generation-checked selected-player identity.
     /// Selected-player kind four invokes movement with Q8 distance and mode one before
@@ -203,5 +240,136 @@ impl ScriptWorld {
                 self.world, id.index
             )
         })
+    }
+}
+
+struct LivePacedQueries<'a> {
+    world: &'a ScriptWorld,
+    id: ScriptActorId,
+    target: ScriptActorId,
+}
+
+impl LivePacedQueries<'_> {
+    fn motion(&self, slot: usize) -> Result<&cyrus_assets::script::combat::Motion> {
+        self.world
+            .combat_attack(self.id, slot)?
+            .with_context(|| format!("attack slot {slot}: unpopulated"))?
+            .motions
+            .first()
+            .with_context(|| format!("attack slot {slot}: first motion unavailable"))
+    }
+}
+
+impl crate::script::decision::PacedDefenceQueries for LivePacedQueries<'_> {
+    fn window(&mut self, slot: usize) -> Result<Option<(i32, i32)>> {
+        let Some(attack) = self.world.combat_attack(self.id, slot)? else {
+            return Ok(None);
+        };
+        let motion = attack
+            .motions
+            .first()
+            .with_context(|| format!("attack slot {slot}: first motion unavailable"))?;
+        Ok(Some((motion.min_range, motion.max_range)))
+    }
+
+    fn in_arc(&mut self, slot: usize) -> Result<bool> {
+        let motion = self.motion(slot)?;
+        let arc = motion
+            .arc
+            .with_context(|| format!("attack slot {slot}: arc unavailable"))?;
+        let own = self
+            .world
+            .spatial(self.id)
+            .with_context(|| format!("attack slot {slot}: receiver pose unavailable"))?
+            .local;
+        let other = self
+            .world
+            .spatial(self.target)
+            .with_context(|| {
+                format!(
+                    "attack slot {slot} target instance {}: pose unavailable",
+                    self.target.index
+                )
+            })?
+            .local;
+        Ok(crate::script::decision::defence_arc_from_positions(
+            own.position,
+            other.position,
+            i32::from(own.angles[1]),
+            arc,
+            motion.arc_center.unwrap_or(0),
+        ))
+    }
+
+    fn in_reach(&mut self, slot: usize) -> Result<bool> {
+        use crate::script::decision::{combat_bounds_coordinate, defence_elevation};
+        let elevation = self.motion(slot)?.elevation.unwrap_or(0);
+        anyhow::ensure!(
+            (0..=2).contains(&elevation),
+            "attack slot {slot}: elevation {elevation} unsupported"
+        );
+        let own = self
+            .world
+            .spatial(self.id)
+            .with_context(|| format!("attack slot {slot}: receiver pose unavailable"))?
+            .local;
+        let other = self
+            .world
+            .spatial(self.target)
+            .with_context(|| {
+                format!(
+                    "attack slot {slot} target instance {}: pose unavailable",
+                    self.target.index
+                )
+            })?
+            .local;
+        let own_shape = self
+            .world
+            .ordinary_collision_shape(self.id)
+            .with_context(|| format!("attack slot {slot}: receiver bounds unavailable"))?;
+        let target_shape = self
+            .world
+            .ordinary_collision_shape(self.target)
+            .with_context(|| {
+                format!(
+                    "attack slot {slot} target instance {}: bounds unavailable",
+                    self.target.index
+                )
+            })?;
+        Ok(defence_elevation(
+            elevation,
+            combat_bounds_coordinate(
+                own.position[1],
+                own_shape.negative_extent[1],
+                own_shape.positive_extent[1],
+            ),
+            combat_bounds_coordinate(
+                other.position[1],
+                target_shape.negative_extent[1],
+                target_shape.positive_extent[1],
+            ),
+            own_shape.positive_extent[0],
+            own_shape.negative_extent[0],
+        ))
+    }
+
+    fn damage(&mut self, slot: usize) -> Result<i32> {
+        self.world
+            .combat_attack(self.id, slot)?
+            .with_context(|| format!("attack slot {slot}: unpopulated"))?
+            .motions
+            .iter()
+            .try_fold(0i32, |total, motion| {
+                Ok(total.wrapping_add(motion.damage.with_context(|| {
+                    format!(
+                        "attack slot {slot} motion section {}: damage unavailable",
+                        motion.section
+                    )
+                })?))
+            })
+    }
+
+    fn near_timing(&mut self, slot: usize) -> Result<i32> {
+        Ok(self.motion(slot)?.first_collide_frame)
     }
 }

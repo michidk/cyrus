@@ -83,7 +83,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 ### Active assignments
 
 | Work | Status | Session |
-| SOUP defence ownership, paced selection, geometry and starts | In progress | Codex five-task goal; `magic/artifacts/2026-10-18-paced-defence/` |
+| SOUP defence ownership, paced selection, geometry and starts | In progress | Codex five-task goal; `magic/artifacts/2026-10-18-live-paced-picker/` |
 | --- | --- | --- |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Logbook reader scroll lighting: recover the shading rule from matched original/native captures | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-book-lighting/` |
@@ -290,10 +290,20 @@ matches original-derived ranges for all nine combat-capable actors, including
 both pirates and standalone player roles. Automatic/rendered combat remains open.
 Full workspace gates pass with 1,105 Rust test executions and zero installed-data skips.
 
+The live paced picker now queries receiver-owned attack windows, arc and elevation
+in branch order, retaining earlier counter writes on a later error. It does not
+require unused counter-attack data or damage on the armed, differently-facing branch.
+**Verified:** eight controlled original query-order cases, lazy-query failure
+contracts, all 190 registry tests and 192 production selections compared with
+original execution pass. An eager-damage production mutation fails as expected.
+The [query rules](https://github.com/michidk/redguard-preservation/blob/992803b590d03efb5178bc8373f54a6b45002fdc/docs/engine/SOUP.md#paced-defence-pick)
+are published. This does not connect ordinary selection or establish live duels.
+Full workspace gates pass with 1,106 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
-1. Invoke the paced picker with the receiver-owned prepared candidates and
-   invoke the bound synchronous starters and their timed-taunt service.
+1. Bind the lazy paced picker and synchronous starters to the selection's shared
+   live service owner, propagating service errors and preserving earlier writes.
    Compare installed START allocation assignments before claiming automatic actor pacing.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,

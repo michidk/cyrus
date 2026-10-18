@@ -99,6 +99,13 @@ list reject explicitly; old world snapshots missing the period or allocation
 ownership are rejected. This service does not enable the ordinary combat decision
 stage.
 
+`ScriptWorld::pick_combat_paced_defence` queries receiver-owned attack windows,
+arc and bounds-based elevation in branch order. Rejected slots do not require
+later optional fields; the armed, differently-facing branch does not read damage.
+The live record supplies pacing and retains counter changes even when a later
+query fails. This replaces eager candidate preparation without enabling ordinary
+combat traversal. The caller supplies the shared random draw and decision sample.
+
 `ScriptWorld::execute_combat_defence` executes an already selected receiver-owned
 attack through the shared animation, sound and timed-taunt services. It tests the
 following motion for chains, sets the finite loop countdown after requesting

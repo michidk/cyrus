@@ -159,7 +159,7 @@ module where it is defined and regenerate.
 - `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
-- `src/script/registry/defence.rs` — Live defence execution binds receiver-owned attacks to animation, sound and timed taunts.
+- `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.

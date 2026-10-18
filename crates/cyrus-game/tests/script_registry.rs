@@ -13997,20 +13997,29 @@ fn my_id_reads_the_runtime_identifier() {
 }
 
 #[test]
-fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() {
-    for (damages, expected) in [
-        ([Some(i32::MAX), Some(1)], Some(i32::MIN)),
-        ([Some(4), Some(5)], Some(9)),
-        ([Some(4), None], None),
+fn live_paced_pick_uses_receiver_geometry_and_branch_specific_damage() {
+    use cyrus_game::script::decision::PacedDefenceInput;
+    let input = PacedDefenceInput {
+        distance: 50,
+        random_draw: 0,
+        pacing_sum: 129,
+        facing_alike: true,
+        target_in_combat_stance: true,
+        attribute_58: 29,
+    };
+    for (damages, expected, pacing) in [
+        ([Some(i32::MAX), Some(1)], Some(i32::MIN), 129),
+        ([Some(4), Some(5)], Some(9), 129),
+        ([Some(4), None], None, 129),
+        ([Some(4), Some(5)], Some(9), 0),
     ] {
         let mut scripts = cache();
         scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
-        scripts
-            .actors
-            .get_mut("LOGIC")
-            .unwrap()
-            .attributes
-            .extend([("attr_14".into(), 1), ("attr_70".into(), 1)]);
+        scripts.actors.get_mut("LOGIC").unwrap().attributes.extend([
+            ("attr_14".into(), 1),
+            ("attr_62".into(), 129 - pacing),
+            ("attr_71".into(), 1),
+        ]);
         for instance in &mut scripts.instances {
             instance.object_type = 1;
         }
@@ -14024,7 +14033,7 @@ fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() 
                     "section":index,"kind":1,"animation_group":97,
                     "min_range":if index == 0 {10} else {-999},
                     "max_range":if index == 0 {100} else {9999},
-                    "first_collide_frame":7,"collide_duration":3,"defense":2,
+                    "first_collide_frame":7,"collide_duration":3,
                     "arc":if index == 0 {64} else {0},"damage":damage
                 }))
                 .unwrap()
@@ -14077,12 +14086,21 @@ fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() 
             generation: 2,
             index: 1,
         };
-        assert!(
+        // Empty slots and out-of-range attacks must not query the stale target or missing bounds.
+        assert_eq!(
             world
-                .combat_paced_defence_candidate(own, stale, 1)
-                .unwrap()
-                .is_none()
+                .pick_combat_paced_defence(
+                    own,
+                    stale,
+                    PacedDefenceInput {
+                        distance: 10,
+                        ..input
+                    }
+                )
+                .unwrap(),
+            0
         );
+        assert!(world.pick_combat_paced_defence(own, stale, input).is_err());
         let (_, _, models) = static_model_fixture(cache());
         let scene = ordinary_collision_scene(world.world, models);
         for actor in [own, target] {
@@ -14090,23 +14108,44 @@ fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() 
                 .prepare_ordinary_collision_shape(actor, &data, &scene)
                 .unwrap();
         }
-        let result = world.combat_paced_defence_candidate(own, target, 0);
+        // This branch never reads damage or the unused counter-attack field.
+        let armed = world.pick_combat_paced_defence(
+            own,
+            target,
+            PacedDefenceInput {
+                facing_alike: false,
+                ..input
+            },
+        );
+        if pacing == 0 {
+            assert!(format!("{:#}", armed.unwrap_err()).contains("invalid defence pacing divisor"));
+        } else {
+            assert_eq!(armed.unwrap(), 0);
+        }
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .decision
+                .defence_counter,
+            100
+        );
+        if pacing == 0 {
+            continue;
+        }
+        let result = world.pick_combat_paced_defence(own, target, input);
         let Some(expected) = expected else {
             assert!(
-                result
-                    .unwrap_err()
-                    .to_string()
+                format!("{:#}", result.unwrap_err())
                     .contains("motion section 1: damage unavailable")
             );
             continue;
         };
-        let candidate = result.unwrap().unwrap();
-        assert_eq!(candidate.defence.min_range, 10);
-        assert_eq!(candidate.defence.max_range, 100);
-        assert_eq!(candidate.damage, expected);
-        assert!(candidate.in_arc);
-        assert!(candidate.in_reach);
-        assert!(world.combat_paced_defence_candidate(own, stale, 0).is_err());
+        assert_eq!(result.unwrap(), if expected > 0 { 1 } else { 0 });
+        assert!(world.pick_combat_paced_defence(own, stale, input).is_err());
     }
 }
 
