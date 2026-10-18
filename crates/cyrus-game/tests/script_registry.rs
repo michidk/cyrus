@@ -9321,6 +9321,13 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
                 max_range: index,
             })
             .collect();
+        scripts.combat_attacks[54].motions = vec![
+            serde_json::from_value(serde_json::json!({
+                "section":54,"kind":0,"animation_group":97,"min_range":10,"max_range":100,
+                "first_collide_frame":7,"collide_duration":3,"defense":2
+            }))
+            .unwrap(),
+        ];
         scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
         let actor = scripts.actors.get_mut("LOGIC").unwrap();
         actor.attributes.extend([
@@ -9391,6 +9398,25 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
             54
         );
         assert!(world.combat_attack(first, 1).unwrap().is_none());
+        assert_eq!(
+            world.combat_defence_candidate(first, 0).unwrap(),
+            Some(cyrus_game::script::decision::DefenceCandidate {
+                min_range: 10,
+                max_range: 100,
+                near_timing: 7,
+                counter_attack: 2,
+            })
+        );
+        assert!(world.combat_defence_candidate(first, 1).unwrap().is_none());
+        assert!(
+            world
+                .combat_defence_candidate(first, 2)
+                .unwrap_err()
+                .to_string()
+                .contains("first motion unavailable")
+        );
+        assert!(world.combat_defence_candidate(second, 0).is_err());
+
         assert_eq!(
             world.combat_attack(first, 2).unwrap().unwrap().max_range,
             56

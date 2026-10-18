@@ -331,6 +331,36 @@ impl ScriptWorld {
             .transpose()
     }
 
+    /// Prepare a defence pick from this receiver's authored attack slot, not its
+    /// separate four-entry defence table. Omitted first-motion inputs reject explicitly.
+    pub fn combat_defence_candidate(
+        &self,
+        id: ScriptActorId,
+        slot: usize,
+    ) -> Result<Option<super::decision::DefenceCandidate>> {
+        let Some(attack) = self.combat_attack(id, slot)? else {
+            return Ok(None);
+        };
+        let context = || {
+            format!(
+                "world {} actor {} defence pick attack slot {slot}",
+                self.world, id.index
+            )
+        };
+        let motion = attack
+            .motions
+            .first()
+            .with_context(|| format!("{}: first motion unavailable", context()))?;
+        Ok(Some(super::decision::DefenceCandidate {
+            min_range: motion.min_range,
+            max_range: motion.max_range,
+            near_timing: motion.first_collide_frame,
+            counter_attack: motion
+                .defense
+                .with_context(|| format!("{}: counter-attack reference unavailable", context()))?,
+        }))
+    }
+
     /// Send an addressed combat message using the receiver's authored class.
     /// A zero code has no effect; nonzero messages require live logical identities.
     pub fn send_combat_message(

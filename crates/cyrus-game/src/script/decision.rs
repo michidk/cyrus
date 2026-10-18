@@ -25,7 +25,7 @@ pub fn facing_alike(own_heading: i32, target_heading: i32) -> bool {
     heading_difference(own_heading, target_heading).abs() < 0x100
 }
 
-/// Facts read from one populated defence slot. Timing values are nominal animation frames;
+/// Facts read from the first motion of one populated attack slot for a defence pick. Timing values are nominal animation frames;
 /// range values use the same signed distance units as the actor-to-target distance query.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DefenceCandidate {
@@ -79,6 +79,81 @@ fn pick_defence(
         }
     }
     best_kind
+}
+
+/// One slot's paced-selection facts. Geometry queries must use this receiver and target.
+#[derive(Clone, Copy, Debug)]
+pub struct PacedDefenceCandidate {
+    pub defence: DefenceCandidate,
+    /// Signed accumulated attack damage read by the same-facing/unarmed-target branch.
+    pub damage: i32,
+    pub in_arc: bool,
+    pub in_reach: bool,
+}
+
+/// Shared values sampled for one paced pick. The random draw is inclusive 0..=32767.
+#[derive(Clone, Copy, Debug)]
+pub struct PacedDefenceInput {
+    pub distance: i32,
+    pub random_draw: u16,
+    pub pacing_sum: i32,
+    pub facing_alike: bool,
+    pub target_in_combat_stance: bool,
+    pub attribute_58: u8,
+}
+
+/// Paced defence choice following preservation's
+/// [picker rules](https://github.com/michidk/redguard-preservation/pull/112).
+/// Returns zero even when no slot qualifies. The armed, differently-facing branch
+/// updates the counter and timing threshold without replacing the fallback choice.
+/// Divisor admission is required only when a candidate consumes a remainder.
+pub fn paced_defence(
+    decision: &mut CombatDecision,
+    slots: &[Option<PacedDefenceCandidate>; 9],
+    input: PacedDefenceInput,
+) -> Result<i32> {
+    ensure!(
+        input.random_draw <= 32767,
+        "paced defence: random draw exceeds 32767"
+    );
+    let fallback = usize::from(input.random_draw) * 6 / 32767;
+    let mut chosen = if slots[fallback].is_some_and(|slot| slot.defence.usable_at(input.distance)) {
+        fallback as i32
+    } else {
+        0
+    };
+    let mut damage = 0;
+    let mut near_timing = 65536;
+    for (index, slot) in slots.iter().enumerate().take(6) {
+        let Some(slot) = slot else { continue };
+        if !slot.defence.usable_at(input.distance) || !slot.in_arc || !slot.in_reach {
+            continue;
+        }
+        if input.facing_alike || !input.target_in_combat_stance {
+            if slot.damage > damage
+                && input
+                    .pacing_sum
+                    .checked_rem(decision.defence_pacing)
+                    .context("paced defence: invalid defence pacing divisor")?
+                    == 0
+            {
+                damage = slot.damage;
+                chosen = index as i32;
+            }
+        } else {
+            decision.defence_counter = 129 - i32::from(input.attribute_58);
+            if slot.defence.near_timing < near_timing
+                && input
+                    .pacing_sum
+                    .checked_rem(decision.defence_pacing)
+                    .context("paced defence: invalid defence pacing divisor")?
+                    == 0
+            {
+                near_timing = slot.defence.near_timing;
+            }
+        }
+    }
+    Ok(chosen)
 }
 
 /// What the attack executor asks its caller to do besides updating the record.
@@ -519,6 +594,163 @@ pub fn defence_selection(
 
 #[cfg(test)]
 mod tests {
+    fn paced_slot(damage: i32) -> super::PacedDefenceCandidate {
+        super::PacedDefenceCandidate {
+            defence: super::DefenceCandidate {
+                min_range: 0,
+                max_range: 100,
+                near_timing: 10,
+                counter_attack: 0,
+            },
+            damage,
+            in_arc: true,
+            in_reach: true,
+        }
+    }
+
+    fn paced_input() -> super::PacedDefenceInput {
+        super::PacedDefenceInput {
+            distance: 50,
+            random_draw: 0,
+            pacing_sum: 10,
+            facing_alike: true,
+            target_in_combat_stance: true,
+            attribute_58: 29,
+        }
+    }
+
+    #[test]
+    fn paced_defence_maximum_draw_can_retain_slot_six_without_geometry_admission() {
+        let mut slots = [None; 9];
+        slots[6] = Some(super::PacedDefenceCandidate {
+            in_arc: false,
+            in_reach: false,
+            ..paced_slot(1)
+        });
+        let mut decision = super::CombatDecision::default();
+        assert_eq!(
+            super::paced_defence(
+                &mut decision,
+                &slots,
+                super::PacedDefenceInput {
+                    random_draw: 32767,
+                    ..paced_input()
+                }
+            )
+            .unwrap(),
+            6
+        );
+        assert_eq!(decision.defence_counter, 0);
+    }
+
+    #[test]
+    fn paced_defence_priority_branch_keeps_the_first_highest_positive_priority() {
+        let mut slots = [None; 9];
+        slots[0] = Some(paced_slot(-1));
+        slots[1] = Some(paced_slot(3));
+        slots[2] = Some(paced_slot(3));
+        slots[3] = Some(paced_slot(2));
+        let mut decision = super::CombatDecision {
+            defence_pacing: 5,
+            ..Default::default()
+        };
+        assert_eq!(
+            super::paced_defence(&mut decision, &slots, paced_input()).unwrap(),
+            1
+        );
+        assert_eq!(
+            super::paced_defence(
+                &mut decision,
+                &slots,
+                super::PacedDefenceInput {
+                    pacing_sum: 9,
+                    ..paced_input()
+                }
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn paced_defence_armed_branch_changes_counter_but_retains_random_choice() {
+        let mut slots = [None; 9];
+        slots[1] = Some(paced_slot(3));
+        slots[6] = Some(paced_slot(1));
+        let mut decision = super::CombatDecision {
+            defence_pacing: 5,
+            ..Default::default()
+        };
+        for pacing_sum in [9, 10] {
+            assert_eq!(
+                super::paced_defence(
+                    &mut decision,
+                    &slots,
+                    super::PacedDefenceInput {
+                        random_draw: 32767,
+                        facing_alike: false,
+                        pacing_sum,
+                        ..paced_input()
+                    }
+                )
+                .unwrap(),
+                6
+            );
+            assert_eq!(decision.defence_counter, 100);
+        }
+        assert_eq!(
+            super::paced_defence(
+                &mut decision,
+                &slots,
+                super::PacedDefenceInput {
+                    random_draw: 32767,
+                    facing_alike: false,
+                    target_in_combat_stance: false,
+                    ..paced_input()
+                }
+            )
+            .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn paced_defence_checks_only_consumed_divisors_and_rejects_invalid_draws() {
+        let mut slots = [None; 9];
+        let mut decision = super::CombatDecision::default();
+        assert_eq!(
+            super::paced_defence(&mut decision, &slots, paced_input()).unwrap(),
+            0
+        );
+        slots[1] = Some(paced_slot(0));
+        assert!(super::paced_defence(&mut decision, &slots, paced_input()).is_ok());
+        slots[1] = Some(paced_slot(1));
+        assert!(super::paced_defence(&mut decision, &slots, paced_input()).is_err());
+        decision.defence_pacing = -1;
+        assert!(
+            super::paced_defence(
+                &mut decision,
+                &slots,
+                super::PacedDefenceInput {
+                    pacing_sum: i32::MIN,
+                    ..paced_input()
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            super::paced_defence(
+                &mut decision,
+                &slots,
+                super::PacedDefenceInput {
+                    random_draw: 32768,
+                    ..paced_input()
+                }
+            )
+            .is_err()
+        );
+    }
+
     #[test]
     fn defence_range_is_strict_and_signed() {
         let candidate = super::DefenceCandidate {

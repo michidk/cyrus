@@ -83,6 +83,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 ### Active assignments
 
 | Work | Status | Session |
+| SOUP defence ownership, paced selection, geometry and starts | In progress | Codex five-task goal; `magic/artifacts/2026-10-18-paced-defence/` |
 | --- | --- | --- |
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Logbook reader scroll lighting: recover the shading rule from matched original/native captures | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-book-lighting/` |
@@ -229,11 +230,20 @@ open picks exclude the current counter-attack index. These helpers still require
 host-owned prepared slots and do not enable ordinary combat traversal. Full workspace
 gates pass with 1,090 Rust test executions and zero installed-data skips.
 
+The paced picker is implemented with supplied geometry admission. Defence candidates
+resolve through the receiver's existing nine attack slots; the separate four-entry
+defence table does not supply these picks. **Verified:** 33 decision contracts and
+the receiver-owner contract pass; 192 production paced calls match original execution
+with controlled geometry, stance, distance and timing queries. Clamping the maximum
+random draw fails the comparison. Accumulated damage and live geometry still need
+binding before ordinary invocation. Full workspace gates pass with
+1,094 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
-1. Prepare receiver-owned defence slots and complete the paced picker, reach/arc
-   tests and defence starters. Preserve synchronous state changes and publish
-   remaining recovered rules before implementing them.
+1. Bind receiver-owned attack candidates, accumulated damage and geometry to the
+   paced picker; complete reach/arc tests and defence starters. Preserve synchronous
+   state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain
    edge probe exists; retain explicit errors for unsupported ledge/non-combat paths.
