@@ -1825,6 +1825,7 @@ pub(super) fn prepare(
         let mut world = ScriptWorld::prepare(scripts, actors.generation)?;
         world.prepare_markers(animation_data)?;
         world.prepare_navigation(animation_data)?;
+        world.prepare_spatial()?;
         if clock.is_none() {
             commands.insert_resource(crate::clock::SimulationClock::new(scripts.clock)?);
         }
