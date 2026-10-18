@@ -68,6 +68,9 @@ impl CombatControlState {
         Self {
             attack_indices,
             defense_indices,
+            // The constructor copies attributes 2 and 4 into the strength and armor values.
+            strength: i32::from(attributes[2]),
+            armor: i32::from(attributes[4]),
             ..Self::default()
         }
     }
@@ -429,5 +432,21 @@ mod decision_tests {
         assert_eq!(engagement(&attributes), Engagement::InSightWithin(0x80000));
         attributes[121] = 1;
         assert_eq!(engagement(&attributes), Engagement::Always);
+    }
+}
+
+#[cfg(test)]
+mod constructor_tests {
+    use super::*;
+
+    #[test]
+    fn construction_copies_attributes_two_and_four_into_strength_and_armor() {
+        let mut attributes = vec![0u8; 256];
+        attributes[2] = 7;
+        attributes[4] = 9;
+        let combat = CombatControlState::from_attributes(&attributes);
+        assert_eq!((combat.strength, combat.armor), (7, 9));
+        let blank = CombatControlState::from_attributes(&[0u8; 256]);
+        assert_eq!((blank.strength, blank.armor), (0, 0));
     }
 }
