@@ -281,6 +281,30 @@ impl ScriptWorld {
                 }
                 // The blocked-ahead probe the nonplayer steppers read in combat stance. A probe
                 // that cannot run leaves the input absent, and a stepper that needs it reports so.
+                let forward_step_clear = if selected_player {
+                    None
+                } else {
+                    self.forward_step_clear(
+                        id,
+                        None,
+                        inputs.frame_scale.expect("validated frame scale") as i32,
+                        collision.as_ref().zip(scene).map(|(prepared, scene)| {
+                            super::obstacle::OrdinaryObstacleQuery {
+                                scene,
+                                animations: data,
+                                prepared,
+                                vertical_offset: 0,
+                                respond: false,
+                            }
+                        }),
+                    )
+                    .ok()
+                    .flatten()
+                };
+                let inputs = ScriptInputs {
+                    forward_step_clear,
+                    ..inputs
+                };
                 let main_inputs = match (&collision, scene) {
                     (Some(prepared), Some(scene))
                         if !selected_player

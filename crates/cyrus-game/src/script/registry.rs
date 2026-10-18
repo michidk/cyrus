@@ -120,6 +120,9 @@ pub struct ScriptInputs<'a> {
     /// The blocked-ahead probe at distance 30, evaluated by the owning ordinary update for
     /// combat actors; required only by `MoveBackward` in combat stance.
     pub blocked_ahead_30: Option<bool>,
+    /// Whether `MoveForward`'s forward step check passes, evaluated by the owning ordinary
+    /// update for nonplayer actors.
+    pub forward_step_clear: Option<bool>,
 }
 
 pub(crate) struct ScriptAnimation {
@@ -2018,6 +2021,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             combat_step_attribute: actor.attributes[18],
             strafe_step_attribute: actor.attributes[83],
             strafe_turn_attribute: actor.attributes[84],
+            forward_step_attribute: actor.attributes[8],
+            forward_combat_step_attribute: actor.attributes[17],
+            move_selected: control
+                .combat
+                .as_ref()
+                .is_some_and(|combat| combat.action != -1),
         })
     }
 
@@ -2646,6 +2655,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
                     blocked_ahead_30: self.inputs.blocked_ahead_30,
+                    forward_step_clear: self.inputs.forward_step_clear,
                     animation_system: self.animation_system,
                     motion_direction: actor
                         .control
@@ -3443,6 +3453,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
                     blocked_ahead_30: self.inputs.blocked_ahead_30,
+                    forward_step_clear: self.inputs.forward_step_clear,
                     animation_system: self.animation_system,
                     motion_direction: actor
                         .control

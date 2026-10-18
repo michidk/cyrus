@@ -56,6 +56,8 @@ pub(super) struct LocomotionCall<'a> {
     pub state: Result<super::locomotion::BackwardState, String>,
     /// The blocked-ahead probe at distance 30, supplied by the owning update.
     pub blocked_ahead_30: Option<bool>,
+    /// The forward step check of `MoveForward`, supplied by the owning update.
+    pub forward_step_clear: Option<bool>,
     pub animation_system: bool,
     pub motion_direction: Option<&'a mut u8>,
 }
@@ -88,6 +90,7 @@ enum Task {
     FacePlayer,
     Backward,
     Strafe(super::locomotion::Strafe),
+    Forward,
     Location,
     Duration,
     Tasks,
@@ -308,6 +311,77 @@ impl Task {
                         return Ok(!continues(duration, elapsed));
                     }
                     if let Some((heading, distance)) = backward_translation(
+                        spatial.angles[1],
+                        step,
+                        spatial.frame_scale as i32,
+                        input.animation.translation_suppressed(),
+                    ) {
+                        *spatial.position = cyrus_world::transform::translate_forward(
+                            *spatial.position,
+                            heading,
+                            distance,
+                        )?;
+                    }
+                }
+                !continues(duration, elapsed)
+            }
+            Self::Forward => {
+                use super::locomotion::{
+                    FORWARD_MOTION_DIRECTION, ForwardPlan, continues, forward_admitted,
+                    forward_plan, forward_translation,
+                };
+                let [duration] = arguments else {
+                    anyhow::bail!("MoveForward requires one argument")
+                };
+                let duration = duration.integer()?;
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveForward requires elapsed input")?;
+                let motion = services
+                    .locomotion
+                    .context("MoveForward locomotion state unavailable")?;
+                let state = motion.state.map_err(anyhow::Error::msg)?;
+                if !forward_admitted(&state) {
+                    return Ok(true);
+                }
+                // The original skips this check after three steps; the step counter is not
+                // modelled, so it runs on every invocation.
+                if !motion
+                    .forward_step_clear
+                    .context("MoveForward forward step check input unavailable")?
+                {
+                    return Ok(true);
+                }
+                *motion
+                    .motion_direction
+                    .context("MoveForward motion state unavailable")? = FORWARD_MOTION_DIRECTION;
+                let (group, step) = match forward_plan(&state) {
+                    ForwardPlan::Done => return Ok(true),
+                    ForwardPlan::NeedsEdgeProbe => anyhow::bail!(
+                        "MoveForward in deep water unsupported: edge probe input unavailable"
+                    ),
+                    ForwardPlan::Proceed { group, step } => (group, step),
+                };
+                let input = animation.as_mut().context(
+                    "MoveForward requires prepared animation and explicit nominal ticks",
+                )?;
+                let spatial = spatial
+                    .as_mut()
+                    .context("MoveForward requires receiver pose and frame_scale")?;
+                if input.animation.has_group(group) {
+                    let frame = match &mut input.sounds {
+                        Some(sounds) => {
+                            input
+                                .animation
+                                .request_with_sounds(group, 0, input.ticks, *sounds)?
+                        }
+                        None => input.animation.request(group, 0, input.ticks)?,
+                    };
+                    *input.frame = frame.or(*input.frame);
+                    if motion.animation_system && input.animation.current_group() != Some(group) {
+                        return Ok(!continues(duration, elapsed));
+                    }
+                    if let Some((heading, distance)) = forward_translation(
                         spatial.angles[1],
                         step,
                         spatial.frame_scale as i32,
@@ -853,6 +927,8 @@ impl NativeTasks {
             Task::FacePlayer
         } else if function.eq_ignore_ascii_case("MoveBackward") {
             Task::Backward
+        } else if function.eq_ignore_ascii_case("MoveForward") {
+            Task::Forward
         } else if function.eq_ignore_ascii_case("MoveLeft") {
             Task::Strafe(super::locomotion::Strafe::Left)
         } else if function.eq_ignore_ascii_case("MoveRight") {

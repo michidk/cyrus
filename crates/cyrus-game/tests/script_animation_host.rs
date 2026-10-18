@@ -4889,3 +4889,115 @@ fn strafes_outside_combat_stance_report_the_unimplemented_step_checks() {
         );
     }
 }
+
+fn move_forward_world(step: u8) -> (ScriptWorld, ScriptActorId, Scripts) {
+    let mut data = move_backward_scripts(0);
+    for step_entry in data
+        .actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .values_mut()
+    {
+        if let Operation::Call { call } = &mut step_entry.operation {
+            call.function = "MoveForward".into();
+        }
+    }
+    data.definition.functions.last_mut().unwrap().name = "MoveForward".into();
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_8".into(), step);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &move_backward_animations(&data, &[0, 18]), 0)
+        .unwrap();
+    (world, id, data)
+}
+
+fn forward_stage(
+    world: &mut ScriptWorld,
+    id: ScriptActorId,
+    stage: ScriptStage,
+    hud: &cyrus_game::script::ScriptHud,
+    clear: Option<bool>,
+) -> anyhow::Result<()> {
+    world.advance(
+        id,
+        stage,
+        cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            hud: Some(hud),
+            shell_execution: Some(false),
+            forward_step_clear: clear,
+            ..Default::default()
+        },
+        None,
+        None,
+        30,
+    )
+}
+
+#[test]
+fn move_forward_steps_along_the_heading_when_the_step_check_passes() {
+    let (mut world, id, _) = move_forward_world(8);
+    let hud = locomotion_hud();
+    let start = world.spatial(id).unwrap().local.position;
+    for index in 0..4 {
+        forward_stage(
+            &mut world,
+            id,
+            if index == 0 { BODY } else { TASKS },
+            &hud,
+            Some(true),
+        )
+        .unwrap();
+    }
+    let position = world.spatial(id).unwrap().local.position;
+    let moved: i64 = (0..3)
+        .map(|axis| (i64::from(position[axis]) - i64::from(start[axis])).abs())
+        .sum();
+    assert!(moved >= 2048 && moved % 2048 == 0, "moved {moved}");
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().motion_direction,
+        2
+    );
+    stage(&mut world, id, BODY);
+    assert_eq!(world.flags(), [9]);
+}
+
+#[test]
+fn move_forward_blocked_by_its_step_check_never_moves_and_keeps_the_direction_clear() {
+    let (mut world, id, _) = move_forward_world(8);
+    let hud = locomotion_hud();
+    let start = world.spatial(id).unwrap().local.position;
+    for index in 0..4 {
+        forward_stage(
+            &mut world,
+            id,
+            if index == 0 { BODY } else { TASKS },
+            &hud,
+            Some(false),
+        )
+        .unwrap();
+    }
+    assert_eq!(world.spatial(id).unwrap().local.position, start);
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().motion_direction,
+        0
+    );
+}
+
+#[test]
+fn move_forward_without_a_step_check_input_reports_it() {
+    let (mut world, id, _) = move_forward_world(8);
+    let hud = locomotion_hud();
+    let error = forward_stage(&mut world, id, BODY, &hud, None).unwrap_err();
+    assert!(format!("{error:#}").contains("forward step check input unavailable"));
+}

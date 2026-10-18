@@ -21,6 +21,11 @@ pub struct BackwardState {
     /// Attribute bytes 83 and 84 give a combat-stance strafe's step length and turn rate.
     pub strafe_step_attribute: u8,
     pub strafe_turn_attribute: u8,
+    /// Attribute bytes 8 (ordinary) and 17 (combat stance) give `MoveForward`'s step length.
+    pub forward_step_attribute: u8,
+    pub forward_combat_step_attribute: u8,
+    /// A combat move is already selected (the action selector is not -1).
+    pub move_selected: bool,
 }
 
 /// Outcome of `MoveBackward`'s admission and animation choice.
@@ -160,6 +165,64 @@ pub fn strafe_motion(
     let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
     let movement = (!translation_suppressed && distance > 0).then_some((heading, distance));
     (angle, movement)
+}
+
+/// Motion-direction byte `MoveForward` stores once admitted.
+pub const FORWARD_MOTION_DIRECTION: u8 = 2;
+
+/// Admission of `MoveForward` before its forward step check, per preservation's engine/SOUP.md:
+/// no rope, sliding, falling or queued motion, and no lifecycle test.
+pub fn forward_admitted(state: &BackwardState) -> bool {
+    !(state.rope_attached
+        || state.sliding_state != 0
+        || state.falling_state != 0
+        || state.queued_motion != 0)
+}
+
+/// What `MoveForward` does after its step check passed and the direction byte is stored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForwardPlan {
+    /// Combat stance with a combat move already selected: the call completes without moving.
+    Done,
+    /// Deep water outside combat stance needs the edge probe, which is not available here.
+    NeedsEdgeProbe,
+    /// Request `group`, then move by `step` whole units (halved distance in deep water).
+    Proceed { group: u16, step: u8 },
+}
+
+pub fn forward_plan(state: &BackwardState) -> ForwardPlan {
+    if state.holding_weapon || state.combat_mode {
+        if state.move_selected {
+            return ForwardPlan::Done;
+        }
+        return ForwardPlan::Proceed {
+            group: 92,
+            step: state.forward_combat_step_attribute,
+        };
+    }
+    if matches!(state.surface, 2 | 4) {
+        return ForwardPlan::NeedsEdgeProbe;
+    }
+    let group = if state.torch_burning { 30 } else { 18 };
+    ForwardPlan::Proceed {
+        group,
+        step: state.forward_step_attribute,
+    }
+}
+
+/// One forward step: the heading is the receiver's local Y angle and the distance the step in
+/// whole units times 256, scaled by the frame scale; `None` when no movement happens.
+pub fn forward_translation(
+    angle_y: u16,
+    step: u8,
+    frame_scale: i32,
+    translation_suppressed: bool,
+) -> Option<(u16, i32)> {
+    if translation_suppressed {
+        return None;
+    }
+    let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
+    (distance > 0).then_some((angle_y & 2047, distance))
 }
 
 /// One backward step: the heading (local Y angle plus 1024, wrapped) and the distance, or `None`
@@ -393,5 +456,90 @@ mod tests {
             strafe_motion(Strafe::Right, 2047, 4, 0, 256, false),
             (3, None)
         );
+    }
+
+    #[test]
+    fn forward_admission_has_no_lifecycle_test_and_stance_picks_the_group() {
+        let base = BackwardState {
+            forward_step_attribute: 8,
+            forward_combat_step_attribute: 17,
+            ..Default::default()
+        };
+        assert!(forward_admitted(&BackwardState {
+            living_state: 20,
+            ..base
+        }));
+        for refused in [
+            BackwardState {
+                rope_attached: true,
+                ..base
+            },
+            BackwardState {
+                sliding_state: 1,
+                ..base
+            },
+            BackwardState {
+                falling_state: 1,
+                ..base
+            },
+            BackwardState {
+                queued_motion: 8,
+                ..base
+            },
+        ] {
+            assert!(!forward_admitted(&refused));
+        }
+        assert_eq!(
+            forward_plan(&base),
+            ForwardPlan::Proceed { group: 18, step: 8 }
+        );
+        assert_eq!(
+            forward_plan(&BackwardState {
+                torch_burning: true,
+                ..base
+            }),
+            ForwardPlan::Proceed { group: 30, step: 8 }
+        );
+        assert_eq!(
+            forward_plan(&BackwardState { surface: 2, ..base }),
+            ForwardPlan::NeedsEdgeProbe
+        );
+        let combat = BackwardState {
+            combat_mode: true,
+            ..base
+        };
+        assert_eq!(
+            forward_plan(&combat),
+            ForwardPlan::Proceed {
+                group: 92,
+                step: 17
+            }
+        );
+        assert_eq!(
+            forward_plan(&BackwardState {
+                move_selected: true,
+                ..combat
+            }),
+            ForwardPlan::Done
+        );
+        // A deep-water combat actor still takes the combat branch.
+        assert_eq!(
+            forward_plan(&BackwardState {
+                surface: 4,
+                ..combat
+            }),
+            ForwardPlan::Proceed {
+                group: 92,
+                step: 17
+            }
+        );
+    }
+
+    #[test]
+    fn forward_translation_uses_the_unoffset_heading() {
+        assert_eq!(forward_translation(300, 8, 256, false), Some((300, 2048)));
+        assert_eq!(forward_translation(2100, 8, 128, false), Some((52, 1024)));
+        assert_eq!(forward_translation(0, 8, 256, true), None);
+        assert_eq!(forward_translation(0, 0, 256, false), None);
     }
 }

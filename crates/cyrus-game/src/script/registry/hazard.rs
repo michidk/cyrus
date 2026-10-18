@@ -28,6 +28,46 @@ const UNFOUND_Y: i32 = 9_999_999;
 const UNFOUND_METRIC: i32 = 999_999;
 
 impl ScriptWorld {
+    /// `MoveForward`'s forward step check. `None` when the check needs the collision query and
+    /// none was supplied. Passes outright for a receiver whose lifecycle byte is 7 and whose
+    /// attribute 1 has bit 0 clear, and for one whose attribute 1 has bit 1 clear (no hazard test);
+    /// otherwise the destination, half of attribute byte 8 ahead, must not be a hazard.
+    pub fn forward_step_clear(
+        &self,
+        id: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+        frame_scale: i32,
+        query: Option<OrdinaryObstacleQuery<'_>>,
+    ) -> Result<Option<bool>> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .context("forward step check control unavailable")?;
+        if (control.death_selector == 7 && actor.attributes[1] & 1 == 0)
+            || actor.attributes[1] & 2 == 0
+        {
+            return Ok(Some(true));
+        }
+        let Some(query) = query else {
+            return Ok(None);
+        };
+        let distance = ((i32::from(actor.attributes[8]) << 8).wrapping_mul(frame_scale) >> 8) >> 1;
+        let spatial = self.spatial(id)?;
+        let destination = cyrus_world::transform::translate_forward(
+            self.sight_position(index)?,
+            spatial.local.angles[1],
+            distance,
+        )?;
+        Ok(Some(!self.step_hazard(
+            id,
+            selected_player,
+            destination,
+            query,
+        )?))
+    }
+
     /// Whether stepping to `destination` (Q8 position) is hazardous: the destination surface is a
     /// steep slope, unless both the destination and the current surface are floors. Applies only
     /// to actors whose attribute 1 has bit 1 set. A surface missing at one of the two points
