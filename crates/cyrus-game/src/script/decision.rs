@@ -3,6 +3,28 @@
 use super::combat::CombatDecision;
 use anyhow::{Result, ensure};
 
+/// Signed difference of two headings, each masked to 0..2047 and wrapped into -1024..=1024.
+pub fn heading_difference(first: i32, second: i32) -> i32 {
+    let mut difference = (first & 0x7ff) - (second & 0x7ff);
+    if difference > 0x400 {
+        difference -= 0x800;
+    } else if difference < -0x400 {
+        difference += 0x800;
+    }
+    difference
+}
+
+/// The facing test of the counter-attack selection: the target's heading minus the actor's is
+/// more than 0x300 from zero, so the two face each other.
+pub fn facing_each_other(target_heading: i32, own_heading: i32) -> bool {
+    heading_difference(target_heading, own_heading).abs() > 0x300
+}
+
+/// The same-facing test of the defence selection: the headings differ by less than 0x100.
+pub fn facing_alike(own_heading: i32, target_heading: i32) -> bool {
+    heading_difference(own_heading, target_heading).abs() < 0x100
+}
+
 /// What the attack executor asks its caller to do besides updating the record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttackEffect {
@@ -722,5 +744,28 @@ mod tests {
             counter_attack(&short, || zeros.next().unwrap()).unwrap(),
             CounterAttack::Idle
         );
+    }
+
+    #[test]
+    fn heading_differences_wrap_into_a_half_turn() {
+        assert_eq!(heading_difference(10, 2), 8);
+        assert_eq!(heading_difference(2, 10), -8);
+        assert_eq!(heading_difference(2040, 8), -16);
+        assert_eq!(heading_difference(8, 2040), 16);
+        assert_eq!(heading_difference(0x400, 0), 0x400);
+        assert_eq!(heading_difference(0x401, 0), -0x3ff);
+        // Values outside 0..2047 are masked first.
+        assert_eq!(heading_difference(2048 + 5, 5), 0);
+    }
+
+    #[test]
+    fn facing_tests_use_the_original_bands() {
+        assert!(facing_each_other(0, 0x400));
+        assert!(facing_each_other(0x301, 0));
+        assert!(!facing_each_other(0x300, 0));
+        assert!(!facing_each_other(0, 0));
+        assert!(facing_alike(100, 100 + 0xff));
+        assert!(!facing_alike(100, 100 + 0x100));
+        assert!(facing_alike(2040, 8));
     }
 }
