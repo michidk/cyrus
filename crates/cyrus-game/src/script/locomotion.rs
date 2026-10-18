@@ -24,6 +24,9 @@ pub struct BackwardState {
     /// Attribute bytes 8 (ordinary) and 17 (combat stance) give `MoveForward`'s step length.
     pub forward_step_attribute: u8,
     pub forward_combat_step_attribute: u8,
+    /// Attribute bytes 12 and 19 give WalkForward ordinary and combat step lengths.
+    pub walk_step_attribute: u8,
+    pub walk_combat_step_attribute: u8,
     /// A combat move is already selected (the action selector is not -1).
     pub move_selected: bool,
     /// Attribute 11 selects the initial distance ramp, independently of animation suppression.

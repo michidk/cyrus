@@ -1047,15 +1047,27 @@ the results, including bypass clearing. Later receiver or candidate changes reus
 them. Snapshots retain this state. An unsupported query keeps later calls
 explicitly unavailable. This follows preservation's
 [ground prevalidation rules](https://github.com/michidk/redguard-preservation/blob/59cb6b1/docs/engine/player.md#ordinary-ground-prevalidation).
-Full destination collision and `WalkForward` remain unavailable.
+Complete destination collision and installed movement acceptance remain open.
 
 **Verified:** nonplayer destination support admission now shares the ordinary
 point-support stages with late collision. It restores local XYZ after support,
 a miss or an error, while retaining support ownership and collision state.
 Linked actors and selected-player destination feedback remain unsupported.
-Native `WalkForward` binding and full combat movement acceptance remain open.
+Full combat movement acceptance remains open.
 
 The explicit `ScriptWorld::walk_forward_step_clear` service checks destination
 body contact, hazard and support in order. Refusal marks transient step state;
 ordinary response cleanup clears it. It requires a receiver-owned retained
-collision query. Native `WalkForward` dispatch remains unavailable.
+collision query.
+
+`WalkForward` native calls and task polls now use the receiver's live collision
+context. The ordinary scheduler retains the query and defers forward/backward
+probes until the invoked task needs them. A different receiver's prepared query
+reports an error. Walk-forward admission runs on every invocation, including
+at the saturated startup counter; deep water delegates to `MoveForward` first.
+The task uses installed attributes 12/19 and animation groups 20/21/31, direction
+6, the shared forward ramp and duration rules. Zero step length uses half of
+attribute 8 in Q8 units. Headless contracts cover call/poll refusal, query
+ownership, movement arithmetic, group selection and task snapshot restoration.
+Selected-player WalkForward, routed candidate rebinding, full deep-water movement
+and original/native/browser combat acceptance remain unsupported or unverified.

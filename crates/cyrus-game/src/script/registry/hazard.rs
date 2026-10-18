@@ -49,6 +49,7 @@ impl ScriptWorld {
         if control.death_selector == 7 && self.actors[index].attributes[1] & 1 == 0 {
             return Ok(true);
         }
+        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let spatial = self.spatial(id)?;
         let offset = i32::from(self.actors[index].attributes[12])
             .wrapping_add(self.ordinary_collision_shape(id)?.positive_extent[2])

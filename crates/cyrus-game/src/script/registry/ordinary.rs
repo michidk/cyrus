@@ -177,6 +177,42 @@ impl ScriptWorld {
                 } else {
                     None
                 };
+                let inputs = ScriptInputs {
+                    locomotion_geometry: collision
+                        .as_ref()
+                        .zip(scene)
+                        .map(|(prepared, scene)| -> anyhow::Result<_> {
+                            Ok(super::LocomotionGeometry {
+                                ground: super::ground::OrdinaryGroundQuery {
+                                    scene,
+                                    animations: data,
+                                    prepared,
+                                    distance: scene.settings.post_collide_height,
+                                    sidedness: false,
+                                },
+                                environment: super::transition::ObstacleEnvironment {
+                                    selected_player: self
+                                        .actors
+                                        .iter()
+                                        .position(|actor| {
+                                            matches!(actor.source, super::ScriptActorSource::Player)
+                                        })
+                                        .map(|index| self.id(index))
+                                        .transpose()?,
+                                    auto_grab: false,
+                                    item_system_ready: inputs
+                                        .hud
+                                        .map(super::super::ScriptHud::inventory_ready)
+                                        .transpose()?
+                                        .unwrap_or(false),
+                                    shell_execution: inputs.shell_execution.unwrap_or(false),
+                                    ticks,
+                                },
+                            })
+                        })
+                        .transpose()?,
+                    ..inputs
+                };
                 let player_query = if selected_player {
                     Some(super::ground::OrdinaryGroundQuery {
                         scene: scene
@@ -281,63 +317,10 @@ impl ScriptWorld {
                     };
                     self.maintain_map_combat(id, ticks, transition, shell)?;
                 }
-                // The blocked-ahead probe the nonplayer steppers read in combat stance. A probe
-                // that cannot run leaves the input absent, and a stepper that needs it reports so.
-                let forward_step_clear = if selected_player {
-                    None
-                } else {
-                    self.forward_step_clear(
-                        id,
-                        None,
-                        inputs.frame_scale.expect("validated frame scale") as i32,
-                        collision.as_ref().zip(scene).map(|(prepared, scene)| {
-                            super::obstacle::OrdinaryObstacleQuery {
-                                scene,
-                                animations: data,
-                                prepared,
-                                vertical_offset: 0,
-                                respond: false,
-                            }
-                        }),
-                    )
-                    .ok()
-                    .flatten()
-                };
-                let inputs = ScriptInputs {
-                    forward_step_clear,
-                    ..inputs
-                };
-                let main_inputs = match (&collision, scene) {
-                    (Some(prepared), Some(scene))
-                        if !selected_player
-                            && self.actors[id.index]
-                                .control
-                                .as_ref()
-                                .is_some_and(|control| control.combat.is_some()) =>
-                    {
-                        ScriptInputs {
-                            blocked_ahead_30: self
-                                .blocked_ahead(
-                                    id,
-                                    30,
-                                    super::obstacle::OrdinaryObstacleQuery {
-                                        scene,
-                                        animations: data,
-                                        prepared,
-                                        vertical_offset: 0,
-                                        respond: false,
-                                    },
-                                )
-                                .ok(),
-                            ..inputs
-                        }
-                    }
-                    _ => inputs,
-                };
                 self.advance(
                     id,
                     ScriptStage::OrdinaryMain,
-                    main_inputs,
+                    inputs,
                     Some(sounds),
                     Some(random),
                     budget,
@@ -353,7 +336,7 @@ impl ScriptWorld {
                     self.actors[id.index].maintain_light(ticks);
                 }
                 if self.actors[id.index].attributes[1] != 0 {
-                    let collision = collision.ok_or_else(|| {
+                    let collision = collision.as_ref().ok_or_else(|| {
                         anyhow::anyhow!(
                             "script enabled collision without pre-script candidate preparation"
                         )
@@ -368,7 +351,7 @@ impl ScriptWorld {
                             super::ground::OrdinaryGroundQuery {
                                 scene,
                                 animations: data,
-                                prepared: &collision,
+                                prepared: collision,
                                 distance: scene.settings.post_collide_height,
                                 sidedness: false,
                             },

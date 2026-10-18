@@ -54,13 +54,19 @@ pub(super) struct NativeServices<'a> {
 /// Receiver state sampled for locomotion tasks. Fallible reads surface only when used.
 pub(super) struct LocomotionCall<'a> {
     pub state: Result<super::locomotion::BackwardState, String>,
-    /// The blocked-ahead probe at distance 30, supplied by the owning update.
-    pub blocked_ahead_30: Option<bool>,
-    /// The forward step check of `MoveForward`, supplied by the owning update.
-    pub forward_step_clear: Option<bool>,
+    pub admission: LocomotionAdmission,
     pub animation_system: bool,
     pub motion: Option<MotionCall<'a>>,
     pub called: &'a mut u8,
+}
+
+/// Admission sampled before collision writes; animation and movement state is read afterwards.
+#[derive(Default)]
+pub(super) struct LocomotionAdmission {
+    pub blocked_ahead_30: Option<bool>,
+    pub forward_step_clear: Option<bool>,
+    pub walk_forward_mode: bool,
+    pub forward_admitted: Option<bool>,
 }
 
 pub(super) struct MotionCall<'a> {
@@ -97,6 +103,7 @@ enum Task {
     Backward,
     Strafe(super::locomotion::Strafe),
     Forward,
+    WalkForward,
     Location,
     Duration,
     Tasks,
@@ -282,10 +289,10 @@ impl Task {
                 let mut probe_needed = false;
                 let admission = backward_admission(state, || {
                     probe_needed = true;
-                    motion.blocked_ahead_30.unwrap_or(false)
+                    motion.admission.blocked_ahead_30.unwrap_or(false)
                 });
                 anyhow::ensure!(
-                    !(probe_needed && motion.blocked_ahead_30.is_none()),
+                    !(probe_needed && motion.admission.blocked_ahead_30.is_none()),
                     "MoveBackward blocked-ahead probe input unavailable"
                 );
                 if admission == BackwardAdmission::Refused {
@@ -339,49 +346,72 @@ impl Task {
                 }
                 !continues(duration, elapsed)
             }
-            Self::Forward => {
+            Self::Forward | Self::WalkForward => {
+                let walking = matches!(self, Self::WalkForward);
+                let name = if walking {
+                    "WalkForward"
+                } else {
+                    "MoveForward"
+                };
                 use super::locomotion::{
                     FORWARD_MOTION_DIRECTION, ForwardPlan, continues, forward_admitted,
                     forward_plan, forward_translation,
                 };
                 let [duration] = arguments else {
-                    anyhow::bail!("MoveForward requires one argument")
+                    anyhow::bail!("{name} requires one argument")
                 };
                 let duration = duration.integer()?;
                 let elapsed = invocation
                     .elapsed
-                    .context("MoveForward requires elapsed input")?;
+                    .with_context(|| format!("{name} requires elapsed input"))?;
                 let motion = services
                     .locomotion
-                    .context("MoveForward locomotion state unavailable")?;
+                    .with_context(|| format!("{name} locomotion state unavailable"))?;
                 let state = motion.state.map_err(anyhow::Error::msg)?;
-                if !forward_admitted(&state) {
+                if !motion
+                    .admission
+                    .forward_admitted
+                    .unwrap_or_else(|| forward_admitted(&state))
+                {
                     return Ok(true);
                 }
                 let receiver = motion
                     .motion
-                    .context("MoveForward motion state unavailable")?;
-                if (*receiver.counters >> 4) & 3 < 3
+                    .with_context(|| format!("{name} motion state unavailable"))?;
+                let walking = walking && motion.admission.walk_forward_mode;
+                if (walking || (*receiver.counters >> 4) & 3 < 3)
                     && !motion
+                        .admission
                         .forward_step_clear
-                        .context("MoveForward forward step check input unavailable")?
+                        .with_context(|| format!("{name} forward step check input unavailable"))?
                 {
                     return Ok(true);
                 }
-                *receiver.direction = FORWARD_MOTION_DIRECTION;
-                let (group, step) = match forward_plan(&state) {
-                    ForwardPlan::Done => return Ok(true),
-                    ForwardPlan::NeedsEdgeProbe => anyhow::bail!(
-                        "MoveForward in deep water unsupported: edge probe input unavailable"
-                    ),
-                    ForwardPlan::Proceed { group, step } => (group, step),
+                *receiver.direction = if walking { 6 } else { FORWARD_MOTION_DIRECTION };
+                let (group, step) = if walking {
+                    if state.holding_weapon || state.combat_mode {
+                        (31, state.walk_combat_step_attribute)
+                    } else {
+                        (
+                            if state.torch_burning { 21 } else { 20 },
+                            state.walk_step_attribute,
+                        )
+                    }
+                } else {
+                    match forward_plan(&state) {
+                        ForwardPlan::Done => return Ok(true),
+                        ForwardPlan::NeedsEdgeProbe => anyhow::bail!(
+                            "MoveForward in deep water unsupported: edge probe input unavailable"
+                        ),
+                        ForwardPlan::Proceed { group, step } => (group, step),
+                    }
                 };
-                let input = animation.as_mut().context(
-                    "MoveForward requires prepared animation and explicit nominal ticks",
-                )?;
+                let input = animation.as_mut().with_context(|| {
+                    format!("{name} requires prepared animation and explicit nominal ticks")
+                })?;
                 let spatial = spatial
                     .as_mut()
-                    .context("MoveForward requires receiver pose and frame_scale")?;
+                    .with_context(|| format!("{name} requires receiver pose and frame_scale"))?;
                 if input.animation.has_group(group) {
                     let frame = match &mut input.sounds {
                         Some(sounds) => {
@@ -400,7 +430,11 @@ impl Task {
                         receiver.counters,
                         4,
                         state.step_adjustment,
-                        i32::from(step) << 8,
+                        if walking && step == 0 {
+                            i32::from(state.forward_step_attribute / 2)
+                        } else {
+                            i32::from(step) << 8
+                        },
                     );
                     if let Some((heading, distance)) = forward_translation(
                         spatial.angles[1],
@@ -905,7 +939,35 @@ pub struct NativeTasks {
     next: u64,
     tasks: BTreeMap<u64, Task>,
 }
+/// Locomotion operation whose geometry must be sampled for the actual receiver.
+#[derive(Clone, Copy)]
+pub(super) enum LocomotionOperation {
+    Backward,
+    Forward,
+    WalkForward,
+}
+impl LocomotionOperation {
+    pub(super) fn named(name: &str) -> Option<Self> {
+        if name.eq_ignore_ascii_case("MoveBackward") {
+            Some(Self::Backward)
+        } else if name.eq_ignore_ascii_case("MoveForward") {
+            Some(Self::Forward)
+        } else if name.eq_ignore_ascii_case("WalkForward") {
+            Some(Self::WalkForward)
+        } else {
+            None
+        }
+    }
+}
 impl NativeTasks {
+    pub(super) fn locomotion_operation(&self, token: u64) -> Option<LocomotionOperation> {
+        match self.tasks.get(&token)? {
+            Task::Backward => Some(LocomotionOperation::Backward),
+            Task::Forward => Some(LocomotionOperation::Forward),
+            Task::WalkForward => Some(LocomotionOperation::WalkForward),
+            _ => None,
+        }
+    }
     pub(super) fn call(
         &mut self,
         (function, kind): (&str, CallKind),
@@ -950,6 +1012,8 @@ impl NativeTasks {
             Task::Backward
         } else if function.eq_ignore_ascii_case("MoveForward") {
             Task::Forward
+        } else if function.eq_ignore_ascii_case("WalkForward") {
+            Task::WalkForward
         } else if function.eq_ignore_ascii_case("MoveLeft") {
             Task::Strafe(super::locomotion::Strafe::Left)
         } else if function.eq_ignore_ascii_case("MoveRight") {

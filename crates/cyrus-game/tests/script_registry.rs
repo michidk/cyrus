@@ -15556,3 +15556,128 @@ fn walk_forward_body_refusal_marks_step_without_running_later_ground_query() {
         0
     );
 }
+
+#[test]
+fn native_walk_forward_uses_live_body_admission_on_call_and_poll() {
+    use cyrus_game::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, ScriptInputs, ScriptStage,
+    };
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "WalkForward".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = BTreeMap::from([
+        (
+            0,
+            Step {
+                next: 1,
+                operation: wait(
+                    1,
+                    "WalkForward",
+                    CallKind::Task,
+                    vec![Value::Integer { value: 4 }],
+                ),
+            },
+        ),
+        (
+            1,
+            Step {
+                next: 2,
+                operation: Operation::End { target: 0 },
+            },
+        ),
+    ]);
+    for query_owner in [0, 1] {
+        let (mut world, data, models) =
+            static_model_fixture_at(scripts.clone(), Some(20.0), [10, 20, 30]);
+        let id = world.id(0).unwrap();
+        let other = world.id(1).unwrap();
+        world
+            .refresh_model_presentations(&data, &[id, other])
+            .unwrap();
+        let saved = world.spatial(id).unwrap().local.position;
+        let scene = ordinary_collision_scene(world.world, models);
+        let prepared = world
+            .prepare_ordinary_collision_query(
+                if query_owner == 0 { id } else { other },
+                &scene,
+                &data,
+                [10, 30],
+                &[id, other],
+            )
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        for stage in [ScriptStage::Body(Thread::Main), ScriptStage::Tasks] {
+            let result = world.advance(
+                id,
+                stage,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&hud),
+                    forward_step_clear: Some(true),
+                    locomotion_geometry: Some(LocomotionGeometry {
+                        ground: OrdinaryGroundQuery {
+                            scene: &scene,
+                            animations: &data,
+                            prepared: &prepared,
+                            distance: u32::MAX,
+                            sidedness: false,
+                        },
+                        environment: ObstacleEnvironment {
+                            selected_player: None,
+                            auto_grab: false,
+                            item_system_ready: false,
+                            shell_execution: false,
+                            ticks: 1,
+                        },
+                    }),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            );
+            if query_owner == 1 {
+                let error = result.unwrap_err();
+                assert!(
+                    format!("{error:#}")
+                        .contains("collision query belongs to another actor or world"),
+                    "{error:#}"
+                );
+                assert_eq!(world.spatial(id).unwrap().local.position, saved);
+                assert_eq!(
+                    world.actors()[id.index]
+                        .control_state()
+                        .unwrap()
+                        .collision_response_auxiliary[0],
+                    0
+                );
+                break;
+            }
+            result.unwrap();
+            assert_eq!(world.spatial(id).unwrap().local.position, saved);
+            assert_eq!(
+                world.actors()[id.index]
+                    .control_state()
+                    .unwrap()
+                    .collision_response_auxiliary[0],
+                0x80
+            );
+            assert_eq!(
+                world.actors()[id.index]
+                    .control_state()
+                    .unwrap()
+                    .motion_direction,
+                0
+            );
+            world.finish_ordinary_script_response(id, Some(1)).unwrap();
+        }
+        assert_eq!(
+            world.actors()[id.index].runtime().unwrap().active_tasks(),
+            0
+        );
+    }
+}

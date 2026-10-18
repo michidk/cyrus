@@ -97,6 +97,21 @@ pub enum ScriptStage {
     Body(Thread),
 }
 
+/// Receiver-bound geometry retained by the ordinary wrapper for native locomotion.
+/// Routed calls must supply a matching prepared query; candidate rebinding is unsupported.
+#[derive(Clone, Copy)]
+pub struct LocomotionGeometry<'a> {
+    pub ground: ground::OrdinaryGroundQuery<'a>,
+    pub environment: transition::ObstacleEnvironment,
+}
+impl std::fmt::Debug for LocomotionGeometry<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocomotionGeometry")
+            .field("environment", &self.environment)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Inputs supplied by the owning scheduler; missing values never imply a clock tick.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ScriptInputs<'a> {
@@ -118,12 +133,12 @@ pub struct ScriptInputs<'a> {
     pub dialogue_source: Option<&'a dyn super::DialogueSource>,
     /// Explicit shared sample-reset flag from the owning engine update.
     pub sound_reset: Option<bool>,
-    /// The blocked-ahead probe at distance 30, evaluated by the owning ordinary update for
-    /// combat actors; required only by `MoveBackward` in combat stance.
+    /// Explicit inspection input for MoveBackward combat stance without live geometry.
     pub blocked_ahead_30: Option<bool>,
-    /// Whether `MoveForward`'s forward step check passes, evaluated by the owning ordinary
-    /// update for nonplayer actors.
+    /// Explicit inspection input for MoveForward without live geometry.
     pub forward_step_clear: Option<bool>,
+    /// Live receiver-bound queries take precedence over caller-sampled checks.
+    pub locomotion_geometry: Option<LocomotionGeometry<'a>>,
 }
 
 pub(crate) struct ScriptAnimation {
@@ -2058,11 +2073,119 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             strafe_turn_attribute: actor.attributes[84],
             forward_step_attribute: actor.attributes[8],
             forward_combat_step_attribute: actor.attributes[17],
+            walk_step_attribute: actor.attributes[12],
+            walk_combat_step_attribute: actor.attributes[19],
             move_selected: control
                 .combat
                 .as_ref()
                 .is_some_and(|combat| combat.action != -1),
         })
+    }
+
+    fn locomotion_probes(
+        &mut self,
+        operation: Option<super::tasks::LocomotionOperation>,
+    ) -> Result<super::tasks::LocomotionAdmission> {
+        use super::tasks::LocomotionOperation;
+        let mut admission = super::tasks::LocomotionAdmission {
+            blocked_ahead_30: self.inputs.blocked_ahead_30,
+            forward_step_clear: self.inputs.forward_step_clear,
+            ..Default::default()
+        };
+        let Some(operation) = operation else {
+            return Ok(admission);
+        };
+        let state = self.locomotion_state().map_err(anyhow::Error::msg)?;
+        let walking = matches!(operation, LocomotionOperation::WalkForward)
+            && !matches!(state.surface, 2 | 4);
+        admission.walk_forward_mode = walking;
+        admission.forward_admitted = Some(super::locomotion::forward_admitted(&state));
+        // WalkForward has no caller-sampled substitute for its side-effecting query.
+        if walking {
+            admission.forward_step_clear = None;
+        }
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        if walking {
+            anyhow::ensure!(
+                self.selected_player() != Some(id)
+                    && !matches!(
+                        self.registry.actors[self.index].source,
+                        ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+                    ),
+                "world {} instance {}: selected-player WalkForward unavailable",
+                self.world,
+                self.index,
+            );
+        }
+        if walking && admission.forward_admitted == Some(true) {
+            let actor = &self.registry.actors[self.index];
+            if actor
+                .control
+                .as_ref()
+                .is_some_and(|control| control.death_selector == 7)
+                && actor.attributes[1] & 1 == 0
+            {
+                admission.forward_step_clear = Some(true);
+                return Ok(admission);
+            }
+        }
+        let Some(geometry) = self.inputs.locomotion_geometry else {
+            return Ok(admission);
+        };
+        let obstacle = || obstacle::OrdinaryObstacleQuery {
+            scene: geometry.ground.scene,
+            animations: geometry.ground.animations,
+            prepared: geometry.ground.prepared,
+            vertical_offset: 0,
+            respond: false,
+        };
+        match operation {
+            LocomotionOperation::Backward => {
+                let mut needed = false;
+                super::locomotion::backward_admission(state, || {
+                    needed = true;
+                    false
+                });
+                if needed {
+                    admission.blocked_ahead_30 =
+                        Some(self.registry.blocked_ahead(id, 30, obstacle())?);
+                }
+            }
+            LocomotionOperation::Forward | LocomotionOperation::WalkForward => {
+                if super::locomotion::forward_admitted(&state) {
+                    let control = self.registry.actors[self.index]
+                        .control
+                        .as_ref()
+                        .context("locomotion control unavailable")?;
+                    if walking {
+                        let mut missing_sound =
+                            |_, _| anyhow::bail!("WalkForward collision sound handler unavailable");
+                        let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
+                        admission.forward_step_clear =
+                            Some(self.registry.walk_forward_step_clear(
+                                id,
+                                geometry.ground,
+                                geometry.environment,
+                                sounds,
+                            )?);
+                    } else if (control.movement_flags >> 4) & 3 < 3 {
+                        admission.forward_step_clear = self.registry.forward_step_clear(
+                            id,
+                            geometry.environment.selected_player,
+                            self.inputs
+                                .frame_scale
+                                .context("MoveForward requires frame_scale")?
+                                as i32,
+                            Some(obstacle()),
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(admission)
     }
 
     fn frame_wait_call(&self) -> super::tasks::FrameWaitCall {
@@ -2635,6 +2758,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
+        let operation =
+            if kind != CallKind::Function && arguments.len() == 1 && arguments[0].integer().is_ok()
+            {
+                super::tasks::LocomotionOperation::named(function)
+            } else {
+                None
+            };
+        let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
@@ -2701,8 +2832,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
-                    blocked_ahead_30: self.inputs.blocked_ahead_30,
-                    forward_step_clear: self.inputs.forward_step_clear,
+                    admission: locomotion_admission,
                     animation_system: self.animation_system,
                     motion: actor
                         .control
@@ -3458,6 +3588,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
+        let operation = self.registry.actors[self.index]
+            .tasks
+            .locomotion_operation(token);
+        let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
@@ -3524,8 +3658,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
-                    blocked_ahead_30: self.inputs.blocked_ahead_30,
-                    forward_step_clear: self.inputs.forward_step_clear,
+                    admission: locomotion_admission,
                     animation_system: self.animation_system,
                     motion: actor
                         .control

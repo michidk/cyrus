@@ -5214,3 +5214,106 @@ fn ordinary_wrapper_clears_unused_counters_and_previous_called_flags() {
         assert_eq!(actor.control_state().unwrap().movement_flags, 0);
     }
 }
+
+fn walk_forward_world(surface: u8, bypass: bool) -> (ScriptWorld, ScriptActorId) {
+    let mut data = move_backward_scripts(0);
+    let actor = data.actors.get_mut("ACTOR").unwrap();
+    for step in actor.program.steps.values_mut() {
+        if let Operation::Call { call } = &mut step.operation {
+            call.function = "WalkForward".into();
+        }
+    }
+    data.definition.functions.last_mut().unwrap().name = "WalkForward".into();
+    if bypass {
+        actor.attributes.insert("attr_12".into(), 8);
+        actor.attributes.insert("attr_11".into(), 1);
+        actor.program.steps = std::mem::take(&mut actor.program.steps)
+            .into_iter()
+            .map(|(index, mut step)| {
+                step.next += 1;
+                (index + 1, step)
+            })
+            .collect();
+        actor.program.steps.insert(
+            0,
+            cyrus_script::program::Step {
+                next: 1,
+                operation: Operation::Call {
+                    call: Call {
+                        function_id: 4,
+                        kind: CallKind::Function,
+                        target: Object::Me,
+                        function: "SetAIType".into(),
+                        arguments: vec![Value::Integer { value: 7 }],
+                    },
+                },
+            },
+        );
+        data.definition.functions.push(Function {
+            name: "SetAIType".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        data.updates.animation_system = false;
+    }
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .bind_animation(id, &move_backward_animations(&data, &[0, 20]), 0)
+        .unwrap();
+    world.set_actor_surface(id, surface).unwrap();
+    (world, id)
+}
+
+#[test]
+fn walk_forward_requires_live_geometry_instead_of_a_sampled_forward_result() {
+    let (mut world, id) = walk_forward_world(0, false);
+    let error = forward_stage(&mut world, id, BODY, &locomotion_hud(), Some(true)).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("WalkForward forward step check input unavailable"),
+        "{error:#}"
+    );
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().motion_direction,
+        0
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
+}
+
+#[test]
+fn walk_forward_delegates_to_move_forward_before_its_own_step_check_in_deep_water() {
+    let (mut world, id) = walk_forward_world(2, false);
+    forward_stage(&mut world, id, BODY, &locomotion_hud(), Some(false)).unwrap();
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().motion_direction,
+        0
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [0; 3]);
+}
+
+#[test]
+fn walk_forward_lifecycle_bypass_moves_without_unused_geometry_on_call_and_poll() {
+    let (mut world, id) = walk_forward_world(0, true);
+    let hud = locomotion_hud();
+    for (index, z) in [512, 1194, 2218, 4266].into_iter().enumerate() {
+        forward_stage(
+            &mut world,
+            id,
+            if index == 0 { BODY } else { TASKS },
+            &hud,
+            None,
+        )
+        .unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, z]);
+        let control = world.actors()[id.index].control_state().unwrap();
+        assert_eq!(control.motion_direction, 6);
+        assert_eq!(control.movement_flags, ((index + 1).min(3) as u8) << 4);
+        assert_eq!(control.collision_response_auxiliary[0], 0);
+    }
+    assert_eq!(
+        world.actors()[id.index].runtime().unwrap().active_tasks(),
+        0
+    );
+}

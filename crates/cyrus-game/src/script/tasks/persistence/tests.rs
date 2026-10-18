@@ -895,3 +895,181 @@ fn frame_wait_restore_preserves_variant_and_reevaluates_operands() {
         );
     }
 }
+
+#[test]
+fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_frame_scaling() {
+    use crate::script::{
+        locomotion::BackwardState,
+        tasks::{AnimationCall, LocomotionAdmission, LocomotionCall, MotionCall},
+    };
+    use cyrus_assets::animation::Animations;
+    use cyrus_world::animation::ActorAnimation;
+    for (combat, torch, step, group, available, expected) in [
+        (false, false, 8, 20, true, [512, 1194, 2218, 4266]),
+        (false, true, 8, 21, true, [512, 1194, 2218, 4266]),
+        (true, false, 8, 31, true, [512, 1194, 2218, 4266]),
+        (false, false, 0, 20, true, [2, 4, 8, 16]),
+        (false, false, 8, 20, false, [0; 4]),
+    ] {
+        let data = Animations {
+            version: 2,
+            world: 0,
+            metadata: json!({"actors":[{"script_name":"ACTOR", "animation_groups":[
+                {"group_index":if available { group } else { 0 },"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}
+            ]}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut animation =
+            ActorAnimation::from_asset(&data, "ACTOR", if available { group } else { 0 }).unwrap();
+        let mut task = Task::WalkForward;
+        let mut position = [0; 3];
+        let mut angles = [0; 3];
+        let mut counters = 0;
+        let mut direction = 0;
+        let mut called = 0;
+        let mut frame = None;
+        let mut updates = vec![];
+        for (elapsed, z) in expected.into_iter().enumerate() {
+            let done = task
+                .complete(
+                    &[Argument::Integer(4)],
+                    Invocation {
+                        elapsed: Some(elapsed as i32),
+                        unpaused_tasks: 0,
+                        unpaused_blocking_tasks: 0,
+                    },
+                    &mut Some(AnimationCall {
+                        animation: &mut animation,
+                        ticks: 1,
+                        frame: &mut frame,
+                        sounds: None,
+                    }),
+                    &mut Some(SpatialCall {
+                        position: &mut position,
+                        angles: &mut angles,
+                        frame_scale: 256,
+                        nominal_ticks: 1,
+                        matrix: Matrix::IDENTITY,
+                        slave: false,
+                        locations: &[],
+                        effective_position: None,
+                        player_position: None,
+                        actor_index: 0,
+                        map_updates: &mut updates,
+                    }),
+                    NativeServices {
+                        locomotion: Some(LocomotionCall {
+                            state: Ok(BackwardState {
+                                combat_mode: combat,
+                                torch_burning: torch,
+                                walk_step_attribute: step,
+                                walk_combat_step_attribute: step,
+                                forward_step_attribute: 17,
+                                step_adjustment: 1,
+                                ..Default::default()
+                            }),
+                            admission: LocomotionAdmission {
+                                forward_step_clear: Some(true),
+                                walk_forward_mode: true,
+                                forward_admitted: Some(true),
+                                ..Default::default()
+                            },
+                            animation_system: false,
+                            motion: Some(MotionCall {
+                                direction: &mut direction,
+                                counters: &mut counters,
+                            }),
+                            called: &mut called,
+                        }),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(done, elapsed == 3);
+            assert_eq!(position, [0, 0, z]);
+            assert_eq!(direction, 6);
+            assert_eq!(called, if available { 4 } else { 0 });
+            assert_eq!(
+                counters,
+                if available {
+                    ((elapsed + 1).min(3) as u8) << 4
+                } else {
+                    0
+                }
+            );
+            assert_eq!(
+                animation.current_group(),
+                if available { Some(group) } else { None }
+            );
+        }
+    }
+}
+
+#[test]
+fn walk_forward_native_snapshot_preserves_variant_and_rebinds_the_task_token() {
+    let vm = contract_vm("WalkForward", CallKind::Task, &[4]);
+    let restored = NativeTasks::from_snapshot(
+        one(Task::WalkForward),
+        &vm,
+        &BTreeMap::from([(1, 9)]),
+        NativeTaskBindings::default(),
+    )
+    .unwrap();
+    assert!(matches!(
+        restored.locomotion_operation(9),
+        Some(crate::script::tasks::LocomotionOperation::WalkForward)
+    ));
+    assert!(restored.locomotion_operation(1).is_none());
+    assert!(
+        NativeTasks::from_snapshot(
+            one(Task::WalkForward),
+            &contract_vm("MoveForward", CallKind::Task, &[4]),
+            &BTreeMap::from([(1, 9)]),
+            NativeTaskBindings::default()
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
+    use crate::script::tasks::{LocomotionAdmission, LocomotionCall, MotionCall};
+    let mut counters = 48;
+    let mut direction = 0;
+    let mut called = 0;
+    assert!(
+        Task::WalkForward
+            .complete(
+                &[Argument::Integer(4)],
+                Invocation {
+                    elapsed: Some(0),
+                    unpaused_tasks: 0,
+                    unpaused_blocking_tasks: 0,
+                },
+                &mut None,
+                &mut None,
+                NativeServices {
+                    locomotion: Some(LocomotionCall {
+                        state: Ok(Default::default()),
+                        admission: LocomotionAdmission {
+                            forward_step_clear: Some(false),
+                            walk_forward_mode: true,
+                            forward_admitted: Some(true),
+                            ..Default::default()
+                        },
+                        animation_system: false,
+                        motion: Some(MotionCall {
+                            direction: &mut direction,
+                            counters: &mut counters
+                        }),
+                        called: &mut called,
+                    }),
+                    ..Default::default()
+                }
+            )
+            .unwrap()
+    );
+    assert_eq!((direction, counters, called), (0, 48, 0));
+}

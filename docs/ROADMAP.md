@@ -328,7 +328,7 @@ replaces results, bypass clears them, and the next wrapper resets admission.
 Snapshot and headless geometry contracts cover retention; an unsupported first
 query cannot become a silent success. The
 [guard rules](https://github.com/michidk/redguard-preservation/blob/59cb6b1/docs/engine/player.md#ordinary-ground-prevalidation)
-are published. Full point collision and `WalkForward` remain open.
+are published. Full point collision and installed walking acceptance remain open.
 
 
 **Verified:** nonplayer destination support admission now shares the ordinary
@@ -339,8 +339,16 @@ Linked actors and selected-player destination feedback remain unsupported.
 original body shape without moving the receiver. The explicit `WalkForward` step
 service orders body, hazard and support checks and retains the transient blocked
 marker until response cleanup. Headless geometry contracts cover blocking, clear
-destinations and refusal before a later ground query. Native `WalkForward` binding
-and full combat movement acceptance remain open.
+destinations and refusal before a later ground query.
+
+**Verified:** native `WalkForward` calls and polls now use live receiver-owned
+geometry. The ordinary scheduler defers forward/backward probes to native
+invocation. Query-owner mismatches fail explicitly. Headless contracts cover
+call/poll body refusal, deep-water delegation, group selection, direction 6,
+startup ramp, zero-step fallback, missing groups, lifecycle bypass without unused
+geometry and snapshot token restoration.
+Selected-player walking, routed candidate rebinding, full deep-water movement and
+original/native/browser combat acceptance remain open.
 
 Next, in dependency order:
 

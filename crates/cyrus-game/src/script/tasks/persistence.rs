@@ -193,6 +193,7 @@ impl Task {
             Self::FacePlayer => ("FacePlayer", 1, None),
             Self::Backward => ("MoveBackward", 1, None),
             Self::Forward => ("MoveForward", 1, None),
+            Self::WalkForward => ("WalkForward", 1, None),
             Self::Strafe(super::super::locomotion::Strafe::Left) => ("MoveLeft", 1, None),
             Self::Strafe(super::super::locomotion::Strafe::Right) => ("MoveRight", 1, None),
             Self::Location => ("MoveToLocation", 2, None),
