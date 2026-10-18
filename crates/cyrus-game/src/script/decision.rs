@@ -1,7 +1,7 @@
 //! Nonplayer decision-stage executors. The pure state machines follow the original's attack
 //! executor; callers own the animation request and the combat record fields they pass in.
 use super::combat::CombatDecision;
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 
 /// Signed difference of two headings, each masked to 0..2047 and wrapped into -1024..=1024.
 pub fn heading_difference(first: i32, second: i32) -> i32 {
@@ -323,6 +323,142 @@ pub fn counter_attack(
         return Ok(CounterAttack::Idle);
     }
     Ok(attack)
+}
+
+/// Facts the defence selection reads, sampled by the caller from the combat records.
+#[derive(Clone, Copy, Debug)]
+pub struct DefenceSelectionInput {
+    /// The actor is armed and the global lockout word is clear.
+    pub armed: bool,
+    pub lockout_clear: bool,
+    pub own_selected: i32,
+    /// The target is inside the actor's forward arc, and the distance is below the actor's own
+    /// window bound.
+    pub target_in_arc: bool,
+    pub distance: i32,
+    pub own_window_far: i32,
+    /// The headings differ by less than 256 heading units.
+    pub facing_alike: bool,
+    /// Combat stance is the armed predicate or combat flag mask 0x04.
+    pub target_in_combat_stance: bool,
+    /// Actor attribute 58, used when facing differs and the target is in combat stance.
+    pub attribute_58: u8,
+    /// Per-actor value plus shared tick counter, with signed 32-bit wrapping addition.
+    pub pacing_sum: i32,
+    /// The defence pacing divisor, required only on the admitted no-move branch.
+    pub defence_pacing: i32,
+    pub target_selected: i32,
+    /// The target's current animation frame and its selected move's near and third range values.
+    pub target_frame: i32,
+    pub target_near: i32,
+    pub target_third: i32,
+    /// The actor's defence selector.
+    pub own_selector: i32,
+}
+
+/// A defence picker reads the current decision state and combat flags.
+pub type DefencePicker<'a> = &'a mut dyn FnMut(&CombatDecision, u8) -> Option<i32>;
+
+/// Synchronous defence starts may update the decision state and combat flags.
+pub type DefenceStarter<'a> = &'a mut dyn FnMut(&mut CombatDecision, &mut u8, i32);
+
+/// Host services used by the selection. A start completes before the next picker runs.
+pub struct DefencePickers<'a> {
+    /// The best usable defence.
+    pub best: DefencePicker<'a>,
+    /// An open defence.
+    pub open: DefencePicker<'a>,
+    /// The paced defence.
+    pub paced: DefencePicker<'a>,
+    /// Whether the chosen defence kind is within reach.
+    pub in_reach: &'a mut dyn FnMut(i32) -> bool,
+    /// Apply the defence starter immediately, including its decision and flag changes.
+    pub start: DefenceStarter<'a>,
+}
+
+/// Select and synchronously start defences using preservation's
+/// [defence-selection rules](https://github.com/michidk/redguard-preservation/pull/112).
+///
+/// Armed, with the lockout clear and no move selected, it sets the defence counter to one when
+/// the two face alike or the target is outside combat stance, and to `129 - attribute 58`
+/// otherwise. On a zero pacing remainder it picks a defence when the target is mid-move and its swing has passed the
+/// near plus third range values (the best usable one) or when the target's selected move is
+/// exactly 9 (an open one), starting it when it is in reach; the intent field gains bit one in
+/// the first case. Independently, on a zero remainder of the defence counter it raises the
+/// intent field and starts the paced pick when in reach. With a move already selected, a zero
+/// counter remainder starts kind one while the defence selector is zero and kind two while it is one.
+pub fn defence_selection(
+    decision: &mut CombatDecision,
+    flags: &mut u8,
+    input: &DefenceSelectionInput,
+    pickers: DefencePickers<'_>,
+) -> Result<()> {
+    let i = input;
+    if !i.armed || !i.lockout_clear {
+        return Ok(());
+    }
+    if i.own_selected == -1 {
+        if !i.target_in_arc || i.distance >= i.own_window_far {
+            return Ok(());
+        }
+        decision.defence_counter = if i.facing_alike || !i.target_in_combat_stance {
+            1
+        } else {
+            129 - i32::from(i.attribute_58)
+        };
+        if i.pacing_sum
+            .checked_rem(i.defence_pacing)
+            .context("defence selection: invalid pacing divisor")?
+            == 0
+        {
+            if !matches!(i.target_selected, -1 | 9) {
+                if i.target_frame > i.target_near.wrapping_add(i.target_third) {
+                    raise_intent(flags);
+                    if let Some(kind) = (pickers.best)(decision, *flags)
+                        && (pickers.in_reach)(kind)
+                    {
+                        (pickers.start)(decision, flags, kind);
+                    }
+                }
+            } else if i.target_selected == 9
+                && let Some(kind) = (pickers.open)(decision, *flags)
+                && (pickers.in_reach)(kind)
+            {
+                (pickers.start)(decision, flags, kind);
+            }
+        }
+        if i.pacing_sum
+            .checked_rem(decision.defence_counter)
+            .context("defence selection: invalid defence counter")?
+            == 0
+        {
+            raise_intent(flags);
+            if let Some(kind) = (pickers.paced)(decision, *flags)
+                && (pickers.in_reach)(kind)
+            {
+                (pickers.start)(decision, flags, kind);
+            }
+        }
+    } else {
+        if i.pacing_sum
+            .checked_rem(decision.defence_counter)
+            .context("defence selection: invalid defence counter")?
+            == 0
+        {
+            match i.own_selector {
+                0 => {
+                    raise_intent(flags);
+                    (pickers.start)(decision, flags, 1);
+                }
+                1 => {
+                    raise_intent(flags);
+                    (pickers.start)(decision, flags, 2);
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -767,5 +903,370 @@ mod tests {
         assert!(facing_alike(100, 100 + 0xff));
         assert!(!facing_alike(100, 100 + 0x100));
         assert!(facing_alike(2040, 8));
+    }
+
+    fn defence_input() -> DefenceSelectionInput {
+        DefenceSelectionInput {
+            armed: true,
+            lockout_clear: true,
+            own_selected: -1,
+            target_in_arc: true,
+            distance: 50,
+            own_window_far: 400,
+            facing_alike: false,
+            target_in_combat_stance: true,
+            attribute_58: 29,
+            pacing_sum: 10,
+            defence_pacing: 5,
+            target_selected: 2,
+            target_frame: 20,
+            target_near: 6,
+            target_third: 8,
+            own_selector: 0,
+        }
+    }
+
+    fn pick(
+        decision: &mut CombatDecision,
+        flags: &mut u8,
+        input: &DefenceSelectionInput,
+        best: Option<i32>,
+        open: Option<i32>,
+        paced: Option<i32>,
+        reach: bool,
+    ) -> Vec<i32> {
+        let mut started = Vec::new();
+        defence_selection(
+            decision,
+            flags,
+            input,
+            DefencePickers {
+                best: &mut |_, _| best,
+                open: &mut |_, _| open,
+                paced: &mut |_, _| paced,
+                in_reach: &mut |_| reach,
+                start: &mut |_, _, kind| started.push(kind),
+            },
+        )
+        .unwrap();
+        started
+    }
+
+    #[test]
+    fn the_defence_selection_needs_arming_and_a_free_actor_in_range() {
+        let base = defence_input();
+        for blocked in [
+            DefenceSelectionInput {
+                armed: false,
+                ..base
+            },
+            DefenceSelectionInput {
+                lockout_clear: false,
+                ..base
+            },
+            DefenceSelectionInput {
+                target_in_arc: false,
+                ..base
+            },
+            DefenceSelectionInput {
+                distance: 400,
+                ..base
+            },
+        ] {
+            let mut decision = CombatDecision::default();
+            let mut flags = 0;
+            let started = pick(
+                &mut decision,
+                &mut flags,
+                &blocked,
+                Some(1),
+                Some(1),
+                Some(1),
+                true,
+            );
+            assert!(started.is_empty());
+            assert_eq!((flags, decision.defence_counter), (0, 0));
+        }
+    }
+
+    #[test]
+    fn a_swing_past_the_ranges_starts_the_best_defence_and_the_counter_follows_the_facing() {
+        let mut decision = CombatDecision::default();
+        let mut flags = 0;
+        // Pacing 10 % 5 == 0 and frame 20 > 6 + 8; the counter is 129 - 29 = 100 (10 % 100 != 0).
+        let started = pick(
+            &mut decision,
+            &mut flags,
+            &defence_input(),
+            Some(3),
+            None,
+            Some(4),
+            true,
+        );
+        assert_eq!(started, vec![3]);
+        assert_eq!(decision.defence_counter, 100);
+        assert_eq!(flags, 1);
+        // Facing alike sets the counter to one, so the paced pick also starts.
+        let mut decision = CombatDecision::default();
+        let mut flags = 0;
+        let alike = DefenceSelectionInput {
+            facing_alike: true,
+            ..defence_input()
+        };
+        let started = pick(
+            &mut decision,
+            &mut flags,
+            &alike,
+            Some(3),
+            None,
+            Some(4),
+            true,
+        );
+        assert_eq!((started, decision.defence_counter), (vec![3, 4], 1));
+        // A pick out of reach starts nothing but the intent still rises.
+        let mut decision = CombatDecision::default();
+        let mut flags = 0;
+        let started = pick(
+            &mut decision,
+            &mut flags,
+            &defence_input(),
+            Some(3),
+            None,
+            Some(4),
+            false,
+        );
+        assert!(started.is_empty());
+        assert_eq!(flags, 1);
+    }
+
+    #[test]
+    fn a_target_on_move_nine_gets_the_open_pick_and_an_idle_target_none() {
+        let nine = DefenceSelectionInput {
+            target_selected: 9,
+            ..defence_input()
+        };
+        let mut decision = CombatDecision::default();
+        let mut flags = 0;
+        assert_eq!(
+            pick(
+                &mut decision,
+                &mut flags,
+                &nine,
+                Some(3),
+                Some(5),
+                None,
+                true
+            ),
+            vec![5]
+        );
+        let idle = DefenceSelectionInput {
+            target_selected: -1,
+            ..defence_input()
+        };
+        let mut decision = CombatDecision::default();
+        let mut flags = 0;
+        assert!(
+            pick(
+                &mut decision,
+                &mut flags,
+                &idle,
+                Some(3),
+                Some(5),
+                None,
+                true
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn with_a_move_already_selected_the_selector_chains_to_the_next_kind() {
+        for (selector, expected) in [(0, vec![1]), (1, vec![2]), (2, vec![])] {
+            let mut decision = CombatDecision {
+                defence_counter: 5,
+                ..Default::default()
+            };
+            let mut flags = 0;
+            let input = DefenceSelectionInput {
+                own_selected: 0,
+                own_selector: selector,
+                ..defence_input()
+            };
+            let started = pick(&mut decision, &mut flags, &input, None, None, None, true);
+            assert_eq!(started, expected);
+            assert_eq!(flags, u8::from(!expected.is_empty()));
+        }
+        // A nonzero counter remainder does nothing.
+        let mut decision = CombatDecision {
+            defence_counter: 3,
+            ..Default::default()
+        };
+        let mut flags = 0;
+        let input = DefenceSelectionInput {
+            own_selected: 0,
+            ..defence_input()
+        };
+        assert!(pick(&mut decision, &mut flags, &input, None, None, None, true).is_empty());
+    }
+
+    #[test]
+    fn defence_counter_uses_facing_or_a_target_outside_combat_stance() {
+        for (alike, stance, counter) in [
+            (false, false, 1),
+            (false, true, 100),
+            (true, false, 1),
+            (true, true, 1),
+        ] {
+            let input = DefenceSelectionInput {
+                facing_alike: alike,
+                target_in_combat_stance: stance,
+                ..defence_input()
+            };
+            let mut decision = CombatDecision::default();
+            let mut flags = 0xa2;
+            pick(&mut decision, &mut flags, &input, None, None, None, true);
+            assert_eq!(decision.defence_counter, counter);
+            assert_eq!(flags, 0xa3);
+        }
+    }
+
+    #[test]
+    fn defence_selection_applies_a_start_before_the_next_picker_reads_state() {
+        let input = DefenceSelectionInput {
+            facing_alike: true,
+            ..defence_input()
+        };
+        let mut decision = CombatDecision::default();
+        let mut flags = 0xa0;
+        let mut starts = Vec::new();
+        defence_selection(
+            &mut decision,
+            &mut flags,
+            &input,
+            DefencePickers {
+                best: &mut |_, flags| {
+                    assert_eq!(flags, 0xa1);
+                    Some(3)
+                },
+                open: &mut |_, _| panic!("open pick is not admitted"),
+                paced: &mut |decision, flags| {
+                    assert_eq!((decision.attack_state, flags), (1, 0xb1));
+                    Some(4)
+                },
+                in_reach: &mut |_| true,
+                start: &mut |decision, flags, kind| {
+                    decision.attack_state = 1;
+                    *flags |= 0x10;
+                    starts.push(kind);
+                },
+            },
+        )
+        .unwrap();
+        assert_eq!(starts, [3, 4]);
+        assert_eq!(flags, 0xb1);
+    }
+
+    #[test]
+    fn defence_selection_checks_only_divisors_used_by_the_admitted_branch() {
+        for input in [
+            DefenceSelectionInput {
+                armed: false,
+                ..defence_input()
+            },
+            DefenceSelectionInput {
+                target_in_arc: false,
+                ..defence_input()
+            },
+            DefenceSelectionInput {
+                own_selected: 0,
+                ..defence_input()
+            },
+        ] {
+            let input = DefenceSelectionInput {
+                defence_pacing: 0,
+                ..input
+            };
+            let mut decision = CombatDecision {
+                defence_counter: 5,
+                ..Default::default()
+            };
+            let mut flags = 0;
+            let starts = pick(&mut decision, &mut flags, &input, None, None, None, true);
+            assert_eq!(
+                starts,
+                if input.own_selected == 0 {
+                    vec![1]
+                } else {
+                    vec![]
+                }
+            );
+        }
+        for (sum, pacing, selected, counter) in [
+            (10, 0, -1, 5),
+            (i32::MIN, -1, -1, 5),
+            (10, 5, 0, 0),
+            (i32::MIN, 5, 0, -1),
+        ] {
+            let input = DefenceSelectionInput {
+                pacing_sum: sum,
+                defence_pacing: pacing,
+                own_selected: selected,
+                ..defence_input()
+            };
+            let mut decision = CombatDecision {
+                defence_counter: counter,
+                ..Default::default()
+            };
+            let mut flags = 0;
+            let result = defence_selection(
+                &mut decision,
+                &mut flags,
+                &input,
+                DefencePickers {
+                    best: &mut |_, _| panic!("invalid division must not pick"),
+                    open: &mut |_, _| panic!("invalid division must not pick"),
+                    paced: &mut |_, _| panic!("invalid division must not pick"),
+                    in_reach: &mut |_| panic!("invalid division must not test reach"),
+                    start: &mut |_, _, _| panic!("invalid division must not start"),
+                },
+            );
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("defence selection")
+            );
+        }
+    }
+
+    #[test]
+    fn defence_selection_requires_a_strictly_later_frame_and_keeps_independent_pacing() {
+        for (frame, sum, expected, flags) in [
+            (14, 10, vec![], 0xa0),
+            (15, 10, vec![3], 0xa1),
+            (14, 100, vec![4], 0xa1),
+            (20, 3, vec![], 0xa0),
+        ] {
+            let input = DefenceSelectionInput {
+                target_frame: frame,
+                pacing_sum: sum,
+                ..defence_input()
+            };
+            let mut decision = CombatDecision::default();
+            let mut actual_flags = 0xa0;
+            assert_eq!(
+                pick(
+                    &mut decision,
+                    &mut actual_flags,
+                    &input,
+                    Some(3),
+                    Some(5),
+                    Some(4),
+                    true
+                ),
+                expected
+            );
+            assert_eq!(actual_flags, flags);
+        }
     }
 }
