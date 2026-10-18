@@ -201,6 +201,23 @@ pub fn defence_arc(own_heading: i32, bearing: i32, arc: i32, arc_center: i32) ->
     center.wrapping_add(arc) > angle && center.wrapping_sub(arc) < angle
 }
 
+/// Arc admission from the actors' ordinary Q8 origins and receiver heading.
+/// Follows preservation's [bearing inputs](https://github.com/michidk/redguard-preservation/pull/113):
+/// wrapping differences shift eight bits, then Z/Y/X is normalized before polar conversion.
+pub fn defence_arc_from_positions(
+    own_position: [i32; 3],
+    target_position: [i32; 3],
+    own_heading: i32,
+    arc: i32,
+    arc_center: i32,
+) -> bool {
+    let delta: [i32; 3] =
+        std::array::from_fn(|axis| target_position[axis].wrapping_sub(own_position[axis]) >> 8);
+    let [x, _, z] = super::spatial::normalized_direction([delta[2], delta[1], delta[0]]);
+    let bearing = (1024 - i32::from(super::spatial::query_bearing(x, z))) & 2047;
+    defence_arc(own_heading, bearing, arc, arc_center)
+}
+
 /// Receiver facts consumed by one defence starter. Slot presence refers to the
 /// requested kind's attack slot. Weapon queries are needed only for kinds four/eight.
 #[derive(Clone, Copy, Debug)]
@@ -325,8 +342,6 @@ pub struct DefenceEffect {
     pub request_group: Option<i32>,
     /// Mark the animation record: its flag byte at offset 15 becomes one.
     pub mark_animation: bool,
-    /// The original calls an undecoded move-bookkeeping helper (with argument zero) here.
-    pub bookkeeping: bool,
     /// The taunt request of kind one follows a defence start.
     pub taunt_kind_one: bool,
 }
@@ -371,7 +386,7 @@ fn end_defence(decision: &mut CombatDecision, selected: &mut i32, defence_select
 ///
 /// Idle with a request, it resets the move selector and, when the actor is not in the defence's
 /// group, starts it: state 1, the aggression budget drops by 10, the intent field gains bit one
-/// and the target mark (bit `0x10`) clears. While defending it follows the chain of up to three
+/// and the target mark (bit `0x10`) and mask `0x20` clear. While defending it follows the chain of up to three
 /// moves, ending the defence when the actor leaves the expected group.
 pub fn defence_step(
     decision: &mut CombatDecision,
@@ -390,10 +405,9 @@ pub fn defence_step(
         effect = DefenceEffect {
             request_group: Some(group),
             mark_animation: true,
-            bookkeeping: true,
             taunt_kind_one: false,
         };
-        *flags &= !0x10;
+        *flags &= !0x30;
         raise_intent(flags);
         decision.aggression = decision.aggression.wrapping_sub(10);
     };
@@ -707,7 +721,7 @@ mod tests {
     #[test]
     fn defence_start_runs_the_executor_before_returning() {
         let mut decision = CombatDecision::default();
-        let (mut selected, mut selector, mut flags) = (-1, -1, 0x10);
+        let (mut selected, mut selector, mut flags) = (-1, -1, 0x30);
         let input = super::DefenceStartInput {
             slot_present: true,
             selected_player: false,
@@ -1185,9 +1199,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(step.effect.request_group, Some(130));
-        assert!(
-            step.effect.mark_animation && step.effect.bookkeeping && step.effect.taunt_kind_one
-        );
+        assert!(step.effect.mark_animation && step.effect.taunt_kind_one);
         assert_eq!(decision.attack_state, 1);
         assert_eq!(decision.move_selector, 0);
         assert_eq!(decision.aggression, 40);

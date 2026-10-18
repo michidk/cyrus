@@ -13992,3 +13992,107 @@ fn my_id_reads_the_runtime_identifier() {
     let expected = i32::from(actor.runtime_identifier.unwrap());
     assert_eq!(actor.runtime().unwrap().variables()[0], expected);
 }
+
+#[test]
+fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() {
+    for (damages, expected) in [
+        ([Some(i32::MAX), Some(1)], Some(i32::MIN)),
+        ([Some(4), Some(5)], Some(9)),
+        ([Some(4), None], None),
+    ] {
+        let mut scripts = cache();
+        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .extend([("attr_14".into(), 1), ("attr_70".into(), 1)]);
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+        }
+        scripts.instances[0].angles[1] = 1024;
+        scripts.instances[1].map_position = [0, -20, 20];
+        let motions = damages
+            .into_iter()
+            .enumerate()
+            .map(|(index, damage)| {
+                serde_json::from_value(serde_json::json!({
+                    "section":index,"kind":0,"animation_group":97,
+                    "min_range":if index == 0 {10} else {-999},
+                    "max_range":if index == 0 {100} else {9999},
+                    "first_collide_frame":7,"collide_duration":3,"defense":2,
+                    "arc":if index == 0 {64} else {0},"damage":damage
+                }))
+                .unwrap()
+            })
+            .collect();
+        scripts.combat_attacks = vec![
+            cyrus_assets::script::combat::Attack {
+                is_combo: false,
+                motions: vec![],
+                min_range: 0,
+                max_range: 0,
+            },
+            cyrus_assets::script::combat::Attack {
+                is_combo: true,
+                motions,
+                min_range: -999,
+                max_range: 9999,
+            },
+        ];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,
+                "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}]}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let own = world.id(0).unwrap();
+        let target = world.id(1).unwrap();
+        world
+            .initialize_map_animation(own, &data, 1, &mut |_, _| Ok(()))
+            .unwrap();
+        world.prepare_spatial().unwrap();
+        let stale = cyrus_game::script::ScriptActorId {
+            generation: 2,
+            index: 1,
+        };
+        assert!(
+            world
+                .combat_paced_defence_candidate(own, stale, 1)
+                .unwrap()
+                .is_none()
+        );
+        let (_, _, models) = static_model_fixture(cache());
+        let scene = ordinary_collision_scene(world.world, models);
+        for actor in [own, target] {
+            world
+                .prepare_ordinary_collision_shape(actor, &data, &scene)
+                .unwrap();
+        }
+        let result = world.combat_paced_defence_candidate(own, target, 0);
+        let Some(expected) = expected else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("motion section 1: damage unavailable")
+            );
+            continue;
+        };
+        let candidate = result.unwrap().unwrap();
+        assert_eq!(candidate.defence.min_range, 10);
+        assert_eq!(candidate.defence.max_range, 100);
+        assert_eq!(candidate.damage, expected);
+        assert!(candidate.in_arc);
+        assert!(candidate.in_reach);
+        assert!(world.combat_paced_defence_candidate(own, stale, 0).is_err());
+    }
+}

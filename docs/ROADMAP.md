@@ -212,48 +212,36 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
-The standalone defence selection uses caller-supplied pickers, reach tests and
-synchronous starts. Its counter uses the target's combat stance as well as the facing
-condition, following [preservation PR 112](https://github.com/michidk/redguard-preservation/pull/112).
-**Verified:** 25 decision-module contracts pass; 165 calls through the production helper
-match the original selector with controlled helper results. An inverted-stance control
-fails the comparison. This establishes the selector, not its supplied helpers.
-Full workspace gates pass with 1,086 Rust test executions and zero installed-data skips.
-The selection is not connected to ordinary traversal. Full SOUP support and a playable
-opening duel remain incomplete.
+Standalone defence selection, best/open and paced pickers, geometry and
+synchronous starters are implemented from
+[preservation PR 112](https://github.com/michidk/redguard-preservation/pull/112).
+Receiver-owned paced candidates supply accumulated motion damage and local-pose
+geometry from prepared collision bounds, following
+[preservation PR 113](https://github.com/michidk/redguard-preservation/pull/113).
+Candidates use the receiver's nine attack slots, not its four-entry defence table.
+Missing damage or arc inputs remain explicit errors. Defence starts clear both
+recovered combat masks. Picker invocation and live executor services remain
+unconnected to ordinary traversal. Full SOUP support and the opening duel are
+incomplete.
 
-Best/open defence pickers and strict signed distance admission are implemented.
-**Verified:** 29 decision-module contracts pass; 310 best/open pairs through the
-production helpers match original execution with controlled distance and current-move
-queries. A wrong-distance control fails. Equal timings retain the first slot;
-open picks exclude the current counter-attack index. These helpers still require
-host-owned prepared slots and do not enable ordinary combat traversal. Full workspace
-gates pass with 1,090 Rust test executions and zero installed-data skips.
-
-The paced picker is implemented with supplied geometry admission. Defence candidates
-resolve through the receiver's existing nine attack slots; the separate four-entry
-defence table does not supply these picks. **Verified:** 33 decision contracts and
-the receiver-owner contract pass; 192 production paced calls match original execution
-with controlled geometry, stance, distance and timing queries. Clamping the maximum
-random draw fails the comparison. Accumulated damage and live geometry still need
-binding before ordinary invocation. Full workspace gates pass with
-1,094 Rust test executions and zero installed-data skips.
-
-Standalone defence geometry and synchronous starters are implemented from
-[published rules](https://github.com/michidk/redguard-preservation/pull/112).
-**Verified:** 36 decision contracts pass. Production helpers match 390 elevation,
-360 arc and 1,760 original starter calls with controlled bearing and executor/weapon/
-movement services. Halving arc width and imposing an NPC idle gate fail the
-comparisons. A contract runs the existing executor and checks its changes before
-the starter returns. Live bearing, accumulated damage, movement and executor
-bindings remain open; these helpers do not enable ordinary traversal. Full workspace
-gates pass with 1,097 Rust test executions and zero installed-data skips.
+**Verified:** 36 decision contracts and the public receiver-owner contract cover
+selection, synchronous executor changes, wrapping damage, bounds-centre elevation,
+axis order and stale targets. Linked production comparisons match 165 selector
+calls with controlled helpers, 310 best/open pairs, 192 paced calls with controlled
+geometry and timing, 390 elevation calls, 360 arc calls with controlled bearing,
+1,760 starters with controlled executor/weapon/movement services, 1,000 complete
+position-based arc calls, 1,147 bearing admissions and 256 defence-start flag
+outcomes. Wrong stance, distance, random-endpoint clamping, halved arc width and an
+NPC idle gate fail their respective comparisons. Swapped position axes and retained
+flag `0x20` fail the new linked comparisons. These helper comparisons do not
+establish live duel acceptance. Full workspace gates pass with
+1,098 Rust test executions and zero installed-data skips.
 
 Next, in dependency order:
 
-1. Bind receiver-owned attack candidates, accumulated damage and geometry to the
-   paced picker and connect synchronous starters to the live executor. Preserve
-   state changes and publish remaining recovered rules before implementing them.
+1. Invoke the paced picker with the receiver-owned prepared candidates and
+   connect synchronous starters to the live executor and its timed-taunt service.
+   Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain
    edge probe exists; retain explicit errors for unsupported ledge/non-combat paths.
