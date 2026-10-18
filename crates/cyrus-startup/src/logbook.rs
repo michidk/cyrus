@@ -167,15 +167,22 @@ fn draw(
     }
 }
 
-/// Normal-font reader glyphs are drawn at half their palette colour; the selected font
-/// keeps its colour. Observed against the original reader at 640×480: the colour weight is
-/// 0.39 (half of the 200/255 alpha) for the normal font and 1.0 for the selected font.
-fn reader_glyph_colour(selected: bool, colour: [u8; 3]) -> [u8; 3] {
-    if selected {
-        colour
-    } else {
-        colour.map(|c| c / 2)
-    }
+/// The style table entry for an entry's prefix digit; a missing, non-digit or undecoded prefix
+/// uses the normal style 7, which is what the original does for a missing prefix.
+fn reader_style(
+    artwork: &LogbookArtwork,
+    prefix: Option<u8>,
+) -> cyrus_assets::logbook::ReaderStyle {
+    prefix
+        .filter(u8::is_ascii_digit)
+        .and_then(|digit| artwork.styles[usize::from(digit - b'0')])
+        .or(artwork.styles[7])
+        .expect("validated style 7")
+}
+
+/// The original draws glyphs with a constant colour factor `A / 255` (255 is full strength).
+fn scale_colour(colour: [u8; 3], scale: u8) -> [u8; 3] {
+    colour.map(|c| ((u32::from(c) * u32::from(scale) + 127) / 255) as u8)
 }
 
 fn paint(
@@ -196,27 +203,42 @@ fn paint(
         if !(0..480).contains(&y) {
             continue;
         }
-        let selected = line.style == Some(b'9');
-        let font = &artwork.fonts[usize::from(selected)];
-        let alpha: u8 = if selected { 255 } else { 200 };
-        font.draw(&line.text, [30, y as i32], |x, y, index| {
-            if !(0..640).contains(&x) || !(0..480).contains(&y) {
-                return;
-            }
-            let color = if font.palette.is_empty() {
-                artwork.palette[usize::from(index)]
-            } else {
-                reader_glyph_colour(selected, font.colour(index))
+        let style = reader_style(artwork, line.style);
+        let font = &artwork.fonts[style.font];
+        // Like the original's draw loop: a glyph that would pass x = 640 starts a new line at the
+        // entry's x, one font line lower; drawing stops at y = 480.
+        let (mut pen_x, mut pen_y) = (30, y as i32);
+        for ch in line.text.bytes() {
+            let Some(glyph) = font.glyph(ch) else {
+                continue;
             };
-            let pixel = image.get_pixel_mut(x as u32, y as u32);
-            for c in 0..3 {
-                pixel[c] = ((u32::from(color[c]) * u32::from(alpha)
-                    + u32::from(pixel[c]) * u32::from(255 - alpha)
-                    + 127)
-                    / 255) as u8;
+            if 640 < i32::from(glyph.width) + pen_x {
+                pen_x = 30;
+                pen_y += i32::from(font.line_height);
+                if pen_y >= 480 {
+                    break;
+                }
             }
-            pixel[3] = 255;
-        });
+            font.draw_char(ch, [pen_x, pen_y], |x, y, index| {
+                if !(0..640).contains(&x) || !(0..480).contains(&y) {
+                    return;
+                }
+                let color = if font.palette.is_empty() {
+                    artwork.palette[usize::from(index)]
+                } else {
+                    scale_colour(font.colour(index), style.scale)
+                };
+                let alpha = u32::from(style.alpha);
+                let pixel = image.get_pixel_mut(x as u32, y as u32);
+                for c in 0..3 {
+                    pixel[c] =
+                        ((u32::from(color[c]) * alpha + u32::from(pixel[c]) * (255 - alpha) + 127)
+                            / 255) as u8;
+                }
+                pixel[3] = 255;
+            });
+            pen_x += font.advance(ch);
+        }
     }
     #[allow(clippy::approx_constant)] // Original table's decimal period.
     let sample = |angle: i32| (f64::from(angle & 2047) * 6.2831852 / 2048.).sin() as f32;
@@ -271,11 +293,11 @@ fn paint(
 mod tests {
     use super::*;
     #[test]
-    fn only_the_normal_reader_font_is_halved() {
-        assert_eq!(reader_glyph_colour(false, [220, 164, 132]), [110, 82, 66]);
-        assert_eq!(reader_glyph_colour(true, [220, 164, 132]), [220, 164, 132]);
+    fn glyph_colour_scales_by_the_constant_factor() {
+        assert_eq!(scale_colour([220, 164, 132], 255), [220, 164, 132]);
+        assert_eq!(scale_colour([220, 164, 132], 125), [108, 80, 65]);
+        assert_eq!(scale_colour([4, 4, 4], 0), [0, 0, 0]);
     }
-
     #[test]
     fn installed_reader_exports_and_draws_both_targets_from_the_same_asset() {
         let root = std::env::var_os("REDGUARD_DIR")
@@ -293,6 +315,18 @@ mod tests {
             serde_json::from_slice(&files["logbook/reader.logbook"]).unwrap();
         artwork.validate().unwrap();
         assert_eq!(artwork.bindings[12], 38);
+        // Preservation's reader style table: 1, 2 and 5 undecoded; 7 and 9 use the small fonts.
+        let styles: Vec<_> = artwork
+            .styles
+            .iter()
+            .map(|style| style.map(|s| (s.font, s.scale, s.alpha)))
+            .collect();
+        assert_eq!(styles[1..3], [None, None]);
+        assert_eq!(styles[5], None);
+        assert_eq!(styles[6], Some((2, 255, 180)));
+        assert_eq!(styles[7].map(|s| (s.0, s.2)), Some((0, 200)));
+        assert_eq!(styles[8].map(|s| (s.0, s.2)), Some((3, 50)));
+        assert_eq!(styles[9], Some((1, 255, 255)));
         let mut book =
             cyrus_game::logbook::Logbook::new(&vec!["7,A readable journal entry.".into(); 20])
                 .unwrap();

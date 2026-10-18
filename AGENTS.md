@@ -298,7 +298,8 @@ accepted text. Installed up/down and A, Home/End and Page Up/Down scroll it; log
 Escape or installed D closes it. Simulation and gameplay input remain suspended
 until the exit keys are released. Existing audio continues. Native `state.logbook`
 reports readiness, scrolling and errors. The reader uses installed paper, small
-fonts and rotating scroll geometry. Manual editing, additional font styles,
+fonts and rotating scroll geometry. Styles 0, 3, 4, 6, 7, 8 and 9 draw as in the
+original; styles 1, 2 and 5, manual editing,
 new-game/death resets and save-game integration remain unsupported. Scroll lighting
 and pixel-exact filtering still need comparison.
 F8, Tab and F7 toggle

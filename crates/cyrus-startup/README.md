@@ -106,8 +106,9 @@ Page Up/Down drive the shared navigation core. Log, Escape or installed D closes
 it; gameplay resumes after those keys are released. The game owns the input lock
 and simulation checkpoint. Existing audio continues. Native control state exposes
 `logbook` readiness, scroll position and errors. Malformed stored entries remain
-unchanged. Font styles other than normal 7 and selected 9, manual entry editing,
-new-game resets and save integration remain unsupported. Normal-font glyphs draw at
-half their palette colour, as in the original. Scroll lighting is unsupported (the
-original's light inputs are unknown) and pixel-exact filtering still needs fidelity work. Rules follow the
+unchanged. The reader draws styles 0, 3, 4, 6, 7, 8 and 9 of preservation's
+[reader style table](https://github.com/michidk/redguard-preservation/pull/114) with its pixel
+wrap and constant colour factor; styles 1, 2 and 5, manual entry editing,
+new-game resets and save integration remain unsupported. Scroll lighting is unsupported
+(the original's light inputs are unknown) and pixel-exact filtering still needs fidelity work. Rules follow the
 [preservation contribution](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/hud.md#logbook-reading-screen).

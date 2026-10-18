@@ -9,8 +9,22 @@ pub struct LogbookArtwork {
     pub scroll: MenuModel,
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
-    pub fonts: [cyrus_text::Font; 2],
+    /// Reader fonts: small normal, small selected, REDSEL and FONTNORM.
+    pub fonts: Vec<cyrus_text::Font>,
+    /// Style table by prefix digit 0-9; `None` where the original's entry is not decoded.
+    /// Absent in caches written before the table existed, which `validate` rejects.
+    #[serde(default)]
+    pub styles: Vec<Option<ReaderStyle>>,
     pub bindings: [u8; 15],
+}
+
+/// One entry of the original reader's font table: the font drawn, its `A` value (a constant
+/// colour factor, 255 is full strength) and `B` (main alpha), per preservation's reader style table.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct ReaderStyle {
+    pub font: usize,
+    pub scale: u8,
+    pub alpha: u8,
 }
 impl LogbookArtwork {
     pub fn validate(&self) -> anyhow::Result<()> {
@@ -36,6 +50,16 @@ impl LogbookArtwork {
                 && t.height > 0
                 && t.rgba.len() == usize::from(t.width) * usize::from(t.height) * 4),
             "logbook: invalid scroll texture dimensions"
+        );
+        anyhow::ensure!(
+            self.fonts.len() == 4
+                && self.styles.len() == 10
+                && self
+                    .styles
+                    .iter()
+                    .flatten()
+                    .all(|style| style.font < self.fonts.len()),
+            "logbook: reader styles absent or invalid; re-export the logbook"
         );
         anyhow::ensure!(
             self.fonts.iter().all(|font| font.line_height > 0
@@ -98,12 +122,44 @@ pub(crate) fn prepare(
             }
         }
     }
-    let fonts = ["FONTNORS", "FONTSELS"].map(|name| -> anyhow::Result<_> {
-        Ok(cyrus_text::Font::from(&parse_fnt(&read(&format!(
-            "fonts/{name}.FNT"
-        ))?)?))
-    });
-    let [normal, selected] = fonts;
+    let fonts = ["FONTNORS", "FONTSELS", "REDSEL", "FONTNORM"]
+        .into_iter()
+        .map(|name| -> anyhow::Result<_> {
+            Ok(cyrus_text::Font::from(&parse_fnt(&read(&format!(
+                "fonts/{name}.FNT"
+            ))?)?))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let glide = rgpre::import::system_ini::SystemIni::parse(&crate::preparation::text(
+        source,
+        "SYSTEM.INI",
+    )?)
+    .map_err(anyhow::Error::msg)?
+    .glide;
+    let pair = |value: Option<[i32; 2]>, key: &str| -> anyhow::Result<[u8; 2]> {
+        let [a, b] = value.with_context(|| format!("logbook: SYSTEM.INI [3dfx] {key} missing"))?;
+        Ok([u8::try_from(a)?, u8::try_from(b)?])
+    };
+    let (sel, norm, used) = (
+        pair(glide.font_sel, "font_sel")?,
+        pair(glide.font_norm, "font_norm")?,
+        pair(glide.font_used, "font_used")?,
+    );
+    // Indices follow preservation's reader style table; 1, 2 (gui_low_font) and 5 are not decoded.
+    // The reader sets the alpha of the small fonts behind 7 and 9 to 200 and 255.
+    let style = |font, [scale, alpha]: [u8; 2]| Some(ReaderStyle { font, scale, alpha });
+    let styles = vec![
+        style(2, sel),
+        None,
+        None,
+        style(2, norm),
+        style(2, used),
+        None,
+        style(2, [255, 180]),
+        style(0, [norm[0], 200]),
+        style(3, [used[0], 50]),
+        style(1, [sel[0], 255]),
+    ];
     let bindings =
         rgpre::import::keys_ini::KeysIni::parse(&crate::preparation::text(source, "KEYS.INI")?)
             .map_err(anyhow::Error::msg)?
@@ -117,7 +173,8 @@ pub(crate) fn prepare(
         scroll: crate::startup::menu_export::export_model(model, [0.; 3], &references, &palette)?,
         textures,
         palette: palette.colors.to_vec(),
-        fonts: [normal?, selected?],
+        fonts,
+        styles,
         bindings,
     };
     artwork.validate()?;

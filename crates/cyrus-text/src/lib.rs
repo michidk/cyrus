@@ -108,6 +108,11 @@ impl Font {
         }
     }
 
+    /// Draws one character code with its pen at `at`, like `draw` for a single glyph.
+    pub fn draw_char(&self, ch: u8, at: [i32; 2], mut plot: impl FnMut(i32, i32, u8)) {
+        self.draw_glyph(ch, at, &mut plot);
+    }
+
     fn draw_glyph(&self, ch: u8, at: [i32; 2], plot: &mut impl FnMut(i32, i32, u8)) {
         let Some(glyph) = self.glyph(ch) else {
             return;
