@@ -239,10 +239,20 @@ random draw fails the comparison. Accumulated damage and live geometry still nee
 binding before ordinary invocation. Full workspace gates pass with
 1,094 Rust test executions and zero installed-data skips.
 
+Standalone defence geometry and synchronous starters are implemented from
+[published rules](https://github.com/michidk/redguard-preservation/pull/112).
+**Verified:** 36 decision contracts pass. Production helpers match 390 elevation,
+360 arc and 1,760 original starter calls with controlled bearing and executor/weapon/
+movement services. Halving arc width and imposing an NPC idle gate fail the
+comparisons. A contract runs the existing executor and checks its changes before
+the starter returns. Live bearing, accumulated damage, movement and executor
+bindings remain open; these helpers do not enable ordinary traversal. Full workspace
+gates pass with 1,097 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
 1. Bind receiver-owned attack candidates, accumulated damage and geometry to the
-   paced picker; complete reach/arc tests and defence starters. Preserve synchronous
+   paced picker and connect synchronous starters to the live executor. Preserve
    state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain

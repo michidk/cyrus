@@ -156,6 +156,98 @@ pub fn paced_defence(
     Ok(chosen)
 }
 
+/// One coordinate of the combat bounds query, in signed fixed-point position units.
+/// Extents are integer model units. Arithmetic wraps before division toward zero.
+pub fn combat_bounds_coordinate(position: i32, negative_extent: i32, positive_extent: i32) -> i32 {
+    position
+        .wrapping_sub(negative_extent.wrapping_shl(8))
+        .wrapping_add(positive_extent.wrapping_shl(8))
+        / 2
+}
+
+/// Elevation admission from the first motion of a receiver-owned attack slot.
+/// The y inputs are bounds-query coordinates, not actor origins. The x extents
+/// are integer model units. Follows preservation's
+/// [defence geometry rules](https://github.com/michidk/redguard-preservation/pull/112).
+pub fn defence_elevation(
+    elevation: i32,
+    own_bounds_y: i32,
+    target_bounds_y: i32,
+    positive_x: i32,
+    negative_x: i32,
+) -> bool {
+    let delta = target_bounds_y.wrapping_sub(own_bounds_y);
+    let width = positive_x
+        .wrapping_shl(8)
+        .wrapping_add(negative_x.wrapping_shl(8));
+    let half = width / 2;
+    let outer = width.wrapping_add(half);
+    let required = if half.wrapping_neg() > delta && outer.wrapping_neg() < delta {
+        1
+    } else if delta > half && outer > delta {
+        2
+    } else {
+        0
+    };
+    elevation == required
+}
+
+/// Strict arc admission from a first motion. Headings use 2048 units per turn.
+/// The host supplies the bearing of the wrapping target-minus-receiver position
+/// vector after each coordinate is arithmetic-shifted right eight bits.
+pub fn defence_arc(own_heading: i32, bearing: i32, arc: i32, arc_center: i32) -> bool {
+    let angle = heading_difference(own_heading, bearing).abs();
+    let center = arc_center.wrapping_add(512);
+    center.wrapping_add(arc) > angle && center.wrapping_sub(arc) < angle
+}
+
+/// Receiver facts consumed by one defence starter. Slot presence refers to the
+/// requested kind's attack slot. Weapon queries are needed only for kinds four/eight.
+#[derive(Clone, Copy, Debug)]
+pub struct DefenceStartInput {
+    pub slot_present: bool,
+    pub selected_player: bool,
+    pub cooldown: u32,
+    pub drawing: bool,
+    pub sheathing: bool,
+    pub attribute_16: u8,
+}
+
+/// Start an admitted defence synchronously, following preservation's
+/// [starter rules](https://github.com/michidk/redguard-preservation/pull/112).
+/// Selected-player kind four calls movement with attribute 16 shifted eight bits
+/// and mode one before either selector write. Movement failure is an unsupported
+/// host error; a supported movement result never gates admission. The executor
+/// receives request zero and may change both selectors before this call returns.
+pub fn start_defence(
+    kind: i32,
+    input: DefenceStartInput,
+    selected: &mut i32,
+    defence_selector: &mut i32,
+    movement: impl FnOnce(i32, i32) -> Result<()>,
+    execute: impl FnOnce(&mut i32, &mut i32, i32) -> Result<()>,
+) -> Result<bool> {
+    if !input.slot_present {
+        return Ok(false);
+    }
+    let admitted = match kind {
+        0 | 3 | 5 | 6 => *selected == -1,
+        1 | 2 => !input.selected_player || *selected == kind - 1,
+        4 | 8 => *selected == -1 && input.cooldown == 0 && !input.drawing && !input.sheathing,
+        _ => false,
+    };
+    if !admitted {
+        return Ok(false);
+    }
+    if kind == 4 && input.selected_player {
+        movement(i32::from(input.attribute_16) << 8, 1)?;
+    }
+    *defence_selector = kind;
+    *selected = kind;
+    execute(selected, defence_selector, 0)?;
+    Ok(true)
+}
+
 /// What the attack executor asks its caller to do besides updating the record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttackEffect {
@@ -594,6 +686,133 @@ pub fn defence_selection(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn defence_geometry_uses_bounds_centres_and_strict_band_edges() {
+        assert_eq!(super::combat_bounds_coordinate(101, 3, 1), -205);
+        assert_eq!(
+            super::combat_bounds_coordinate(i32::MAX, -1, 1),
+            -1073741568
+        );
+        assert!(super::defence_elevation(0, 0, -6400, 25, 25));
+        assert!(super::defence_elevation(1, 0, -6401, 25, 25));
+        assert!(super::defence_elevation(0, 0, -19200, 25, 25));
+        assert!(super::defence_elevation(2, 0, 6401, 25, 25));
+        assert!(super::defence_elevation(0, 0, 19200, 25, 25));
+        assert!(!super::defence_arc(0, 448, 64, 0));
+        assert!(super::defence_arc(0, 449, 64, 0));
+        assert!(super::defence_arc(2047, 511, 64, 0));
+        assert!(!super::defence_arc(0, 576, 64, 0));
+    }
+
+    #[test]
+    fn defence_start_runs_the_executor_before_returning() {
+        let mut decision = CombatDecision::default();
+        let (mut selected, mut selector, mut flags) = (-1, -1, 0x10);
+        let input = super::DefenceStartInput {
+            slot_present: true,
+            selected_player: false,
+            cooldown: 0,
+            drawing: false,
+            sheathing: false,
+            attribute_16: 18,
+        };
+        let mut effect = None;
+        assert!(
+            super::start_defence(
+                3,
+                input,
+                &mut selected,
+                &mut selector,
+                |_, _| panic!("NPC start must not move the player"),
+                |selected, selector, requested| {
+                    assert_eq!((*selected, *selector, requested), (3, 3, 0));
+                    effect = Some(
+                        defence_step(
+                            &mut decision,
+                            &mut flags,
+                            selected,
+                            selector,
+                            requested,
+                            &view(None, None, &|_| Some(97), &|_| false),
+                        )?
+                        .effect,
+                    );
+                    Ok(())
+                },
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            (
+                selected,
+                selector,
+                decision.attack_state,
+                decision.aggression,
+                flags
+            ),
+            (3, 3, 1, 40, 1)
+        );
+        assert_eq!(effect.unwrap().request_group, Some(97));
+        assert!(
+            !super::start_defence(
+                0,
+                input,
+                &mut selected,
+                &mut selector,
+                |_, _| panic!("rejected start must not move"),
+                |_, _, _| panic!("rejected start must not execute"),
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn player_defence_movement_precedes_executor_and_errors_stop_before_writes() {
+        let input = super::DefenceStartInput {
+            slot_present: true,
+            selected_player: true,
+            cooldown: 0,
+            drawing: false,
+            sheathing: false,
+            attribute_16: 18,
+        };
+        let (mut selected, mut selector) = (-1, -77);
+        let moved = std::cell::Cell::new(false);
+        assert!(
+            super::start_defence(
+                4,
+                input,
+                &mut selected,
+                &mut selector,
+                |distance, mode| {
+                    assert_eq!((distance, mode), (4608, 1));
+                    moved.set(true);
+                    Ok(())
+                },
+                |selected, selector, requested| {
+                    assert!(moved.get());
+                    assert_eq!((*selected, *selector, requested), (4, 4, 0));
+                    *selected = -1;
+                    Ok(())
+                },
+            )
+            .unwrap()
+        );
+        assert_eq!((selected, selector), (-1, 4));
+        assert!(
+            super::start_defence(
+                4,
+                input,
+                &mut selected,
+                &mut selector,
+                |_, _| anyhow::bail!("movement unavailable"),
+                |_, _, _| panic!("unavailable movement must stop before executor"),
+            )
+            .is_err()
+        );
+        assert_eq!((selected, selector), (-1, 4));
+    }
+
     fn paced_slot(damage: i32) -> super::PacedDefenceCandidate {
         super::PacedDefenceCandidate {
             defence: super::DefenceCandidate {
