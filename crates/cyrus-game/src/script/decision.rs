@@ -73,6 +73,117 @@ pub fn attack_step(
     })
 }
 
+/// What the defence executor asks its caller to do besides updating the record and flag byte.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DefenceEffect {
+    /// Request this animation group with flag zero.
+    pub request_group: Option<i32>,
+    /// Mark the animation record: its flag byte at offset 15 becomes one.
+    pub mark_animation: bool,
+    /// The original calls an undecoded move-bookkeeping helper (with argument zero) here.
+    pub bookkeeping: bool,
+    /// The taunt request of kind one follows a defence start.
+    pub taunt_kind_one: bool,
+}
+
+/// Receiver and move-table facts the defence executor reads. The closures answer for a move
+/// selector value because the executor advances the selector between reads.
+pub struct DefenceView<'a> {
+    pub current_group: Option<i32>,
+    /// The animation record's pending group.
+    pub pending_group: Option<i32>,
+    /// Animation group of the selected defence for a move selector.
+    pub defence_group: &'a dyn Fn(i32) -> Option<i32>,
+    /// Whether the selected defence's chain entry for a move selector has type one.
+    pub entry_type_one: &'a dyn Fn(i32) -> bool,
+}
+
+/// Result of one defence executor invocation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DefenceStep {
+    /// True while a defence is in progress: the state is nonzero, a defence selector is set and
+    /// the selected index is not 9.
+    pub active: bool,
+    pub effect: DefenceEffect,
+}
+
+/// Sets the two-bit intent field of the combat flag byte to its current value or one.
+fn raise_intent(flags: &mut u8) {
+    *flags = (*flags & 0xfc) | ((*flags & 3) | 1);
+}
+
+/// Ends a defence: state 0, the defence selector -1 and a selected index other than 9 reset.
+fn end_defence(decision: &mut CombatDecision, selected: &mut i32, defence_selector: &mut i32) {
+    decision.attack_state = 0;
+    *defence_selector = -1;
+    if *selected != 9 {
+        *selected = -1;
+    }
+}
+
+/// The defence executor (`requested` is the requested defence, -1 for cleanup). `flags` is the
+/// combat flag byte, `defence_selector` the second selector and `selected` the selected index.
+///
+/// Idle with a request, it resets the move selector and, when the actor is not in the defence's
+/// group, starts it: state 1, the aggression budget drops by 10, the intent field gains bit one
+/// and the target mark (bit `0x10`) clears. While defending it follows the chain of up to three
+/// moves, ending the defence when the actor leaves the expected group.
+pub fn defence_step(
+    decision: &mut CombatDecision,
+    flags: &mut u8,
+    selected: &mut i32,
+    defence_selector: &mut i32,
+    requested: i32,
+    view: &DefenceView<'_>,
+) -> Result<DefenceStep> {
+    let mut effect = DefenceEffect::default();
+    let group_for = |selector: i32| -> Result<i32> {
+        (view.defence_group)(selector)
+            .ok_or_else(|| anyhow::anyhow!("defence executor: no group for move {selector}"))
+    };
+    let mut start = |decision: &mut CombatDecision, flags: &mut u8, group: i32| {
+        effect = DefenceEffect {
+            request_group: Some(group),
+            mark_animation: true,
+            bookkeeping: true,
+            taunt_kind_one: false,
+        };
+        *flags &= !0x10;
+        raise_intent(flags);
+        decision.aggression = decision.aggression.wrapping_sub(10);
+    };
+    if decision.attack_state == 0 {
+        if requested != -1 {
+            decision.move_selector = 0;
+            let group = group_for(0)?;
+            if view.current_group != Some(group) {
+                start(decision, flags, group);
+                decision.attack_state = 1;
+                effect.taunt_kind_one = true;
+            }
+        }
+    } else if *defence_selector != -1 {
+        let expected = group_for(decision.move_selector)?;
+        if view.current_group != Some(expected) {
+            if decision.move_selector + 1 < 3 && (view.entry_type_one)(decision.move_selector) {
+                decision.move_selector += 1;
+                let next = group_for(decision.move_selector)?;
+                if *flags & 0x10 != 0 && matches!(next, 0x6b | 0x6c) {
+                    end_defence(decision, selected, defence_selector);
+                } else {
+                    start(decision, flags, next);
+                }
+            } else if view.pending_group != Some(expected) {
+                end_defence(decision, selected, defence_selector);
+            }
+        }
+    }
+    Ok(DefenceStep {
+        active: decision.attack_state != 0 && *defence_selector != -1 && *selected != 9,
+        effect,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +295,149 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    fn view<'a>(
+        current: Option<i32>,
+        pending: Option<i32>,
+        groups: &'a dyn Fn(i32) -> Option<i32>,
+        chain: &'a dyn Fn(i32) -> bool,
+    ) -> DefenceView<'a> {
+        DefenceView {
+            current_group: current,
+            pending_group: pending,
+            defence_group: groups,
+            entry_type_one: chain,
+        }
+    }
+
+    #[test]
+    fn an_idle_defence_request_outside_the_group_starts_it() {
+        let mut decision = CombatDecision {
+            move_selector: 2,
+            ..Default::default()
+        };
+        let (mut flags, mut selected, mut selector) = (0x13u8, 0, 0);
+        let groups = |_: i32| Some(130);
+        let chain = |_: i32| false;
+        let step = defence_step(
+            &mut decision,
+            &mut flags,
+            &mut selected,
+            &mut selector,
+            0,
+            &view(Some(1), None, &groups, &chain),
+        )
+        .unwrap();
+        assert_eq!(step.effect.request_group, Some(130));
+        assert!(
+            step.effect.mark_animation && step.effect.bookkeeping && step.effect.taunt_kind_one
+        );
+        assert_eq!(decision.attack_state, 1);
+        assert_eq!(decision.move_selector, 0);
+        assert_eq!(decision.aggression, 40);
+        // The target mark clears and the intent field gains bit one: 0x13 -> 0x03.
+        assert_eq!(flags, 0x03);
+        // The starters set the defence selector before calling, so the defence is active.
+        assert!(step.active);
+    }
+
+    #[test]
+    fn an_idle_request_already_in_the_group_only_resets_the_move_selector() {
+        let mut decision = CombatDecision {
+            move_selector: 2,
+            ..Default::default()
+        };
+        let (mut flags, mut selected, mut selector) = (0u8, 0, 0);
+        let groups = |_: i32| Some(130);
+        let chain = |_: i32| false;
+        let step = defence_step(
+            &mut decision,
+            &mut flags,
+            &mut selected,
+            &mut selector,
+            0,
+            &view(Some(130), None, &groups, &chain),
+        )
+        .unwrap();
+        assert_eq!(step.effect, DefenceEffect::default());
+        assert_eq!((decision.attack_state, decision.move_selector), (0, 0));
+    }
+
+    #[test]
+    fn an_active_defence_follows_the_chain_to_the_next_group() {
+        let mut decision = CombatDecision {
+            attack_state: 1,
+            move_selector: 0,
+            ..Default::default()
+        };
+        let (mut flags, mut selected, mut selector) = (0u8, 0, 0);
+        let groups = |selector: i32| Some(130 + selector);
+        let chain = |_: i32| true;
+        let step = defence_step(
+            &mut decision,
+            &mut flags,
+            &mut selected,
+            &mut selector,
+            -1,
+            &view(Some(7), None, &groups, &chain),
+        )
+        .unwrap();
+        assert_eq!(decision.move_selector, 1);
+        assert_eq!(step.effect.request_group, Some(131));
+        assert!(!step.effect.taunt_kind_one);
+        assert_eq!(flags, 0x01);
+        assert!(step.active);
+    }
+
+    #[test]
+    fn being_attacked_in_the_last_chain_groups_ends_the_defence() {
+        let mut decision = CombatDecision {
+            attack_state: 1,
+            move_selector: 0,
+            ..Default::default()
+        };
+        let (mut flags, mut selected, mut selector) = (0x10u8, 4, 2);
+        let groups = |selector: i32| Some(if selector == 0 { 130 } else { 0x6b });
+        let chain = |_: i32| true;
+        let step = defence_step(
+            &mut decision,
+            &mut flags,
+            &mut selected,
+            &mut selector,
+            -1,
+            &view(Some(7), None, &groups, &chain),
+        )
+        .unwrap();
+        assert!(!step.active);
+        assert_eq!((decision.attack_state, selector, selected), (0, -1, -1));
+        assert_eq!(step.effect.request_group, None);
+    }
+
+    #[test]
+    fn a_defence_without_a_chain_ends_when_the_pending_group_differs() {
+        for (pending, ends) in [(Some(130), false), (Some(5), true)] {
+            let mut decision = CombatDecision {
+                attack_state: 1,
+                move_selector: 2,
+                ..Default::default()
+            };
+            let (mut flags, mut selected, mut selector) = (0u8, 9, 3);
+            let groups = |_: i32| Some(130);
+            let chain = |_: i32| true;
+            let step = defence_step(
+                &mut decision,
+                &mut flags,
+                &mut selected,
+                &mut selector,
+                -1,
+                &view(Some(7), pending, &groups, &chain),
+            )
+            .unwrap();
+            assert_eq!(decision.attack_state == 0, ends);
+            // A selected index of 9 is never reset by ending a defence.
+            assert_eq!(selected, 9);
+            assert!(!step.active);
+        }
     }
 }
