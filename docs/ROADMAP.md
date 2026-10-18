@@ -237,10 +237,22 @@ flag `0x20` fail the new linked comparisons. These helper comparisons do not
 establish live duel acceptance. Full workspace gates pass with
 1,098 Rust test executions and zero installed-data skips.
 
+Timed combat taunts now bind non-ordered requests to live receiver/target state,
+the retained maintenance phase and constructor-owned period, shared RNG and synchronous
+playback services. **Verified:** 2,160 linked production selections match original
+records and fifteen-draw consumption; early-stop and unsigned-pacing controls fail.
+Public request coverage verifies world restore, period retention after attribute
+changes, dead/distance rejection, the unsupported one-past draw and presentation
+failure without setting type-nine state. This service does not enable ordinary
+combat traversal; live defence execution remains open. Full workspace gates pass
+with 1,101 Rust test executions and zero installed-data skips.
+
 Next, in dependency order:
 
 1. Invoke the paced picker with the receiver-owned prepared candidates and
    connect synchronous starters to the live executor and its timed-taunt service.
+   Constructor allocation of maintenance phases remains unsupported; explicit
+   restored-phase requests do not establish automatic actor pacing.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain

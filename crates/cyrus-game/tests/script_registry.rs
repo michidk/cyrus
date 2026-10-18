@@ -14096,3 +14096,256 @@ fn paced_candidates_use_receiver_attacks_bounds_centres_and_all_motion_damage() 
         assert!(world.combat_paced_defence_candidate(own, stale, 0).is_err());
     }
 }
+
+#[test]
+fn timed_taunt_request_uses_live_period_shared_rng_and_synchronous_playback() {
+    use cyrus_game::script::{CombatTauntPlayback, CombatTauntSource, DialogueLine, ScriptInputs};
+    #[derive(Debug, Default)]
+    struct Playback {
+        events: Vec<&'static str>,
+        fail: bool,
+    }
+    impl CombatTauntPlayback for Playback {
+        fn prepare(&mut self, label: [u8; 4], _: bool, _: Option<u32>) -> anyhow::Result<()> {
+            assert_eq!(label, *b"TEST");
+            self.events.push("prepare");
+            anyhow::ensure!(!self.fail, "injected preparation failure");
+            Ok(())
+        }
+        fn release(&mut self, retained: &mut Option<usize>) -> anyhow::Result<()> {
+            self.events.push("release");
+            *retained = None;
+            Ok(())
+        }
+        fn load(&mut self, _: [u8; 4]) -> anyhow::Result<usize> {
+            self.events.push("load");
+            Ok(4)
+        }
+        fn present(&mut self, _: usize, _: bool, _: Option<u32>) -> anyhow::Result<DialogueLine> {
+            self.events.push("present");
+            Ok(DialogueLine {
+                text: "Voice".into(),
+                sample: None,
+                lifetime: 210,
+            })
+        }
+    }
+    #[derive(Debug, Default)]
+    struct Source(std::cell::RefCell<Playback>);
+    impl CombatTauntSource for Source {
+        fn with_playback(
+            &self,
+            update: &mut dyn FnMut(&mut dyn CombatTauntPlayback) -> anyhow::Result<()>,
+        ) -> anyhow::Result<()> {
+            update(&mut *self.0.borrow_mut())
+        }
+    }
+    for fail in [false, true] {
+        let mut scripts = cache();
+        scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
+        let actor = scripts.actors.get_mut("LOGIC").unwrap();
+        actor.attributes.extend([
+            ("attr_14".into(), 1),
+            ("attr_87".into(), 124),
+            ("attr_num_taunts".into(), 1),
+        ]);
+        actor.combat_taunts = vec![CombatTaunt {
+            trigger: 9,
+            label: *b"TEST",
+            animation: 0,
+        }];
+        for instance in &mut scripts.instances {
+            instance.object_type = 1;
+        }
+        scripts.instances[1].map_position = [1024, 0, 0];
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,
+                "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "raan_entries":[{"frame_count":1,"file_path":"TEST.3D"}],
+                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        data.metadata["mpob_objects"] = serde_json::json!([
+            {"script_name":"LOGIC"}, {"script_name":"LOGIC"}
+        ]);
+        data.models.insert(
+            "TEST".into(),
+            cyrus_assets::animation::AnimationModel {
+                radius: Some(1.0),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "static_3d".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        );
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .taunt_period,
+            5
+        );
+        let collision = cyrus_assets::collision::CollisionScene::default();
+        let sources = cyrus_game::script::WorldSnapshotSources {
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        saved["actors"][0]["control"]["combat"]["maintenance_phase"] = (-1).into();
+        saved["actors"][0]["control"]["combat"]["action"] = 0.into();
+        let mut missing = saved.clone();
+        missing["actors"][0]["control"]["combat"]
+            .as_object_mut()
+            .unwrap()
+            .remove("taunt_period");
+        assert!(serde_json::from_value::<cyrus_game::script::WorldSnapshot>(missing).is_err());
+        for dead in [false, true] {
+            let mut blocked = saved.clone();
+            if dead {
+                blocked["actors"][0]["control"]["death_selector"] = 8.into();
+            } else {
+                blocked["actors"][0]["control"]["combat"]["target"] = serde_json::json!([1, 1]);
+            }
+            let mut blocked = ScriptWorld::from_snapshot(
+                serde_json::from_value(blocked).unwrap(),
+                &sources,
+                cyrus_game::script::WorldRestoreContext {
+                    generation: 2,
+                    globals: Default::default(),
+                    samples: &BTreeMap::new(),
+                },
+            )
+            .unwrap();
+            let mut random = cyrus_game::random::EngineRandom::default();
+            blocked
+                .request_timed_combat_taunt(
+                    blocked.id(0).unwrap(),
+                    9,
+                    1,
+                    ScriptInputs::default(),
+                    &mut random,
+                    &mut |_, _| panic!("blocked sound"),
+                )
+                .unwrap();
+            assert_eq!(
+                random.state(),
+                1,
+                "dead or exact-distance boundary must not draw"
+            );
+        }
+        // Attribute writes after construction must not replace the retained divisor.
+        saved["actors"][0]["attributes"][87] = 129.into();
+        world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            cyrus_game::script::WorldRestoreContext {
+                generation: 2,
+                globals: std::mem::take(world.globals_mut()),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        assert_eq!(world.actors()[0].attributes()[87], 129);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .taunt_period,
+            5
+        );
+        let mut endpoint = cyrus_game::random::EngineRandom::from_state(24884);
+        let error = world
+            .request_timed_combat_taunt(
+                id,
+                9,
+                1,
+                ScriptInputs::default(),
+                &mut endpoint,
+                &mut |_, _| panic!("unsupported endpoint sound"),
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("world 7 instance 0 timed combat taunt type 9"));
+        assert!(format!("{error:#}").contains("one-past access unsupported"));
+        assert_eq!(endpoint.state(), 2147445597);
+        let source = Source::default();
+        source.0.borrow_mut().fail = fail;
+        let inputs = ScriptInputs {
+            nominal_ticks: Some(0),
+            combat_taunts: Some(&source),
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let initial = random.state();
+        // Phase -1 plus frame zero is off-period; action zero must not admit it.
+        world
+            .request_timed_combat_taunt(id, 9, 0, inputs, &mut random, &mut |_, _| Ok(()))
+            .unwrap();
+        assert!(source.0.borrow().events.is_empty());
+        let mut expected = cyrus_game::random::EngineRandom::from_state(initial);
+        for _ in 0..15 {
+            expected.draw();
+        }
+        assert_eq!(random.state(), expected.state());
+        let result =
+            world.request_timed_combat_taunt(id, 9, 1, inputs, &mut random, &mut |_, _| Ok(()));
+        for _ in 0..15 {
+            expected.draw();
+        }
+        assert_eq!(random.state(), expected.state());
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        if fail {
+            assert!(format!("{:#}", result.unwrap_err()).contains("injected preparation failure"));
+            assert_eq!(combat.flags & 0x40, 0);
+            assert_eq!(source.0.borrow().events, ["prepare"]);
+        } else {
+            result.unwrap();
+            assert_eq!(combat.flags & 0x40, 0x40);
+            assert_eq!(
+                source.0.borrow().events,
+                ["prepare", "release", "load", "present"]
+            );
+            assert_eq!(combat.taunt_cache, Some(4));
+            // Type-nine retained flag rejects without RNG or playback services.
+            world
+                .request_timed_combat_taunt(
+                    id,
+                    9,
+                    1,
+                    ScriptInputs::default(),
+                    &mut random,
+                    &mut |_, _| panic!("rejected sound"),
+                )
+                .unwrap();
+            assert_eq!(random.state(), expected.state());
+        }
+    }
+}

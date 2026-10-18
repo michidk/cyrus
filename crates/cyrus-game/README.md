@@ -89,6 +89,13 @@ fresh-process reconstruction, retaining the held-use latch, empty hidden
 selection, slots and notification. Corrupt candidates and failed publication
 preserve accepted state; altered latch/notification controls fail as expected.
 
+`ScriptWorld::request_timed_combat_taunt` binds non-ordered taunt requests to live
+receiver/target state, shared RNG and synchronous native/browser playback services.
+It retains the constructor-owned signed period across world snapshots and later
+attribute writes. Requests beyond the actor's pointer list reject explicitly;
+old world snapshots missing the period are rejected. This service does not enable
+the ordinary combat decision stage or complete defence execution.
+
 `DialogueState::snapshot` retains ordered records, formatted text, remaining
 lifetimes, skip latch and presentation selection. `from_snapshot` returns a
 replacement after validating installed settings and explicit actor/sample

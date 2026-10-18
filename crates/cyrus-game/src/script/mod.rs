@@ -12,7 +12,7 @@ mod combat;
 pub mod decision;
 pub use combat::{
     CombatControlState, CombatDecision, CombatMessage, CombatMessages, CombatTauntPlayback,
-    CombatTauntSource,
+    CombatTauntSource, select_timed_combat_taunt,
 };
 mod dialogue;
 pub use dialogue::{

@@ -55,6 +55,7 @@ struct CombatSnapshot {
     taunt_cache: Option<usize>,
     taunt_dialogue: Option<usize>,
     taunt_active: i32,
+    taunt_period: i32,
     #[serde(default)]
     strength: i32,
     #[serde(default)]
@@ -158,6 +159,7 @@ impl CombatSnapshot {
             taunt_cache: combat.taunt_cache,
             taunt_dialogue: combat.taunt_dialogue,
             taunt_active: combat.taunt_active,
+            taunt_period: combat.taunt_period,
             strength: combat.strength,
             armor: combat.armor,
             decision: combat.decision,
@@ -184,6 +186,7 @@ impl CombatSnapshot {
             taunt_cache: self.taunt_cache,
             taunt_dialogue: self.taunt_dialogue,
             taunt_active: self.taunt_active,
+            taunt_period: self.taunt_period,
             strength: self.strength,
             armor: self.armor,
             decision: self.decision,

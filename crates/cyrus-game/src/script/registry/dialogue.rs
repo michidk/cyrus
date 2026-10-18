@@ -71,6 +71,121 @@ impl ScriptWorld {
         )
     }
 
+    /// Request a non-ordered combat taunt from live receiver/target state.
+    /// Reads the constructor-owned period and retained maintenance phase, consumes the shared RNG,
+    /// then presents synchronously through the supplied native/browser services.
+    /// Type nine sets its retained flag only after successful presentation.
+    pub fn request_timed_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        trigger: u8,
+        frame_value: i32,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let world = self.world;
+        let mut request = || -> Result<()> {
+            anyhow::ensure!(
+                !matches!(trigger, 0 | 2 | 6 | 10 | 11),
+                "type {trigger} requires ordered selection"
+            );
+            let index = self.resolve(id)?;
+            let actor = &self.actors[index];
+            let control = actor
+                .control
+                .as_ref()
+                .context("receiver control unavailable")?;
+            let combat = control
+                .combat
+                .as_ref()
+                .context("receiver combat unavailable")?;
+            if trigger == 9 && combat.flags & 0x40 != 0 {
+                return Ok(());
+            }
+            let selected = inputs.activation.map(|input| input.player).or_else(|| {
+                self.actors
+                    .iter()
+                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                    .map(|index| ScriptActorId {
+                        generation: self.generation,
+                        index,
+                    })
+            });
+            if selected == Some(id)
+                && self
+                    .globals
+                    .player_death_override()
+                    .context("selected-player death override unavailable")?
+                || control.death_selector == 8
+                || actor.combat_taunts.is_empty()
+            {
+                return Ok(());
+            }
+            if let Some(target) = combat.target {
+                let target = self.resolve(target)?;
+                let from = self.sight_position(index)?;
+                let to = self.sight_position(target)?;
+                if cyrus_collision::distance::rounded_distance(std::array::from_fn(|axis| {
+                    to[axis].wrapping_sub(from[axis])
+                }))? >= 0x40000
+                {
+                    return Ok(());
+                }
+            }
+            let chosen = super::super::combat::select_timed_combat_taunt(
+                &actor.combat_taunts,
+                trigger,
+                combat.maintenance_phase.wrapping_add(frame_value),
+                combat.taunt_period,
+                &mut || random.draw(),
+            )?;
+            let Some(chosen) = chosen else { return Ok(()) };
+            let taunt = actor.combat_taunts[chosen].clone();
+            let animation_admitted = if taunt.animation != 0
+                && self.updates.animation_system
+                && actor.animation.is_some()
+            {
+                anyhow::ensure!(actor.model.prepared, "receiver model state unavailable");
+                actor.model.static_radius.is_none()
+            } else {
+                false
+            };
+            let ticks = inputs.nominal_ticks.context("nominal ticks unavailable")?;
+            inputs
+                .combat_taunts
+                .context("playback source unavailable")?
+                .with_playback(&mut |playback| {
+                    self.present_combat_taunt(
+                        id,
+                        &taunt,
+                        playback,
+                        ticks,
+                        animation_admitted,
+                        sounds,
+                    )
+                    .map(|_| ())
+                })?;
+            if trigger == 9 {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted control")
+                    .combat
+                    .as_mut()
+                    .expect("admitted combat")
+                    .flags |= 0x40;
+            }
+            Ok(())
+        };
+        request().with_context(|| {
+            format!(
+                "world {world} instance {} timed combat taunt type {trigger}",
+                id.index
+            )
+        })
+    }
+
     /// Snapshot active speakers for the synchronous audio adapter. Positions are
     /// local signed Q8, matching the dialogue volume rule, after object updates.
     /// Unavailable poses stay absent and fail only if playback requests a volume

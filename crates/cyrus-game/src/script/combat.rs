@@ -1,6 +1,6 @@
 //! Combat state, taunt presentation services and class-message queues.
 use super::ScriptActorId;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Serialize;
 
 const QUEUE_CAPACITY: usize = 8;
@@ -73,6 +73,8 @@ pub struct CombatControlState {
     pub taunt_cache: Option<usize>,
     pub taunt_dialogue: Option<usize>,
     pub taunt_active: i32,
+    /// Signed constructor-owned timed-taunt divisor: 129 minus attribute 87.
+    pub taunt_period: i32,
     /// Script-assigned strength and armor values (`setStrength`, `setArmor`).
     pub strength: i32,
     pub armor: i32,
@@ -94,6 +96,7 @@ impl Default for CombatControlState {
             taunt_cache: None,
             taunt_dialogue: Some(0),
             taunt_active: 0,
+            taunt_period: 0,
             strength: 0,
             armor: 0,
             decision: CombatDecision::default(),
@@ -121,10 +124,64 @@ impl CombatControlState {
             // The constructor copies attributes 2 and 4 into the strength and armor values.
             strength: i32::from(attributes[2]),
             armor: i32::from(attributes[4]),
+            taunt_period: 129 - i32::from(attributes[87]),
             decision: CombatDecision::from_attributes(attributes),
             ..Self::default()
         }
     }
+}
+
+/// Select a timed taunt for an already admitted request outside the ordered family.
+/// Follows preservation's [selection rules](https://github.com/michidk/redguard-preservation/pull/113).
+/// Consumes fifteen inclusive 0..=32767 draws even after selecting a record. The
+/// caller supplies the wrapping maintenance-phase/frame sum and the retained signed period.
+/// The actor list has no one-past sentinel: that draw rejects after consumption.
+/// An invalid period rejects only if a matching nonempty record was selected.
+pub fn select_timed_combat_taunt(
+    taunts: &[cyrus_assets::script::CombatTaunt],
+    trigger: u8,
+    pacing_sum: i32,
+    period: i32,
+    draw: &mut dyn FnMut() -> i32,
+) -> Result<Option<usize>> {
+    anyhow::ensure!(
+        !matches!(trigger, 0 | 2 | 6 | 10 | 11),
+        "combat taunt type {trigger} requires ordered selection"
+    );
+    anyhow::ensure!(taunts.len() <= 255, "combat taunt count exceeds actor byte");
+    if taunts.is_empty() {
+        return Ok(None);
+    }
+    let mut selected = None;
+    for _ in 0..15 {
+        let random = draw();
+        anyhow::ensure!(
+            (0..=32767).contains(&random),
+            "combat taunt random draw {random} outside 0..=32767"
+        );
+        let index = random as usize * taunts.len() / 32767;
+        let taunt = taunts.get(index).with_context(|| {
+            format!(
+                "combat taunt index {index} outside {}-entry actor pointer list; one-past access unsupported",
+                taunts.len()
+            )
+        })?;
+        if taunt.trigger == trigger
+            && taunt.label != [0; 4]
+            && (selected.is_none() || pacing_sum % 2 == 0)
+        {
+            selected = Some(index);
+        }
+    }
+    if selected.is_some()
+        && pacing_sum
+            .checked_rem(period)
+            .context("combat taunt invalid signed period divisor")?
+            != 0
+    {
+        selected = None;
+    }
+    Ok(selected)
 }
 
 /// Synchronous taunt services following preservation's engine/sound.md.
@@ -514,6 +571,77 @@ mod constructor_tests {
                 decision.near_state
             ),
             (50, 120, 100, 29, 0, 0)
+        );
+    }
+}
+
+#[cfg(test)]
+mod timed_taunt_tests {
+    use super::select_timed_combat_taunt;
+    use cyrus_assets::script::CombatTaunt;
+
+    #[test]
+    fn timed_selection_consumes_fifteen_draws_and_uses_signed_pacing() {
+        let records = [11u32, 22, 33].map(|label| CombatTaunt {
+            trigger: 1,
+            label: label.to_le_bytes(),
+            animation: 0,
+        });
+        for (sum, period, expected) in [(0, -5, Some(2)), (1, 1, Some(0)), (1, 5, None)] {
+            let mut draws = 0;
+            let got = select_timed_combat_taunt(&records, 1, sum, period, &mut || {
+                let result = [0, 16384, 32766][draws % 3];
+                draws += 1;
+                result
+            })
+            .unwrap();
+            assert_eq!((got, draws), (expected, 15));
+        }
+        for (sum, period) in [(0, 0), (i32::MIN, -1)] {
+            let mut draws = 0;
+            let error = select_timed_combat_taunt(&records, 1, sum, period, &mut || {
+                draws += 1;
+                0
+            })
+            .unwrap_err();
+            assert!(error.to_string().contains("invalid signed period"));
+            assert_eq!(draws, 15);
+        }
+        let mut draws = 0;
+        assert_eq!(
+            select_timed_combat_taunt(&records, 3, 0, 0, &mut || {
+                draws += 1;
+                0
+            })
+            .unwrap(),
+            None
+        );
+        assert_eq!(draws, 15);
+    }
+
+    #[test]
+    fn one_past_draw_rejects_instead_of_clamping_or_inventing_a_record() {
+        let records = [CombatTaunt {
+            trigger: 1,
+            label: *b"TEST",
+            animation: 0,
+        }];
+        let mut draws = 0;
+        let error = select_timed_combat_taunt(&records, 1, 0, 1, &mut || {
+            draws += 1;
+            32767
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("one-past access unsupported"));
+        assert_eq!(draws, 1);
+        assert!(
+            select_timed_combat_taunt(&[], 1, 0, 0, &mut || panic!("empty list draws"))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            select_timed_combat_taunt(&records, 0, 0, 1, &mut || panic!("ordered request draws"))
+                .is_err()
         );
     }
 }
