@@ -13887,3 +13887,27 @@ fn player_moved_needs_a_selected_player_with_spatial_state() {
         .unwrap_err();
     assert!(format!("{error:#}").contains("spatial state unavailable"));
 }
+
+#[test]
+fn enable_and_disable_natives_toggle_their_script_control_bit() {
+    let bits = |calls: &[(&str, &[i32])]| {
+        run_native_world(calls).unwrap().actors()[0]
+            .control_state()
+            .unwrap()
+            .script_control
+    };
+    for (suffix, bit) in [("Script", 1), ("Tasks", 4), ("Object", 8), ("Combat", 16)] {
+        let disable = format!("Disable{suffix}");
+        let enable = format!("Enable{suffix}");
+        assert_eq!(bits(&[(&disable, &[])]), bit, "{disable}");
+        assert_eq!(bits(&[(&disable, &[]), (&enable, &[])]), 0, "{enable}");
+    }
+    assert_eq!(
+        bits(&[
+            ("DisableTasks", &[]),
+            ("DisableCombat", &[]),
+            ("EnableTasks", &[])
+        ]),
+        16
+    );
+}

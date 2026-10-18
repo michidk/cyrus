@@ -3062,18 +3062,30 @@ impl Host for GameHost<'_, '_, '_, '_> {
             };
             return Ok(CallResult::Complete(value));
         }
-        if function.eq_ignore_ascii_case("EnableScript")
-            || function.eq_ignore_ascii_case("DisableScript")
-        {
+        // Enable*/Disable* clear and set one bit of the script-control byte: 0x01 script,
+        // 0x04 tasks, 0x08 object, 0x10 combat (0x02 is the hook, handled above).
+        let control_bit = [
+            ("Script", 0x01),
+            ("Tasks", 0x04),
+            ("Object", 0x08),
+            ("Combat", 0x10),
+        ]
+        .into_iter()
+        .find_map(|(suffix, bit)| {
+            let enable = function.eq_ignore_ascii_case(&format!("Enable{suffix}"));
+            (enable || function.eq_ignore_ascii_case(&format!("Disable{suffix}")))
+                .then_some((enable, bit))
+        });
+        if let Some((enable, bit)) = control_bit {
             anyhow::ensure!(arguments.is_empty(), "{function}: wrong argument count");
             let control = self.actors[self.index]
                 .control
                 .as_mut()
                 .with_context(|| format!("{function}: script-control lifecycle unavailable"))?;
-            if function.eq_ignore_ascii_case("EnableScript") {
-                control.script_control &= !1;
+            if enable {
+                control.script_control &= !bit;
             } else {
-                control.script_control |= 1;
+                control.script_control |= bit;
             }
             return Ok(CallResult::Complete(0));
         }
