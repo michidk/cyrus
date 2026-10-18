@@ -87,6 +87,7 @@ enum Task {
     ScaledRelativeRotation { origin: i32 },
     FacePlayer,
     Backward,
+    Strafe(super::locomotion::Strafe),
     Location,
     Duration,
     Tasks,
@@ -318,6 +319,77 @@ impl Task {
                             distance,
                         )?;
                     }
+                }
+                !continues(duration, elapsed)
+            }
+            Self::Strafe(strafe) => {
+                use super::locomotion::{
+                    StrafeAdmission, continues, strafe_admission, strafe_motion,
+                };
+                let name = match strafe {
+                    super::locomotion::Strafe::Left => "MoveLeft",
+                    super::locomotion::Strafe::Right => "MoveRight",
+                };
+                let [duration] = arguments else {
+                    anyhow::bail!("{name} requires one argument")
+                };
+                let duration = duration.integer()?;
+                let elapsed = invocation
+                    .elapsed
+                    .with_context(|| format!("{name} requires elapsed input"))?;
+                let motion = services
+                    .locomotion
+                    .with_context(|| format!("{name} locomotion state unavailable"))?;
+                let state = motion.state.map_err(anyhow::Error::msg)?;
+                let admission = strafe_admission(state, *strafe);
+                if admission == StrafeAdmission::Refused {
+                    return Ok(true);
+                }
+                *motion
+                    .motion_direction
+                    .with_context(|| format!("{name} motion state unavailable"))? =
+                    strafe.motion_direction();
+                let StrafeAdmission::Combat { group, step, turn } = admission else {
+                    anyhow::bail!(
+                        "{name} outside combat stance unsupported: lateral step check, edge probe and hanging-edge test"
+                    );
+                };
+                let input = animation.as_mut().with_context(|| {
+                    format!("{name} requires prepared animation and explicit nominal ticks")
+                })?;
+                let spatial = spatial
+                    .as_mut()
+                    .with_context(|| format!("{name} requires receiver pose and frame_scale"))?;
+                let already_strafing = input.animation.current_group().is_some_and(|current| {
+                    super::locomotion::Strafe::COMBAT_GROUPS.contains(&current)
+                });
+                if already_strafing || !input.animation.has_group(group) {
+                    return Ok(true);
+                }
+                let frame = match &mut input.sounds {
+                    Some(sounds) => {
+                        input
+                            .animation
+                            .request_with_sounds(group, 0, input.ticks, *sounds)?
+                    }
+                    None => input.animation.request(group, 0, input.ticks)?,
+                };
+                *input.frame = frame.or(*input.frame);
+                let (angle, movement) = strafe_motion(
+                    *strafe,
+                    spatial.angles[1],
+                    turn,
+                    step,
+                    spatial.frame_scale as i32,
+                    input.animation.translation_suppressed(),
+                );
+                spatial.angles[1] = angle;
+                if let Some((heading, distance)) = movement {
+                    *spatial.position = cyrus_world::transform::translate_forward(
+                        *spatial.position,
+                        heading,
+                        distance,
+                    )?;
                 }
                 !continues(duration, elapsed)
             }
@@ -781,6 +853,10 @@ impl NativeTasks {
             Task::FacePlayer
         } else if function.eq_ignore_ascii_case("MoveBackward") {
             Task::Backward
+        } else if function.eq_ignore_ascii_case("MoveLeft") {
+            Task::Strafe(super::locomotion::Strafe::Left)
+        } else if function.eq_ignore_ascii_case("MoveRight") {
+            Task::Strafe(super::locomotion::Strafe::Right)
         } else if function.eq_ignore_ascii_case("MoveObjectAxis") {
             Task::ObjectMovement {
                 target: 0,

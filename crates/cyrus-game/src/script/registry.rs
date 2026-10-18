@@ -2016,6 +2016,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             torch_burning: control.torch_burning != 0,
             step_attribute: actor.attributes[9],
             combat_step_attribute: actor.attributes[18],
+            strafe_step_attribute: actor.attributes[83],
+            strafe_turn_attribute: actor.attributes[84],
         })
     }
 

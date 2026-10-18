@@ -4837,3 +4837,55 @@ fn move_backward_without_the_group_never_moves_and_still_completes() {
     locomotion_stage(&mut world, id, BODY, &hud);
     assert_eq!(world.flags(), [9]);
 }
+
+#[test]
+fn strafes_outside_combat_stance_report_the_unimplemented_step_checks() {
+    for name in ["MoveLeft", "MoveRight"] {
+        let mut data = move_backward_scripts(8);
+        for step in data
+            .actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .values_mut()
+        {
+            if let Operation::Call { call } = &mut step.operation {
+                call.function = name.into();
+            }
+        }
+        data.definition.functions.last_mut().unwrap().name = name.into();
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .bind_animation(id, &move_backward_animations(&data, &[0, 94, 95]), 0)
+            .unwrap();
+        let hud = locomotion_hud();
+        let error = world
+            .advance(
+                id,
+                BODY,
+                cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                None,
+                None,
+                30,
+            )
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("outside combat stance unsupported"),
+            "{name}: {error:#}"
+        );
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            if name == "MoveLeft" { 4 } else { 5 }
+        );
+    }
+}

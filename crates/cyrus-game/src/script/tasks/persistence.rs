@@ -192,6 +192,8 @@ impl Task {
             Self::ScaledRelativeRotation { .. } => ("sRotateByAxis", 3, None),
             Self::FacePlayer => ("FacePlayer", 1, None),
             Self::Backward => ("MoveBackward", 1, None),
+            Self::Strafe(super::super::locomotion::Strafe::Left) => ("MoveLeft", 1, None),
+            Self::Strafe(super::super::locomotion::Strafe::Right) => ("MoveRight", 1, None),
             Self::Location => ("MoveToLocation", 2, None),
             Self::Duration => ("Wait", 1, None),
             Self::Tasks => ("WaitOnTasks", 0, None),

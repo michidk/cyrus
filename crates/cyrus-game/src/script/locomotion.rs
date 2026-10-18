@@ -18,6 +18,9 @@ pub struct BackwardState {
     /// Attribute bytes 9 (ordinary) and 18 (combat stance) give the step length.
     pub step_attribute: u8,
     pub combat_step_attribute: u8,
+    /// Attribute bytes 83 and 84 give a combat-stance strafe's step length and turn rate.
+    pub strafe_step_attribute: u8,
+    pub strafe_turn_attribute: u8,
 }
 
 /// Outcome of `MoveBackward`'s admission and animation choice.
@@ -40,12 +43,7 @@ pub fn backward_admission(
     state: BackwardState,
     blocked_ahead_30: impl FnOnce() -> bool,
 ) -> BackwardAdmission {
-    if state.rope_attached
-        || state.sliding_state != 0
-        || state.falling_state != 0
-        || state.queued_motion != 0
-        || !matches!(state.living_state, 0 | 15)
-    {
+    if !idle_admitted(&state) {
         return BackwardAdmission::Refused;
     }
     if state.holding_weapon || state.combat_mode {
@@ -68,6 +66,100 @@ pub fn backward_admission(
         group,
         step: state.step_attribute,
     }
+}
+
+/// The admission shared by every nonplayer stepper: no rope, sliding, falling or queued motion,
+/// and a lifecycle byte of 0 or 15.
+fn idle_admitted(state: &BackwardState) -> bool {
+    !(state.rope_attached
+        || state.sliding_state != 0
+        || state.falling_state != 0
+        || state.queued_motion != 0
+        || !matches!(state.living_state, 0 | 15))
+}
+
+/// Strafe direction of `MoveLeft` and `MoveRight`, per preservation's engine/SOUP.md.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Strafe {
+    Left,
+    Right,
+}
+
+impl Strafe {
+    /// Motion-direction byte stored once admitted.
+    pub fn motion_direction(self) -> u8 {
+        match self {
+            Self::Left => 4,
+            Self::Right => 5,
+        }
+    }
+
+    /// Animation group of the combat-stance strafe.
+    pub fn combat_group(self) -> u16 {
+        match self {
+            Self::Left => 94,
+            Self::Right => 95,
+        }
+    }
+
+    /// Both strafe groups; a receiver already in either completes without moving.
+    pub const COMBAT_GROUPS: [u16; 2] = [94, 95];
+}
+
+/// Outcome of a strafe's admission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StrafeAdmission {
+    /// The call completes immediately without changing the receiver.
+    Refused,
+    /// Outside combat stance the original runs a lateral model-contact step check, an edge probe
+    /// and the hanging-edge test, which are not implemented.
+    OutsideCombat,
+    /// Combat stance: request `group`, turn by `turn` and move by `step` whole units.
+    Combat { group: u16, step: u8, turn: u8 },
+}
+
+/// Admission for `MoveLeft` and `MoveRight`: the shared idle admission, then the combat stance.
+pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission {
+    if !idle_admitted(&state) {
+        return StrafeAdmission::Refused;
+    }
+    if state.holding_weapon || state.combat_mode {
+        StrafeAdmission::Combat {
+            group: strafe.combat_group(),
+            step: state.strafe_step_attribute,
+            turn: state.strafe_turn_attribute,
+        }
+    } else {
+        StrafeAdmission::OutsideCombat
+    }
+}
+
+/// One combat-stance strafe step: the receiver's new heading (the left call subtracts the scaled
+/// turn rate, the right call adds it) and the translation (movement heading and distance), or
+/// `None` when no movement happens. The movement heading is the new heading plus 512 for left and
+/// minus 512 for right.
+pub fn strafe_motion(
+    strafe: Strafe,
+    angle_y: u16,
+    turn: u8,
+    step: u8,
+    frame_scale: i32,
+    translation_suppressed: bool,
+) -> (u16, Option<(u16, i32)>) {
+    let delta = i32::from(turn).wrapping_mul(frame_scale) >> 8;
+    let signed = match strafe {
+        Strafe::Left => -delta,
+        Strafe::Right => delta,
+    };
+    let angle = (i32::from(angle_y).wrapping_add(signed) & 2047) as u16;
+    let offset = match strafe {
+        Strafe::Left => 512,
+        Strafe::Right => -512,
+    };
+    let heading = (i32::from(angle).wrapping_add(offset) & 2047) as u16;
+    let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
+    let movement = (!translation_suppressed && distance > 0).then_some((heading, distance));
+    (angle, movement)
 }
 
 /// One backward step: the heading (local Y angle plus 1024, wrapped) and the distance, or `None`
@@ -223,5 +315,83 @@ mod tests {
         assert!(continues(3, 1));
         assert!(!continues(3, 2));
         assert!(!continues(0, 0));
+    }
+
+    #[test]
+    fn strafes_share_the_idle_admission_and_need_combat_stance_here() {
+        let combat = BackwardState {
+            combat_mode: true,
+            strafe_step_attribute: 6,
+            strafe_turn_attribute: 4,
+            ..ready()
+        };
+        assert_eq!(
+            strafe_admission(combat, Strafe::Left),
+            StrafeAdmission::Combat {
+                group: 94,
+                step: 6,
+                turn: 4
+            }
+        );
+        assert_eq!(
+            strafe_admission(
+                BackwardState {
+                    holding_weapon: true,
+                    ..combat
+                },
+                Strafe::Right
+            ),
+            StrafeAdmission::Combat {
+                group: 95,
+                step: 6,
+                turn: 4
+            }
+        );
+        assert_eq!(
+            strafe_admission(ready(), Strafe::Left),
+            StrafeAdmission::OutsideCombat
+        );
+        for refused in [
+            BackwardState {
+                rope_attached: true,
+                ..combat
+            },
+            BackwardState {
+                queued_motion: 1,
+                ..combat
+            },
+            BackwardState {
+                living_state: 20,
+                ..combat
+            },
+        ] {
+            assert_eq!(
+                strafe_admission(refused, Strafe::Left),
+                StrafeAdmission::Refused
+            );
+        }
+    }
+
+    #[test]
+    fn strafe_turns_by_the_scaled_rate_and_moves_a_quarter_turn_off_the_new_heading() {
+        // Left: heading 100 minus (4 * 256 >> 8 = 4) = 96; movement heading 96 + 512.
+        assert_eq!(
+            strafe_motion(Strafe::Left, 100, 4, 6, 256, false),
+            (96, Some((608, 1536)))
+        );
+        // Right: heading 100 plus 4 = 104; movement heading 104 - 512 wraps to 1640.
+        assert_eq!(
+            strafe_motion(Strafe::Right, 100, 4, 6, 256, false),
+            (104, Some((1640, 1536)))
+        );
+        // The turn wraps, and suppression or a zero distance only removes the movement.
+        assert_eq!(
+            strafe_motion(Strafe::Left, 2, 8, 6, 256, true),
+            (2042, None)
+        );
+        assert_eq!(
+            strafe_motion(Strafe::Right, 2047, 4, 0, 256, false),
+            (3, None)
+        );
     }
 }
