@@ -13911,3 +13911,30 @@ fn enable_and_disable_natives_toggle_their_script_control_bit() {
         16
     );
 }
+
+#[test]
+fn session_request_natives_raise_requests_for_the_host() {
+    use cyrus_game::script::HostRequests;
+    let mut world = run_native_world(&[
+        ("LoadWorld", &[7, 11, -3]),
+        ("WonGame", &[]),
+        ("PushPlayer", &[1]),
+        ("PopPlayer", &[1]),
+    ])
+    .unwrap();
+    assert_eq!(
+        world.globals_mut().take_host_requests(),
+        HostRequests {
+            load_world: Some([7, 11, -3]),
+            won_game: true,
+            push_player: true,
+            pop_player: true,
+        }
+    );
+    assert_eq!(
+        world.globals_mut().take_host_requests(),
+        HostRequests::default()
+    );
+    assert_eq!(run_native_calls(&[("IsWithinMap", &[1])]).unwrap(), 1);
+    assert!(run_native_calls(&[("LoadWorld", &[1])]).is_err());
+}

@@ -157,8 +157,33 @@ pub struct GameplayGlobals {
     /// Script potion counters (`SetPotion`, `GetPotion`); shipped scripts use indices 0 to 3.
     /// The engine table starts zero-filled.
     pub(super) potions: [i32; 4],
+    /// Requests for the host's main loop; transient, so saves neither store nor restore them.
+    host_requests: HostRequests,
+}
+
+/// Session-level requests raised by scripts. The original stores each in an engine global that
+/// its main loop consumes; the host takes them with [`GameplayGlobals::take_host_requests`].
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostRequests {
+    /// `LoadWorld` arguments, unchanged: the three integers the original retains.
+    pub load_world: Option<[i32; 3]>,
+    /// `WonGame` was called.
+    pub won_game: bool,
+    /// `PushPlayer` was called.
+    pub push_player: bool,
+    /// `PopPlayer` was called.
+    pub pop_player: bool,
 }
 impl GameplayGlobals {
+    /// Takes and clears the pending script requests.
+    pub fn take_host_requests(&mut self) -> HostRequests {
+        std::mem::take(&mut self.host_requests)
+    }
+
+    pub(super) fn request_mut(&mut self) -> &mut HostRequests {
+        &mut self.host_requests
+    }
+
     /// Fresh executable-session values from preservation's player initialization
     /// rules. World replacement and save restoration must retain their own values.
     pub(super) fn new_session() -> Self {
@@ -866,6 +891,7 @@ impl GameplayGlobals {
             highlighted_choice: saved.highlighted_choice,
             candle_show_requested: saved.candle_show_requested,
             potions: saved.potions,
+            host_requests: HostRequests::default(),
         })
     }
 }

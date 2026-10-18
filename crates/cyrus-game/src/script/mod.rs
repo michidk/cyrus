@@ -2,7 +2,7 @@
 mod activation;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
-    GameplayGlobals,
+    GameplayGlobals, HostRequests,
 };
 mod animation;
 mod attributes;

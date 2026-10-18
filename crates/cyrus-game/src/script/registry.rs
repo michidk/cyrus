@@ -2775,6 +2775,33 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.local.position != spatial.previous_local_position,
             )));
         }
+        // IsWithinMap is constant true. LoadWorld, WonGame, PushPlayer and PopPlayer only raise
+        // a request that the original's main loop consumes; the host takes it from the globals.
+        if function.eq_ignore_ascii_case("IsWithinMap") {
+            return Ok(CallResult::Complete(1));
+        }
+        if function.eq_ignore_ascii_case("LoadWorld") {
+            let [world, a, b] = arguments else {
+                anyhow::bail!("LoadWorld requires three arguments")
+            };
+            self.globals.request_mut().load_world =
+                Some([world.integer()?, a.integer()?, b.integer()?]);
+            return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("WonGame") {
+            self.globals.request_mut().won_game = true;
+            return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("PushPlayer") || function.eq_ignore_ascii_case("PopPlayer")
+        {
+            let request = self.globals.request_mut();
+            if function.eq_ignore_ascii_case("PushPlayer") {
+                request.push_player = true;
+            } else {
+                request.pop_player = true;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         // IsMaster and IsSlave test attributes 25 and 26; TrueFunction ignores both arguments.
         if function.eq_ignore_ascii_case("IsMaster") || function.eq_ignore_ascii_case("IsSlave") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
