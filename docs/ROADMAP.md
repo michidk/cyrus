@@ -367,6 +367,13 @@ refusal bits. Headless contracts cover body short-circuiting, retained status,
 unchanged position and rope/lifecycle results before geometry access. Automatic
 spacing and complete physical movement comparison remain open.
 
+**Verified:** the explicit forward-amount query requests receiver animation,
+marks the shared forward-called state and advances the actual startup counter
+without translating. Headless contracts cover live combat/action/surface choices,
+animation waits, deep-water ramping, suppression, signed scaling and geometry
+admission before counter saturation. Automatic spacing and synchronous movement
+integration remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

@@ -188,7 +188,7 @@ impl ScriptWorld {
             if actor.animation.is_some()
                 && let Some(group) = turn.group
             {
-                self.request_slope_group(id, group, false, inputs.ticks, sounds)?;
+                self.request_ordinary_group(id, group, false, inputs.ticks, sounds)?;
             }
             self.spatial
                 .as_mut()
@@ -213,7 +213,7 @@ impl ScriptWorld {
         })
     }
 
-    fn request_slope_group(
+    pub(super) fn request_ordinary_group(
         &mut self,
         id: ScriptActorId,
         group: u16,
@@ -228,7 +228,7 @@ impl ScriptWorld {
         let animation = actor
             .animation
             .as_mut()
-            .context("ordinary slope animation unavailable")?;
+            .context("ordinary animation unavailable")?;
         let mut emit = |sound| {
             sounds(
                 id,
@@ -252,7 +252,7 @@ impl ScriptWorld {
             Ok(frame) => animation.frame = frame.or(animation.frame),
             Err(error) => {
                 let message = format!(
-                    "world {} instance {index} slope animation: {error:#}",
+                    "world {} instance {index} ordinary animation: {error:#}",
                     self.world
                 );
                 actor.animation_failure = Some(message.clone());
@@ -302,7 +302,7 @@ impl ScriptWorld {
             _ => None,
         }) else {
             if !matches!(animation.playback.current_group(), Some(75..=78)) {
-                self.request_slope_group(
+                self.request_ordinary_group(
                     id,
                     if torch { 77 } else { 75 },
                     false,
@@ -339,7 +339,7 @@ impl ScriptWorld {
             torch,
         );
         if let Some(group) = turn.group {
-            self.request_slope_group(id, group, false, inputs.ticks, sounds)?;
+            self.request_ordinary_group(id, group, false, inputs.ticks, sounds)?;
         }
         self.spatial
             .as_mut()
@@ -347,7 +347,7 @@ impl ScriptWorld {
             .actor_mut(index)?
             .local
             .angles[1] = turn.heading;
-        self.request_slope_group(id, slide.group, first, inputs.ticks, sounds)?;
+        self.request_ordinary_group(id, slide.group, first, inputs.ticks, sounds)?;
         self.actors[index]
             .control
             .as_mut()

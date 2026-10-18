@@ -16093,3 +16093,280 @@ fn ordinary_facing_arrival_registers_cell_movement_until_the_deferred_pass() {
         );
     }
 }
+
+fn forward_amount_world(
+    initial_group: u16,
+    suppressed: bool,
+    animation_system: bool,
+    edit_actor: impl FnOnce(&mut serde_json::Value),
+) -> ScriptWorld {
+    use cyrus_game::script::{
+        ScriptInputs, ScriptStage, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    scripts.updates.animation_system = animation_system;
+    for (attribute, value) in [(8, 8), (11, 1), (16, 6), (17, 10)] {
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert(format!("attr_{attribute}"), value);
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "actors":[{"script_name":"LOGIC","animation_groups":([0,18,30,92,106,142].into_iter().map(|group| {
+                let mut commands = vec![];
+                if suppressed {commands.push(serde_json::json!({"opcode":5}));}
+                commands.push(serde_json::json!({"opcode":0,"frame_reference":group}));
+                commands.push(serde_json::json!({"opcode":2,"value":0}));
+                serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":commands})
+            }).collect::<Vec<_>>())}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world.bind_animation(id, &data, initial_group).unwrap();
+    world
+        .advance(
+            id,
+            ScriptStage::Animation,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    // This logical fixture retains playback but has no rendered placement frame.
+    saved["actors"][0]["animation"]["frame"] = serde_json::Value::Null;
+    saved["actors"][0]["animation"]["playback"]["default"] = 0.into();
+    edit_actor(&mut saved["actors"][0]);
+    ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap()
+}
+
+fn forward_amount_inputs() -> cyrus_game::script::OrdinaryForwardAmountInputs {
+    cyrus_game::script::OrdinaryForwardAmountInputs {
+        selected_player: None,
+        holding_weapon: false,
+        frame_scale: 256,
+        ticks: 1,
+        duration: 1,
+        elapsed: 0,
+    }
+}
+
+#[test]
+fn forward_amount_advances_shared_counter_and_called_state_without_translation() {
+    let mut world = forward_amount_world(18, false, true, |_| {});
+    let id = world.id(0).unwrap();
+    let before = world.spatial(id).unwrap().local;
+    for (amount, counter) in [(512, 0x10), (682, 0x20), (1024, 0x30), (2048, 0x30)] {
+        assert_eq!(
+            world
+                .ordinary_forward_amount(id, forward_amount_inputs(), None, &mut |_, _| Ok(()))
+                .unwrap(),
+            amount
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.movement_flags, counter);
+        assert_eq!(control.motion_direction, 2);
+        assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
+        assert_eq!(world.spatial(id).unwrap().local.position, before.position);
+        assert_eq!(world.spatial(id).unwrap().local.angles, before.angles);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn forward_amount_uses_live_combat_action_surface_torch_and_suppression() {
+    use cyrus_game::script::CombatControlState;
+    for (weapon, combat, action, surface, torch, group, amount) in [
+        (false, false, -1, 0, 0, 18, 2048),
+        (false, false, -1, 0, 1, 30, 2048),
+        (false, false, 4, 2, 1, 142, 1024),
+        (true, false, -1, 0, 0, 92, 2560),
+        (false, true, 4, 0, 0, 106, 1536),
+        (true, true, 4, 4, 0, 106, 768),
+        (false, true, -1, 2, 0, 92, 1280),
+    ] {
+        for (suppressed, scale, multiplier) in
+            [(false, 128, 1), (true, 128, 2), (false, u32::MAX, -1)]
+        {
+            let mut world = forward_amount_world(group, suppressed, true, |actor| {
+                let control = &mut actor["control"];
+                control["movement_flags"] = 0xF3.into();
+                control["torch_burning"] = torch.into();
+                let state = CombatControlState {
+                    flags: if combat { 4 } else { 0 },
+                    action,
+                    ..Default::default()
+                };
+                control["combat"] = serde_json::to_value(state).unwrap();
+            });
+            let id = world.id(0).unwrap();
+            world.set_actor_surface(id, surface).unwrap();
+            let mut inputs = forward_amount_inputs();
+            inputs.holding_weapon = weapon;
+            inputs.frame_scale = scale;
+            let expected = if multiplier == -1 {
+                -amount / 256
+            } else {
+                amount / 2 * multiplier
+            };
+            assert_eq!(
+                world
+                    .ordinary_forward_amount(id, inputs, None, &mut |_, _| Ok(()))
+                    .unwrap(),
+                expected,
+                "weapon {weapon} combat {combat} action {action} surface {surface} suppressed {suppressed} scale {scale}"
+            );
+            assert_eq!(
+                world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
+                group
+            );
+            assert_eq!(
+                world.actors()[0].control_state().unwrap().movement_flags,
+                0xF3
+            );
+        }
+    }
+}
+
+#[test]
+fn forward_amount_guards_precede_animation_and_geometry_and_keep_shared_state() {
+    for (field, value) in [
+        ("rope_attached", serde_json::json!(true)),
+        ("sliding_state", 1.into()),
+        ("falling_state", 1.into()),
+        ("queued_motion", 1.into()),
+        ("living_state", 15.into()),
+    ] {
+        let mut world = forward_amount_world(18, false, true, |actor| {
+            actor["animation"] = serde_json::Value::Null;
+            let control = &mut actor["control"];
+            control[field] = value;
+            control["movement_flags"] = 0xC3.into();
+            control["motion_direction"] = 99.into();
+        });
+        let id = world.id(0).unwrap();
+        assert_eq!(
+            world
+                .ordinary_forward_amount(id, forward_amount_inputs(), None, &mut |_, _| panic!(
+                    "refused query reached sounds"
+                ))
+                .unwrap(),
+            0
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.movement_flags, 0xC3);
+        assert_eq!(control.motion_direction, 99);
+        assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
+    }
+}
+
+#[test]
+fn forward_amount_waits_for_current_animation_without_advancing_counter() {
+    for (enabled, duration, elapsed, expected, counter, called) in [
+        (true, 4, 0, 1, 0xC3, 0),
+        (true, 1, 0, 0, 0xC3, 0),
+        (true, 4, 3, 0, 0xC3, 0),
+        (false, 4, 0, 512, 0xD3, 4),
+    ] {
+        let mut world = forward_amount_world(30, false, enabled, |actor| {
+            actor["control"]["movement_flags"] = 0xC3.into();
+            actor["control"]["motion_direction"] = 99.into();
+        });
+        let id = world.id(0).unwrap();
+        let mut inputs = forward_amount_inputs();
+        inputs.duration = duration;
+        inputs.elapsed = elapsed;
+        assert_eq!(
+            world
+                .ordinary_forward_amount(id, inputs, None, &mut |_, _| Ok(()))
+                .unwrap(),
+            expected
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.motion_direction, 2);
+        assert_eq!(control.movement_flags, counter);
+        let state = world.inspect(0, 1);
+        assert_eq!(state["globals"]["locomotion_called"], called);
+        assert_eq!(state["actors"][0]["animation"]["current_group"], 30);
+        assert_eq!(state["actors"][0]["animation"]["pending_group"], 18);
+    }
+}
+
+#[test]
+fn forward_amount_requires_live_step_geometry_only_below_saturated_counter() {
+    for counter in [0xC3, 0xD3, 0xE3, 0xF3] {
+        let mut world = forward_amount_world(18, false, true, |actor| {
+            actor["attributes"][1] = 2.into();
+            actor["control"]["movement_flags"] = counter.into();
+            actor["control"]["motion_direction"] = 99.into();
+        });
+        let id = world.id(0).unwrap();
+        let result =
+            world.ordinary_forward_amount(id, forward_amount_inputs(), None, &mut |_, _| Ok(()));
+        if counter == 0xF3 {
+            assert_eq!(result.unwrap(), 2048);
+        } else {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(
+                error.contains("world 7 instance 0 forward amount"),
+                "{error}"
+            );
+            assert!(error.contains("step geometry unavailable"), "{error}");
+            assert_eq!(
+                world.actors()[0].control_state().unwrap().motion_direction,
+                99
+            );
+            assert_eq!(
+                world.actors()[0].control_state().unwrap().movement_flags,
+                counter
+            );
+            assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
+        }
+    }
+}
+
+#[test]
+fn forward_amount_halves_deep_water_before_the_shared_startup_ramp() {
+    let mut world = forward_amount_world(142, false, true, |_| {});
+    let id = world.id(0).unwrap();
+    world.set_actor_surface(id, 2).unwrap();
+    for expected in [256, 341, 512, 1024] {
+        assert_eq!(
+            world
+                .ordinary_forward_amount(id, forward_amount_inputs(), None, &mut |_, _| Ok(()))
+                .unwrap(),
+            expected
+        );
+    }
+}

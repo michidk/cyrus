@@ -28,6 +28,7 @@ pub(super) mod recovery;
 mod separate;
 mod sight;
 pub(super) mod slope;
+pub(super) mod spacing;
 pub(super) mod transition;
 pub(super) mod vertical;
 mod weapon;
