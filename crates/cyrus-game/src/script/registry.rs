@@ -2759,6 +2759,22 @@ impl Host for GameHost<'_, '_, '_, '_> {
             attributes[3] = health.clamp(0, 255) as u8;
             return Ok(CallResult::Complete(0));
         }
+        // PlayerMoved compares the selected player's position with its snapshot taken at the
+        // ordinary actor-update boundary.
+        if function.eq_ignore_ascii_case("PlayerMoved") {
+            anyhow::ensure!(arguments.is_empty(), "PlayerMoved requires no arguments");
+            let player = self
+                .selected_player()
+                .context("PlayerMoved: selected player unavailable")?;
+            let spatial = self
+                .spatial
+                .as_deref()
+                .context("spatial state not prepared")?
+                .actor(player.index)?;
+            return Ok(CallResult::Complete(i32::from(
+                spatial.local.position != spatial.previous_local_position,
+            )));
+        }
         // IsMaster and IsSlave test attributes 25 and 26; TrueFunction ignores both arguments.
         if function.eq_ignore_ascii_case("IsMaster") || function.eq_ignore_ascii_case("IsSlave") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");

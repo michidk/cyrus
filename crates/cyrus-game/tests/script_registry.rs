@@ -13833,3 +13833,57 @@ fn ai_setters_master_slave_and_true_function_follow_their_bytes() {
     );
     assert_eq!(run_native_calls(&[("TrueFunction", &[0, 5])]).unwrap(), 1);
 }
+
+#[test]
+fn player_moved_needs_a_selected_player_with_spatial_state() {
+    let error = run_native_world_with(&[("PlayerMoved", &[])], true)
+        .map(|_| ())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("selected player unavailable"));
+    let mut scripts = cache();
+    scripts.definition.functions.push(Function {
+        name: "PlayerMoved".into(),
+        param_count: 0,
+        kind: CallKind::Function,
+    });
+    let mut actor = scripts.actors.remove("LOGIC").unwrap();
+    actor.instances = 1;
+    actor.instance_variables.truncate(1);
+    actor.namespace = Some("cyrus".into());
+    actor.program.steps.get_mut(&0).unwrap().operation = Operation::Assign {
+        destination: Place::Local { index: 0 },
+        formula: Formula {
+            first: Value::Call {
+                call: Box::new(Call {
+                    function_id: 1,
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    function: "PlayerMoved".into(),
+                    arguments: vec![],
+                }),
+            },
+            rest: vec![],
+        },
+    };
+    scripts.actors.insert("CYRUS".into(), actor);
+    scripts.instances.clear();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.id(0).unwrap();
+    let error = world
+        .advance(
+            player,
+            cyrus_game::script::ScriptStage::OrdinaryMain,
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(3),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("spatial state unavailable"));
+}
