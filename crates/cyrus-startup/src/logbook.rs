@@ -167,17 +167,17 @@ fn draw(
     }
 }
 
-/// The style table entry for an entry's prefix digit; a missing, non-digit or undecoded prefix
-/// uses the normal style 7, which is what the original does for a missing prefix.
+/// The style table entry for an entry's prefix digit, `None` for style 5, which the original never
+/// initialises and therefore draws as nothing while the entry keeps its place in the layout. A
+/// missing prefix uses style 7.
 fn reader_style(
     artwork: &LogbookArtwork,
     prefix: Option<u8>,
-) -> cyrus_assets::logbook::ReaderStyle {
-    prefix
-        .filter(u8::is_ascii_digit)
-        .and_then(|digit| artwork.styles[usize::from(digit - b'0')])
-        .or(artwork.styles[7])
-        .expect("validated style 7")
+) -> Option<cyrus_assets::logbook::ReaderStyle> {
+    match prefix.filter(u8::is_ascii_digit) {
+        Some(digit) => artwork.styles[usize::from(digit - b'0')],
+        None => artwork.styles[7],
+    }
 }
 
 /// The original draws glyphs with a constant colour factor `A / 255` (255 is full strength).
@@ -203,7 +203,9 @@ fn paint(
         if !(0..480).contains(&y) {
             continue;
         }
-        let style = reader_style(artwork, line.style);
+        let Some(style) = reader_style(artwork, line.style) else {
+            continue;
+        };
         let font = &artwork.fonts[style.font];
         // Like the original's draw loop: a glyph that would pass x = 640 starts a new line at the
         // entry's x, one font line lower; drawing stops at y = 480.
@@ -325,6 +327,14 @@ mod tests {
         assert!(artwork.styles[1].is_some_and(|s| s.page_palette));
         assert!(artwork.styles[7].is_some_and(|s| !s.page_palette));
         assert_eq!(styles[5], None);
+        assert!(
+            reader_style(&artwork, Some(b'5')).is_none(),
+            "style 5 draws nothing"
+        );
+        assert!(
+            reader_style(&artwork, None).is_some(),
+            "a missing prefix draws as style 7"
+        );
         assert_eq!(styles[6], Some((2, 255, 180)));
         assert_eq!(styles[7].map(|s| (s.0, s.2)), Some((0, 200)));
         assert_eq!(styles[8].map(|s| (s.0, s.2)), Some((3, 50)));

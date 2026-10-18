@@ -299,7 +299,7 @@ Escape or installed D closes it. Simulation and gameplay input remain suspended
 until the exit keys are released. Existing audio continues. Native `state.logbook`
 reports readiness, scrolling and errors. The reader uses installed paper, small
 fonts and rotating scroll geometry. Styles 0 to 4 and 6 to 9 draw as in the
-original; style 5, manual editing,
+original, and style 5 draws nothing as the original does. Manual editing,
 new-game/death resets and save-game integration remain unsupported. Scroll lighting
 and pixel-exact filtering still need comparison.
 F8, Tab and F7 toggle

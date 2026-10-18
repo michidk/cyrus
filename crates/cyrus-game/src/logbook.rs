@@ -271,12 +271,9 @@ fn drive(
             let book = Logbook::new(&lines)?;
             for line in book.lines() {
                 anyhow::ensure!(line.text.is_ascii(), "logbook: unsupported non-ASCII text");
-                // Style 5 has no initialised entry in the original; the rest follow the reader style table.
+                // Style 5 is accepted: the original has no entry for it and draws nothing.
                 anyhow::ensure!(
-                    matches!(
-                        line.style,
-                        None | Some(b'0'..=b'4' | b'6'..=b'9')
-                    ),
+                    matches!(line.style, None | Some(b'0'..=b'9')),
                     "logbook: unsupported font style {:?}",
                     line.style
                 );
