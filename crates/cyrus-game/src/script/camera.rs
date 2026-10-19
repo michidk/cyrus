@@ -410,6 +410,18 @@ pub struct PanInputs {
     pub bound_angles: [u16; 3],
 }
 
+/// Inputs of one location-camera invocation: the bound actor, its camera attributes
+/// (`attr_camera_move`, then the six target/offset bytes), its pose and the task arguments.
+#[derive(Clone, Copy, Debug)]
+pub struct LocationInputs {
+    pub actor: super::ScriptActorId,
+    pub camera_move: u8,
+    pub attributes: [u8; 6],
+    pub arguments: [i32; 3],
+    pub bound_position: [i32; 3],
+    pub bound_angles: [u16; 3],
+}
+
 /// Start values a pan keeps between invocations (the original keeps them in shared scratch).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PanState {
@@ -595,6 +607,69 @@ impl CameraState {
         record.flags &= !0x20;
         self.show_player(pan.requested_slot, counter, elapsed)?;
         Ok(false)
+    }
+
+    /// One invocation of the location camera (`showObjLoc`, and `showCyrusLoc` for the selected
+    /// player). The first invocation begins a scripted camera bound to the actor, converts the
+    /// actor's camera attributes to offsets, writes the request its `attr_camera_move` selects
+    /// from the task arguments, then runs one camera update through `update` and stays active.
+    /// Later invocations run the release step with duration zero and complete.
+    ///
+    /// All edits happen on a copy that replaces the state only after `update` succeeds, so a
+    /// failed update leaves the camera and the private counter untouched.
+    /// The original also sets two marks whose readers are not ported; they are not modelled.
+    pub fn show_location(
+        &mut self,
+        inputs: &LocationInputs,
+        counter: &mut u32,
+        elapsed: i32,
+        update: &mut dyn FnMut(&mut CameraState) -> Result<()>,
+    ) -> Result<bool> {
+        let mut next = self.clone();
+        let next_counter = counter.wrapping_add(1);
+        if next_counter != 1 || elapsed != 0 {
+            next.release_scripted(0, elapsed);
+            *self = next;
+            *counter = next_counter;
+            return Ok(false);
+        }
+        next.records[next.selected.index()].flags |= 0x01;
+        next.begin_scripted()?;
+        let slot = next.selected.index();
+        next.records[slot].actor = inputs.actor;
+        next.set_location_offsets(inputs.attributes);
+        let offset = rotate(next.records[slot].position_offset, inputs.bound_angles)?;
+        let vector = rotate(
+            inputs.arguments.map(|argument| argument.wrapping_shl(8)),
+            inputs.bound_angles,
+        )?;
+        let record = &mut next.records[slot];
+        record.flags |= 0x01;
+        match inputs.camera_move {
+            0 => {
+                record.request = add(add(vector, offset), inputs.bound_position);
+                record.flags = (record.flags | 0x08) & !0x04;
+            }
+            1 => {
+                record.request = add(vector, offset);
+                record.flags = (record.flags | 0x04) & !0x08;
+            }
+            2 => {
+                record.distance = super::rounded_distance(vector)? >> 8;
+                let angles = direction_angles(vector)?;
+                record.angle_offset = std::array::from_fn(|axis| {
+                    angles[axis].wrapping_add(i32::from(inputs.bound_angles[axis])) & 2047
+                });
+                record.flags &= !0x0c;
+            }
+            _ => {}
+        }
+        update(&mut next)?;
+        let slot = next.selected.index();
+        next.records[slot].flags &= !0x01;
+        *self = next;
+        *counter = next_counter;
+        Ok(true)
     }
 
     /// Location-camera setup: the actor's six attribute bytes (target x/y/z, then camera
