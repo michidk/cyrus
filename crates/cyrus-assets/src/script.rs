@@ -122,6 +122,18 @@ pub struct CameraSettings {
     pub max_vel: i32,
     /// Slots three through eight: combat, hang, rope, rope above, rope below, debug.
     pub modes: [CameraModeSettings; 6],
+    pub limits: CameraLimits,
+}
+
+/// Shared `[camera]` values used by every pose update, unscaled as stored in SYSTEM.INI.
+/// Setup shifts `obstacle_size` left eight bits and negates `max_y_vel` before storage.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CameraLimits {
+    pub obstacle_size: i32,
+    pub max_acc: i32,
+    pub max_y_vel: i32,
+    pub camera_size: i32,
+    pub camera_scape_size: i32,
 }
 
 /// Slot-specific overrides applied after record zero is copied.
@@ -174,6 +186,13 @@ impl CameraSettings {
             distance: need(camera.camera_distance, "camera_distance")?,
             min_distance: need(camera.camera_min_distance, "camera_min_distance")?,
             max_vel: need(camera.max_vel, "max_vel")?,
+            limits: CameraLimits {
+                obstacle_size: need(camera.obstacle_size, "obstacle_size")?,
+                max_acc: need(camera.max_acc, "max_acc")?,
+                max_y_vel: need(camera.max_y_vel, "max_y_vel")?,
+                camera_size: need(camera.camera_size, "camera_size")?,
+                camera_scape_size: need(camera.camera_scape_size, "camera_scape_size")?,
+            },
             modes: [
                 mode!(
                     "camera_combat",
@@ -426,7 +445,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 21,
+            self.version == 22,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

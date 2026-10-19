@@ -189,7 +189,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 21,
+        version: 22,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),

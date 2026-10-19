@@ -129,7 +129,7 @@ impl CameraSlot {
     }
 }
 
-pub use cyrus_assets::script::{CameraModeSettings, CameraSettings};
+pub use cyrus_assets::script::{CameraLimits, CameraModeSettings, CameraSettings};
 
 impl CameraRecord {
     fn cleared(actor: super::ScriptActorId) -> Self {
@@ -445,6 +445,25 @@ pub struct MovementLimits {
     pub vertical: i32,
     pub frame_scale: i32,
     pub selected_player_special_state: bool,
+}
+
+impl MovementLimits {
+    /// The limiter's shared parameters from the installed values: the budget increment is
+    /// `max_acc` and the vertical parameter is `max_y_vel` negated, both unscaled.
+    /// `frame_scale` is the current signed frame scale; the special-state flag comes
+    /// from the selected player.
+    pub fn from_installed(
+        limits: &CameraLimits,
+        frame_scale: i32,
+        selected_player_special_state: bool,
+    ) -> Self {
+        Self {
+            budget_increment: limits.max_acc,
+            vertical: limits.max_y_vel.wrapping_neg(),
+            frame_scale,
+            selected_player_special_state,
+        }
+    }
 }
 
 impl CameraState {

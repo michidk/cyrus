@@ -296,6 +296,7 @@ fn initial_records_follow_the_documented_installed_setting_mapping() {
             mode(50, 0),
             mode(60, 7),
         ],
+        limits: Default::default(),
     };
     let records = CameraState::initial_records(&settings, player).unwrap();
     assert_eq!(records[0].target_offset, [7, 8, 9]);
@@ -353,4 +354,23 @@ fn player_slot_requests_follow_the_selector_priority() {
             "{inputs:?}"
         );
     }
+}
+
+#[test]
+fn movement_limits_negate_the_installed_vertical_velocity() {
+    let limits = CameraLimits {
+        max_acc: 5000,
+        max_y_vel: 4000,
+        ..Default::default()
+    };
+    let movement = MovementLimits::from_installed(&limits, 256, true);
+    assert_eq!(
+        (
+            movement.budget_increment,
+            movement.vertical,
+            movement.frame_scale,
+            movement.selected_player_special_state
+        ),
+        (5000, -4000, 256, true)
+    );
 }
