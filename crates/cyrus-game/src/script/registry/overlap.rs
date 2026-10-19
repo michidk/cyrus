@@ -182,8 +182,9 @@ impl ScriptWorld {
     /// Apply one admitted ordinary actor-pair overlap in the original pass order.
     /// Touch tells the caller to end that pass. Positions and contact state are
     /// authoritative logical state; retained model presentations are not refreshed.
-    /// State-specific support bypass, airborne collision and selected-player
-    /// overrides require their owning stages and remain unsupported here.
+    /// Grounded support states skip their current support actor after tiny contact.
+    /// Airborne collision and selected-player overrides require separate owners.
+    /// Admission follows preservation's [grounded overlap rules](https://github.com/michidk/redguard-preservation/commit/5c686bc).
     pub fn resolve_ordinary_actor_overlap(
         &mut self,
         id: ScriptActorId,
@@ -204,8 +205,8 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary overlap control unavailable")?;
         ensure!(
-            matches!(control.living_state, 0 | 15) && control.falling_state == 0,
-            "world {} instance {}: state-specific overlap response unsupported",
+            control.falling_state == 0,
+            "world {} instance {}: airborne overlap response unsupported",
             self.world,
             id.index
         );
@@ -213,7 +214,19 @@ impl ScriptWorld {
             self.actors[other.index].control.is_some(),
             "ordinary other overlap control unavailable"
         );
+        let support_bypass = (27..=32).contains(&control.living_state)
+            && self.actors[id.index].model.support.actor == Some(other);
         let separation = self.query_ordinary_actor_overlap(id, other, data)?;
+        if separation > 0 && self.actors[other.index].attributes[1] & 8 != 0 {
+            self.actors[other.index]
+                .control
+                .as_mut()
+                .expect("validated overlap control")
+                .body_response_flags |= 4;
+        }
+        if separation >= 3 && support_bypass {
+            return Ok(OrdinaryOverlapMotion::NoContact);
+        }
         let response = ordinary_overlap_motion(
             self.actors[id.index].attributes[6],
             Some(self.actors[other.index].attributes[6]),
@@ -268,17 +281,13 @@ impl ScriptWorld {
             .context("ordinary overlap spatial state unavailable")?;
         spatial.actor_mut(id.index)?.local.position = actor_position;
         spatial.actor_mut(other.index)?.local.position = other_position;
-        if self.actors[other.index].attributes[1] & 8 != 0
-            || response == OrdinaryOverlapMotion::Touch
-        {
+        if response == OrdinaryOverlapMotion::Touch {
             let other_control = self.actors[other.index]
                 .control
                 .as_mut()
                 .expect("validated overlap control");
             other_control.body_response_flags |= 4;
-            if response == OrdinaryOverlapMotion::Touch {
-                other_control.overlap_contact_identifier = actor_identifier;
-            }
+            other_control.overlap_contact_identifier = actor_identifier;
         }
         if matches!(
             response,
@@ -330,8 +339,8 @@ impl ScriptWorld {
             .as_ref()
             .context("ordinary static overlap control unavailable")?;
         ensure!(
-            matches!(control.living_state, 0 | 15) && control.falling_state == 0,
-            "world {} instance {}: state-specific static overlap response unsupported",
+            control.falling_state == 0,
+            "world {} instance {}: airborne static overlap response unsupported",
             self.world,
             id.index
         );

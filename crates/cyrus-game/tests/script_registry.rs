@@ -6196,6 +6196,16 @@ fn overlap_response_fixture_with(
     offset: i32,
     attr_1: u8,
 ) -> (ScriptWorld, cyrus_assets::animation::Animations) {
+    overlap_response_fixture_state(weight, other_weight, offset, attr_1, 0)
+}
+
+fn overlap_response_fixture_state(
+    weight: u8,
+    other_weight: u8,
+    offset: i32,
+    attr_1: u8,
+    living_state: u8,
+) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = cache();
     scripts.definition.attributes = (0..27).map(|index| format!("attr_{index}")).collect();
     scripts.definition.functions.push(Function {
@@ -6240,7 +6250,33 @@ fn overlap_response_fixture_with(
     other.attributes.insert("attr_6".into(), other_weight);
     scripts.actors.insert("OTHER".into(), other);
     scripts.instances[1].actor = "OTHER".into();
-    let (mut world, data, _) = static_model_fixture(scripts);
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, _) = static_model_fixture(scripts.clone());
+    if living_state != 0 {
+        let collision = Default::default();
+        let sources = cyrus_game::script::WorldSnapshotSources {
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        saved["actors"][0]["control"]["living_state"] = living_state.into();
+        world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            cyrus_game::script::WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+    }
     let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
     world.refresh_model_presentations(&data, &ids).unwrap();
     world
@@ -22467,4 +22503,132 @@ fn ordinary_combat_root_retains_prefix_writes_before_spacing_service_failure() {
         1
     );
     assert_eq!(random.state(), 42);
+}
+
+#[test]
+fn grounded_overlap_admits_every_living_state_and_preserves_support_contact_order() {
+    use cyrus_game::script::{ModelSupportOwners, OrdinaryOverlapMotion as Motion};
+    for state in 0..=255 {
+        for (offset, supported) in [(74, false), (74, true), (83, true)] {
+            let (mut world, data) = overlap_response_fixture_state(128, 128, offset, 8, state);
+            let id = world.id(0).unwrap();
+            let other = world.id(1).unwrap();
+            if supported {
+                world
+                    .set_model_support(
+                        id,
+                        ModelSupportOwners {
+                            actor: Some(other),
+                            static_placement: None,
+                        },
+                    )
+                    .unwrap();
+            }
+            let positions = [
+                world.spatial(id).unwrap().local.position,
+                world.spatial(other).unwrap().local.position,
+            ];
+            let bypass = supported && (27..=32).contains(&state) && offset == 74;
+            assert_eq!(
+                world
+                    .resolve_ordinary_actor_overlap(id, other, &data)
+                    .unwrap(),
+                if offset == 83 {
+                    Motion::Touch
+                } else if bypass {
+                    Motion::NoContact
+                } else {
+                    Motion::Separate {
+                        actor: 1535,
+                        other: 1535,
+                    }
+                },
+                "state {state}, offset {offset}, support {supported}"
+            );
+            let own = world.actors()[0].control_state().unwrap();
+            let other_control = world.actors()[1].control_state().unwrap();
+            assert_eq!(own.body_response_flags, if bypass { 0 } else { 4 });
+            assert_eq!(other_control.body_response_flags, 4);
+            if bypass || offset == 83 {
+                assert_eq!(
+                    [
+                        world.spatial(id).unwrap().local.position,
+                        world.spatial(other).unwrap().local.position
+                    ],
+                    positions
+                );
+            }
+            if offset == 83 {
+                assert_eq!(
+                    (
+                        own.overlap_contact_identifier,
+                        other_control.overlap_contact_identifier
+                    ),
+                    (37, 36)
+                );
+            } else if bypass {
+                assert_eq!(
+                    (
+                        own.overlap_contact_identifier,
+                        other_control.overlap_contact_identifier
+                    ),
+                    (0, 0)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn grounded_static_overlap_uses_weighted_response_for_every_living_state() {
+    use cyrus_collision::candidates::{ActorCandidate, CandidateOwner, ModelInstance};
+    use cyrus_game::script::{OrdinaryOverlapMotion as Motion, ScriptInputs, ScriptStage};
+    for state in 0..=255 {
+        let (mut world, data) = overlap_response_fixture_state(128, 0, 512, 8, state);
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Body(Thread::Main),
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        let scene = static_overlap_scene(world.world);
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [522, 30], &[id])
+            .unwrap();
+        let candidate = ActorCandidate {
+            owner: CandidateOwner::Static(1),
+            model: Some(ModelInstance::StaticPlacement(1)),
+            collision_flags: 1,
+        };
+        assert_eq!(
+            world
+                .resolve_ordinary_static_overlap(id, &scene, &data, &prepared, &candidate)
+                .unwrap(),
+            Motion::Separate {
+                actor: 511,
+                other: 0
+            },
+            "state {state}"
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [133121, 5120, 7680]
+        );
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .body_response_flags,
+            4
+        );
+    }
 }

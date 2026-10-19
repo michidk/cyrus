@@ -616,15 +616,20 @@ The forward-arc helper matches 2,060 original cases; an inclusive boundary fails
 The ordinary combat root now composes cleanup, coordination, spacing, counters,
 defence selection and chance taunts with separate BIOS-clock and world-loop owners.
 Two root contracts preserve entry branches and earlier writes; 256 controlled
-original cases establish service order. Both installed START pirates pass decision
-admission and reach update 26 in the bound headless diagnostic, then stop at
-unsupported state-specific overlap response. Diagnostic audio hosts remain controlled;
-full START/native/browser combat acceptance remains open.
+original cases establish service order. Grounded actor/static overlap now admits all living states and retains the
+support-actor exception after tiny contact, following the
+[published overlap rules](https://github.com/michidk/redguard-preservation/commit/5c686bc852191ff6609416fa66671fd6d5afae79).
+Contracts cover all 256 living states, weighted responses and support-contact order.
+The audio host prepares all authored nonzero taunt labels before synchronous
+traversal, bounding pending preparation independently of catalogue size.
+An installed START diagnostic completes 1,916 ordinary traversals without actor
+failures using the production taunt/ambient adapters, explicit view and false reset
+input. This does not establish the duel, original pacing or native/browser combat
+acceptance.
 
 Next, in dependency order:
 
-1. Complete the state-specific overlap response reached by both START pirates in
-   automatic traversal. Compare installed allocation assignments and complete live
+1. Compare installed allocation assignments and complete live
    combat before claiming automatic actor pacing or full START acceptance.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,

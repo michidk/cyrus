@@ -653,7 +653,7 @@ impl OrdinaryContext<'_, '_> {
         self.actors.report_runtime_error(error);
     }
 
-    /// Nonzero begin-combat labels needed before synchronous ordinary calls run.
+    /// Nonzero authored taunt labels needed before synchronous ordinary calls run.
     /// Preparation must not consume random draws or mutate actor/cache ownership.
     pub fn combat_taunt_labels(&self) -> Vec<[u8; 4]> {
         self.actors
@@ -663,7 +663,7 @@ impl OrdinaryContext<'_, '_> {
             .flat_map(|world| world.actors.iter())
             .filter(|actor| actor.placement().is_some())
             .flat_map(|actor| &actor.combat_taunts)
-            .filter(|taunt| taunt.trigger == 0 && taunt.label != [0; 4])
+            .filter(|taunt| taunt.label != [0; 4])
             .map(|taunt| taunt.label)
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()

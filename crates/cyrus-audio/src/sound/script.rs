@@ -1251,7 +1251,11 @@ fn scoped_ordinary(
             }
             match read(label) {
                 Ok(Poll::Ready(clip)) => taunts.push(clip),
-                Ok(Poll::Pending) => ready = false,
+                Ok(Poll::Pending) => {
+                    // Bound in-flight preparation independently of catalogue size.
+                    ready = false;
+                    break;
+                }
                 Err(error) => {
                     context.report_error(format!("ordinary combat taunt {label:?}: {error:#}"));
                     return;
