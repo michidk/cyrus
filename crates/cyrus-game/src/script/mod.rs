@@ -6,6 +6,43 @@
 //! composes supported stages using a [`ScriptView`] and the shared clock/random
 //! owners; required unavailable services fail with world/actor context.
 
+//!
+//! # Ownership and integration
+//!
+//! [`ScriptWorld`] owns generation-checked logical actor identities, authored actor
+//! order, mutable script/control state, spatial relationships, native task slots
+//! and walk-node reservations. [`ScriptActors`] owns the active session and world.
+//! [`ScriptBinding`] and [`ScriptScene`] connect logical state to presentation.
+//! [`ScriptStatus`] and retained [`PlaybackDiagnostics`] expose preparation and runtime
+//! failures separately.
+//!
+//! [`ScriptInputs`] lends timing, selected-player state, geometry and host services
+//! to explicit operations. [`run_ordinary`] composes the supported automatic stages
+//! using [`ScriptView`] and shared session owners. Calling an explicit operation
+//! does not establish automatic scheduler admission or complete gameplay support.
+//! Missing required ownership and unsupported branches return contextual errors.
+//!
+//! The implementation is grouped by responsibility:
+//!
+//! - [Registry](registry.rs), [ordinary scheduler](registry/ordinary.rs)
+//!   and [tasks](tasks.rs) own actor dispatch and native continuation.
+//! - [Spatial state](spatial.rs), [navigation](navigation.rs)
+//!   and [point movement](registry/point.rs) own poses, reservations and
+//!   supported route/direct walking phases. Collision and movement services live
+//!   in the corresponding registry modules.
+//! - [Combat state](combat.rs), [decision rules](decision.rs),
+//!   [defence](registry/defence.rs), [attacks](registry/attack.rs),
+//!   [spacing](registry/spacing.rs) and [perception](registry/sight.rs)
+//!   separate retained state, deterministic rules and live receiver services.
+//! - [Dialogue](dialogue.rs), [HUD](hud.rs),
+//!   [inventory](inventory.rs) and [journal](journal.rs) own
+//!   shared gameplay records; hosts supply playback, drawing and storage.
+//! - [Persistence](registry/persistence.rs) validates snapshot candidates
+//!   before replacing accepted logical state. Component snapshots do not enable
+//!   player-facing save/load or original SAV import.
+//! - [Camera state](camera.rs) prepares logical poses; the session host
+//!   must supply live bindings, geometry and publication.
+
 mod activation;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
