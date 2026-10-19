@@ -126,3 +126,8 @@ this owner. The construction follows preservation's
 `ActorAnimation::clear_pending_request` cancels only the queued group, preserving
 current sequence, frame, finite loop count and sound ownership. Combat callers
 use it after the forced request and loop-count assignment.
+
+`ActorAnimation::current_command_cursor` reads the signed command index used by
+combat timing without advancing playback. It remains distinct from the wrapping
+frame-wait progress byte and displayed model frame, and follows snapshot and
+checkpoint restoration through the existing playback owner.

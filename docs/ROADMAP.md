@@ -215,6 +215,13 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+**Verified:** the animation owner exposes the signed command cursor required by
+combat timing. All 80 controlled original forward-playback observations match
+the live owner through countdowns, delays, breakpoints and backward jumps. The
+public contract covers snapshot/checkpoint restore and group replacement; an
+off-by-one cursor fails. The final gate passes 1,177 Rust executions with zero
+install skips. This does not enable live counter-attack selection.
+
 **Verified:** the live combat coordinator shares attacker eligibility with spacing,
 uses original list/cyclic candidate order and retains the branch selected at
 entry. State assignment resets the consecutive close-distance counter; addressed

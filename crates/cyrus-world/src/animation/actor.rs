@@ -243,6 +243,18 @@ impl ActorAnimation {
         ))
     }
 
+    /// Signed sixteen-bit command index used by combat timing, widened to an integer.
+    /// This differs from the wrapping progress byte and displayed model frame.
+    /// An actor without a selected group has no cursor. Reading never advances playback.
+    /// Follows preservation's engine/animation.md command-cursor contract.
+    pub fn current_command_cursor(&self) -> anyhow::Result<Option<i32>> {
+        self.check_failure()?;
+        Ok(self
+            .current
+            .as_ref()
+            .map(|(_, sequence)| sequence.command_cursor()))
+    }
+
     /// The caller-selected playback default, distinct from the model's attribute default.
     pub fn default_group(&self) -> u16 {
         self.default

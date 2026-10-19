@@ -333,3 +333,42 @@ fn old_animation_snapshot_cannot_invent_frame_progress() {
     saved.as_object_mut().unwrap().remove("frame_progress");
     assert!(serde_json::from_value::<ActorAnimationSnapshot>(saved).is_err());
 }
+
+#[test]
+fn combat_command_cursor_tracks_commands_through_delay_loop_and_restore() {
+    let data = asset(json!([
+        {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":900}, {"opcode":5},
+            {"opcode":12,"value":2}, {"opcode":0,"frame_reference":901},
+            {"opcode":2,"value":0}]},
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":5},{"opcode":0,"frame_reference":700},{"opcode":1}]}
+    ]));
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    assert_eq!(actor.current_command_cursor().unwrap(), None);
+    for (ticks, cursor, progress) in [
+        (0, 0, 0),
+        (1, 0, 0),
+        (0, 0, 0),
+        (1, 3, 1),
+        (1, 3, 1),
+        (1, 0, 2),
+        (1, 3, 3),
+        (1, 3, 3),
+        (1, 0, 4),
+    ] {
+        actor.advance(ticks).unwrap();
+        assert_eq!(actor.current_command_cursor().unwrap(), Some(cursor));
+        assert_eq!(actor.frame_wait_state().unwrap(), (0, -1, progress));
+        let checkpoint = actor.checkpoint().unwrap();
+        let mut restored = resume(&data, &actor);
+        assert_eq!(restored.current_command_cursor().unwrap(), Some(cursor));
+        restored.advance(3).unwrap();
+        restored.restore_checkpoint(&checkpoint).unwrap();
+        assert_eq!(restored.current_command_cursor().unwrap(), Some(cursor));
+        assert_eq!(actor.current_command_cursor().unwrap(), Some(cursor));
+    }
+    assert_eq!(actor.force_request(7, 0, 0).unwrap(), Some(700));
+    assert_eq!(actor.current_command_cursor().unwrap(), Some(1));
+    assert_eq!(actor.frame_wait_state().unwrap(), (7, -1, 0));
+}

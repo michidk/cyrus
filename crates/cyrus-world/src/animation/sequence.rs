@@ -289,6 +289,10 @@ impl FrameSequence {
         self.ended
     }
 
+    pub(super) fn command_cursor(&self) -> i32 {
+        i32::from(self.command as u16 as i16)
+    }
+
     /// Advances using the original whole nominal-tick input; returns a file frame reference.
     /// `None` keeps the prior pose during a delay or after EndAnimation; `is_finished`
     /// distinguishes those states. Unknown events fail without being skipped.
