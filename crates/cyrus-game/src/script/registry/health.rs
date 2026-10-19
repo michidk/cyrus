@@ -42,6 +42,10 @@ impl SelectedHealthState {
     pub fn displayed(&self) -> i32 {
         self.displayed
     }
+    pub(in crate::script) fn set_hit_inhibited(&mut self, inhibited: bool) {
+        self.hit_inhibited = inhibited;
+    }
+
     /// Separate hit-rejection flag; this is not combat-decision inhibition.
     pub fn hit_inhibited(&self) -> bool {
         self.hit_inhibited

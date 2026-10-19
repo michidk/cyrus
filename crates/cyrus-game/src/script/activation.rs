@@ -129,7 +129,7 @@ pub enum ActivationOverlay {
 /// Retained preliminary controller state, reset by standalone player construction.
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]
 struct ControllerPrelude {
-    override_active: bool,
+    override_group: i32,
     pending_action: bool,
     conditional_ticks: u32,
     action_ticks: u32,
@@ -208,10 +208,20 @@ impl GameplayGlobals {
         }
     }
 
-    pub(super) fn player_death_override(&self) -> Option<bool> {
+    /// Retained animation group from preservation's selected-player death override.
+    /// Zero means no override; None means controller initialization is unknown.
+    pub fn player_death_override_group(&self) -> Option<i32> {
         self.controller_prelude
             .as_ref()
-            .map(|state| state.override_active)
+            .map(|state| state.override_group)
+    }
+
+    /// Shared selected-health hit inhibition, independent of the animation override group.
+    /// None means the selected-health owner has not been initialized.
+    pub fn player_hit_inhibited(&self) -> Option<bool> {
+        self.selected_health
+            .as_ref()
+            .map(|state| state.hit_inhibited())
     }
 
     /// Run only at the explicit standalone-player initializer, never merely on a
@@ -220,10 +230,13 @@ impl GameplayGlobals {
         self.walk_route.target_exclusion = false;
         self.lineup_result = Some(0);
         self.selected_combat_inhibition = Some(0);
+        if let Some(health) = self.selected_health.as_mut() {
+            health.set_hit_inhibited(false);
+        }
         self.selected_action_inhibition = Some(0);
         self.sound_maintenance.initialize_player();
         self.controller_prelude = Some(ControllerPrelude {
-            override_active: false,
+            override_group: 0,
             pending_action: false,
             conditional_ticks: 0,
             action_ticks: 0,
@@ -272,8 +285,10 @@ impl GameplayGlobals {
         state.action_ticks = state.action_ticks.saturating_sub(nominal_ticks);
         state.secondary_ticks = state.secondary_ticks.saturating_sub(nominal_ticks);
         anyhow::ensure!(
-            !state.override_active,
-            "player controller: override execution unavailable"
+            !self
+                .player_hit_inhibited()
+                .context("player controller: hit inhibition unavailable")?,
+            "player controller: death execution unavailable"
         );
         Ok(())
     }
@@ -588,6 +603,12 @@ mod idle_tests {
     fn controller_globals() -> GameplayGlobals {
         let mut globals = GameplayGlobals::new_session();
         globals.prepare_dialogue(&controller_settings()).unwrap();
+        globals.selected_health = Some(
+            serde_json::from_value(serde_json::json!({
+                "maximum":100,"displayed":0,"hit_inhibited":false
+            }))
+            .unwrap(),
+        );
         globals
     }
 
@@ -644,6 +665,75 @@ mod idle_tests {
                 assert_eq!(globals.selected_ledge_result, result);
             }
         }
+    }
+
+    #[test]
+    fn death_override_group_survives_replacement_and_explicit_initialization_clears_it() {
+        assert_eq!(
+            GameplayGlobals::default().player_death_override_group(),
+            None
+        );
+        for group in [0, 13, 74, 121, 255] {
+            let mut globals = controller_globals();
+            globals.initialize_player_controller();
+            globals.controller_prelude.as_mut().unwrap().override_group = group;
+            let saved = serde_json::to_vec(&globals.snapshot()).unwrap();
+            let mut restored = GameplayGlobals::from_snapshot(
+                serde_json::from_slice(&saved).unwrap(),
+                &controller_settings(),
+                &[],
+                &(0..16).map(|channel| (channel, channel)).collect(),
+            )
+            .unwrap();
+            assert_eq!(restored.player_death_override_group(), Some(group));
+            restored.initialize_player_controller();
+            assert_eq!(restored.player_death_override_group(), Some(0));
+        }
+    }
+
+    #[test]
+    fn death_inhibition_and_animation_group_remain_independent_through_replacement() {
+        assert_eq!(GameplayGlobals::default().player_hit_inhibited(), None);
+        for group in [0, 13, 74, 121] {
+            for inhibited in [false, true] {
+                let mut globals = controller_globals();
+                globals.initialize_player_controller();
+                globals.controller_prelude.as_mut().unwrap().override_group = group;
+                globals
+                    .selected_health
+                    .as_mut()
+                    .unwrap()
+                    .set_hit_inhibited(inhibited);
+                let saved = serde_json::to_vec(&globals.snapshot()).unwrap();
+                let mut restored = GameplayGlobals::from_snapshot(
+                    serde_json::from_slice(&saved).unwrap(),
+                    &controller_settings(),
+                    &[],
+                    &(0..16).map(|channel| (channel, channel)).collect(),
+                )
+                .unwrap();
+                assert_eq!(restored.player_hit_inhibited(), Some(inhibited));
+                assert_eq!(restored.player_death_override_group(), Some(group));
+                assert_eq!(
+                    restored.prepare_player_controller(0, 0, 0, 0).is_err(),
+                    inhibited
+                );
+                restored.initialize_player_controller();
+                assert_eq!(restored.player_hit_inhibited(), Some(false));
+                assert_eq!(restored.player_death_override_group(), Some(0));
+            }
+        }
+    }
+
+    #[test]
+    fn boolean_only_death_override_snapshot_cannot_invent_a_group() {
+        let mut globals = controller_globals();
+        globals.initialize_player_controller();
+        let mut saved = serde_json::to_value(globals.snapshot()).unwrap();
+        let controller = saved["controller_prelude"].as_object_mut().unwrap();
+        controller.remove("override_group");
+        controller.insert("override_active".into(), serde_json::json!(true));
+        assert!(serde_json::from_value::<super::GameplayGlobalsSnapshot>(saved).is_err());
     }
 
     #[test]
@@ -725,13 +815,18 @@ mod idle_tests {
     }
 
     #[test]
-    fn pending_action_precedes_unconditional_timers_and_override_precedes_idle() {
+    fn pending_action_precedes_unconditional_timers_and_death_admission_precedes_idle() {
         let mut globals = controller_globals();
         globals.initialize_player_controller();
         globals.advance_player_idle_clock(13);
+        globals
+            .selected_health
+            .as_mut()
+            .unwrap()
+            .set_hit_inhibited(true);
         let state = globals.controller_prelude.as_mut().unwrap();
         state.pending_action = true;
-        state.override_active = true;
+        state.override_group = 74;
         state.conditional_ticks = 9;
         state.action_ticks = 9;
         state.secondary_ticks = 9;
@@ -756,7 +851,7 @@ mod idle_tests {
                 .prepare_player_controller(4, 0, 0, 1)
                 .unwrap_err()
                 .to_string()
-                .contains("override")
+                .contains("death execution")
         );
         let state = globals.controller_prelude.as_ref().unwrap();
         assert_eq!(

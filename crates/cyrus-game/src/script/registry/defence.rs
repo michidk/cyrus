@@ -140,8 +140,8 @@ impl ScriptWorld {
             }
             if self
                 .globals
-                .player_death_override()
-                .context("defence selection: player health-death/controller override unavailable")?
+                .player_hit_inhibited()
+                .context("defence selection: selected-player hit inhibition unavailable")?
             {
                 return Ok(());
             }

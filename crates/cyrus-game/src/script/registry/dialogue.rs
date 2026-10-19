@@ -139,8 +139,8 @@ impl ScriptWorld {
             if selected == Some(id)
                 && self
                     .globals
-                    .player_death_override()
-                    .context("selected-player death override unavailable")?
+                    .player_hit_inhibited()
+                    .context("selected-player hit inhibition unavailable")?
                 || control.death_selector == 8
                 || actor.combat_taunts.is_empty()
             {

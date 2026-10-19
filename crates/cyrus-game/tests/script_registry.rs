@@ -18888,7 +18888,7 @@ fn coordination_message_keeps_prior_resets_when_selected_death_state_is_unknown(
             .unwrap_err()
     );
     assert!(
-        error.contains("selected-player override unavailable"),
+        error.contains("selected-player hit inhibition unavailable"),
         "{error}"
     );
     let state = |index: usize| {
@@ -22323,7 +22323,7 @@ fn ordinary_defence_weapon_gate_precedes_unknown_shared_override() {
         if armed {
             assert!(
                 format!("{:#}", result.unwrap_err())
-                    .contains("player health-death/controller override unavailable")
+                    .contains("selected-player hit inhibition unavailable")
             );
         } else {
             result.unwrap();

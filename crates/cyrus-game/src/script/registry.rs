@@ -1255,8 +1255,8 @@ impl ScriptWorld {
         if selected_player == Some(id)
             && self
                 .globals
-                .player_death_override()
-                .context("IsDead: selected-player override unavailable")?
+                .player_hit_inhibited()
+                .context("IsDead: selected-player hit inhibition unavailable")?
         {
             return Ok(true);
         }
