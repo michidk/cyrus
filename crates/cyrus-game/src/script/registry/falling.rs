@@ -254,7 +254,7 @@ impl ScriptWorld {
                 .control
                 .as_mut()
                 .expect("validated health control")
-                .death_response = 8;
+                .death_selector = 8;
         }
         Ok(true)
     }

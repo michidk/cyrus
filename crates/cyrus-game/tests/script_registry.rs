@@ -8319,13 +8319,9 @@ fn ordinary_animated_fall_entry_commits_before_forced_request() {
             .unwrap()
     );
     assert_eq!(world.actors()[id.index].attributes()[3], 0);
-    assert_eq!(
-        world.actors()[id.index]
-            .control_state()
-            .unwrap()
-            .death_response,
-        8
-    );
+    let control = world.actors()[id.index].control_state().unwrap();
+    assert_eq!(control.death_selector, 8);
+    assert_eq!(control.death_response, 0);
     assert_eq!(world.animation_frame(id).unwrap(), Some(134));
 }
 

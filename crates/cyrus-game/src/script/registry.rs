@@ -176,7 +176,7 @@ pub struct ActorControlState {
     pub script_control: u8,
     /// Lifecycle selector: combat entry uses six; IsDead tests eight.
     pub death_selector: u8,
-    /// Allocator-zero death notification byte, set to eight by health death.
+    /// Companion AI mode byte, independent of the lifecycle death notification.
     pub death_response: u8,
     /// Motion/weapon state, independent of the combat/death lifecycle selector.
     pub living_state: u8,
