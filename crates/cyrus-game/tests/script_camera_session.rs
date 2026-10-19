@@ -397,6 +397,195 @@ fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
     }
 }
 
+/// The standalone roles plus a map actor whose only camera call is `name(arguments)`.
+fn scripts_calling(name: &str, arguments: &[i32]) -> Scripts {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    data.definition.functions[1] = Function {
+        name: name.into(),
+        param_count: arguments.len() as u8,
+        kind: CallKind::Task,
+    };
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: name.into(),
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: arguments
+                .iter()
+                .map(|&value| Value::Integer { value })
+                .collect(),
+        },
+    };
+    data
+}
+
+fn prepared(data: &mut Scripts) -> ScriptWorld {
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(data, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.id(PLAYER).unwrap();
+    world
+        .initialize_player_spatial(player, [4000, 9000, -6000], [100, 1900, 20])
+        .unwrap();
+    world
+}
+
+#[test]
+fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
+    let mut data = scripts_calling("showObjPan", &[3, -2, 5, 3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.selected.index(), 2, "the pan edits record two");
+    assert_eq!(camera.records[2].actor, world.id(0).unwrap());
+    assert_eq!(camera.scripted_active, 1);
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the pan must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let position = world.spatial(world.id(0).unwrap()).unwrap().local.position;
+    let camera = world.camera().unwrap();
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+    let record = &camera.records[2];
+    // The default attr_camera_move is zero: an absolute request of the vector plus the bound position.
+    assert_eq!(
+        record.request,
+        [768 + position[0], -512 + position[1], 1280 + position[2]]
+    );
+    assert_eq!(
+        record.flags & 0x09,
+        0x08,
+        "absolute request, no retained flag"
+    );
+    assert_eq!(flags(&world, 0), 0x40, "showObjPan marked the old record");
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.flags(), [9], "the script continues after the pan");
+}
+
+#[test]
+fn world_snapshot_resumes_an_object_pan_mid_flight() {
+    let mut data = scripts_calling("showObjPan", &[3, -2, 5, 4]);
+    let mut live = prepared(&mut data);
+    let animations = Animations {
+        version: 2,
+        world: data.world,
+        sections: BTreeMap::new(),
+        models: BTreeMap::new(),
+        unsupported: BTreeMap::new(),
+        metadata: json!({"script_content_id": data.content_id, "actors": []}),
+    };
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &data,
+        animations: &animations,
+        collision: &collision,
+    };
+    let hud = ScriptHud::default();
+    run(&mut live, 0, BODY, Some(&hud)).unwrap();
+    run(&mut live, 0, TASKS, Some(&hud)).unwrap();
+    let bytes = serde_json::to_vec(&live.snapshot(&sources).unwrap()).unwrap();
+    let mut restored = ScriptWorld::from_snapshot(
+        serde_json::from_slice(&bytes).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 19,
+            globals: GameplayGlobals::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(restored.actors()[0].runtime().unwrap().active_tasks(), 1);
+    for world in [&mut live, &mut restored] {
+        let mut passes = 0;
+        while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+            passes += 1;
+            assert!(passes <= 8, "the pan must finish within its duration");
+            run(world, 0, TASKS, Some(&hud)).unwrap();
+        }
+    }
+    let (live, restored) = (live.camera().unwrap(), restored.camera().unwrap());
+    assert_eq!(live.scripted_nesting, 0);
+    assert_eq!(restored.scripted_nesting, 0);
+    assert_eq!(restored.records[2].request, live.records[2].request);
+    assert_eq!(restored.records[2].flags, live.records[2].flags);
+}
+
+#[test]
+fn look_task_fixes_the_orientation_until_it_finishes() {
+    let mut data = scripts_calling("lookObj", &[3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.records[2].flags & 0x02, 0x02, "orientation fixed");
+    assert_eq!(camera.records[2].actor, world.id(0).unwrap());
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the look must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.records[2].flags & 0x02, 0, "orientation released");
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+}
+
+#[test]
+fn show_cyrus_pan_targets_the_player_and_does_nothing_while_it_holds_a_weapon() {
+    let mut data = scripts_calling("showCyrusPan", &[3, -2, 5, 3]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(
+        world.camera().unwrap().records[2].actor,
+        world.id(PLAYER).unwrap()
+    );
+    assert_eq!(world.camera().unwrap().scripted_active, 1);
+
+    let mut data = scripts_calling("showCyrusPan", &[3, -2, 5, 3]);
+    data.actors
+        .get_mut("CYRUS")
+        .unwrap()
+        .attributes
+        .insert("attr_110".into(), 1);
+    let mut world = prepared(&mut data);
+    let before = world.camera().unwrap().clone();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let camera = world.camera().unwrap();
+    assert_eq!(
+        camera.scripted_active, 0,
+        "the guard returns before any camera work"
+    );
+    assert_eq!(camera.selected, before.selected);
+    assert_eq!(camera.records[0].flags, before.records[0].flags);
+}
+
+#[test]
+fn show_obj_rot_completes_without_touching_the_camera() {
+    let mut data = scripts_calling("showObjRot", &[1, 2, 3, 4]);
+    let mut world = prepared(&mut data);
+    let hud = ScriptHud::default();
+    let before = world.camera().unwrap().clone();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    assert_eq!(world.camera().unwrap().selected, before.selected);
+    assert_eq!(world.camera().unwrap().scripted_active, 0);
+}
+
 mod live {
     use super::*;
     use cyrus_game::script::ScriptActorId;

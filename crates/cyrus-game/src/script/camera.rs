@@ -521,6 +521,60 @@ pub struct WorldLocationInputs {
     pub bound_angles: [u16; 3],
 }
 
+/// The camera natives that run an object pan, with the four task arguments (x, y, z, duration).
+/// The `Cyrus` natives pan towards the selected player and return zero, without touching the
+/// camera, while that player holds a weapon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ObjectPanCommand {
+    Object,
+    ObjectLoc,
+    ObjectWorld,
+    Cyrus,
+    CyrusLoc,
+}
+
+impl ObjectPanCommand {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Object => "showObjPan",
+            Self::ObjectLoc => "showObjPanLoc",
+            Self::ObjectWorld => "showObjWorldPan",
+            Self::Cyrus => "showCyrusPan",
+            Self::CyrusLoc => "showCyrusPanLoc",
+        }
+    }
+
+    pub fn named(function: &str) -> Option<Self> {
+        [
+            Self::Object,
+            Self::ObjectLoc,
+            Self::ObjectWorld,
+            Self::Cyrus,
+            Self::CyrusLoc,
+        ]
+        .into_iter()
+        .find(|command| command.name().eq_ignore_ascii_case(function))
+    }
+
+    /// The axes the pan's vector is given in once any world-position conversion is done.
+    pub fn frame(self) -> VectorFrame {
+        match self {
+            Self::ObjectLoc | Self::CyrusLoc => VectorFrame::Actor,
+            Self::Object | Self::ObjectWorld | Self::Cyrus => VectorFrame::World,
+        }
+    }
+
+    /// Whether the arguments are a world position (`showObjWorldPan`).
+    pub fn world(self) -> bool {
+        self == Self::ObjectWorld
+    }
+
+    /// Whether the target is the selected player, guarded by the holding-weapon test.
+    pub fn targets_selected_player(self) -> bool {
+        matches!(self, Self::Cyrus | Self::CyrusLoc)
+    }
+}
+
 /// Inputs of one `lookObj` invocation: the actor's camera attributes and pose, as for a
 /// location camera, and the task's duration.
 #[derive(Clone, Copy, Debug)]

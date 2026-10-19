@@ -2407,9 +2407,13 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             };
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
-        let camera_inputs = (function.eq_ignore_ascii_case("showPlayer")
-            || function.eq_ignore_ascii_case("showPlayerPan"))
-        .then(|| (self.camera_slot_request(), self.camera_bound_pose()));
+        let camera_inputs = super::tasks::NativeTasks::camera_function(function).then(|| {
+            (
+                self.camera_slot_request(),
+                self.camera_bound_pose(),
+                self.camera_targets(),
+            )
+        });
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         // RTXpAnim animates the selected player, who emits animation sounds under their own identity.
@@ -2528,16 +2532,20 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     }),
                 called: &mut self.registry.globals.locomotion_called,
             }),
-            camera: camera_inputs.and_then(|(requested_slot, bound_pose)| {
-                self.registry
-                    .camera
-                    .as_mut()
-                    .map(|state| super::tasks::CameraCall {
-                        state,
-                        requested_slot,
-                        bound_pose,
-                    })
-            }),
+            camera: camera_inputs.and_then(
+                |(requested_slot, bound_pose, (receiver, selected_player))| {
+                    self.registry
+                        .camera
+                        .as_mut()
+                        .map(|state| super::tasks::CameraCall {
+                            state,
+                            requested_slot,
+                            bound_pose,
+                            receiver,
+                            selected_player,
+                        })
+                },
+            ),
         };
         match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
@@ -2680,6 +2688,96 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             control.living_state,
             control.rope_attached,
         ))
+    }
+
+    /// The receiver and the selected player as camera native targets.
+    fn camera_targets(
+        &self,
+    ) -> (
+        Result<super::tasks::CameraTarget, String>,
+        Result<super::tasks::CameraTarget, String>,
+    ) {
+        let receiver = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        (
+            self.camera_target(Some(receiver), false),
+            self.camera_target(self.selected_player(), true),
+        )
+    }
+
+    /// An actor as a camera native's target: its camera attributes, local pose (an attached
+    /// actor's effective-pose binding is not established) and the camera-wide reads the natives
+    /// share. Fallible reads surface only when used.
+    fn camera_target(
+        &self,
+        actor: Option<ScriptActorId>,
+        guard_weapon: bool,
+    ) -> Result<super::tasks::CameraTarget, String> {
+        let describe = |error: anyhow::Error| format!("{error:#}");
+        let id = actor.ok_or("camera target actor unavailable")?;
+        let index = self.registry.resolve(id).map_err(describe)?;
+        let attributes = &self.registry.actors[index].attributes;
+        if attributes.len() < 0x35 {
+            return Err(format!(
+                "camera target actor {index}: attribute block too short"
+            ));
+        }
+        let pose = (|| {
+            anyhow::ensure!(
+                attributes[26] == 0,
+                "camera target attached actor unsupported"
+            );
+            let pose = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("camera target spatial state not prepared")?
+                .actor(index)?
+                .local;
+            Ok((pose.position, pose.angles))
+        })()
+        .map_err(describe);
+        let selected_bound_position = (|| {
+            let camera = self
+                .registry
+                .camera
+                .as_ref()
+                .context("camera session unavailable")?;
+            let bound = self
+                .registry
+                .resolve(camera.records[camera.selected.index()].actor)?;
+            anyhow::ensure!(
+                self.registry.actors[bound].attributes[26] == 0,
+                "camera selected record's attached actor unsupported"
+            );
+            Ok(self
+                .registry
+                .spatial
+                .as_ref()
+                .context("camera spatial state not prepared")?
+                .actor(bound)?
+                .local
+                .position)
+        })()
+        .map_err(describe);
+        let holding_weapon = if guard_weapon {
+            self.actor_weapon_predicates(index, "IsHoldingWeapon")
+                .map(|(holding, _, _)| holding)
+                .map_err(describe)
+        } else {
+            Ok(false)
+        };
+        Ok(super::tasks::CameraTarget {
+            actor: id,
+            camera_move: attributes[0x2d],
+            pan_type: attributes[0x2e],
+            offsets: std::array::from_fn(|byte| attributes[0x2f + byte]),
+            pose,
+            selected_bound_position,
+            holding_weapon,
+        })
     }
 
     /// The selected player's local pose, to which the camera binds. An attached player's
@@ -4332,7 +4430,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
         let camera_inputs = self.registry.actors[self.index]
             .tasks
             .is_camera_task(token)
-            .then(|| (self.camera_slot_request(), self.camera_bound_pose()));
+            .then(|| {
+                (
+                    self.camera_slot_request(),
+                    self.camera_bound_pose(),
+                    self.camera_targets(),
+                )
+            });
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         // RTXpAnim animates the selected player, who emits animation sounds under their own identity.
@@ -4457,16 +4561,20 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         }),
                     called: &mut self.registry.globals.locomotion_called,
                 }),
-                camera: camera_inputs.and_then(|(requested_slot, bound_pose)| {
-                    self.registry
-                        .camera
-                        .as_mut()
-                        .map(|state| super::tasks::CameraCall {
-                            state,
-                            requested_slot,
-                            bound_pose,
-                        })
-                }),
+                camera: camera_inputs.and_then(
+                    |(requested_slot, bound_pose, (receiver, selected_player))| {
+                        self.registry
+                            .camera
+                            .as_mut()
+                            .map(|state| super::tasks::CameraCall {
+                                state,
+                                requested_slot,
+                                bound_pose,
+                                receiver,
+                                selected_player,
+                            })
+                    },
+                ),
             },
         )
     }

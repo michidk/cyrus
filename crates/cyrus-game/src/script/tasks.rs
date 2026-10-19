@@ -94,6 +94,26 @@ pub(super) struct CameraCall<'a> {
     pub state: &'a mut super::camera::CameraState,
     pub requested_slot: Result<Option<u8>, String>,
     pub bound_pose: Result<([i32; 3], [u16; 3]), String>,
+    /// The receiver as a camera target, for the `showObj*` and `lookObj` natives.
+    pub receiver: Result<CameraTarget, String>,
+    /// The selected player as a camera target, for the `showCyrus*` natives.
+    pub selected_player: Result<CameraTarget, String>,
+}
+
+/// An actor a camera native points the camera at: its camera attributes and pose, plus the
+/// camera-wide reads the same natives need. Fallible reads surface only when used.
+pub(super) struct CameraTarget {
+    pub actor: super::ScriptActorId,
+    pub camera_move: u8,
+    pub pan_type: u8,
+    /// Target x/y/z, then camera x/y/z attribute bytes.
+    pub offsets: [u8; 6],
+    /// The actor's local pose, to which the record binds.
+    pub pose: Result<([i32; 3], [u16; 3]), String>,
+    /// The position the currently selected record is bound to (`showObjWorldPan`).
+    pub selected_bound_position: Result<[i32; 3], String>,
+    /// The holding-weapon test that guards the `showCyrus*` natives.
+    pub holding_weapon: Result<bool, String>,
 }
 
 /// Receiver state sampled for locomotion tasks. Fallible reads surface only when used.
@@ -324,6 +344,19 @@ enum Task {
         counter: u32,
         pan: Option<super::camera::PanState>,
     },
+    /// `showObjPan`, `showObjPanLoc`, `showObjWorldPan` and the `showCyrus` pans.
+    ObjectPan {
+        command: super::camera::ObjectPanCommand,
+        counter: u32,
+        pan: Option<super::camera::ObjectPanState>,
+    },
+    /// `lookObj`.
+    Look {
+        counter: u32,
+        look: Option<super::camera::LookState>,
+    },
+    /// `showObjRot`, which the original leaves empty.
+    ObjectRotation,
     Movement {
         target: i32,
     },
@@ -559,6 +592,90 @@ impl Task {
                     counter,
                     elapsed,
                 )?
+            }
+            Self::ObjectPan {
+                command,
+                counter,
+                pan,
+            } => {
+                let name = command.name();
+                let [x, y, z, duration] = arguments else {
+                    anyhow::bail!("{name} requires four arguments");
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context(format!("{name} requires elapsed input"))?;
+                let camera = services
+                    .camera
+                    .context(format!("{name} camera session unavailable"))?;
+                let target = if command.targets_selected_player() {
+                    camera.selected_player
+                } else {
+                    camera.receiver
+                }
+                .map_err(anyhow::Error::msg)?;
+                if command.targets_selected_player()
+                    && target.holding_weapon.map_err(anyhow::Error::msg)?
+                {
+                    return Ok(true);
+                }
+                let (bound_position, bound_angles) = target.pose.map_err(anyhow::Error::msg)?;
+                let inputs = super::camera::ObjectPanInputs {
+                    location: super::camera::LocationInputs {
+                        frame: command.frame(),
+                        actor: target.actor,
+                        camera_move: target.camera_move,
+                        attributes: target.offsets,
+                        arguments: [x.integer()?, y.integer()?, z.integer()?],
+                        bound_position,
+                        bound_angles,
+                    },
+                    pan_type: target.pan_type,
+                    duration: duration.integer()?,
+                };
+                !if command.world() {
+                    camera.state.show_object_world_pan(
+                        &inputs,
+                        target.selected_bound_position.map_err(anyhow::Error::msg)?,
+                        pan,
+                        counter,
+                        elapsed,
+                    )?
+                } else {
+                    camera
+                        .state
+                        .show_object_pan(&inputs, pan, counter, elapsed)?
+                }
+            }
+            Self::Look { counter, look } => {
+                let [duration] = arguments else {
+                    anyhow::bail!("lookObj requires one argument");
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("lookObj requires elapsed input")?;
+                let camera = services
+                    .camera
+                    .context("lookObj camera session unavailable")?;
+                let target = camera.receiver.map_err(anyhow::Error::msg)?;
+                let (bound_position, bound_angles) = target.pose.map_err(anyhow::Error::msg)?;
+                !camera.state.look_at(
+                    &super::camera::LookInputs {
+                        actor: target.actor,
+                        camera_move: target.camera_move,
+                        attributes: target.offsets,
+                        bound_position,
+                        bound_angles,
+                        duration: duration.integer()?,
+                    },
+                    look,
+                    counter,
+                    elapsed,
+                )?
+            }
+            Self::ObjectRotation => {
+                anyhow::ensure!(arguments.len() == 4, "showObjRot requires four arguments");
+                true
             }
             Self::Dialogue => {
                 anyhow::ensure!(arguments.is_empty(), "WaitOnDialog requires no arguments");
@@ -1524,6 +1641,22 @@ impl NativeTasks {
                 counter: 0,
                 pan: None,
             }
+        } else if let Some(command) = super::camera::ObjectPanCommand::named(function) {
+            anyhow::ensure!(kind == CallKind::Task, "{function} requires task encoding");
+            Task::ObjectPan {
+                command,
+                counter: 0,
+                pan: None,
+            }
+        } else if function.eq_ignore_ascii_case("lookObj") {
+            anyhow::ensure!(kind == CallKind::Task, "lookObj requires task encoding");
+            Task::Look {
+                counter: 0,
+                look: None,
+            }
+        } else if function.eq_ignore_ascii_case("showObjRot") {
+            anyhow::ensure!(kind == CallKind::Task, "showObjRot requires task encoding");
+            Task::ObjectRotation
         } else if function.eq_ignore_ascii_case("RotateByAxis") {
             Task::Rotation {
                 target: 0,
@@ -1624,12 +1757,26 @@ impl NativeTasks {
         }
         Ok(completed)
     }
-    /// Whether `token` is a `showPlayer` or `showPlayerPan` continuation, which needs the camera session.
+    /// Whether `token` is a camera continuation (`showPlayer`, `showPlayerPan`, an object pan or
+    /// `lookObj`), which needs the camera session.
     pub(super) fn is_camera_task(&self, token: u64) -> bool {
         matches!(
             self.tasks.get(&token),
-            Some(Task::ShowPlayer { .. } | Task::ShowPlayerPan { .. })
+            Some(
+                Task::ShowPlayer { .. }
+                    | Task::ShowPlayerPan { .. }
+                    | Task::ObjectPan { .. }
+                    | Task::Look { .. }
+            )
         )
+    }
+
+    /// Whether the native named `function` is a camera task that needs the camera session.
+    pub(super) fn camera_function(function: &str) -> bool {
+        function.eq_ignore_ascii_case("showPlayer")
+            || function.eq_ignore_ascii_case("showPlayerPan")
+            || function.eq_ignore_ascii_case("lookObj")
+            || super::camera::ObjectPanCommand::named(function).is_some()
     }
     pub(super) fn cancel(&mut self, token: u64) -> Result<()> {
         self.tasks
