@@ -192,6 +192,51 @@ fn console_app() -> bevy::prelude::App {
 }
 
 #[test]
+fn console_load_requests_a_world_like_the_load_world_native() {
+    use cyrus_console::{Source, submit};
+    use cyrus_game::player::placement::MarkerEntry;
+    use cyrus_world::lifecycle::{ReloadScene, SceneRequest};
+    let mut app = console_app();
+    let lines = submit(app.world_mut(), "load 7,11,2053", Source::Interactive).unwrap();
+    assert_eq!(lines, ["load: world 7, marker 11, angle 5"]);
+    assert_eq!(app.world().resource::<SceneRequest>().0, "7");
+    assert_eq!(
+        *app.world().resource::<MarkerEntry>(),
+        MarkerEntry {
+            marker: 11,
+            heading: 5
+        }
+    );
+    assert!(app.world().contains_resource::<ReloadScene>());
+    // The alias works and omitted marker and angle are zero.
+    submit(app.world_mut(), "l 3", Source::Interactive).unwrap();
+    assert_eq!(app.world().resource::<SceneRequest>().0, "3");
+    assert_eq!(
+        *app.world().resource::<MarkerEntry>(),
+        MarkerEntry {
+            marker: 0,
+            heading: 0
+        }
+    );
+    // Hexadecimal literals use the console's number rules; invalid requests change nothing.
+    submit(app.world_mut(), "load 0x0a", Source::Interactive).unwrap();
+    assert_eq!(app.world().resource::<SceneRequest>().0, "10");
+    for bad in [
+        "load",
+        "load 100",
+        "load 1,2,3,4",
+        "load 1,-1",
+        "load somesymbol",
+    ] {
+        assert!(
+            submit(app.world_mut(), bad, Source::Interactive).is_err(),
+            "{bad} must be rejected"
+        );
+        assert_eq!(app.world().resource::<SceneRequest>().0, "10", "{bad}");
+    }
+}
+
+#[test]
 fn every_preservation_cheat_has_a_registered_handler() {
     let mut app = console_app();
     for entry in cyrus_assets::cheats::empty().entries() {

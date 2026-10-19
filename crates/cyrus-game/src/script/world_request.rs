@@ -23,6 +23,16 @@ fn destination(request: [i32; 3]) -> anyhow::Result<(SceneRequest, MarkerEntry)>
     ))
 }
 
+/// Publishes a world load: the marker and heading first, then the request, plus a reload marker so a
+/// request naming the current world is prepared again. Shared by the script native and the console.
+pub(crate) fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyhow::Result<()> {
+    let (scene, marker) = destination(request)?;
+    commands.insert_resource(marker);
+    commands.insert_resource(scene);
+    commands.insert_resource(ReloadScene);
+    Ok(())
+}
+
 /// Runs after the ordinary script step so the request is acted on after the current script step.
 /// Only `load_world` is taken; the other session requests belong to their own consumers.
 pub(super) fn consume(mut actors: ResMut<ScriptActors>, mut commands: Commands) {
@@ -32,13 +42,8 @@ pub(super) fn consume(mut actors: ResMut<ScriptActors>, mut commands: Commands) 
     let Some(request) = world.globals_mut().request_mut().load_world.take() else {
         return;
     };
-    match destination(request) {
-        Ok((scene, marker)) => {
-            commands.insert_resource(marker);
-            commands.insert_resource(scene);
-            commands.insert_resource(ReloadScene);
-        }
-        Err(error) => actors.report_runtime_error(format!("{error:#}")),
+    if let Err(error) = request_world(&mut commands, request) {
+        actors.report_runtime_error(format!("{error:#}"));
     }
 }
 

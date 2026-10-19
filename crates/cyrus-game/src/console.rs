@@ -3,8 +3,8 @@ mod cheats;
 use crate::script::{ScriptActors, ScriptWorld};
 use anyhow::{Context, ensure};
 use bevy::prelude::{
-    App, Assets, DetectChangesMut, In, IntoScheduleConfigs, Plugin, PreUpdate, Real, Res, ResMut,
-    State, Time, World,
+    App, Assets, Commands, DetectChangesMut, In, IntoScheduleConfigs, Plugin, PreUpdate, Real, Res,
+    ResMut, State, Time, World,
 };
 use cyrus_assets::script::Scripts;
 use cyrus_console::{Command, Console, ConsoleApp, ConsoleInput, Invocation, Source};
@@ -30,6 +30,15 @@ impl Plugin for GameConsolePlugin {
                 variables,
             );
         }
+        app.console_command(
+            Command {
+                name: "load".into(),
+                alias: Some("l".into()),
+                usage: "load world[,marker][,angle]".into(),
+                cheat: false,
+            },
+            load,
+        );
         for (name, alias) in [("getflag", "gf"), ("setflag", "sf")] {
             app.console_command(
                 Command {
@@ -73,6 +82,29 @@ impl Plugin for GameConsolePlugin {
             );
         }
     }
+}
+/// `load world[,marker][,angle]` requests a world load like the `LoadWorld` native: the world index
+/// must name a WORLD.INI entry, the marker supplies the start position and the angle (masked to
+/// 0 through 2047) the heading. Omitted marker and angle are zero. Symbols are not supported.
+fn load(In(command): In<Invocation>, mut commands: Commands) -> anyhow::Result<Vec<String>> {
+    let arguments: Vec<&str> = command.args.split(',').map(str::trim).collect();
+    ensure!(
+        !command.args.is_empty() && arguments.len() <= 3,
+        "usage: load world[,marker][,angle]"
+    );
+    let mut request = [0i32; 3];
+    for (slot, value) in arguments.into_iter().enumerate() {
+        request[slot] = cyrus_console::number(value, |name| {
+            anyhow::bail!("load accepts numeric literals, not the symbol {name:?}")
+        })? as i32;
+    }
+    crate::script::request_world(&mut commands, request)?;
+    Ok(vec![format!(
+        "load: world {}, marker {}, angle {}",
+        request[0],
+        request[1],
+        request[2] & 2047
+    )])
 }
 fn availability(
     state: Res<State<crate::AppState>>,

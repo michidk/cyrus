@@ -551,7 +551,11 @@ session, including world revisits. `get` and `set` report no matching console
 variables, as the original Glide variable table is empty. `getflag pattern` reads live SOUP values/types/latches;
 `setflag pattern,value[,status]` assigns values and optionally marks their latch.
 Status zero remains unsupported because its original metadata XOR changes the
-flag type; rejection leaves every flag unchanged. Other catalog entries report unavailable owners.
+flag type; rejection leaves every flag unchanged. `load world[,marker][,angle]` requests a world
+load through the same path as the script `LoadWorld` native: the world must be a WORLD.INI entry from 0
+through 99, the marker supplies the start position and the angle (masked to 0 through 2047) the heading,
+and omitted values are zero. It accepts numeric literals only, not symbols; a missing marker reports a
+placement error and keeps the player where it was. Other catalog entries report unavailable owners.
 
 Browser `savecheats` persists to localStorage `cyrus-cheats`. F1 Cheat files
 imports and exports CHT using the shared codec. A valid explicit import can

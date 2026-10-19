@@ -143,6 +143,7 @@ pub use registry::{
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
 pub use tasks::{NativeCommandState, NativeTaskBindings, NativeTasks, NativeTasksSnapshot};
+pub(crate) use world_request::request_world;
 
 pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {
