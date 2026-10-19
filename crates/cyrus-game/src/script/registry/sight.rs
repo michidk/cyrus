@@ -17,13 +17,14 @@ impl ScriptWorld {
     /// Run the nonplayer perception prepass before message and decision maintenance.
     /// Timer waiting and reacquisition use live collision/navigation owners. Routed
     /// pursuit retains its transition and invokes the point wrapper. Shared pauses
-    /// are supported; nonpaused routing phases remain unavailable.
+    /// and immediate arrival are supported; later routing phases remain unavailable.
     pub fn maintain_combat_perception(
         &mut self,
         id: ScriptActorId,
         selected_player: ScriptActorId,
         ticks: u32,
         inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let result = (|| -> Result<()> {
             let index = self.resolve(id)?;
@@ -120,6 +121,7 @@ impl ScriptWorld {
                     nominal_ticks: Some(ticks),
                     ..inputs
                 },
+                Some(sounds),
             )?;
             Ok(())
         })();

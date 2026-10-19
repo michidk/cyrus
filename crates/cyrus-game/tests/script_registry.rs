@@ -9437,16 +9437,27 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
         assert!(world.combat_attack(first, 9).is_err());
         assert!(world.combat_attack(second, 0).is_err());
         world
-            .maintain_map_combat(first, 1, false, true, Default::default())
+            .maintain_map_combat(
+                first,
+                1,
+                false,
+                true,
+                Default::default(),
+                &mut |_, _| Ok(()),
+            )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[1], 1);
         world
-            .maintain_map_combat(first, 1, false, false, Default::default())
+            .maintain_map_combat(first, 1, false, false, Default::default(), &mut |_, _| {
+                Ok(())
+            })
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[1], 7);
         world.send_combat_message(second, first, 0xd001).unwrap();
         let error = world
-            .maintain_map_combat(first, 1, false, false, Default::default())
+            .maintain_map_combat(first, 1, false, false, Default::default(), &mut |_, _| {
+                Ok(())
+            })
             .unwrap_err();
         assert!(format!("{error:#}").contains("combat message 53249 from actor 1 unsupported"));
         assert_eq!(world.consume_combat_message(first).unwrap(), None);
@@ -19495,6 +19506,7 @@ fn perception_case(
         ids[1],
         ticks,
         ScriptInputs {
+            frame_scale: Some(256),
             locomotion_geometry: Some(LocomotionGeometry {
                 ground: OrdinaryGroundQuery {
                     scene: &scene,
@@ -19513,6 +19525,7 @@ fn perception_case(
             }),
             ..Default::default()
         },
+        &mut |_, _| Ok(()),
     );
     if let Err(error) = &result {
         assert!(
@@ -19549,7 +19562,7 @@ fn perception_waits_at_equality_wraps_ticks_and_reacquires_through_live_owners()
         perception_case(i32::MAX, i32::MAX, 1, false, 7),
         (i32::MIN, 7, 7, true)
     );
-    assert_eq!(perception_case(3, 4, 5, false, 7), (4, 1, 7, false));
+    assert_eq!(perception_case(3, 4, 5, false, 7), (4, 1, 0, true));
     assert_eq!(perception_case(3, 4, 5, true, 7), (0, 0, 6, true));
     assert_eq!(perception_case(3, 4, 5, true, 0), (0, 0, 7, true));
 }
@@ -19966,7 +19979,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
     };
     assert_eq!(
         world
-            .move_ordinary_point(first, [111, 222, 333], 0, inputs)
+            .move_ordinary_point(first, [111, 222, 333], 0, inputs, None)
             .unwrap(),
         1
     );
@@ -19994,7 +20007,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
     );
     assert_eq!(
         world
-            .move_ordinary_point(second, [0; 3], 17, inputs)
+            .move_ordinary_point(second, [0; 3], 17, inputs, None)
             .unwrap(),
         1
     );
@@ -20010,17 +20023,24 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
         }
     );
     assert_eq!(
-        world.move_ordinary_point(first, [0; 3], 0, inputs).unwrap(),
+        world
+            .move_ordinary_point(first, [0; 3], 0, inputs, None)
+            .unwrap(),
         1
     );
     assert_eq!(world.globals().native_command().pause_ticks, 0);
     let error = world
-        .move_ordinary_point(first, [0; 3], 0, inputs)
+        .move_ordinary_point(first, [0; 3], 0, inputs, None)
         .unwrap_err();
     assert!(format!("{error:#}").contains("routed point navigation unsupported"));
     let (mut world, _, _) = point_wrapper_fixture(u32::MAX);
     let id = world.id(0).unwrap();
-    assert_eq!(world.move_ordinary_point(id, [0; 3], 0, inputs).unwrap(), 1);
+    assert_eq!(
+        world
+            .move_ordinary_point(id, [0; 3], 0, inputs, None)
+            .unwrap(),
+        1
+    );
     assert_eq!(world.globals().native_command().pause_ticks, u32::MAX - 3);
 }
 
@@ -20066,7 +20086,8 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
                         nominal_ticks: Some(1),
                         frame_scale: Some(scale),
                         ..Default::default()
-                    }
+                    },
+                    None
                 )
                 .unwrap(),
             1
@@ -20081,7 +20102,7 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
     let id = world.id(0).unwrap();
     world.set_walk_map_enabled(1, false).unwrap();
     let error = world
-        .move_ordinary_point(id, [0; 3], 0, ScriptInputs::default())
+        .move_ordinary_point(id, [0; 3], 0, ScriptInputs::default(), None)
         .unwrap_err();
     assert!(format!("{error:#}").contains("point pause requires nominal_ticks"));
     assert_eq!(world.globals().native_command().pause_ticks, 7);
@@ -20089,4 +20110,260 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
         world.actors()[0].control_state().unwrap().navigation.map,
         None
     );
+}
+
+#[test]
+fn point_entry_completes_horizontal_arrival_and_retains_pending_motion() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    for (falling, queued, phase, counter, blocked, expected_phase, expected_counter, result) in [
+        (0, 0, 0, 0, false, 0, 0, 0),
+        (0, 0, 8, 8, true, 24, 9, 0),
+        (0, 0, 8, 255, true, 8, 0, 0),
+        (1, 0, 11, 8, true, 1, 9, 1),
+        (0, 1, 22, 255, true, 1, 0, 1),
+    ] {
+        let (world, scripts, data) = point_wrapper_fixture(0);
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        let control = &mut saved["actors"][0]["control"];
+        control["point_command"] =
+            serde_json::json!({"value":7654321,"word":65535,"phase":phase,"counter":counter});
+        control["navigation"] = serde_json::json!({"map":1,"current":0,"next":1,"destination":1});
+        control["death_selector"] = 7.into();
+        control["falling_state"] = falling.into();
+        control["queued_motion"] = queued.into();
+        control["collision_response_auxiliary"] =
+            serde_json::json!([if blocked { 128 } else { 0 }, 0]);
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([100, 200, 300]);
+        saved["spatial"]["actors"][0]["previous_local_position"] =
+            serde_json::json!([100, 200, 300]);
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Tasks,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [101, 999, 303],
+                    17,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None
+                )
+                .unwrap(),
+            result
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (control.point_command.phase, control.point_command.counter),
+            (expected_phase, expected_counter)
+        );
+        assert_eq!(
+            (control.point_command.value, control.point_command.word),
+            (7654321, 65535)
+        );
+        assert_eq!(control.death_selector, if result == 0 { 0 } else { 7 });
+        assert_eq!(world.inspect(0, 1)["actors"][0]["attributes"][1], 13);
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            if result == 0 {
+                [101, 200, 303]
+            } else {
+                [100, 200, 300]
+            }
+        );
+        assert_eq!(
+            (control.navigation.current, control.navigation.next),
+            if result == 0 { (-1, -1) } else { (0, 1) }
+        );
+    }
+}
+
+#[test]
+fn point_immediate_animation_uses_forced_default_and_live_guards() {
+    use cyrus_game::script::ScriptInputs;
+    for (enabled, excluded, current, expected) in [
+        (false, false, 18, 18),
+        (true, true, 18, 18),
+        (true, false, 0, 0),
+        (true, false, 18, 0),
+    ] {
+        let mut world = point_movement_fixture(
+            current,
+            false,
+            enabled,
+            |_| {},
+            |saved| {
+                saved["actors"][0]["control"]["object_update_excluded"] = excluded.into();
+                saved["actors"][0]["control"]["point_command"]["phase"] = 0.into();
+            },
+        )
+        .0;
+        let id = world.id(0).unwrap();
+        let destination = world.spatial(id).unwrap().local.position;
+        let mut sounds = |_, _| Ok(());
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    destination,
+                    0,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    Some(&mut sounds)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
+            expected
+        );
+    }
+}
+
+#[test]
+fn point_arrival_accepts_horizontal_equality_and_uses_current_or_fallback_speed() {
+    use cyrus_game::script::ScriptInputs;
+    for (group, distance, tolerance, arrived) in [
+        (18, 2560, 0, true),
+        (18, 2561, 0, false),
+        (18, 2561, 1, true),
+        (0, 1280, 0, true),
+        (0, 1281, 0, false),
+    ] {
+        let mut world = point_movement_fixture(group, false, false, |_| {}, |_| {}).0;
+        let id = world.id(0).unwrap();
+        let mut destination = world.spatial(id).unwrap().local.position;
+        destination[0] += distance;
+        destination[1] += 100000;
+        let result = world.move_ordinary_point(
+            id,
+            destination,
+            tolerance,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+        );
+        assert_eq!(
+            result.is_ok(),
+            arrived,
+            "group {group} distance {distance} tolerance {tolerance}: {result:?}"
+        );
+        if arrived {
+            assert_eq!(result.unwrap(), 0);
+        }
+    }
+}
+
+#[test]
+fn point_entry_rejects_unavailable_branches_before_pending_motion() {
+    use cyrus_game::script::ScriptInputs;
+    for (field, value, error) in [
+        ("body_response_flags", 4, "hit-reaction"),
+        ("motion_direction", 15, "direction-15"),
+    ] {
+        let mut world = point_movement_fixture(
+            0,
+            false,
+            false,
+            |_| {},
+            |saved| {
+                saved["actors"][0]["control"][field] = value.into();
+            },
+        )
+        .0;
+        let id = world.id(0).unwrap();
+        let position = world.spatial(id).unwrap().local.position;
+        let message = format!(
+            "{:#}",
+            world
+                .move_ordinary_point(
+                    id,
+                    position,
+                    0,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None
+                )
+                .unwrap_err()
+        );
+        assert!(message.contains(error), "{message}");
+    }
+}
+
+fn point_movement_fixture(
+    initial_group: u16,
+    suppressed: bool,
+    animation_system: bool,
+    edit_scripts: impl FnOnce(&mut Scripts),
+    edit_saved: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    let (mut world, scripts, mut data) = movement_fixture(
+        initial_group,
+        suppressed,
+        animation_system,
+        edit_scripts,
+        edit_saved,
+    );
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    world.prepare_navigation(&data).unwrap();
+    (world, scripts, data)
+}
+
+#[test]
+fn point_default_animation_dispatches_sound_before_completion_and_propagates_failure() {
+    use cyrus_game::script::{ScriptInputs, ScriptSound};
+    use cyrus_world::animation::AnimationSound;
+    for fail in [false, true] {
+        let (_, scripts, mut data) = point_movement_fixture(18, false, true, |_| {}, |_| {});
+        data.metadata["actors"][0]["animation_groups"][0]["commands"] = serde_json::json!([
+            {"opcode":4,"sound_param":17,"volume_shift":0},
+            {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}
+        ]);
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        world.prepare_navigation(&data).unwrap();
+        let id = world.id(0).unwrap();
+        world.bind_animation(id, &data, 0).unwrap();
+        let position = world.spatial(id).unwrap().local.position;
+        let mut cues = 0;
+        let result=world.move_ordinary_point(id,position,0,ScriptInputs {nominal_ticks:Some(1),frame_scale:Some(256),..Default::default()},Some(&mut |actor,sound| {
+            assert_eq!(actor,id);
+            assert!(matches!(sound,ScriptSound::Animation {sound:AnimationSound::Play {effect:17,..},position:Some(p),..} if p==position));
+            cues+=1;
+            if fail {anyhow::bail!("point sound rejected");}
+            Ok(())
+        }));
+        assert_eq!(cues, 1);
+        if fail {
+            assert!(format!("{:#}", result.unwrap_err()).contains("point sound rejected"));
+        } else {
+            assert_eq!(result.unwrap(), 0);
+        }
+    }
 }

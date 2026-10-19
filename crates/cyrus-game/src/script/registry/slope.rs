@@ -223,7 +223,7 @@ impl ScriptWorld {
         })
     }
 
-    fn ordinary_group_speed(&self, index: usize) -> u8 {
+    pub(super) fn ordinary_group_speed(&self, index: usize) -> u8 {
         let actor = &self.actors[index];
         let group = actor
             .animation

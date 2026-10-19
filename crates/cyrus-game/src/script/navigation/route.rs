@@ -6,6 +6,9 @@ use anyhow::{Context, Result, ensure};
 /// Bits describe the first link's cost flags; their movement interpretation is separate.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WalkRouteState {
+    /// Shared point-target exclusion switch, initialized off; active admission is unsupported.
+    #[serde(default)]
+    pub target_exclusion: bool,
     pub backtracking_inhibition: i32,
     pub link_flags: [u8; 2],
 }
@@ -141,6 +144,7 @@ mod tests {
         };
         let mut globals = GameplayGlobals::default();
         globals.walk_route = WalkRouteState {
+            target_exclusion: true,
             backtracking_inhibition: -7,
             link_flags: [1, 1],
         };
@@ -151,10 +155,13 @@ mod tests {
         assert_eq!(
             *restored.walk_route(),
             WalkRouteState {
+                target_exclusion: true,
                 backtracking_inhibition: -7,
                 link_flags: [1, 1]
             }
         );
+        globals.initialize_player_controller();
+        assert!(!globals.walk_route.target_exclusion);
         let nodes = [
             WalkNode {
                 position: [0; 3],

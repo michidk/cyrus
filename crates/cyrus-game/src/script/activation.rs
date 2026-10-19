@@ -212,6 +212,7 @@ impl GameplayGlobals {
     /// Run only at the explicit standalone-player initializer, never merely on a
     /// world swap or save restore. The sound-maintenance owner resets separately.
     pub(super) fn initialize_player_controller(&mut self) {
+        self.walk_route.target_exclusion = false;
         self.lineup_result = Some(0);
         self.selected_combat_inhibition = Some(0);
         self.sound_maintenance.initialize_player();

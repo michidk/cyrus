@@ -1241,5 +1241,13 @@ and restores all local coordinates above it.
 **Verified:** 128 original/production pause-prefix cases and 80 pending-wrapper
 rollback cases agree. A signed-countdown mutation fails. Public contracts cover
 actor alternation, snapshot retention, initialization, validation order and bounds.
-Nonpaused routing phases remain explicitly unsupported; this does not enable
-automatic START combat or establish native/browser movement fidelity.
+Nonpaused entry now updates the wrapping blocked-route counter and retains
+falling/queued motion as pending. Immediate horizontal arrival preserves local Y,
+conditionally forces the live default animation through the synchronous sound
+handler, releases held reservations and completes. Shared player-exclusion state
+starts disabled and survives snapshots; enabled admission, hit reactions,
+direction-15 movement and later route phases remain explicitly unsupported.
+**Verified:** 792 original/production immediate and motion-pending cases agree
+with animation processing disabled. Public contracts cover real animation guards,
+current/fallback speed, equality and tolerance. This does not enable automatic
+START combat or establish native/browser movement fidelity.

@@ -315,7 +315,7 @@ impl ScriptWorld {
                     } else {
                         false
                     };
-                    self.maintain_map_combat(id, ticks, transition, shell, inputs)?;
+                    self.maintain_map_combat(id, ticks, transition, shell, inputs, sounds)?;
                 }
                 self.advance(
                     id,

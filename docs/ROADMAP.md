@@ -542,6 +542,16 @@ skipped. The [point-core rules](https://github.com/michidk/redguard-preservation
 are published. Arrival predicates and forced-animation dispatch were controlled
 in these probes; production integration and routed movement remain open.
 
+**Verified:** production point entry now retains falling/queued motion and completes
+immediate horizontal arrival with live default-animation and synchronous sound
+services. It updates the wrapping blocked-route counter, preserves Y, releases
+held reservations, retains command fields and applies wrapper displacement limits.
+All 792 original cases with animation processing disabled match production;
+public contracts exercise live animation guards and arrival thresholds.
+Hit reactions, enabled player exclusion, direction-15 movement and subsequent
+route phases remain unsupported. Full automatic combat and native/browser
+acceptance remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

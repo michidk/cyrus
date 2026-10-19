@@ -446,6 +446,7 @@ impl ScriptWorld {
         player_weapon_transition: bool,
         shell_execution: bool,
         inputs: ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
@@ -489,7 +490,7 @@ impl ScriptWorld {
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Player))
                 .context("perception selected player unavailable")?;
-            self.maintain_combat_perception(id, self.id(player)?, ticks, inputs)?;
+            self.maintain_combat_perception(id, self.id(player)?, ticks, inputs, sounds)?;
         }
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
         let selected_player = self
