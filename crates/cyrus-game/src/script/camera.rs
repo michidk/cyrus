@@ -180,12 +180,168 @@ impl CameraState {
                     )
                 })?;
             }
-            if matches!(slot, 6 | 7) {
-                record.flags = 0x40;
+            match slot {
+                // The rope record adds the angle-override bit to the copied collision bit.
+                5 => record.flags |= 0xc0,
+                6 | 7 => record.flags = 0x40,
+                _ => {}
             }
         }
         records[3].target_offset = settings.target_offset;
         Ok(records)
+    }
+
+    /// Session state as camera setup leaves it, before the installed initial pose is
+    /// published: slot zero selected, no transition, no scripted ownership. Both pose
+    /// vectors are zero placeholders until that stage is connected to live geometry.
+    /// `camera` is the CAMERA instance; setup stores it as both published-position owners.
+    pub fn new(
+        settings: &CameraSettings,
+        player: super::ScriptActorId,
+        camera: super::ScriptActorId,
+    ) -> Result<Self> {
+        let pose = CameraPose {
+            position: [0; 3],
+            angles: [0; 3],
+        };
+        Ok(Self {
+            records: Self::initial_records(settings, player)?,
+            selected: CameraSlot(0),
+            transition: 0,
+            scripted_active: 0,
+            current: pose,
+            previous: pose,
+            transformed_basis: [[0; 3]; 2],
+            camera_actor: camera,
+            alternate_actor: camera,
+        })
+    }
+}
+
+/// Slot requested for the selected player: a held weapon, then the shared debug override,
+/// then the hanging living state, then a rope association; `None` when none applies.
+/// The override word has no writer in the executable image and starts zero, so the
+/// session passes `false`.
+pub fn player_slot(
+    holding_weapon: bool,
+    debug_override: bool,
+    living_state: u8,
+    rope_attached: bool,
+) -> Option<u8> {
+    if holding_weapon {
+        Some(3)
+    } else if debug_override {
+        Some(8)
+    } else if living_state == 15 {
+        Some(4)
+    } else if rope_attached {
+        Some(5)
+    } else {
+        None
+    }
+}
+
+/// Persistable camera session; actor identities are saved as generation/index pairs.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(super) struct CameraSnapshot {
+    records: Vec<RecordSnapshot>,
+    selected: u8,
+    transition: u16,
+    scripted_active: u16,
+    current: ([i32; 3], [i32; 3]),
+    previous: ([i32; 3], [i32; 3]),
+    transformed_basis: [[i32; 3]; 2],
+    camera_actor: (u64, usize),
+    alternate_actor: (u64, usize),
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct RecordSnapshot {
+    actor: (u64, usize),
+    position_offset: [i32; 3],
+    angle_offset: [i32; 3],
+    request: [i32; 3],
+    target_offset: [i32; 3],
+    bound_position_history: [i32; 3],
+    basis: [[i32; 3]; 2],
+    distance: i32,
+    minimum_distance: i32,
+    maximum_movement: u32,
+    flags: u8,
+}
+
+impl CameraState {
+    pub(super) fn snapshot(&self) -> CameraSnapshot {
+        let id = |actor: super::ScriptActorId| (actor.generation, actor.index);
+        let pose = |pose: CameraPose| (pose.position, pose.angles);
+        CameraSnapshot {
+            records: self
+                .records
+                .iter()
+                .map(|record| RecordSnapshot {
+                    actor: id(record.actor),
+                    position_offset: record.position_offset,
+                    angle_offset: record.angle_offset,
+                    request: record.request,
+                    target_offset: record.target_offset,
+                    bound_position_history: record.bound_position_history,
+                    basis: record.basis,
+                    distance: record.distance,
+                    minimum_distance: record.minimum_distance,
+                    maximum_movement: record.maximum_movement,
+                    flags: record.flags,
+                })
+                .collect(),
+            selected: self.selected.0,
+            transition: self.transition,
+            scripted_active: self.scripted_active,
+            current: pose(self.current),
+            previous: pose(self.previous),
+            transformed_basis: self.transformed_basis,
+            camera_actor: id(self.camera_actor),
+            alternate_actor: id(self.alternate_actor),
+        }
+    }
+
+    pub(super) fn from_snapshot(
+        saved: CameraSnapshot,
+        rebind: &impl Fn(u64, usize) -> Result<super::ScriptActorId>,
+    ) -> Result<Self> {
+        let records: [CameraRecord; 9] = saved
+            .records
+            .into_iter()
+            .map(|record| {
+                Ok(CameraRecord {
+                    actor: rebind(record.actor.0, record.actor.1)?,
+                    position_offset: record.position_offset,
+                    angle_offset: record.angle_offset,
+                    request: record.request,
+                    target_offset: record.target_offset,
+                    bound_position_history: record.bound_position_history,
+                    basis: record.basis,
+                    distance: record.distance,
+                    minimum_distance: record.minimum_distance,
+                    maximum_movement: record.maximum_movement,
+                    flags: record.flags,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?
+            .try_into()
+            .map_err(|records: Vec<_>| {
+                anyhow::anyhow!("camera snapshot: {} records, expected nine", records.len())
+            })?;
+        let pose = |(position, angles)| CameraPose { position, angles };
+        Ok(Self {
+            records,
+            selected: CameraSlot::new(saved.selected)?,
+            transition: saved.transition,
+            scripted_active: saved.scripted_active,
+            current: pose(saved.current),
+            previous: pose(saved.previous),
+            transformed_basis: saved.transformed_basis,
+            camera_actor: rebind(saved.camera_actor.0, saved.camera_actor.1)?,
+            alternate_actor: rebind(saved.alternate_actor.0, saved.alternate_actor.1)?,
+        })
     }
 }
 
@@ -216,6 +372,8 @@ impl CameraState {
     }
 
     /// One showPlayer invocation. The native task owns the wrapping private counter.
+    /// Returns the handler's raw result: `true` keeps the task active (the initial
+    /// invocation), `false` completes it.
     pub fn show_player(
         &mut self,
         requested_slot: Option<u8>,

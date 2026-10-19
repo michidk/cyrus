@@ -595,6 +595,7 @@ pub struct WorldSnapshot {
     model_admission: Option<model::ModelAdmissionSnapshot>,
     map_updates: Vec<usize>,
     surface_veto: Option<bool>,
+    camera: Option<super::super::camera::CameraSnapshot>,
 }
 impl WorldSnapshot {
     fn capture(world: &ScriptWorld, sources: &WorldSnapshotSources<'_>) -> Result<Self> {
@@ -639,6 +640,10 @@ impl WorldSnapshot {
                 .map(model::AdmissionState::snapshot),
             map_updates: world.map_updates.clone(),
             surface_veto: world.surface_veto,
+            camera: world
+                .camera
+                .as_ref()
+                .map(super::super::camera::CameraState::snapshot),
         })
     }
 
@@ -800,6 +805,16 @@ impl WorldSnapshot {
         candidate.next_combat_index = self.next_combat_index;
         candidate.ordinary_prepared = self.ordinary_prepared;
         candidate.surface_veto = self.surface_veto;
+        ensure!(
+            self.camera.is_some() == candidate.camera.is_some(),
+            "world {}: saved camera session differs from the actor census",
+            self.world
+        );
+        candidate.camera = self
+            .camera
+            .map(|saved| super::super::camera::CameraState::from_snapshot(saved, &rebind))
+            .transpose()
+            .with_context(|| format!("world {} camera replacement", self.world))?;
         candidate.globals = super::super::GameplayGlobals::default();
         Ok(candidate)
     }

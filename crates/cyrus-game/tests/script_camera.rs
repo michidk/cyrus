@@ -311,6 +311,8 @@ fn initial_records_follow_the_documented_installed_setting_mapping() {
         "zero keeps the record-zero rate"
     );
     assert_eq!(records[4].maximum_movement, 5);
+    assert_eq!(records[4].flags, 0x40);
+    assert_eq!(records[5].flags, 0xc0, "rope adds the angle-override bit");
     assert_eq!(records[6].flags, 0x40);
     assert_eq!(
         records[8].angle_offset,
@@ -333,4 +335,22 @@ fn location_offsets_convert_attribute_bytes_for_the_selected_record_only() {
     assert_eq!(record.target_offset, [0, 0, 64_000]);
     assert_eq!(record.position_offset, [-63_000, 500, 0]);
     assert_eq!(camera.records[0].target_offset, [0; 3]);
+}
+
+#[test]
+fn player_slot_requests_follow_the_selector_priority() {
+    // (holding weapon, debug override, living state, rope) -> slot
+    for (inputs, expected) in [
+        ((true, true, 15, true), Some(3)),
+        ((false, true, 15, true), Some(8)),
+        ((false, false, 15, true), Some(4)),
+        ((false, false, 14, true), Some(5)),
+        ((false, false, 14, false), None),
+    ] {
+        assert_eq!(
+            player_slot(inputs.0, inputs.1, inputs.2, inputs.3),
+            expected,
+            "{inputs:?}"
+        );
+    }
 }

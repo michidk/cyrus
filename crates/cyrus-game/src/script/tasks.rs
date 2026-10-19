@@ -79,6 +79,14 @@ pub(super) struct NativeServices<'a> {
     pub dialogue: Option<&'a mut super::DialogueState>,
     pub player_dialogue: Option<PlayerDialogueCall<'a>>,
     pub locomotion: Option<LocomotionCall<'a>>,
+    pub camera: Option<CameraCall<'a>>,
+}
+
+/// Session camera and the selected player's slot request for `showPlayer`.
+/// A failed request read surfaces only when the task uses it.
+pub(super) struct CameraCall<'a> {
+    pub state: &'a mut super::camera::CameraState,
+    pub requested_slot: Result<Option<u8>, String>,
 }
 
 /// Receiver state sampled for locomotion tasks. Fallible reads surface only when used.
@@ -122,6 +130,7 @@ enum Task {
     AnimationFrame { player: bool },
     PlayerDialogue { started: bool },
     Ambient { channel: Option<u8> },
+    ShowPlayer { counter: u32 },
     Movement { target: i32 },
     ObjectMovement { target: i32, traveled: i32 },
     ScaledMovement { origin: i32 },
@@ -210,6 +219,17 @@ impl Task {
                         }
                     }
                 }
+            }
+            Self::ShowPlayer { counter } => {
+                anyhow::ensure!(arguments.is_empty(), "showPlayer requires no arguments");
+                let elapsed = invocation
+                    .elapsed
+                    .context("showPlayer requires elapsed input")?;
+                let camera = services
+                    .camera
+                    .context("showPlayer camera session unavailable")?;
+                let requested = camera.requested_slot.map_err(anyhow::Error::msg)?;
+                !camera.state.show_player(requested, counter, elapsed)?
             }
             Self::Dialogue => {
                 anyhow::ensure!(arguments.is_empty(), "WaitOnDialog requires no arguments");
@@ -1082,6 +1102,9 @@ impl NativeTasks {
                 "AmbientSound requires multitask encoding"
             );
             Task::Ambient { channel: None }
+        } else if function.eq_ignore_ascii_case("showPlayer") {
+            anyhow::ensure!(kind == CallKind::Task, "showPlayer requires task encoding");
+            Task::ShowPlayer { counter: 0 }
         } else if function.eq_ignore_ascii_case("RotateByAxis") {
             Task::Rotation {
                 target: 0,
@@ -1181,6 +1204,10 @@ impl NativeTasks {
             self.tasks.remove(&token);
         }
         Ok(completed)
+    }
+    /// Whether `token` is a `showPlayer` continuation, which needs the camera session.
+    pub(super) fn is_show_player(&self, token: u64) -> bool {
+        matches!(self.tasks.get(&token), Some(Task::ShowPlayer { .. }))
     }
     pub(super) fn cancel(&mut self, token: u64) -> Result<()> {
         self.tasks

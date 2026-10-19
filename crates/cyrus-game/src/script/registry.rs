@@ -345,8 +345,16 @@ pub struct ScriptWorld {
     map_updates: Vec<usize>,
     /// Shared surface-query veto; absent until an assigning query establishes it.
     surface_veto: Option<bool>,
+    /// Camera session owned by the CAMERA instance; absent when the world has no
+    /// selected player or CAMERA actor.
+    camera: Option<super::camera::CameraState>,
 }
 impl ScriptWorld {
+    /// Retained camera session, when the world has both a player and a CAMERA instance.
+    pub fn camera(&self) -> Option<&super::camera::CameraState> {
+        self.camera.as_ref()
+    }
+
     /// Resolve a retained zero-based actor attack slot against the shared installed table.
     /// Empty authored slots return `None`; missing initialization or definitions are errors.
     pub fn combat_attack(
@@ -745,6 +753,21 @@ impl ScriptWorld {
         }
         let mut globals = super::GameplayGlobals::default();
         globals.prepare_dialogue(&scripts.dialogue)?;
+        let actor_id = |source: fn(&ScriptActorSource) -> bool| {
+            actors
+                .iter()
+                .position(|actor| source(&actor.source))
+                .map(|index| ScriptActorId { generation, index })
+        };
+        let camera = actor_id(|source| matches!(source, ScriptActorSource::Player))
+            .zip(actor_id(|source| {
+                matches!(source, ScriptActorSource::Camera)
+            }))
+            .map(|(player, camera)| {
+                super::camera::CameraState::new(&scripts.camera, player, camera)
+                    .with_context(|| format!("world {} camera initialization", scripts.world))
+            })
+            .transpose()?;
         Ok(Self {
             map_updates: Vec::new(),
             updates: scripts.updates,
@@ -778,6 +801,7 @@ impl ScriptWorld {
             next_combat_index: 0,
             ordinary_prepared: false,
             surface_veto: None,
+            camera,
             model_admission: None,
             spatial: None,
             activation: Default::default(),
@@ -2339,6 +2363,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             };
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
+        let camera_slot = function
+            .eq_ignore_ascii_case("showPlayer")
+            .then(|| self.camera_slot_request());
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -2408,6 +2435,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         counters: &mut control.movement_flags,
                     }),
                 called: &mut self.registry.globals.locomotion_called,
+            }),
+            camera: camera_slot.and_then(|requested_slot| {
+                self.registry
+                    .camera
+                    .as_mut()
+                    .map(|state| super::tasks::CameraCall {
+                        state,
+                        requested_slot,
+                    })
             }),
         };
         match mode {
@@ -2529,6 +2565,29 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         index,
                     })
             })
+    }
+
+    /// Camera slot `showPlayer` requests for the selected player; fallible reads
+    /// surface only when the task uses them.
+    fn camera_slot_request(&self) -> Result<Option<u8>, String> {
+        let describe = |error: anyhow::Error| format!("{error:#}");
+        let player = self
+            .selected_player()
+            .ok_or("showPlayer selected player unavailable")?;
+        let index = self.registry.resolve(player).map_err(describe)?;
+        let control = self.registry.actors[index]
+            .control
+            .as_ref()
+            .ok_or("showPlayer selected-player control unavailable")?;
+        let (holding_weapon, _, _) = self
+            .actor_weapon_predicates(index, "IsHoldingWeapon")
+            .map_err(describe)?;
+        Ok(super::camera::player_slot(
+            holding_weapon,
+            false,
+            control.living_state,
+            control.rope_attached,
+        ))
     }
 
     /// Receiver state for locomotion tasks; fallible reads surface only when a task uses them.
@@ -2775,7 +2834,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     fn receiver_weapon_predicates(&self, function: &str) -> Result<(bool, bool, bool)> {
-        let actor = &self.registry.actors[self.index];
+        self.actor_weapon_predicates(self.index, function)
+    }
+
+    fn actor_weapon_predicates(&self, index: usize, function: &str) -> Result<(bool, bool, bool)> {
+        let actor = &self.registry.actors[index];
         if function.eq_ignore_ascii_case("IsHoldingWeapon") && actor.attributes[110] != 0 {
             return Ok((true, false, false));
         }
@@ -4010,6 +4073,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .locomotion_operation(token);
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
+        let camera_slot = self.registry.actors[self.index]
+            .tasks
+            .is_show_player(token)
+            .then(|| self.camera_slot_request());
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         let mut emit = |sound| match &mut self.sounds {
@@ -4085,6 +4152,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                             counters: &mut control.movement_flags,
                         }),
                     called: &mut self.registry.globals.locomotion_called,
+                }),
+                camera: camera_slot.and_then(|requested_slot| {
+                    self.registry
+                        .camera
+                        .as_mut()
+                        .map(|state| super::tasks::CameraCall {
+                            state,
+                            requested_slot,
+                        })
                 }),
             },
         )
@@ -4297,6 +4373,7 @@ mod fighting_tests {
             model_admission: None,
             map_updates: Vec::new(),
             surface_veto: None,
+            camera: None,
         };
         let host = GameHost {
             registry: &mut registry,

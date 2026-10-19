@@ -182,6 +182,7 @@ impl Task {
                 ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))
             }
             Self::PlayerDialogue { .. } => ("RTXp", 1, Some(CallKind::Task)),
+            Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
             Self::Movement { .. } => ("MoveByAxis", 3, None),
             Self::ObjectMovement { .. } => ("MoveObjectAxis", 3, None),
