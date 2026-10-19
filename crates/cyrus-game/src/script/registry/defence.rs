@@ -105,6 +105,164 @@ impl ScriptWorld {
         result.with_context(|| format!("world {} instance {index} paced defence", self.world))
     }
 
+    /// Sample and select an admitted nonplayer's defence using current actor owners.
+    /// Armed and shared player-death/controller inhibition gates precede combat reads,
+    /// following preservation's [inhibition owner](https://github.com/michidk/redguard-preservation/commit/19d1bcd).
+    /// Target poses, stance, action and command timing are queried only by admitted
+    /// branches. The defence-counter write survives later metadata/executor errors.
+    /// Starts share the caller's random, movement and sound owners synchronously.
+    #[allow(clippy::too_many_arguments)] // One invocation shares ordinary timing and executor services.
+    pub fn select_ordinary_combat_defence(
+        &mut self,
+        id: ScriptActorId,
+        sample: super::spacing::OrdinarySpacingInput,
+        weapon: super::WeaponInputs,
+        frame_value: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        movement: &mut dyn FnMut(&mut Self, ScriptActorId, i32, i32) -> Result<()>,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        use crate::script::decision::{DefenceSelectionInput, heading_difference};
+        let result = (|| -> Result<()> {
+            let index = self.resolve(id)?;
+            anyhow::ensure!(
+                id != weapon.selected_player
+                    && !matches!(
+                        self.actors[index].source,
+                        super::ScriptActorSource::Player
+                            | super::ScriptActorSource::AlternatePlayer
+                    ),
+                "selected-player defence selection unavailable"
+            );
+            if !self.spacing_weapon(id, inputs)?.1 {
+                return Ok(());
+            }
+            if self
+                .globals
+                .player_death_override()
+                .context("defence selection: player health-death/controller override unavailable")?
+            {
+                return Ok(());
+            }
+            let combat = self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("receiver combat unavailable")?;
+            let target = combat.target;
+            // Unused samples stay inert; their owners are queried only below their gates.
+            let mut selection = DefenceSelectionInput {
+                armed: true,
+                lockout_clear: true,
+                own_selected: combat.action,
+                target_in_arc: false,
+                distance: sample.distance,
+                own_window_far: 0,
+                facing_alike: false,
+                target_in_combat_stance: false,
+                attribute_58: 0,
+                pacing_sum: sample.tick_counter.wrapping_add(combat.allocation_index),
+                defence_pacing: combat.decision.defence_pacing,
+                target_selected: -1,
+                target_frame: 0,
+                target_near: 0,
+                target_third: 0,
+                own_selector: combat.decision.move_selector,
+            };
+            if selection.own_selected == -1 {
+                let target = target.context("defence target unavailable")?;
+                let own = self.spatial(id)?.local;
+                let other = self.spatial(target)?.local;
+                if !crate::script::decision::ordinary_defence_forward_arc(
+                    own.position,
+                    other.position,
+                    i32::from(own.angles[1]),
+                ) {
+                    return Ok(());
+                }
+                selection.target_in_arc = true;
+                selection.own_window_far = combat.spacing_ranges[1];
+                if sample.distance >= selection.own_window_far {
+                    return Ok(());
+                }
+                selection.facing_alike =
+                    heading_difference(i32::from(own.angles[1]), i32::from(other.angles[1])).abs()
+                        < 256;
+                if !selection.facing_alike {
+                    selection.target_in_combat_stance = self.spacing_weapon(target, inputs)?.1;
+                    if !selection.target_in_combat_stance {
+                        selection.target_in_combat_stance = self.actors[self.resolve(target)?]
+                            .control
+                            .as_ref()
+                            .and_then(|control| control.combat.as_ref())
+                            .is_some_and(|combat| combat.flags & 4 != 0);
+                    }
+                    if selection.target_in_combat_stance {
+                        selection.attribute_58 = self.actors[index].attributes[58];
+                    }
+                }
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted control")
+                    .combat
+                    .as_mut()
+                    .expect("admitted combat")
+                    .decision
+                    .defence_counter =
+                    if selection.facing_alike || !selection.target_in_combat_stance {
+                        1
+                    } else {
+                        129 - i32::from(selection.attribute_58)
+                    };
+                if selection
+                    .pacing_sum
+                    .checked_rem(selection.defence_pacing)
+                    .context("defence selection: invalid pacing divisor")?
+                    == 0
+                {
+                    let target_index = self.resolve(target)?;
+                    selection.target_selected = self.actors[target_index]
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .map_or(-1, |combat| combat.action);
+                    if !matches!(selection.target_selected, -1 | 9) {
+                        let motion = self.current_combat_motion(target)?;
+                        selection.target_near = motion.first_collide_frame;
+                        selection.target_third = motion.collide_duration;
+                        selection.target_frame = self.actors[target_index]
+                            .animation
+                            .as_ref()
+                            .context("target animation unavailable")?
+                            .playback
+                            .current_command_cursor()?
+                            .context("target command cursor unavailable")?;
+                    }
+                }
+            }
+            self.run_combat_defence_selection(
+                index,
+                id,
+                target,
+                selection,
+                weapon,
+                frame_value,
+                inputs,
+                random,
+                movement,
+                sounds,
+            )
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} ordinary defence selection",
+                self.world, id.index
+            )
+        })
+    }
+
     /// Run one caller-admitted defence selection against live receiver state.
     /// Inputs are sampled by the scheduler; starts execute synchronously with the shared
     /// random stream. Every service retains earlier decision, animation and sound writes
@@ -124,6 +282,34 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.resolve(id)?;
         self.resolve(target)?;
+        self.run_combat_defence_selection(
+            index,
+            id,
+            Some(target),
+            selection,
+            weapon,
+            frame_value,
+            inputs,
+            random,
+            movement,
+            sounds,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // Shares the same synchronous selection invocation.
+    fn run_combat_defence_selection(
+        &mut self,
+        index: usize,
+        id: ScriptActorId,
+        target: Option<ScriptActorId>,
+        selection: crate::script::decision::DefenceSelectionInput,
+        weapon: super::WeaponInputs,
+        frame_value: i32,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        movement: &mut dyn FnMut(&mut Self, ScriptActorId, i32, i32) -> Result<()>,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
         let combat = self.actors[index]
             .control
             .as_ref()
@@ -511,7 +697,7 @@ impl crate::script::decision::DefenceQueries for LivePacedQueries<'_> {
 struct LiveDefenceSelection<'a, 'inputs> {
     world: &'a mut ScriptWorld,
     id: ScriptActorId,
-    target: ScriptActorId,
+    target: Option<ScriptActorId>,
     selection: crate::script::decision::DefenceSelectionInput,
     weapon: super::WeaponInputs,
     frame_value: i32,
@@ -552,8 +738,12 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
         flags: u8,
     ) -> Result<Option<i32>> {
         self.store(*decision, flags);
-        self.world
-            .pick_combat_defence(self.id, self.target, self.selection.distance, false)
+        self.world.pick_combat_defence(
+            self.id,
+            self.target.context("defence target unavailable")?,
+            self.selection.distance,
+            false,
+        )
     }
     fn open(
         &mut self,
@@ -561,8 +751,12 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
         flags: u8,
     ) -> Result<Option<i32>> {
         self.store(*decision, flags);
-        self.world
-            .pick_combat_defence(self.id, self.target, self.selection.distance, true)
+        self.world.pick_combat_defence(
+            self.id,
+            self.target.context("defence target unavailable")?,
+            self.selection.distance,
+            true,
+        )
     }
     fn paced(
         &mut self,
@@ -572,7 +766,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
         self.store(*decision, flags);
         let result = self.world.pick_combat_paced_defence(
             self.id,
-            self.target,
+            self.target.context("defence target unavailable")?,
             crate::script::decision::PacedDefenceInput {
                 distance: self.selection.distance,
                 random_draw: self.random.draw() as u16,
@@ -591,7 +785,7 @@ impl crate::script::decision::DefenceSelectionServices for LiveDefenceSelection<
             &mut LivePacedQueries {
                 world: self.world,
                 id: self.id,
-                target: self.target,
+                target: self.target.context("defence target unavailable")?,
             },
             slot,
         )

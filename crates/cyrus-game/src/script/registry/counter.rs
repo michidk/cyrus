@@ -4,7 +4,7 @@ use crate::script::decision::{CounterAttack, CounterAttackInput, Sidestep, count
 use anyhow::{Context, Result, ensure};
 
 impl ScriptWorld {
-    fn counter_motion(
+    pub(super) fn current_combat_motion(
         &self,
         target: ScriptActorId,
     ) -> Result<&cyrus_assets::script::combat::Motion> {
@@ -139,7 +139,7 @@ impl ScriptWorld {
             {
                 return Ok(CounterAttack::Idle);
             }
-            let motion = self.counter_motion(target)?;
+            let motion = self.current_combat_motion(target)?;
             let near = motion.first_collide_frame;
             let playback = &self.actors[target_index]
                 .animation

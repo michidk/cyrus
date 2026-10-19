@@ -18002,14 +18002,34 @@ fn counter_fixture(edit: impl FnOnce(&mut serde_json::Value)) -> ScriptWorld {
 }
 
 fn counter_fixture_sound(sound: bool, edit: impl FnOnce(&mut serde_json::Value)) -> ScriptWorld {
+    counter_fixture_state(sound, false, edit)
+}
+
+fn counter_fixture_state(
+    sound: bool,
+    initialize_player: bool,
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> ScriptWorld {
+    counter_fixture_timing(sound, initialize_player, [2, 1], edit)
+}
+
+fn counter_fixture_timing(
+    sound: bool,
+    initialize_player: bool,
+    timing: [i32; 2],
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> ScriptWorld {
     let (mut world, scripts, mut data) = movement_fixture(
         18,
         false,
         true,
         |scripts| {
+            if initialize_player {
+                add_standalone_receivers(scripts);
+            }
             let motion: combat::Motion = serde_json::from_value(serde_json::json!({
                 "section":1,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
-                "first_collide_frame":2,"collide_duration":1,"first_defend_frame":5,"defense":1
+                "first_collide_frame":timing[0],"collide_duration":timing[1],"first_defend_frame":5,"defense":1
             }))
             .unwrap();
             scripts.combat_attacks = vec![combat::Attack {
@@ -18109,6 +18129,14 @@ fn counter_fixture_sound(sound: bool, edit: impl FnOnce(&mut serde_json::Value))
                 )
                 .unwrap();
         }
+    }
+    if initialize_player {
+        let mut player = data.metadata["actors"][0].clone();
+        player["script_name"] = "CYRUS".into();
+        data.metadata["actors"].as_array_mut().unwrap().push(player);
+        world
+            .initialize_player_animation(world.id(2).unwrap(), &data, 0, &mut |_| Ok(()))
+            .unwrap();
     }
     world
 }
@@ -22089,4 +22117,271 @@ fn point_destination_cutoff_is_exclusive_and_a_miss_clears_selected_map() {
         None
     );
     assert!(movement_snapshot(&world, &scripts, &data)["walk_nodes"]["selected_map"].is_null());
+}
+
+#[test]
+fn ordinary_defence_forward_arc_uses_quantized_local_xyz_and_strict_heading() {
+    use cyrus_game::script::decision::ordinary_defence_forward_arc;
+    for (own, target, heading, expected) in [
+        ([0; 3], [256, 0, 0], 1536, true),
+        ([0; 3], [256, 0, 0], 1281, true),
+        ([0; 3], [256, 0, 0], 1280, false),
+        ([0; 3], [256, 0, 0], 1791, true),
+        ([0; 3], [256, 0, 0], 1792, false),
+        ([0; 3], [-256, 0, 0], 512, true),
+        ([0; 3], [0, 0, 256], 2047, true),
+        ([0; 3], [0, 0, -256], 1024, true),
+        ([13, -29, 91], [0; 3], 768, true),
+        ([13, -29, 91], [0; 3], 512, false),
+    ] {
+        assert_eq!(
+            ordinary_defence_forward_arc(own, target, heading),
+            expected,
+            "{own:?} {target:?} {heading}"
+        );
+    }
+}
+
+fn run_ordinary_defence(
+    world: &mut ScriptWorld,
+    ticks: i32,
+    random: &mut cyrus_game::random::EngineRandom,
+) -> anyhow::Result<()> {
+    use cyrus_game::script::{OrdinarySpacingInput, ScriptInputs, WeaponInputs};
+    let id = world.id(0).unwrap();
+    let selected_player = world.id(2).or_else(|_| world.id(1)).unwrap();
+    let hud = cyrus_game::script::ScriptHud::default();
+    world.select_ordinary_combat_defence(
+        id,
+        OrdinarySpacingInput {
+            distance: 50,
+            tick_counter: ticks,
+        },
+        WeaponInputs {
+            selected_player,
+            item_system_ready: true,
+            shell_execution: false,
+        },
+        1,
+        ScriptInputs {
+            hud: Some(&hud),
+            nominal_ticks: Some(1),
+            ..Default::default()
+        },
+        random,
+        &mut |_, _, _, _| anyhow::bail!("unexpected defence movement"),
+        &mut |_, _| anyhow::bail!("unexpected defence sound"),
+    )
+}
+
+#[test]
+fn ordinary_defence_weapon_gate_precedes_unknown_shared_override() {
+    for armed in [false, true] {
+        let mut world = counter_fixture(|saved| {
+            saved["actors"][0]["attributes"][110] = i32::from(armed).into();
+            saved["actors"][0]["control"]["combat"] = serde_json::Value::Null;
+        });
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        let result = run_ordinary_defence(&mut world, 0, &mut random);
+        if armed {
+            assert!(
+                format!("{:#}", result.unwrap_err())
+                    .contains("player health-death/controller override unavailable")
+            );
+        } else {
+            result.unwrap();
+        }
+        assert_eq!(random.state(), 42);
+    }
+}
+
+#[test]
+fn ordinary_defence_selected_branch_does_not_query_unused_target_or_timing() {
+    for (action, selector, ticks) in [(7, 2, 0), (0, 0, 1)] {
+        let mut world = counter_fixture_state(false, true, |saved| {
+            let combat = &mut saved["actors"][0]["control"]["combat"];
+            combat["action"] = action.into();
+            combat["target"] = serde_json::Value::Null;
+            combat["decision"]["move_selector"] = selector.into();
+            combat["decision"]["defence_counter"] = 2.into();
+            combat["decision"]["defence_pacing"] = 0.into();
+        });
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        run_ordinary_defence(&mut world, ticks, &mut random).unwrap();
+        assert_eq!(random.state(), 42);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .action,
+            action
+        );
+    }
+}
+
+fn ordinary_defence_idle_fixture(edit: impl FnOnce(&mut serde_json::Value)) -> ScriptWorld {
+    counter_fixture_state(false, true, |saved| {
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
+        saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([0, 0, 256]);
+        saved["actors"][0]["attributes"][58] = 126.into();
+        saved["actors"][1]["attributes"][110] = 1.into();
+        saved["actors"][0]["control"]["combat"]["flags"] = 0xa0.into();
+        saved["actors"][0]["control"]["combat"]["decision"]["defence_pacing"] = 2.into();
+        saved["actors"][0]["control"]["combat"]["decision"]["defence_counter"] = 99.into();
+        edit(saved);
+    })
+}
+
+#[test]
+fn ordinary_defence_pacing_and_open_branches_skip_active_target_metadata() {
+    for open in [false, true] {
+        let mut world = ordinary_defence_idle_fixture(|saved| {
+            saved["actors"][1]["animation"] = serde_json::Value::Null;
+            if open {
+                saved["actors"][1]["control"]["combat"]["action"] = 9.into();
+                saved["actors"][1]["control"]["combat"]["retained_action_indices"][1] =
+                    (-99).into();
+                saved["actors"][1]["control"]["combat"]["decision"]["move_selector"] = (-99).into();
+            } else {
+                saved["actors"][1]["control"]["combat"] = serde_json::Value::Null;
+            }
+        });
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        run_ordinary_defence(&mut world, if open { 2 } else { 1 }, &mut random).unwrap();
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.action, combat.flags, combat.decision.defence_counter),
+            (-1, 0xa0, 3)
+        );
+        assert_eq!(random.state(), 42);
+    }
+}
+
+#[test]
+fn ordinary_defence_retains_counter_before_pacing_or_target_motion_error() {
+    for pacing_error in [false, true] {
+        let mut world = ordinary_defence_idle_fixture(|saved| {
+            if pacing_error {
+                saved["actors"][0]["control"]["combat"]["decision"]["defence_pacing"] = 0.into();
+            } else {
+                saved["actors"][1]["control"]["combat"]["decision"]["move_selector"] = (-1).into();
+            }
+        });
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        let error = format!(
+            "{:#}",
+            run_ordinary_defence(&mut world, 2, &mut random).unwrap_err()
+        );
+        assert!(
+            error.contains(if pacing_error {
+                "invalid pacing divisor"
+            } else {
+                "negative target motion selector"
+            }),
+            "{error}"
+        );
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.action, combat.flags, combat.decision.defence_counter),
+            (-1, 0xa0, 3)
+        );
+        assert_eq!(random.state(), 42);
+    }
+}
+
+#[test]
+fn ordinary_defence_reads_retained_motion_and_command_cursor_without_displayed_frame() {
+    let mut world = ordinary_defence_idle_fixture(|saved| {
+        saved["actors"][1]["animation"]["frame"] = serde_json::Value::Null;
+        saved["actors"][1]["control"]["combat"]["attack_indices"][2] = serde_json::Value::Null;
+    });
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    run_ordinary_defence(&mut world, 2, &mut random).unwrap();
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (combat.action, combat.flags, combat.decision.defence_counter),
+        (-1, 0xa0, 3)
+    );
+    assert_eq!(random.state(), 42);
+}
+
+#[test]
+fn ordinary_defence_collision_timing_raises_intent_before_live_reach_error() {
+    for timing in [[-4, 1], [i32::MAX, 1]] {
+        let mut world = counter_fixture_timing(false, true, timing, |saved| {
+            saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
+            saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([0, 0, 256]);
+            saved["actors"][0]["attributes"][58] = 126.into();
+            saved["actors"][1]["attributes"][110] = 1.into();
+            saved["actors"][0]["control"]["combat"]["flags"] = 0xa0.into();
+            saved["actors"][0]["control"]["combat"]["decision"]["defence_pacing"] = 2.into();
+        });
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        let result = run_ordinary_defence(&mut world, 2, &mut random);
+        if timing[0] == i32::MAX {
+            // Timing admits intent, but every candidate exceeds the picker's timing bound.
+            result.unwrap();
+        } else {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(error.contains("receiver bounds unavailable"), "{error}");
+        }
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.action, combat.flags, combat.decision.defence_counter),
+            (-1, 0xa1, 3)
+        );
+        assert_eq!(random.state(), 42);
+    }
+}
+
+#[test]
+fn ordinary_defence_selected_starter_reuses_live_executor_without_target_queries() {
+    let mut world = counter_fixture_state(false, true, |saved| {
+        let combat = &mut saved["actors"][0]["control"]["combat"];
+        combat["action"] = 0.into();
+        combat["target"] = serde_json::Value::Null;
+        combat["decision"]["move_selector"] = 0.into();
+        combat["decision"]["defence_counter"] = 1.into();
+    });
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    run_ordinary_defence(&mut world, 0, &mut random).unwrap();
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (
+            combat.action,
+            combat.retained_action_indices[1],
+            combat.decision.attack_state
+        ),
+        (1, 1, 0)
+    );
+    assert_eq!(random.state(), 42);
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }

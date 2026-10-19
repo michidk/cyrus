@@ -337,6 +337,22 @@ pub fn defence_arc_from_positions(
     defence_arc(own_heading, bearing, arc, arc_center)
 }
 
+/// Ordinary defence forward-arc admission from local Q8 actor positions.
+/// Wrapping differences shift right eight bits before full vector normalization.
+/// The converted bearing and receiver yaw must differ by strictly less than
+/// 256 heading units, following preservation's
+/// [local arc inputs](https://github.com/michidk/redguard-preservation/commit/79b518b6e53acc58e02a315b47c7a0c994170ac5).
+pub fn ordinary_defence_forward_arc(
+    own_position: [i32; 3],
+    target_position: [i32; 3],
+    own_heading: i32,
+) -> bool {
+    let delta =
+        std::array::from_fn(|axis| target_position[axis].wrapping_sub(own_position[axis]) >> 8);
+    let [x, _, z] = super::spatial::normalized_direction(delta);
+    heading_difference(own_heading, i32::from(super::spatial::query_bearing(x, z))).abs() < 256
+}
+
 /// Receiver facts consumed by one defence starter. Slot presence refers to the
 /// requested kind's attack slot. Weapon queries are needed only for kinds four/eight.
 #[derive(Clone, Copy, Debug)]
@@ -737,7 +753,7 @@ pub fn counter_attack(
 pub struct DefenceSelectionInput {
     /// The actor is armed.
     pub armed: bool,
-    /// The global lockout word is clear.
+    /// The shared selected-player health-death/controller override is clear.
     pub lockout_clear: bool,
     pub own_selected: i32,
     /// The target is inside the actor's forward arc, and the distance is below the actor's own
@@ -786,7 +802,7 @@ pub trait DefenceSelectionServices {
 /// [defence-selection rules](https://github.com/michidk/redguard-preservation/pull/112)
 /// and [collision timing](https://github.com/michidk/redguard-preservation/commit/79a4f36388dc9e8563af7ed2da2e6d1bb6dc5f7b).
 ///
-/// Armed, with the lockout clear and no move selected, it sets the defence counter to one when
+/// Armed, with the shared health-death/controller override clear and no move selected, it sets the defence counter to one when
 /// the two face alike or the target is outside combat stance, and to `129 - attribute 58`
 /// otherwise. On a zero pacing remainder it picks the best usable defence when the target is
 /// mid-move and its signed command cursor exceeds the wrapping sum of its motion's first
@@ -794,7 +810,7 @@ pub trait DefenceSelectionServices {
 /// exactly 9, starting it when it is in reach; the intent field gains bit one in
 /// the first case. Independently, on a zero remainder of the defence counter it raises the
 /// intent field and starts the paced pick when in reach. With a move already selected, a zero
-/// counter remainder starts kind one while the defence selector is zero and kind two while it is one.
+/// counter remainder starts kind one while the current motion selector is zero and kind two while it is one.
 pub fn defence_selection(
     decision: &mut CombatDecision,
     flags: &mut u8,

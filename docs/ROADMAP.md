@@ -609,10 +609,16 @@ record the rules. Initialization, jump-route continuation and collision/hit
 transitions remain unsupported. Full automatic START/native/browser acceptance
 remains open.
 
+**Verified:** the live nonplayer defence sampler uses local quantized forward arcs,
+shared player-death/controller inhibition and retained motion command timing.
+Its counter writes survive later errors, and inactive branches skip target metadata.
+The forward-arc helper matches 2,060 original cases; an inclusive boundary fails.
+Ordinary combat scheduling and full START acceptance remain open.
+
 Next, in dependency order:
 
-1. Supply the live selection owner with ordinary scheduler admission, receiver/target
-   combat and animation samples, preserving branch-specific metadata reads.
+1. Connect the live selection owner to ordinary scheduler admission and shared
+   BIOS/frame counters, preserving branch-specific metadata reads.
    Compare installed START allocation assignments before claiming automatic actor pacing.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
