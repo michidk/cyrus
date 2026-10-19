@@ -361,6 +361,8 @@ pub struct Scripts {
     pub in_combat_threshold: Option<i32>,
     /// Installed multiple-attacker angular spacing threshold, without scaling.
     pub non_engaged_spacing: Option<i32>,
+    /// Installed lost-sight delay in nominal ticks, signed and unscaled.
+    pub node_timer: Option<i32>,
     pub clock: ClockSettings,
     pub updates: UpdateSettings,
     /// Required in exported caches (schema 16); the default only serves synthetic fixtures.
@@ -386,7 +388,7 @@ impl Scripts {
             self.version,
             (&self.combat_attacks, &self.combat_defenses),
             self.in_combat_threshold,
-            self.non_engaged_spacing,
+            (self.non_engaged_spacing, self.node_timer),
             &self.clock,
             &self.updates,
             &self.camera,
@@ -403,7 +405,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 17,
+            self.version == 18,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

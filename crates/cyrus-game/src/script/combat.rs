@@ -59,6 +59,10 @@ pub struct CombatControlState {
     pub retained_target_position: [i32; 3],
     /// Consecutive decision passes strictly below 25000 Q8 units, wrapping at 32 bits.
     pub close_distance_passes: i32,
+    /// Lost-sight nominal ticks, compared before wrapping addition.
+    pub lost_sight_ticks: i32,
+    /// Nonzero after routed pursuit begins, cleared on reacquisition.
+    pub lost_sight_routing: i32,
     pub flags: u8,
     pub action: i32,
     pub cooldown: u32,
@@ -92,6 +96,8 @@ impl Default for CombatControlState {
             target: None,
             retained_target_position: [0; 3],
             close_distance_passes: 0,
+            lost_sight_ticks: 0,
+            lost_sight_routing: 0,
             flags: 0,
             action: -1,
             cooldown: 0,
@@ -636,6 +642,8 @@ mod constructor_tests {
         record.spacing_ranges = [-1; 3];
         record.spacing_period = -1;
         record.close_distance_passes = 123;
+        record.lost_sight_ticks = -123;
+        record.lost_sight_routing = 1;
         record.retained_target_position = [1, 2, 3];
         attributes[87] = 124;
         attributes[88] = 126;
@@ -654,6 +662,8 @@ mod constructor_tests {
         assert_eq!(record.spacing_ranges, [10000, 30000, 20000]);
         assert_eq!(record.spacing_period, 3);
         assert_eq!(record.close_distance_passes, 0);
+        assert_eq!(record.lost_sight_ticks, 0);
+        assert_eq!(record.lost_sight_routing, 0);
         assert_eq!(record.retained_target_position, [0; 3]);
     }
 

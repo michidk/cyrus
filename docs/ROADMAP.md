@@ -483,8 +483,17 @@ nearest-node query. Explicit validation handles absent, disabled and invalid map
 held-node release preserves foreign reservation owners and feeds `KillMe` cleanup.
 Actor state and runtime map enablement survive snapshot restoration. Public
 headless contracts and 1,344 original/production state comparisons plus 36 loading
-associations pass. Perception scheduling, routed movement and automatic START
-combat remain open.
+associations pass. Routed movement and automatic START combat remain open.
+
+**Verified:** schema 18 exports the signed, unscaled installed perception delay.
+Ordinary combat maintenance now runs timer waiting and reacquisition through live
+sight, held-node release, coordination and reservation owners before message
+maintenance. Lost-sight timer/routing state survives snapshots and resets with
+combat construction. Public headless contracts cover equality, wrapping and
+reacquisition; 680 original/production state comparisons pass, and a wrong
+boundary enters pursuit early and fails. Routed point navigation remains
+explicitly unsupported after its retained transition. Automatic decisions and
+installed START/native/browser combat acceptance remain open.
 
 Next, in dependency order:
 

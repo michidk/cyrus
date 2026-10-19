@@ -845,7 +845,7 @@ messages, resets nonzero action selectors and then applies the shared cooldown
 stage. Nonzero phases remain unsupported. Explicit scheduler shell state suppresses
 combat even when activation inputs are absent.
 Shared class queues retain independent actor read cursors, addressed filtering
-and eight-entry wrapping. Target/perception, combat messages, decision state 6
+and eight-entry wrapping. Routed pursuit, damage messages, decision state 6
 and attacks remain explicitly unsupported. Queue reset ownership and complete
 START intro acceptance remain open. These rules follow preservation's
 [combat maintenance](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#combat-maintenance).
@@ -1209,6 +1209,16 @@ Snapshots retain actor navigation and runtime map enablement, reject unknown
 maps and unsupported negative indices, and preserve stale positive indices for
 runtime validation. **Verified:** 1,344 original/production state and reservation
 comparisons and 36 loading associations match. Public headless contracts cover
-initialization, restoration, foreign ownership and cleanup failure. Perception
-scheduling and routed movement remain unavailable. Rules come from preservation's
+initialization, restoration, foreign ownership and cleanup failure. Routed
+movement remains unavailable. Rules come from preservation's
 [navigation facts](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).
+
+Ordinary combat maintenance runs the nonplayer perception prepass through live
+sight geometry before collision-attribute restoration and message processing.
+The installed `node_timer` controls signed lost-sight ticks. Waiting compares
+before wrapping addition; reacquisition resets lifecycle, releases held nodes,
+restores coordination and clears reservations. Timer and routing state survive
+snapshots and reset with combat construction. Point-navigation pursuit still
+reports unsupported after retaining its transition. These rules follow
+[preservation's perception contract](https://github.com/michidk/redguard-preservation/commit/e8431db).
+This does not complete automatic combat decisions or START pirate acceptance.

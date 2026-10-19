@@ -74,12 +74,13 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 17,
+        version: 18,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
+        node_timer: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -9435,13 +9436,17 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
         );
         assert!(world.combat_attack(first, 9).is_err());
         assert!(world.combat_attack(second, 0).is_err());
-        world.maintain_map_combat(first, 1, false, true).unwrap();
+        world
+            .maintain_map_combat(first, 1, false, true, Default::default())
+            .unwrap();
         assert_eq!(world.actors()[0].attributes()[1], 1);
-        world.maintain_map_combat(first, 1, false, false).unwrap();
+        world
+            .maintain_map_combat(first, 1, false, false, Default::default())
+            .unwrap();
         assert_eq!(world.actors()[0].attributes()[1], 7);
         world.send_combat_message(second, first, 0xd001).unwrap();
         let error = world
-            .maintain_map_combat(first, 1, false, false)
+            .maintain_map_combat(first, 1, false, false, Default::default())
             .unwrap_err();
         assert!(format!("{error:#}").contains("combat message 53249 from actor 1 unsupported"));
         assert_eq!(world.consume_combat_message(first).unwrap(), None);
@@ -19422,4 +19427,128 @@ fn actor_navigation_kill_me_releases_held_nodes_before_owned_sound_cleanup() {
     assert_eq!(saved["walk_nodes"]["maps"][0], serde_json::json!([0, 0]));
     assert_eq!(saved["actors"][0]["control"]["navigation"]["current"], -1);
     assert_eq!(saved["actors"][0]["control"]["navigation"]["next"], -1);
+}
+
+fn perception_case(
+    delay: i32,
+    timer: i32,
+    ticks: u32,
+    visible: bool,
+    lost: i32,
+) -> (i32, i32, i32, bool) {
+    use cyrus_game::script::{
+        CombatControlState, LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery,
+        ScriptInputs, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let mut scripts = cache();
+    scripts.node_timer = Some(delay);
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+        instance.map_position = [0; 3];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, models) = static_model_fixture_at(scripts.clone(), None, [0; 3]);
+    data.metadata["walk_node_maps"] = serde_json::json!([
+        {"node_count":1,"walk_nodes":[walk_node([0,0,0])]}
+    ]);
+    world.prepare_navigation(&data).unwrap();
+    let scene = ordinary_collision_scene(world.world, models);
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    let combat = CombatControlState {
+        flags: 4,
+        lost_sight_ticks: timer,
+        lost_sight_routing: lost,
+        spacing_ranges: [0, 123, 0],
+        ..Default::default()
+    };
+    saved["actors"][0]["control"]["combat"] = serde_json::to_value(combat).unwrap();
+    saved["actors"][0]["control"]["combat"]["target"] = serde_json::json!([1, 1]);
+    saved["actors"][0]["control"]["death_selector"] = 7.into();
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":0,"destination":0});
+    saved["walk_nodes"]["maps"][0] = serde_json::json!([99]);
+    saved["spatial"]["actors"][1]["local"]["position"] =
+        serde_json::json!([if visible { 100 } else { 1000 }, 0, 0]);
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+    let prepared = world
+        .prepare_ordinary_collision_query(ids[0], &scene, &data, [0, 0], &ids)
+        .unwrap();
+    let result = world.maintain_combat_perception(
+        ids[0],
+        ids[1],
+        ticks,
+        ScriptInputs {
+            locomotion_geometry: Some(LocomotionGeometry {
+                ground: OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 0,
+                    sidedness: false,
+                },
+                environment: ObstacleEnvironment {
+                    selected_player: Some(ids[1]),
+                    auto_grab: false,
+                    item_system_ready: false,
+                    shell_execution: false,
+                    ticks,
+                },
+            }),
+            ..Default::default()
+        },
+    );
+    if let Err(error) = &result {
+        assert!(
+            format!("{error:#}").contains("routed point navigation unsupported"),
+            "{error:#}"
+        );
+    }
+    if visible && lost != 0 {
+        let restored = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        assert_eq!(restored["walk_nodes"]["maps"][0], serde_json::json!([0]));
+        assert_eq!(
+            restored["actors"][0]["control"]["navigation"],
+            serde_json::json!({"map":0,"current":-1,"next":-1,"destination":0})
+        );
+        assert_eq!(
+            restored["actors"][0]["control"]["combat"]["attacker_selection_state"],
+            1
+        );
+    }
+    let control = world.actors()[0].control_state().unwrap();
+    let combat = control.combat.as_ref().unwrap();
+    (
+        combat.lost_sight_ticks,
+        combat.lost_sight_routing,
+        i32::from(control.death_selector),
+        result.is_ok(),
+    )
+}
+
+#[test]
+fn perception_waits_at_equality_wraps_ticks_and_reacquires_through_live_owners() {
+    assert_eq!(perception_case(3, 3, 5, false, 7), (8, 7, 7, true));
+    assert_eq!(
+        perception_case(i32::MAX, i32::MAX, 1, false, 7),
+        (i32::MIN, 7, 7, true)
+    );
+    assert_eq!(perception_case(3, 4, 5, false, 7), (4, 1, 7, false));
+    assert_eq!(perception_case(3, 4, 5, true, 7), (0, 0, 6, true));
+    assert_eq!(perception_case(3, 4, 5, true, 0), (0, 0, 7, true));
 }

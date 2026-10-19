@@ -14,6 +14,113 @@ pub struct OrdinaryCombatSample {
 }
 
 impl ScriptWorld {
+    /// Run the nonplayer perception prepass before message and decision maintenance.
+    /// Timer waiting and reacquisition use live collision/navigation owners. Routed
+    /// pursuit retains its transition and reports unsupported point navigation.
+    pub fn maintain_combat_perception(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        ticks: u32,
+        inputs: super::ScriptInputs<'_>,
+    ) -> Result<()> {
+        let result = (|| -> Result<()> {
+            let index = self.resolve(id)?;
+            let actor = &self.actors[index];
+            let Some(control) = actor.control.as_ref() else {
+                return Ok(());
+            };
+            let Some(combat) = control.combat.as_ref() else {
+                return Ok(());
+            };
+            if id == selected_player || control.death_selector == 8 || combat.flags & 4 == 0 {
+                return Ok(());
+            }
+            let Some(target) = combat.target else {
+                return Ok(());
+            };
+            let limit = combat.spacing_ranges[1].wrapping_mul(2);
+            if control.navigation.map.is_none() && self.nearest_free_walk_node(id)?.is_none() {
+                return Ok(());
+            }
+            // Preserve target-before-receiver query ordering.
+            self.query_position(target)?;
+            self.query_position(id)?;
+            let geometry = inputs
+                .locomotion_geometry
+                .context("perception sight geometry unavailable")?;
+            let visible = self.actor_in_sight(
+                id,
+                target,
+                limit,
+                OrdinaryObstacleQuery {
+                    scene: geometry.ground.scene,
+                    animations: geometry.ground.animations,
+                    prepared: geometry.ground.prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                },
+            )?;
+            let combat = self.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted control")
+                .combat
+                .as_mut()
+                .expect("admitted combat");
+            if visible {
+                combat.lost_sight_ticks = 0;
+                if combat.lost_sight_routing != 0 {
+                    self.actors[index]
+                        .control
+                        .as_mut()
+                        .expect("admitted control")
+                        .death_selector = 6;
+                    self.actors[index]
+                        .control
+                        .as_mut()
+                        .expect("admitted control")
+                        .combat
+                        .as_mut()
+                        .expect("admitted combat")
+                        .lost_sight_routing = 0;
+                    self.release_held_walk_nodes(id)?;
+                    self.set_combat_coordination(id, 1)?;
+                    self.clear_walk_node_reservations()?;
+                }
+                return Ok(());
+            }
+            let delay = self
+                .node_timer
+                .context("installed combat node_timer unavailable")?;
+            if combat.lost_sight_ticks <= delay {
+                combat.lost_sight_ticks = combat.lost_sight_ticks.wrapping_add(ticks as i32);
+                return Ok(());
+            }
+            if combat.lost_sight_routing == 0
+                && let Some(peer) = self.ordinary_active_coordinator(id, selected_player, inputs)?
+            {
+                self.send_combat_message(id, peer, 0xd002)?;
+                self.set_combat_coordination(id, 0)?;
+            }
+            self.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted control")
+                .combat
+                .as_mut()
+                .expect("admitted combat")
+                .lost_sight_routing = 1;
+            anyhow::bail!("ordinary combat routed point navigation unsupported")
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} combat perception",
+                self.world, id.index
+            )
+        })
+    }
+
     /// Prepare the admitted nonplayer decision stage's target, counter and engagement.
     /// Only lifecycle selector six, not dead and a combat record admit this prefix.
     /// Fallback copies target local position before distance; successful engagement

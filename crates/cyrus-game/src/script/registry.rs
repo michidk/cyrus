@@ -313,6 +313,7 @@ pub struct ScriptWorld {
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
     in_combat_threshold: Option<i32>,
     non_engaged_spacing: Option<i32>,
+    node_timer: Option<i32>,
     attribute_names: Vec<String>,
     reference_names: Vec<String>,
     names: BTreeMap<i16, usize>,
@@ -426,7 +427,8 @@ impl ScriptWorld {
     }
 
     /// Maintain an admitted ordinary combat record using shared nominal ticks.
-    /// Targeting, damage messages, decision state and attacks retain unsupported guards.
+    /// Perception uses live query owners; routed pursuit, damage, decisions and attacks
+    /// retain unsupported guards.
     /// The owner supplies the selected player's drawing/sheathing and shell gates.
     pub fn maintain_map_combat(
         &mut self,
@@ -434,6 +436,7 @@ impl ScriptWorld {
         ticks: u32,
         player_weapon_transition: bool,
         shell_execution: bool,
+        inputs: ScriptInputs<'_>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
         anyhow::ensure!(
@@ -449,9 +452,9 @@ impl ScriptWorld {
             .control
             .as_ref()
             .context("ordinary combat control unavailable")?;
-        let Some(combat) = control.combat.as_ref() else {
+        if control.combat.is_none() {
             return Ok(());
-        };
+        }
         let selected = matches!(actor.source, ScriptActorSource::Player);
         if selected
             && self
@@ -465,13 +468,20 @@ impl ScriptWorld {
         if !selected && control.death_selector == 8 {
             return Ok(());
         }
-        anyhow::ensure!(
-            selected
-                || actor.attributes[116] != 0
-                || combat.flags & 4 == 0
-                || combat.target.is_none(),
-            "ordinary combat target/perception stage unsupported"
-        );
+        if !selected
+            && actor.attributes[116] == 0
+            && control
+                .combat
+                .as_ref()
+                .is_some_and(|combat| combat.flags & 4 != 0 && combat.target.is_some())
+        {
+            let player = self
+                .actors
+                .iter()
+                .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+                .context("perception selected player unavailable")?;
+            self.maintain_combat_perception(id, self.id(player)?, ticks, inputs)?;
+        }
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
         let selected_player = self
             .actors
@@ -694,6 +704,7 @@ impl ScriptWorld {
             combat_defenses: scripts.combat_defenses.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
             non_engaged_spacing: scripts.non_engaged_spacing,
+            node_timer: scripts.node_timer,
             attribute_names: scripts.definition.attributes.clone(),
             reference_names: scripts.definition.references.clone(),
             names,
@@ -4036,6 +4047,7 @@ mod fighting_tests {
             combat_defenses: Vec::new(),
             in_combat_threshold: Some(threshold),
             non_engaged_spacing: None,
+            node_timer: None,
             attribute_names: Vec::new(),
             reference_names: definition.references,
             names: BTreeMap::new(),

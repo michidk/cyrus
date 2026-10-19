@@ -61,12 +61,13 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 17,
+        version: 18,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
+        node_timer: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,

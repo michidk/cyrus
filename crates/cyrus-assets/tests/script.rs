@@ -4,12 +4,13 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 17,
+        version: 18,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
+        node_timer: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
             max_menu_items: 300,
@@ -234,12 +235,11 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         return;
     }
     let definition = rgpre::import::soup_def::load_soup_def(&root).unwrap();
-    let spacing = rgpre::import::combat_ini::CombatIni::parse(
+    let misc = rgpre::import::combat_ini::CombatIni::parse(
         &std::fs::read_to_string(root.join("COMBAT.INI")).unwrap(),
     )
     .unwrap()
-    .misc
-    .non_engaged_spacing;
+    .misc;
     let mut maps = 0;
     let mut taunts = 0;
     for file in std::fs::read_dir(root.join("maps")).unwrap() {
@@ -254,8 +254,14 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         let scripts = cyrus_assets::script_export::prepare(&map, &root, 0)
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         scripts.validate().unwrap();
+        assert_eq!(scripts.node_timer, misc.node_timer, "{}", path.display());
         if !scripts.combat_attacks.is_empty() {
-            assert_eq!(scripts.non_engaged_spacing, spacing, "{}", path.display());
+            assert_eq!(
+                scripts.non_engaged_spacing,
+                misc.non_engaged_spacing,
+                "{}",
+                path.display()
+            );
         }
         assert_eq!(scripts.combat_defenses.len(), 5, "{}", path.display());
         assert_eq!(
@@ -614,7 +620,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 17);
+    assert_eq!(scripts.version, 18);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -1119,5 +1125,33 @@ fn defense_metadata_round_trips_and_participates_in_cache_identity() {
             .unwrap_err()
             .to_string()
             .contains("identity mismatch")
+    );
+}
+
+#[test]
+fn perception_delay_retains_signed_ticks_and_invalidates_old_exports() {
+    let mut scripts = cache();
+    let original = scripts.content_id.clone();
+    scripts.node_timer = Some(-123);
+    scripts.content_id = scripts.content_identity().unwrap();
+    assert_ne!(scripts.content_id, original);
+    let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(decoded.node_timer, Some(-123));
+    scripts.node_timer = None;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
+    scripts.version = 17;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("re-export")
     );
 }

@@ -283,3 +283,7 @@ this height-aware terrain owner; incomplete terrain sources reject explicitly.
 Script cache schema 17 retains the contiguous installed defense table separately
 from the attack table, including converted animation groups and authored omissions.
 Native and browser preparation share this owner. Older script caches require re-export.
+
+Script cache schema 18 also retains the signed, unscaled installed `node_timer`
+in content identity. Native and browser preparation share the export; older
+script caches require re-export before perception maintenance can use it.
