@@ -158,6 +158,8 @@ pub struct GameplayGlobals {
     controller_prelude: Option<ControllerPrelude>,
     pub(super) selected_combat_inhibition: Option<i32>,
     pub(super) selected_health: Option<super::SelectedHealthState>,
+    pub(super) selected_action_inhibition: Option<u8>,
+    pub(super) selected_ledge_result: Option<i32>,
     /// World-loop iterations, reset on entry and incremented before ordinary traversal.
     pub(super) world_loop_frame: u32,
     pub(super) sound_maintenance: super::SoundMaintenance,
@@ -218,6 +220,7 @@ impl GameplayGlobals {
         self.walk_route.target_exclusion = false;
         self.lineup_result = Some(0);
         self.selected_combat_inhibition = Some(0);
+        self.selected_action_inhibition = Some(0);
         self.sound_maintenance.initialize_player();
         self.controller_prelude = Some(ControllerPrelude {
             override_active: false,
@@ -620,6 +623,30 @@ mod idle_tests {
     }
 
     #[test]
+    fn replacement_retains_separate_action_inhibition_and_ledge_result() {
+        for inhibition in [None, Some(0), Some(16), Some(255)] {
+            for result in [None, Some(0), Some(-1), Some(i32::MAX)] {
+                let mut globals = controller_globals();
+                globals.selected_action_inhibition = inhibition;
+                globals.selected_ledge_result = result;
+                let saved = serde_json::to_vec(&globals.snapshot()).unwrap();
+                let restored = GameplayGlobals::from_snapshot(
+                    serde_json::from_slice(&saved).unwrap(),
+                    &controller_settings(),
+                    &[],
+                    &(0..16).map(|channel| (channel, channel)).collect(),
+                )
+                .unwrap();
+                assert_eq!(restored.selected_action_inhibition, inhibition);
+                assert_eq!(restored.selected_ledge_result, result);
+                globals.initialize_player_controller();
+                assert_eq!(globals.selected_action_inhibition, Some(0));
+                assert_eq!(globals.selected_ledge_result, result);
+            }
+        }
+    }
+
+    #[test]
     fn replacement_preserves_known_and_unknown_lineup_results() {
         for result in [None, Some(0), Some(-1), Some(17)] {
             let mut globals = controller_globals();
@@ -871,6 +898,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     controller_prelude: Option<ControllerPrelude>,
     selected_combat_inhibition: Option<i32>,
     selected_health: Option<super::SelectedHealthState>,
+    selected_action_inhibition: Option<u8>,
+    selected_ledge_result: Option<i32>,
     #[serde(default)]
     world_loop_frame: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
@@ -908,6 +937,8 @@ impl GameplayGlobals {
             controller_prelude: self.controller_prelude.clone(),
             selected_combat_inhibition: self.selected_combat_inhibition,
             selected_health: self.selected_health.clone(),
+            selected_action_inhibition: self.selected_action_inhibition,
+            selected_ledge_result: self.selected_ledge_result,
             world_loop_frame: self.world_loop_frame,
             sound_maintenance: self.sound_maintenance.snapshot(),
             menu_state: self.menu_state,
@@ -970,6 +1001,8 @@ impl GameplayGlobals {
             controller_prelude: saved.controller_prelude,
             selected_combat_inhibition: saved.selected_combat_inhibition,
             selected_health: saved.selected_health,
+            selected_action_inhibition: saved.selected_action_inhibition,
+            selected_ledge_result: saved.selected_ledge_result,
             world_loop_frame: saved.world_loop_frame,
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,

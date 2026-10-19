@@ -23976,51 +23976,161 @@ fn selected_health_publishes_damage_after_parity_reaction_and_sound() {
 }
 
 #[test]
-fn selected_health_keeps_ledge_and_attached_rope_cleanup_explicit() {
+fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound() {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
-    for (field, value, boundary) in [
-        (
-            "living_state",
-            serde_json::json!(15),
-            "ledge-action cleanup unavailable",
-        ),
-        (
-            "rope_attached",
-            serde_json::json!(true),
-            "attached-rope destruction unavailable",
-        ),
-    ] {
+    for fail_reset_sound in [false, true] {
         let (scripts, world, mut data, _) = player_health_fixture();
         let index = world
             .actors()
             .iter()
             .position(|actor| matches!(actor.source, ScriptActorSource::Player))
             .unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap();
+        for group in [56, 133] {
+            definition["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":[{"opcode":4,"sound_param":9,"volume_shift":0},{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}));
+        }
+        let generation = world.generation();
         let mut world =
             replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
-                saved["actors"][index]["control"][field] = value;
+                saved["actors"][index]["control"]["living_state"] = 15.into();
+                saved["actors"][index]["control"]["directional_state"] =
+                    serde_json::json!([128, 255]);
+                saved["actors"][index]["model"]["ledge_support"] =
+                    serde_json::json!([generation, index]);
             });
         let id = world.id(index).unwrap();
         let hud = ScriptHud::default();
         let mut random = cyrus_game::random::EngineRandom::from_state(1);
-        let error = world
-            .apply_selected_contact_health(
-                id,
-                -7,
-                ScriptInputs {
-                    hud: Some(&hud),
-                    nominal_ticks: Some(1),
-                    ..Default::default()
-                },
-                &mut random,
-                &mut |_, _| Ok(()),
-            )
-            .unwrap_err();
-        assert!(format!("{error:#}").contains(boundary), "{error:#}");
+        let mut calls = 0;
+        let result = world.apply_selected_contact_health(
+            id,
+            -7,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                shell_execution: Some(false),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, cue| {
+                if matches!(
+                    cue,
+                    cyrus_game::script::ScriptSound::Animation {
+                        sound: cyrus_world::animation::AnimationSound::Play { .. },
+                        ..
+                    }
+                ) {
+                    calls += 1;
+                    anyhow::ensure!(!fail_reset_sound || calls != 2, "reset sound failed");
+                }
+                Ok(())
+            },
+        );
+        assert_eq!(calls, 2);
+        assert_eq!(result.is_err(), fail_reset_sound);
         assert_eq!(world.actors()[index].attributes()[3], 43);
-        assert_eq!(world.globals().selected_health().unwrap().displayed(), 50);
-        assert_eq!(hud.health_feedback_ticks(), 25);
+        assert_eq!(
+            world.globals().selected_health().unwrap().displayed(),
+            if fail_reset_sound { 50 } else { 43 }
+        );
+        let control = world.actors()[index].control_state().unwrap();
+        assert_eq!(control.living_state, if fail_reset_sound { 17 } else { 0 });
+        assert_eq!(
+            control.action_transition_counter,
+            if fail_reset_sound { 0 } else { 6 }
+        );
+        assert_eq!(control.directional_state, [128, 255]);
+        let saved = movement_snapshot(&world, &scripts, &data);
+        assert!(saved["actors"][index]["model"]["ledge_support"].is_null());
     }
+}
+
+#[test]
+fn selected_health_kind_one_reset_clears_support_and_directions_without_shell_or_starter() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (scripts, world, mut data, _) = player_health_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let generation = world.generation();
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+        saved["actors"][index]["attributes"][105] = 1.into();
+        saved["actors"][index]["control"]["living_state"] = 15.into();
+        saved["actors"][index]["control"]["motion_direction"] = 7.into();
+        saved["actors"][index]["control"]["directional_state"] = serde_json::json!([128, 255]);
+        saved["actors"][index]["model"]["ledge_support"] = serde_json::json!([generation, index]);
+    });
+    let id = world.id(index).unwrap();
+    let hud = ScriptHud::default();
+    world
+        .apply_selected_contact_health(
+            id,
+            -7,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::from_state(1),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    let control = world.actors()[index].control_state().unwrap();
+    assert_eq!(control.living_state, 17);
+    assert_eq!(control.motion_direction, 0);
+    assert_eq!(control.directional_state, [0, 0]);
+    assert_eq!(control.action_transition_counter, 0);
+    assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
+    assert!(
+        movement_snapshot(&world, &scripts, &data)["actors"][index]["model"]["ledge_support"]
+            .is_null()
+    );
+}
+
+#[test]
+fn selected_health_keeps_attached_rope_cleanup_explicit() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (field, value, boundary) = (
+        "rope_attached",
+        serde_json::json!(true),
+        "attached-rope destruction unavailable",
+    );
+    let (scripts, world, mut data, _) = player_health_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+        saved["actors"][index]["control"][field] = value;
+    });
+    let id = world.id(index).unwrap();
+    let hud = ScriptHud::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    let error = world
+        .apply_selected_contact_health(
+            id,
+            -7,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains(boundary), "{error:#}");
+    assert_eq!(world.actors()[index].attributes()[3], 43);
+    assert_eq!(world.globals().selected_health().unwrap().displayed(), 50);
+    assert_eq!(hud.health_feedback_ticks(), 25);
 }
 
 #[test]

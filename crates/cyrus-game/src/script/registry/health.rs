@@ -56,10 +56,111 @@ impl GameplayGlobals {
 }
 
 impl ScriptWorld {
+    /// Reset the selected receiver's ledge action after its damage animation starts.
+    /// Support clearing precedes transition admission; blocked transitions retain
+    /// state 17 and clear directional state. Follows preservation's SOUP reset rule.
+    fn reset_selected_reaction_action(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let living = self.actors[index]
+            .control
+            .as_ref()
+            .context("selected action control unavailable")?
+            .living_state;
+        if living != 15 {
+            return Ok(());
+        }
+        let inhibited = self
+            .globals
+            .selected_action_inhibition
+            .context("selected action inhibition unavailable")?;
+        if inhibited != 0 {
+            return Ok(());
+        }
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated control")
+            .living_state = 17;
+        self.actors[index].model.ledge_support = None;
+        if self.actors[index].attributes[105] != 1 {
+            self.globals.selected_ledge_result = Some(0);
+            let drawn = self.actors[index]
+                .control
+                .as_ref()
+                .expect("validated control")
+                .weapon_drawn;
+            let shell = if !drawn && self.updates.animation_system {
+                inputs
+                    .shell_execution
+                    .context("selected action shell context unavailable")?
+            } else {
+                true
+            };
+            let actor = &self.actors[index];
+            let blocked = self.updates.animation_system
+                && !shell
+                && actor
+                    .animation
+                    .as_ref()
+                    .and_then(|animation| animation.playback.current_group())
+                    .is_some_and(|group| matches!(group, 149 | 150));
+            if !actor
+                .control
+                .as_ref()
+                .expect("validated control")
+                .weapon_drawn
+                && !blocked
+            {
+                let ticks = inputs
+                    .nominal_ticks
+                    .context("selected action nominal ticks unavailable")?;
+                let position = super::animation_sound_position(self.spatial.as_ref(), index);
+                let actor = &mut self.actors[index];
+                let surface = actor.surface;
+                let animation = actor
+                    .animation
+                    .as_mut()
+                    .context("selected action animation unavailable")?;
+                let frame =
+                    animation
+                        .playback
+                        .force_request_with_sounds(56, 0, ticks, &mut |sound| {
+                            sounds(
+                                id,
+                                ScriptSound::Animation {
+                                    sound,
+                                    surface,
+                                    position,
+                                },
+                            )
+                        })?;
+                animation.frame = frame.or(animation.frame);
+                let control = actor.control.as_mut().expect("validated control");
+                control.action_transition_counter = 6;
+                control.living_state = 0;
+            }
+        }
+        let control = self.actors[index]
+            .control
+            .as_mut()
+            .expect("validated control");
+        if control.living_state != 0 {
+            control.motion_direction = 0;
+            control.directional_state = [0; 2];
+        }
+        Ok(())
+    }
+
     /// Apply selected-player additive health in service order. Inhibition precedes
     /// HUD access. Timer and actor health writes survive later feedback errors;
     /// displayed health publishes only after taunt and reaction return.
-    /// Ledge-action cleanup and attached-rope destruction remain unavailable. Death is
+    /// Ledge reset retains its own support and inhibition state. Attached-rope
+    /// destruction remains unavailable. Death is
     /// dispatched by the contact caller, never by this additive service.
     pub fn apply_selected_contact_health(
         &mut self,
@@ -149,14 +250,11 @@ impl ScriptWorld {
                         },
                     )?;
                     animation.frame = frame.or(animation.frame);
-                    let control = actor
+                    self.reset_selected_reaction_action(id, inputs, sounds)?;
+                    let control = self.actors[index]
                         .control
                         .as_ref()
                         .context("selected reaction control unavailable")?;
-                    ensure!(
-                        control.living_state != 15,
-                        "selected reaction ledge-action cleanup unavailable"
-                    );
                     ensure!(
                         !control.rope_attached,
                         "selected reaction attached-rope destruction unavailable"

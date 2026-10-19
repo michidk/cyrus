@@ -236,7 +236,7 @@ command or retaining its request does not count as executing its gameplay effect
 | Weapon contact and nonplayer health/death | Partial | Static and actor-owned face response, impact ordering, additive health and selector-zero death have focused tests and a successful headless START diagnostic | Noncombat actor-list response, attribute-126 segment path, transient response and selected-player health |
 | `MoveForward`, `MoveBackward`, `WalkForward`, `MoveLeft`, `MoveRight` | Partial | Supported synchronous ground/combat movement and collision probes; ordinary walking branches | Selected-player WalkForward; remaining noncombat strafe, deep-water/edge, ledge and unsupported movement branches |
 | Point walking, routes and `Wander` | Partial | Reservation/history ownership; supported direct/route phases, facing and phase-nine delays | Jump-route continuation, hit/collision transitions, direction-15 and exclusion branches; populated-map Wander |
-| Selected-player combat and health | Partial | Standalone initialization, separate hit inhibition and maximum/displayed health, shared HUD timer, ordered hurt-taunt dispatch and ordinary unattached damage reactions | Ledge-action cleanup, attached-rope destruction, full inhibition lifecycle, death override and armed controller scheduling |
+| Selected-player combat and health | Partial | Standalone initialization, separate hit inhibition and maximum/displayed health, shared HUD timer, ordered hurt-taunt dispatch and ordinary unattached damage reactions | Ledge entry and full support-follow, attached-rope destruction, full inhibition lifecycle, death override and armed controller scheduling |
 | `SetHealth`, `AdjustHealth`, `ReplenishHealth`, `PlayerHealth` | Partial | Reads and supported nonplayer writes | Distinct health modes, selected-player HUD feedback, admission and death side effects; contact health does not automatically complete these commands |
 | `DrawSword`, `SheathSword`, weapon predicates | Partial | Shared holding/drawing/sheathing queries and supported nonplayer transitions | Selected-player HUD timer/camera selection and complete armed controls |
 | Script cameras and show/look/pan services | Todo integration | Installed camera settings/records, pose preparation, collision/terrain correction helpers | Session lifetime, live actor/geometry bindings, native dispatch/task continuation, publication and restoration; render-camera existence alone is insufficient |
@@ -812,6 +812,21 @@ ownership and complete reaction cleanup remain unavailable. Full gates pass
 1,307 Rust test executions with zero installed-data skips, including the
 headless installed keyboard walk/release scheduler check. Native/browser ledge
 acceptance remains open.
+
+**Verified:** selected contact-health reactions now run the ledge-action reset
+with separate initialized action inhibition and retained ledge support identity.
+Reset clears support before transition admission. The admitted transition requests
+group 56 synchronously, assigns counter six and clears living state. Kind-one
+receivers retain state 17 and clear directions without reading shell context.
+Public-call tests cover successful reset and retained health/support writes when
+reset sound fails; displayed health publishes only after success. Snapshot owners
+retain action inhibition, the shared ledge result and rebound support identity.
+The [reset ordering](https://github.com/michidk/redguard-preservation/commit/f6816b48ada747b44d5cfada30f9a5d01c17a200)
+and [separate inhibition](https://github.com/michidk/redguard-preservation/commit/aa2583354756dbffbc60814f84c23c17a372ca31)
+are published. Full gates pass with 1,310 Rust test executions, zero install
+skips and the installed headless keyboard walk/release scheduler check. Full
+ledge entry/support-follow, attached-rope destruction, inhibition lifecycle and
+original/native/browser reaction acceptance remain open.
 
 Next, in dependency order: establish
 selected-player health/controller owners and remaining combat movement, complete

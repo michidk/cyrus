@@ -45,6 +45,8 @@ pub(super) struct AdmissionState {
 pub(super) struct ModelState {
     pub prepared: bool,
     pub support: ModelSupportOwners,
+    /// Separate ledge support, retained across ordinary ground-owner clearing.
+    pub ledge_support: Option<ScriptActorId>,
     pub static_radius: Option<f32>,
     pub animation_radius: Option<f32>,
     pub collision_flags: Option<u8>,
@@ -902,6 +904,7 @@ pub(crate) fn prepare_resources(
 pub(super) struct ModelSnapshot {
     prepared: bool,
     support_actor: Option<(u64, usize)>,
+    ledge_support: Option<(u64, usize)>,
     support_static: Option<usize>,
     static_radius: Option<u32>,
     animation_radius: Option<u32>,
@@ -921,6 +924,7 @@ impl ModelState {
             prepared: self.prepared,
             weapon: self.weapon.as_ref().map(|weapon| weapon.snapshot()),
             support_actor: self.support.actor.map(|id| (id.generation, id.index)),
+            ledge_support: self.ledge_support.map(|id| (id.generation, id.index)),
             support_static: self.support.static_placement,
             static_radius: self.static_radius.map(f32::to_bits),
             animation_radius: self.animation_radius.map(f32::to_bits),
@@ -1002,6 +1006,10 @@ impl ModelState {
         Ok(Self {
             weapon,
             prepared: saved.prepared,
+            ledge_support: saved
+                .ledge_support
+                .map(|(generation, index)| rebind(generation, index))
+                .transpose()?,
             support,
             static_radius: saved.static_radius.map(radius).transpose()?,
             animation_radius: saved.animation_radius.map(radius).transpose()?,
