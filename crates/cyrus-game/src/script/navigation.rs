@@ -250,6 +250,38 @@ impl WalkNodeReservations {
         self.search(position, false)
     }
 
+    /// Point routing searches only the supplied enabled map, ignoring reservations.
+    pub(super) fn nearest_on_map(
+        &mut self,
+        map: Option<usize>,
+        position: [i32; 3],
+    ) -> Option<usize> {
+        self.selected_map = None;
+        let map = map?;
+        if *self.disabled.get(map)? {
+            return None;
+        }
+        let mut best = 4096;
+        let mut selected = None;
+        for (index, node) in self.maps.get(map)?.iter().enumerate() {
+            let distance = position
+                .iter()
+                .zip(node.position)
+                .fold(0i32, |sum, (a, b)| {
+                    sum.wrapping_add(a.wrapping_sub(b).wrapping_abs())
+                });
+            if distance < best {
+                self.selected_map = Some(map);
+                selected = Some(index);
+                if distance < 12 {
+                    break;
+                }
+                best = distance;
+            }
+        }
+        selected
+    }
+
     fn search(&mut self, position: [i32; 3], free_only: bool) -> Option<(usize, usize)> {
         self.selected_map = None;
         let mut best = 4096;

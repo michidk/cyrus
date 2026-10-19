@@ -560,8 +560,8 @@ arrived held nodes or a missing next
 node through live animation, reservation and deferred-update owners; 1,944
 original/production transitions agree, including failed claims and wrapper
 rollback. The [transition contract](https://github.com/michidk/redguard-preservation/commit/42022fc3fe4e3e90ee43ae3c73373114bb78a52a)
-records these rules. Non-arrived walking, collision response, phase-eight route
-selection and full automatic START/native/browser acceptance remain open.
+records these rules. Route collision response and full automatic
+START/native/browser acceptance remain open.
 
 **Verified:** non-arrived held-node phases 1 and 27 now use live facing and
 animation owners. Ordinary traversal supplies the session random stream through
@@ -570,8 +570,7 @@ attribute-90 phase-nine delay. All 640 original/production turn, phase, retained
 node and random-consumption cases agree. A wrong combat-record-existence
 predicate fails the comparison. Synchronous cue failure stops before heading,
 phase and random changes. The [facing transition contract](https://github.com/michidk/redguard-preservation/commit/b4a25db81674547aaf4a7491b938ab818d145134)
-records the rules. Phase-eight selection and full automatic
-START/native/browser acceptance remain open.
+records the rules. Full automatic START/native/browser acceptance remains open.
 
 **Verified:** phase-nine continuation now uses the session random stream,
 retained command word, live weapon predicate and synchronous animation requests.
@@ -579,8 +578,7 @@ All 1,512 original/production countdown, phase, idle-request and random-state
 cases agree. Replacing rejection sampling with `Rnd(3)` fails. Public contracts
 cover snapshot continuation, missing owners and sound failure after consumed
 draws but before wrapper save. The [delay contract](https://github.com/michidk/redguard-preservation/commit/b9439822fee88783a87a6a7b2a86a236e362000b)
-records the rules. Phase-eight routing and full automatic
-START/native/browser acceptance remain open.
+records the rules. Full automatic START/native/browser acceptance remains open.
 
 **Verified:** phase-two continuation now uses the synchronous coordinate walker,
 receiver playback checkpoint, local rollback coordinates and selected query-position
@@ -591,7 +589,25 @@ phase-two release, pending, arrival and claim cases agree. An exclusive angular
 boundary fails the comparison. The [walking contract](https://github.com/michidk/redguard-preservation/commit/3cc8106b635a475b2cff73d761ea870a70879226)
 records the rules. These comparisons control original movement and bearing;
 production tests exercise the real synchronous movement owner. Full collision/audio
-parity, phase-eight routing and automatic START/native/browser acceptance remain open.
+parity and automatic START/native/browser acceptance remain open.
+
+**Verified:** the installed automatic START diagnostic with an explicit view
+reaches the unsupported combat-decision guard for both SPIRATE1 and SPIRATE2.
+The diagnostic controls ambient audio and reset state; it does not establish
+native/browser gameplay acceptance. Headless CLI lacks the view owner needed
+for that traversal.
+
+**Verified:** current-map destination selection and phase-eight route monitoring
+match 112 original nearest-selector cases and 1,248 original/production route,
+reservation, completion and history cases. Admitting distance 4096 and replacing
+the jump-flag phase with phase one each fail the comparisons. Direct visibility
+uses retained candidates and enabled polygon sidedness. Public geometry and
+phase contracts exercise direct completion, facing, rejection and pending state.
+The [route contract](https://github.com/michidk/redguard-preservation/commit/a97f93641df919b654109489872170fccb103e67)
+and [direct-phase contract](https://github.com/michidk/redguard-preservation/commit/b22f7dd01e184a4c21082bac008fab22872d3c15)
+record the rules. Initialization, jump-route continuation and collision/hit
+transitions remain unsupported. Full automatic START/native/browser acceptance
+remains open.
 
 Next, in dependency order:
 

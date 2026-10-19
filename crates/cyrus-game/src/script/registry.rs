@@ -831,6 +831,38 @@ impl ScriptWorld {
         })
     }
 
+    /// Find a point destination on this actor's current enabled map.
+    /// Coordinates are Q8 and arithmetic-shifted to map units. Reservations do
+    /// not filter candidates. Preservation's strict 4096 Manhattan bound and
+    /// first improving distance below twelve apply. Retains the shared selected
+    /// map on a hit and clears it on a miss without changing actor navigation.
+    pub fn nearest_current_walk_node(
+        &mut self,
+        actor: ScriptActorId,
+        destination: [i32; 3],
+    ) -> Result<Option<usize>> {
+        let result: Result<Option<usize>> = (|| {
+            let index = self.resolve(actor)?;
+            let map = self.actors[index]
+                .control
+                .as_ref()
+                .context("actor navigation unavailable")?
+                .navigation
+                .map;
+            Ok(self
+                .walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .nearest_on_map(map, destination.map(|value| value >> 8)))
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} current-map point destination",
+                self.world, actor.index
+            )
+        })
+    }
+
     /// Find the next hop from the actor's held current node to a destination index.
     /// Preserves authored traversal, live source-node reservations and shared link flags.
     /// This selects a hop without reserving it, moving the actor or changing its navigation.

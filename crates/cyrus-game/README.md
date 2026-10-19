@@ -1280,8 +1280,7 @@ its session random owner through combat perception to point movement. Turning
 consumes no random draws. Missing owners fail contextually rather than inventing
 weapon state or a private random stream. **Verified:** 640 original/production
 turn, phase and random-consumption cases agree. Treating any combat record as
-active fails that comparison. Phase-eight route selection remains unsupported;
-full automatic START combat is unverified.
+active fails that comparison. Full automatic START combat is unverified.
 
 
 Point phase nine now retains its nominal-tick countdown, weapon exit and idle
@@ -1293,8 +1292,8 @@ animation owner. Failed sounds retain consumed draws and the updated shared
 word while stopping before actor-command save and pending registration.
 **Verified:** 1,512 original/production countdown, phase, idle-request and random
 state cases agree; substituting `Rnd(3)` fails. Public contracts cover snapshot
-continuation and missing-owner ordering. Phase-eight selection, full automatic
-START combat and native/browser acceptance remain open.
+continuation and missing-owner ordering. Full automatic START combat and
+native/browser acceptance remain open.
 
 
 Point phase two now invokes coordinate walking through the existing synchronous
@@ -1311,5 +1310,21 @@ and 486 phase-two release, pending, arrival and claim cases agree. An exclusive
 overshoot boundary fails the comparison. These original probes control movement
 side effects and bearing; production contracts exercise synchronous movement,
 local post-movement bearing and contextual missing live WalkForward admission.
-Full collision/audio parity, phase-eight routing and automatic START combat
-with native/browser acceptance remain open.
+Full collision/audio parity and automatic START combat with native/browser
+acceptance remain open.
+
+
+Point routing now searches the receiver's current enabled walk map without
+filtering reservations. Phase eight retains route results, ordered claims and
+completion codes; first-link jump flags select phase 12, whose continuation is
+still unavailable. Direct visibility uses retained candidates, the Q8 distance
+limit and enabled polygon sidedness. Phases 11, 21 and 22 connect default
+completion, facing and coordinate walking. Phase-zero initialization, jump
+continuation and route collision/hit transitions remain unsupported. Full
+automatic START combat and original/native/browser acceptance remain open.
+
+**Verified:** 112 original/production current-map searches and 1,248 phase-eight
+route/claim/completion cases agree. Inclusive cutoff and wrong jump-phase
+controls fail. These comparisons exercise production route search and ordered
+reservation owners against controlled original services. They do not prove
+original physical movement, full visibility geometry parity or automatic combat.

@@ -20048,7 +20048,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
     let error = world
         .move_ordinary_point(first, [0; 3], 0, inputs, None, None)
         .unwrap_err();
-    assert!(format!("{error:#}").contains("routed point navigation unsupported"));
+    assert!(format!("{error:#}").contains("point visibility geometry unavailable"));
     let (mut world, _, _) = point_wrapper_fixture(u32::MAX);
     let id = world.id(0).unwrap();
     assert_eq!(
@@ -21734,4 +21734,359 @@ fn point_walking_failed_post_snap_arrival_retains_held_nodes_and_history() {
     let after = movement_snapshot(&world, &scripts, &data);
     assert_eq!(after["walk_nodes"]["maps"][0], serde_json::json!([1, 0]));
     assert_eq!(after["map_updates"], serde_json::json!([0]));
+}
+
+#[test]
+fn point_destination_search_stays_on_current_map_and_ignores_reservations() {
+    let (world, scripts, data) = free_node_fixture(
+        serde_json::json!([
+            {"node_count":3,"walk_nodes":[walk_node([12,-2,3]),walk_node([11,-2,3]),walk_node([0,-2,3])]},
+            {"node_count":1,"walk_nodes":[walk_node([0,-2,3])]}
+        ]),
+        0,
+        |_| {},
+    );
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["control"]["navigation"]["map"] = 0.into();
+    saved["walk_nodes"]["maps"][0] = serde_json::json!([2, 2, 2]);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    assert_eq!(
+        world.nearest_current_walk_node(id, [0, -257, 768]).unwrap(),
+        Some(1)
+    );
+    assert_eq!(
+        movement_snapshot(&world, &scripts, &data)["walk_nodes"]["selected_map"],
+        0
+    );
+    world.set_walk_map_enabled(0, false).unwrap();
+    assert_eq!(
+        world.nearest_current_walk_node(id, [0, -257, 768]).unwrap(),
+        None
+    );
+    assert!(movement_snapshot(&world, &scripts, &data)["walk_nodes"]["selected_map"].is_null());
+}
+
+#[test]
+fn point_route_completion_releases_claims_and_retains_phase_and_history() {
+    use cyrus_game::script::ScriptInputs;
+    for (current, link, next_owner, expected_result, expected_phase, completion) in [
+        (-1, false, 0, 1, 0, None),
+        (0, false, 0, 0, 8, Some(3)),
+        (0, false, 0, 0, 8, Some(2)),
+        (0, true, 0, 1, 1, None),
+        (0, true, 0, 1, 12, None),
+        (0, true, 2, 0, 8, Some(7)),
+        (1, false, 0, 1, 21, None),
+    ] {
+        let (_, scripts, mut data) = point_node_fixture(8);
+        data.metadata["walk_node_maps"][0]["walk_nodes"][0] = walk_node([100, 0, 100]);
+        if link {
+            data.metadata["walk_node_maps"][0]["walk_nodes"][0]["route_count"] = 1.into();
+            data.metadata["walk_node_maps"][0]["walk_nodes"][0]["routes"] =
+                serde_json::json!([{"target_node_id":1,"cost":1}]);
+            if expected_phase == 12 {
+                data.metadata["walk_node_maps"][0]["walk_nodes"][0]["route_count"] = 2.into();
+                data.metadata["walk_node_maps"][0]["walk_nodes"][0]["routes"] = serde_json::json!([{"target_node_id":1,"cost":16384},{"target_node_id":1,"cost":1}]);
+            }
+        }
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        world.prepare_navigation(&data).unwrap();
+        world
+            .bind_animation(world.id(0).unwrap(), &data, 18)
+            .unwrap();
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["attributes"][95] = 1.into();
+        saved["actors"][0]["control"]["death_selector"] = 7.into();
+        saved["actors"][0]["control"]["navigation"] = serde_json::json!({"map":0,"current":current,"next":1,"previous_next":99,"destination":0});
+        saved["actors"][0]["control"]["point_command"]["phase"] = 8.into();
+        saved["walk_nodes"]["maps"][0] = serde_json::json!([1, next_owner]);
+        for field in ["local", "previous_local_position"] {
+            if field == "local" {
+                saved["spatial"]["actors"][0][field]["position"] =
+                    serde_json::json!([1000000, 200, 1000000]);
+            } else {
+                saved["spatial"]["actors"][0][field] = serde_json::json!([1000000, 200, 1000000]);
+            }
+        }
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    if completion == Some(2) {
+                        [2000000, 0, 2000000]
+                    } else {
+                        [256, -512, 768]
+                    },
+                    17,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        ..Default::default()
+                    },
+                    None,
+                    None
+                )
+                .unwrap(),
+            expected_result
+        );
+        let after = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            after["actors"][0]["control"]["point_command"]["phase"],
+            expected_phase
+        );
+        assert_eq!(
+            after["actors"][0]["control"]["navigation"]["previous_next"],
+            99
+        );
+        assert_eq!(
+            after["actors"][0]["attributes"][1],
+            if completion.is_some() { 13 } else { 12 }
+        );
+        assert_eq!(
+            after["actors"][0]["control"]["death_selector"],
+            if completion.is_some() { 0 } else { 7 }
+        );
+        if let Some(result) = completion {
+            assert_eq!(
+                world.inspect(0, 1)["globals"]["native_command_return"],
+                result
+            );
+        }
+    }
+}
+
+#[test]
+fn point_direct_visibility_obeys_distance_and_one_sided_static_geometry() {
+    use cyrus_assets::collision::{CollisionScene, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::OrdinaryObstacleQuery;
+    for (wall, facing, distance, expected) in [
+        (false, true, 131072, true),
+        (false, true, 131073, false),
+        (true, true, 131072, false),
+        (true, false, 131072, true),
+    ] {
+        let (mut world, data) = overlap_response_fixture(128, 0, 1024);
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        let from = world.spatial(ids[0]).unwrap().local.position;
+        let (_, _, models) = static_model_fixture(cache());
+        let mut scene = ordinary_collision_scene(world.world, models);
+        let mut model = ordinary_forward_wall_model();
+        if !facing {
+            model.geometry.normals[0][0] = 1.0;
+            model.geometry.faces[0].reverse();
+        }
+        scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            placements: wall
+                .then(|| StaticPlacement {
+                    id: 1,
+                    model: "WALL".into(),
+                    position: [(from[0] >> 8) + 504, from[1] >> 8, from[2] >> 8],
+                    rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+                })
+                .into_iter()
+                .collect(),
+            models: BTreeMap::from([("WALL".into(), model)]),
+            ..Default::default()
+        };
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [10, 30], &ids)
+            .unwrap();
+        let query = OrdinaryObstacleQuery {
+            scene: &scene,
+            animations: &data,
+            prepared: &prepared,
+            vertical_offset: 0,
+            respond: false,
+        };
+        assert_eq!(
+            world
+                .point_direct_visible(
+                    ids[0],
+                    ids[1],
+                    [from[0] + distance, from[1], from[2]],
+                    query
+                )
+                .unwrap(),
+            expected,
+            "wall {wall}, facing {facing}, distance {distance}"
+        );
+    }
+}
+
+#[test]
+fn point_direct_attribute_gate_releases_before_pending_and_default_completion() {
+    use cyrus_game::script::ScriptInputs;
+    for (phase, expected_result, expected_phase) in [(11, 1, 21), (22, 1, 21), (21, 0, 21)] {
+        let (world, scripts, data) = point_node_fixture(8);
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["attributes"][95] = 1.into();
+        saved["actors"][0]["control"]["object_update_excluded"] = true.into();
+        saved["actors"][0]["control"]["death_selector"] = 7.into();
+        saved["actors"][0]["control"]["navigation"] =
+            serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+        saved["actors"][0]["control"]["point_command"]["phase"] = phase.into();
+        saved["walk_nodes"]["maps"][0] = serde_json::json!([1, 1]);
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [1000000, 0, 1000000],
+                    0,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None
+                )
+                .unwrap(),
+            expected_result
+        );
+        let after = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            after["actors"][0]["control"]["point_command"]["phase"],
+            expected_phase
+        );
+        assert_eq!(
+            after["actors"][0]["attributes"][1],
+            if expected_result == 0 { 13 } else { 12 }
+        );
+        assert_eq!(after["actors"][0]["control"]["navigation"]["current"], -1);
+        assert_eq!(after["actors"][0]["control"]["navigation"]["next"], -1);
+        assert_eq!(
+            after["actors"][0]["control"]["navigation"]["previous_next"],
+            99
+        );
+        assert_eq!(after["walk_nodes"]["maps"][0], serde_json::json!([0, 0]));
+    }
+}
+
+#[test]
+fn point_direct_visible_completion_and_rejection_use_live_geometry_owner() {
+    use cyrus_game::script::{LocomotionGeometry, OrdinaryGroundQuery, ScriptHud, ScriptInputs};
+    for (phase, far, tolerance, expected_result, expected_phase, expected_attribute, sliding) in [
+        (8, false, 0, 1, 22, 12, false),
+        (11, true, 0, 1, 0, 12, false),
+        (11, false, 100000, 0, 11, 13, false),
+        (22, false, 0, 1, 11, 12, false),
+        (11, false, 0, 1, 11, 13, false),
+        (11, false, 0, 1, 0, 13, true),
+    ] {
+        let (_, mut scripts, point_data) = point_node_fixture(8);
+        for placement in &mut scripts.instances {
+            placement.object_type = 1;
+            placement.map_position = [10, 20, 30];
+        }
+        scripts.content_id = scripts.content_identity().unwrap();
+        let (mut world, mut data, models) = static_model_fixture(scripts.clone());
+        data.metadata["actors"][0]["animation_groups"] =
+            point_data.metadata["actors"][0]["animation_groups"].clone();
+        data.metadata["walk_node_maps"] = point_data.metadata["walk_node_maps"].clone();
+        world.prepare_navigation(&data).unwrap();
+        world
+            .bind_animation(world.id(0).unwrap(), &data, 18)
+            .unwrap();
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["attributes"][93] = 1.into();
+        saved["actors"][0]["control"]["sliding_state"] = u8::from(sliding).into();
+        saved["actors"][0]["control"]["point_command"]["phase"] = phase.into();
+        saved["actors"][0]["control"]["navigation"] =
+            serde_json::json!({"map":0,"current":0,"next":-1,"previous_next":99,"destination":0});
+        saved["actors"][0]["control"]["object_update_excluded"] = true.into();
+        // Keep facing already aligned toward the destination while arrival stays false.
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([256, 0, -20000]);
+        saved["spatial"]["actors"][0]["previous_local_position"] =
+            serde_json::json!([256, 0, -20000]);
+        saved["spatial"]["actors"][0]["local"]["angles"][1] = 0.into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let scene = ordinary_collision_scene(world.world, models);
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [0, 0], &[])
+            .unwrap();
+        let hud = ScriptHud::default();
+        let destination = if far {
+            [256, 0, 200000]
+        } else {
+            [256, -512, 768]
+        };
+        let inputs = ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            locomotion_geometry: Some(LocomotionGeometry {
+                ground: OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 1,
+                    sidedness: false,
+                },
+                environment: cyrus_game::script::ObstacleEnvironment {
+                    selected_player: Some(id),
+                    auto_grab: false,
+                    item_system_ready: false,
+                    shell_execution: false,
+                    ticks: 1,
+                },
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    destination,
+                    tolerance,
+                    inputs,
+                    None,
+                    Some(&mut |_, _| Ok(()))
+                )
+                .unwrap(),
+            expected_result,
+            "phase {phase}"
+        );
+        let after = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            after["actors"][0]["control"]["point_command"]["phase"],
+            expected_phase
+        );
+        assert_eq!(after["actors"][0]["attributes"][1], expected_attribute);
+        assert_eq!(after["actors"][0]["control"]["navigation"]["current"], -1);
+    }
+}
+
+#[test]
+fn point_destination_cutoff_is_exclusive_and_a_miss_clears_selected_map() {
+    let (world, scripts, data) = free_node_fixture(
+        serde_json::json!([
+            {"node_count":1,"walk_nodes":[walk_node([4096,0,0])]}
+        ]),
+        0,
+        |_| {},
+    );
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["control"]["navigation"]["map"] = 0.into();
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    assert_eq!(
+        world.nearest_current_walk_node(id, [256, 0, 0]).unwrap(),
+        Some(0)
+    );
+    assert_eq!(
+        world.nearest_current_walk_node(id, [0, 0, 0]).unwrap(),
+        None
+    );
+    assert!(movement_snapshot(&world, &scripts, &data)["walk_nodes"]["selected_map"].is_null());
 }

@@ -1,4 +1,4 @@
-//! Point navigation retains commands through pauses, facing, walking, arrival and idle delays.
+//! Point navigation retains walking, direct visibility, held-node routes and command transitions.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
@@ -97,8 +97,9 @@ impl ScriptWorld {
     /// even when it reaches zero. Immediate arrival and falling/queued motion use live
     /// actor owners. Phases one and 27 support held-node arrival and facing,
     /// including attribute-90 delay admission. Phase nine retains countdown and idle
-    /// requests on the session random stream. Phase two walks and claims held nodes.
-    /// Later route phases and hit reactions remain unavailable. Requests require
+    /// requests on the session random stream. Phase two walks and claims held nodes;
+    /// phase eight selects routes and phases 11/21/22 continue direct walking.
+    /// Initialization, jump routes and hit reactions remain unavailable. Requests require
     /// nominal ticks and a synchronous sound sink; random is required only on
     /// admitted draw paths.
     pub fn move_ordinary_point(
@@ -208,7 +209,7 @@ impl ScriptWorld {
         if matches!(phase, 11 | 22)
             || !self.point_destination_arrived(index, destination, tolerance, inputs)?
         {
-            return self.move_point_held_node(id, inputs, random, sounds);
+            return self.move_point_held_node(id, destination, tolerance, inputs, random, sounds);
         }
         let position = &mut self
             .spatial
@@ -372,6 +373,8 @@ impl ScriptWorld {
     fn move_point_held_node(
         &mut self,
         id: ScriptActorId,
+        point: [i32; 3],
+        tolerance: i32,
         inputs: ScriptInputs<'_>,
         random: Option<&mut crate::random::EngineRandom>,
         mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
@@ -393,10 +396,18 @@ impl ScriptWorld {
         );
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 1 | 2 | 9 | 27),
+            matches!(phase, 1 | 2 | 8 | 9 | 11 | 21 | 22 | 27),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
-        if phase == 9 {
+        if phase == 8 {
+            if let Some(result) = self.advance_point_route(id, point, inputs)? {
+                return Ok(result);
+            }
+        } else if matches!(phase, 11 | 21 | 22) {
+            if let Some(result) = self.advance_point_direct(id, point, tolerance, inputs, sounds)? {
+                return Ok(result);
+            }
+        } else if phase == 9 {
             self.advance_point_delay(id, inputs, random, sounds)?;
         } else if navigation.next == -1 {
             self.release_held_walk_nodes(id)?;
@@ -499,6 +510,173 @@ impl ScriptWorld {
             self.map_updates.push(index);
         }
         Ok(1)
+    }
+
+    fn complete_point(&mut self, id: ScriptActorId, result: u8) -> Result<i32> {
+        self.globals.native_command_return = result;
+        self.release_held_walk_nodes(id)?;
+        let actor = &mut self.actors[id.index];
+        let control = actor.control.as_mut().expect("admitted point control");
+        if control.death_selector == 7 {
+            control.death_selector = 0;
+        }
+        actor.attributes[1] = 13;
+        Ok(0)
+    }
+
+    fn point_visibility(
+        &self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        inputs: ScriptInputs<'_>,
+    ) -> Result<bool> {
+        let geometry = inputs
+            .locomotion_geometry
+            .context("point visibility geometry unavailable")?;
+        self.point_direct_visible(
+            id,
+            geometry
+                .environment
+                .selected_player
+                .context("point visibility selected player unavailable")?,
+            point,
+            super::obstacle::OrdinaryObstacleQuery {
+                scene: geometry.ground.scene,
+                animations: geometry.ground.animations,
+                prepared: geometry.ground.prepared,
+                vertical_offset: 0,
+                respond: false,
+            },
+        )
+    }
+
+    // None continues through the common pending tail; Some completes the wrapper.
+    fn advance_point_route(
+        &mut self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        inputs: ScriptInputs<'_>,
+    ) -> Result<Option<i32>> {
+        let navigation = self.actors[id.index]
+            .control
+            .as_ref()
+            .expect("admitted point control")
+            .navigation;
+        if navigation.current == -1 {
+            self.release_held_walk_nodes(id)?;
+            self.globals.native_command.point_phase = 0;
+            return Ok(None);
+        }
+        let Some(destination) = self.nearest_current_walk_node(id, point)? else {
+            return self.complete_point(id, 2).map(Some);
+        };
+        let destination = destination as i32;
+        if destination == navigation.current {
+            self.release_held_walk_nodes(id)?;
+            if self.actors[id.index].attributes[95] != 0 {
+                self.globals.native_command.point_phase = 21;
+            } else if self.point_visibility(id, point, inputs)? {
+                self.globals.native_command.point_phase = 22;
+            } else {
+                return self.complete_point(id, 4).map(Some);
+            }
+        } else {
+            let next = self.next_walk_node(id, destination, None)?;
+            if next == -1 {
+                return self.complete_point(id, 3).map(Some);
+            }
+            if !self.assign_walk_node(id, next, super::super::WalkNodeSlot::Next)? {
+                return self.complete_point(id, 7).map(Some);
+            }
+            self.globals.native_command.point_phase = if self.globals.walk_route.link_flags[0] == 0
+            {
+                1
+            } else {
+                12
+            };
+        }
+        Ok(None)
+    }
+
+    fn advance_point_direct(
+        &mut self,
+        id: ScriptActorId,
+        point: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<Option<i32>> {
+        let phase = self.globals.native_command.point_phase;
+        if phase == 21 {
+            self.admit_point_default(id, inputs, sounds)?;
+            return self.complete_point(id, 0).map(Some);
+        }
+        self.release_held_walk_nodes(id)?;
+        if self.actors[id.index].attributes[95] != 0 {
+            self.globals.native_command.point_phase = 21;
+            return Ok(None);
+        }
+        if phase == 22 {
+            let facing = self.point_facing_inputs(id, inputs)?;
+            if self.face_ordinary_point(
+                id,
+                point,
+                facing,
+                sounds.context("point facing requires synchronous sounds")?,
+            )? == 0
+            {
+                self.globals.native_command.point_phase = 11;
+            }
+            return Ok(None);
+        }
+        if !self.point_visibility(id, point, inputs)? {
+            self.globals.native_command.point_phase = 0;
+            return Ok(None);
+        }
+        self.actors[id.index].attributes[1] = 13;
+        if self.actors[id.index]
+            .control
+            .as_ref()
+            .expect("admitted point control")
+            .sliding_state
+            != 0
+        {
+            self.globals.native_command.point_phase = 0;
+        }
+        if self.walk_ordinary_point(
+            id,
+            point,
+            tolerance,
+            inputs,
+            sounds.as_mut().map(|sink| {
+                sink as &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>
+            }),
+        )? == 0
+        {
+            return self.complete_point(id, 0).map(Some);
+        }
+        if !self.actors[id.index]
+            .animation
+            .as_ref()
+            .context("point walking animation unavailable")?
+            .playback
+            .exit_reached()
+        {
+            let facing = self.point_facing_inputs(id, inputs)?;
+            self.face_ordinary_point(
+                id,
+                point,
+                facing,
+                sounds.context("point facing requires synchronous sounds")?,
+            )?;
+        }
+        if !self.map_updates.contains(&id.index) {
+            self.map_updates.push(id.index);
+        }
+        if !self.point_visibility(id, point, inputs)? {
+            self.globals.native_command.point_phase = 0;
+        }
+        Ok(None)
     }
 
     fn point_facing_inputs(

@@ -14,6 +14,74 @@ pub struct OrdinaryCombatSample {
 }
 
 impl ScriptWorld {
+    /// Test an original Q8 point against retained mixed-model candidates.
+    /// Preservation's point-visibility contract uses an inclusive 131072 distance
+    /// limit and arithmetic-shifted map-unit endpoints. Type-16 receiver/player
+    /// and receiver-model candidates skip geometry; other receiver hits are
+    /// ignored after querying. Ordinary scene queries inherit enabled polygon
+    /// sidedness. The first blocking model stops traversal.
+    pub fn point_direct_visible(
+        &self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        destination: [i32; 3],
+        query: OrdinaryObstacleQuery<'_>,
+    ) -> Result<bool> {
+        use cyrus_collision::candidates::{CandidateOwner, CollisionCandidates, ModelInstance};
+        let result: Result<bool> = (|| {
+            let from = self.query_position(id)?;
+            if rounded_distance(std::array::from_fn(|axis| {
+                destination[axis].wrapping_sub(from[axis])
+            }))? > 131072
+            {
+                return Ok(false);
+            }
+            self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
+            self.resolve(selected_player)?;
+            let mut one = CollisionCandidates::default();
+            let mut poses = std::collections::BTreeMap::new();
+            for candidate in &query.prepared.candidates.faces {
+                let receiver = candidate.owner == CandidateOwner::Actor(id.index);
+                if candidate.candidate_type == 16
+                    && (receiver
+                        || candidate.owner == CandidateOwner::Actor(selected_player.index)
+                        || candidate.model == ModelInstance::Runtime(id.index))
+                {
+                    continue;
+                }
+                if let CandidateOwner::Actor(index) = candidate.owner
+                    && let Some(record) = self.model_presentation(self.id(index)?)?
+                {
+                    poses.insert(index, record.collision_pose()?);
+                }
+                one.faces.clear();
+                one.faces.push(*candidate);
+                let hits =
+                    query.scene.static_collision.runtime_segment_contacts(
+                        &one,
+                        query.scene.actor_collision.as_ref().context(
+                            "point visibility live geometry unavailable; re-export world",
+                        )?,
+                        &poses,
+                        from.map(|value| value >> 8),
+                        destination.map(|value| value >> 8),
+                        true,
+                        None,
+                    )?;
+                if !hits.is_empty() && !receiver {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} direct visibility to {destination:?}",
+                self.world, id.index
+            )
+        })
+    }
+
     /// Run the nonplayer perception prepass before message and decision maintenance.
     /// Timer waiting and reacquisition use live collision/navigation owners. Routed
     /// pursuit retains its transition and invokes the point wrapper. Shared pauses,
