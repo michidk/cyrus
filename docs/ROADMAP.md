@@ -384,7 +384,17 @@ selected-player movement remain open.
 **Verified:** live neighbor separation shares the spatial normalization and heading
 owners. Headless contracts cover quantization before conversion, vertical vectors,
 wrapping subtraction, signed half-turns and absent-neighbor spatial bypass.
-Ordered neighbor selection, sidestep dispatch and automatic spacing remain open.
+Ordered neighbor selection and synchronous sidestep dispatch now share live
+combat, death and position queries. **Verified:** public headless contracts cover
+retained traversal order, strict replacement, linked distance versus local
+separation and dispatch without VM tasks.
+
+**Verified:** the explicit fight-spacing root covers action/facing admission,
+nonstance random consumption, signed division faults, amount-query-before-forward
+movement and deferred map registration, including idle passes. A shared facing
+sign correction follows original cardinal-bearing executions. Automatic spacing,
+near/random physical parity and installed native/browser combat acceptance remain
+open.
 
 Next, in dependency order:
 

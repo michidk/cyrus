@@ -1112,6 +1112,19 @@ wraps displacement subtraction before quantizing to whole map units, and uses
 shared normalization and heading owners. **Verified:** public headless contracts
 cover vertical normalization, positive and negative quantization, wrapped
 subtraction, both half-turn signs, and absent-neighbor spatial bypass. The query
-leaves receiver state unchanged. Neighbor traversal, sidestep dispatch and the
-automatic spacing scheduler remain unsupported. Rules come from preservation's
+leaves receiver state unchanged. `ordinary_spacing_neighbors` retains original
+traversal order and previous-primary replacement rather than sorting distances.
+`space_ordinary_neighbors` dispatches synchronous lateral movement from the retained
+threshold and normalized separations. The automatic spacing scheduler remains unsupported. Rules come from preservation's
 [normalized neighbor heading](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).
+
+
+`ScriptWorld::space_ordinary` runs an explicit ordinary fight-spacing pass from
+live combat state and caller-supplied distance and combat-counter samples.
+**Verified:** public headless contracts cover action and facing admission,
+nonstance random consumption, signed division faults, ordered neighbors,
+forward-amount then movement, missing far-walk animation and deferred map
+registration without allocating tasks. Shared facing uses the actor heading
+without a second negation; original cardinal-bearing executions establish the
+sign. Near and random directional physical parity, automatic combat scheduling,
+and installed native/browser combat acceptance remain open.

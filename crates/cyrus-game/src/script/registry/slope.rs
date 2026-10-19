@@ -166,7 +166,7 @@ impl ScriptWorld {
                 }
                 return Ok(0);
             }
-            let desired = super::super::spatial::query_bearing(x, z).wrapping_neg() & 2047;
+            let desired = super::super::spatial::query_bearing(x, z);
             let torch = actor
                 .control
                 .as_ref()

@@ -2,6 +2,21 @@
 use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result, ensure};
 
+/// Ordered neighbors retained by combat spacing, not a sorted nearest pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrdinarySpacingNeighbors {
+    pub primary: Option<ScriptActorId>,
+    pub secondary: Option<ScriptActorId>,
+}
+
+/// Shared combat-pass samples consumed by fight spacing. Distance is in Q8
+/// runtime units; tick_counter is the signed retained combat update counter.
+#[derive(Clone, Copy, Debug)]
+pub struct OrdinarySpacingInput {
+    pub distance: i32,
+    pub tick_counter: i32,
+}
+
 /// Existing movement executors available to ordinary combat spacing.
 #[derive(Clone, Copy, Debug)]
 pub enum OrdinaryMovement {
@@ -37,6 +52,341 @@ pub struct OrdinaryForwardAmountInputs {
 }
 
 impl ScriptWorld {
+    fn spacing_distance(&self, id: ScriptActorId, other: ScriptActorId) -> Result<i32> {
+        let origin = self.query_position(id)?;
+        let other = self.query_position(other)?;
+        cyrus_collision::distance::rounded_distance([
+            other[0].wrapping_sub(origin[0]),
+            0,
+            other[2].wrapping_sub(origin[2]),
+        ])
+    }
+
+    fn spacing_weapon(
+        &mut self,
+        id: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+    ) -> Result<(Option<ScriptActorId>, bool)> {
+        let index = self.resolve(id)?;
+        if let Some(activation) = inputs.activation {
+            self.validate_activation(activation)?;
+        }
+        let host = super::GameHost {
+            world: self.world,
+            animation_system: self.updates.animation_system,
+            task_system: self.updates.task_system,
+            index,
+            generation: self.generation,
+            ordinary_actors: None,
+            walk_map_count: None,
+            registry: self,
+            sounds: None,
+            random: None,
+            inputs,
+        };
+        Ok((
+            host.selected_player(),
+            host.receiver_weapon_predicates("IsHoldingWeapon")?.0,
+        ))
+    }
+
+    fn spacing_step(
+        &mut self,
+        id: ScriptActorId,
+        movement: OrdinaryMovement,
+        inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let geometry = inputs
+            .locomotion_geometry
+            .context("spacing directional geometry unavailable")?;
+        let direction = match movement {
+            OrdinaryMovement::Backward => super::hazard::OrdinaryStepDirection::Backward,
+            OrdinaryMovement::Left => super::hazard::OrdinaryStepDirection::Left,
+            OrdinaryMovement::Right => super::hazard::OrdinaryStepDirection::Right,
+            _ => anyhow::bail!("spacing admission requires backward or lateral movement"),
+        };
+        if !self.ordinary_step_clear(
+            id,
+            direction,
+            geometry.ground,
+            geometry.environment,
+            sounds,
+        )? {
+            return Ok(false);
+        }
+        self.move_ordinary(id, movement, 1, 0, inputs, sounds)?;
+        Ok(true)
+    }
+
+    /// Run one admitted ordinary fight-spacing pass from live combat state and
+    /// scheduler-owned distance/tick samples. All requests execute synchronously.
+    /// Only action -1 and an absolute facing result below 128 admit the pass.
+    /// An admitted successful pass registers deferred map movement even when no
+    /// movement was requested. Automatic combat scheduler integration is separate.
+    pub fn space_ordinary(
+        &mut self,
+        id: ScriptActorId,
+        sample: OrdinarySpacingInput,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let result = (|| -> Result<()> {
+            let index = self.resolve(id)?;
+            let combat = self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("fight spacing combat record unavailable")?;
+            if combat.action != -1 {
+                return Ok(());
+            }
+            let target = combat.target.context("fight spacing target unavailable")?;
+            let [mut near, mut far, mut third] = combat.spacing_ranges;
+            let mut period = combat.spacing_period;
+            let allocation = combat.allocation_index;
+            let stance = combat.attacker_selection_state != 0;
+            let active = combat.flags & 4 != 0;
+            let frame_scale = inputs
+                .frame_scale
+                .context("fight spacing frame_scale unavailable")?;
+            let ticks = inputs
+                .nominal_ticks
+                .context("fight spacing nominal_ticks unavailable")?;
+            let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
+            ensure!(
+                selected_player != Some(id)
+                    && !matches!(
+                        self.actors[index].source,
+                        super::ScriptActorSource::Player
+                            | super::ScriptActorSource::AlternatePlayer
+                    ),
+                "selected-player fight spacing unavailable"
+            );
+            if !stance {
+                near = 30000;
+                far = far.wrapping_mul(3);
+                third = third
+                    .wrapping_mul(3)
+                    .wrapping_add(allocation.wrapping_mul(random.draw().wrapping_mul(100) / 32767));
+                period = period
+                    .wrapping_mul(2)
+                    .wrapping_add(allocation.wrapping_mul(random.draw().wrapping_mul(10) / 32767));
+            }
+            let angle = self.face_ordinary_target(
+                id,
+                target,
+                super::slope::OrdinarySlopeInputs {
+                    selected_player,
+                    holding_weapon,
+                    combat_active: active,
+                    frame_scale,
+                    ticks,
+                },
+                sounds,
+            )?;
+            if angle.wrapping_abs() >= 128 {
+                return Ok(());
+            }
+            if sample.distance < near {
+                for movement in [
+                    OrdinaryMovement::Backward,
+                    OrdinaryMovement::Right,
+                    OrdinaryMovement::Left,
+                ] {
+                    if self.spacing_step(id, movement, inputs, sounds)? {
+                        break;
+                    }
+                }
+            } else if sample.distance > far.wrapping_mul(3) {
+                if self.actors[index]
+                    .animation
+                    .as_ref()
+                    .is_some_and(|a| a.playback.has_group(31))
+                {
+                    self.move_ordinary(id, OrdinaryMovement::WalkForward, 1, 0, inputs, sounds)?;
+                }
+            } else if sample.distance > third.wrapping_add(far.wrapping_sub(third) / 2) {
+                if self.actors[index]
+                    .animation
+                    .as_ref()
+                    .is_some_and(|a| a.playback.has_group(92))
+                {
+                    let query = inputs.locomotion_geometry.map(|geometry| {
+                        super::obstacle::OrdinaryObstacleQuery {
+                            scene: geometry.ground.scene,
+                            animations: geometry.ground.animations,
+                            prepared: geometry.ground.prepared,
+                            vertical_offset: 0,
+                            respond: false,
+                        }
+                    });
+                    let amount = self.ordinary_forward_amount(
+                        id,
+                        OrdinaryForwardAmountInputs {
+                            selected_player,
+                            holding_weapon,
+                            frame_scale,
+                            ticks,
+                            duration: 1,
+                            elapsed: 0,
+                        },
+                        query,
+                        sounds,
+                    )?;
+                    if sample.distance.wrapping_sub(amount) >= third {
+                        self.move_ordinary(id, OrdinaryMovement::Forward, 1, 0, inputs, sounds)?;
+                        self.spacing_distance(id, target)?;
+                    }
+                }
+            } else if !self.space_ordinary_neighbors(id, target, inputs, sounds)? {
+                let dividend = sample.tick_counter.wrapping_add(allocation);
+                let remainder = dividend.checked_rem(period).with_context(|| {
+                    format!("fight spacing division fault: {dividend} % {period}")
+                })?;
+                if remainder == 1 {
+                    let choice = random.draw().wrapping_mul(20) / 32767;
+                    let movement = if choice < 16 {
+                        OrdinaryMovement::Backward
+                    } else if choice < 18 {
+                        OrdinaryMovement::Right
+                    } else {
+                        OrdinaryMovement::Left
+                    };
+                    self.spacing_step(id, movement, inputs, sounds)?;
+                }
+            }
+            if !self.map_updates.contains(&index) {
+                self.map_updates.push(index);
+            }
+            Ok(())
+        })();
+        result.with_context(|| format!("world {} instance {} fight spacing", self.world, id.index))
+    }
+
+    /// Select from retained ordinary traversal using live targeting, selection-state
+    /// one and IsDead. None means no eligible attacker; a first receiver still
+    /// establishes a pass with absent neighbors. The first entry is unmeasured.
+    pub fn ordinary_spacing_neighbors(
+        &self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+    ) -> Result<Option<OrdinarySpacingNeighbors>> {
+        let result = (|| -> Result<_> {
+            self.resolve(id)?;
+            self.resolve(target)?;
+            if let Some(player) = selected_player {
+                self.resolve(player)?;
+            }
+            let traversal = self
+                .actor_lists
+                .as_ref()
+                .and_then(|lists| lists.retained_selected())
+                .context("neighbor spacing ordinary traversal unavailable")?;
+            let mut pair = None;
+            let mut bound = 65535;
+            for &candidate in traversal {
+                let index = self.resolve(candidate)?;
+                if candidate == target {
+                    continue;
+                }
+                let Some(combat) = self.actors[index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                else {
+                    continue;
+                };
+                if combat.target != Some(target)
+                    || combat.attacker_selection_state != 1
+                    || self.query_is_dead(candidate, selected_player)?
+                {
+                    continue;
+                }
+                let Some(pair) = pair.as_mut() else {
+                    pair = Some(OrdinarySpacingNeighbors {
+                        primary: (candidate != id).then_some(candidate),
+                        secondary: None,
+                    });
+                    continue;
+                };
+                if candidate == id {
+                    continue;
+                }
+                let distance = self.spacing_distance(id, candidate)?;
+                if distance < bound {
+                    bound = distance;
+                    pair.secondary = pair.primary;
+                    pair.primary = Some(candidate);
+                }
+            }
+            Ok(pair)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} target {} spacing neighbors",
+                self.world, id.index, target.index
+            )
+        })
+    }
+
+    /// Request the original neighbor sidestep synchronously. A dispatched request
+    /// returns true regardless of native movement completion and creates no VM task.
+    /// The enclosing spacing root owns deferred map registration.
+    pub fn space_ordinary_neighbors(
+        &mut self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let result = (|| -> Result<bool> {
+            let selected = inputs
+                .activation
+                .map(|activation| activation.player)
+                .or_else(|| {
+                    self.actors
+                        .iter()
+                        .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                        .map(|index| ScriptActorId {
+                            generation: self.generation,
+                            index,
+                        })
+                });
+            let Some(pair) = self.ordinary_spacing_neighbors(id, target, selected)? else {
+                return Ok(false);
+            };
+            let a = self.ordinary_neighbor_separation(id, target, pair.primary)?;
+            let b = self.ordinary_neighbor_separation(id, target, pair.secondary)?;
+            let threshold = self
+                .non_engaged_spacing
+                .context("installed non_engaged_spacing unavailable")?;
+            let separation = if a.wrapping_abs() < threshold {
+                (b.wrapping_abs() > threshold / 3).then_some(a)
+            } else {
+                (b.wrapping_abs() < threshold && a.wrapping_abs() > threshold / 2).then_some(b)
+            };
+            let Some(separation) = separation else {
+                return Ok(false);
+            };
+            let movement = if separation < 0 {
+                OrdinaryMovement::Right
+            } else {
+                OrdinaryMovement::Left
+            };
+            self.move_ordinary(id, movement, 1, 0, inputs, sounds)?;
+            Ok(true)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} target {} neighbor sidestep",
+                self.world, id.index, target.index
+            )
+        })
+    }
+
     /// Signed neighbor separation in 2048 units per turn, using ordinary local
     /// Q8 positions and preservation's normalized vector-to-angle conversion.
     /// Subtractions wrap before arithmetic shift eight; exact half-turn signs

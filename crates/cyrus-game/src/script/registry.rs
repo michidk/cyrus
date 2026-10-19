@@ -306,6 +306,7 @@ pub struct ScriptWorld {
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     in_combat_threshold: Option<i32>,
+    non_engaged_spacing: Option<i32>,
     attribute_names: Vec<String>,
     reference_names: Vec<String>,
     names: BTreeMap<i16, usize>,
@@ -683,6 +684,7 @@ impl ScriptWorld {
             task_calls,
             combat_attacks: scripts.combat_attacks.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
+            non_engaged_spacing: scripts.non_engaged_spacing,
             attribute_names: scripts.definition.attributes.clone(),
             reference_names: scripts.definition.references.clone(),
             names,
@@ -873,6 +875,41 @@ impl ScriptWorld {
                 .with_context(|| format!("world {} spatial preparation", self.world))?,
         );
         Ok(())
+    }
+
+    fn query_is_dead(
+        &self,
+        id: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        if selected_player == Some(id)
+            && self
+                .globals
+                .player_death_override()
+                .context("IsDead: selected-player override unavailable")?
+        {
+            return Ok(true);
+        }
+        Ok(self.actors[index]
+            .control
+            .as_ref()
+            .context("IsDead: actor death lifecycle unavailable")?
+            .death_selector
+            == 8)
+    }
+
+    fn query_position(&self, id: ScriptActorId) -> Result<[i32; 3]> {
+        let index = self.resolve(id)?;
+        let actor = self.spatial(id)?;
+        if self.actors[index].attributes[26] != 0 {
+            Ok(actor
+                .effective
+                .context("query attached position unavailable")?
+                .position)
+        } else {
+            Ok(actor.linked_position.unwrap_or(actor.local.position))
+        }
     }
 
     /// Initialize a standalone player role's authoritative pose once per world generation.
@@ -2035,39 +2072,12 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     fn actor_is_dead(&self, index: usize) -> Result<bool> {
-        if self.selected_player()
-            == Some(ScriptActorId {
-                generation: self.generation,
-                index,
-            })
-            && self
-                .registry
-                .globals
-                .player_death_override()
-                .context("IsDead: selected-player override unavailable")?
-        {
-            return Ok(true);
-        }
-        Ok(self.registry.actors[index]
-            .control
-            .as_ref()
-            .context("IsDead: actor death lifecycle unavailable")?
-            .death_selector
-            == 8)
+        self.registry
+            .query_is_dead(self.registry.id(index)?, self.selected_player())
     }
 
     fn fighting_position(&self, index: usize) -> Result<[i32; 3]> {
-        let actor = self
-            .registry
-            .spatial
-            .as_ref()
-            .context("isFighting: spatial owner unavailable")?
-            .actor(index)?;
-        if actor.parent.is_some() {
-            Ok(actor.query_pose()?.position)
-        } else {
-            Ok(actor.linked_position.unwrap_or(actor.local.position))
-        }
+        self.registry.query_position(self.registry.id(index)?)
     }
 
     fn is_fighting(&self) -> Result<bool> {
@@ -3894,6 +3904,7 @@ mod fighting_tests {
             task_calls: BTreeMap::new(),
             combat_attacks: Vec::new(),
             in_combat_threshold: Some(threshold),
+            non_engaged_spacing: None,
             attribute_names: Vec::new(),
             reference_names: definition.references,
             names: BTreeMap::new(),
