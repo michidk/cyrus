@@ -570,8 +570,8 @@ attribute-90 phase-nine delay. All 640 original/production turn, phase, retained
 node and random-consumption cases agree. A wrong combat-record-existence
 predicate fails the comparison. Synchronous cue failure stops before heading,
 phase and random changes. The [facing transition contract](https://github.com/michidk/redguard-preservation/commit/b4a25db81674547aaf4a7491b938ab818d145134)
-records the rules. Walking, phase-eight selection
-and full automatic START/native/browser acceptance remain open.
+records the rules. Phase-eight selection and full automatic
+START/native/browser acceptance remain open.
 
 **Verified:** phase-nine continuation now uses the session random stream,
 retained command word, live weapon predicate and synchronous animation requests.
@@ -579,8 +579,19 @@ All 1,512 original/production countdown, phase, idle-request and random-state
 cases agree. Replacing rejection sampling with `Rnd(3)` fails. Public contracts
 cover snapshot continuation, missing owners and sound failure after consumed
 draws but before wrapper save. The [delay contract](https://github.com/michidk/redguard-preservation/commit/b9439822fee88783a87a6a7b2a86a236e362000b)
-records the rules. Walking, phase-eight routing and full automatic
+records the rules. Phase-eight routing and full automatic
 START/native/browser acceptance remain open.
+
+**Verified:** phase-two continuation now uses the synchronous coordinate walker,
+receiver playback checkpoint, local rollback coordinates and selected query-position
+owner. It repeats default-animation admission after walking, retains nodes/history
+after failed post-snap arrival, and selects phase eight after a rejected claim.
+Fourteen original/production linked-position arrival and angular cases and 486
+phase-two release, pending, arrival and claim cases agree. An exclusive angular
+boundary fails the comparison. The [walking contract](https://github.com/michidk/redguard-preservation/commit/3cc8106b635a475b2cff73d761ea870a70879226)
+records the rules. These comparisons control original movement and bearing;
+production tests exercise the real synchronous movement owner. Full collision/audio
+parity, phase-eight routing and automatic START/native/browser acceptance remain open.
 
 Next, in dependency order:
 

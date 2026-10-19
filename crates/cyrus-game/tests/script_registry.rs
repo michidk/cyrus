@@ -21344,3 +21344,394 @@ fn point_delay_missing_random_or_sound_owner_preserves_failure_order() {
         );
     }
 }
+
+#[test]
+fn coordinate_walking_restores_only_overshoot_owned_state_at_inclusive_boundaries() {
+    use cyrus_game::script::{OrdinaryMovement, ScriptHud, ScriptInputs};
+    for (heading, snapped) in [
+        (0, false),
+        (255, false),
+        (256, true),
+        (512, true),
+        (1792, true),
+        (1793, false),
+        (2047, false),
+    ] {
+        let (mut world, scripts, data) = movement_fixture(
+            30,
+            false,
+            false,
+            |scripts| {
+                scripts
+                    .actors
+                    .get_mut("LOGIC")
+                    .unwrap()
+                    .attributes
+                    .insert("attr_93".into(), 1);
+            },
+            |saved| {
+                saved["actors"][0]["control"]["movement_flags"] = 0x85.into();
+                saved["spatial"]["actors"][0]["local"]["position"] =
+                    serde_json::json!([100, 200, 300]);
+                saved["spatial"]["actors"][0]["local"]["angles"][1] = heading.into();
+                saved["spatial"]["actors"][0]["linked_position"] = serde_json::json!([0, 0, 0]);
+            },
+        );
+        let id = world.id(0).unwrap();
+        let before = movement_snapshot(&world, &scripts, &data);
+        let mut moved = restore_navigation_owner(before.clone(), &scripts, &data).unwrap();
+        let moved_id = moved.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let inputs = ScriptInputs {
+            frame_scale: Some(256),
+            nominal_ticks: Some(1),
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            forward_step_clear: Some(true),
+            ..Default::default()
+        };
+        moved
+            .move_ordinary(
+                moved_id,
+                OrdinaryMovement::Forward,
+                1,
+                0,
+                inputs,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        let result = world
+            .walk_ordinary_point(
+                id,
+                [0, -999, 20000],
+                0,
+                inputs,
+                Some(&mut |_, _| panic!("fixture has no authored sound")),
+            )
+            .unwrap();
+        assert_eq!(result, i32::from(!snapped), "heading {heading}");
+        let after = movement_snapshot(&world, &scripts, &data);
+        if snapped {
+            assert_eq!(world.spatial(id).unwrap().local.position, [0, 200, 20000]);
+            assert_eq!(
+                world.actors()[0].control_state().unwrap().movement_flags,
+                0x85
+            );
+            assert_eq!(
+                after["actors"][0]["animation"],
+                before["actors"][0]["animation"]
+            );
+            assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 0);
+        } else {
+            assert_eq!(
+                world.spatial(id).unwrap().local.position,
+                moved.spatial(moved_id).unwrap().local.position
+            );
+            assert_eq!(
+                after["actors"][0]["animation"],
+                movement_snapshot(&moved, &scripts, &data)["actors"][0]["animation"]
+            );
+            assert_eq!(
+                world.actors()[0].control_state().unwrap().movement_flags,
+                0x95
+            );
+            assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
+        }
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            2
+        );
+        assert_eq!(after["map_updates"], serde_json::json!([]));
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn coordinate_walking_initial_arrival_needs_no_movement_or_sound_owner() {
+    use cyrus_game::script::ScriptInputs;
+    for (destination, tolerance) in [([0, i32::MAX, 2560], 0), ([0, i32::MIN, 2577], 17)] {
+        let (mut world, scripts, data) = movement_fixture(18, false, false, |_| {}, |_| {});
+        let id = world.id(0).unwrap();
+        assert_eq!(
+            world
+                .walk_ordinary_point(
+                    id,
+                    destination,
+                    tolerance,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            [0, 0, destination[2]]
+        );
+        assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["map_updates"],
+            serde_json::json!([])
+        );
+    }
+}
+
+#[test]
+fn coordinate_walking_reports_live_walk_admission_instead_of_using_run() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (mut world, _, _) = movement_fixture(18, false, true, |_| {}, |_| {});
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    let error = world
+        .walk_ordinary_point(
+            id,
+            [0, 0, 20000],
+            0,
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                forward_step_clear: Some(true),
+                ..Default::default()
+            },
+            Some(&mut |_, _| Ok(())),
+        )
+        .unwrap_err();
+    let error = format!("{error:#}");
+    assert!(
+        error.contains("world 7 actor 0 coordinate walking"),
+        "{error}"
+    );
+    assert!(error.contains("WalkForward"), "{error}");
+    assert!(
+        error.contains("forward step check input unavailable"),
+        "{error}"
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, 0]);
+}
+
+#[test]
+fn point_walking_continues_then_claims_or_releases_nodes_with_one_registration() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for (next, foreign, heading, distance, phase, z) in [
+        (-1, false, 0, 4096, 0, -3328),
+        (1, false, 0, 4096, 2, -2816),
+        (1, false, 1024, 4096, 8, 768),
+        (1, false, 0, 2560, 8, 768),
+        (1, true, 0, 2560, 8, 768),
+    ] {
+        let (world, scripts, data) = point_node_fixture(8);
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["attributes"][93] = 1.into();
+        saved["actors"][0]["animation"]["playback"]["current"][1]["exit_reached"] = true.into();
+        saved["actors"][0]["control"]["navigation"] =
+            serde_json::json!({"map":0,"current":0,"next":next,"previous_next":99,"destination":0});
+        saved["actors"][0]["control"]["point_command"] =
+            serde_json::json!({"value":7654321,"word":1234,"phase":2,"counter":0});
+        saved["walk_nodes"]["maps"][0] = serde_json::json!([1, if foreign { 2 } else { 0 }]);
+        let position = [256, 200, 768 - distance];
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!(position);
+        saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!(position);
+        saved["spatial"]["actors"][0]["local"]["angles"][1] = heading.into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [1000000, 0, 1000000],
+                    0,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        forward_step_clear: Some(true),
+                        ..Default::default()
+                    },
+                    None,
+                    Some(&mut |_, _| panic!("fixture has no authored sound"))
+                )
+                .unwrap(),
+            1
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                control.point_command.phase,
+                control.point_command.word,
+                control.death_selector
+            ),
+            (phase, 1234, 7)
+        );
+        assert_eq!(
+            (
+                control.navigation.current,
+                control.navigation.next,
+                control.navigation.previous_next
+            ),
+            match phase {
+                0 => (-1, -1, 99),
+                2 => (0, 1, 99),
+                _ => (if foreign { -1 } else { 1 }, -1, 1),
+            }
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, [256, 200, z]);
+        let after = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(after["map_updates"], serde_json::json!([0]));
+        assert_eq!(after["actors"][0]["attributes"][1], 12);
+    }
+}
+
+#[test]
+fn point_walking_faces_only_before_the_exit_marker_and_ignores_pending_turn_result() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for (exited, heading) in [(false, 56), (true, 64)] {
+        let (world, scripts, data) = point_node_fixture(8);
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["attributes"][15] = 8.into();
+        saved["actors"][0]["attributes"][93] = 1.into();
+        saved["actors"][0]["attributes"][110] = 0.into();
+        saved["actors"][0]["animation"]["playback"]["current"][1]["exit_reached"] = exited.into();
+        saved["actors"][0]["control"]["navigation"] =
+            serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+        saved["actors"][0]["control"]["point_command"]["phase"] = 2.into();
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([256, 200, -3328]);
+        saved["spatial"]["actors"][0]["previous_local_position"] =
+            serde_json::json!([256, 200, -3328]);
+        saved["spatial"]["actors"][0]["local"]["angles"][1] = 64.into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        world
+            .move_ordinary_point(
+                id,
+                [1000000, 0, 1000000],
+                0,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    forward_step_clear: Some(true),
+                    ..Default::default()
+                },
+                None,
+                Some(&mut |_, _| Ok(())),
+            )
+            .unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.angles[1], heading);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .point_command
+                .phase,
+            2
+        );
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().movement_flags,
+            0x10
+        );
+        assert!(world.spatial(id).unwrap().local.position[2] > -3328);
+    }
+}
+
+#[test]
+fn coordinate_walking_reads_local_bearing_after_movement() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        false,
+        |scripts| {
+            scripts
+                .actors
+                .get_mut("LOGIC")
+                .unwrap()
+                .attributes
+                .insert("attr_93".into(), 1);
+        },
+        |saved| {
+            saved["spatial"]["actors"][0]["local"]["angles"][1] = 255.into();
+        },
+    );
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    assert_eq!(
+        world
+            .walk_ordinary_point(
+                id,
+                [0, 999, 2561],
+                0,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    forward_step_clear: Some(true),
+                    ..Default::default()
+                },
+                Some(&mut |_, _| Ok(()))
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, 2561]);
+    assert_eq!(world.actors()[0].control_state().unwrap().movement_flags, 0);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 255);
+}
+
+#[test]
+fn point_walking_failed_post_snap_arrival_retains_held_nodes_and_history() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (world, scripts, data) = point_node_fixture(8);
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["attributes"][93] = 1.into();
+    saved["actors"][0]["animation"]["playback"]["current"][1]["exit_reached"] = true.into();
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+    saved["actors"][0]["control"]["point_command"]["phase"] = 2.into();
+    saved["walk_nodes"]["maps"][0] = serde_json::json!([1, 0]);
+    saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([256, 200, -1792]);
+    saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!([256, 200, -1792]);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    world
+        .move_ordinary_point(
+            id,
+            [1000000, 0, 1000000],
+            0,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(1 << 20),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                forward_step_clear: Some(true),
+                ..Default::default()
+            },
+            None,
+            Some(&mut |_, _| Ok(())),
+        )
+        .unwrap();
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (
+            control.point_command.phase,
+            control.navigation.current,
+            control.navigation.next,
+            control.navigation.previous_next
+        ),
+        (0, 0, 1, 99)
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [256, 200, -1792]);
+    let after = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(after["walk_nodes"]["maps"][0], serde_json::json!([1, 0]));
+    assert_eq!(after["map_updates"], serde_json::json!([0]));
+}

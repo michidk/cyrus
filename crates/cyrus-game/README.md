@@ -1267,7 +1267,7 @@ selects phase eight even if the claim fails. A missing next node releases held
 reservations and selects phase zero. Pending registration is deduplicated and
 the existing wrapper limit still applies. **Verified:** 8,640 original/production
 assignments, 1,944 point transitions and 1,344 history-retention cases agree.
-A wrong previous-node assignment fails the production comparison. Continuous walking, collision
+A wrong previous-node assignment fails the production comparison. Route collision
 response and later route selection remain unsupported.
 
 
@@ -1280,7 +1280,8 @@ its session random owner through combat perception to point movement. Turning
 consumes no random draws. Missing owners fail contextually rather than inventing
 weapon state or a private random stream. **Verified:** 640 original/production
 turn, phase and random-consumption cases agree. Treating any combat record as
-active fails that comparison. Walking and phase-eight route selection remain unsupported; full automatic START combat is unverified.
+active fails that comparison. Phase-eight route selection remains unsupported;
+full automatic START combat is unverified.
 
 
 Point phase nine now retains its nominal-tick countdown, weapon exit and idle
@@ -1292,5 +1293,23 @@ animation owner. Failed sounds retain consumed draws and the updated shared
 word while stopping before actor-command save and pending registration.
 **Verified:** 1,512 original/production countdown, phase, idle-request and random
 state cases agree; substituting `Rnd(3)` fails. Public contracts cover snapshot
-continuation and missing-owner ordering. Walking and phase-eight selection,
-full automatic START combat and native/browser acceptance remain open.
+continuation and missing-owner ordering. Phase-eight selection, full automatic
+START combat and native/browser acceptance remain open.
+
+
+Point phase two now invokes coordinate walking through the existing synchronous
+movement services. Attribute 93 selects WalkForward at zero and MoveForward
+otherwise. Overshoot restores local position, playback, displayed frame and
+packed movement counters, and clears only the shared forward-called flag.
+Bearing reads the selected position owner after local movement; linked and
+composed positions remain distinct from local rollback coordinates. Completed
+walking admits the default animation again and tests held-node arrival before
+claiming the next node. Rejected claims still select phase eight. A failed
+post-snap arrival selects phase zero while retaining held nodes and history.
+**Verified:** 14 original/production linked-position arrival and angular cases
+and 486 phase-two release, pending, arrival and claim cases agree. An exclusive
+overshoot boundary fails the comparison. These original probes control movement
+side effects and bearing; production contracts exercise synchronous movement,
+local post-movement bearing and contextual missing live WalkForward admission.
+Full collision/audio parity, phase-eight routing and automatic START combat
+with native/browser acceptance remain open.

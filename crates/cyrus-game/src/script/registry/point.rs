@@ -1,16 +1,106 @@
-//! Point navigation retains actor commands through pauses, arrival, facing and idle-delay transitions.
+//! Point navigation retains commands through pauses, facing, walking, arrival and idle delays.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
 impl ScriptWorld {
+    /// Walk toward a local Q8 horizontal destination with a Q8 arrival tolerance.
+    /// Preservation's coordinate-walking rule selects WalkForward at attribute 93
+    /// zero and MoveForward otherwise. An overshoot restores playback, displayed
+    /// frame, packed movement counters and local position before snapping X/Z.
+    /// Movement direction, collision responses and sound effects remain owned by
+    /// movement. The enclosing point wrapper owns deferred map registration.
+    pub fn walk_ordinary_point(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let result = (|| -> Result<i32> {
+            let index = self.resolve(id)?;
+            let query_position = self.query_position(id)?;
+            let retained_query_position = (self.actors[index].attributes[26] != 0
+                || self.spatial(id)?.linked_position.is_some())
+            .then_some(query_position);
+            let position = self.spatial(id)?.local.position;
+            let movement_flags = self.actors[index]
+                .control
+                .as_ref()
+                .context("coordinate walking control unavailable")?
+                .movement_flags;
+            if !self.point_destination_arrived(index, destination, tolerance, inputs)? {
+                let animation = self.actors[index]
+                    .animation
+                    .as_ref()
+                    .context("coordinate walking animation unavailable")?;
+                let checkpoint = animation.playback.checkpoint()?;
+                let frame = animation.frame;
+                let movement = if self.actors[index].attributes[93] == 0 {
+                    super::spacing::OrdinaryMovement::WalkForward
+                } else {
+                    super::spacing::OrdinaryMovement::Forward
+                };
+                self.move_ordinary(
+                    id,
+                    movement,
+                    1,
+                    0,
+                    inputs,
+                    sounds
+                        .as_mut()
+                        .context("coordinate walking requires synchronous sounds")?,
+                )?;
+                let origin = retained_query_position.unwrap_or(self.spatial(id)?.local.position);
+                let bearing = super::super::spatial::query_bearing(
+                    destination[0].wrapping_sub(origin[0]),
+                    destination[2].wrapping_sub(origin[2]),
+                );
+                let heading = self.spatial(id)?.local.angles[1];
+                let difference = heading.wrapping_sub(bearing) & 2047;
+                if !(256..=1792).contains(&difference) {
+                    return Ok(1);
+                }
+                self.globals.locomotion_called &= !4;
+                let actor = &mut self.actors[index];
+                actor
+                    .control
+                    .as_mut()
+                    .expect("admitted coordinate walking control")
+                    .movement_flags = movement_flags;
+                let animation = actor
+                    .animation
+                    .as_mut()
+                    .expect("admitted coordinate walking animation");
+                animation.playback.restore_checkpoint(&checkpoint)?;
+                animation.frame = frame;
+            }
+            self.spatial
+                .as_mut()
+                .expect("admitted coordinate walking spatial state")
+                .actor_mut(index)?
+                .local
+                .position = [destination[0], position[1], destination[2]];
+            self.admit_point_default(id, inputs, sounds)?;
+            Ok(0)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} coordinate walking to {destination:?}",
+                self.world, id.index
+            )
+        })
+    }
+
     /// Invoke the ordinary point wrapper with a Q8 destination and arrival tolerance.
     /// Map validation precedes shared pause consumption. A consumed pause returns one
     /// even when it reaches zero. Immediate arrival and falling/queued motion use live
     /// actor owners. Phases one and 27 support held-node arrival and facing,
     /// including attribute-90 delay admission. Phase nine retains countdown and idle
-    /// requests on the session random stream. Walking, later route phases and hit
-    /// reactions remain unavailable. Animation requests require nominal ticks and a
-    /// synchronous sound sink; random is required only on admitted draw paths.
+    /// requests on the session random stream. Phase two walks and claims held nodes.
+    /// Later route phases and hit reactions remain unavailable. Requests require
+    /// nominal ticks and a synchronous sound sink; random is required only on
+    /// admitted draw paths.
     pub fn move_ordinary_point(
         &mut self,
         id: ScriptActorId,
@@ -284,7 +374,7 @@ impl ScriptWorld {
         id: ScriptActorId,
         inputs: ScriptInputs<'_>,
         random: Option<&mut crate::random::EngineRandom>,
-        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let index = id.index;
         let actor = &mut self.actors[index];
@@ -303,7 +393,7 @@ impl ScriptWorld {
         );
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 1 | 9 | 27),
+            matches!(phase, 1 | 2 | 9 | 27),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
         if phase == 9 {
@@ -317,48 +407,84 @@ impl ScriptWorld {
                 .as_ref()
                 .context("walk-node navigation not prepared")?
                 .position(navigation.map.expect("admitted point map"), navigation.next)?;
-            let scale = inputs
-                .frame_scale
-                .context("point node arrival requires frame_scale")?;
-            let threshold = (i32::from(self.ordinary_group_speed(index)) + 1)
-                .wrapping_mul(256)
-                .wrapping_mul(scale as i32)
-                >> 8;
-            if self.snap_ordinary_horizontal(index, destination, threshold)? {
-                self.admit_point_default(id, inputs, sounds)?;
-                self.assign_walk_node(id, navigation.next, super::super::WalkNodeSlot::Current)?;
-                self.globals.native_command.point_phase = 8;
-            } else {
-                let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
-                let combat_active = self.actors[index]
-                    .control
+            if phase == 2 {
+                let exited = self.actors[index]
+                    .animation
                     .as_ref()
-                    .and_then(|control| control.combat.as_ref())
-                    .is_some_and(|combat| combat.flags & 4 != 0);
-                let facing = self.face_ordinary_point(
+                    .context("point walking animation unavailable")?
+                    .playback
+                    .exit_reached();
+                if !exited {
+                    let facing = self.point_facing_inputs(id, inputs)?;
+                    self.face_ordinary_point(
+                        id,
+                        destination,
+                        facing,
+                        sounds
+                            .as_mut()
+                            .context("point facing requires synchronous sounds")?,
+                    )?;
+                }
+                if self.walk_ordinary_point(
                     id,
                     destination,
-                    super::slope::OrdinarySlopeInputs {
-                        selected_player,
-                        holding_weapon,
-                        combat_active,
-                        frame_scale: scale,
-                        ticks: inputs
-                            .nominal_ticks
-                            .context("point facing requires nominal_ticks")?,
-                    },
-                    sounds.context("point facing requires synchronous sounds")?,
-                )?;
-                if facing == 0 {
-                    self.globals.native_command.point_phase = 2;
-                    let delay = self.actors[index].attributes[90];
-                    if delay != 0 {
-                        let random =
-                            random.context("point facing requires shared engine random stream")?;
-                        if random.rnd(i32::from(delay))? == 0 {
-                            self.globals.native_command.point_phase = 9;
-                            self.globals.native_command.point_word =
-                                ((random.draw() & 127) + 16) as u16;
+                    0,
+                    inputs,
+                    sounds.as_mut().map(|sink| {
+                        sink as &mut dyn FnMut(
+                            ScriptActorId,
+                            super::super::ScriptSound,
+                        ) -> Result<()>
+                    }),
+                )? == 0
+                {
+                    self.admit_point_default(id, inputs, sounds)?;
+                    if self.point_destination_arrived(index, destination, 0, inputs)? {
+                        self.assign_walk_node(
+                            id,
+                            navigation.next,
+                            super::super::WalkNodeSlot::Current,
+                        )?;
+                        self.globals.native_command.point_phase = 8;
+                    } else {
+                        self.globals.native_command.point_phase = 0;
+                    }
+                }
+            } else {
+                let scale = inputs
+                    .frame_scale
+                    .context("point node arrival requires frame_scale")?;
+                let threshold = (i32::from(self.ordinary_group_speed(index)) + 1)
+                    .wrapping_mul(256)
+                    .wrapping_mul(scale as i32)
+                    >> 8;
+                if self.snap_ordinary_horizontal(index, destination, threshold)? {
+                    self.admit_point_default(id, inputs, sounds)?;
+                    self.assign_walk_node(
+                        id,
+                        navigation.next,
+                        super::super::WalkNodeSlot::Current,
+                    )?;
+                    self.globals.native_command.point_phase = 8;
+                } else {
+                    let facing_inputs = self.point_facing_inputs(id, inputs)?;
+                    let facing = self.face_ordinary_point(
+                        id,
+                        destination,
+                        facing_inputs,
+                        sounds.context("point facing requires synchronous sounds")?,
+                    )?;
+                    if facing == 0 {
+                        self.globals.native_command.point_phase = 2;
+                        let delay = self.actors[index].attributes[90];
+                        if delay != 0 {
+                            let random = random
+                                .context("point facing requires shared engine random stream")?;
+                            if random.rnd(i32::from(delay))? == 0 {
+                                self.globals.native_command.point_phase = 9;
+                                self.globals.native_command.point_word =
+                                    ((random.draw() & 127) + 16) as u16;
+                            }
                         }
                     }
                 }
@@ -373,5 +499,28 @@ impl ScriptWorld {
             self.map_updates.push(index);
         }
         Ok(1)
+    }
+
+    fn point_facing_inputs(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<super::slope::OrdinarySlopeInputs> {
+        let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
+        Ok(super::slope::OrdinarySlopeInputs {
+            selected_player,
+            holding_weapon,
+            combat_active: self.actors[id.index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some_and(|combat| combat.flags & 4 != 0),
+            frame_scale: inputs
+                .frame_scale
+                .context("point facing requires frame_scale")?,
+            ticks: inputs
+                .nominal_ticks
+                .context("point facing requires nominal_ticks")?,
+        })
     }
 }
