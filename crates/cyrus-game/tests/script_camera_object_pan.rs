@@ -29,7 +29,7 @@ struct Step {
 
 struct Case {
     name: &'static str,
-    kind: ObjectPanKind,
+    frame: VectorFrame,
     camera_move: u8,
     pan_type: u8,
     attributes: [u8; 6],
@@ -44,7 +44,7 @@ struct Case {
 const CASES: &[Case] = &[
     Case {
         name: "pan orbit steps",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 0,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -143,7 +143,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan absolute finish",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 0,
         pan_type: 1,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -225,7 +225,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan relative finish",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 1,
         pan_type: 1,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -307,7 +307,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan orbit finish",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 2,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -389,7 +389,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan unlisted move",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 3,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -454,7 +454,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan duration one",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 0,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -483,7 +483,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan duration zero",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 1,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -512,7 +512,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan negative duration",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 0,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -541,7 +541,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "pan wrapped angles",
-        kind: ObjectPanKind::Plain,
+        frame: VectorFrame::World,
         camera_move: 2,
         pan_type: 0,
         attributes: [255, 1, 255, 1, 255, 127],
@@ -657,7 +657,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc orbit steps",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 0,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -756,7 +756,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc absolute finish",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 0,
         pan_type: 1,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -838,7 +838,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc relative finish",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 1,
         pan_type: 1,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -920,7 +920,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc orbit finish",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 2,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -1002,7 +1002,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc unlisted move",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 3,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -1067,7 +1067,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc duration one",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 0,
         pan_type: 1,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -1096,7 +1096,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc negative duration",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 0,
         pan_type: 0,
         attributes: [130, 120, 0, 140, 128, 126],
@@ -1125,7 +1125,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc wrapped angles",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 2,
         pan_type: 0,
         attributes: [255, 1, 255, 1, 255, 127],
@@ -1241,7 +1241,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "loc position steps",
-        kind: ObjectPanKind::Loc,
+        frame: VectorFrame::Actor,
         camera_move: 1,
         pan_type: 1,
         attributes: [140, 100, 127, 90, 150, 127],
@@ -1390,8 +1390,8 @@ fn object_pans_reproduce_the_original_handlers() {
             angles: [3, 1990, 0],
         };
         let inputs = ObjectPanInputs {
-            kind: case.kind,
             location: LocationInputs {
+                frame: case.frame,
                 actor: actor(4),
                 camera_move: case.camera_move,
                 attributes: case.attributes,

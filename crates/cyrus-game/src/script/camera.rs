@@ -443,10 +443,19 @@ pub struct PanInputs {
     pub bound_angles: [u16; 3],
 }
 
+/// The axes a location task's vector argument is given in: `showObj` and `showObjPan` use
+/// world axes, `showObjLoc` and `showObjPanLoc` rotate it by the bound actor's angles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VectorFrame {
+    World,
+    Actor,
+}
+
 /// Inputs of one location-camera invocation: the bound actor, its camera attributes
 /// (`attr_camera_move`, then the six target/offset bytes), its pose and the task arguments.
 #[derive(Clone, Copy, Debug)]
 pub struct LocationInputs {
+    pub frame: VectorFrame,
     pub actor: super::ScriptActorId,
     pub camera_move: u8,
     pub attributes: [u8; 6],
@@ -468,18 +477,10 @@ pub struct PanState {
     final_offset: [i32; 3],
 }
 
-/// The two object-pan handlers: `showObjPan` takes its vector in world axes, while
-/// `showObjPanLoc` rotates it by the bound actor's angles like the location camera.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ObjectPanKind {
-    Plain,
-    Loc,
-}
-
-/// Inputs of one object-pan invocation. `location.arguments` are the task's vector.
+/// Inputs of one object-pan invocation. `location.arguments` are the task's vector; the
+/// world-frame pan is `showObjPan` and the actor-frame pan is `showObjPanLoc`.
 #[derive(Clone, Copy, Debug)]
 pub struct ObjectPanInputs {
-    pub kind: ObjectPanKind,
     pub location: LocationInputs,
     /// The actor's `attr_camera_pan_type`: one interpolates the position request, any other
     /// value interpolates the angle offset and distance.
@@ -678,15 +679,16 @@ impl CameraState {
         Ok(false)
     }
 
-    /// One invocation of the location camera (`showObjLoc`, and `showCyrusLoc` for the selected
-    /// player). The first invocation begins a scripted camera bound to the actor, converts the
+    /// One invocation of the location camera (`showObj` and `showObjLoc`, and their `showCyrus`
+    /// wrappers for the selected player). The first invocation begins a scripted camera bound to the actor, converts the
     /// actor's camera attributes to offsets, writes the request its `attr_camera_move` selects
     /// from the task arguments, then runs one camera update through `update` and stays active.
     /// Later invocations run the release step with duration zero and complete.
     ///
     /// All edits happen on a copy that replaces the state only after `update` succeeds, so a
     /// failed update leaves the camera and the private counter untouched.
-    /// The original also sets two marks whose readers are not ported; they are not modelled.
+    /// The original also sets marks (two for `showObjLoc`, one for `showObj`) whose readers
+    /// are not ported; they are not modelled.
     pub fn show_location(
         &mut self,
         inputs: &LocationInputs,
@@ -708,10 +710,10 @@ impl CameraState {
         next.records[slot].actor = inputs.actor;
         next.set_location_offsets(inputs.attributes);
         let offset = rotate(next.records[slot].position_offset, inputs.bound_angles)?;
-        let vector = rotate(
-            inputs.arguments.map(|argument| argument.wrapping_shl(8)),
-            inputs.bound_angles,
-        )?;
+        let mut vector = inputs.arguments.map(|argument| argument.wrapping_shl(8));
+        if inputs.frame == VectorFrame::Actor {
+            vector = rotate(vector, inputs.bound_angles)?;
+        }
         let record = &mut next.records[slot];
         record.flags |= 0x01;
         let relative = add(vector, offset);
@@ -749,7 +751,7 @@ impl CameraState {
         counter: &mut u32,
         elapsed: i32,
     ) -> Result<bool> {
-        let plain = pan.kind == ObjectPanKind::Plain;
+        let plain = pan.location.frame == VectorFrame::World;
         let inputs = &pan.location;
         let mut next = self.clone();
         if plain {
