@@ -157,6 +157,8 @@ pub struct GameplayGlobals {
     player_idle_counter: Option<i32>,
     controller_prelude: Option<ControllerPrelude>,
     pub(super) selected_combat_inhibition: Option<i32>,
+    /// World-loop iterations, reset on entry and incremented before ordinary traversal.
+    pub(super) world_loop_frame: u32,
     pub(super) sound_maintenance: super::SoundMaintenance,
     menu_state: u16,
     dialogue_state: Option<u16>,
@@ -867,6 +869,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     player_idle_counter: Option<i32>,
     controller_prelude: Option<ControllerPrelude>,
     selected_combat_inhibition: Option<i32>,
+    #[serde(default)]
+    world_loop_frame: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
     menu_state: u16,
     dialogue_state: Option<u16>,
@@ -901,6 +905,7 @@ impl GameplayGlobals {
             player_idle_counter: self.player_idle_counter,
             controller_prelude: self.controller_prelude.clone(),
             selected_combat_inhibition: self.selected_combat_inhibition,
+            world_loop_frame: self.world_loop_frame,
             sound_maintenance: self.sound_maintenance.snapshot(),
             menu_state: self.menu_state,
             dialogue_state: self.dialogue_state,
@@ -958,6 +963,7 @@ impl GameplayGlobals {
             player_idle_counter: saved.player_idle_counter,
             controller_prelude: saved.controller_prelude,
             selected_combat_inhibition: saved.selected_combat_inhibition,
+            world_loop_frame: saved.world_loop_frame,
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,
             dialogue_state: saved.dialogue_state,

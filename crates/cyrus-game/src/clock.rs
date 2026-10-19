@@ -179,6 +179,12 @@ impl SimulationClock {
         self.settings
     }
 
+    /// Current raw BIOS-clock sample, refreshed by advance or rebase.
+    /// Combat pacing interprets its low 32 bits as signed; this is not a tick delta.
+    pub fn bios_sample(&self) -> u32 {
+        self.baseline
+    }
+
     /// Last exposed timing, retained across checkpoint restoration until advance.
     pub fn step(&self) -> ClockStep {
         self.step

@@ -22385,3 +22385,86 @@ fn ordinary_defence_selected_starter_reuses_live_executor_without_target_queries
     assert_eq!(random.state(), 42);
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
+
+#[test]
+fn ordinary_combat_root_preserves_waiting_branch_after_coordination_promotes_receiver() {
+    use cyrus_game::script::ScriptInputs;
+    let (mut world, _, _) = spacing_fixture(|saved| {
+        saved["actors"][0]["control"]["death_selector"] = 6.into();
+        saved["actors"][0]["attributes"][121] = 1.into();
+        let own = &mut saved["actors"][0]["control"]["combat"];
+        own["attacker_selection_state"] = 0.into();
+        own["action"] = 7.into();
+        for index in [2, 3] {
+            saved["actors"][index]["control"]["combat"] = serde_json::Value::Null;
+        }
+        saved["actors"][1]["control"]["combat"] =
+            serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let mut expected = cyrus_game::random::EngineRandom::from_state(42);
+    expected.draw();
+    world
+        .run_ordinary_combat_decision(
+            world.id(0).unwrap(),
+            world.id(4).unwrap(),
+            ScriptInputs {
+                combat_clock_sample: Some(0x8000_0001),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _| anyhow::bail!("unexpected combat sound"),
+        )
+        .unwrap();
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(combat.attacker_selection_state, 1);
+    assert_eq!(combat.action, 7);
+    assert_eq!(random.state(), expected.state());
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn ordinary_combat_root_retains_prefix_writes_before_spacing_service_failure() {
+    let (mut world, _, _) = spacing_fixture(|saved| {
+        saved["actors"][0]["control"]["death_selector"] = 6.into();
+        saved["actors"][0]["attributes"][121] = 1.into();
+        saved["actors"][1]["control"]["combat"] =
+            serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
+        saved["actors"][0]["control"]["combat"]["decision"]["aggression"] = 50.into();
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let error = world
+        .run_ordinary_combat_decision(
+            world.id(0).unwrap(),
+            world.id(4).unwrap(),
+            cyrus_game::script::ScriptInputs {
+                combat_clock_sample: Some(77),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _| anyhow::bail!("unexpected combat sound"),
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("fight spacing frame_scale unavailable"),
+        "{error:#}"
+    );
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .close_distance_passes,
+        1
+    );
+    assert_eq!(random.state(), 42);
+}

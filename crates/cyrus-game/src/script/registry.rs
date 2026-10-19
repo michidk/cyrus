@@ -4,6 +4,7 @@ mod activation;
 mod attack;
 pub(super) mod body;
 pub(super) mod bounds;
+mod combat_decision;
 mod coordination;
 mod counter;
 mod defence;
@@ -133,6 +134,8 @@ pub struct ScriptInputs<'a> {
     pub activation: Option<&'a super::ActivationInputs>,
     /// Held installed Activate binding for live logical-actor activation.
     pub activation_use_held: Option<bool>,
+    /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
+    pub combat_clock_sample: Option<u32>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
@@ -436,8 +439,8 @@ impl ScriptWorld {
     }
 
     /// Maintain an admitted ordinary combat record using shared nominal ticks.
-    /// Perception uses live query owners; routed pursuit, damage, decisions and attacks
-    /// retain unsupported guards.
+    /// Perception and nonplayer decisions use live query owners and synchronous services.
+    /// Damage, selected-player phases and remaining attack maintenance retain guards.
     /// The owner supplies the selected player's drawing/sheathing and shell gates,
     /// and the session random stream for routed point-facing delays.
     pub fn maintain_map_combat(
@@ -446,7 +449,7 @@ impl ScriptWorld {
         ticks: u32,
         player_weapon_transition: bool,
         inputs: ScriptInputs<'_>,
-        random: Option<&mut crate::random::EngineRandom>,
+        mut random: Option<&mut crate::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
@@ -495,7 +498,14 @@ impl ScriptWorld {
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Player))
                 .context("perception selected player unavailable")?;
-            self.maintain_combat_perception(id, self.id(player)?, ticks, inputs, random, sounds)?;
+            self.maintain_combat_perception(
+                id,
+                self.id(player)?,
+                ticks,
+                inputs,
+                random.as_deref_mut(),
+                sounds,
+            )?;
         }
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
         let selected_player = self
@@ -507,14 +517,26 @@ impl ScriptWorld {
                 index,
             });
         self.process_combat_message(id, selected_player)?;
+        if !selected
+            && self.actors[index]
+                .control
+                .as_ref()
+                .expect("admitted control")
+                .death_selector
+                == 6
+        {
+            self.run_ordinary_combat_decision(
+                id,
+                selected_player.context("combat decision selected player unavailable")?,
+                inputs,
+                random.context("combat decision random owner unavailable")?,
+                sounds,
+            )?;
+        }
         let control = self.actors[index]
             .control
             .as_mut()
             .expect("admitted control");
-        anyhow::ensure!(
-            selected || control.death_selector != 6,
-            "ordinary combat decision stage unsupported"
-        );
         let combat = control.combat.as_mut().expect("admitted combat");
         if selected {
             anyhow::ensure!(
@@ -2225,6 +2247,7 @@ pub(super) fn prepare(
         Ok(mut world) => {
             world.globals = std::mem::take(&mut actors.globals);
             world.globals.sound_maintenance.enter_world();
+            world.globals.world_loop_frame = 0;
             actors.current = Some(world);
         }
         Err(error) => {

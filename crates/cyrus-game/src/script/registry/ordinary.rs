@@ -105,6 +105,7 @@ impl ScriptWorld {
             inputs.frame_scale.is_some(),
             "ordinary update requires frame_scale"
         );
+        self.globals.world_loop_frame = self.globals.world_loop_frame.wrapping_add(1);
         self.prepare_ordinary_models(data, ticks, sounds)?;
         let selected = self.ordinary_actors(view)?.to_vec();
         for &id in &selected {
@@ -974,6 +975,7 @@ pub fn run_ordinary(
                 hud: hud.as_deref(),
                 activation_use_held: input.as_deref().map(|held| held.action),
                 shell_execution: Some(false),
+                combat_clock_sample: Some(clock.bios_sample()),
                 nominal_ticks: Some(timing.nominal_ticks),
                 frame_scale: Some(timing.frame_scale),
                 player_query,

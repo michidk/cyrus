@@ -613,13 +613,19 @@ remains open.
 shared player-death/controller inhibition and retained motion command timing.
 Its counter writes survive later errors, and inactive branches skip target metadata.
 The forward-arc helper matches 2,060 original cases; an inclusive boundary fails.
-Ordinary combat scheduling and full START acceptance remain open.
+The ordinary combat root now composes cleanup, coordination, spacing, counters,
+defence selection and chance taunts with separate BIOS-clock and world-loop owners.
+Two root contracts preserve entry branches and earlier writes; 256 controlled
+original cases establish service order. Both installed START pirates pass decision
+admission and reach update 26 in the bound headless diagnostic, then stop at
+unsupported state-specific overlap response. Diagnostic audio hosts remain controlled;
+full START/native/browser combat acceptance remains open.
 
 Next, in dependency order:
 
-1. Connect the live selection owner to ordinary scheduler admission and shared
-   BIOS/frame counters, preserving branch-specific metadata reads.
-   Compare installed START allocation assignments before claiming automatic actor pacing.
+1. Complete the state-specific overlap response reached by both START pirates in
+   automatic traversal. Compare installed allocation assignments and complete live
+   combat before claiming automatic actor pacing or full START acceptance.
    Preserve state changes and publish remaining recovered rules before implementing them.
 2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
    ordinary per-point collision inputs and deep-water/edge admission. The terrain

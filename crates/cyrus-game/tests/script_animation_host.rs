@@ -4222,6 +4222,7 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
             .unwrap(),
     )
     .unwrap();
+    document["registry"]["globals"]["world_loop_frame"] = 0xffff_fffe_u32.into();
     document["registry"]["worlds"]
         .as_array_mut()
         .unwrap()
@@ -4281,6 +4282,10 @@ fn logical_session_candidate_retains_visited_worlds_and_reserves_fresh_identitie
     )
     .unwrap();
     assert_eq!(roundtrip["registry"]["worlds"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        roundtrip["registry"]["globals"]["world_loop_frame"],
+        0xffff_fffe_u32
+    );
     assert_eq!(
         roundtrip["registry"]["worlds"][1]["flags"],
         document["registry"]["worlds"][1]["flags"]

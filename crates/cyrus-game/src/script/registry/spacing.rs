@@ -10,7 +10,7 @@ pub struct OrdinarySpacingNeighbors {
 }
 
 /// Shared combat-pass samples consumed by fight spacing. Distance is in Q8
-/// runtime units; tick_counter is the signed retained combat update counter.
+/// runtime units; tick_counter is the raw cached BIOS sample interpreted as signed.
 #[derive(Clone, Copy, Debug)]
 pub struct OrdinarySpacingInput {
     pub distance: i32,

@@ -241,3 +241,22 @@ fn measurement_intervals_survive_restore_without_counting_suspended_time() {
     resumed.advance(1017);
     assert_eq!(resumed.measurement_intervals(), 0);
 }
+
+#[test]
+fn combat_sample_tracks_raw_clock_across_zero_ticks_wrap_and_restore() {
+    let mut clock = SimulationClock::new(settings(false)).unwrap();
+    for _ in 0..24 {
+        clock.advance(0);
+    }
+    clock.advance(18);
+    clock.rebase(0xffff_fffe);
+    assert_eq!(clock.bios_sample(), 0xffff_fffe);
+    let step = clock.advance(0xffff_ffff);
+    assert_eq!(step.nominal_ticks, 0);
+    assert_eq!(clock.bios_sample() as i32, -1);
+    clock.advance(0);
+    assert_eq!(clock.bios_sample(), 0);
+    let resumed = restored(encoded(&clock), 0x8000_0001).unwrap();
+    assert_eq!(resumed.bios_sample() as i32, i32::MIN + 1);
+    assert_eq!(resumed.step(), clock.step());
+}

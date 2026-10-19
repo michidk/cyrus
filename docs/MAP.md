@@ -161,6 +161,7 @@ module where it is defined and regenerate.
 - `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
+- `src/script/registry/combat_decision.rs` — Ordinary combat composes live services in the original decision order.
 - `src/script/registry/coordination.rs` — Combat coordination shares attacker eligibility, close counters and addressed class queues.
 - `src/script/registry/counter.rs` — Live nonplayer counter timing, synchronous attack start and primitive sidesteps.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
