@@ -1178,3 +1178,14 @@ receives state one and aggression 50. Null targets bypass list services. Selecte
 player death queries use the caller's identity and shared override owner. Earlier
 resets survive later errors; unknown codes are inert. Movement and damage message
 handlers remain unavailable. Ordinary maintenance calls this shared service.
+
+
+`move_disengaged_combat` explicitly faces the retained local target point, tries
+point arrival, then dispatches synchronous `MoveForward` below distance 500001
+or `WalkForward` otherwise. `face_ordinary_point` shares target-facing behavior;
+`arrive_ordinary_point` uses authored positive Y extent and current-group speed,
+quantizes admitted XYZ and defers map registration. **Verified:** original-helper
+comparisons and public headless contracts cover strict arrival, retained-point
+selection, lazy services and animation waits. Automatic combat traversal and
+installed native/browser movement acceptance remain open. Rules come from
+preservation's [combat movement facts](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).

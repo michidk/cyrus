@@ -119,33 +119,43 @@ impl ScriptWorld {
         inputs: OrdinarySlopeInputs,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<i32> {
-        let result = (|| -> Result<i32> {
-            let index = self.resolve(id)?;
+        let result = (|| -> Result<_> {
+            self.resolve(id)?;
             self.resolve(target)?;
             ensure!(
                 inputs.selected_player != Some(id),
                 "selected-player facing camera unavailable"
             );
-            let actor = &self.actors[index];
-            let group = actor
-                .animation
-                .as_ref()
-                .and_then(|animation| animation.playback.current_group());
-            let speed_attribute = match group {
-                Some(18 | 30 | 142) => Some(8),
-                Some(19 | 143) => Some(9),
-                Some(20 | 21) => Some(12),
-                Some(22 | 23) => Some(13),
-                Some(24..=27) => Some(10),
-                Some(31) => Some(19),
-                Some(92 | 93) => Some(17),
-                _ => None,
-            };
-            let speed = speed_attribute
-                .map(|attribute| actor.attributes[attribute])
-                .unwrap_or(0);
-            let origin = self.spatial(id)?.local;
             let destination = self.spatial(target)?.local.position;
+            self.face_ordinary_point(id, destination, inputs, sounds)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} target {} facing",
+                self.world, id.index, target.index
+            )
+        })
+    }
+
+    /// Face a retained local Q8 point, snapping only X/Z on horizontal arrival.
+    /// Y is ignored. Uses the same speed, turn and registration owners as target facing.
+    /// Selected-player camera feedback remains unavailable.
+    pub fn face_ordinary_point(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let result = (|| -> Result<i32> {
+            let index = self.resolve(id)?;
+            ensure!(
+                inputs.selected_player != Some(id),
+                "selected-player facing camera unavailable"
+            );
+            let actor = &self.actors[index];
+            let speed = self.ordinary_group_speed(index);
+            let origin = self.spatial(id)?.local;
             let x = destination[0].wrapping_sub(origin.position[0]);
             let z = destination[2].wrapping_sub(origin.position[2]);
             let distance = cyrus_collision::distance::rounded_distance([x, 0, z])?;
@@ -207,8 +217,69 @@ impl ScriptWorld {
         })();
         result.with_context(|| {
             format!(
-                "world {} instance {} target {} facing",
-                self.world, id.index, target.index
+                "world {} instance {} point {destination:?} facing",
+                self.world, id.index
+            )
+        })
+    }
+
+    fn ordinary_group_speed(&self, index: usize) -> u8 {
+        let actor = &self.actors[index];
+        let group = actor
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        let attribute = match group {
+            Some(18 | 30 | 142) => 8,
+            Some(19 | 143) => 9,
+            Some(20 | 21) => 12,
+            Some(22 | 23) => 13,
+            Some(24..=27) => 10,
+            Some(31) => 19,
+            Some(92 | 93) => 17,
+            _ => return 0,
+        };
+        actor.attributes[attribute]
+    }
+
+    /// Test arrival at a local Q8 point using integer-map-unit distance and the
+    /// receiver's positive Y bounds extent. The strict speed threshold is not
+    /// frame-scaled. Admission quantizes XYZ to whole units and registers movement;
+    /// rejection preserves position. This is an arrival snap, not pathfinding.
+    pub fn arrive_ordinary_point(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+    ) -> Result<bool> {
+        let result = (|| -> Result<_> {
+            let index = self.resolve(id)?;
+            let origin = self.spatial(id)?.local.position;
+            let height = self.ordinary_collision_shape(id)?.positive_extent[1];
+            let differences = [
+                (destination[0] >> 8).wrapping_sub(origin[0] >> 8),
+                (destination[1] >> 8).wrapping_sub(height.wrapping_add(origin[1] >> 8)),
+                (destination[2] >> 8).wrapping_sub(origin[2] >> 8),
+            ];
+            let distance = cyrus_collision::distance::rounded_distance(differences)?;
+            let threshold = i32::from(self.ordinary_group_speed(index)).wrapping_mul(384) >> 8;
+            if distance >= threshold {
+                return Ok(false);
+            }
+            self.spatial
+                .as_mut()
+                .context("spatial owner unavailable")?
+                .actor_mut(index)?
+                .local
+                .position = destination.map(|value| (value >> 8) << 8);
+            if !self.map_updates.contains(&index) {
+                self.map_updates.push(index);
+            }
+            Ok(true)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} point {destination:?} arrival",
+                self.world, id.index
             )
         })
     }

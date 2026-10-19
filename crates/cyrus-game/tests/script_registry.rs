@@ -16145,7 +16145,7 @@ fn movement_fixture(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
-            "actors":[{"script_name":"LOGIC","animation_groups":([0,18,19,20,21,30,31,92,93,94,95,106,142].into_iter().map(|group| {
+            "actors":[{"script_name":"LOGIC","animation_groups":([0,14,15,16,17,18,19,20,21,22,23,24,25,26,27,30,31,92,93,94,95,96,97,106,142,143].into_iter().map(|group| {
                 let mut commands = vec![];
                 if suppressed {commands.push(serde_json::json!({"opcode":5}));}
                 commands.push(serde_json::json!({"opcode":0,"frame_reference":group}));
@@ -18713,4 +18713,276 @@ fn coordination_message_keeps_prior_resets_when_selected_death_state_is_unknown(
     assert_eq!(state(2), (1, 11, 7));
     assert_eq!(state(0), (1, 11, 7));
     assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+}
+
+fn retained_point_fixture(
+    group: u16,
+    speed: u8,
+    height: i32,
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    let (mut world, scripts, mut data) = movement_fixture(
+        group,
+        false,
+        true,
+        |scripts| {
+            for instance in &mut scripts.instances {
+                instance.object_type = 1;
+            }
+            for attribute in [8, 9, 10, 12, 13, 17, 19] {
+                scripts
+                    .actors
+                    .get_mut("LOGIC")
+                    .unwrap()
+                    .attributes
+                    .insert(format!("attr_{attribute}"), speed);
+            }
+        },
+        |saved| {
+            saved["actors"][0]["control"]["combat"] =
+                serde_json::to_value(cyrus_game::script::CombatControlState {
+                    retained_target_position: [0, 0, 10000],
+                    ..Default::default()
+                })
+                .unwrap();
+            saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([255, -257, -1]);
+            edit(saved);
+        },
+    );
+    data.metadata["actors"][0]["model_load_path"] = "animation_table".into();
+    data.metadata["actors"][0]["mpsz_bounds_primary"] = 0.into();
+    data.metadata["actors"][0]["raex"] = serde_json::json!({"unknown_12":256});
+    data.metadata["mpsz_entries"] = serde_json::json!([{
+        "total_extent":[24,height+12,24],"pos_extent":[12,height,12],
+        "neg_extent":[12,12,12],"center_offset":[0,0,0],"flags":0
+    }]);
+    let (_, _, models) = static_model_fixture(cache());
+    let scene = ordinary_collision_scene(world.world, models);
+    world
+        .prepare_ordinary_collision_shape(world.id(0).unwrap(), &data, &scene)
+        .unwrap();
+    (world, scripts, data)
+}
+
+#[test]
+fn retained_point_arrival_uses_positive_y_extent_strict_speed_and_all_axis_quantization() {
+    for (group, speed, height, distance, expected) in [
+        (18, 3, 17, 3, true),
+        (18, 3, 17, 4, false),
+        (18, 3, 17, 5, false),
+        (20, 1, 0, 0, true),
+        (20, 1, 0, 1, false),
+        (0, 255, 17, 0, false),
+        (18, 0, 17, 0, false),
+        (143, 255, 17, 381, true),
+    ] {
+        let (mut world, _, _) = retained_point_fixture(group, speed, height, |_| {});
+        let id = world.id(0).unwrap();
+        let point = [distance * 256 + 3, (height - 2) * 256 + 5, -249];
+        let heading = world.spatial(id).unwrap().local.angles;
+        assert_eq!(
+            world.arrive_ordinary_point(id, point).unwrap(),
+            expected,
+            "group {group}, speed {speed}, height {height}, distance {distance}"
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            if expected {
+                [distance * 256, (height - 2) * 256, -256]
+            } else {
+                [255, -257, -1]
+            }
+        );
+        assert_eq!(world.spatial(id).unwrap().local.angles, heading);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+    let (mut world, _, _) = retained_point_fixture(18, 3, 17, |saved| {
+        saved["actors"][0]["animation"] = serde_json::Value::Null;
+    });
+    let id = world.id(0).unwrap();
+    assert!(
+        !world
+            .arrive_ordinary_point(id, [3, 15 * 256, -256])
+            .unwrap()
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [255, -257, -1]);
+}
+
+#[test]
+fn retained_point_facing_ignores_live_target_and_preserves_y_on_horizontal_snap() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    let (mut world, id, target) = facing_world(400, [900, -3, 800], Some(18));
+    let target_before = world.spatial(target).unwrap().local.position;
+    assert_eq!(
+        world
+            .face_ordinary_point(
+                id,
+                [1024, -999999, 0],
+                OrdinarySlopeInputs {
+                    selected_player: None,
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: 256,
+                    ticks: 0
+                },
+                &mut |_, _| panic!("arrival requested sound")
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [1024, 1280, 0]);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 400);
+    assert_eq!(world.spatial(target).unwrap().local.position, target_before);
+}
+
+#[test]
+fn disengaged_combat_uses_retained_point_and_real_forward_or_walk_movement() {
+    use cyrus_game::script::{OrdinarySlopeInputs, ScriptHud, ScriptInputs};
+    for (distance, position, group, direction) in
+        [(500000, [0, 0, 2048], 18, 2), (500001, [0, 0, 1024], 20, 6)]
+    {
+        let (mut world, _, _) = retained_point_fixture(group, 8, 12, |saved| {
+            saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
+            saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, 0, 0]);
+            saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([2000000, 0, 0]);
+            saved["actors"][0]["control"]["combat"]["target"] = serde_json::json!([1, 1]);
+            saved["actors"][0]["control"]["movement_flags"] = 0x30.into();
+            // The original lifecycle-seven/clear-collision gate admits WalkForward without a probe.
+            saved["actors"][0]["control"]["death_selector"] = 7.into();
+            saved["actors"][0]["attributes"][1] = 0.into();
+            saved["actors"][0]["attributes"][12] = 4.into();
+        });
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        world
+            .move_disengaged_combat(
+                id,
+                distance,
+                OrdinarySlopeInputs {
+                    selected_player: None,
+                    holding_weapon: false,
+                    combat_active: false,
+                    frame_scale: 256,
+                    ticks: 1,
+                },
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(world.spatial(id).unwrap().local.position, position);
+        assert_eq!(
+            world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
+            group
+        );
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            direction
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn disengaged_turn_bypasses_arrival_and_movement_services() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |_| {},
+        |saved| {
+            saved["actors"][0]["control"]["combat"] =
+                serde_json::to_value(cyrus_game::script::CombatControlState {
+                    retained_target_position: [10000, 0, 0],
+                    ..Default::default()
+                })
+                .unwrap();
+        },
+    );
+    let id = world.id(0).unwrap();
+    assert!(world.ordinary_collision_shape(id).is_err());
+    let before = world.spatial(id).unwrap().local.position;
+    world
+        .move_disengaged_combat(
+            id,
+            500001,
+            OrdinarySlopeInputs {
+                selected_player: None,
+                holding_weapon: false,
+                combat_active: false,
+                frame_scale: 256,
+                ticks: 1,
+            },
+            Default::default(),
+            &mut |_, _| panic!("turn emitted sound"),
+        )
+        .unwrap();
+    assert_eq!(world.spatial(id).unwrap().local.position, before);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 2040);
+    assert_eq!(
+        world.inspect(0, 1)["actors"][0]["animation"]["current_group"],
+        18
+    );
+    assert_eq!(
+        world.inspect(0, 1)["actors"][0]["animation"]["pending_group"],
+        15
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn disengaged_arrival_is_lazy_and_preserves_facing_snap_on_missing_bounds() {
+    use cyrus_game::script::OrdinarySlopeInputs;
+    for prepared in [false, true] {
+        let edit = |saved: &mut serde_json::Value| {
+            saved["actors"][0]["control"]["combat"] =
+                serde_json::to_value(cyrus_game::script::CombatControlState {
+                    retained_target_position: [3, 2565, -249],
+                    ..Default::default()
+                })
+                .unwrap();
+            saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([255, -257, -1]);
+        };
+        let (mut world, _, _) = if prepared {
+            retained_point_fixture(18, 8, 12, edit)
+        } else {
+            movement_fixture(18, false, true, |_| {}, edit)
+        };
+        let id = world.id(0).unwrap();
+        let result = world.move_disengaged_combat(
+            id,
+            500001,
+            OrdinarySlopeInputs {
+                selected_player: None,
+                holding_weapon: false,
+                combat_active: false,
+                frame_scale: 256,
+                ticks: 1,
+            },
+            Default::default(),
+            &mut |_, _| panic!("arrival emitted sound"),
+        );
+        if prepared {
+            result.unwrap();
+            assert_eq!(world.spatial(id).unwrap().local.position, [0, 2560, -256]);
+        } else {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(
+                error.contains("world 7 instance 0 disengaged combat movement"),
+                "{error}"
+            );
+            assert!(
+                error.contains("ordinary collision shape not prepared"),
+                "{error}"
+            );
+            assert_eq!(world.spatial(id).unwrap().local.position, [3, -257, -249]);
+        }
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
 }

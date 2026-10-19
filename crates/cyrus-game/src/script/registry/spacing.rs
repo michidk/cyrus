@@ -52,6 +52,54 @@ pub struct OrdinaryForwardAmountInputs {
 }
 
 impl ScriptWorld {
+    /// Run the disengaged nonplayer branch from one shared Q8 distance sample.
+    /// Facing and arrival use the retained point, independently of the live target.
+    /// The caller establishes the facing predicates and shared timing; movement
+    /// uses the ordinary native services synchronously without a persistent task.
+    /// Earlier facing/arrival writes survive a later movement-service error.
+    pub fn move_disengaged_combat(
+        &mut self,
+        id: ScriptActorId,
+        distance: i32,
+        facing: super::slope::OrdinarySlopeInputs,
+        inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let result = (|| -> Result<_> {
+            let index = self.resolve(id)?;
+            ensure!(
+                !matches!(
+                    self.actors[index].source,
+                    super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+                ) && facing.selected_player != Some(id),
+                "selected-player disengaged combat movement unavailable"
+            );
+            let point = self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("disengaged combat record unavailable")?
+                .retained_target_position;
+            if self.face_ordinary_point(id, point, facing, sounds)? == 0
+                && !self.arrive_ordinary_point(id, point)?
+            {
+                let movement = if distance < 500001 {
+                    OrdinaryMovement::Forward
+                } else {
+                    OrdinaryMovement::WalkForward
+                };
+                self.move_ordinary(id, movement, 1, 0, inputs, sounds)?;
+            }
+            Ok(())
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} disengaged combat movement",
+                self.world, id.index
+            )
+        })
+    }
+
     fn spacing_distance(&self, id: ScriptActorId, other: ScriptActorId) -> Result<i32> {
         let origin = self.query_position(id)?;
         let other = self.query_position(other)?;

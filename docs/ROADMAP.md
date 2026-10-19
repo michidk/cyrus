@@ -459,6 +459,15 @@ counter. Public headless contracts cover lazy admission, strict distance boundar
 mutation order on sight failure and real sight across snapshot restoration.
 Live attack execution, selection scheduling and START combat acceptance remain open.
 
+**Verified:** explicit disengaged combat movement faces the retained point before
+arrival and dispatches real synchronous `MoveForward` below distance 500001 or
+`WalkForward` otherwise. Point arrival uses authored positive Y extent, strict
+current-group speed and whole-unit XYZ quantization. Public headless contracts
+cover turn/animation waits, lazy service access and retained mutations on error;
+720 matching-coordinate original-helper comparisons cover arrival. Automatic
+perception/navigation, lifecycle-six pirate movement and installed native/browser
+combat acceptance remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target
