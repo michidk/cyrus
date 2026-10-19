@@ -511,6 +511,15 @@ The final workspace gate passes 1,208 Rust test executions with zero installed-d
 skips. World-transition reset ownership and routed movement remain open. The contract is recorded in
 [preservation](https://github.com/michidk/redguard-preservation/commit/3e2532afe2e7b9ee349986f802bbfe5381ed3dc4).
 
+**Verified:** walk-route search now has 1,260 controlled original graph cases
+covering authored order, cost cutoff, expanded-node reservations, duplicate links,
+reverse predecessor ties and queue limits. Incorrect reservation ownership,
+forward tie scanning and last-duplicate lookup each fail. Another 192 cases
+cover optional player-distance admission and its exact operands. The
+[published search contract](https://github.com/michidk/redguard-preservation/commit/3a3b54ae8e5436d8c69dcc628eb3f29294482270)
+is ready for implementation. Route search and the point movement state machine
+are not yet connected to live pursuit.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target
