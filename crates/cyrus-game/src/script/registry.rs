@@ -2764,10 +2764,30 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     fn player_dialogue_call(&self) -> super::tasks::PlayerDialogueCall<'input> {
+        let speaker_distance = (|| -> Result<i32> {
+            let mut inputs = self
+                .inputs
+                .player_query
+                .context("player query inputs unavailable")?;
+            let spatial = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("spatial state not prepared")?
+                .actor(self.index)?;
+            inputs.linked_position = Some(spatial.linked_position);
+            spatial.speaker_distance(inputs)
+        })()
+        .map_err(|error| format!("RTX speaker distance: {error:#}"));
         super::tasks::PlayerDialogueCall {
             source: self.inputs.dialogue_source,
             player: self.selected_player(),
             reset: self.inputs.sound_reset,
+            speaker: ScriptActorId {
+                generation: self.generation,
+                index: self.index,
+            },
+            speaker_distance,
         }
     }
 

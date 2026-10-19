@@ -118,26 +118,62 @@ pub(super) struct FrameWaitCall {
     pub player: Result<Option<(i32, i32, u8)>, String>,
 }
 
+/// Inputs shared by the `RTXp` and `RTX` dialogue tasks.
 pub(super) struct PlayerDialogueCall<'a> {
     pub source: Option<&'a dyn super::DialogueSource>,
     pub player: Option<super::ScriptActorId>,
     pub reset: Option<bool>,
+    /// The scripted actor, owner of an `RTX` record.
+    pub speaker: super::ScriptActorId,
+    /// `RTX` distance to the selected player; a failed read surfaces only when `RTX` uses it.
+    pub speaker_distance: Result<i32, String>,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     Dialogue,
-    AnimationFrame { player: bool },
-    PlayerDialogue { started: bool },
-    Ambient { channel: Option<u8> },
-    ShowPlayer { counter: u32 },
-    Movement { target: i32 },
-    ObjectMovement { target: i32, traveled: i32 },
-    ScaledMovement { origin: i32 },
-    Rotation { target: i32, accumulator: i32 },
-    AbsoluteRotation { movement: i32, accumulator: i32 },
-    ScaledRotation { origin: i32 },
-    ScaledRelativeRotation { origin: i32 },
+    AnimationFrame {
+        player: bool,
+    },
+    PlayerDialogue {
+        started: bool,
+    },
+    /// `RTX`: the retained dialogue record index (zero means none, as record zero is the player's;
+    /// an exhausted record table retains -1, which reads as inactive) and the entry's sample slot.
+    SpeakerDialogue {
+        record: i32,
+        sample: Option<u8>,
+    },
+    Ambient {
+        channel: Option<u8>,
+    },
+    ShowPlayer {
+        counter: u32,
+    },
+    Movement {
+        target: i32,
+    },
+    ObjectMovement {
+        target: i32,
+        traveled: i32,
+    },
+    ScaledMovement {
+        origin: i32,
+    },
+    Rotation {
+        target: i32,
+        accumulator: i32,
+    },
+    AbsoluteRotation {
+        movement: i32,
+        accumulator: i32,
+    },
+    ScaledRotation {
+        origin: i32,
+    },
+    ScaledRelativeRotation {
+        origin: i32,
+    },
     FacePlayer,
     Backward,
     Strafe(super::locomotion::Strafe),
@@ -147,7 +183,10 @@ enum Task {
     Duration,
     Tasks,
     Blocking,
-    Animation { group: u16, started: bool },
+    Animation {
+        group: u16,
+        started: bool,
+    },
 }
 impl Task {
     fn complete(
@@ -195,6 +234,55 @@ impl Task {
                     }
                 }
                 !dialogue.line_active(Some(0))
+            }
+            Self::SpeakerDialogue { record, sample } => {
+                let [label] = arguments else {
+                    anyhow::bail!("RTX requires one argument");
+                };
+                let input = services
+                    .player_dialogue
+                    .context("RTX service inputs unavailable")?;
+                if input.reset.context("RTX sample-reset input unavailable")? {
+                    return Ok(true);
+                }
+                let elapsed = invocation.elapsed.context("RTX requires elapsed input")?;
+                let dialogue = services
+                    .dialogue
+                    .context("RTX dialogue records unavailable")?;
+                let source = input.source.context("RTX source service unavailable")?;
+                let distance = input.speaker_distance.map_err(anyhow::Error::msg)?;
+                if distance > dialogue.settings().max_distance {
+                    // A speaker beyond the limit never starts, and cuts a line it already has.
+                    if *record != 0 {
+                        if let Some(sample) = *sample {
+                            source.stop_sample(sample)?;
+                        }
+                        dialogue.clear_sample_lines(*sample);
+                    }
+                    return Ok(true);
+                }
+                if elapsed == 0 && *record == 0 {
+                    let std::task::Poll::Ready(line) = source.speaker_line(
+                        label.integer()?.to_le_bytes(),
+                        input.speaker,
+                        dialogue.settings().max_text_width,
+                    )?
+                    else {
+                        return Ok(false);
+                    };
+                    if let Some(line) = line {
+                        anyhow::ensure!(
+                            line.sample.is_none_or(|slot| slot < 16),
+                            "RTX source returned invalid sample slot"
+                        );
+                        *sample = line.sample;
+                        *record = dialogue
+                            .begin_line(input.speaker, line.text, line.sample, line.lifetime)
+                            .map_or(-1, |index| index as i32);
+                    }
+                }
+                // A failed lookup keeps record zero, so the task then waits on the player's line.
+                !dialogue.line_active(usize::try_from(*record).ok())
             }
             Self::AnimationFrame { player } => {
                 let [group, threshold] = arguments else {
@@ -1096,6 +1184,12 @@ impl NativeTasks {
         } else if function.eq_ignore_ascii_case("RTXp") {
             anyhow::ensure!(kind == CallKind::Task, "RTXp requires task encoding");
             Task::PlayerDialogue { started: false }
+        } else if function.eq_ignore_ascii_case("RTX") {
+            anyhow::ensure!(kind == CallKind::Task, "RTX requires task encoding");
+            Task::SpeakerDialogue {
+                record: 0,
+                sample: None,
+            }
         } else if function.eq_ignore_ascii_case("AmbientSound") {
             anyhow::ensure!(
                 kind == CallKind::Multitask,

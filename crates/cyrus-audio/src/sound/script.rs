@@ -1061,6 +1061,11 @@ impl cyrus_game::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
             .cached_dialogue_line(cache, label, &mut **read, self.hud, text_width)
             .map(|line| line.map(Some))
     }
+
+    fn stop_sample(&self, sample: u8) -> anyhow::Result<()> {
+        let mut state = self.state.borrow_mut();
+        cyrus_assets::sound::DialogueSamples::stop(&mut *state.0, sample)
+    }
 }
 
 impl cyrus_game::script::CombatTauntSource for CachedDialogueSource<'_, '_, '_> {

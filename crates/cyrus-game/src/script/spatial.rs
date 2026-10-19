@@ -398,6 +398,33 @@ impl ActorSpatial {
         Ok(())
     }
 
+    /// Receiver and selected-player positions shared by `PlayerDistance` and the `RTX` distance gate.
+    fn distance_positions(&self, inputs: QueryInputs) -> Result<([i32; 3], [i32; 3])> {
+        let player_position = inputs
+            .player
+            .map(|player| player.position)
+            .or(inputs.fallback_position)
+            .context("player distance: player and fallback position unavailable")?;
+        let receiver_position = if self.parent.is_some() {
+            self.query_pose()?.position
+        } else {
+            inputs
+                .linked_position
+                .context("player distance: linked-position state unavailable")?
+                .unwrap_or(self.local.position)
+        };
+        Ok((receiver_position, player_position))
+    }
+
+    /// Distance the `RTX` task compares with `dialog_max_distance`: the rounded Euclidean length of
+    /// the receiver-to-player difference, shifted right eight bits (arithmetic) to whole units.
+    /// Unlike `PlayerDistance` it is not replaced by the `neversaydie` override.
+    pub fn speaker_distance(&self, inputs: QueryInputs) -> Result<i32> {
+        let (receiver, player) = self.distance_positions(inputs)?;
+        let difference = [0, 1, 2].map(|axis| receiver[axis].wrapping_sub(player[axis]));
+        Ok(rounded_distance(difference)? >> 8)
+    }
+
     /// Evaluate published player distance/facing/looking/arc rules against explicit current inputs.
     /// Unsupported query names return None; absent required state is an error.
     pub fn query(
@@ -466,19 +493,7 @@ impl ActorSpatial {
             {
                 return Ok(Some(9_999_999));
             }
-            let player_position = inputs
-                .player
-                .map(|player| player.position)
-                .or(inputs.fallback_position)
-                .context("PlayerDistance player and fallback position unavailable")?;
-            let receiver_position = if self.parent.is_some() {
-                self.query_pose()?.position
-            } else {
-                inputs
-                    .linked_position
-                    .context("PlayerDistance linked-position state unavailable")?
-                    .unwrap_or(self.local.position)
-            };
+            let (receiver_position, player_position) = self.distance_positions(inputs)?;
             let distance = receiver_position
                 .into_iter()
                 .zip(player_position)

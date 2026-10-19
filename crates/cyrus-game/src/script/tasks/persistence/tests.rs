@@ -462,6 +462,22 @@ fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
         ("WaitOnDialog", vec![], Task::Dialogue),
         ("RTXp", vec![123], Task::PlayerDialogue { started: true }),
         ("RTXp", vec![123], Task::PlayerDialogue { started: false }),
+        (
+            "RTX",
+            vec![123],
+            Task::SpeakerDialogue {
+                record: 0,
+                sample: None,
+            },
+        ),
+        (
+            "RTX",
+            vec![123],
+            Task::SpeakerDialogue {
+                record: 4,
+                sample: Some(3),
+            },
+        ),
     ] {
         let vm = contract_vm(name, CallKind::Task, &args);
         let snapshot = one(state);

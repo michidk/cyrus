@@ -10159,6 +10159,9 @@ fn player_dialogue_task_uses_reserved_record_once_and_reset_bypasses_lookup() {
         std::cell::Cell<u32>,
     );
     impl DialogueSource for Source {
+        fn stop_sample(&self, _: u8) -> anyhow::Result<()> {
+            Ok(())
+        }
         fn player_line(
             &self,
             label: [u8; 4],
@@ -14126,6 +14129,163 @@ fn session_request_natives_raise_requests_for_the_host() {
     assert_eq!(run_native_calls(&[("IsWithinMap", &[1])]).unwrap(), 1);
     assert_eq!(run_native_calls(&[("Animal", &[5])]).unwrap(), 0);
     assert!(run_native_calls(&[("LoadWorld", &[1])]).is_err());
+}
+
+#[test]
+fn speaker_dialogue_task_gates_on_distance_owns_a_record_and_cuts_far_lines() {
+    use cyrus_game::script::{
+        DialogueLine, DialogueSource, PlayerQuery, QueryInputs, ScriptActorId, ScriptInputs,
+        ScriptStage,
+    };
+    use std::cell::RefCell;
+    #[derive(Debug, Default)]
+    struct Source {
+        lines: RefCell<Vec<([u8; 4], ScriptActorId)>>,
+        stopped: RefCell<Vec<u8>>,
+    }
+    impl DialogueSource for Source {
+        fn player_line(
+            &self,
+            label: [u8; 4],
+            speaker: ScriptActorId,
+            _: u32,
+        ) -> anyhow::Result<std::task::Poll<Option<DialogueLine>>> {
+            self.lines.borrow_mut().push((label, speaker));
+            Ok(std::task::Poll::Ready(Some(DialogueLine {
+                text: "spoken".into(),
+                sample: Some(3),
+                lifetime: 128,
+            })))
+        }
+        fn stop_sample(&self, sample: u8) -> anyhow::Result<()> {
+            self.stopped.borrow_mut().push(sample);
+            Ok(())
+        }
+    }
+    let mut scripts = wait_cache(vec![
+        wait(
+            4,
+            "RTX",
+            CallKind::Task,
+            vec![Value::Integer {
+                value: i32::from_le_bytes(*b"TEST"),
+            }],
+        ),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    scripts.definition.functions.push(Function {
+        name: "RTX".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    scripts.dialogue.max_distance = 1600;
+    scripts.content_id = scripts.content_identity().unwrap();
+    // Whole units are the Q8 distance shifted right eight bits: the limit is inclusive.
+    fn inputs(source: &Source, units: i32, reset: bool) -> ScriptInputs<'_> {
+        ScriptInputs {
+            dialogue_source: Some(source),
+            sound_reset: Some(reset),
+            frame_scale: Some(256),
+            nominal_ticks: Some(0),
+            player_query: Some(QueryInputs {
+                player: Some(PlayerQuery {
+                    position: [units * 256, 0, 0],
+                    heading: 0,
+                }),
+                distance_override: Some(false),
+                fallback_position: None,
+                linked_position: None,
+            }),
+            ..Default::default()
+        }
+    }
+    let start = |world: &mut ScriptWorld, inputs: ScriptInputs| {
+        let speaker = world.id(0).unwrap();
+        world
+            .advance(
+                speaker,
+                ScriptStage::Body(Thread::Main),
+                inputs,
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        speaker
+    };
+
+    let mut near = ScriptWorld::prepare(&scripts, 9).unwrap();
+    near.prepare_spatial().unwrap();
+    let source = Source::default();
+    let speaker = start(&mut near, inputs(&source, 1600, false));
+    assert_eq!(*source.lines.borrow(), [(*b"TEST", speaker)]);
+    let dialogue = near.globals().dialogue().unwrap();
+    assert!(dialogue.line_active(Some(1)) && !dialogue.line_active(Some(0)));
+    let records = serde_json::to_value(dialogue).unwrap();
+    assert_eq!(
+        records["records"][1]["owner"],
+        serde_json::to_value(speaker).unwrap()
+    );
+    // The retained record stops further lookups; the task waits until the line clears.
+    near.advance(
+        speaker,
+        ScriptStage::Tasks,
+        inputs(&source, 1600, false),
+        None,
+        None,
+        20,
+    )
+    .unwrap();
+    assert_eq!(source.lines.borrow().len(), 1);
+    assert_eq!(near.actors()[0].runtime().unwrap().active_tasks(), 1);
+    // Walking beyond the limit cuts the line, stops its sample and completes the task.
+    near.advance(
+        speaker,
+        ScriptStage::Tasks,
+        inputs(&source, 1601, false),
+        None,
+        None,
+        20,
+    )
+    .unwrap();
+    assert_eq!(*source.stopped.borrow(), [3]);
+    assert!(!near.globals().dialogue().unwrap().line_active(Some(1)));
+    assert_eq!(near.actors()[0].runtime().unwrap().active_tasks(), 0);
+
+    let mut far = ScriptWorld::prepare(&scripts, 10).unwrap();
+    far.prepare_spatial().unwrap();
+    let source = Source::default();
+    let speaker = start(&mut far, inputs(&source, 1601, false));
+    far.advance(
+        speaker,
+        ScriptStage::Tasks,
+        inputs(&source, 1601, false),
+        None,
+        None,
+        20,
+    )
+    .unwrap();
+    assert!(source.lines.borrow().is_empty());
+    assert!(!far.globals().dialogue().unwrap().line_active(Some(1)));
+    assert_eq!(far.actors()[0].runtime().unwrap().active_tasks(), 0);
+
+    let mut reset = ScriptWorld::prepare(&scripts, 11).unwrap();
+    reset.prepare_spatial().unwrap();
+    let source = Source::default();
+    let speaker = start(&mut reset, inputs(&source, 0, true));
+    reset
+        .advance(
+            speaker,
+            ScriptStage::Tasks,
+            inputs(&source, 0, true),
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    assert!(source.lines.borrow().is_empty());
+    assert_eq!(reset.actors()[0].runtime().unwrap().active_tasks(), 0);
 }
 
 #[test]

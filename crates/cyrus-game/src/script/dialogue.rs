@@ -432,4 +432,16 @@ pub trait DialogueSource: std::fmt::Debug {
         player: super::ScriptActorId,
         text_width: u32,
     ) -> Result<std::task::Poll<Option<DialogueLine>>>;
+    /// `RTX` line for the scripted actor. Preparation never depends on the speaker, so the
+    /// default is the player line; the speaker only owns the record the caller creates.
+    fn speaker_line(
+        &self,
+        label: [u8; 4],
+        speaker: super::ScriptActorId,
+        text_width: u32,
+    ) -> Result<std::task::Poll<Option<DialogueLine>>> {
+        self.player_line(label, speaker, text_width)
+    }
+    /// Stop the sample channel behind a dialogue record's remembered sample slot.
+    fn stop_sample(&self, sample: u8) -> Result<()>;
 }
