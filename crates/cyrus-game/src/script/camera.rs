@@ -150,7 +150,8 @@ impl CameraRecord {
 
     /// Write the request an actor's `attr_camera_move` selects: zero an absolute position
     /// request (flag `0x08`), one a relative request (flag `0x04`), two an orbit from `orbit`'s
-    /// length and angles plus the bound angles; any other value writes nothing.
+    /// length and angles plus the bound angles, which also sets flag `0x01`; any other value
+    /// writes nothing.
     fn request_move(
         &mut self,
         camera_move: u8,
@@ -174,7 +175,7 @@ impl CameraRecord {
                 self.angle_offset = std::array::from_fn(|axis| {
                     angles[axis].wrapping_add(i32::from(bound_angles[axis])) & 2047
                 });
-                self.flags &= !0x0c;
+                self.flags = (self.flags & !0x0c) | 0x01;
             }
             _ => {}
         }
@@ -503,6 +504,27 @@ pub struct ObjectPanState {
     /// Wrapped difference from the start angles to the vector's angles.
     delta: [i32; 3],
     final_distance: i32,
+}
+
+/// Inputs of one `lookObj` invocation: the actor's camera attributes and pose, as for a
+/// location camera, and the task's duration.
+#[derive(Clone, Copy, Debug)]
+pub struct LookInputs {
+    pub actor: super::ScriptActorId,
+    pub camera_move: u8,
+    pub attributes: [u8; 6],
+    pub bound_position: [i32; 3],
+    pub bound_angles: [u16; 3],
+    pub duration: i32,
+}
+
+/// Start values a look keeps between invocations (the original keeps them in shared scratch).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LookState {
+    /// The published angles when the look began.
+    start: [i32; 3],
+    /// Wrapped difference from them to the angles facing the actor's target.
+    delta: [i32; 3],
 }
 
 /// A single-step wrap into half a turn either side of zero (2048 units per turn).
@@ -842,6 +864,88 @@ impl CameraState {
         *state = next_state;
         *counter = next_counter;
         Ok(false)
+    }
+
+    /// One invocation of `lookObj(duration)`: turn the camera in place to face the actor's
+    /// target. The first invocation begins a scripted camera bound to the actor, converts its
+    /// attributes to offsets, computes the angles the orientation stage gives at the published
+    /// position, fixes the orientation (flag `0x02`) and requests the published position, then
+    /// stays active without running the release step. Each later invocation runs the release
+    /// step; while it keeps running (and the duration exceeds one) the published angles move from
+    /// the start towards those angles. Otherwise the fixed
+    /// orientation is released and the request `attr_camera_move` selects is written from the
+    /// published position, relative to the bound position and the record's offset where the mode
+    /// asks for it. Returns `true` while the task stays active.
+    ///
+    /// A negative duration completes before touching the counter or the camera. All edits happen
+    /// on a copy committed only on success.
+    pub fn look_at(
+        &mut self,
+        look: &LookInputs,
+        state: &mut Option<LookState>,
+        counter: &mut u32,
+        elapsed: i32,
+    ) -> Result<bool> {
+        if look.duration < 0 {
+            return Ok(false);
+        }
+        let mut next = self.clone();
+        let next_counter = counter.wrapping_add(1);
+        let mut next_state = *state;
+        if next_counter == 1 && elapsed == 0 {
+            next.begin_scripted()?;
+            let slot = next.selected.index();
+            next.records[slot].actor = look.actor;
+            next.set_location_offsets(look.attributes);
+            let start = next.current.angles;
+            let position = next.current.position;
+            let target = next
+                .orient(position, look.bound_position, look.bound_angles)?
+                .angles;
+            let record = &mut next.records[slot];
+            record.flags |= 0x0a;
+            record.request = position;
+            next_state = Some(LookState {
+                start,
+                delta: std::array::from_fn(|axis| {
+                    wrap_half_turn(target[axis].wrapping_sub(start[axis]))
+                }),
+            });
+            *self = next;
+            *state = next_state;
+            *counter = next_counter;
+            return Ok(true);
+        }
+        let saved = next_state.ok_or_else(|| {
+            anyhow::anyhow!("lookObj start state unavailable (task restored mid-look)")
+        })?;
+        let running = next.release_scripted(look.duration, elapsed);
+        if running && look.duration > 1 {
+            let span = look.duration - 1;
+            next.current.angles = std::array::from_fn(|axis| {
+                saved.start[axis].wrapping_add(saved.delta[axis].wrapping_mul(elapsed) / span)
+            });
+        } else {
+            let position = next.current.position;
+            let record = &mut next.records[next.selected.index()];
+            record.flags &= !0x02;
+            let relative = std::array::from_fn(|axis| {
+                position[axis]
+                    .wrapping_sub(look.bound_position[axis])
+                    .wrapping_sub(record.position_offset[axis])
+            });
+            record.request_move(
+                look.camera_move,
+                position,
+                relative,
+                relative,
+                look.bound_angles,
+            )?;
+        }
+        *self = next;
+        *state = next_state;
+        *counter = next_counter;
+        Ok(running && look.duration > 1)
     }
 
     /// Location-camera setup: the actor's six attribute bytes (target x/y/z, then camera
