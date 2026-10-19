@@ -9460,8 +9460,8 @@ fn navigation_reservations_use_identifier_bytes_and_maintenance_clears_all_maps(
         1024,
         0,
         serde_json::json!([
-            {"node_count":2,"walk_nodes":[{"reserved":255},{"reserved":1}]},
-            {"node_count":1,"walk_nodes":[{"reserved":2}]}
+            {"node_count":2,"walk_nodes":[{"reserved":255,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0},{"reserved":1,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0}]},
+            {"node_count":1,"walk_nodes":[{"reserved":2,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0}]}
         ]),
     );
     let first = world.id(0).unwrap();
@@ -18984,5 +18984,202 @@ fn disengaged_arrival_is_lazy_and_preserves_facing_snap_on_missing_bounds() {
             assert_eq!(world.spatial(id).unwrap().local.position, [3, -257, -249]);
         }
         assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+fn free_node_fixture(
+    maps: serde_json::Value,
+    height: i32,
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    let (mut world, scripts, mut data) = retained_point_fixture(18, 3, height, edit);
+    data.metadata["walk_node_maps"] = maps;
+    world.prepare_navigation(&data).unwrap();
+    (world, scripts, data)
+}
+
+fn walk_node(position: [i32; 3]) -> serde_json::Value {
+    serde_json::json!({"node_pos_x":position[0],"node_pos_y":position[1],"node_pos_z":position[2],"reserved":255})
+}
+
+#[test]
+fn free_node_search_reverses_file_maps_and_preserves_early_return_ties_and_live_reservations() {
+    let (mut world, scripts, data) = free_node_fixture(
+        serde_json::json!([
+            {"node_count":1,"walk_nodes":[walk_node([0,0,0])]},
+            {"node_count":3,"walk_nodes":[walk_node([20,0,0]),walk_node([10,0,0]),walk_node([0,0,0])]}
+        ]),
+        0,
+        |saved| saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]),
+    );
+    let actor = world.id(0).unwrap();
+    let before = world.spatial(actor).unwrap().local;
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((1, 1)));
+    assert_eq!(
+        serde_json::to_value(world.spatial(actor).unwrap().local).unwrap(),
+        serde_json::to_value(before).unwrap()
+    );
+    assert!(world.reserve_walk_node(actor, 1, 1).unwrap());
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((1, 2)));
+    assert!(world.reserve_walk_node(actor, 1, 2).unwrap());
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((0, 0)));
+    assert!(world.reserve_walk_node(actor, 0, 0).unwrap());
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((1, 0)));
+    assert!(world.reserve_walk_node(actor, 1, 0).unwrap());
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), None);
+    assert_eq!(
+        movement_snapshot(&world, &scripts, &data)["walk_nodes"]["selected_map"],
+        serde_json::Value::Null
+    );
+    world.clear_walk_node_reservations().unwrap();
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((1, 1)));
+
+    let (mut world, _, _) = free_node_fixture(
+        serde_json::json!([
+            {"node_count":1,"walk_nodes":[walk_node([20,0,0])]},
+            {"node_count":1,"walk_nodes":[walk_node([20,0,0])]}
+        ]),
+        0,
+        |saved| saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]),
+    );
+    assert_eq!(
+        world.nearest_free_walk_node(world.id(0).unwrap()).unwrap(),
+        Some((1, 0))
+    );
+    for (distance, expected) in [(11, Some((1, 0))), (12, Some((0, 0)))] {
+        let (mut world, _, _) = free_node_fixture(
+            serde_json::json!([
+                {"node_count":1,"walk_nodes":[walk_node([0,0,0])]},
+                {"node_count":1,"walk_nodes":[walk_node([distance,0,0])]}
+            ]),
+            0,
+            |saved| {
+                saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0])
+            },
+        );
+        assert_eq!(
+            world.nearest_free_walk_node(world.id(0).unwrap()).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn free_node_search_uses_query_pose_shifted_axes_height_and_exclusive_bound() {
+    for (x, expected) in [(4095, Some((0, 0))), (4096, None)] {
+        let (mut world, _, _) = free_node_fixture(
+            serde_json::json!([{"node_count":1,"walk_nodes":[walk_node([x,15,0])]}]),
+            17,
+            |saved| {
+                saved["spatial"]["actors"][0]["local"]["position"] =
+                    serde_json::json!([255, -257, 255])
+            },
+        );
+        assert_eq!(
+            world.nearest_free_walk_node(world.id(0).unwrap()).unwrap(),
+            expected
+        );
+    }
+    for attached in [false, true] {
+        let (mut world, _, _) = free_node_fixture(
+            serde_json::json!([{"node_count":2,"walk_nodes":[walk_node([0,15,0]),walk_node([100,15,0])]}]),
+            17,
+            |saved| {
+                saved["spatial"]["actors"][0]["local"]["position"] =
+                    serde_json::json!([255, -257, 255]);
+                saved["spatial"]["actors"][0]["linked_position"] =
+                    serde_json::json!([25600, -257, 0]);
+                if attached {
+                    saved["actors"][0]["attributes"][26] = 1.into();
+                    let mut pose = saved["spatial"]["actors"][0]["local"].clone();
+                    pose["position"] = serde_json::json!([0, -257, 0]);
+                    saved["spatial"]["actors"][0]["effective"] = pose;
+                }
+            },
+        );
+        assert_eq!(
+            world.nearest_free_walk_node(world.id(0).unwrap()).unwrap(),
+            Some((0, if attached { 0 } else { 1 }))
+        );
+    }
+}
+
+#[test]
+fn free_node_winning_map_and_reservations_survive_rebinding_and_reject_invalid_saved_map() {
+    use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+    let (mut world, scripts, data) = free_node_fixture(
+        serde_json::json!([
+            {"node_count":1,"walk_nodes":[walk_node([20,0,0])]},
+            {"node_count":1,"walk_nodes":[walk_node([30,0,0])]}
+        ]),
+        0,
+        |saved| saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]),
+    );
+    let actor = world.id(0).unwrap();
+    world.reserve_walk_node(actor, 0, 0).unwrap();
+    assert_eq!(world.nearest_free_walk_node(actor).unwrap(), Some((1, 0)));
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(saved["walk_nodes"]["selected_map"], 1);
+    let restore = |saved| {
+        ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 3,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+    };
+    let mut restored = restore(saved.clone()).unwrap();
+    assert_eq!(
+        movement_snapshot(&restored, &scripts, &data)["walk_nodes"],
+        saved["walk_nodes"]
+    );
+    assert_eq!(
+        restored
+            .nearest_free_walk_node(restored.id(0).unwrap())
+            .unwrap(),
+        Some((1, 0))
+    );
+    let mut invalid = saved;
+    invalid["walk_nodes"]["selected_map"] = 2.into();
+    let error = restore(invalid).err().unwrap();
+    assert!(format!("{error:#}").contains("saved selected walk-node map unavailable"));
+}
+
+#[test]
+fn free_node_preparation_rejects_missing_or_out_of_range_coordinates_with_context() {
+    for (field, value) in [
+        ("node_pos_x", Some(-1)),
+        ("node_pos_x", Some(65536)),
+        ("node_pos_y", Some(32768)),
+        ("node_pos_y", Some(-32769)),
+        ("node_pos_z", Some(65536)),
+        ("node_pos_z", None),
+    ] {
+        let mut node = walk_node([0, 0, 0]);
+        node[field] = serde_json::json!(value);
+        let scripts = cache();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,"walk_node_maps":[{"node_count":1,"walk_nodes":[node]}]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let error = world.prepare_navigation(&data).unwrap_err();
+        assert!(format!("{error:#}").contains(&format!(
+            "world 7 walk_node_maps map 0 node 0: {field} absent or invalid"
+        )));
     }
 }

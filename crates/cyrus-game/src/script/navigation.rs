@@ -1,4 +1,4 @@
-//! Empty-map Wander follows preservation's SOUP navigation and distance contracts.
+//! Walk-node ownership, free-node search and empty-map Wander follow preservation contracts.
 use super::spatial::{ActorSpatial, rounded_distance};
 use crate::random::EngineRandom;
 use anyhow::{Result, ensure};
@@ -47,7 +47,14 @@ pub(super) fn wander_without_maps(
 /// of the actor identifier; periodic sound maintenance clears every reservation.
 #[derive(Debug)]
 pub(super) struct WalkNodeReservations {
-    maps: Vec<Vec<u8>>,
+    maps: Vec<Vec<WalkNode>>,
+    selected_map: Option<usize>,
+}
+
+#[derive(Debug)]
+struct WalkNode {
+    position: [i32; 3],
+    owner: u8,
 }
 
 impl WalkNodeReservations {
@@ -68,10 +75,37 @@ impl WalkNodeReservations {
                     value["node_count"].as_u64() == Some(nodes.len() as u64),
                     "world {world} walk_node_maps map {map}: node_count does not match walk_nodes"
                 );
-                Ok(vec![0; nodes.len()])
+                nodes
+                    .iter()
+                    .enumerate()
+                    .map(|(index, node)| {
+                        let mut position = [0; 3];
+                        for (axis, field) in ["node_pos_x", "node_pos_y", "node_pos_z"]
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let range = if axis == 1 {
+                                i64::from(i16::MIN)..=i64::from(i16::MAX)
+                            } else {
+                                0..=i64::from(u16::MAX)
+                            };
+                            let coordinate = node[field]
+                                .as_i64()
+                                .filter(|value| range.contains(value))
+                                .ok_or_else(|| anyhow::anyhow!(
+                                    "world {world} walk_node_maps map {map} node {index}: {field} absent or invalid"
+                                ))?;
+                            position[axis] = coordinate as i32;
+                        }
+                        Ok(WalkNode { position, owner: 0 })
+                    })
+                    .collect::<Result<Vec<_>>>()
             })
             .collect::<Result<_>>()?;
-        Ok(Self { maps })
+        Ok(Self {
+            maps,
+            selected_map: None,
+        })
     }
 
     pub(super) fn map_count(&self) -> usize {
@@ -82,6 +116,7 @@ impl WalkNodeReservations {
         self.maps
             .get_mut(map)
             .and_then(|nodes| nodes.get_mut(node))
+            .map(|node| &mut node.owner)
             .ok_or_else(|| anyhow::anyhow!("walk-node map {map} node {node}: unavailable"))
     }
 
@@ -103,9 +138,48 @@ impl WalkNodeReservations {
         Ok(())
     }
 
+    /// The combat search filters reservation bytes and retains the winning map.
+    /// An improving candidate below twelve returns before later, closer nodes.
+    pub(super) fn nearest_free(
+        &mut self,
+        position: [i32; 3],
+        height: i32,
+    ) -> Option<(usize, usize)> {
+        let mut position = position.map(|coordinate| coordinate >> 8);
+        position[1] = position[1].wrapping_add(height);
+        self.selected_map = None;
+        let mut best = 4096;
+        let mut selected = None;
+        // Runtime loading prepends each map; stored indices remain in file order.
+        for (map, nodes) in self.maps.iter().enumerate().rev() {
+            for (index, node) in nodes.iter().enumerate() {
+                if node.owner != 0 {
+                    continue;
+                }
+                let distance = position
+                    .iter()
+                    .zip(node.position)
+                    .fold(0i32, |sum, (a, b)| {
+                        sum.wrapping_add(a.wrapping_sub(b).wrapping_abs())
+                    });
+                if distance < best {
+                    self.selected_map = Some(map);
+                    selected = Some((map, index));
+                    if distance < 12 {
+                        return selected;
+                    }
+                    best = distance;
+                }
+            }
+        }
+        selected
+    }
+
     pub(super) fn reset(&mut self) {
         for nodes in &mut self.maps {
-            nodes.fill(0);
+            for node in nodes {
+                node.owner = 0;
+            }
         }
     }
 }
@@ -114,12 +188,19 @@ impl WalkNodeReservations {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct WalkNodeSnapshot {
     maps: Vec<Vec<u8>>,
+    #[serde(default)]
+    selected_map: Option<usize>,
 }
 
 impl WalkNodeReservations {
     pub(super) fn snapshot(&self) -> WalkNodeSnapshot {
         WalkNodeSnapshot {
-            maps: self.maps.clone(),
+            maps: self
+                .maps
+                .iter()
+                .map(|nodes| nodes.iter().map(|node| node.owner).collect())
+                .collect(),
+            selected_map: self.selected_map,
         }
     }
 
@@ -129,7 +210,7 @@ impl WalkNodeReservations {
         metadata: &serde_json::Value,
         world: u32,
     ) -> Result<Self> {
-        let installed = Self::prepare(metadata, world)?;
+        let mut installed = Self::prepare(metadata, world)?;
         ensure!(
             snapshot.maps.len() == installed.maps.len(),
             "world {world}: saved walk-node map count differs"
@@ -140,8 +221,18 @@ impl WalkNodeReservations {
                 "world {world} walk-node map {map}: saved node count differs"
             );
         }
-        Ok(Self {
-            maps: snapshot.maps,
-        })
+        ensure!(
+            snapshot
+                .selected_map
+                .is_none_or(|map| map < installed.maps.len()),
+            "world {world}: saved selected walk-node map unavailable"
+        );
+        for (saved, nodes) in snapshot.maps.into_iter().zip(&mut installed.maps) {
+            for (owner, node) in saved.into_iter().zip(nodes) {
+                node.owner = owner;
+            }
+        }
+        installed.selected_map = snapshot.selected_map;
+        Ok(installed)
     }
 }

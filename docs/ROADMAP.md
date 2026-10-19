@@ -468,6 +468,15 @@ cover turn/animation waits, lazy service access and retained mutations on error;
 perception/navigation, lifecycle-six pirate movement and installed native/browser
 combat acceptance remain open.
 
+**Verified:** the navigation owner now retains authored node positions and the
+shared winning map alongside live reservations. Explicit free-node search uses
+the actor query pose, positive Y extent, ordered Manhattan distances and the
+original early return. Searches reverse file-map order while retaining stable
+file-map identities. Public headless contracts cover live reservations, query
+owners, strict bounds and snapshot restoration; 54 original-helper comparisons
+match node and winning-map selection. Retained actor navigation state, perception
+scheduling and routed movement remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

@@ -1189,3 +1189,12 @@ comparisons and public headless contracts cover strict arrival, retained-point
 selection, lazy services and animation waits. Automatic combat traversal and
 installed native/browser movement acceptance remain open. Rules come from
 preservation's [combat movement facts](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).
+
+`nearest_free_walk_node` searches maps in reverse file order using the actor's query
+pose and authored positive Y extent. The navigation owner retains typed installed
+node positions, live reservation bytes and the winning map across snapshots.
+**Verified:** public contracts and original-helper comparisons cover reservation
+filtering, strict distance bounds, early return before later closer nodes, query
+pose selection and restoration. Invalid node coordinates and saved map indices
+produce contextual errors. Perception scheduling and routed movement remain open.
+Rules come from preservation's [nearest free walk node](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).

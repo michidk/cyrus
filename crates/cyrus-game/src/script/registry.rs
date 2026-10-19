@@ -752,6 +752,31 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Find a free walk node using the query pose and authored positive Y extent.
+    /// Returns loaded map/node indices and retains the shared winning map, clearing
+    /// it on a miss. Loaded order, Manhattan distance and early return follow
+    /// preservation's SOUP nearest-free-node contract; this does not reserve a node.
+    pub fn nearest_free_walk_node(
+        &mut self,
+        actor: ScriptActorId,
+    ) -> Result<Option<(usize, usize)>> {
+        let result = (|| -> Result<_> {
+            let position = self.query_position(actor)?;
+            let height = self.ordinary_collision_shape(actor)?.positive_extent[1];
+            Ok(self
+                .walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .nearest_free(position, height))
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} nearest free walk node",
+                self.world, actor.index
+            )
+        })
+    }
+
     /// Acquire a loaded WDNM reservation using the actor identifier's low byte.
     /// A foreign owner returns false; stale actors and invalid map/node indices fail.
     pub fn reserve_walk_node(

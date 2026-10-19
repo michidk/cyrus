@@ -1394,7 +1394,7 @@ mod dialogue_tests {
                     version: 2,
                     world: 7,
                     metadata: serde_json::json!({"script_content_id":scripts.content_id,
-                    "walk_node_maps":[{"node_count":1,"walk_nodes":[{}]}]}),
+                    "walk_node_maps":[{"node_count":1,"walk_nodes":[{"node_pos_x":0,"node_pos_y":0,"node_pos_z":0}]}]}),
                     sections: Default::default(),
                     models: Default::default(),
                     unsupported: Default::default(),
