@@ -215,6 +215,16 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+**Verified:** ordinary maintenance consumes coordination transfers through the
+shared message service. Receiver/sender target ownership, ordered living-attacker
+resets, close-counter resets and aggression assignment are implemented. Unknown
+codes are consumed without effects; movement and damage messages remain explicit
+unsupported handlers. All 48 controlled original coordination-message outcomes
+match the live world; a wrong-budget control fails. Four public contracts cover
+lazy traversal, selected-player death-query failures and retained writes. Final
+workspace gates pass 1,188 Rust executions with zero installed-data skips.
+Automatic decision traversal remains unavailable.
+
 **Verified:** explicit live counter selection reads receiver defense timing and
 the target motion's signed command-cursor gaps after its admission gates. Intent,
 pending move and action writes precede synchronous animation/sound execution;

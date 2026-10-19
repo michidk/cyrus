@@ -425,7 +425,7 @@ impl ScriptWorld {
     }
 
     /// Maintain an admitted ordinary combat record using shared nominal ticks.
-    /// Targeting, messages, decision state and attacks retain unsupported guards.
+    /// Targeting, damage messages, decision state and attacks retain unsupported guards.
     /// The owner supplies the selected player's drawing/sheathing and shell gates.
     pub fn maintain_map_combat(
         &mut self,
@@ -472,13 +472,15 @@ impl ScriptWorld {
             "ordinary combat target/perception stage unsupported"
         );
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
-        if let Some(message) = self.consume_combat_message(id)? {
-            anyhow::bail!(
-                "ordinary combat message {} from actor {} unsupported",
-                message.code,
-                message.sender.index
-            );
-        }
+        let selected_player = self
+            .actors
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .map(|index| ScriptActorId {
+                generation: self.generation,
+                index,
+            });
+        self.process_combat_message(id, selected_player)?;
         let control = self.actors[index]
             .control
             .as_mut()

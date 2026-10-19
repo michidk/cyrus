@@ -9443,11 +9443,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
         let error = world
             .maintain_map_combat(first, 1, false, false)
             .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("combat message 53249 from actor 1 unsupported")
-        );
+        assert!(format!("{error:#}").contains("combat message 53249 from actor 1 unsupported"));
         assert_eq!(world.consume_combat_message(first).unwrap(), None);
         let stale = cyrus_game::script::ScriptActorId {
             generation: 2,
@@ -18456,4 +18452,265 @@ fn live_counter_sound_failure_retains_start_action_but_does_not_mark_target() {
             19
         );
     }
+}
+
+fn coordination_message_fixture(
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            for index in 2..6 {
+                let mut instance = scripts.instances[0].clone();
+                instance.object_id = index;
+                scripts.instances.push(instance);
+            }
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.instances = 6;
+            actor.instance_variables = vec![vec![4]; 6];
+            for instance in &mut scripts.instances {
+                instance.active = 1;
+            }
+        },
+        |saved| {
+            for index in 0..6 {
+                saved["actors"][index]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        attacker_selection_state: 1,
+                        close_distance_passes: 11,
+                        decision: cyrus_game::script::CombatDecision {
+                            aggression: 7,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][index]["control"]["combat"]["target"] = serde_json::json!([1, 5]);
+            }
+            saved["actors"][4]["control"]["death_selector"] = 8.into();
+            edit(saved);
+        },
+    )
+}
+
+#[test]
+fn coordination_messages_reset_only_living_exact_active_attackers_then_assign_budget() {
+    for code in [0xd002, 0xd003] {
+        let (mut world, scripts, data) = coordination_message_fixture(|saved| {
+            saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 0.into();
+            saved["actors"][1]["control"]["combat"]["attacker_selection_state"] = 2.into();
+            saved["actors"][3]["control"]["combat"]["target"] = serde_json::json!([1, 0]);
+        });
+        world.ordinary_actors([0, 0]).unwrap();
+        let receiver = world.id(0).unwrap();
+        let sender = world.id(1).unwrap();
+        world.send_combat_message(sender, receiver, code).unwrap();
+        let before = movement_snapshot(&world, &scripts, &data);
+        world.process_combat_message(receiver, None).unwrap();
+        let states: Vec<_> = world
+            .actors()
+            .iter()
+            .map(|actor| {
+                let c = actor.control_state().unwrap().combat.as_ref().unwrap();
+                (
+                    c.attacker_selection_state,
+                    c.close_distance_passes,
+                    c.decision.aggression,
+                )
+            })
+            .collect();
+        assert_eq!(
+            states,
+            if code == 0xd002 {
+                vec![
+                    (1, 0, 50),
+                    (2, 11, 7),
+                    (0, 0, 7),
+                    (1, 11, 7),
+                    (1, 11, 7),
+                    (1, 11, 7),
+                ]
+            } else {
+                vec![
+                    (0, 11, 7),
+                    (1, 0, 50),
+                    (0, 0, 7),
+                    (1, 11, 7),
+                    (1, 11, 7),
+                    (1, 11, 7),
+                ]
+            }
+        );
+        assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+        let after = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(before["spatial"], after["spatial"]);
+        for index in 0..6 {
+            assert_eq!(
+                before["actors"][index]["tasks"],
+                after["actors"][index]["tasks"]
+            );
+            assert_eq!(
+                before["actors"][index]["control"]["combat"]["target"],
+                after["actors"][index]["control"]["combat"]["target"]
+            );
+        }
+    }
+}
+
+#[test]
+fn coordination_messages_use_receiver_or_sender_target_and_skip_null_target_traversal() {
+    for code in [0xd002, 0xd003] {
+        let (mut world, _, _) = coordination_message_fixture(|saved| {
+            saved["actors"][if code == 0xd002 { 0 } else { 1 }]["control"]["combat"]["target"] =
+                serde_json::Value::Null;
+        });
+        let receiver = world.id(0).unwrap();
+        let sender = world.id(1).unwrap();
+        world.send_combat_message(sender, receiver, code).unwrap();
+        // A null target must not require the unprepared ordinary list.
+        world.process_combat_message(receiver, None).unwrap();
+        for index in 0..6 {
+            let c = world.actors()[index]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap();
+            assert_eq!(
+                (
+                    c.attacker_selection_state,
+                    c.close_distance_passes,
+                    c.decision.aggression
+                ),
+                if index == if code == 0xd002 { 0 } else { 1 } {
+                    (1, 0, 50)
+                } else {
+                    (1, 11, 7)
+                }
+            );
+        }
+    }
+    let (mut world, _, _) = coordination_message_fixture(|saved| {
+        saved["actors"][1]["control"]["combat"]["target"] = serde_json::json!([1, 3]);
+        saved["actors"][2]["control"]["combat"]["target"] = serde_json::json!([1, 3]);
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let receiver = world.id(0).unwrap();
+    world
+        .send_combat_message(world.id(1).unwrap(), receiver, 0xd003)
+        .unwrap();
+    world.process_combat_message(receiver, None).unwrap();
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .attacker_selection_state,
+        1
+    );
+    assert_eq!(
+        world.actors()[2]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .attacker_selection_state,
+        0
+    );
+}
+
+#[test]
+fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_call() {
+    let (mut world, _, _) = coordination_message_fixture(|_| {});
+    let receiver = world.id(0).unwrap();
+    let sender = world.id(1).unwrap();
+    world.send_combat_message(sender, receiver, 0xd002).unwrap();
+    let error = format!(
+        "{:#}",
+        world.process_combat_message(receiver, None).unwrap_err()
+    );
+    assert!(
+        error.contains("world 7 instance 0 combat message"),
+        "{error}"
+    );
+    assert!(error.contains("ordinary traversal unavailable"), "{error}");
+    assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .decision
+            .aggression,
+        7
+    );
+    world.send_combat_message(sender, receiver, 0xd004).unwrap();
+    world.send_combat_message(sender, receiver, 0xd003).unwrap();
+    world.process_combat_message(receiver, None).unwrap();
+    assert_eq!(
+        world
+            .consume_combat_message(receiver)
+            .unwrap()
+            .unwrap()
+            .code,
+        0xd003
+    );
+    for code in [0xd000, 0xd001, 0xd005] {
+        world.send_combat_message(sender, receiver, code).unwrap();
+        let error = format!(
+            "{:#}",
+            world.process_combat_message(receiver, None).unwrap_err()
+        );
+        assert!(error.contains("unsupported"), "{error}");
+        assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+    }
+}
+
+#[test]
+fn coordination_message_keeps_prior_resets_when_selected_death_state_is_unknown() {
+    let (mut world, _, _) = coordination_message_fixture(|_| {});
+    let order = world.ordinary_actors([0, 0]).unwrap();
+    assert_eq!(
+        order.iter().map(|id| id.index).collect::<Vec<_>>(),
+        [5, 4, 3, 2, 1, 0]
+    );
+    let receiver = world.id(0).unwrap();
+    let selected_player = world.id(2).unwrap();
+    world
+        .send_combat_message(world.id(1).unwrap(), receiver, 0xd002)
+        .unwrap();
+    let error = format!(
+        "{:#}",
+        world
+            .process_combat_message(receiver, Some(selected_player))
+            .unwrap_err()
+    );
+    assert!(
+        error.contains("selected-player override unavailable"),
+        "{error}"
+    );
+    let state = |index: usize| {
+        let c = world.actors()[index]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        (
+            c.attacker_selection_state,
+            c.close_distance_passes,
+            c.decision.aggression,
+        )
+    };
+    assert_eq!(state(3), (0, 0, 7));
+    assert_eq!(state(2), (1, 11, 7));
+    assert_eq!(state(0), (1, 11, 7));
+    assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
 }

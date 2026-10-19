@@ -1170,3 +1170,11 @@ assigns action nine before synchronous animation/sound execution. Earlier writes
 survive service failure. Timing misses use the ordinary movement primitives;
 random fits consume the shared stream lazily. Signed pacing faults return errors.
 These explicit services do not enable automatic combat traversal.
+
+`process_combat_message` consumes one addressed message and applies coordination
+transfers in ordinary list order. Receiver- and sender-owned targets remain
+distinct. Living exact-state-one attackers reset before the chosen coordinator
+receives state one and aggression 50. Null targets bypass list services. Selected
+player death queries use the caller's identity and shared override owner. Earlier
+resets survive later errors; unknown codes are inert. Movement and damage message
+handlers remain unavailable. Ordinary maintenance calls this shared service.

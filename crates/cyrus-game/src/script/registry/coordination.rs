@@ -19,6 +19,84 @@ pub struct OrdinaryCombatCoordinationInput {
 }
 
 impl ScriptWorld {
+    /// Consume at most one combat message. Coordination transfers clear living
+    /// active attackers in ordinary list order before assigning state and budget.
+    /// Unknown codes are inert; movement and damage messages remain unsupported.
+    /// Consumption and earlier state writes survive a later service error.
+    pub fn process_combat_message(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+    ) -> Result<()> {
+        let result = (|| -> Result<()> {
+            let index = self.resolve(id)?;
+            if self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_none()
+            {
+                return Ok(());
+            }
+            let Some(message) = self.consume_combat_message(id)? else {
+                return Ok(());
+            };
+            let selected = match message.code {
+                0xd002 => id,
+                0xd003 => message.sender,
+                0xd000 | 0xd001 | 0xd005 => anyhow::bail!(
+                    "ordinary combat message {} from actor {} unsupported",
+                    message.code,
+                    message.sender.index
+                ),
+                _ => return Ok(()),
+            };
+            let selected_index = self.resolve(selected)?;
+            let target = self.actors[selected_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("coordination recipient combat unavailable")?
+                .target;
+            if let Some(target) = target {
+                let traversal = self
+                    .actor_lists
+                    .as_ref()
+                    .and_then(|lists| lists.retained_selected())
+                    .context("coordination message ordinary traversal unavailable")?
+                    .to_vec();
+                for candidate in traversal {
+                    let index = self.resolve(candidate)?;
+                    let Some(control) = self.actors[index].control.as_ref() else {
+                        continue;
+                    };
+                    let Some(combat) = control.combat.as_ref() else {
+                        continue;
+                    };
+                    if candidate != target
+                        && combat.target == Some(target)
+                        && combat.attacker_selection_state == 1
+                        && !self.query_is_dead(candidate, selected_player)?
+                    {
+                        self.set_combat_coordination(candidate, 0)?;
+                    }
+                }
+            }
+            self.set_combat_coordination(selected, 1)?;
+            self.actors[selected_index]
+                .control
+                .as_mut()
+                .expect("admitted coordination control")
+                .combat
+                .as_mut()
+                .expect("admitted coordination combat")
+                .decision
+                .aggression = 50;
+            Ok(())
+        })();
+        result.with_context(|| format!("world {} instance {} combat message", self.world, id.index))
+    }
+
     /// Assign coordination state, resetting consecutive close-distance passes first.
     /// This is also the state consumed by ordinary attacker and spacing queries.
     pub fn set_combat_coordination(&mut self, id: ScriptActorId, state: i32) -> Result<()> {
