@@ -44,8 +44,10 @@ Exceeding task capacity fails before a seventh host effect. Full save restoratio
 and complete native command services remain unsupported.
 
 `Host::route` resolves object calls before evaluating their operands. `Runtime::receive`
-uses receiver locals and task slots without running its body. Initial native strings
-use the executing actor's table; later ordinary receiver task passes use the receiver's.
+uses receiver locals and task slots without running its body. Native strings use
+the session source established by normal interpreter entry,
+even when a task blocks the main body. Alternate entry retains the prior source.
+Shared actor hosts implement the source callbacks; isolated hosts use their own table.
 `CodeOrigin` and `TaskSource` retain the physical RASC operand identity across routing.
 `Host::task_call` supplies foreign instructions for reevaluation. Duplicate suppression
 and task controls compare physical operands. Object calls continue the caller, including
@@ -87,7 +89,8 @@ operand identity is at or before that cursor, including foreign task sources.
 path. Neither entry API runs existing tasks or chooses update eligibility.
 
 `invoke_native_hook` dispatches the validated RAHK call with the actor's locals
-and strings, without advancing either continuation or polling tasks. It retains
+and the host's string-source context, without advancing either continuation or
+polling tasks. It retains
 native failures so a failed effect is not retried. Hook eligibility remains the
 game scheduler's responsibility.
 

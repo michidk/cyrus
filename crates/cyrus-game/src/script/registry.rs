@@ -1777,7 +1777,9 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|animation| animation.frame))
     }
-    /// Deterministic inspection of one body. This does not establish actor eligibility.
+    /// Deterministic inspection of one body. This does not establish actor eligibility
+    /// or assign the shared native source. Use an eligible Entry or normal main stage
+    /// first when the body needs native string parameters.
     pub fn step(&mut self, id: ScriptActorId, thread: Thread, budget: usize) -> Result<()> {
         self.advance(
             id,
@@ -1918,7 +1920,19 @@ impl ScriptWorld {
             .as_ref()
             .and_then(|lists| lists.retained_selected())
             .map(<[_]>::to_vec);
+        let native_source_program = match self.globals.native_source {
+            super::activation::NativeSource::Actor { generation, index }
+                if generation == self.generation =>
+            {
+                self.actors
+                    .get(index)
+                    .and_then(|actor| actor.runtime.as_ref())
+                    .map(Runtime::shared_program)
+            }
+            _ => None,
+        };
         let mut host = GameHost {
+            native_source_program,
             world: self.world,
             animation_system: self.updates.animation_system,
             task_system: self.updates.task_system,
@@ -2340,6 +2354,7 @@ pub(super) fn prepare(
 }
 
 struct GameHost<'a, 'sound, 'input, 'random> {
+    native_source_program: Option<std::sync::Arc<cyrus_script::program::Program>>,
     registry: &'a mut ScriptWorld,
     world: u32,
     animation_system: bool,
@@ -3034,6 +3049,38 @@ fn pose_property(name: &str) -> Option<PoseProperty> {
 }
 
 impl Host for GameHost<'_, '_, '_, '_> {
+    fn establish_native_source(
+        &mut self,
+        _: cyrus_script::CodeOrigin,
+        program: std::sync::Arc<cyrus_script::program::Program>,
+    ) {
+        self.registry.globals.native_source = super::activation::NativeSource::Actor {
+            generation: self.generation,
+            index: self.index,
+        };
+        self.native_source_program = Some(program);
+    }
+
+    fn native_string_parameter(&mut self, index: u32, _: &[String]) -> Result<String> {
+        self.native_source_program
+            .as_ref()
+            .with_context(|| {
+                format!(
+                    "world {} actor {}: retained native source unavailable",
+                    self.world, self.index
+                )
+            })?
+            .strings
+            .get(index as usize)
+            .cloned()
+            .with_context(|| {
+                format!(
+                    "world {} actor {}: retained source string {index} absent",
+                    self.world, self.index
+                )
+            })
+    }
+
     fn read_property(&mut self, target: &Target, reference: u16) -> Result<i32> {
         let name = self.property_name(target, reference)?;
         if name.eq_ignore_ascii_case("anim.current") {
@@ -4563,6 +4610,7 @@ mod fighting_tests {
             camera: None,
         };
         let host = GameHost {
+            native_source_program: None,
             registry: &mut registry,
             world: 1,
             animation_system: true,

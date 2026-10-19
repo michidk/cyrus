@@ -140,6 +140,17 @@ pub trait Host {
         invocation: Invocation,
         flags: &mut [i32],
     ) -> Result<bool>;
+    /// Normal interpreter entry replaces the session source before entry/task gates.
+    /// Hosts sharing actors retain this immutable program with their source identity.
+    fn establish_native_source(&mut self, _: CodeOrigin, _: Arc<Program>) {}
+    /// Native strings use the retained source, independently of the receiver.
+    /// The default supports isolated hosts without a shared actor session.
+    fn native_string_parameter(&mut self, index: u32, strings: &[String]) -> Result<String> {
+        strings
+            .get(index as usize)
+            .cloned()
+            .context("script string absent")
+    }
     /// Applies call-site command setup before evaluating native operands.
     fn prepare_native_command(&mut self, _: NativeCallSite) {}
     /// Restore one of the six retained slots before reevaluating its operands.
@@ -253,6 +264,10 @@ impl Runtime {
             state,
         })
     }
+    /// Immutable program identity for retained native-source table ownership.
+    pub fn shared_program(&self) -> Arc<Program> {
+        Arc::clone(&self.program)
+    }
     pub fn script_return(&self) -> u8 {
         self.state.script_return
     }
@@ -311,6 +326,15 @@ impl Runtime {
         flags: &mut [i32],
         budget: usize,
     ) -> Result<()> {
+        host.establish_native_source(self.origin, Arc::clone(&self.program));
+        self.invoke_entry_retaining_source(host, flags, budget)
+    }
+    fn invoke_entry_retaining_source(
+        &mut self,
+        host: &mut dyn Host,
+        flags: &mut [i32],
+        budget: usize,
+    ) -> Result<()> {
         if let Some(error) = &self.state.failure {
             anyhow::bail!("{error}");
         }
@@ -344,7 +368,10 @@ impl Runtime {
         budget: usize,
         bypass_tasks: bool,
     ) -> Result<()> {
-        self.invoke_entry(host, flags, budget)?;
+        if !bypass_tasks {
+            host.establish_native_source(self.origin, Arc::clone(&self.program));
+        }
+        self.invoke_entry_retaining_source(host, flags, budget)?;
         if bypass_tasks {
             self.invoke_continuation(Thread::Main, host, flags, budget)
         } else {

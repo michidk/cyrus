@@ -40,6 +40,7 @@ impl ScriptWorld {
                 self.validate_activation(activation)?;
             }
             let host = super::GameHost {
+                native_source_program: None,
                 world: self.world,
                 animation_system: self.updates.animation_system,
                 task_system: self.updates.task_system,

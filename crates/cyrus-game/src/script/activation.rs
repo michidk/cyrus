@@ -136,6 +136,18 @@ struct ControllerPrelude {
     secondary_ticks: u32,
 }
 
+/// Retained native source is unknown until an assigning interpreter entry.
+/// World replacement does not establish a new source.
+#[derive(Default, Clone, Copy, Debug, Serialize, serde::Deserialize)]
+pub(super) enum NativeSource {
+    #[default]
+    Unknown,
+    Actor {
+        generation: u64,
+        index: usize,
+    },
+}
+
 /// Gameplay globals retain engine initialization and native-call assignments.
 /// Unknown startup values remain None.
 /// The host retains these globals while replacing the logical world registry.
@@ -143,6 +155,7 @@ struct ControllerPrelude {
 pub struct GameplayGlobals {
     /// Current native command context, shared by successive actor invocations.
     pub(super) native_command: super::NativeCommandState,
+    pub(super) native_source: NativeSource,
     pub(super) native_command_return: u8,
     pub(super) walk_route: super::WalkRouteState,
     /// Shared direction-called flags, reset at ordinary wrapper entry.
@@ -593,6 +606,7 @@ impl ActivationState {
 #[cfg(test)]
 mod idle_tests {
     use super::GameplayGlobals;
+    use super::{NativeSource, ScriptActorId};
     use crate::random::EngineRandom;
 
     fn controller_settings() -> cyrus_assets::script::DialogueSettings {
@@ -619,6 +633,59 @@ mod idle_tests {
             .unwrap(),
         );
         globals
+    }
+
+    #[test]
+    fn native_source_snapshot_rebinds_identity_and_legacy_remains_unknown() {
+        let mut globals = GameplayGlobals::new_session();
+        globals.native_source = NativeSource::Actor {
+            generation: 7,
+            index: 2,
+        };
+        let saved = globals.snapshot();
+        let actors = [(
+            ScriptActorId {
+                generation: 7,
+                index: 2,
+            },
+            ScriptActorId {
+                generation: 11,
+                index: 4,
+            },
+        )];
+        let restored = GameplayGlobals::from_snapshot(
+            saved.clone(),
+            &controller_settings(),
+            &actors,
+            &Default::default(),
+        )
+        .unwrap();
+        assert!(matches!(
+            restored.native_source,
+            NativeSource::Actor {
+                generation: 11,
+                index: 4
+            }
+        ));
+        assert!(
+            GameplayGlobals::from_snapshot(
+                saved.clone(),
+                &controller_settings(),
+                &[],
+                &Default::default()
+            )
+            .is_err()
+        );
+        let mut legacy = serde_json::to_value(saved).unwrap();
+        legacy.as_object_mut().unwrap().remove("native_source");
+        let restored = GameplayGlobals::from_snapshot(
+            serde_json::from_value(legacy).unwrap(),
+            &controller_settings(),
+            &[],
+            &Default::default(),
+        )
+        .unwrap();
+        assert!(matches!(restored.native_source, NativeSource::Unknown));
     }
 
     #[test]
@@ -988,6 +1055,8 @@ mod idle_tests {
 /// Session-only state is captured once, independently of retained world records.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct GameplayGlobalsSnapshot {
+    #[serde(default)]
+    native_source: NativeSource,
     native_command: super::NativeCommandState,
     native_command_return: u8,
     walk_route: super::WalkRouteState,
@@ -1029,6 +1098,7 @@ impl GameplayGlobals {
 
     pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
         GameplayGlobalsSnapshot {
+            native_source: self.native_source,
             native_command: self.native_command,
             native_command_return: self.native_command_return,
             walk_route: self.walk_route,
@@ -1093,7 +1163,18 @@ impl GameplayGlobals {
                 super::DialogueState::from_snapshot(settings, dialogue, actors, samples)
             })
             .transpose()?;
+        let native_source = match saved.native_source {
+            NativeSource::Unknown => NativeSource::Unknown,
+            NativeSource::Actor { generation, index } => {
+                let actor = rebind(generation, index)?;
+                NativeSource::Actor {
+                    generation: actor.generation,
+                    index: actor.index,
+                }
+            }
+        };
         Ok(Self {
+            native_source,
             native_command: saved.native_command,
             native_command_return: saved.native_command_return,
             walk_route: saved.walk_route,

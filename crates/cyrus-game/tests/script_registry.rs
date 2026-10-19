@@ -24897,3 +24897,87 @@ fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
         );
     }
 }
+
+#[test]
+fn alternate_main_retains_native_source_before_decoding_strings() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let disable = Operation::Call {
+        call: Call {
+            function_id: 4,
+            function: "DisableTasks".into(),
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments: vec![],
+        },
+    };
+    let decode = Operation::Call {
+        call: Call {
+            function_id: 5,
+            function: "SetAIType".into(),
+            kind: CallKind::Function,
+            target: Object::Me,
+            arguments: vec![Value::String { index: 1 }],
+        },
+    };
+    let mut scripts = routed_cache(
+        vec![Operation::End { target: 0 }],
+        vec![
+            disable,
+            Operation::Yield,
+            decode,
+            Operation::End { target: 0 },
+        ],
+    );
+    scripts.definition.functions.extend([
+        Function {
+            name: "DisableTasks".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        },
+        Function {
+            name: "SetAIType".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        },
+    ]);
+    scripts.actors.get_mut("RECEIVER").unwrap().program.strings =
+        vec!["receiver".into(), "receiver-only string".into()];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 41).unwrap();
+    let source = world.id(0).unwrap();
+    let alternate = world.id(1).unwrap();
+    // Direct body execution sets the alternate flag without assigning an interpreter source.
+    world.step(alternate, Thread::Main, 20).unwrap();
+    world
+        .advance(
+            source,
+            ScriptStage::Entry,
+            ScriptInputs::default(),
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    let error = world
+        .advance(
+            alternate,
+            ScriptStage::OrdinaryMain,
+            ScriptInputs {
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("retained source string 1 absent"),
+        "{error:#}"
+    );
+    let globals = serde_json::to_value(world.globals()).unwrap();
+    assert_eq!(
+        globals["native_source"],
+        serde_json::json!({"Actor":{"generation":41,"index":0}})
+    );
+}

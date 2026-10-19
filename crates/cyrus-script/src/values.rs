@@ -29,12 +29,9 @@ impl Runtime {
     ) -> Result<Argument> {
         Ok(match value {
             Value::Integer { value } => Argument::Integer(*value),
-            Value::String { index } => Argument::String(
-                strings
-                    .get(*index as usize)
-                    .context("script string absent")?
-                    .clone(),
-            ),
+            Value::String { index } => {
+                Argument::String(host.native_string_parameter(*index, strings)?)
+            }
             Value::Read { place } => Argument::Integer(self.read(place, flags, host)?),
             Value::Update { place, delta } => {
                 let value = self.read(place, flags, host)?.wrapping_add(*delta);

@@ -22,6 +22,13 @@
 //! does not establish automatic scheduler admission or complete gameplay support.
 //! Missing required ownership and unsupported branches return contextual errors.
 //!
+//! Normal interpreter entry assigns the session native source before entry/task
+//! admission. Alternate entry retains it. Native strings use that source's program,
+//! while routed locals and properties remain receiver-owned. Snapshots rebind the
+//! source actor identity; legacy unknown or unavailable world owners do not fall
+//! back to the receiver. World-reset source lifetime remains unsupported. See
+//! [preservation's retained-source contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#retained-health-source-context).
+//!
 //! The implementation is grouped by responsibility:
 //!
 //! - [Registry](registry.rs), [ordinary scheduler](registry/ordinary.rs)
