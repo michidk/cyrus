@@ -8,16 +8,7 @@ impl ScriptWorld {
     /// The actor's query position: the attached pose, the linked position, or the local
     /// position, in that order (the selection shared by the fighting query).
     pub(super) fn sight_position(&self, index: usize) -> Result<[i32; 3]> {
-        let actor = self
-            .spatial
-            .as_ref()
-            .context("in-sight spatial owner unavailable")?
-            .actor(index)?;
-        if actor.parent.is_some() {
-            Ok(actor.query_pose()?.position)
-        } else {
-            Ok(actor.linked_position.unwrap_or(actor.local.position))
-        }
+        self.query_position(self.id(index)?)
     }
 
     /// Whether `target` is within `limit` (Q8 units) of the receiver with nothing in its

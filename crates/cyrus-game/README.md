@@ -1128,3 +1128,11 @@ registration without allocating tasks. Shared facing uses the actor heading
 without a second negation; original cardinal-bearing executions establish the
 sign. Near and random directional physical parity, automatic combat scheduling,
 and installed native/browser combat acceptance remain open.
+
+
+**Verified:** sight, hazard, dialogue and defence-position queries now share the
+same attribute-selected position owner as fighting and spacing. Attribute 26
+selects the attached effective pose; otherwise a retained linked position precedes
+the local position. A public sight contract distinguishes all three choices,
+including an effective pose without a parent link. This does not enable the
+automatic combat decision stage.

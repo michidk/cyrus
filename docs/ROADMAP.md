@@ -396,6 +396,11 @@ sign correction follows original cardinal-bearing executions. Automatic spacing,
 near/random physical parity and installed native/browser combat acceptance remain
 open.
 
+**Verified:** line-of-sight and its shared hazard/dialogue/defence position query
+use the same attribute-selected attached, linked or local owner as fighting and
+spacing. A public sight contract checks all three choices. Automatic target and
+decision sampling remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

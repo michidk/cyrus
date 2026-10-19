@@ -17113,3 +17113,65 @@ fn live_spacing_root_registers_far_pass_without_available_walk_animation() {
     );
     assert_eq!(random.state(), 1);
 }
+
+#[test]
+fn sight_uses_attribute_selected_attached_then_linked_then_local_positions() {
+    use cyrus_game::script::{OrdinaryObstacleQuery, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+        instance.map_position = [0; 3];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (world, data, models) = static_model_fixture_at(scripts.clone(), None, [0; 3]);
+    let scene = ordinary_collision_scene(world.world, models);
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    for (attached, linked, effective, expected) in [
+        (0, None, None, true),
+        (0, Some([100000, 0, 0]), None, false),
+        (1, Some([100000, 0, 0]), Some([0, 0, 0]), true),
+        (1, None, Some([100000, 0, 0]), false),
+    ] {
+        let mut snapshot = saved.clone();
+        snapshot["actors"][0]["attributes"][26] = attached.into();
+        snapshot["spatial"]["actors"][0]["linked_position"] = serde_json::json!(linked);
+        snapshot["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([20480, 0, 0]);
+        if let Some(position) = effective {
+            let mut pose = snapshot["spatial"]["actors"][0]["local"].clone();
+            pose["position"] = serde_json::json!(position);
+            snapshot["spatial"]["actors"][0]["effective"] = pose;
+        }
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [0, 0], &ids)
+            .unwrap();
+        let query = OrdinaryObstacleQuery {
+            scene: &scene,
+            animations: &data,
+            prepared: &prepared,
+            vertical_offset: 0,
+            respond: false,
+        };
+        assert_eq!(
+            world.actor_in_sight(ids[0], ids[1], 20480, query).unwrap(),
+            expected,
+            "attached {attached}, linked {linked:?}, effective {effective:?}"
+        );
+    }
+}
