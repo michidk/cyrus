@@ -9441,23 +9441,36 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
                 first,
                 1,
                 false,
-                true,
-                Default::default(),
+                cyrus_game::script::ScriptInputs {
+                    shell_execution: Some(true),
+                    ..Default::default()
+                },
+                None,
                 &mut |_, _| Ok(()),
             )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[1], 1);
         world
-            .maintain_map_combat(first, 1, false, false, Default::default(), &mut |_, _| {
-                Ok(())
-            })
+            .maintain_map_combat(
+                first,
+                1,
+                false,
+                Default::default(),
+                None,
+                &mut |_, _| Ok(()),
+            )
             .unwrap();
         assert_eq!(world.actors()[0].attributes()[1], 7);
         world.send_combat_message(second, first, 0xd001).unwrap();
         let error = world
-            .maintain_map_combat(first, 1, false, false, Default::default(), &mut |_, _| {
-                Ok(())
-            })
+            .maintain_map_combat(
+                first,
+                1,
+                false,
+                Default::default(),
+                None,
+                &mut |_, _| Ok(()),
+            )
             .unwrap_err();
         assert!(format!("{error:#}").contains("combat message 53249 from actor 1 unsupported"));
         assert_eq!(world.consume_combat_message(first).unwrap(), None);
@@ -19527,6 +19540,7 @@ fn perception_case(
             }),
             ..Default::default()
         },
+        None,
         &mut |_, _| Ok(()),
     );
     if let Err(error) = &result {
@@ -19981,7 +19995,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
     };
     assert_eq!(
         world
-            .move_ordinary_point(first, [111, 222, 333], 0, inputs, None)
+            .move_ordinary_point(first, [111, 222, 333], 0, inputs, None, None)
             .unwrap(),
         1
     );
@@ -20009,7 +20023,7 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
     );
     assert_eq!(
         world
-            .move_ordinary_point(second, [0; 3], 17, inputs, None)
+            .move_ordinary_point(second, [0; 3], 17, inputs, None, None)
             .unwrap(),
         1
     );
@@ -20026,20 +20040,20 @@ fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pa
     );
     assert_eq!(
         world
-            .move_ordinary_point(first, [0; 3], 0, inputs, None)
+            .move_ordinary_point(first, [0; 3], 0, inputs, None, None)
             .unwrap(),
         1
     );
     assert_eq!(world.globals().native_command().pause_ticks, 0);
     let error = world
-        .move_ordinary_point(first, [0; 3], 0, inputs, None)
+        .move_ordinary_point(first, [0; 3], 0, inputs, None, None)
         .unwrap_err();
     assert!(format!("{error:#}").contains("routed point navigation unsupported"));
     let (mut world, _, _) = point_wrapper_fixture(u32::MAX);
     let id = world.id(0).unwrap();
     assert_eq!(
         world
-            .move_ordinary_point(id, [0; 3], 0, inputs, None)
+            .move_ordinary_point(id, [0; 3], 0, inputs, None, None)
             .unwrap(),
         1
     );
@@ -20089,6 +20103,7 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
                         frame_scale: Some(scale),
                         ..Default::default()
                     },
+                    None,
                     None
                 )
                 .unwrap(),
@@ -20104,7 +20119,7 @@ fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horiz
     let id = world.id(0).unwrap();
     world.set_walk_map_enabled(1, false).unwrap();
     let error = world
-        .move_ordinary_point(id, [0; 3], 0, ScriptInputs::default(), None)
+        .move_ordinary_point(id, [0; 3], 0, ScriptInputs::default(), None, None)
         .unwrap_err();
     assert!(format!("{error:#}").contains("point pause requires nominal_ticks"));
     assert_eq!(world.globals().native_command().pause_ticks, 7);
@@ -20166,6 +20181,7 @@ fn point_entry_completes_horizontal_arrival_and_retains_pending_motion() {
                         frame_scale: Some(256),
                         ..Default::default()
                     },
+                    None,
                     None
                 )
                 .unwrap(),
@@ -20231,6 +20247,7 @@ fn point_immediate_animation_uses_forced_default_and_live_guards() {
                         frame_scale: Some(256),
                         ..Default::default()
                     },
+                    None,
                     Some(&mut sounds)
                 )
                 .unwrap(),
@@ -20267,6 +20284,7 @@ fn point_arrival_accepts_horizontal_equality_and_uses_current_or_fallback_speed(
                 frame_scale: Some(256),
                 ..Default::default()
             },
+            None,
             None,
         );
         assert_eq!(
@@ -20311,6 +20329,7 @@ fn point_entry_rejects_unavailable_branches_before_pending_motion() {
                         frame_scale: Some(256),
                         ..Default::default()
                     },
+                    None,
                     None
                 )
                 .unwrap_err()
@@ -20355,7 +20374,7 @@ fn point_default_animation_dispatches_sound_before_completion_and_propagates_fai
         world.bind_animation(id, &data, 0).unwrap();
         let position = world.spatial(id).unwrap().local.position;
         let mut cues = 0;
-        let result=world.move_ordinary_point(id,position,0,ScriptInputs {nominal_ticks:Some(1),frame_scale:Some(256),..Default::default()},Some(&mut |actor,sound| {
+        let result=world.move_ordinary_point(id,position,0,ScriptInputs {nominal_ticks:Some(1),frame_scale:Some(256),..Default::default()}, None,Some(&mut |actor,sound| {
             assert_eq!(actor,id);
             assert!(matches!(sound,ScriptSound::Animation {sound:AnimationSound::Play {effect:17,..},position:Some(p),..} if p==position));
             cues+=1;
@@ -20536,6 +20555,7 @@ fn point_node_arrival_advances_even_when_claim_is_rejected_and_registers_once() 
                         frame_scale: Some(256),
                         ..Default::default()
                     },
+                    None,
                     None
                 )
                 .unwrap(),
@@ -20576,7 +20596,7 @@ fn point_node_arrival_advances_even_when_claim_is_rejected_and_registers_once() 
     }
 }
 #[test]
-fn point_node_rejects_nonarrival_without_claiming_or_registering() {
+fn point_node_rejects_missing_weapon_owner_without_claiming_or_registering() {
     use cyrus_game::script::ScriptInputs;
     let (world, scripts, data) = point_node_fixture(8);
     let mut saved = movement_snapshot(&world, &scripts, &data);
@@ -20598,9 +20618,10 @@ fn point_node_rejects_nonarrival_without_claiming_or_registering() {
                 ..Default::default()
             },
             None,
+            None,
         )
         .unwrap_err();
-    assert!(format!("{result:#}").contains("node facing phase 1"));
+    assert!(format!("{result:#}").contains("IsHoldingWeapon: inventory owner unavailable"));
     let saved = movement_snapshot(&world, &scripts, &data);
     assert_eq!(saved["map_updates"], serde_json::json!([]));
     assert_eq!(
@@ -20646,6 +20667,7 @@ fn point_node_animation_sound_failure_precedes_reservation_assignment() {
                 frame_scale: Some(256),
                 ..Default::default()
             },
+            None,
             Some(&mut |actor, sound| {
                 assert_eq!(actor, id);
                 assert!(matches!(
@@ -20677,4 +20699,235 @@ fn point_node_animation_sound_failure_precedes_reservation_assignment() {
             serde_json::json!([0])
         );
     }
+}
+
+#[test]
+fn point_node_facing_turns_then_selects_walk_or_shared_random_delay() {
+    use cyrus_game::script::{CombatControlState, ScriptHud, ScriptInputs};
+    for phase in [1, 27] {
+        for (
+            heading,
+            weapon,
+            flags,
+            delay,
+            seed,
+            expected_heading,
+            expected_phase,
+            expected_word,
+            expected_random,
+        ) in [
+            (64, false, 0, 1, 1, 56, phase, 65535, 1),
+            (64, false, 4, 1, 1, 32, phase, 65535, 1),
+            (64, true, 0, 1, 1, 32, phase, 65535, 1),
+            (0, false, 0, 0, 1, 0, 2, 65535, 1),
+            (0, false, 0, 1, 1, 0, 9, 142, 2524885223),
+            (0, false, 0, 7, 1, 0, 2, 65535, 1103527590),
+        ] {
+            let (world, scripts, data) = point_node_fixture(8);
+            let mut saved = movement_snapshot(&world, &scripts, &data);
+            saved["actors"][0]["attributes"][15] = 8.into();
+            saved["actors"][0]["attributes"][21] = 32.into();
+            saved["actors"][0]["attributes"][90] = delay.into();
+            saved["actors"][0]["attributes"][110] = u8::from(weapon).into();
+            saved["actors"][0]["animation"] = serde_json::Value::Null;
+            saved["actors"][0]["control"]["combat"] = serde_json::to_value(CombatControlState {
+                flags,
+                ..Default::default()
+            })
+            .unwrap();
+            saved["actors"][0]["control"]["navigation"] = serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+            saved["actors"][0]["control"]["point_command"] =
+                serde_json::json!({"value":7654321,"word":65535,"phase":phase,"counter":0});
+            let origin = [256, 200, -24832];
+            saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!(origin);
+            saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!(origin);
+            saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, heading, 0]);
+            let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+            let id = world.id(0).unwrap();
+            let hud = ScriptHud::default();
+            let mut random = cyrus_game::random::EngineRandom::from_state(seed);
+            assert_eq!(
+                world
+                    .move_ordinary_point(
+                        id,
+                        [1000000, 0, 1000000],
+                        0,
+                        ScriptInputs {
+                            hud: Some(&hud),
+                            nominal_ticks: Some(1),
+                            frame_scale: Some(256),
+                            ..Default::default()
+                        },
+                        Some(&mut random),
+                        Some(&mut |_, _| panic!("unbound animation emitted sound"))
+                    )
+                    .unwrap(),
+                1
+            );
+            let control = world.actors()[0].control_state().unwrap();
+            assert_eq!(
+                (
+                    control.point_command.phase,
+                    control.point_command.word,
+                    control.death_selector
+                ),
+                (expected_phase, expected_word, 7)
+            );
+            assert_eq!(
+                (
+                    control.navigation.current,
+                    control.navigation.next,
+                    control.navigation.previous_next
+                ),
+                (0, 1, 99)
+            );
+            assert_eq!(world.spatial(id).unwrap().local.position, origin);
+            assert_eq!(world.spatial(id).unwrap().local.angles[1], expected_heading);
+            assert_eq!(random.state(), expected_random);
+            assert_eq!(
+                movement_snapshot(&world, &scripts, &data)["map_updates"],
+                serde_json::json!([0])
+            );
+        }
+    }
+}
+
+#[test]
+fn point_node_facing_sound_failure_precedes_heading_phase_and_random_changes() {
+    use cyrus_game::script::ScriptInputs;
+    let (_, mut scripts, mut data) = point_node_fixture(8);
+    scripts.updates.animation_system = true;
+    scripts.content_id = scripts.content_identity().unwrap();
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
+    let groups = data.metadata["actors"][0]["animation_groups"]
+        .as_array_mut()
+        .unwrap();
+    let group = groups
+        .iter_mut()
+        .find(|group| group["group_index"] == 97)
+        .unwrap();
+    group["commands"] = serde_json::json!([
+        {"opcode":4,"sound_param":17,"volume_shift":0},{"opcode":0,"frame_reference":97},{"opcode":2,"value":0}
+    ]);
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world.prepare_navigation(&data).unwrap();
+    let id = world.id(0).unwrap();
+    world.bind_animation(id, &data, 18).unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["attributes"][110] = 1.into();
+    saved["actors"][0]["attributes"][90] = 1.into();
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+    saved["actors"][0]["control"]["point_command"] =
+        serde_json::json!({"value":7654321,"word":65535,"phase":27,"counter":0});
+    let origin = [256, 200, -24832];
+    saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!(origin);
+    saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!(origin);
+    saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, 64, 0]);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let mut cues = 0;
+    let error = world
+        .move_ordinary_point(
+            id,
+            [1000000, 0, 1000000],
+            0,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut random),
+            Some(&mut |actor, sound| {
+                assert_eq!(actor, id);
+                assert!(matches!(
+                    sound,
+                    cyrus_game::script::ScriptSound::Animation {
+                        sound: cyrus_world::animation::AnimationSound::Play { effect: 17, .. },
+                        position: Some([256, 200, -24832]),
+                        ..
+                    }
+                ));
+                cues += 1;
+                anyhow::bail!("facing sound rejected")
+            }),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("facing sound rejected"));
+    assert_eq!(cues, 1);
+    assert_eq!(random.state(), 42);
+    assert_eq!(world.spatial(id).unwrap().local.angles[1], 64);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (control.point_command.phase, control.point_command.word),
+        (27, 65535)
+    );
+    assert_eq!(
+        (
+            control.navigation.current,
+            control.navigation.next,
+            control.navigation.previous_next
+        ),
+        (0, 1, 99)
+    );
+    assert_eq!(
+        movement_snapshot(&world, &scripts, &data)["map_updates"],
+        serde_json::json!([])
+    );
+}
+
+#[test]
+fn point_node_facing_requires_the_shared_random_owner_only_after_alignment() {
+    use cyrus_game::script::ScriptInputs;
+    let (world, scripts, data) = point_node_fixture(8);
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["attributes"][110] = 1.into();
+    saved["actors"][0]["attributes"][90] = 1.into();
+    saved["actors"][0]["animation"] = serde_json::Value::Null;
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+    saved["actors"][0]["control"]["point_command"] =
+        serde_json::json!({"value":7654321,"word":65535,"phase":1,"counter":0});
+    let origin = [256, 200, -24832];
+    saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!(origin);
+    saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!(origin);
+    saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, 0, 0]);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = world.id(0).unwrap();
+    let error = world
+        .move_ordinary_point(
+            id,
+            [1000000, 0, 1000000],
+            0,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            Some(&mut |_, _| panic!("unbound animation emitted sound")),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("point facing requires shared engine random stream"));
+    assert_eq!(world.globals().native_command().point_phase, 2);
+    let control = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (control.point_command.phase, control.point_command.word),
+        (1, 65535)
+    );
+    assert_eq!(
+        (
+            control.navigation.current,
+            control.navigation.next,
+            control.navigation.previous_next
+        ),
+        (0, 1, 99)
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, origin);
+    assert_eq!(
+        movement_snapshot(&world, &scripts, &data)["map_updates"],
+        serde_json::json!([])
+    );
 }

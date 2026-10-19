@@ -177,7 +177,7 @@ module where it is defined and regenerate.
 - `src/script/registry/overlap.rs` — Selected ordinary actor spheres remain separate from body-query working shapes.
 - `src/script/registry/persistence.rs` — Complete actor and world replacements are assembled away from live execution.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.
-- `src/script/registry/point.rs` — Point navigation retains actor commands through pauses, immediate arrival and held-node transitions.
+- `src/script/registry/point.rs` — Point navigation retains actor commands through pauses, arrival and held-node facing transitions.
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.

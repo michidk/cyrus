@@ -16,14 +16,16 @@ pub struct OrdinaryCombatSample {
 impl ScriptWorld {
     /// Run the nonplayer perception prepass before message and decision maintenance.
     /// Timer waiting and reacquisition use live collision/navigation owners. Routed
-    /// pursuit retains its transition and invokes the point wrapper. Shared pauses
-    /// and immediate arrival are supported; later routing phases remain unavailable.
+    /// pursuit retains its transition and invokes the point wrapper. Shared pauses,
+    /// immediate arrival and held-node facing are supported. Delay admission consumes
+    /// the caller's shared random stream; later routing phases remain unavailable.
     pub fn maintain_combat_perception(
         &mut self,
         id: ScriptActorId,
         selected_player: ScriptActorId,
         ticks: u32,
         inputs: super::ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let result = (|| -> Result<()> {
@@ -121,6 +123,7 @@ impl ScriptWorld {
                     nominal_ticks: Some(ticks),
                     ..inputs
                 },
+                random,
                 Some(sounds),
             )?;
             Ok(())

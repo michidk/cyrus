@@ -1269,3 +1269,16 @@ the existing wrapper limit still applies. **Verified:** 8,640 original/productio
 assignments, 1,944 point transitions and 1,344 history-retention cases agree.
 A wrong previous-node assignment fails the production comparison. Continuous walking, collision
 response and later route selection remain unsupported.
+
+
+Non-arrived held nodes in phases 1 and 27 now use the ordinary facing owner,
+including the live weapon predicate, combat flag `0x04`, installed turn rates
+and synchronous animation sounds. A completed turn selects phase two.
+Nonzero attribute 90 then tests `Rnd`; a zero result selects phase nine and
+stores `(draw & 127) + 16` using a second shared draw. Ordinary traversal passes
+its session random owner through combat perception to point movement. Turning
+consumes no random draws. Missing owners fail contextually rather than inventing
+weapon state or a private random stream. **Verified:** 640 original/production
+turn, phase and random-consumption cases agree. Treating any combat record as
+active fails that comparison. Walking, delayed-phase continuation and phase-eight
+route selection remain unsupported; full automatic START combat is unverified.

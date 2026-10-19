@@ -563,6 +563,16 @@ rollback. The [transition contract](https://github.com/michidk/redguard-preserva
 records these rules. Non-arrived walking, collision response, phase-eight route
 selection and full automatic START/native/browser acceptance remain open.
 
+**Verified:** non-arrived held-node phases 1 and 27 now use live facing and
+animation owners. Ordinary traversal supplies the session random stream through
+combat perception. Completed facing selects phase two or the installed
+attribute-90 phase-nine delay. All 640 original/production turn, phase, retained
+node and random-consumption cases agree. A wrong combat-record-existence
+predicate fails the comparison. Synchronous cue failure stops before heading,
+phase and random changes. The [facing transition contract](https://github.com/michidk/redguard-preservation/commit/b4a25db81674547aaf4a7491b938ab818d145134)
+records the rules. Walking, delayed-phase continuation, phase-eight selection
+and full automatic START/native/browser acceptance remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

@@ -438,14 +438,15 @@ impl ScriptWorld {
     /// Maintain an admitted ordinary combat record using shared nominal ticks.
     /// Perception uses live query owners; routed pursuit, damage, decisions and attacks
     /// retain unsupported guards.
-    /// The owner supplies the selected player's drawing/sheathing and shell gates.
+    /// The owner supplies the selected player's drawing/sheathing and shell gates,
+    /// and the session random stream for routed point-facing delays.
     pub fn maintain_map_combat(
         &mut self,
         id: ScriptActorId,
         ticks: u32,
         player_weapon_transition: bool,
-        shell_execution: bool,
         inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.resolve(id)?;
@@ -454,6 +455,10 @@ impl ScriptWorld {
                 || matches!(self.actors[index].source, ScriptActorSource::Player),
             "ordinary combat requires a map actor or selected player"
         );
+        let shell_execution = inputs
+            .shell_execution
+            .or_else(|| inputs.activation.map(|input| input.shell_execution))
+            .unwrap_or(false);
         if shell_execution {
             return Ok(());
         }
@@ -490,7 +495,7 @@ impl ScriptWorld {
                 .iter()
                 .position(|actor| matches!(actor.source, ScriptActorSource::Player))
                 .context("perception selected player unavailable")?;
-            self.maintain_combat_perception(id, self.id(player)?, ticks, inputs, sounds)?;
+            self.maintain_combat_perception(id, self.id(player)?, ticks, inputs, random, sounds)?;
         }
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
         let selected_player = self

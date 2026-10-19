@@ -1,4 +1,4 @@
-//! Point navigation retains actor commands through pauses, immediate arrival and held-node transitions.
+//! Point navigation retains actor commands through pauses, arrival and held-node facing transitions.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
@@ -6,15 +6,17 @@ impl ScriptWorld {
     /// Invoke the ordinary point wrapper with a Q8 destination and arrival tolerance.
     /// Map validation precedes shared pause consumption. A consumed pause returns one
     /// even when it reaches zero. Immediate arrival and falling/queued motion use live
-    /// actor owners. Held-node arrival supports phases one and 27; walking, later
-    /// route phases and hit reactions remain unavailable.
-    /// Default-animation requests require nominal ticks and a synchronous sound sink.
+    /// actor owners. Phases one and 27 support held-node arrival and facing,
+    /// including attribute-90 delays on the session random stream. Walking, later
+    /// route phases and hit reactions remain unavailable. Animation requests require
+    /// nominal ticks and a synchronous sound sink; random is required only for delay admission.
     pub fn move_ordinary_point(
         &mut self,
         id: ScriptActorId,
         destination: [i32; 3],
         tolerance: i32,
         inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let result = (|| -> Result<i32> {
@@ -37,7 +39,7 @@ impl ScriptWorld {
                     .saturating_sub(ticks);
                 1
             } else {
-                self.move_point_entry(id, destination, tolerance, inputs, sounds)?
+                self.move_point_entry(id, destination, tolerance, inputs, random, sounds)?
             };
             let shared = &mut self.globals.native_command;
             self.actors[index]
@@ -66,6 +68,7 @@ impl ScriptWorld {
         destination: [i32; 3],
         tolerance: i32,
         inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let index = id.index;
@@ -114,7 +117,7 @@ impl ScriptWorld {
         if matches!(phase, 11 | 22)
             || !self.point_destination_arrived(index, destination, tolerance, inputs)?
         {
-            return self.move_point_node_arrival(id, inputs, sounds);
+            return self.move_point_held_node(id, inputs, random, sounds);
         }
         let position = &mut self
             .spatial
@@ -220,10 +223,11 @@ impl ScriptWorld {
         Ok(())
     }
 
-    fn move_point_node_arrival(
+    fn move_point_held_node(
         &mut self,
         id: ScriptActorId,
         inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
         sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
     ) -> Result<i32> {
         let index = id.index;
@@ -262,13 +266,45 @@ impl ScriptWorld {
                 .wrapping_mul(256)
                 .wrapping_mul(scale as i32)
                 >> 8;
-            anyhow::ensure!(
-                self.snap_ordinary_horizontal(index, destination, threshold)?,
-                "ordinary combat routed point navigation unsupported: node facing phase {phase}"
-            );
-            self.admit_point_default(id, inputs, sounds)?;
-            self.assign_walk_node(id, navigation.next, super::super::WalkNodeSlot::Current)?;
-            self.globals.native_command.point_phase = 8;
+            if self.snap_ordinary_horizontal(index, destination, threshold)? {
+                self.admit_point_default(id, inputs, sounds)?;
+                self.assign_walk_node(id, navigation.next, super::super::WalkNodeSlot::Current)?;
+                self.globals.native_command.point_phase = 8;
+            } else {
+                let (selected_player, holding_weapon) = self.spacing_weapon(id, inputs)?;
+                let combat_active = self.actors[index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .is_some_and(|combat| combat.flags & 4 != 0);
+                let facing = self.face_ordinary_point(
+                    id,
+                    destination,
+                    super::slope::OrdinarySlopeInputs {
+                        selected_player,
+                        holding_weapon,
+                        combat_active,
+                        frame_scale: scale,
+                        ticks: inputs
+                            .nominal_ticks
+                            .context("point facing requires nominal_ticks")?,
+                    },
+                    sounds.context("point facing requires synchronous sounds")?,
+                )?;
+                if facing == 0 {
+                    self.globals.native_command.point_phase = 2;
+                    let delay = self.actors[index].attributes[90];
+                    if delay != 0 {
+                        let random =
+                            random.context("point facing requires shared engine random stream")?;
+                        if random.rnd(i32::from(delay))? == 0 {
+                            self.globals.native_command.point_phase = 9;
+                            self.globals.native_command.point_word =
+                                ((random.draw() & 127) + 16) as u16;
+                        }
+                    }
+                }
+            }
         }
         self.actors[index]
             .control
