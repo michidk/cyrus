@@ -129,6 +129,122 @@ pub(super) struct PlayerDialogueCall<'a> {
     pub speaker_distance: Result<i32, String>,
 }
 
+/// Progress of an `RTX`/`rtxAnim` label lookup. The original looks up once, on the first invocation;
+/// a host that prepares the entry asynchronously keeps the task retrying until the lookup resolves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Lookup {
+    #[default]
+    Idle,
+    Pending,
+    Done,
+}
+
+/// Private state of an `RTX` or `rtxAnim` line, which the original keeps in the task's words.
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+struct Speech {
+    /// Retained dialogue record: zero means none (record zero is the player's), -1 means the
+    /// record table was full and reads as inactive.
+    record: i32,
+    /// The entry's sample slot, retained so a distant speaker can still cut it after the record ends.
+    sample: Option<u8>,
+    lookup: Lookup,
+}
+
+/// What an `RTX`-family invocation does after the shared distance and lookup steps.
+enum Speak {
+    Complete,
+    /// The host is still preparing the entry.
+    Wait,
+    /// `fresh` is true on the invocation that created the line.
+    Running {
+        fresh: bool,
+    },
+}
+
+impl Speech {
+    fn active_record(&self) -> Option<usize> {
+        usize::try_from(self.record).ok()
+    }
+
+    /// Shared `RTX`/`rtxAnim` steps: a speaker beyond `dialog_max_distance` completes (cutting a line it
+    /// already has); otherwise the label is looked up once and one ordinary record is created for it.
+    fn speak(
+        &mut self,
+        name: &str,
+        label: &Argument,
+        first: bool,
+        input: &PlayerDialogueCall<'_>,
+        dialogue: &mut super::DialogueState,
+    ) -> Result<Speak> {
+        let source = input
+            .source
+            .with_context(|| format!("{name} source service unavailable"))?;
+        let distance = input
+            .speaker_distance
+            .as_ref()
+            .map_err(|error| anyhow::anyhow!("{error}"))?;
+        if *distance > dialogue.settings().max_distance {
+            if self.record != 0 {
+                if let Some(sample) = self.sample {
+                    source.stop_sample(sample)?;
+                }
+                dialogue.clear_sample_lines(self.sample);
+            }
+            return Ok(Speak::Complete);
+        }
+        let attempt = match self.lookup {
+            Lookup::Idle => first,
+            Lookup::Pending => true,
+            Lookup::Done => false,
+        };
+        if !attempt {
+            return Ok(Speak::Running { fresh: false });
+        }
+        let std::task::Poll::Ready(line) = source.speaker_line(
+            label.integer()?.to_le_bytes(),
+            input.speaker,
+            dialogue.settings().max_text_width,
+        )?
+        else {
+            self.lookup = Lookup::Pending;
+            return Ok(Speak::Wait);
+        };
+        self.lookup = Lookup::Done;
+        let Some(line) = line else {
+            // A failed lookup keeps record zero, so the task then waits on the player's line.
+            return Ok(Speak::Running { fresh: false });
+        };
+        anyhow::ensure!(
+            line.sample.is_none_or(|slot| slot < 16),
+            "{name} source returned invalid sample slot"
+        );
+        self.sample = line.sample;
+        self.record = dialogue
+            .begin_line(input.speaker, line.text, line.sample, line.lifetime)
+            .map_or(-1, |index| index as i32);
+        Ok(Speak::Running { fresh: true })
+    }
+}
+
+/// `rtxAnim` ordinary group request: modifier zero, then the finite loop countdown set to one.
+fn request_talk_group(input: &mut AnimationCall<'_, '_>, group: i32) -> Result<()> {
+    let group = u16::try_from(group)
+        .ok()
+        .filter(|group| *group <= i16::MAX as u16)
+        .context("rtxAnim group outside supported signed range")?;
+    let frame = match &mut input.sounds {
+        Some(sounds) => input
+            .animation
+            .request_with_sounds(group, 0, input.ticks, *sounds)?,
+        None => input.animation.request(group, 0, input.ticks)?,
+    };
+    *input.frame = frame.or(*input.frame);
+    if input.animation.current_group().is_some() {
+        input.animation.set_loop_count(1)?;
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     Dialogue,
@@ -138,11 +254,13 @@ enum Task {
     PlayerDialogue {
         started: bool,
     },
-    /// `RTX`: the retained dialogue record index (zero means none, as record zero is the player's;
-    /// an exhausted record table retains -1, which reads as inactive) and the entry's sample slot.
-    SpeakerDialogue {
-        record: i32,
-        sample: Option<u8>,
+    /// `RTX`.
+    SpeakerDialogue(Speech),
+    /// `rtxAnim`: `RTX` plus a cycle through three animation groups while the line is active;
+    /// `index` selects the group last requested.
+    SpeakerAnimation {
+        speech: Speech,
+        index: u8,
     },
     Ambient {
         channel: Option<u8>,
@@ -235,7 +353,7 @@ impl Task {
                 }
                 !dialogue.line_active(Some(0))
             }
-            Self::SpeakerDialogue { record, sample } => {
+            Self::SpeakerDialogue(speech) => {
                 let [label] = arguments else {
                     anyhow::bail!("RTX requires one argument");
                 };
@@ -245,44 +363,64 @@ impl Task {
                 if input.reset.context("RTX sample-reset input unavailable")? {
                     return Ok(true);
                 }
-                let elapsed = invocation.elapsed.context("RTX requires elapsed input")?;
+                let first = invocation.elapsed.context("RTX requires elapsed input")? == 0;
                 let dialogue = services
                     .dialogue
                     .context("RTX dialogue records unavailable")?;
-                let source = input.source.context("RTX source service unavailable")?;
-                let distance = input.speaker_distance.map_err(anyhow::Error::msg)?;
-                if distance > dialogue.settings().max_distance {
-                    // A speaker beyond the limit never starts, and cuts a line it already has.
-                    if *record != 0 {
-                        if let Some(sample) = *sample {
-                            source.stop_sample(sample)?;
-                        }
-                        dialogue.clear_sample_lines(*sample);
-                    }
+                match speech.speak("RTX", label, first, &input, dialogue)? {
+                    Speak::Complete => true,
+                    Speak::Wait => false,
+                    Speak::Running { .. } => !dialogue.line_active(speech.active_record()),
+                }
+            }
+            Self::SpeakerAnimation { speech, index } => {
+                let [label, first_group, second_group, third_group] = arguments else {
+                    anyhow::bail!("rtxAnim requires four arguments");
+                };
+                let input = services
+                    .player_dialogue
+                    .context("rtxAnim service inputs unavailable")?;
+                if input
+                    .reset
+                    .context("rtxAnim sample-reset input unavailable")?
+                {
                     return Ok(true);
                 }
-                if elapsed == 0 && *record == 0 {
-                    let std::task::Poll::Ready(line) = source.speaker_line(
-                        label.integer()?.to_le_bytes(),
-                        input.speaker,
-                        dialogue.settings().max_text_width,
-                    )?
-                    else {
-                        return Ok(false);
-                    };
-                    if let Some(line) = line {
-                        anyhow::ensure!(
-                            line.sample.is_none_or(|slot| slot < 16),
-                            "RTX source returned invalid sample slot"
-                        );
-                        *sample = line.sample;
-                        *record = dialogue
-                            .begin_line(input.speaker, line.text, line.sample, line.lifetime)
-                            .map_or(-1, |index| index as i32);
-                    }
+                let first = invocation
+                    .elapsed
+                    .context("rtxAnim requires elapsed input")?
+                    == 0;
+                let dialogue = services
+                    .dialogue
+                    .context("rtxAnim dialogue records unavailable")?;
+                let fresh = match speech.speak("rtxAnim", label, first, &input, dialogue)? {
+                    Speak::Complete => return Ok(true),
+                    Speak::Wait => return Ok(false),
+                    Speak::Running { fresh } => fresh,
+                };
+                // The original stores the third, fourth and second script operands in that order.
+                let groups = [
+                    second_group.integer()?,
+                    third_group.integer()?,
+                    first_group.integer()?,
+                ];
+                let call = animation
+                    .as_mut()
+                    .context("rtxAnim requires prepared animation and explicit nominal ticks")?;
+                if fresh {
+                    *index = 0;
+                    request_talk_group(call, groups[0])?;
                 }
-                // A failed lookup keeps record zero, so the task then waits on the player's line.
-                !dialogue.line_active(usize::try_from(*record).ok())
+                let current =
+                    |call: &AnimationCall<'_, '_>| call.animation.current_group().map(i32::from);
+                let line_active = dialogue.line_active(speech.active_record());
+                if current(call) != Some(groups[usize::from(*index)]) && line_active {
+                    *index = (*index + 1) % 3;
+                    request_talk_group(call, groups[usize::from(*index)])?;
+                }
+                // Ends only when the line is over and the last requested group is no longer current.
+                !(dialogue.line_active(speech.active_record())
+                    || current(call) == Some(groups[usize::from(*index)]))
             }
             Self::AnimationFrame { player } => {
                 let [group, threshold] = arguments else {
@@ -1186,9 +1324,12 @@ impl NativeTasks {
             Task::PlayerDialogue { started: false }
         } else if function.eq_ignore_ascii_case("RTX") {
             anyhow::ensure!(kind == CallKind::Task, "RTX requires task encoding");
-            Task::SpeakerDialogue {
-                record: 0,
-                sample: None,
+            Task::SpeakerDialogue(Speech::default())
+        } else if function.eq_ignore_ascii_case("rtxAnim") {
+            anyhow::ensure!(kind == CallKind::Task, "rtxAnim requires task encoding");
+            Task::SpeakerAnimation {
+                speech: Speech::default(),
+                index: 0,
             }
         } else if function.eq_ignore_ascii_case("AmbientSound") {
             anyhow::ensure!(

@@ -138,10 +138,24 @@ impl NativeTasks {
                             .get(channel)
                             .context("ambient saved channel has no binding")?;
                     }
-                    Task::Dialogue | Task::PlayerDialogue { .. } | Task::SpeakerDialogue { .. } => {
+                    Task::Dialogue | Task::PlayerDialogue { .. } | Task::SpeakerDialogue(_) => {
                         ensure!(
                             bindings.dialogue.is_some(),
                             "restored dialogue owner unavailable"
+                        );
+                    }
+                    Task::SpeakerAnimation { index, .. } => {
+                        ensure!(
+                            *index < 3,
+                            "rtxAnim saved group index {index} exceeds three"
+                        );
+                        ensure!(
+                            bindings.dialogue.is_some(),
+                            "restored dialogue owner unavailable"
+                        );
+                        ensure!(
+                            bindings.animation.is_some(),
+                            "restored rtxAnim animation owner unavailable"
                         );
                     }
                     Task::AnimationFrame { player: false } => {
@@ -182,7 +196,8 @@ impl Task {
                 ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))
             }
             Self::PlayerDialogue { .. } => ("RTXp", 1, Some(CallKind::Task)),
-            Self::SpeakerDialogue { .. } => ("RTX", 1, Some(CallKind::Task)),
+            Self::SpeakerDialogue(_) => ("RTX", 1, Some(CallKind::Task)),
+            Self::SpeakerAnimation { .. } => ("rtxAnim", 4, Some(CallKind::Task)),
             Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
             Self::Movement { .. } => ("MoveByAxis", 3, None),

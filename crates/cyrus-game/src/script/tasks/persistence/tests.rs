@@ -1,6 +1,6 @@
 //! Native continuations resume through VM calls and explicit restored service bindings.
 use super::*;
-use crate::script::tasks::{NativeServices, SpatialCall};
+use crate::script::tasks::{Lookup, NativeServices, SpatialCall, Speech};
 use cyrus_script::{
     Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread, program::*,
 };
@@ -462,21 +462,15 @@ fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
         ("WaitOnDialog", vec![], Task::Dialogue),
         ("RTXp", vec![123], Task::PlayerDialogue { started: true }),
         ("RTXp", vec![123], Task::PlayerDialogue { started: false }),
+        ("RTX", vec![123], Task::SpeakerDialogue(Speech::default())),
         (
             "RTX",
             vec![123],
-            Task::SpeakerDialogue {
-                record: 0,
-                sample: None,
-            },
-        ),
-        (
-            "RTX",
-            vec![123],
-            Task::SpeakerDialogue {
+            Task::SpeakerDialogue(Speech {
                 record: 4,
                 sample: Some(3),
-            },
+                lookup: Lookup::Done,
+            }),
         ),
     ] {
         let vm = contract_vm(name, CallKind::Task, &args);
@@ -507,6 +501,185 @@ fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
         );
         assert!(!owner.line_active(Some(0)));
     }
+}
+
+/// `RTX` and `rtxAnim` share one lookup/record/distance path; `rtxAnim` cycles its operands
+/// third, fourth, second while the line is active and ends once the line is over and the last
+/// requested group is no longer current.
+#[test]
+fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
+    use crate::script::tasks::{AnimationCall, PlayerDialogueCall};
+    use crate::script::{DialogueLine, DialogueSource, ScriptActorId};
+    use cyrus_assets::animation::Animations;
+    use std::cell::Cell;
+    #[derive(Debug)]
+    struct Source(Cell<u32>);
+    impl DialogueSource for Source {
+        fn player_line(
+            &self,
+            _: [u8; 4],
+            _: ScriptActorId,
+            _: u32,
+        ) -> anyhow::Result<std::task::Poll<Option<DialogueLine>>> {
+            if self.0.get() != 0 {
+                self.0.set(self.0.get() - 1);
+                return Ok(std::task::Poll::Pending);
+            }
+            Ok(std::task::Poll::Ready(Some(DialogueLine {
+                text: "line".into(),
+                sample: Some(2),
+                lifetime: 100,
+            })))
+        }
+        fn stop_sample(&self, _: u8) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let group = |index: u32| {
+        json!({"group_index":index,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]})
+    };
+    let data = Animations {
+        version: 2,
+        world: 0,
+        metadata: json!({"actors":[{"script_name":"ACTOR",
+            "animation_groups":[group(0), group(11), group(12), group(13),
+                {"group_index":5,"anim_id":1,"anim_type":1,"commands":[
+                    {"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},{"opcode":1}]}]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    fn speaking<'a>(
+        source: &'a Source,
+        records: &'a mut crate::script::DialogueState,
+    ) -> NativeServices<'a> {
+        NativeServices {
+            dialogue: Some(records),
+            player_dialogue: Some(PlayerDialogueCall {
+                source: Some(source),
+                player: None,
+                reset: Some(false),
+                speaker: ScriptActorId {
+                    generation: 1,
+                    index: 0,
+                },
+                speaker_distance: Ok(0),
+            }),
+            ..Default::default()
+        }
+    }
+    let invocation = |elapsed| Invocation {
+        elapsed: Some(elapsed),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+
+    // A pending lookup keeps retrying on later invocations, which no longer have zero elapsed.
+    let mut tasks = NativeTasks::default();
+    let mut records = dialogue();
+    let source = Source(Cell::new(2));
+    let args = [Argument::Integer(i32::from_le_bytes(*b"TEST"))];
+    assert_eq!(
+        tasks
+            .call(
+                ("RTX", CallKind::Task),
+                &args,
+                invocation(0),
+                &mut None,
+                &mut None,
+                speaking(&source, &mut records)
+            )
+            .unwrap(),
+        Some(CallResult::Pending(1))
+    );
+    for elapsed in 1..=2 {
+        assert!(
+            !tasks
+                .poll(
+                    1,
+                    &args,
+                    invocation(elapsed),
+                    &mut None,
+                    &mut None,
+                    speaking(&source, &mut records)
+                )
+                .unwrap()
+        );
+    }
+    assert!(records.line_active(Some(1)) && !records.line_active(Some(0)));
+
+    // rtxAnim(label, 13, 11, 12): the operands are used third, fourth, second = 11, 12, 13. An
+    // unrelated group is current, so each request stays pending and the ascending order replaces it.
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    animation.request(5, 0, 1).unwrap();
+    let mut frame = None;
+    let mut tasks = NativeTasks::default();
+    let mut records = dialogue();
+    let source = Source(Cell::new(0));
+    let args = [
+        Argument::Integer(i32::from_le_bytes(*b"TEST")),
+        Argument::Integer(13),
+        Argument::Integer(11),
+        Argument::Integer(12),
+    ];
+    let mut input = Some(AnimationCall {
+        animation: &mut animation,
+        ticks: 1,
+        frame: &mut frame,
+        sounds: None,
+    });
+    let state = |input: &Option<AnimationCall<'_, '_>>| {
+        let animation = &input.as_ref().unwrap().animation;
+        (animation.current_group(), animation.pending_group())
+    };
+    assert_eq!(
+        tasks
+            .call(
+                ("rtxAnim", CallKind::Task),
+                &args,
+                invocation(0),
+                &mut input,
+                &mut None,
+                speaking(&source, &mut records)
+            )
+            .unwrap(),
+        Some(CallResult::Pending(1))
+    );
+    // The first request (11) is followed in the same invocation by the cycle step (12).
+    assert_eq!(state(&input), (Some(5), Some(12)));
+    assert!(records.line_active(Some(1)));
+    // While the line is active and the requested group is not current, the next operand is requested;
+    // the wrap back to 11 cannot replace the higher pending 13.
+    for (elapsed, pending) in [(1, 13), (2, 13)] {
+        assert!(
+            !tasks
+                .poll(
+                    1,
+                    &args,
+                    invocation(elapsed),
+                    &mut input,
+                    &mut None,
+                    speaking(&source, &mut records)
+                )
+                .unwrap()
+        );
+        assert_eq!(state(&input), (Some(5), Some(pending)));
+    }
+    // Once the line is over and the last requested group (11, after the wrap) is not current, it completes.
+    records.clear_line(Some(1));
+    assert!(
+        tasks
+            .poll(
+                1,
+                &args,
+                invocation(3),
+                &mut input,
+                &mut None,
+                speaking(&source, &mut records)
+            )
+            .unwrap()
+    );
 }
 
 #[test]
