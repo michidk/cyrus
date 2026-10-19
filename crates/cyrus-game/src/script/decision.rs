@@ -735,8 +735,9 @@ pub fn counter_attack(
 /// Facts the defence selection reads, sampled by the caller from the combat records.
 #[derive(Clone, Copy, Debug)]
 pub struct DefenceSelectionInput {
-    /// The actor is armed and the global lockout word is clear.
+    /// The actor is armed.
     pub armed: bool,
+    /// The global lockout word is clear.
     pub lockout_clear: bool,
     pub own_selected: i32,
     /// The target is inside the actor's forward arc, and the distance is below the actor's own
@@ -755,11 +756,13 @@ pub struct DefenceSelectionInput {
     /// The defence pacing divisor, required only on the admitted no-move branch.
     pub defence_pacing: i32,
     pub target_selected: i32,
-    /// The target's current animation frame and its selected move's near and third range values.
+    /// The target's signed animation command cursor, not its displayed frame.
     pub target_frame: i32,
+    /// Current target motion's first collision frame, from its retained attack slot.
     pub target_near: i32,
+    /// Current target motion's collision duration; addition to the start wraps.
     pub target_third: i32,
-    /// The actor's defence selector.
+    /// The actor's current motion selector.
     pub own_selector: i32,
 }
 
@@ -780,13 +783,15 @@ pub trait DefenceSelectionServices {
 }
 
 /// Select and synchronously start defences using preservation's
-/// [defence-selection rules](https://github.com/michidk/redguard-preservation/pull/112).
+/// [defence-selection rules](https://github.com/michidk/redguard-preservation/pull/112)
+/// and [collision timing](https://github.com/michidk/redguard-preservation/commit/79a4f36388dc9e8563af7ed2da2e6d1bb6dc5f7b).
 ///
 /// Armed, with the lockout clear and no move selected, it sets the defence counter to one when
 /// the two face alike or the target is outside combat stance, and to `129 - attribute 58`
-/// otherwise. On a zero pacing remainder it picks a defence when the target is mid-move and its swing has passed the
-/// near plus third range values (the best usable one) or when the target's selected move is
-/// exactly 9 (an open one), starting it when it is in reach; the intent field gains bit one in
+/// otherwise. On a zero pacing remainder it picks the best usable defence when the target is
+/// mid-move and its signed command cursor exceeds the wrapping sum of its motion's first
+/// collision frame and collision duration, or an open defence when the target's selected move is
+/// exactly 9, starting it when it is in reach; the intent field gains bit one in
 /// the first case. Independently, on a zero remainder of the defence counter it raises the
 /// intent field and starts the paced pick when in reach. With a move already selected, a zero
 /// counter remainder starts kind one while the defence selector is zero and kind two while it is one.

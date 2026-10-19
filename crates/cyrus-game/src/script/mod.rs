@@ -1,4 +1,11 @@
 //! Game-owned SOUP hosts and supported camera-centered ordinary actor updates.
+//!
+//! [`ScriptWorld`] retains logical actors; [`ScriptActors`] owns the session and
+//! active world. [`ScriptInputs`] lends host state and services to each call.
+//! Explicit operations do not establish automatic actor admission. [`run_ordinary`]
+//! composes supported stages using a [`ScriptView`] and the shared clock/random
+//! owners; required unavailable services fail with world/actor context.
+
 mod activation;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,

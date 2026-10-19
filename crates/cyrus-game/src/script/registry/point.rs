@@ -1,4 +1,15 @@
 //! Point navigation retains walking, direct visibility, held-node routes and command transitions.
+//!
+//! Destinations and tolerances use Q8 local coordinates. The point command owns
+//! its retained phase/history and pending registration; movement owns collision,
+//! sounds and animation effects. Completion releases nodes and publishes the
+//! native return byte without registering another pending update.
+//!
+//! Destination search uses the current enabled map without filtering reservations.
+//! Route claims preserve reservation order. Direct phases share live visibility,
+//! facing and walking services. Initialization,
+//! jump continuation and collision/hit transitions remain explicit unsupported
+//! branches; supported phases do not imply complete automatic combat traversal.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
