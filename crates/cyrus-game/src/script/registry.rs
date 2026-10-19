@@ -937,6 +937,39 @@ impl ScriptWorld {
         })
     }
 
+    /// Release both held indices in the selected slot's order, then attempt a claim.
+    /// Current assignment retains the old next index as history. Rejected claims
+    /// leave both held indices unset while preserving the map and destination.
+    pub fn assign_walk_node(
+        &mut self,
+        actor: ScriptActorId,
+        node: i32,
+        slot: super::WalkNodeSlot,
+    ) -> Result<bool> {
+        let result = (|| {
+            let index = self.resolve(actor)?;
+            let receiver = &mut self.actors[index];
+            let identifier = receiver
+                .runtime_identifier
+                .context("actor identifier unavailable")?;
+            let state = &mut receiver
+                .control
+                .as_mut()
+                .context("actor navigation unavailable")?
+                .navigation;
+            self.walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .assign(state, identifier, node, slot)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} assign {slot:?} node {node}",
+                self.world, actor.index
+            )
+        })
+    }
+
     /// Release held next/current nodes only when their reservation bytes match.
     /// Clears both indices, including foreign-owned/out-of-range nodes, while
     /// retaining the map and final destination. An absent map requires no table.

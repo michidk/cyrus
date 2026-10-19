@@ -94,6 +94,9 @@ pub struct ActorNavigation {
     /// Held node indices use -1 for unset; stale positive indices await validation.
     pub current: i32,
     pub next: i32,
+    /// Allocation-zero history, preserved by map validation and held-node release.
+    #[serde(default)]
+    pub previous_next: i32,
     pub destination: i32,
 }
 
@@ -103,9 +106,19 @@ impl Default for ActorNavigation {
             map: None,
             current: -1,
             next: -1,
+            previous_next: 0,
             destination: -1,
         }
     }
+}
+
+/// Which held node receives an ordered release-and-claim operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WalkNodeSlot {
+    /// Retain old next history, then release next before current.
+    Current,
+    /// Preserve history and release current before next.
+    Next,
 }
 
 /// Runtime ownership bytes in WDNM file-map and node-index order.
@@ -307,10 +320,68 @@ impl WalkNodeReservations {
         Ok(())
     }
 
+    pub(super) fn assign(
+        &mut self,
+        state: &mut ActorNavigation,
+        actor: i16,
+        requested: i32,
+        slot: WalkNodeSlot,
+    ) -> Result<bool> {
+        self.check_state(state)?;
+        let Some(map) = state.map else {
+            state.current = -1;
+            state.next = -1;
+            return Ok(false);
+        };
+        let order = match slot {
+            WalkNodeSlot::Current => {
+                if state.next != -1 {
+                    state.previous_next = state.next;
+                }
+                [state.next, state.current]
+            }
+            WalkNodeSlot::Next => [state.current, state.next],
+        };
+        for index in order {
+            if let Ok(index) = usize::try_from(index)
+                && index < self.maps[map].len()
+            {
+                self.release(map, index, actor)?;
+            }
+        }
+        state.current = -1;
+        state.next = -1;
+        let Some(node) = usize::try_from(requested)
+            .ok()
+            .filter(|&node| node < self.maps[map].len())
+        else {
+            return Ok(false);
+        };
+        if !self.acquire(map, node, actor)? {
+            return Ok(false);
+        }
+        match slot {
+            WalkNodeSlot::Current => state.current = requested,
+            WalkNodeSlot::Next => state.next = requested,
+        }
+        Ok(true)
+    }
+
+    pub(super) fn position(&self, map: usize, node: i32) -> Result<[i32; 3]> {
+        self.maps
+            .get(map)
+            .and_then(|nodes| usize::try_from(node).ok().and_then(|node| nodes.get(node)))
+            .map(|node| node.position.map(|value| value << 8))
+            .ok_or_else(|| anyhow::anyhow!("walk-node map {map} node {node}: position unavailable"))
+    }
+
     pub(super) fn validate(&mut self, state: &mut ActorNavigation, actor: i16) -> Result<bool> {
         self.check_state(state)?;
         let Some(map) = state.map else {
-            *state = ActorNavigation::default();
+            *state = ActorNavigation {
+                previous_next: state.previous_next,
+                ..ActorNavigation::default()
+            };
             return Ok(false);
         };
         if self.disabled[map] {
@@ -323,7 +394,10 @@ impl WalkNodeReservations {
             .any(|&node| node >= 0 && node as usize >= self.maps[map].len())
         {
             self.release_held(state, actor)?;
-            *state = ActorNavigation::default();
+            *state = ActorNavigation {
+                previous_next: state.previous_next,
+                ..ActorNavigation::default()
+            };
             return Ok(false);
         }
         Ok(true)

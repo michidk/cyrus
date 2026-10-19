@@ -1251,3 +1251,21 @@ direction-15 movement and later route phases remain explicitly unsupported.
 with animation processing disabled. Public contracts cover real animation guards,
 current/fallback speed, equality and tolerance. This does not enable automatic
 START combat or establish native/browser movement fidelity.
+
+`ActorNavigation` retains an allocation-zero `previous_next` independently of
+held current/next indices and the final destination. Validation and release
+preserve it. `assign_walk_node` releases both held nodes in the selected slot's
+order, updates history for current-node assignment, then claims only an unowned
+or matching-owner node. Snapshots retain this state; older records default the
+new history field to zero.
+
+The point service now handles held-node arrival in phases 1 and 27 after
+immediate destination arrival is rejected, with collision response clear. It
+snaps horizontal coordinates through the ordinary facing owner, admits the
+default animation synchronously, assigns the held next node as current and
+selects phase eight even if the claim fails. A missing next node releases held
+reservations and selects phase zero. Pending registration is deduplicated and
+the existing wrapper limit still applies. **Verified:** 8,640 original/production
+assignments, 1,944 point transitions and 1,344 history-retention cases agree.
+A wrong previous-node assignment fails the production comparison. Continuous walking, collision
+response and later route selection remain unsupported.

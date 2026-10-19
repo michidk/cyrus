@@ -552,6 +552,17 @@ Hit reactions, enabled player exclusion, direction-15 movement and subsequent
 route phases remain unsupported. Full automatic combat and native/browser
 acceptance remain open.
 
+**Verified:** navigation retains previous-next history through snapshots, map
+validation and release. Ordered current/next assignment matches 8,640 original
+cases; another 1,344 validation/release cases retain history. A wrong history
+assignment fails the production comparison. Point phases 1 and 27 now process
+arrived held nodes or a missing next
+node through live animation, reservation and deferred-update owners; 1,944
+original/production transitions agree, including failed claims and wrapper
+rollback. The [transition contract](https://github.com/michidk/redguard-preservation/commit/42022fc3fe4e3e90ee43ae3c73373114bb78a52a)
+records these rules. Non-arrived walking, collision response, phase-eight route
+selection and full automatic START/native/browser acceptance remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

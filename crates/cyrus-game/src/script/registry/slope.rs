@@ -153,29 +153,16 @@ impl ScriptWorld {
                 inputs.selected_player != Some(id),
                 "selected-player facing camera unavailable"
             );
-            let actor = &self.actors[index];
             let speed = self.ordinary_group_speed(index);
             let origin = self.spatial(id)?.local;
             let x = destination[0].wrapping_sub(origin.position[0]);
             let z = destination[2].wrapping_sub(origin.position[2]);
-            let distance = cyrus_collision::distance::rounded_distance([x, 0, z])?;
             let threshold =
                 ((i32::from(speed) + 1) << 8).wrapping_mul(inputs.frame_scale as i32) >> 8;
-            if distance <= threshold {
-                let position = &mut self
-                    .spatial
-                    .as_mut()
-                    .context("spatial owner unavailable")?
-                    .actor_mut(index)?
-                    .local
-                    .position;
-                position[0] = destination[0];
-                position[2] = destination[2];
-                if !self.map_updates.contains(&index) {
-                    self.map_updates.push(index);
-                }
+            if self.snap_ordinary_horizontal(index, destination, threshold)? {
                 return Ok(0);
             }
+            let actor = &self.actors[index];
             let desired = super::super::spatial::query_bearing(x, z);
             let torch = actor
                 .control
@@ -221,6 +208,34 @@ impl ScriptWorld {
                 self.world, id.index
             )
         })
+    }
+
+    pub(super) fn snap_ordinary_horizontal(
+        &mut self,
+        index: usize,
+        destination: [i32; 3],
+        threshold: i32,
+    ) -> Result<bool> {
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("spatial owner unavailable")?
+            .actor_mut(index)?;
+        let position = &mut spatial.local.position;
+        let distance = cyrus_collision::distance::rounded_distance([
+            destination[0].wrapping_sub(position[0]),
+            0,
+            destination[2].wrapping_sub(position[2]),
+        ])?;
+        if distance > threshold {
+            return Ok(false);
+        }
+        position[0] = destination[0];
+        position[2] = destination[2];
+        if !self.map_updates.contains(&index) {
+            self.map_updates.push(index);
+        }
+        Ok(true)
     }
 
     pub(super) fn ordinary_group_speed(&self, index: usize) -> u8 {

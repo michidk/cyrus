@@ -1,4 +1,4 @@
-//! Point navigation retains actor commands around pause, motion and immediate-arrival paths.
+//! Point navigation retains actor commands through pauses, immediate arrival and held-node transitions.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
@@ -6,7 +6,8 @@ impl ScriptWorld {
     /// Invoke the ordinary point wrapper with a Q8 destination and arrival tolerance.
     /// Map validation precedes shared pause consumption. A consumed pause returns one
     /// even when it reaches zero. Immediate arrival and falling/queued motion use live
-    /// actor owners; later route phases and hit reactions remain unavailable.
+    /// actor owners. Held-node arrival supports phases one and 27; walking, later
+    /// route phases and hit reactions remain unavailable.
     /// Default-animation requests require nominal ticks and a synchronous sound sink.
     pub fn move_ordinary_point(
         &mut self,
@@ -110,10 +111,39 @@ impl ScriptWorld {
             "point direction-15 movement unsupported"
         );
         let phase = shared.point_phase;
-        anyhow::ensure!(
-            !matches!(phase, 11 | 22),
-            "ordinary combat routed point navigation unsupported: phase {phase}"
-        );
+        if matches!(phase, 11 | 22)
+            || !self.point_destination_arrived(index, destination, tolerance, inputs)?
+        {
+            return self.move_point_node_arrival(id, inputs, sounds);
+        }
+        let position = &mut self
+            .spatial
+            .as_mut()
+            .expect("admitted point spatial state")
+            .actor_mut(index)?
+            .local
+            .position;
+        position[0] = destination[0];
+        position[2] = destination[2];
+        self.admit_point_default(id, inputs, sounds)?;
+        self.globals.native_command_return = 0;
+        self.release_held_walk_nodes(id)?;
+        let actor = &mut self.actors[index];
+        let control = actor.control.as_mut().expect("admitted point control");
+        if control.death_selector == 7 {
+            control.death_selector = 0;
+        }
+        actor.attributes[1] = 13;
+        Ok(0)
+    }
+
+    fn point_destination_arrived(
+        &self,
+        index: usize,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<bool> {
         let position = self
             .spatial
             .as_ref()
@@ -145,19 +175,16 @@ impl ScriptWorld {
             .wrapping_mul(256)
             .wrapping_mul(scale as i32)
             >> 8;
-        anyhow::ensure!(
-            distance.wrapping_sub(tolerance) <= threshold,
-            "ordinary combat routed point navigation unsupported: phase {phase} destination {destination:?} tolerance {tolerance}"
-        );
-        let position = &mut self
-            .spatial
-            .as_mut()
-            .expect("admitted point spatial state")
-            .actor_mut(index)?
-            .local
-            .position;
-        position[0] = destination[0];
-        position[2] = destination[2];
+        Ok(distance.wrapping_sub(tolerance) <= threshold)
+    }
+
+    fn admit_point_default(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<()> {
+        let index = id.index;
         let actor = &mut self.actors[index];
         if self.updates.animation_system
             && !actor
@@ -190,14 +217,67 @@ impl ScriptWorld {
                     })?;
             animation.frame = frame.or(animation.frame);
         }
-        self.globals.native_command_return = 0;
-        self.release_held_walk_nodes(id)?;
+        Ok(())
+    }
+
+    fn move_point_node_arrival(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = id.index;
         let actor = &mut self.actors[index];
-        let control = actor.control.as_mut().expect("admitted point control");
-        if control.death_selector == 7 {
-            control.death_selector = 0;
+        let control = actor.control.as_ref().expect("admitted point control");
+        let navigation = control.navigation;
+        anyhow::ensure!(
+            navigation.map.is_some(),
+            "ordinary combat routed point navigation unsupported: map selection"
+        );
+        actor.attributes[1] = 12;
+        anyhow::ensure!(
+            control.collision_transition_flags & 1 == 0
+                && control.collision_response_auxiliary[0] & 0x82 == 0
+                && control.body_response_flags & 0x0a == 0,
+            "point route collision response unsupported"
+        );
+        let phase = self.globals.native_command.point_phase;
+        anyhow::ensure!(
+            matches!(phase, 1 | 27),
+            "ordinary combat routed point navigation unsupported: phase {phase}"
+        );
+        if navigation.next == -1 {
+            self.release_held_walk_nodes(id)?;
+            self.globals.native_command.point_phase = 0;
+        } else {
+            let destination = self
+                .walk_nodes
+                .as_ref()
+                .context("walk-node navigation not prepared")?
+                .position(navigation.map.expect("admitted point map"), navigation.next)?;
+            let scale = inputs
+                .frame_scale
+                .context("point node arrival requires frame_scale")?;
+            let threshold = (i32::from(self.ordinary_group_speed(index)) + 1)
+                .wrapping_mul(256)
+                .wrapping_mul(scale as i32)
+                >> 8;
+            anyhow::ensure!(
+                self.snap_ordinary_horizontal(index, destination, threshold)?,
+                "ordinary combat routed point navigation unsupported: node facing phase {phase}"
+            );
+            self.admit_point_default(id, inputs, sounds)?;
+            self.assign_walk_node(id, navigation.next, super::super::WalkNodeSlot::Current)?;
+            self.globals.native_command.point_phase = 8;
         }
-        actor.attributes[1] = 13;
-        Ok(0)
+        self.actors[index]
+            .control
+            .as_mut()
+            .expect("admitted point control")
+            .death_selector = 7;
+        if !self.map_updates.contains(&index) {
+            self.map_updates.push(index);
+        }
+        Ok(1)
     }
 }
