@@ -144,6 +144,7 @@ pub struct GameplayGlobals {
     /// Current native command context, shared by successive actor invocations.
     pub(super) native_command: super::NativeCommandState,
     pub(super) native_command_return: u8,
+    pub(super) walk_route: super::WalkRouteState,
     /// Shared direction-called flags, reset at ordinary wrapper entry.
     pub(super) locomotion_called: u8,
     pub(super) ground_prevalidation_used: bool,
@@ -854,6 +855,7 @@ mod idle_tests {
 pub(super) struct GameplayGlobalsSnapshot {
     native_command: super::NativeCommandState,
     native_command_return: u8,
+    walk_route: super::WalkRouteState,
     locomotion_called: u8,
     ground_prevalidation_used: bool,
     ground_prevalidation: Option<super::OrdinaryGroundPrevalidation>,
@@ -873,6 +875,11 @@ pub(super) struct GameplayGlobalsSnapshot {
     potions: [i32; 4],
 }
 impl GameplayGlobals {
+    /// Shared next-hop link flags and backtracking inhibition.
+    pub fn walk_route(&self) -> &super::WalkRouteState {
+        &self.walk_route
+    }
+
     /// Current shared execution state; task-slot load/save may replace it.
     pub fn native_command(&self) -> &super::NativeCommandState {
         &self.native_command
@@ -882,6 +889,7 @@ impl GameplayGlobals {
         GameplayGlobalsSnapshot {
             native_command: self.native_command,
             native_command_return: self.native_command_return,
+            walk_route: self.walk_route,
             locomotion_called: self.locomotion_called,
             ground_prevalidation_used: self.ground_prevalidation_used,
             ground_prevalidation: self.ground_prevalidation,
@@ -938,6 +946,7 @@ impl GameplayGlobals {
         Ok(Self {
             native_command: saved.native_command,
             native_command_return: saved.native_command_return,
+            walk_route: saved.walk_route,
             locomotion_called: saved.locomotion_called,
             ground_prevalidation_used: saved.ground_prevalidation_used,
             ground_prevalidation: saved.ground_prevalidation,

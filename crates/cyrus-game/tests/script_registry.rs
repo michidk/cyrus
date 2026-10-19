@@ -9465,8 +9465,8 @@ fn navigation_reservations_use_identifier_bytes_and_maintenance_clears_all_maps(
         1024,
         0,
         serde_json::json!([
-            {"node_count":2,"walk_nodes":[{"reserved":255,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0},{"reserved":1,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0}]},
-            {"node_count":1,"walk_nodes":[{"reserved":2,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0}]}
+            {"node_count":2,"walk_nodes":[{"reserved":255,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0,"route_count":0,"routes":[]},{"reserved":1,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0,"route_count":0,"routes":[]}]},
+            {"node_count":1,"walk_nodes":[{"reserved":2,"node_pos_x":0,"node_pos_y":0,"node_pos_z":0,"route_count":0,"routes":[]}]}
         ]),
     );
     let first = world.id(0).unwrap();
@@ -17048,6 +17048,7 @@ fn live_spacing_root_queries_amount_then_moves_only_when_midpoint_is_retained() 
             saved["actors"][0]["attributes"][17] = step.into();
             saved["actors"][0]["control"]["movement_flags"] = 0x30.into();
             saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([25600, 0, 0]);
+            saved["spatial"]["actors"][1]["linked_position"] = serde_json::json!([-1000000, 0, 0]);
         });
         let id = world.id(0).unwrap();
         world.refresh_transform(id).unwrap();
@@ -19004,7 +19005,7 @@ fn free_node_fixture(
 }
 
 fn walk_node(position: [i32; 3]) -> serde_json::Value {
-    serde_json::json!({"node_pos_x":position[0],"node_pos_y":position[1],"node_pos_z":position[2],"reserved":255})
+    serde_json::json!({"node_pos_x":position[0],"node_pos_y":position[1],"node_pos_z":position[2],"reserved":255,"route_count":0,"routes":[]})
 }
 
 #[test]
@@ -19699,6 +19700,194 @@ fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding()
             } else {
                 NativeCommandState::default()
             }
+        );
+    }
+}
+
+fn route_fixture(
+    links: &[Vec<(usize, u16)>],
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    let nodes: Vec<_> = links
+        .iter()
+        .enumerate()
+        .map(|(index, links)| {
+            let mut node = walk_node([index as i32 * 100, 0, 0]);
+            node["route_count"] = links.len().into();
+            node["routes"] = serde_json::json!(
+                links
+                    .iter()
+                    .map(|&(target, cost)| serde_json::json!({"target_node_id":target,"cost":cost}))
+                    .collect::<Vec<_>>()
+            );
+            node
+        })
+        .collect();
+    let (world, scripts, data) = free_node_fixture(
+        serde_json::json!([{"node_count":nodes.len(),"walk_nodes":nodes}]),
+        0,
+        |_| {},
+    );
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":-1,"destination":-1});
+    (
+        restore_navigation_owner(saved, &scripts, &data).unwrap(),
+        scripts,
+        data,
+    )
+}
+
+#[test]
+fn walk_route_reverse_predecessor_ties_override_the_discovering_parent() {
+    let (mut world, scripts, data) =
+        route_fixture(&[vec![(1, 1), (2, 1)], vec![(3, 5)], vec![(3, 5)], vec![]]);
+    let actor = world.id(0).unwrap();
+    let before = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(world.next_walk_node(actor, 3, None).unwrap(), 2);
+    let after = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(after["actors"], before["actors"]);
+    assert_eq!(after["spatial"], before["spatial"]);
+    assert_eq!(after["walk_nodes"], before["walk_nodes"]);
+    assert_eq!(world.globals().walk_route().link_flags, [0, 0]);
+    let mut restored = restore_navigation_owner(after, &scripts, &data).unwrap();
+    assert_eq!(
+        restored
+            .next_walk_node(restored.id(0).unwrap(), 3, None)
+            .unwrap(),
+        2
+    );
+}
+
+#[test]
+fn walk_route_cost_cutoff_and_first_duplicate_control_selection_and_flags() {
+    for (links, expected, flags) in [
+        (vec![(1, 2048)], 1, [0, 0]),
+        (vec![(1, 2049)], -1, [0, 0]),
+        (vec![(1, 0)], -1, [0, 0]),
+        (vec![(1, 0), (1, 1)], -1, [0, 0]),
+        (vec![(1, 16385), (1, 1)], 1, [1, 0]),
+        (vec![(1, 32769), (1, 1)], 1, [0, 1]),
+    ] {
+        let (mut world, _, _) = route_fixture(&[links, vec![]]);
+        let actor = world.id(0).unwrap();
+        assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), expected);
+        assert_eq!(world.globals().walk_route().link_flags, flags);
+        assert_eq!(world.next_walk_node(actor, 0, None).unwrap(), 0);
+        assert_eq!(world.globals().walk_route().link_flags, flags);
+    }
+}
+
+#[test]
+fn walk_route_reads_live_source_reservations_and_preserves_them_on_restore() {
+    let (mut world, scripts, data) = route_fixture(&[vec![(1, 1)], vec![]]);
+    let actor = world.id(0).unwrap();
+    let peer = world.id(1).unwrap();
+    world.reserve_walk_node(peer, 0, 1).unwrap();
+    assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), 1);
+    world.reserve_walk_node(peer, 0, 0).unwrap();
+    assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), -1);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    let mut restored = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let actor = restored.id(0).unwrap();
+    assert_eq!(restored.next_walk_node(actor, 1, None).unwrap(), -1);
+    restored.clear_walk_node_reservations().unwrap();
+    restored.reserve_walk_node(actor, 0, 0).unwrap();
+    assert_eq!(restored.next_walk_node(actor, 1, None).unwrap(), 1);
+    restored.set_walk_map_enabled(0, false).unwrap();
+    assert_eq!(restored.next_walk_node(actor, 1, None).unwrap(), -1);
+}
+
+#[test]
+fn walk_route_player_exclusion_uses_local_map_units_and_admits_equality() {
+    use cyrus_game::script::{ScriptActorId, WalkRouteExclusion};
+    let (world, scripts, data) = route_fixture(&[vec![(1, 1)], vec![]]);
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([25600, 0, 0]);
+    saved["spatial"]["actors"][1]["linked_position"] = serde_json::json!([-1000000, 0, 0]);
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let actor = world.id(0).unwrap();
+    let player = world.id(1).unwrap();
+    assert_eq!(
+        world
+            .next_walk_node(
+                actor,
+                1,
+                Some(WalkRouteExclusion {
+                    selected_player: player,
+                    minimum_distance: 1
+                })
+            )
+            .unwrap(),
+        -1
+    );
+    assert_eq!(
+        world
+            .next_walk_node(
+                actor,
+                1,
+                Some(WalkRouteExclusion {
+                    selected_player: player,
+                    minimum_distance: 0
+                })
+            )
+            .unwrap(),
+        1
+    );
+    let stale = ScriptActorId {
+        generation: 999,
+        index: 1,
+    };
+    let error = world
+        .next_walk_node(
+            actor,
+            1,
+            Some(WalkRouteExclusion {
+                selected_player: stale,
+                minimum_distance: 0,
+            }),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("route selected player"));
+    assert_eq!(
+        world
+            .next_walk_node(
+                actor,
+                0,
+                Some(WalkRouteExclusion {
+                    selected_player: stale,
+                    minimum_distance: 0
+                })
+            )
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn walk_route_metadata_rejects_missing_counts_and_invalid_links_in_context() {
+    for (field, value) in [
+        ("routes", serde_json::Value::Null),
+        ("route_count", serde_json::json!(1)),
+        ("routes", serde_json::json!([{"target_node_id":1,"cost":1}])),
+        (
+            "routes",
+            serde_json::json!([{"target_node_id":0,"cost":65536}]),
+        ),
+    ] {
+        let (mut world, scripts, mut data) = navigation_owner_fixture();
+        let mut node = walk_node([0, 0, 0]);
+        node[field] = value;
+        if field == "routes" && node[field].is_array() {
+            node["route_count"] = 1.into();
+        }
+        data.metadata["walk_node_maps"] = serde_json::json!([{"node_count":1,"walk_nodes":[node]}]);
+        let error = format!("{:#}", world.prepare_navigation(&data).unwrap_err());
+        assert!(
+            error.contains(&format!(
+                "world {} walk_node_maps map 0 node 0",
+                scripts.world
+            )),
+            "{error}"
         );
     }
 }

@@ -517,8 +517,11 @@ reverse predecessor ties and queue limits. Incorrect reservation ownership,
 forward tie scanning and last-duplicate lookup each fail. Another 192 cases
 cover optional player-distance admission and its exact operands. The
 [published search contract](https://github.com/michidk/redguard-preservation/commit/3a3b54ae8e5436d8c69dcc628eb3f29294482270)
-is ready for implementation. Route search and the point movement state machine
-are not yet connected to live pursuit.
+now drives `ScriptWorld::next_walk_node` with live source reservations, optional
+local-player exclusion and snapshot-retained shared link flags. All 1,260 original
+searches match the production implementation; the wrong-owner mutation fails.
+Five public contracts and preparation of all 27 installed maps pass. The point
+movement state machine and live pursuit remain unsupported.
 
 Next, in dependency order:
 

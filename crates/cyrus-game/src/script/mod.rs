@@ -65,9 +65,9 @@ pub use registry::vertical::{
     OrdinaryVerticalInputs, OrdinaryVerticalState, ordinary_falling_vertical,
     ordinary_queued_vertical, ordinary_vertical_factor,
 };
-pub use registry::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput};
+pub use registry::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput, WalkRouteExclusion};
 mod navigation;
-pub use navigation::ActorNavigation;
+pub use navigation::{ActorNavigation, WalkRouteState};
 mod order;
 mod playback;
 mod presentation;

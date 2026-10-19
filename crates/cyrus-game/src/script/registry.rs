@@ -100,6 +100,14 @@ pub enum ScriptStage {
     Body(Thread),
 }
 
+/// An established active route-admission filter around the selected player's local position.
+/// Distance uses map units. None at the call site means the shared exclusion switch is off.
+#[derive(Debug, Clone, Copy)]
+pub struct WalkRouteExclusion {
+    pub selected_player: ScriptActorId,
+    pub minimum_distance: i32,
+}
+
 /// Receiver-bound geometry retained by the ordinary wrapper for native locomotion.
 /// Routed calls must supply a matching prepared query; candidate rebinding is unsupported.
 #[derive(Clone, Copy)]
@@ -810,6 +818,79 @@ impl ScriptWorld {
         result.with_context(|| {
             format!(
                 "world {} actor {} nearest free walk node",
+                self.world, actor.index
+            )
+        })
+    }
+
+    /// Find the next hop from the actor's held current node to a destination index.
+    /// Preserves authored traversal, live source-node reservations and shared link flags.
+    /// This selects a hop without reserving it, moving the actor or changing its navigation.
+    /// The optional player filter must come from an established active exclusion switch.
+    pub fn next_walk_node(
+        &mut self,
+        actor: ScriptActorId,
+        destination: i32,
+        exclusion: Option<WalkRouteExclusion>,
+    ) -> Result<i32> {
+        let result = (|| {
+            let index = self.resolve(actor)?;
+            let receiver = &self.actors[index];
+            let navigation = receiver
+                .control
+                .as_ref()
+                .context("actor navigation unavailable")?
+                .navigation;
+            anyhow::ensure!(
+                navigation.current >= -1,
+                "route current {} below unset sentinel",
+                navigation.current
+            );
+            if navigation.current == -1 {
+                return Ok(-1);
+            }
+            if navigation.current == destination {
+                return Ok(destination);
+            }
+            if navigation.map.is_none() {
+                return Ok(-1);
+            }
+            let identifier = receiver
+                .runtime_identifier
+                .context("route actor identifier unavailable")? as u8;
+            // Retain a failed player sample until a qualifying link actually reads it.
+            let player = exclusion.map(|input| {
+                (
+                    self.spatial(input.selected_player)
+                        .map(|actor| actor.local.position.map(|v| v >> 8))
+                        .map_err(|error| format!("route selected player: {error:#}")),
+                    input.minimum_distance,
+                )
+            });
+            self.walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .next_hop(
+                    &navigation,
+                    destination,
+                    identifier,
+                    &mut self.globals.walk_route,
+                    |position| {
+                        let Some((player, threshold)) = &player else {
+                            return Ok(true);
+                        };
+                        let player = player
+                            .as_ref()
+                            .map_err(|error| anyhow::anyhow!("{error}"))?;
+                        let delta =
+                            std::array::from_fn(|axis| position[axis].wrapping_sub(player[axis]));
+                        Ok(cyrus_collision::distance::rounded_distance(delta)? >= *threshold)
+                    },
+                )
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} route destination {destination}",
                 self.world, actor.index
             )
         })

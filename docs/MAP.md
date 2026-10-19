@@ -152,6 +152,7 @@ module where it is defined and regenerate.
 - `src/script/markers.rs` — Ordinary-world marker queries use preservation's SOUP node-marker distance contract.
 - `src/script/mod.rs` — Game-owned SOUP hosts and supported camera-centered ordinary actor updates.
 - `src/script/navigation.rs` — Walk-node ownership, free-node search and empty-map Wander follow preservation contracts.
+- `src/script/navigation/route.rs` — Ordered walk-route search and reverse next-hop selection from preservation's SOUP contract.
 - `src/script/order.rs` — Fresh-world ordinary actor membership and cached view-window traversal.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.

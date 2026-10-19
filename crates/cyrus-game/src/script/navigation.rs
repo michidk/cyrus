@@ -2,6 +2,8 @@
 use super::spatial::{ActorSpatial, rounded_distance};
 use crate::random::EngineRandom;
 use anyhow::{Result, ensure};
+mod route;
+pub use route::WalkRouteState;
 
 pub(super) fn wander_without_maps(
     home: [i32; 3],
@@ -78,6 +80,7 @@ pub(super) struct WalkNodeReservations {
 struct WalkNode {
     position: [i32; 3],
     owner: u8,
+    links: Vec<route::WalkLink>,
 }
 
 impl WalkNodeReservations {
@@ -120,7 +123,20 @@ impl WalkNodeReservations {
                                 ))?;
                             position[axis] = coordinate as i32;
                         }
-                        Ok(WalkNode { position, owner: 0 })
+                        let links = node["routes"].as_array().ok_or_else(|| anyhow::anyhow!(
+                            "world {world} walk_node_maps map {map} node {index}: routes absent or invalid"
+                        ))?;
+                        ensure!(node["route_count"].as_u64() == Some(links.len() as u64) && links.len() <= usize::from(u8::MAX),
+                            "world {world} walk_node_maps map {map} node {index}: route_count does not match routes");
+                        let links = links.iter().enumerate().map(|(route, link)| {
+                            let target = link["target_node_id"].as_u64()
+                                .filter(|&target| target < nodes.len() as u64 && target <= i16::MAX as u64)
+                                .ok_or_else(|| anyhow::anyhow!("world {world} walk_node_maps map {map} node {index} route {route}: target_node_id absent or invalid"))? as usize;
+                            let cost = link["cost"].as_u64().and_then(|value| u16::try_from(value).ok())
+                                .ok_or_else(|| anyhow::anyhow!("world {world} walk_node_maps map {map} node {index} route {route}: cost absent or invalid"))?;
+                            Ok(route::WalkLink { target, cost })
+                        }).collect::<Result<Vec<_>>>()?;
+                        Ok(WalkNode { position, owner: 0, links })
                     })
                     .collect::<Result<Vec<_>>>()
             })

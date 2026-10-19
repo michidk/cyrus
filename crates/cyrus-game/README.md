@@ -1222,3 +1222,12 @@ snapshots and reset with combat construction. Point-navigation pursuit still
 reports unsupported after retaining its transition. These rules follow
 [preservation's perception contract](https://github.com/michidk/redguard-preservation/commit/e8431db).
 This does not complete automatic combat decisions or START pirate acceptance.
+
+`ScriptWorld::next_walk_node` selects an explicit next hop using authored links,
+live source-node reservations and optional local-player distance exclusion.
+Shared link flags and exact-one backtracking inhibition survive session snapshots.
+**Verified:** 1,260 original/production searches agree, and a wrong-owner mutation
+fails. Public contracts cover ordering, costs, duplicate links, player admission,
+restoration and invalid metadata; all 27 installed maps prepare successfully.
+This service does not reserve nodes or move actors. The full point movement
+state machine, live pursuit and native/browser combat acceptance remain open.
