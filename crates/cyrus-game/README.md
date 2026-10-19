@@ -91,4 +91,3 @@ an install is available. Code changes require `just gates` after the final
 relevant edit. Runtime changes also require the applicable headless, replay or
 original-game comparison. See [METHOD](../../docs/METHOD.md) and
 [SETUP](../../docs/SETUP.md) for the verification and launch workflows.
-
