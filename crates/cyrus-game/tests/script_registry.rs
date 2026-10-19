@@ -23687,6 +23687,387 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
     }
 }
 
+fn player_health_fixture() -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (scripts, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let id = world.id(index).unwrap();
+    assert_eq!(world.actors()[index].attributes()[3], 0);
+    world
+        .apply_selected_contact_health(
+            id,
+            50,
+            ScriptInputs {
+                hud: Some(&ScriptHud::default()),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::from_state(42),
+            &mut |_, _| panic!("fixture healing sound"),
+        )
+        .unwrap();
+    assert_eq!(world.globals().selected_health().unwrap().displayed(), 50);
+    (scripts, world, data, scene)
+}
+
+#[test]
+fn selected_health_publishes_clamped_healing_without_random_or_death() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    for (change, expected) in [(0, 50), (7, 57), (300, 100), (i32::MAX, 0)] {
+        let (_, mut world, _, _) = player_health_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let id = world.id(index).unwrap();
+        assert_eq!(world.actors()[index].attributes()[3], 50);
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        world
+            .apply_selected_contact_health(
+                id,
+                change,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| panic!("healing must not dispatch sound"),
+            )
+            .unwrap();
+        assert_eq!(world.actors()[index].attributes()[3], expected as u8);
+        let state = world.globals().selected_health().unwrap();
+        assert_eq!(state.maximum(), 100);
+        assert_eq!(state.displayed(), expected);
+        assert!(!state.hit_inhibited());
+        assert_eq!(hud.health_feedback_ticks(), 25);
+        assert_eq!(random.state(), 42);
+    }
+}
+
+#[test]
+fn selected_health_rejects_missing_hud_before_actor_write() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs};
+    let (_, mut world, _, _) = player_health_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let id = world.id(index).unwrap();
+    let initial = world.actors()[index].attributes()[3];
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let error = world
+        .apply_selected_contact_health(id, 7, ScriptInputs::default(), &mut random, &mut |_, _| {
+            panic!("unexpected sound")
+        })
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("HUD owner unavailable"));
+    assert_eq!(world.actors()[index].attributes()[3], initial);
+    assert_eq!(
+        world.globals().selected_health().unwrap().displayed(),
+        i32::from(initial)
+    );
+    assert_eq!(random.state(), 42);
+}
+
+#[test]
+fn selected_health_retains_damage_before_feedback_failure_without_publication() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    let (_, mut world, _, _) = player_health_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let id = world.id(index).unwrap();
+    let initial = world.actors()[index].attributes()[3];
+    let hud = ScriptHud::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let error = world
+        .apply_selected_contact_health(
+            id,
+            -7,
+            ScriptInputs {
+                hud: Some(&hud),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _| panic!("unexpected sound"),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("selected reaction nominal ticks unavailable"));
+    assert_eq!(
+        world.actors()[index].attributes()[3],
+        initial.saturating_sub(7)
+    );
+    assert_eq!(
+        world.globals().selected_health().unwrap().displayed(),
+        i32::from(initial)
+    );
+    assert_eq!(hud.health_feedback_ticks(), 25);
+    let mut expected = cyrus_game::random::EngineRandom::from_state(42);
+    expected.draw();
+    assert_eq!(random.state(), expected.state());
+}
+
+fn replace_health_test_animation(
+    mut world: ScriptWorld,
+    scripts: &Scripts,
+    data: &mut cyrus_assets::animation::Animations,
+    index: usize,
+    group: u16,
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> ScriptWorld {
+    use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    let mut saved = movement_snapshot(&world, scripts, data);
+    saved["actors"][index]["animation"] = serde_json::Value::Null;
+    edit(&mut saved);
+    let globals = std::mem::take(world.globals_mut());
+    let mut restored = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &WorldSnapshotSources {
+            player: None,
+            scripts,
+            animations: data,
+            collision: &Default::default(),
+        },
+        WorldRestoreContext {
+            generation: world.generation() + 1,
+            globals,
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    restored
+        .bind_animation(restored.id(index).unwrap(), data, group)
+        .unwrap();
+    restored
+}
+
+#[test]
+fn selected_health_reaction_suppression_preserves_random_and_publishes_damage() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage};
+    for group in [73, 74, 117, 118, 132, 133] {
+        let (scripts, world, mut data, _) = player_health_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap();
+        definition["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}));
+        let mut world =
+            replace_health_test_animation(world, &scripts, &mut data, index, group, |_| {});
+        let id = world.id(index).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        let initial = world.actors()[index].attributes()[3];
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        world
+            .apply_selected_contact_health(
+                id,
+                -7,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| panic!("suppressed reaction must not dispatch sound"),
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[index].attributes()[3],
+            initial.saturating_sub(7)
+        );
+        assert_eq!(
+            world.globals().selected_health().unwrap().displayed(),
+            i32::from(initial.saturating_sub(7))
+        );
+        assert_eq!(random.state(), 42);
+        assert_eq!(
+            world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+            group
+        );
+    }
+}
+
+#[test]
+fn selected_health_publishes_damage_after_parity_reaction_and_sound() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    for (seed, group) in [(1, 133), (42, 132)] {
+        let (scripts, world, mut data, _) = player_health_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap();
+        for group in [132, 133] {
+            definition["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":[{"opcode":4,"sound_param":9,"volume_shift":0},{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}));
+        }
+        let mut world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |_| {});
+        let id = world.id(index).unwrap();
+        assert_eq!(world.actors()[index].attributes()[3], 50);
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(seed);
+        let mut expected = cyrus_game::random::EngineRandom::from_state(seed);
+        expected.draw();
+        let mut sound_count = 0;
+        world
+            .apply_selected_contact_health(
+                id,
+                -7,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |receiver, _| {
+                    assert_eq!(receiver, id);
+                    sound_count += 1;
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(sound_count, 1);
+        assert_eq!(
+            world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+            group
+        );
+        assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
+        assert_eq!(random.state(), expected.state());
+    }
+}
+
+#[test]
+fn selected_health_keeps_ledge_and_attached_rope_cleanup_explicit() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    for (field, value, boundary) in [
+        (
+            "living_state",
+            serde_json::json!(15),
+            "ledge-action cleanup unavailable",
+        ),
+        (
+            "rope_attached",
+            serde_json::json!(true),
+            "attached-rope destruction unavailable",
+        ),
+    ] {
+        let (scripts, world, mut data, _) = player_health_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let mut world =
+            replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+                saved["actors"][index]["control"][field] = value;
+            });
+        let id = world.id(index).unwrap();
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(1);
+        let error = world
+            .apply_selected_contact_health(
+                id,
+                -7,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(boundary), "{error:#}");
+        assert_eq!(world.actors()[index].attributes()[3], 43);
+        assert_eq!(world.globals().selected_health().unwrap().displayed(), 50);
+        assert_eq!(hud.health_feedback_ticks(), 25);
+    }
+}
+
+#[test]
+fn hurt_taunt_uses_ordered_selection_without_clock_or_target_distance() {
+    use cyrus_game::script::{CombatControlState, ScriptInputs};
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.attributes.insert("attr_num_taunts".into(), 1);
+            actor.combat_taunts = vec![CombatTaunt {
+                trigger: 2,
+                label: *b"HURT",
+                animation: 0,
+            }];
+        },
+        |saved| {
+            saved["actors"][0]["control"]["combat"] =
+                serde_json::to_value(CombatControlState::default()).unwrap();
+            saved["actors"][0]["control"]["combat"]["target"] = serde_json::json!([1, 1]);
+            saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([1000000, 0, 0]);
+        },
+    );
+    let id = world.id(0).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    let mut expected = cyrus_game::random::EngineRandom::from_state(42);
+    expected.draw();
+    let error = world
+        .request_hurt_combat_taunt(
+            id,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |_, _| panic!("unexpected sound"),
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("playback source unavailable"),
+        "{error:#}"
+    );
+    assert_eq!(random.state(), expected.state());
+}
+
 #[test]
 fn contact_death_prefers_122_then_121_and_retains_combat_default() {
     use cyrus_game::script::CombatControlState;

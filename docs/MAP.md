@@ -146,7 +146,7 @@ module where it is defined and regenerate.
 - `src/script/decision.rs` — Nonplayer decision-stage executors. The pure state machines follow the original's attack
 - `src/script/dialogue.rs` — Shared dialogue records follow preservation's engine/sound.md initialization.
 - `src/script/flags.rs` — Installed global flag types and native latch operations from preservation's SOUP rules.
-- `src/script/hud.rs` — Session inventory, compass use, power-up slots and accepted logbook writes.
+- `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
 - `src/script/locomotion.rs` — Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
@@ -173,6 +173,7 @@ module where it is defined and regenerate.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
 - `src/script/registry/ground.rs` — Ordinary ground queries retain model ownership and selected-player fallback history.
 - `src/script/registry/hazard.rs` — The nonplayer step hazard test follows the original's destination surface classification.
+- `src/script/registry/health.rs` — Selected-player additive health; contact callers retain death dispatch ownership.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.

@@ -194,10 +194,15 @@ impl ScriptWorld {
                 {
                     continue;
                 }
-                anyhow::ensure!(
-                    geometry.environment.selected_player != Some(defender),
-                    "face target actor {index}: selected hit-inhibition owner unavailable"
-                );
+                if geometry.environment.selected_player == Some(defender)
+                    && self
+                        .globals
+                        .selected_health()
+                        .context("selected hit-inhibition owner unavailable")?
+                        .hit_inhibited()
+                {
+                    continue;
+                }
                 let attacker = &self.actors[id.index];
                 let control = attacker
                     .control
@@ -250,11 +255,21 @@ impl ScriptWorld {
                             .damage
                             .context("contact motion damage unavailable")?
                     };
-                    self.apply_nonplayer_contact_health(
-                        defender,
-                        damage.wrapping_neg(),
-                        geometry.environment,
-                    )?;
+                    if geometry.environment.selected_player == Some(defender) {
+                        self.apply_selected_contact_health(
+                            defender,
+                            damage.wrapping_neg(),
+                            inputs,
+                            random,
+                            sounds,
+                        )?;
+                    } else {
+                        self.apply_nonplayer_contact_health(
+                            defender,
+                            damage.wrapping_neg(),
+                            geometry.environment,
+                        )?;
+                    }
                     if self.actors[index].attributes[3] == 0 {
                         self.dispatch_contact_death_zero(defender, inputs.nominal_ticks, sounds)?;
                     }

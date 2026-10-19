@@ -1,4 +1,4 @@
-//! Session inventory, compass use, power-up slots and accepted logbook writes.
+//! Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 use crate::preferences::Preferences;
 use anyhow::{Context, Result};
 use bevy::prelude::Resource;
@@ -20,6 +20,7 @@ pub struct ScriptHudSnapshot {
     next_slot: usize,
     compass_on: bool,
     use_consumed: bool,
+    health_feedback_ticks: u32,
 }
 
 /// Result of the current item-use gates, before consuming the held-use latch.
@@ -48,6 +49,7 @@ struct State {
     journal: Option<super::Journal>,
     compass_on: bool,
     use_consumed: bool,
+    health_feedback_ticks: u32,
 }
 
 impl std::fmt::Debug for ScriptHud {
@@ -65,7 +67,7 @@ impl ScriptHud {
             anyhow::bail!("script HUD inventory initialization: {error}");
         }
         Ok(ScriptHudSnapshot {
-            version: 1,
+            version: 2,
             frames: state
                 .data
                 .context("script HUD installed atlas unavailable")?,
@@ -84,6 +86,7 @@ impl ScriptHud {
             next_slot: state.next_slot,
             compass_on: state.compass_on,
             use_consumed: state.use_consumed,
+            health_feedback_ticks: state.health_feedback_ticks,
         })
     }
 
@@ -96,7 +99,7 @@ impl ScriptHud {
         snapshot: ScriptHudSnapshot,
     ) -> Result<Self> {
         anyhow::ensure!(
-            snapshot.version == 1,
+            snapshot.version == 2,
             "script HUD snapshot version {} is unsupported",
             snapshot.version
         );
@@ -123,6 +126,10 @@ impl ScriptHud {
                 "script HUD power-up slots repeat frame {first}"
             );
         }
+        anyhow::ensure!(
+            snapshot.health_feedback_ticks <= 50,
+            "script HUD health feedback timer outside 0..=50"
+        );
         let inventory = super::Inventory::from_snapshot(hud, snapshot.inventory)
             .context("script HUD inventory replacement")?;
         let journal = super::Journal::from_snapshot(hud, preferences, snapshot.journal)
@@ -136,7 +143,48 @@ impl ScriptHud {
             journal: Some(journal),
             compass_on: snapshot.compass_on,
             use_consumed: snapshot.use_consumed,
+            health_feedback_ticks: snapshot.health_feedback_ticks,
         })))
+    }
+
+    /// Retained candle-feedback ticks. Fifty is pinned; a fresh HUD starts at zero.
+    pub fn health_feedback_ticks(&self) -> u32 {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .health_feedback_ticks
+    }
+
+    /// Health feedback sets 25 ticks unless pinned, including unchanged health.
+    /// Follows preservation's selected additive-health feedback rule.
+    pub fn request_health_feedback(&self) {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if state.health_feedback_ticks < 50 {
+            state.health_feedback_ticks = 25;
+        }
+    }
+
+    /// Weapon transitions explicitly replace the timer, including its pin.
+    pub fn reset_health_feedback(&self) {
+        self.0
+            .lock()
+            .expect("script HUD lock poisoned")
+            .health_feedback_ticks = 25;
+    }
+
+    /// Project candle visibility before decrementing its shared nominal-tick timer.
+    /// Drawn weapons pin it while unlocked; hidden or pinned feedback does not age.
+    /// The caller supplies each admitted HUD clock step only once.
+    pub fn advance_health_feedback(&self, drawn: bool, lockout: u16, mode: u8, ticks: u32) -> bool {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if drawn && lockout == 0 {
+            state.health_feedback_ticks = 50;
+        }
+        let visible = (state.health_feedback_ticks != 0 || mode != 0) && lockout == 0;
+        if visible && state.health_feedback_ticks < 50 {
+            state.health_feedback_ticks = state.health_feedback_ticks.saturating_sub(ticks);
+        }
+        visible
     }
 
     /// Configure once from the installed atlas and RTX catalog, retaining local load errors.
@@ -469,5 +517,32 @@ impl ScriptHud {
                 .add_log(tag.integer()?)?;
         }
         Ok(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScriptHud;
+
+    #[test]
+    fn health_feedback_has_one_timer_with_ordered_visibility_and_pin_rules() {
+        let hud = ScriptHud::default();
+        assert_eq!(hud.health_feedback_ticks(), 0);
+        assert!(!hud.advance_health_feedback(false, 0, 0, 1));
+        hud.request_health_feedback();
+        assert!(hud.advance_health_feedback(false, 0, 0, 24));
+        assert_eq!(hud.health_feedback_ticks(), 1);
+        assert!(hud.advance_health_feedback(false, 0, 0, 1));
+        assert!(!hud.advance_health_feedback(false, 0, 0, 1));
+        hud.request_health_feedback();
+        assert!(!hud.advance_health_feedback(false, 1, 0, 100));
+        assert_eq!(hud.health_feedback_ticks(), 25);
+        assert!(hud.advance_health_feedback(true, 0, 0, 100));
+        hud.request_health_feedback();
+        assert_eq!(hud.health_feedback_ticks(), 50);
+        hud.reset_health_feedback();
+        assert_eq!(hud.health_feedback_ticks(), 25);
+        assert!(hud.advance_health_feedback(false, 0, 1, 100));
+        assert_eq!(hud.health_feedback_ticks(), 0);
     }
 }

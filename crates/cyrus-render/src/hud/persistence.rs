@@ -29,7 +29,7 @@ impl HudState {
         let mut state = self.clone();
         state.frames = HudPresentationAssets::default();
         Ok(HudPresentationSnapshot {
-            version: 1,
+            version: 2,
             source_identity: source_identity(asset)?,
             state,
             elapsed_bits: self.elapsed.to_bits(),
@@ -47,7 +47,7 @@ impl HudState {
         snapshot: HudPresentationSnapshot,
     ) -> Result<Self> {
         ensure!(
-            snapshot.version == 1,
+            snapshot.version == 2,
             "HUD presentation snapshot version unsupported"
         );
         ensure!(
@@ -75,7 +75,7 @@ impl HudState {
 
 fn validate(state: &HudState, asset: &HudAsset) -> Result<()> {
     ensure!(
-        state.health <= 100 && state.candle_mode <= 2 && state.show_timer <= 50,
+        state.health <= 100 && state.candle_mode <= 2,
         "HUD presentation health/candle state outside range"
     );
     ensure!(

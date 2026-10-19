@@ -2,6 +2,8 @@
 use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
 mod attack;
+mod health;
+pub use health::SelectedHealthState;
 pub(super) mod body;
 pub(super) mod bounds;
 mod combat_decision;
@@ -1652,6 +1654,10 @@ impl ScriptWorld {
             .as_mut()
             .expect("player role has allocation state");
         self.globals.initialize_player_controller();
+        if matches!(actor.source, ScriptActorSource::Player) {
+            self.globals.selected_health =
+                Some(super::SelectedHealthState::initialized(actor.attributes[3]));
+        }
         control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
         control.combat = super::CombatControlState::initialize(
             &actor.attributes,

@@ -157,6 +157,7 @@ pub struct GameplayGlobals {
     player_idle_counter: Option<i32>,
     controller_prelude: Option<ControllerPrelude>,
     pub(super) selected_combat_inhibition: Option<i32>,
+    pub(super) selected_health: Option<super::SelectedHealthState>,
     /// World-loop iterations, reset on entry and incremented before ordinary traversal.
     pub(super) world_loop_frame: u32,
     pub(super) sound_maintenance: super::SoundMaintenance,
@@ -869,6 +870,7 @@ pub(super) struct GameplayGlobalsSnapshot {
     player_idle_counter: Option<i32>,
     controller_prelude: Option<ControllerPrelude>,
     selected_combat_inhibition: Option<i32>,
+    selected_health: Option<super::SelectedHealthState>,
     #[serde(default)]
     world_loop_frame: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
@@ -905,6 +907,7 @@ impl GameplayGlobals {
             player_idle_counter: self.player_idle_counter,
             controller_prelude: self.controller_prelude.clone(),
             selected_combat_inhibition: self.selected_combat_inhibition,
+            selected_health: self.selected_health.clone(),
             world_loop_frame: self.world_loop_frame,
             sound_maintenance: self.sound_maintenance.snapshot(),
             menu_state: self.menu_state,
@@ -942,6 +945,9 @@ impl GameplayGlobals {
                     format!("session snapshot actor {generation}/{index}: replacement absent")
                 })
         };
+        if let Some(health) = &saved.selected_health {
+            health.validate()?;
+        }
         let combat_messages = super::CombatMessages::from_snapshot(saved.combat_messages, &rebind)?;
         let dialogue = saved
             .dialogue
@@ -963,6 +969,7 @@ impl GameplayGlobals {
             player_idle_counter: saved.player_idle_counter,
             controller_prelude: saved.controller_prelude,
             selected_combat_inhibition: saved.selected_combat_inhibition,
+            selected_health: saved.selected_health,
             world_loop_frame: saved.world_loop_frame,
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,

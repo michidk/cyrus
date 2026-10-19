@@ -68,6 +68,7 @@ pub use dialogue::{
 mod flags;
 pub use flags::GlobalFlagsSnapshot;
 mod hud;
+pub use registry::SelectedHealthState;
 mod inventory;
 mod journal;
 pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};

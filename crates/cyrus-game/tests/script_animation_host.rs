@@ -3819,6 +3819,8 @@ fn hud_snapshot_replacement_preserves_continuation_without_io_or_startup() {
     hud_call(Some(&hud), "ShowBitmap", &[0, 2]).unwrap();
     hud_call(Some(&hud), "AddLog", &[i32::from_le_bytes(*b"TEST")]).unwrap();
     assert!(hud.compass_input(true, CompassUse::Accepted));
+    hud.request_health_feedback();
+    hud.advance_health_feedback(false, 0, 0, 12);
     let mut saved = serde_json::to_value(hud.snapshot().unwrap()).unwrap();
     saved["inventory"]["items"]["1"]["count"] = 77.into();
     saved["inventory"]["items"]["1"]["hidden"] = true.into();
@@ -3831,6 +3833,7 @@ fn hud_snapshot_replacement_preserves_continuation_without_io_or_startup() {
     )
     .unwrap();
     assert!(replacement.ready());
+    assert_eq!(replacement.health_feedback_ticks(), 13);
     assert_eq!(
         serde_json::to_value(replacement.snapshot().unwrap()).unwrap(),
         saved
@@ -3854,6 +3857,9 @@ fn hud_snapshot_replacement_preserves_continuation_without_io_or_startup() {
         "replacement must not consume live notification"
     );
     assert_eq!(hud.inventory(None).unwrap().counts[&1], 1);
+    replacement.reset_health_feedback();
+    assert_eq!(replacement.health_feedback_ticks(), 25);
+    assert_eq!(hud.health_feedback_ticks(), 13);
 }
 
 #[test]
@@ -3869,7 +3875,8 @@ fn hud_snapshot_rejects_invalid_candidates_without_mutating_live_state() {
     hud.configure(&asset, &preferences);
     let saved = serde_json::to_value(hud.snapshot().unwrap()).unwrap();
     for (pointer, value) in [
-        ("/version", serde_json::json!(2)),
+        ("/version", serde_json::json!(1)),
+        ("/health_feedback_ticks", serde_json::json!(51)),
         ("/frames", serde_json::json!(4)),
         ("/next_slot", serde_json::json!(2)),
         ("/powerups", serde_json::json!([[2, 0], null])),

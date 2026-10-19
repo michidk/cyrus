@@ -84,12 +84,36 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        anyhow::ensure!(
+            !matches!(trigger, 0 | 2 | 6 | 10 | 11),
+            "type {trigger} requires ordered selection"
+        );
+        self.request_combat_taunt(id, trigger, frame_value, inputs, random, sounds)
+    }
+
+    /// Request ordered hurt-category selection without a clock or target-distance gate.
+    /// Empty lists and dead receivers consume no random draws or playback services.
+    pub fn request_hurt_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        self.request_combat_taunt(id, 2, 0, inputs, random, sounds)
+    }
+
+    fn request_combat_taunt(
+        &mut self,
+        id: ScriptActorId,
+        trigger: u8,
+        frame_value: i32,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
         let world = self.world;
         let mut request = || -> Result<()> {
-            anyhow::ensure!(
-                !matches!(trigger, 0 | 2 | 6 | 10 | 11),
-                "type {trigger} requires ordered selection"
-            );
             let index = self.resolve(id)?;
             let actor = &self.actors[index];
             let control = actor
@@ -122,7 +146,9 @@ impl ScriptWorld {
             {
                 return Ok(());
             }
-            if let Some(target) = combat.target {
+            if trigger != 2
+                && let Some(target) = combat.target
+            {
                 let target = self.resolve(target)?;
                 let from = self.sight_position(index)?;
                 let to = self.sight_position(target)?;
@@ -133,15 +159,19 @@ impl ScriptWorld {
                     return Ok(());
                 }
             }
-            let chosen = super::super::combat::select_timed_combat_taunt(
-                &actor.combat_taunts,
-                trigger,
-                combat.allocation_index.wrapping_add(frame_value),
-                combat.taunt_period,
-                &mut || random.draw(),
-            )?;
-            let Some(chosen) = chosen else { return Ok(()) };
-            let taunt = actor.combat_taunts[chosen].clone();
+            let taunt = if trigger == 2 {
+                super::select_combat_taunt(actor, trigger, random).cloned()
+            } else {
+                let chosen = super::super::combat::select_timed_combat_taunt(
+                    &actor.combat_taunts,
+                    trigger,
+                    combat.allocation_index.wrapping_add(frame_value),
+                    combat.taunt_period,
+                    &mut || random.draw(),
+                )?;
+                chosen.map(|chosen| actor.combat_taunts[chosen].clone())
+            };
+            let Some(taunt) = taunt else { return Ok(()) };
             let animation_admitted = if taunt.animation != 0
                 && self.updates.animation_system
                 && actor.animation.is_some()
@@ -179,8 +209,9 @@ impl ScriptWorld {
             Ok(())
         };
         request().with_context(|| {
+            let selection = if trigger == 2 { "ordered" } else { "timed" };
             format!(
-                "world {world} instance {} timed combat taunt type {trigger}",
+                "world {world} instance {} {selection} combat taunt type {trigger}",
                 id.index
             )
         })

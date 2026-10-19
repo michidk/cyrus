@@ -26,8 +26,6 @@ pub struct HudPlugin;
 /// The player's fixed maximum and spawn health; no INI key sets it.
 const MAX_HEALTH: u8 = 100;
 /// Show timer values: a trigger shows the candle for 25 ticks; 50 pins it and never decays.
-const SHOW_TICKS: u32 = 25;
-const SHOW_PINNED: u32 = 50;
 /// Walk-mode and auto-defend notices last 24 ticks.
 const NOTICE_TICKS: u32 = 24;
 
@@ -121,8 +119,6 @@ pub struct HudState {
     pub candle_mode: u8,
     pub candle_visible: bool,
     candle: Candle,
-    /// Candle show timer in ticks (25 after a trigger, 50 pinned).
-    show_timer: u32,
     /// Caller-supplied activation lockout, retaining all 16 bits.
     pub lockout: u16,
     /// Selected player weapon state, projected from the logical actor when known.
@@ -216,7 +212,6 @@ impl HudState {
             candle_mode: preferences.candle_mode,
             candle_visible: preferences.candle_mode != 0,
             candle: Candle::default(),
-            show_timer: 0,
             lockout: 0,
             sword_drawn: false,
             player_type: 0,
@@ -243,25 +238,20 @@ impl HudState {
 
     /// Sets player health (clamped to 100); a change shows the candle for 25 ticks
     /// unless the timer is pinned.
-    pub fn set_health(&mut self, health: u8) {
+    pub fn set_health(&mut self, health: u8, hud: &cyrus_game::script::ScriptHud) {
         let health = health.min(MAX_HEALTH);
-        if health != self.health && self.show_timer < SHOW_PINNED {
-            self.show_timer = SHOW_TICKS;
+        if health != self.health {
+            hud.request_health_feedback();
         }
         self.health = health;
     }
 
     /// Drawing or sheathing the sword shows the candle for 25 ticks.
-    pub fn set_sword_drawn(&mut self, drawn: bool) {
+    pub fn set_sword_drawn(&mut self, drawn: bool, hud: &cyrus_game::script::ScriptHud) {
         if drawn != self.sword_drawn {
-            self.show_timer = SHOW_TICKS;
+            hud.reset_health_feedback();
         }
         self.sword_drawn = drawn;
-    }
-
-    /// An explicit weapon cleanup resets the timer even without a flag transition.
-    pub fn show_candle(&mut self) {
-        self.show_timer = SHOW_TICKS;
     }
 
     /// A new logbook entry plays the scroll icon once unless it is already playing.
@@ -666,7 +656,7 @@ fn update(
         .as_mut()
         .is_some_and(|world| world.globals_mut().take_candle_show_request())
     {
-        state.show_candle();
+        script_hud.reset_health_feedback();
     }
     let activation = activation.as_deref().filter(|inputs| {
         world
@@ -699,11 +689,16 @@ fn update(
     {
         let attributes = player.attributes();
         state.player_type = attributes[105];
-        state.set_health(attributes[3]);
+        let displayed = world
+            .as_ref()
+            .and_then(|world| world.globals().selected_health())
+            .map_or(attributes[3], |health| health.displayed() as u8);
+        state.set_health(displayed, &script_hud);
         state.set_sword_drawn(
             player
                 .control_state()
                 .map_or(actor.weapon_drawn, |control| control.weapon_drawn),
+            &script_hud,
         );
     }
     let compass_eligible = match (world.as_ref(), activation, player_state) {
@@ -735,14 +730,12 @@ fn update(
         .filter(|clock| clock.is_changed())
         .map_or(0, |clock| clock.step().nominal_ticks);
 
-    // Candle.
-    if state.sword_drawn && state.lockout == 0 {
-        state.show_timer = SHOW_PINNED;
-    }
-    state.candle_visible = (state.show_timer != 0 || state.candle_mode != 0) && state.lockout == 0;
-    if state.candle_visible && state.show_timer < SHOW_PINNED {
-        state.show_timer = state.show_timer.saturating_sub(ticks);
-    }
+    state.candle_visible = script_hud.advance_health_feedback(
+        state.sword_drawn,
+        state.lockout,
+        state.candle_mode,
+        ticks,
+    );
 
     // Select the overlay path before cycling; timer zero crossings keep their entry path.
     let bindings = state.bindings;
@@ -764,8 +757,11 @@ fn update(
                 Ok(overlay) => {
                     let attributes = world.actors()[inputs.player.index].attributes();
                     state.player_type = attributes[105];
-                    // attr_health is attribute 3, clamped to 0..=100 by `set_health`.
-                    state.set_health(attributes[3]);
+                    let displayed = world
+                        .globals()
+                        .selected_health()
+                        .map_or(attributes[3], |health| health.displayed() as u8);
+                    state.set_health(displayed, &script_hud);
                     overlay
                 }
                 Err(error) => {
@@ -1052,14 +1048,20 @@ mod tests {
     #[test]
     fn show_timer_and_logbook_follow_their_triggers() {
         let mut state = HudState::new(&asset(0), None, HudPresentationAssets::default());
-        state.set_health(80);
-        assert_eq!(state.show_timer, SHOW_TICKS);
-        state.show_timer = SHOW_PINNED;
-        state.set_health(70);
-        assert_eq!(state.show_timer, SHOW_PINNED, "a pinned timer is kept");
-        state.show_candle();
+        let script_hud = cyrus_game::script::ScriptHud::default();
+        state.set_health(80, &script_hud);
+        assert_eq!(script_hud.health_feedback_ticks(), 25);
+        script_hud.advance_health_feedback(true, 0, 0, 0);
+        state.set_health(70, &script_hud);
         assert_eq!(
-            state.show_timer, SHOW_TICKS,
+            script_hud.health_feedback_ticks(),
+            50,
+            "a pinned timer is kept"
+        );
+        script_hud.reset_health_feedback();
+        assert_eq!(
+            script_hud.health_feedback_ticks(),
+            25,
             "explicit weapon reset replaces the pin"
         );
         state.logbook_entry();
@@ -1559,11 +1561,22 @@ mod tests {
         }
         app.update();
         let state = app.world().resource::<HudState>();
-        assert_eq!(state.show_timer, 24);
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::script::ScriptHud>()
+                .health_feedback_ticks(),
+            24
+        );
         assert_eq!(state.notices, [23, 23]);
         app.update();
         let state = app.world().resource::<HudState>();
-        assert_eq!(state.show_timer, 24, "an old clock step is not replayed");
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::script::ScriptHud>()
+                .health_feedback_ticks(),
+            24,
+            "an old clock step is not replayed"
+        );
         assert_eq!(state.notices, [23, 23]);
         let candle = state.candle;
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
@@ -1576,7 +1589,12 @@ mod tests {
         app.update();
         let state = app.world().resource::<HudState>();
         assert_eq!(state.candle, candle);
-        assert_eq!(state.show_timer, 24);
+        assert_eq!(
+            app.world()
+                .resource::<cyrus_game::script::ScriptHud>()
+                .health_feedback_ticks(),
+            24
+        );
         assert_eq!(state.notices, [23, 23]);
     }
 
@@ -2071,7 +2089,7 @@ mod tests {
         };
         let prepared = HudState::new(&asset, None, frames);
         let mut live = prepared.clone();
-        live.set_health(47);
+        live.set_health(47, &cyrus_game::script::ScriptHud::default());
         live.logbook_entry();
         for _ in 0..9 {
             live.advance_frame();
@@ -2095,7 +2113,7 @@ mod tests {
             assert_eq!(restored.logbook_frame, live.logbook_frame);
         }
         for (pointer, value) in [
-            ("/version", serde_json::json!(2)),
+            ("/version", serde_json::json!(1)),
             ("/elapsed_bits", serde_json::json!(f32::NAN.to_bits())),
             ("/state/logbook_frame", serde_json::json!(32)),
             ("/state/candle/frame", serde_json::json!(81)),

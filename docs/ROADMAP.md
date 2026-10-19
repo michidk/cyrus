@@ -236,7 +236,7 @@ command or retaining its request does not count as executing its gameplay effect
 | Weapon contact and nonplayer health/death | Partial | Static and actor-owned face response, impact ordering, additive health and selector-zero death have focused tests and a successful headless START diagnostic | Noncombat actor-list response, attribute-126 segment path, transient response and selected-player health |
 | `MoveForward`, `MoveBackward`, `WalkForward`, `MoveLeft`, `MoveRight` | Partial | Supported synchronous ground/combat movement and collision probes; ordinary walking branches | Selected-player WalkForward; remaining noncombat strafe, deep-water/edge, ledge and unsupported movement branches |
 | Point walking, routes and `Wander` | Partial | Reservation/history ownership; supported direct/route phases, facing and phase-nine delays | Jump-route continuation, hit/collision transitions, direction-15 and exclusion branches; populated-map Wander |
-| Selected-player combat and health | Todo integration | Standalone role initialization, combat allocation/contact profile and shared logical actor exist | Separate hit inhibition, maximum/displayed health and timer, taunt/reaction, action/motion followups, death override and armed controller scheduling |
+| Selected-player combat and health | Partial | Standalone initialization, separate hit inhibition and maximum/displayed health, shared HUD timer, ordered hurt-taunt dispatch and ordinary unattached damage reactions | Ledge-action cleanup, attached-rope destruction, full inhibition lifecycle, death override and armed controller scheduling |
 | `SetHealth`, `AdjustHealth`, `ReplenishHealth`, `PlayerHealth` | Partial | Reads and supported nonplayer writes | Distinct health modes, selected-player HUD feedback, admission and death side effects; contact health does not automatically complete these commands |
 | `DrawSword`, `SheathSword`, weapon predicates | Partial | Shared holding/drawing/sheathing queries and supported nonplayer transitions | Selected-player HUD timer/camera selection and complete armed controls |
 | Script cameras and show/look/pan services | Todo integration | Installed camera settings/records, pose preparation, collision/terrain correction helpers | Session lifetime, live actor/geometry bindings, native dispatch/task continuation, publication and restoration; render-camera existence alone is insufficient |
@@ -785,6 +785,21 @@ wrapping/clamping and death-group preference/defaults. The installed production-
 audio headless START diagnostic completes 1,916 ordinary traversals with zero
 failed or unsupported script actors. Selected-player health, complete combat
 outcomes and original/native/browser acceptance remain open.
+
+**Verified:** selected-player contact health now retains separate initialized
+maximum/displayed health and hit inhibition. The portable HUD owns the feedback
+timer, and presentation reads retained displayed health after successful feedback.
+Public tests cover signed wrapping/clamping, missing-HUD rejection, retained
+damage before feedback failure, all six current-group reaction suppressions and
+unarmed parity-selected animation starts with successful displayed-health
+publication for ordinary unattached receivers. Ledge-action cleanup and attached-
+rope destruction remain explicit boundaries. Ordered hurt-taunt dispatch bypasses target-distance and clock
+gates, following the [selected-health and taunt rules](https://github.com/michidk/redguard-preservation/commit/35a26de6b7dd881b4ba1e3e52cd6f16172fd0ad2).
+HUD snapshot continuation and renderer HUD tests pass. The installed production-
+audio headless START run completes 1,918 ordinary traversals with zero failed or
+unsupported script actors. Full reaction cleanup,
+inhibition lifecycle, selected death and native/browser combat acceptance remain
+open. Contact integration does not complete the health command family.
 
 Next, in dependency order: establish
 selected-player health/controller owners and remaining combat movement, complete
