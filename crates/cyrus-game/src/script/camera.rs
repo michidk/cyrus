@@ -506,6 +506,21 @@ pub struct ObjectPanState {
     final_distance: i32,
 }
 
+/// Inputs of one `showObjWorld` invocation: the actor, its camera attributes, a world position
+/// as the task arguments, and the poses the request modes read.
+#[derive(Clone, Copy, Debug)]
+pub struct WorldLocationInputs {
+    pub actor: super::ScriptActorId,
+    pub camera_move: u8,
+    pub attributes: [u8; 6],
+    pub position: [i32; 3],
+    /// The position the record binds to (the actor's effective position).
+    pub bound_position: [i32; 3],
+    /// The actor's own local position, which `attr_camera_move` two reads instead.
+    pub actor_position: [i32; 3],
+    pub bound_angles: [u16; 3],
+}
+
 /// Inputs of one `lookObj` invocation: the actor's camera attributes and pose, as for a
 /// location camera, and the task's duration.
 #[derive(Clone, Copy, Debug)]
@@ -946,6 +961,84 @@ impl CameraState {
         *state = next_state;
         *counter = next_counter;
         Ok(running && look.duration > 1)
+    }
+
+    /// One invocation of `showObjWorld`: a location camera whose three arguments are a world
+    /// position. The vector is `(position - selected record's position offset) << 8`, read from the
+    /// record selected on entry. The first invocation marks that record with flags `0x20` and
+    /// `0x01`, begins a scripted camera bound to the actor, converts its attributes to offsets and
+    /// writes the request `attr_camera_move` selects: the vector itself (zero, absolute), the
+    /// vector minus the bound position (one, relative) or the orbit of the vector minus the
+    /// actor's own position (two). Nothing is rotated and the record's offsets are not added. It then
+    /// runs one camera update through `update`, clears flag `0x01` and stays active. Later
+    /// invocations run the release step with duration zero and complete. As for `show_location`,
+    /// edits are committed only if `update` succeeds.
+    pub fn show_world_location(
+        &mut self,
+        inputs: &WorldLocationInputs,
+        counter: &mut u32,
+        elapsed: i32,
+        update: &mut dyn FnMut(&mut CameraState) -> Result<()>,
+    ) -> Result<bool> {
+        let mut next = self.clone();
+        let next_counter = counter.wrapping_add(1);
+        if next_counter != 1 || elapsed != 0 {
+            next.release_scripted(0, elapsed);
+            *self = next;
+            *counter = next_counter;
+            return Ok(false);
+        }
+        let entry = &mut next.records[next.selected.index()];
+        let vector: [i32; 3] = std::array::from_fn(|axis| {
+            inputs.position[axis]
+                .wrapping_sub(entry.position_offset[axis])
+                .wrapping_shl(8)
+        });
+        entry.flags |= 0x21;
+        next.begin_scripted()?;
+        let slot = next.selected.index();
+        next.records[slot].actor = inputs.actor;
+        next.set_location_offsets(inputs.attributes);
+        let record = &mut next.records[slot];
+        record.flags |= 0x01;
+        record.request_move(
+            inputs.camera_move,
+            vector,
+            std::array::from_fn(|axis| vector[axis].wrapping_sub(inputs.bound_position[axis])),
+            std::array::from_fn(|axis| vector[axis].wrapping_sub(inputs.actor_position[axis])),
+            inputs.bound_angles,
+        )?;
+        update(&mut next)?;
+        let slot = next.selected.index();
+        next.records[slot].flags &= !0x01;
+        *self = next;
+        *counter = next_counter;
+        Ok(true)
+    }
+
+    /// One invocation of `showObjWorldPan`: `showObjPan` with the task's world position converted
+    /// to `(position << 8) - selected_bound_position`, using the position the record selected on
+    /// entry is bound to, before `showObjPan` shifts it again. A negative duration completes
+    /// without calling `showObjPan`, so it leaves the camera untouched.
+    /// `pan.location.arguments` are the raw position.
+    pub fn show_object_world_pan(
+        &mut self,
+        pan: &ObjectPanInputs,
+        selected_bound_position: [i32; 3],
+        state: &mut Option<ObjectPanState>,
+        counter: &mut u32,
+        elapsed: i32,
+    ) -> Result<bool> {
+        if pan.duration < 0 {
+            return Ok(false);
+        }
+        let mut converted = *pan;
+        converted.location.arguments = std::array::from_fn(|axis| {
+            pan.location.arguments[axis]
+                .wrapping_shl(8)
+                .wrapping_sub(selected_bound_position[axis])
+        });
+        self.show_object_pan(&converted, state, counter, elapsed)
     }
 
     /// Location-camera setup: the actor's six attribute bytes (target x/y/z, then camera
