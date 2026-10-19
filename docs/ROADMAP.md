@@ -627,6 +627,19 @@ failures using the production taunt/ambient adapters, explicit view and false re
 input. This does not establish the duel, original pacing or native/browser combat
 acceptance.
 
+**Verified:** admitted animated nonplayer models settle equipped-weapon draw and
+sheath transitions against the wrapping animation progress byte and installed
+threshold attributes, preserving the companion motion byte. Weapon definitions
+are validated independently of player inventory counts. Held-item state controls
+draw admission independently of the drawn flag. The
+[published transition rules](https://github.com/michidk/redguard-preservation/commit/42218642e938c307ae3c2469ce0d4c0c103796a8)
+match 23,040 controlled original cases; replacing the inclusive threshold fails.
+Six weapon contracts and public model-admission/combat-entry checks pass.
+The installed production-audio START diagnostic now draws both pirates' weapons
+and reaches SPIRATE2's unsupported attack-processing stage after 64 ordinary
+traversals. Weapon attachment geometry, hit positions, selected-player integration
+and full combat acceptance remain open.
+
 Next, in dependency order:
 
 1. Compare installed allocation assignments and complete live

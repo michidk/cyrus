@@ -274,6 +274,18 @@ impl ScriptHud {
             .is_some_and(|items| items.owned_weapon(id)))
     }
 
+    pub(super) fn validate_weapon(&self, id: u8) -> Result<()> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        state
+            .inventory
+            .as_ref()
+            .context("installed inventory data unavailable")?
+            .validate_weapon(id)
+    }
+
     pub(super) fn validate_item(&self, id: u16) -> Result<()> {
         let state = self.0.lock().expect("script HUD lock poisoned");
         state

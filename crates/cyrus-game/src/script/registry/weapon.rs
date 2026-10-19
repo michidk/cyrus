@@ -98,6 +98,80 @@ impl<'a> CombatReceiver<'a> {
             position,
         })
     }
+    fn update_weapon_transition(
+        &mut self,
+        inputs: WeaponInputs,
+        hud: &crate::script::ScriptHud,
+        nominal_ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let actor = &*self.actor;
+        if !inputs.item_system_ready || inputs.shell_execution || actor.animation.is_none() {
+            return Ok(());
+        }
+        let control = actor
+            .control
+            .as_ref()
+            .context("weapon transition control unavailable")?;
+        if control.combat.is_none() && actor.attributes[110] == 0 {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            actor.attributes[110] == 0,
+            "weapon transition intrinsic weapon attachment unsupported"
+        );
+        let weapon = actor.attributes[23];
+        hud.validate_weapon(weapon)?;
+        let state = control.living_state;
+        let requested = match state {
+            20 => Some(91),
+            21 if actor.animation.as_ref().unwrap().playback.current_group() != Some(129) => {
+                Some(129)
+            }
+            _ => None,
+        };
+        let position = self.position;
+        let actor = &mut *self.actor;
+        let surface = actor.surface;
+        let animation = actor
+            .animation
+            .as_mut()
+            .expect("validated weapon animation");
+        if let Some(group) = requested {
+            let frame =
+                animation
+                    .playback
+                    .request_with_sounds(group, 0, nominal_ticks, &mut |sound| {
+                        sounds(
+                            self.id,
+                            crate::script::ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    })?;
+            animation.frame = frame.or(animation.frame);
+            // A newly requested sheath group is tested on the next admitted pass.
+            if state == 21 {
+                return Ok(());
+            }
+        }
+        let (group, pending, progress) = animation.playback.frame_wait_state()?;
+        let control = actor.control.as_mut().expect("validated weapon control");
+        if state == 20 && group == 91 && progress >= actor.attributes[35] {
+            control.weapon_drawn = true;
+            control.living_state = 0;
+        } else if state == 21 && group == 129 && progress >= actor.attributes[34] {
+            control.weapon_drawn = false;
+            control.living_state = 0;
+            if pending == 129 {
+                animation.playback.cancel_pending_group(129)?;
+            }
+        }
+        Ok(())
+    }
+
     fn cleanup(
         &mut self,
         selected_player: ScriptActorId,
@@ -208,7 +282,7 @@ impl<'a> CombatReceiver<'a> {
         {
             return Ok(());
         }
-        if control.weapon_drawn || control.combat.is_none() {
+        if control.held_item.is_some_and(|item| item != 0) || control.combat.is_none() {
             return self.cleanup(inputs.selected_player, nominal_ticks, sounds);
         }
         if (10..=19).contains(&control.living_state)
@@ -393,6 +467,30 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Settle draw/sheath state in the admitted pre-traversal model pass.
+    /// Thresholds are installed attributes 35/34 and compare the wrapping animation
+    /// progress byte, independently of model frames and command cursors. This logical
+    /// stage does not provide weapon attachment geometry or hit positions.
+    /// Follows preservation's [equipped-weapon transition](https://github.com/michidk/redguard-preservation/commit/4221864).
+    pub fn update_actor_weapon_transition(
+        &mut self,
+        id: ScriptActorId,
+        inputs: WeaponInputs,
+        hud: &crate::script::ScriptHud,
+        nominal_ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let world = self.world;
+        self.combat_receiver(id, inputs.selected_player)?
+            .update_weapon_transition(inputs, hud, nominal_ticks, sounds)
+            .with_context(|| {
+                format!(
+                    "world {world} instance {} equipped-weapon transition",
+                    id.index
+                )
+            })
+    }
+
     /// Clear an admitted receiver's weapon and motion state. Selected draw/sheath
     /// playback restores its stored default, with immediate commands at nominal ticks.
     pub fn cleanup_actor_weapon(
@@ -481,8 +579,10 @@ mod tests {
             version: 2,
             world: 7,
             metadata: serde_json::json!({"actors":[{"script_name":"CYRUS",
-                "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
-                "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]}]}]}),
+            "animation_groups":([0, 91, 129].map(|group| serde_json::json!({
+                "group_index":group,"anim_id":1,"anim_type":0,
+                "commands":[{"opcode":0,"frame_reference":10},{"opcode":0,"frame_reference":11},{"opcode":2,"value":0}]
+            })))}]}),
             sections: Default::default(),
             models: Default::default(),
             unsupported: Default::default(),
@@ -519,6 +619,202 @@ mod tests {
         }
     }
 
+    fn weapon_hud() -> crate::script::ScriptHud {
+        let data = cyrus_assets::hud::HudAsset {
+            labels: Default::default(),
+            images: vec![],
+            candle_mode: 0,
+            candle: [0; 2],
+            candle_size: [0; 2],
+            pickup: [0; 2],
+            prompt: [0; 2],
+            override_ticks: 0,
+            compass: [0; 2],
+            compass_size: [0; 2],
+            world_compass: Default::default(),
+            powerup_slots: [[0; 2]; 2],
+            powerup_sizes: vec![],
+            logbook: [0; 2],
+            logbook_size: [0; 2],
+            walk_mode: false,
+            auto_defend: false,
+            notices: Default::default(),
+            inventory: [(
+                1,
+                cyrus_assets::hud::InventoryItem {
+                    weapon: true,
+                    ..Default::default()
+                },
+            )]
+            .into(),
+            start_items: vec![],
+            items: vec![],
+            selected: None,
+            bindings: [0; 15],
+            font: Default::default(),
+            text_alpha: [0; 2],
+            player_text_alpha: [0; 2],
+        };
+        let hud = crate::script::ScriptHud::default();
+        hud.configure(&data, &crate::preferences::Preferences::default());
+        hud
+    }
+
+    #[test]
+    fn equipped_weapon_transitions_use_progress_threshold_and_preserve_companion() {
+        let hud = weapon_hud();
+        let id = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        for state in [20, 21] {
+            for threshold in [0, 1, 2, 255] {
+                let mut actor = actor();
+                actor.attributes[23] = 1;
+                actor.attributes[34] = threshold;
+                actor.attributes[35] = threshold;
+                let group = if state == 20 { 91 } else { 129 };
+                let animation = actor.animation.as_mut().unwrap();
+                animation.playback.force_request(group, 0, 0).unwrap();
+                for _ in 0..256 {
+                    if animation.playback.frame_wait_state().unwrap().2 == 1 {
+                        break;
+                    }
+                    animation.playback.advance(1).unwrap();
+                }
+                assert_eq!(animation.playback.frame_wait_state().unwrap().2, 1);
+                animation.playback.request(group, 0, 0).unwrap();
+                let control = actor.control.as_mut().unwrap();
+                control.living_state = state;
+                control.motion_companion = 7;
+                control.weapon_drawn = state == 21;
+                let mut globals = Default::default();
+                CombatReceiver::new(&mut actor, &mut globals, 7, id, None)
+                    .unwrap()
+                    .update_weapon_transition(
+                        WeaponInputs {
+                            selected_player: id,
+                            item_system_ready: true,
+                            shell_execution: false,
+                        },
+                        &hud,
+                        0,
+                        &mut |_, _| anyhow::bail!("unexpected transition sound"),
+                    )
+                    .unwrap();
+                let control = actor.control.as_ref().unwrap();
+                assert_eq!(control.living_state, if threshold <= 1 { 0 } else { state });
+                assert_eq!(
+                    control.weapon_drawn,
+                    if threshold <= 1 {
+                        state == 20
+                    } else {
+                        state == 21
+                    }
+                );
+                assert_eq!(control.motion_companion, 7);
+                let playback = &actor.animation.as_ref().unwrap().playback;
+                assert_eq!(playback.current_group(), Some(group));
+                assert_eq!(playback.frame_wait_state().unwrap().2, 1);
+                assert_eq!(
+                    playback.pending_group(),
+                    if state == 21 && threshold <= 1 {
+                        None
+                    } else {
+                        Some(group)
+                    }
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn newly_requested_sheath_waits_for_the_next_model_pass() {
+        let hud = weapon_hud();
+        let id = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        let mut actor = actor();
+        actor.attributes[23] = 1;
+        actor.attributes[34] = 0;
+        let control = actor.control.as_mut().unwrap();
+        control.living_state = 21;
+        control.weapon_drawn = true;
+        control.motion_companion = 7;
+        let mut globals = Default::default();
+        let mut receiver = CombatReceiver::new(&mut actor, &mut globals, 7, id, None).unwrap();
+        let inputs = WeaponInputs {
+            selected_player: id,
+            item_system_ready: true,
+            shell_execution: false,
+        };
+        receiver
+            .update_weapon_transition(inputs, &hud, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        let control = receiver.actor.control.as_ref().unwrap();
+        assert_eq!(
+            (
+                control.living_state,
+                control.weapon_drawn,
+                control.motion_companion
+            ),
+            (21, true, 7)
+        );
+        assert_eq!(
+            receiver
+                .actor
+                .animation
+                .as_ref()
+                .unwrap()
+                .playback
+                .current_group(),
+            Some(129)
+        );
+        receiver
+            .update_weapon_transition(inputs, &hud, 0, &mut |_, _| Ok(()))
+            .unwrap();
+        let control = receiver.actor.control.as_ref().unwrap();
+        assert_eq!(
+            (
+                control.living_state,
+                control.weapon_drawn,
+                control.motion_companion
+            ),
+            (0, false, 7)
+        );
+    }
+
+    #[test]
+    fn weapon_draw_uses_held_item_independently_of_drawn_flag() {
+        let id = ScriptActorId {
+            generation: 1,
+            index: 0,
+        };
+        for held_item in [None, Some(0), Some(7)] {
+            let mut actor = actor();
+            actor.attributes[23] = 1;
+            actor.control.as_mut().unwrap().held_item = held_item;
+            let mut globals = Default::default();
+            CombatReceiver::new(&mut actor, &mut globals, 7, id, None)
+                .unwrap()
+                .draw(
+                    WeaponInputs {
+                        selected_player: id,
+                        item_system_ready: true,
+                        shell_execution: false,
+                    },
+                    0,
+                    &mut |_, _| Ok(()),
+                )
+                .unwrap();
+            assert_eq!(
+                actor.control.as_ref().unwrap().living_state,
+                if held_item == Some(7) { 0 } else { 20 }
+            );
+            assert!(!actor.control.as_ref().unwrap().weapon_drawn);
+        }
+    }
     #[test]
     fn hand_item_rejects_edges_air_and_drawn_weapons_without_resolving_item() {
         for gate in 0..8 {

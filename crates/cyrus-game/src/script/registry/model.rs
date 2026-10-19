@@ -267,7 +267,13 @@ impl ScriptWorld {
     /// Refresh camera-selected models before ordinary simulation. Camera coordinates
     /// are Q8; PVO lookup truncates toward zero, while map membership uses its own rule.
     /// PVO-rejected ordinary actors retain records; rejected animation support clears them.
-    pub fn refresh_automatic_models(&mut self, data: &Animations, camera: [i32; 3]) -> Result<()> {
+    pub fn refresh_automatic_models(
+        &mut self,
+        data: &Animations,
+        camera: [i32; 3],
+        inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
         self.require_model_identity(data)?;
         let admission = self
             .model_admission
@@ -303,7 +309,45 @@ impl ScriptWorld {
                 self.actors[id.index].model.animation_radius = None;
                 continue;
             }
-            if let Err(error) = self.refresh_model_presentations(data, &[id]) {
+            let refreshed = (|| -> Result<()> {
+                self.refresh_model_presentations(data, &[id])?;
+                let actor = &self.actors[id.index];
+                if actor.attributes[23] == 0
+                    || actor
+                        .model
+                        .current
+                        .as_ref()
+                        .is_none_or(|model| model.animation.is_none())
+                {
+                    return Ok(());
+                }
+                let selected_player = self
+                    .actors
+                    .iter()
+                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                    .context("weapon model selected player unavailable")?;
+                if id.index == selected_player && actor.attributes[105] == 1 {
+                    return Ok(());
+                }
+                let hud = inputs.hud.context("weapon model inventory unavailable")?;
+                let weapon = super::WeaponInputs {
+                    selected_player: self.id(selected_player)?,
+                    item_system_ready: hud.inventory_ready()?,
+                    shell_execution: inputs
+                        .shell_execution
+                        .context("weapon model shell context unavailable")?,
+                };
+                self.update_actor_weapon_transition(
+                    id,
+                    weapon,
+                    hud,
+                    inputs
+                        .nominal_ticks
+                        .context("weapon model nominal ticks unavailable")?,
+                    sounds,
+                )
+            })();
+            if let Err(error) = refreshed {
                 self.actors[id.index].update_failure = Some(format!(
                     "world {} instance {} actor {} model presentation: {error:#}",
                     self.world,

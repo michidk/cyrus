@@ -255,6 +255,16 @@ impl ActorAnimation {
             .map(|(_, sequence)| sequence.command_cursor()))
     }
 
+    /// Cancel only a matching pending group, preserving current playback and progress.
+    /// Equipped-weapon sheath completion cancels group 129 this way.
+    pub fn cancel_pending_group(&mut self, group: u16) -> anyhow::Result<()> {
+        self.check_failure()?;
+        if self.pending_group() == Some(group) {
+            self.pending = None;
+        }
+        Ok(())
+    }
+
     /// The caller-selected playback default, distinct from the model's attribute default.
     pub fn default_group(&self) -> u16 {
         self.default

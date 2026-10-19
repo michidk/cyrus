@@ -154,6 +154,18 @@ impl Inventory {
         self.acquire(id, amount, &mut Vec::new(), assign_weapon)
     }
 
+    pub(super) fn validate_weapon(&self, id: u8) -> Result<()> {
+        let item = self
+            .items
+            .get(&u16::from(id))
+            .with_context(|| format!("ITEM.INI item {id}: weapon definition absent"))?;
+        anyhow::ensure!(
+            item.weapon,
+            "ITEM.INI item {id}: assigned item is not a weapon"
+        );
+        Ok(())
+    }
+
     pub(super) fn owned_weapon(&self, id: u8) -> bool {
         self.items
             .get(&u16::from(id))

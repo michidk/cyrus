@@ -5097,7 +5097,14 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         world.model_support(actor).unwrap(),
         ModelSupportOwners::default()
     );
-    world.refresh_automatic_models(&data, [0; 3]).unwrap();
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_some());
     assert!(world.model_presentation(support_actor).unwrap().is_none());
     world
@@ -5109,10 +5116,24 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             },
         )
         .unwrap();
-    world.refresh_automatic_models(&data, [0; 3]).unwrap();
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_none());
     assert_eq!(world.model_radius(actor).unwrap(), None);
-    world.refresh_automatic_models(&data, [256; 3]).unwrap();
+    world
+        .refresh_automatic_models(
+            &data,
+            [256; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_some());
     world
         .set_model_support(
@@ -5123,9 +5144,23 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             },
         )
         .unwrap();
-    world.refresh_automatic_models(&data, [256; 3]).unwrap();
+    world
+        .refresh_automatic_models(
+            &data,
+            [256; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_none());
-    world.refresh_automatic_models(&data, [0; 3]).unwrap();
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
     assert!(world.model_presentation(actor).unwrap().is_some());
     assert_eq!(
         world.model_support(actor).unwrap().static_placement,

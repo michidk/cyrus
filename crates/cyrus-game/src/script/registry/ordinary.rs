@@ -907,7 +907,17 @@ pub fn run_ordinary(
                 &mut send_sound,
             )?;
         }
-        world.refresh_automatic_models(data, view.position)
+        world.refresh_automatic_models(
+            data,
+            view.position,
+            ScriptInputs {
+                hud: hud.as_deref(),
+                shell_execution: Some(false),
+                nominal_ticks: Some(timing.nominal_ticks),
+                ..Default::default()
+            },
+            &mut send_sound,
+        )
     })();
     if let Err(error) = preparation {
         actors.error = Some(format!("automatic model presentation: {error:#}"));
