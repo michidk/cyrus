@@ -717,6 +717,15 @@ drawn records for both pirates and reaches the static-face contact guard after
 complete selected-player scheduling, static contact parity and original/native/
 browser combat acceptance remain open.
 
+**Verified:** ordinary attack processing now queries unowned static placements
+with retained tip/base endpoints and enabled polygon sidedness. Ordered successful
+placements request the installed first clank cue with independent pitch draws;
+misses leave random state unchanged, and contact retains attack intent. The public
+maintenance test covers endpoint order, sidedness, continued traversal and retained
+intent. The installed production-audio START diagnostic reaches ordinary traversal
+72 before the explicit actor-owned face-response limit. Complete owned response
+and original/native/browser combat acceptance remain open.
+
 Next, in dependency order:
 
 1. Compare installed allocation assignments and complete live

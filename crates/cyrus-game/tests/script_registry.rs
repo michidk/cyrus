@@ -23484,3 +23484,150 @@ fn equipped_weapon_retains_stowed_geometry_and_snapshot_bits() {
     );
     assert_eq!(world.equipped_weapon(id).unwrap(), Some(&retained));
 }
+
+#[test]
+fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
+    use cyrus_assets::collision::{CollisionScene, StaticPlacement};
+    use cyrus_collision::collision_world::StaticCollision;
+    use cyrus_game::script::{
+        CombatControlState, LocomotionGeometry, OrdinaryGroundQuery, ScriptInputs,
+    };
+    for (tip_x, base_x, expected_cues) in [(-10, 10, 2), (10, -10, 0), (-10, -5, 0)] {
+        let (world, scripts, mut data) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                for instance in &mut scripts.instances {
+                    instance.object_type = 1;
+                }
+                scripts.combat_clank_effects = [Some(31), None];
+                scripts.combat_attacks =
+                    vec![combat::Attack {
+                        is_combo: false,
+                        motions: vec![serde_json::from_value(serde_json::json!({
+                    "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                    "first_collide_frame":0,"collide_duration":1
+                })).unwrap()],
+                        min_range: 0,
+                        max_range: 100,
+                    }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["death_selector"] = 0.into();
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        action: 0,
+                        flags: 1,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+            },
+        );
+        data.metadata["actors"][0]["model_load_path"] = "none".into();
+        data.models.insert(
+            "WEAPON".into(),
+            cyrus_assets::animation::AnimationModel {
+                radius: Some(1.),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "animated_i16".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        );
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([262144, 0, 262144]);
+        saved["actors"][0]["model"]["weapon"] = serde_json::json!({
+            "item":1,"model":"WEAPON","position_bits":[0,0,0],
+            "matrix_bits":[[1065353216_u32,0,0],[0,1065353216_u32,0],[0,0,1065353216_u32]],
+            "retained_point":[0,0,0],"retained_angles":[0,0,0],
+            "endpoints":[[1024+base_x,0,1024],[1024+tip_x,0,1024]]
+        });
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let (_, _, models) = static_model_fixture(cache());
+        let mut scene = ordinary_collision_scene(world.world, models);
+        scene.collision = CollisionScene {
+            sphere_object_scale: Some(256),
+            placements: (0..2)
+                .map(|id| StaticPlacement {
+                    id,
+                    model: "WALL".into(),
+                    position: [1024, 0, 1024],
+                    rotation: [268435456, 0, 0, 0, 268435456, 0, 0, 0, 268435456],
+                })
+                .collect(),
+            models: BTreeMap::from([("WALL".into(), ordinary_forward_wall_model())]),
+            ..Default::default()
+        };
+        scene.static_collision = StaticCollision::new(&scene.collision).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [1024, 1024], &[])
+            .unwrap();
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let mut cues = Vec::new();
+        world
+            .maintain_map_combat(
+                id,
+                1,
+                false,
+                ScriptInputs {
+                    locomotion_geometry: Some(LocomotionGeometry {
+                        ground: OrdinaryGroundQuery {
+                            scene: &scene,
+                            animations: &data,
+                            prepared: &prepared,
+                            distance: 0,
+                            sidedness: false,
+                        },
+                        environment: cyrus_game::script::ObstacleEnvironment {
+                            selected_player: Some(id),
+                            auto_grab: false,
+                            item_system_ready: true,
+                            shell_execution: false,
+                            ticks: 1,
+                        },
+                    }),
+                    ..Default::default()
+                },
+                Some(&mut random),
+                &mut |actor, sound| {
+                    cues.push((actor, sound));
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(cues.len(), expected_cues, "tip {tip_x} base {base_x}");
+        assert_eq!(
+            random.state(),
+            if expected_cues == 0 { 1 } else { 2524885223 }
+        );
+        for ((actor, cue), expected_pitch) in cues.into_iter().zip([96, 992]) {
+            assert_eq!(actor, id);
+            assert!(matches!(
+                cue,
+                cyrus_game::script::ScriptSound::Positional {
+                    effect: 31,
+                    volume: 0,
+                    rate_offset_hz,
+                    ..
+                } if rate_offset_hz == expected_pitch
+            ));
+        }
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .flags,
+            0x21
+        );
+    }
+}

@@ -79,7 +79,9 @@ impl ScriptWorld {
     /// Traverse the receiver-bound actor candidates in retained collision order.
     /// Defended candidates skip damage contact; the first combat hit consumes intent,
     /// sends the hit message and requests the attacker taunt before returning.
-    /// Noncombat hit responses and static-face weapon contact remain unsupported.
+    /// Unowned static models query retained tip/base endpoints with enabled sidedness
+    /// and request ordered clank cues. Noncombat and actor-owned face responses
+    /// remain unsupported.
     pub(super) fn process_combat_attack_candidates(
         &mut self,
         id: ScriptActorId,
@@ -146,10 +148,51 @@ impl ScriptWorld {
             self.request_timed_combat_taunt(id, 3, clock, inputs, random, sounds)?;
             return Ok(());
         }
-        anyhow::ensure!(
-            ground.prepared.candidates.faces.is_empty(),
-            "static-face weapon contact unsupported"
-        );
+        for candidate in &ground.prepared.candidates.faces {
+            anyhow::ensure!(
+                matches!(candidate.owner, CandidateOwner::Static(_)),
+                "actor-owned static-face attack response unsupported"
+            );
+            let endpoints = self
+                .equipped_weapon(id)?
+                .context("retained weapon endpoints unavailable")?
+                .endpoints;
+            let single = cyrus_collision::candidates::CollisionCandidates {
+                faces: vec![*candidate],
+                actors: Vec::new(),
+            };
+            let models = ground
+                .scene
+                .actor_collision
+                .as_ref()
+                .context("attack live geometry unavailable; re-export world")?;
+            let contacts = ground.scene.static_collision.runtime_segment_contacts(
+                &single,
+                models,
+                &Default::default(),
+                endpoints[1],
+                endpoints[0],
+                true,
+                None,
+            )?;
+            if contacts.is_empty() {
+                continue;
+            }
+            let effect = self.combat_clank_effects[0].context("sword_clank_1 unavailable")?;
+            for _ in 0..if candidate.candidate_type == 1 { 2 } else { 1 } {
+                let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+                let position = self.sight_position(id.index)?;
+                sounds(
+                    id,
+                    crate::script::ScriptSound::Positional {
+                        effect,
+                        volume: 0,
+                        rate_offset_hz,
+                        position,
+                    },
+                )?;
+            }
+        }
         Ok(())
     }
 
