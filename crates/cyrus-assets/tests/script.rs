@@ -4,7 +4,7 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 18,
+        version: 19,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -24,6 +24,7 @@ fn cache() -> Scripts {
         },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
+            dummy_model_manager: false,
             task_system: true,
             animation_system: true,
             disable_slaves: false,
@@ -577,7 +578,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     }
     let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
-        let system = format!("[system]\nmax_active_objects=10\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\ndisable_slaves=yes\ndisable_master_slaves=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
+        let system = format!("[system]\nmax_active_objects=10\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\nconvert_static_angles=no\ndisable_slaves=yes\ndisable_master_slaves=no\n[3dmanager]\ndummy_manager=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
         let mut source = Source {
             manifest: Manifest {
                 files: vec![
@@ -620,7 +621,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 18);
+    assert_eq!(scripts.version, 19);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -642,6 +643,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
     assert_eq!(
         scripts.updates,
         UpdateSettings {
+            dummy_model_manager: false,
             task_system: true,
             animation_system: false,
             disable_slaves: true,
@@ -743,7 +745,16 @@ fn native_hooks_are_validated_and_participate_in_content_identity() {
 #[test]
 fn update_switches_are_required_and_part_of_cache_identity() {
     let scripts = cache();
+    let mut old = cache();
+    old.version = 18;
+    assert!(
+        old.validate()
+            .unwrap_err()
+            .to_string()
+            .contains("re-export")
+    );
     for field in [
+        "dummy_model_manager",
         "task_system",
         "animation_system",
         "disable_slaves",
@@ -768,24 +779,52 @@ fn update_switches_are_required_and_part_of_cache_identity() {
 #[cfg(feature = "parsers")]
 #[test]
 fn installed_update_switch_conversion_rejects_missing_inputs() {
-    let text = "[system]\ntask_system=no\nanimation_system=yes\n[debug]\ndisable_slaves=no\ndisable_master_slaves=yes\n";
+    let text = "[system]\ntask_system=no\nanimation_system=yes\n[debug]\nconvert_static_angles=no\ndisable_slaves=no\ndisable_master_slaves=yes\n[3dmanager]\ndummy_manager=no\n";
     let parse = |text: &str| {
         UpdateSettings::from_system(&rgpre::import::system_ini::SystemIni::parse(text).unwrap())
     };
     assert_eq!(
         parse(text).unwrap(),
         UpdateSettings {
+            dummy_model_manager: false,
             task_system: false,
             animation_system: true,
             disable_slaves: false,
             disable_master_slaves: true
         }
     );
+    for (dummy, convert, expected) in [
+        (false, false, false),
+        (true, false, true),
+        (false, true, true),
+        (true, true, true),
+    ] {
+        let input = text
+            .replace(
+                "dummy_manager=no",
+                if dummy {
+                    "dummy_manager=yes"
+                } else {
+                    "dummy_manager=no"
+                },
+            )
+            .replace(
+                "convert_static_angles=no",
+                if convert {
+                    "convert_static_angles=yes"
+                } else {
+                    "convert_static_angles=no"
+                },
+            );
+        assert_eq!(parse(&input).unwrap().dummy_model_manager, expected);
+    }
     for line in [
         "task_system=no\n",
         "animation_system=yes\n",
         "disable_slaves=no\n",
         "disable_master_slaves=yes\n",
+        "dummy_manager=no\n",
+        "convert_static_angles=no\n",
     ] {
         let error = parse(&text.replace(line, "")).unwrap_err().to_string();
         assert!(error.contains(line.split('=').next().unwrap()), "{error}");

@@ -66,6 +66,9 @@ impl ClockSettings {
 /// Eligibility and stage ordering follow preservation's engine/animation.md and SOUP.md.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UpdateSettings {
+    /// Effective dummy 3D manager, including installed static-angle conversion.
+    /// Its animation-vertex queries return the zero vector.
+    pub dummy_model_manager: bool,
     pub task_system: bool,
     pub animation_system: bool,
     pub disable_slaves: bool,
@@ -76,7 +79,16 @@ impl UpdateSettings {
     /// Missing switches are unsupported rather than assigned invented defaults.
     #[cfg(feature = "parsers")]
     pub fn from_system(settings: &rgpre::import::system_ini::SystemIni) -> anyhow::Result<Self> {
+        let dummy = settings
+            .manager3d
+            .dummy_manager
+            .context("SYSTEM.INI [3dmanager] dummy_manager missing")?;
+        let convert = settings
+            .debug
+            .convert_static_angles
+            .context("SYSTEM.INI [debug] convert_static_angles missing")?;
         Ok(Self {
+            dummy_model_manager: dummy || convert,
             task_system: settings
                 .system
                 .task_system
@@ -405,7 +417,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 18,
+            self.version == 19,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

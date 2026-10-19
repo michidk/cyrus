@@ -1228,7 +1228,7 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 18,
+            version: 19,
             camera: Default::default(),
             combat_attacks: vec![],
             combat_defenses: vec![],
@@ -1248,6 +1248,7 @@ mod tests {
             },
             player_distance_override: false,
             updates: cyrus_assets::script::UpdateSettings {
+                dummy_model_manager: false,
                 task_system: true,
                 animation_system: true,
                 disable_slaves: false,

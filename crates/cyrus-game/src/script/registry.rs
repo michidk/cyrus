@@ -5,6 +5,7 @@ mod attack;
 pub(super) mod body;
 pub(super) mod bounds;
 mod combat_decision;
+mod contact;
 mod coordination;
 mod counter;
 mod defence;
@@ -4235,6 +4236,7 @@ mod fighting_tests {
             flags: Vec::new(),
             flag_state: super::super::flags::Flags::prepare(&definition).unwrap(),
             updates: cyrus_assets::script::UpdateSettings {
+                dummy_model_manager: false,
                 task_system: true,
                 animation_system: true,
                 disable_slaves: false,

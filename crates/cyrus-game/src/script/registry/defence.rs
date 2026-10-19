@@ -546,10 +546,10 @@ impl ScriptWorld {
     }
 }
 
-struct LivePacedQueries<'a> {
-    world: &'a ScriptWorld,
-    id: ScriptActorId,
-    target: ScriptActorId,
+pub(super) struct LivePacedQueries<'a> {
+    pub(super) world: &'a ScriptWorld,
+    pub(super) id: ScriptActorId,
+    pub(super) target: ScriptActorId,
 }
 
 impl LivePacedQueries<'_> {

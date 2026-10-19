@@ -712,3 +712,15 @@ fn runtime_forward_probe_orders_body_primary_and_fallback() {
         }
     }
 }
+
+#[test]
+fn source_vertex_lookup_preserves_order_and_reports_actor_and_index() {
+    let data = actors();
+    assert_eq!(data.vertex(42, 1).unwrap(), [50.0, 0.0, -50.0]);
+    let error = data.vertex(42, 3).unwrap_err().to_string();
+    assert!(
+        error.contains("MPOB 42") && error.contains("vertex 3"),
+        "{error}"
+    );
+    assert!(data.vertex(41, 0).is_err());
+}

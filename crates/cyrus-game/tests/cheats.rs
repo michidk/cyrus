@@ -441,7 +441,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 18,
+        version: 19,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -467,6 +467,7 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
             use_smooth_divisor: true,
         },
         updates: UpdateSettings {
+            dummy_model_manager: false,
             task_system: true,
             animation_system: true,
             disable_slaves: false,

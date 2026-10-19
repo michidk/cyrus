@@ -566,6 +566,77 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Resolve an authored source vertex with the actor's current local matrix and
+    /// integer position. Uses original model-point conversion, independent of the
+    /// retained collision presentation pose and renderer geometry. Animated sources
+    /// perform the original Q8 integer conversion before matrix input storage;
+    /// static sources store their original Q8 vertex directly as f32.
+    pub fn actor_model_point(
+        &self,
+        id: ScriptActorId,
+        data: &Animations,
+        statics: Option<&ActorModelCollision>,
+        vertex: i32,
+    ) -> Result<[i32; 3]> {
+        self.require_model_identity(data)?;
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let context = || {
+            format!(
+                "world {} instance {index} actor {} model vertex {vertex}",
+                self.world,
+                actor.name()
+            )
+        };
+        let source = match data.actor(actor.name())?["model_load_path"].as_str() {
+            Some("animation_table") if self.updates.dummy_model_manager => [0.0; 3],
+            Some("animation_table") => {
+                let vertex_index = usize::try_from(vertex).with_context(context)?;
+                let reference = self
+                    .animation_frame(id)?
+                    .with_context(|| format!("{}: animation frame unavailable", context()))?;
+                let frame = if actor.placement().is_some() {
+                    data.resolve_map_frame(index, reference)
+                } else {
+                    data.resolve_frame(actor.name(), reference)
+                }
+                .with_context(context)?;
+                let position = data
+                    .models
+                    .get(&frame.model)
+                    .and_then(|model| model.positions.get(frame.frame))
+                    .and_then(|positions| positions.get(vertex_index))
+                    .copied()
+                    .with_context(|| {
+                        format!(
+                            "{}: model {} frame {} source vertex unavailable",
+                            context(),
+                            frame.model,
+                            frame.frame
+                        )
+                    })?;
+                cyrus_world::transform::animation_vertex_q8(position)
+                    .with_context(context)?
+                    .map(|value| value as f32)
+            }
+            Some("static") => {
+                let vertex_index = usize::try_from(vertex).with_context(context)?;
+                statics
+                    .context("static model geometry unavailable")
+                    .with_context(context)?
+                    .vertex(index, vertex_index)
+                    .with_context(context)?
+                    .map(|value| value * 256.0)
+            }
+            path => anyhow::bail!("{}: model path {path:?} unsupported", context()),
+        };
+        let local = self.spatial(id)?.local;
+        local
+            .matrix
+            .model_point(source, local.position)
+            .with_context(context)
+    }
+
     /// Current collision-facing model, retaining its presentation-time pose.
     pub fn model_presentation(&self, id: ScriptActorId) -> Result<Option<&ModelPresentation>> {
         let index = self.resolve(id)?;

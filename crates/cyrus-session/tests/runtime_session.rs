@@ -61,7 +61,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 18,
+        version: 19,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -81,6 +81,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
+            dummy_model_manager: false,
             task_system: true,
             animation_system: true,
             disable_slaves: false,

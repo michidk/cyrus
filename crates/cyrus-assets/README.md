@@ -287,3 +287,7 @@ Native and browser preparation share this owner. Older script caches require re-
 Script cache schema 18 also retains the signed, unscaled installed `node_timer`
 in content identity. Native and browser preparation share the export; older
 script caches require re-export before perception maintenance can use it.
+
+Script cache schema 19 retains the effective dummy 3D manager setting used by
+animation-vertex queries. Native and browser preparation derive it from installed
+manager and static-angle conversion settings. Older script caches require re-export.

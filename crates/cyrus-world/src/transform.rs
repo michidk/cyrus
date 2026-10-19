@@ -153,6 +153,32 @@ impl Matrix {
         Ok(result)
     }
 
+    /// Resolve a stored model vertex into local Q8 coordinates.
+    /// The caller supplies the original vertex conversion to f32 in runtime Q8
+    /// units before rotation. The rotated f32 and exact
+    /// integer actor position add in extended precision, then store as f32 before
+    /// nearest-even integer conversion. Follows preservation's actor model-point
+    /// conversion; the caller owns frame/vertex selection and the current matrix.
+    pub fn model_point(self, vertex: [f32; 3], position: [i32; 3]) -> Result<[i32; 3]> {
+        let rotated = self.transform_stored(vertex)?;
+        let mut result = [0; 3];
+        for axis in 0..3 {
+            let local = X87DoubleExtended::from_i128(i128::from(position[axis])).value;
+            let sum = stored((local + extended(rotated[axis])).value);
+            let integer = Single::from_bits(u128::from(sum.to_bits())).to_i128_r(
+                32,
+                Round::NearestTiesToEven,
+                &mut false,
+            );
+            ensure!(
+                !integer.status.contains(Status::INVALID_OP),
+                "actor model point axis {axis}: vertex {vertex:?} at {position:?} cannot convert to i32"
+            );
+            result[axis] = integer.value as i32;
+        }
+        Ok(result)
+    }
+
     /// Apply the transpose using the original inverse-transform arithmetic.
     /// This is an inverse only for an orthogonal matrix; it performs no matrix inversion.
     pub fn inverse_transform(self, position: [i32; 3]) -> Result<[i32; 3]> {
@@ -161,6 +187,27 @@ impl Matrix {
         }))
         .transform(position)
     }
+}
+
+/// Convert a successfully resolved animated vertex from model units to runtime Q8.
+/// The original query stores the product by 256 as f32 before nearest-even i32
+/// conversion. Frame lookup and query admission belong to the caller, following
+/// preservation's animation-vertex wrapper rules.
+pub fn animation_vertex_q8(position: [f32; 3]) -> Result<[i32; 3]> {
+    let scale = Single::from_i128(256).value;
+    let mut result = [0; 3];
+    for axis in 0..3 {
+        let input = Single::from_bits(u128::from(position[axis].to_bits()));
+        let integer = (input * scale)
+            .value
+            .to_i128_r(32, Round::NearestTiesToEven, &mut false);
+        ensure!(
+            !integer.status.contains(Status::INVALID_OP),
+            "animation vertex axis {axis}: position {position:?} cannot convert to runtime Q8 i32"
+        );
+        result[axis] = integer.value as i32;
+    }
+    Ok(result)
 }
 
 /// Translate an upright actor forward in Q8 coordinates using the original table.

@@ -645,7 +645,17 @@ signed RAEX contact vertex and Q8 radius independently of model bounds. World
 snapshots preserve both and reject records missing the profile. Asset validation,
 public construction/restore contracts and 72 controlled original constructor
 cases cover the [published conversion](https://github.com/michidk/redguard-preservation/commit/a4d6495).
-Contact geometry and hit/damage processing remain unsupported.
+Logical model-point queries use the current local pose and reconstructed source
+vertices, with original animation-vertex conversion and extended-precision
+matrix/translation staging. Script schema 19 retains the validated dummy-manager
+setting; older caches require re-export. An installed production-audio diagnostic
+queries model points for both START pirates before reaching unsupported attack
+processing. Public contact services now provide current-motion orientation,
+strict sphere contact and retained-slot first-motion range/elevation queries.
+The candidate-radius range path uses horizontal distance; zero radius uses
+three-dimensional distance and shared elevation. Attribute 126 sphere/segment
+contact, omitted contact-field runtime defaults, ordinary contact dispatch and
+hit/damage processing remain unsupported. Full combat acceptance remains open.
 
 Next, in dependency order:
 

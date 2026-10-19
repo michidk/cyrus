@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 18,
+        version: 19,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -94,6 +94,7 @@ fn cache() -> Scripts {
         },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
+            dummy_model_manager: false,
             task_system: true,
             animation_system: true,
             disable_slaves: false,
@@ -22706,6 +22707,274 @@ fn standalone_player_combat_retains_installed_contact_profile() {
                 .unwrap()
                 .contact_profile,
             CombatContactProfile { vertex, radius }
+        );
+    }
+}
+
+#[test]
+fn actor_model_point_uses_static_source_order_and_local_pose() {
+    let (world, data, statics) = static_model_fixture(cache());
+    let id = world.id(0).unwrap();
+    assert_eq!(
+        world
+            .actor_model_point(id, &data, Some(&statics), 0)
+            .unwrap(),
+        [-2560, 5120, 2560]
+    );
+    assert!(
+        world
+            .actor_model_point(id, &data, Some(&statics), -1)
+            .is_err()
+    );
+    let error = world
+        .actor_model_point(id, &data, Some(&statics), 3)
+        .unwrap_err();
+    let text = format!("{error:#}");
+    assert!(
+        text.contains("world 7 instance 0") && text.contains("vertex 3"),
+        "{text}"
+    );
+    assert!(world.actor_model_point(id, &data, None, 0).is_err());
+    assert!(
+        world
+            .actor_model_point(
+                cyrus_game::script::ScriptActorId {
+                    generation: 2,
+                    index: 0
+                },
+                &data,
+                Some(&statics),
+                0
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn actor_model_point_uses_selected_player_frame_and_original_vertex_rounding() {
+    let (_, world, mut data, _) = player_walking_fixture();
+    let player = world.id(2).unwrap();
+    data.models.get_mut("PLAYER").unwrap().positions[0] =
+        vec![[0.001953125, 0.005859375, -0.009765625]];
+    assert_eq!(
+        world.actor_model_point(player, &data, None, 0).unwrap(),
+        [2560, -1534, 7678]
+    );
+    assert!(world.actor_model_point(player, &data, None, -1).is_err());
+    assert!(world.actor_model_point(player, &data, None, 1).is_err());
+    data.metadata["script_content_id"] = "wrong".into();
+    assert!(world.actor_model_point(player, &data, None, 0).is_err());
+}
+
+#[test]
+fn dummy_manager_model_point_bypasses_frame_and_vertex_lookup() {
+    let (mut scripts, _, mut data, _) = player_walking_fixture();
+    scripts.updates.dummy_model_manager = true;
+    scripts.content_id = scripts.content_identity().unwrap();
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.id(2).unwrap();
+    world
+        .initialize_player_spatial(player, [2560, -1536, 7680], [0; 3])
+        .unwrap();
+    data.models.clear();
+    assert_eq!(
+        world.actor_model_point(player, &data, None, -7).unwrap(),
+        [2560, -1536, 7680]
+    );
+}
+
+#[test]
+fn sphere_contact_uses_current_motion_model_point_and_strict_radius() {
+    for (distance, radius, expected) in [
+        (0, 0, false),
+        (0, 1, true),
+        (99, 100, true),
+        (100, 100, false),
+        (101, 100, false),
+        (1, -1, false),
+    ] {
+        let (world, _, mut data) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                let motion = serde_json::from_value(serde_json::json!({
+                "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                "first_collide_frame":0,"collide_duration":0,"col_vertex":0,"col_sphere_size":radius
+            })).unwrap();
+                scripts.combat_attacks = vec![combat::Attack {
+                    is_combo: false,
+                    motions: vec![motion],
+                    min_range: 0,
+                    max_range: 100,
+                }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["spatial"]["actors"][0]["local"]["position"] =
+                    serde_json::json!([5120, 0, 5120]);
+                saved["spatial"]["actors"][1]["local"]["position"] =
+                    serde_json::json!([distance, 0, 0]);
+            },
+        );
+        data.metadata["actors"][0]["model_load_path"] = "static".into();
+        let (_, _, statics) = static_model_fixture(cache());
+        let id = world.id(0).unwrap();
+        let candidate = world.id(1).unwrap();
+        assert_eq!(
+            world
+                .combat_sphere_contact(id, candidate, &data, Some(&statics))
+                .unwrap(),
+            expected,
+            "distance {distance} radius {radius}"
+        );
+        assert!(
+            world
+                .combat_sphere_contact(id, candidate, &data, None)
+                .is_err(),
+            "zero radius must still query geometry"
+        );
+    }
+}
+
+#[test]
+fn contact_orientation_uses_current_motion_and_strict_arc_plus_center() {
+    for (heading, arc, center, expected) in [
+        (0, 0, 0, false),
+        (0, 1, 0, true),
+        (255, 256, 0, true),
+        (256, 256, 0, false),
+        (257, 256, 0, false),
+        (256, 256, 1, true),
+        (255, 256, -1, false),
+        (2047, 1, 1, true),
+        (0, i32::MAX, 1, false),
+    ] {
+        let (world, _, _) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                let motion = |arc, center| {
+                    serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "first_collide_frame":0,"collide_duration":0,"arc":arc,"arc_center":center
+                    }))
+                    .unwrap()
+                };
+                scripts.combat_attacks = vec![combat::Attack {
+                    is_combo: true,
+                    motions: vec![motion(0, 0), motion(arc, center)],
+                    min_range: 0,
+                    max_range: 100,
+                }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][0]["control"]["combat"]["decision"]["move_selector"] =
+                    serde_json::json!(1);
+                saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
+                saved["spatial"]["actors"][0]["local"]["angles"] =
+                    serde_json::json!([0, heading, 0]);
+            },
+        );
+        assert_eq!(
+            world
+                .combat_contact_orientation(world.id(0).unwrap(), [0, 0, 256])
+                .unwrap(),
+            expected,
+            "heading {heading} arc {arc} center {center}"
+        );
+    }
+}
+
+#[test]
+fn range_contact_uses_first_motion_strict_ranges_and_candidate_radius() {
+    for (z, y, radius, expected) in [
+        (0, 0, 100, false),
+        (1, 0, 100, true),
+        (1, 0, 0, true),
+        (99, 1000, 100, true),
+        (100, 0, 1000, false),
+        (99, 0, 99, false),
+        (99, 0, 98, false),
+        (99, 0, -1, false),
+        (99, 1000, 0, false),
+    ] {
+        let (mut world, _, mut data) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.updates.dummy_model_manager = true;
+                for instance in &mut scripts.instances {
+                    instance.object_type = 1;
+                }
+                let motion = |minimum, maximum| {
+                    serde_json::from_value(serde_json::json!({
+                "section":0,"kind":0,"animation_group":18,"min_range":minimum,"max_range":maximum,
+                "first_collide_frame":0,"collide_duration":0,"arc":2048,"arc_center":0,"elevation":0
+            })).unwrap()
+                };
+                scripts.combat_attacks = vec![combat::Attack {
+                    is_combo: true,
+                    motions: vec![motion(0, 100), motion(-100, 10000)],
+                    min_range: 0,
+                    max_range: 10000,
+                }];
+            },
+            |saved| {
+                let combat = serde_json::to_value(cyrus_game::script::CombatControlState {
+                    attack_indices: [Some(0); 9],
+                    retained_action_indices: [-1, 0],
+                    ..Default::default()
+                })
+                .unwrap();
+                saved["actors"][0]["control"]["combat"] = combat.clone();
+                saved["actors"][0]["control"]["combat"]["decision"]["move_selector"] = 1.into();
+                saved["actors"][1]["control"]["combat"] = combat;
+                saved["actors"][1]["control"]["combat"]["contact_profile"] =
+                    serde_json::json!({"vertex":0,"radius":radius});
+                saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 0, 0]);
+                saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([0, y, z]);
+            },
+        );
+        data.metadata["actors"][0]["model_load_path"] = "animation_table".into();
+        if radius == 0 {
+            data.metadata["actors"][0]["mpsz_bounds_primary"] = 0.into();
+            data.metadata["actors"][0]["raex"] = serde_json::json!({"unknown_12":256});
+            data.metadata["mpsz_entries"] = serde_json::json!([{
+                "total_extent":[24,24,24],"pos_extent":[12,12,12],
+                "neg_extent":[12,12,12],"center_offset":[0,0,0],"flags":0
+            }]);
+            let (_, _, models) = static_model_fixture(cache());
+            let scene = ordinary_collision_scene(world.world, models);
+            for actor in [world.id(0).unwrap(), world.id(1).unwrap()] {
+                world
+                    .prepare_ordinary_collision_shape(actor, &data, &scene)
+                    .unwrap();
+            }
+        }
+        assert_eq!(
+            world
+                .combat_range_contact(world.id(0).unwrap(), world.id(1).unwrap(), &data, None)
+                .unwrap(),
+            expected,
+            "z {z} y {y} radius {radius}"
         );
     }
 }

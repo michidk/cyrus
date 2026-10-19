@@ -1094,7 +1094,7 @@ fn runtime_steps_select_current_models_keep_multiple_ticks_and_clear_stale_poses
 
 fn player_runtime_scripts(world: u32) -> cyrus_assets::script::Scripts {
     let mut scripts: cyrus_assets::script::Scripts = serde_json::from_value(serde_json::json!({
-        "version":18,"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"world":world,"actor_pool_capacity":10,"content_id":"",
+        "version":19,"combat_defenses":[],"combat_attacks":[],"dialogue":{"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"},"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"world":world,"actor_pool_capacity":10,"content_id":"",
         "definition":{"functions":[
             {"name":"NullFunction","param_count":0,"kind":"function"},
             {"name":"PushAnimation","param_count":2,"kind":"task"}

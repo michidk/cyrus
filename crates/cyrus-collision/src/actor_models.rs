@@ -69,6 +69,17 @@ impl ActorModelCollision {
         Ok(self.model(actor)?.radius)
     }
 
+    /// Source-order static vertex in original model units, before actor transforms.
+    pub fn vertex(&self, actor: usize, vertex: usize) -> Result<[f32; 3]> {
+        let model = self.model(actor)?;
+        model.vertices.get(vertex).copied().with_context(|| {
+            format!(
+                "MPOB {actor} vertex {vertex}: outside {} source vertices",
+                model.vertices.len()
+            )
+        })
+    }
+
     /// Initial static bounds use original vertices, not polygon bounds or rendered meshes.
     pub fn initial_bounds(
         &self,

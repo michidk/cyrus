@@ -1,5 +1,5 @@
 //! Public original-matrix contracts, independent of rendering and host FPU mode.
-use cyrus_world::transform::{Matrix, rotation_sample, translate_forward};
+use cyrus_world::transform::{Matrix, animation_vertex_q8, rotation_sample, translate_forward};
 
 #[test]
 fn upright_translation_truncates_diagonal_motion_and_preserves_height() {
@@ -173,5 +173,99 @@ fn shared_rotation_table_retains_native_angle_precision_and_endpoint() {
         (2560, 0x3f80_0000),
     ] {
         assert_eq!(rotation_sample(index).to_bits(), bits, "sample {index}");
+    }
+}
+
+#[test]
+fn model_point_matches_original_matrix_and_position_cases() {
+    let cases = [
+        (
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            [1.0, 2.0, 3.0],
+            [0, 0, 0],
+            [1, 2, 3],
+        ),
+        (
+            [[0.3, 0.7, -1.2], [0.25, -0.5, 0.75], [1.5, 0.125, -0.25]],
+            [-1.0, 7.0, -11.0],
+            [0, 0, 0],
+            [18, -12, 2],
+        ),
+        (
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            [1.0, 2.0, 3.0],
+            [1, -1, 1],
+            [2, 1, 4],
+        ),
+        (
+            [[0.3, 0.7, -1.2], [0.25, -0.5, 0.75], [1.5, 0.125, -0.25]],
+            [1.0, 2.0, 3.0],
+            [1, -1, 1],
+            [-1, 0, 2],
+        ),
+        (
+            [[0.3, 0.7, -1.2], [0.25, -0.5, 0.75], [1.5, 0.125, -0.25]],
+            [16777217.0, -16777217.0, 42.0],
+            [100, -100, 100],
+            [-6710836, 12582844, 23068762],
+        ),
+        (
+            [[0.3, 0.7, -1.2], [0.25, -0.5, 0.75], [1.5, 0.125, -0.25]],
+            [-1.0, 7.0, -11.0],
+            [16777217, -16777217, 16777215],
+            [16777234, -16777228, 16777218],
+        ),
+        (
+            [[0.3, 0.7, -1.2], [0.25, -0.5, 0.75], [1.5, 0.125, -0.25]],
+            [16777217.0, -16777217.0, 42.0],
+            [16777217, -16777217, 16777215],
+            [10066280, -4194273, 39845876],
+        ),
+    ];
+    for (matrix, vertex, position, expected) in cases {
+        assert_eq!(
+            Matrix(matrix).model_point(vertex, position).unwrap(),
+            expected,
+            "vertex {vertex:?} position {position:?}"
+        );
+    }
+}
+
+#[test]
+fn model_point_keeps_integer_position_until_addition_and_rounds_ties_even() {
+    assert_eq!(
+        Matrix::IDENTITY
+            .model_point([1.0, -1.0, 0.0], [16_777_217, -16_777_217, 0])
+            .unwrap(),
+        [16_777_218, -16_777_218, 0]
+    );
+    let half = Matrix([[0.5, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.5]]);
+    assert_eq!(
+        half.model_point([1.0, 3.0, -5.0], [0; 3]).unwrap(),
+        [0, 2, -2]
+    );
+    assert!(
+        Matrix::IDENTITY
+            .model_point([1.0, 0.0, 0.0], [i32::MAX, 0, 0])
+            .is_err()
+    );
+}
+
+#[test]
+fn animated_vertex_conversion_scales_and_rounds_ties_even() {
+    assert_eq!(
+        animation_vertex_q8([1.0, -1.0, 7.0]).unwrap(),
+        [256, -256, 1792]
+    );
+    assert_eq!(
+        animation_vertex_q8([0.001953125, 0.005859375, -0.009765625]).unwrap(),
+        [0, 2, -2]
+    );
+    for position in [
+        [f32::NAN, 0.0, 0.0],
+        [0.0, f32::INFINITY, 0.0],
+        [0.0, 0.0, 8388608.0],
+    ] {
+        assert!(animation_vertex_q8(position).is_err());
     }
 }

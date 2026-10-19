@@ -189,7 +189,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 18,
+        version: 19,
         in_combat_threshold: combat
             .as_ref()
             .and_then(|combat| combat.misc.in_combat_threshold)
