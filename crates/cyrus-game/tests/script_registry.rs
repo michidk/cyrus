@@ -14033,6 +14033,134 @@ fn selected_replenish_health_uses_shared_feedback_without_additive_health_servic
 }
 
 #[test]
+fn selected_native_health_routes_addition_and_retains_early_feedback() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage};
+    for (function, change, mode, initialized, expected, error) in [
+        ("AdjustHealth", 7, 0, true, 47, None),
+        ("AdjustHealth", 300, 0, true, 100, None),
+        ("AdjustHealth", i32::MAX, 0, true, 0, None),
+        (
+            "AdjustHealth",
+            -7,
+            0,
+            true,
+            33,
+            Some("random stream unavailable"),
+        ),
+        (
+            "AdjustHealth",
+            7,
+            0,
+            false,
+            40,
+            Some("health initialization unavailable"),
+        ),
+        (
+            "AdjustHealth",
+            7,
+            2,
+            true,
+            40,
+            Some("death-owning health unavailable"),
+        ),
+        ("SetHealth", 60, 0, true, 40, None),
+    ] {
+        let (mut scripts, _, mut data, _) = player_walking_fixture();
+        for (index, name, value) in [
+            (3, "health", 40),
+            (97, "health_gate", 1),
+            (120, "health_ignore", 1),
+        ] {
+            scripts.definition.attributes[index] = name.into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert(name.into(), value);
+        }
+        let function_id = scripts.definition.functions.len() as u16;
+        scripts.definition.functions.push(Function {
+            name: function.into(),
+            param_count: if function == "SetHealth" { 1 } else { 2 },
+            kind: CallKind::Function,
+        });
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap()
+            .operation = Operation::ObjectCall {
+            call: Call {
+                function_id,
+                function: function.into(),
+                kind: CallKind::Function,
+                target: Object::Player,
+                arguments: if function == "SetHealth" {
+                    vec![Value::Integer { value: change }]
+                } else {
+                    vec![
+                        Value::Integer { value: change },
+                        Value::Integer { value: mode },
+                    ]
+                },
+            },
+        };
+        scripts.content_id = scripts.content_identity().unwrap();
+        data.metadata["script_content_id"] = scripts.content_id.clone().into();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let player = world.id(index).unwrap();
+        if initialized {
+            world
+                .initialize_player_animation(player, &data, 0, &mut |_| Ok(()))
+                .unwrap();
+        }
+        let hud = ScriptHud::default();
+        let result = world.advance(
+            world.id(0).unwrap(),
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        );
+        match error {
+            Some(message) => assert!(format!("{:#}", result.unwrap_err()).contains(message)),
+            None => result.unwrap(),
+        }
+        assert_eq!(
+            world.actors()[index].attributes()[3],
+            expected,
+            "{function} mode {mode}"
+        );
+        assert_eq!(hud.health_feedback_ticks(), 25);
+        if initialized {
+            assert_eq!(
+                world.globals().selected_health().unwrap().displayed(),
+                if error.is_some() {
+                    40
+                } else {
+                    i32::from(expected)
+                }
+            );
+        }
+    }
+}
+
+#[test]
 fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
     let health = |calls: &[(&str, &[i32])]| {
         let mut calls = calls.to_vec();

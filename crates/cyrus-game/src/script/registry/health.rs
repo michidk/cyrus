@@ -169,6 +169,19 @@ impl ScriptWorld {
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
     ) -> Result<()> {
+        self.apply_selected_additive_health(id, change, inputs, Some(random), sounds)
+    }
+
+    /// Native inspection may omit providers. Damage requires randomness only
+    /// after publishing actor health; healing and inhibition never query it.
+    pub(super) fn apply_selected_additive_health(
+        &mut self,
+        id: ScriptActorId,
+        change: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
+    ) -> Result<()> {
         let result = (|| {
             let index = self.resolve(id)?;
             let selected = if let Some(activation) = inputs.activation {
@@ -200,6 +213,7 @@ impl ScriptWorld {
                 .clamp(0, maximum);
             self.actors[index].attributes[3] = health as u8;
             if change < 0 {
+                let random = random.context("selected health random stream unavailable")?;
                 self.request_hurt_combat_taunt(id, inputs, random, sounds)?;
                 let animation = self.actors[index]
                     .animation

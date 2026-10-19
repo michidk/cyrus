@@ -3507,10 +3507,35 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let selected = self
                 .selected_player()
                 .is_some_and(|player| player.index == self.index);
+            if selected {
+                self.inputs
+                    .hud
+                    .with_context(|| format!("{function}: selected-player HUD owner unavailable"))?
+                    .request_replenish_health_feedback();
+                if !set {
+                    anyhow::ensure!(
+                        arguments[1].integer()? == 0,
+                        "{function}: selected-player death-owning health unavailable"
+                    );
+                    let id = self.registry.id(self.index)?;
+                    let sounds = &mut self.sounds;
+                    self.registry.apply_selected_additive_health(
+                        id,
+                        arguments[0].integer()?,
+                        self.inputs,
+                        self.random.as_deref_mut(),
+                        &mut |actor, sound| {
+                            let executor = sounds
+                                .as_deref_mut()
+                                .context("selected health sound executor unavailable")?;
+                            executor(actor, sound)
+                        },
+                    )?;
+                    return Ok(CallResult::Complete(0));
+                }
+            }
             let attributes = &mut self.registry.actors[self.index].attributes;
-            // Attribute 120 (nonzero) ignores health changes. Attribute 97 gates on a combat
-            // record bit, the selected player updates the HUD, and death starts a sequence;
-            // none of those owners exist, so they stay unavailable instead of guessed.
+            // Generic admission follows the native selected-player feedback update.
             if attributes[120] != 0 {
                 return Ok(CallResult::Complete(0));
             }
