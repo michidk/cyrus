@@ -28,6 +28,40 @@ fn rejects_a_directory_that_is_not_an_install() {
 }
 
 #[test]
+fn weapon_preparation_reuses_loaded_world_archive() {
+    use cyrus_assets::source::{Manifest, ReadAssets};
+    struct NoArchiveReads<'a>(&'a dyn ReadAssets);
+    impl ReadAssets for NoArchiveReads<'_> {
+        fn manifest(&self) -> &Manifest {
+            self.0.manifest()
+        }
+        fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+            assert!(
+                !path.to_ascii_lowercase().ends_with(".rob"),
+                "reread {path}"
+            );
+            self.0.read_range(path, start, length)
+        }
+    }
+    let Some(install) = install() else { return };
+    let source = cyrus_assets::native::Files::open(&install).unwrap();
+    let world = cyrus_assets::runtime::geometry::world(&source, "START").unwrap();
+    let system =
+        rgpre::import::system_ini::SystemIni::parse(&source.text("SYSTEM.INI").unwrap()).unwrap();
+    let expected =
+        cyrus_assets::script::weapon::prepare_world_source(&source, &system, 0, None).unwrap();
+    assert!(!expected.is_empty());
+    let actual = cyrus_assets::script::weapon::prepare_world_source(
+        &NoArchiveReads(&source),
+        &system,
+        0,
+        Some(&world.registry),
+    )
+    .unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[test]
 fn every_scene_file_in_maps_parses() {
     let Some(install) = install() else { return };
     let registry = registry::scan_dir(install.maps()).unwrap();

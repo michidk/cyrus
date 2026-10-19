@@ -19,12 +19,14 @@ pub struct Weapon {
 
 /// Prepare weapon geometry from the selected world's primary ROB registry.
 /// World loading replaces the configured map extension before item initialization.
+/// Reuse loaded registry bytes when supplied; standalone exports read the source.
 /// Missing models fail explicitly; presentation's secondary registry is host-owned.
 #[cfg(feature = "parsers")]
 pub fn prepare_world_source(
     source: &dyn crate::source::ReadAssets,
     system: &rgpre::import::system_ini::SystemIni,
     world: u32,
+    registry: Option<&rgpre::import::registry::Registry>,
 ) -> anyhow::Result<BTreeMap<u16, Weapon>> {
     use anyhow::Context;
     let item_path = system
@@ -42,8 +44,32 @@ pub fn prepare_world_source(
         return Ok(BTreeMap::new());
     }
     let archive = world_archive_path(source, world)?;
-    prepare_source(source, system, &[&archive])
-        .with_context(|| format!("world {world} weapon geometry"))
+    let loaded;
+    let bytes = if let Some(registry) = registry {
+        let entry = registry
+            .files
+            .values()
+            .find(|entry| {
+                entry
+                    .path
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .eq_ignore_ascii_case(&archive)
+            })
+            .with_context(|| {
+                format!("world {world} weapon geometry: archive {archive} absent from registry")
+            })?;
+        entry.data.as_deref().with_context(|| {
+            format!("world {world} weapon geometry: archive {archive} bytes absent")
+        })?
+    } else {
+        loaded = source.read(&archive)?;
+        &loaded
+    };
+    let models = rgpre::import::rob::parse_rob_file(bytes)
+        .with_context(|| format!("world {world} weapon geometry: {archive}"))?;
+    prepare(&items, &models.segments)
+        .with_context(|| format!("world {world} weapon geometry: {archive}"))
 }
 
 #[cfg(feature = "parsers")]
@@ -63,41 +89,11 @@ pub(crate) fn world_archive_path(
     let filename = std::path::Path::new(&map)
         .file_name()
         .context("weapon geometry: world map filename absent")?;
-    let archive = std::path::Path::new("fxart")
-        .join(filename)
-        .with_extension("ROB");
+    let archive = std::path::Path::new(filename).with_extension("ROB");
     let archive = archive
         .to_str()
         .context("weapon archive path is not UTF-8")?;
-    Ok(archive.to_owned())
-}
-
-/// Read installed item definitions and the host-selected model registries.
-/// Archive order is original lookup order; the first matching model supplies metadata.
-/// Missing weapon models fail with item and archive context rather than inferred bounds.
-#[cfg(feature = "parsers")]
-pub fn prepare_source(
-    source: &dyn crate::source::ReadAssets,
-    system: &rgpre::import::system_ini::SystemIni,
-    archive_paths: &[&str],
-) -> anyhow::Result<BTreeMap<u16, Weapon>> {
-    use anyhow::Context;
-    let item_path = system
-        .system
-        .item_ini
-        .as_deref()
-        .context("weapon geometry: SYSTEM.INI [system] item_ini absent")?;
-    let items =
-        rgpre::import::item_ini::ItemIni::parse(&crate::preparation::text(source, item_path)?)
-            .with_context(|| format!("weapon geometry: {item_path}"))?;
-    let mut segments = Vec::new();
-    for path in archive_paths {
-        let archive = rgpre::import::rob::parse_rob_file(&source.read(path)?)
-            .with_context(|| format!("weapon geometry: {path}"))?;
-        segments.extend(archive.segments);
-    }
-    prepare(&items, &segments)
-        .with_context(|| format!("weapon geometry: {item_path}, archives {archive_paths:?}"))
+    Ok(format!("fxart/{archive}"))
 }
 
 #[cfg(feature = "parsers")]
@@ -142,6 +138,42 @@ mod tests {
         item_ini::ItemIni,
         rob::{RobSegment, SegmentBBox},
     };
+
+    #[test]
+    fn world_archive_uses_portable_source_key() {
+        use crate::source::{FileInfo, Manifest, ReadAssets};
+        struct Source(Manifest);
+        impl ReadAssets for Source {
+            fn manifest(&self) -> &Manifest {
+                &self.0
+            }
+            fn read_range(&self, path: &str, start: u64, length: usize) -> anyhow::Result<Vec<u8>> {
+                assert_eq!(path, "WORLD.INI");
+                let bytes =
+                    b"[World]\nworld_map[0]=maps\\start.RGM\nworld_palette[0]=3dart/test.COL\n";
+                Ok(bytes[start as usize..start as usize + length].to_vec())
+            }
+        }
+        let source = Source(Manifest {
+            files: vec![
+                FileInfo {
+                    path: "WORLD.INI".into(),
+                    bytes:
+                        b"[World]\nworld_map[0]=maps\\start.RGM\nworld_palette[0]=3dart/test.COL\n"
+                            .len() as u64,
+                    digest: "0".repeat(64),
+                },
+                FileInfo {
+                    path: "fxart/START.ROB".into(),
+                    bytes: 0,
+                    digest: "0".repeat(64),
+                },
+            ],
+        });
+        let path = world_archive_path(&source, 0).unwrap();
+        assert_eq!(path, "fxart/start.ROB");
+        assert!(source.manifest().find(&path).is_some());
+    }
 
     fn segment(name: [u8; 8], y: u32) -> RobSegment {
         RobSegment {

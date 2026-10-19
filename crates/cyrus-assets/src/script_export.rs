@@ -17,14 +17,21 @@ use std::path::Path;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub fn prepare(rgm: &RgmFile, root: &Path, world: u32) -> Result<Scripts> {
     let install = crate::install::GameInstall::open(root)?;
-    prepare_source(rgm, &crate::native::Files::scan(&install, false)?, world)
+    prepare_source(
+        rgm,
+        &crate::native::Files::scan(&install, false)?,
+        world,
+        None,
+    )
 }
 
 /// Decode the same actor programs and installed defaults on either target.
+/// A loaded world registry supplies weapon bytes without another source read.
 pub fn prepare_source(
     rgm: &RgmFile,
     source: &dyn crate::source::ReadAssets,
     world: u32,
+    registry: Option<&rgpre::import::registry::Registry>,
 ) -> Result<Scripts> {
     let system_text = crate::preparation::text(source, "SYSTEM.INI")?;
     let config = rgpre::import::soup_ini::SoupConfig::parse(&system_text)
@@ -190,7 +197,7 @@ pub fn prepare_source(
     };
     let mut scripts = Scripts {
         version: 22,
-        weapons: crate::script::weapon::prepare_world_source(source, &system, world)?,
+        weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_2),

@@ -187,7 +187,7 @@ pub(crate) fn prepare(
     output: &mut dyn crate::preparation::Output,
 ) -> anyhow::Result<()> {
     let mut metadata = rgm::export_rgm_metadata_json(rgm, None);
-    let scripts = crate::script_export::prepare_source(rgm, source, world)?;
+    let scripts = crate::script_export::prepare_source(rgm, source, world, Some(registry))?;
     metadata["script_content_id"] = serde_json::json!(scripts.content_id);
     metadata["animation_scripts"] = serde_json::to_value(
         scripts

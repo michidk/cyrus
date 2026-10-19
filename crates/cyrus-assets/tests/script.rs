@@ -620,6 +620,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             &rgpre::import::rgm::RgmFile { sections: vec![] },
             &source,
             17,
+            None,
         )
     };
     let scripts = prepare(0, 6, None).unwrap();
