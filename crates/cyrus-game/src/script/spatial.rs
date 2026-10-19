@@ -50,6 +50,8 @@ pub struct ActorSpatial {
     pub water_rollback_position: Option<[i32; 3]>,
     /// Previous local angles after snapshot; propagated deltas after family refresh.
     pub angle_history: [u16; 3],
+    /// Angles the actor was created with; `ResetRotation` restores axes from them.
+    pub initial_angles: [u16; 3],
     pub parent: Option<usize>,
     /// Fresh allocation has no linked-position record; dynamic creation is unsupported.
     pub(super) linked_position: Option<[i32; 3]>,
@@ -157,6 +159,7 @@ impl SpatialWorld {
                 previous_local_position: local.position,
                 water_rollback_position: None,
                 angle_history: original.angles,
+                initial_angles: original.angles,
                 parent,
                 linked_position: None,
                 no_slave_rotation: actor.attributes()[33] != 0,
@@ -249,6 +252,7 @@ impl SpatialWorld {
             previous_local_position: position,
             water_rollback_position: None,
             angle_history: angles,
+            initial_angles: angles,
             parent: None,
             linked_position: None,
             no_slave_rotation: actor.attributes()[33] != 0,
@@ -355,6 +359,28 @@ impl ActorSpatial {
     pub fn snapshot(&mut self) {
         self.previous_local_position = self.local.position;
         self.angle_history = self.local.angles;
+    }
+
+    /// `ResetRotation`: restore each selected axis from the creation angles, make the
+    /// previous-angle history equal the result, and rebuild the matrix from the angles
+    /// (identity, then negated yaw, pitch and roll). Rotation mode one's alternate matrix
+    /// builder is not established and is rejected before any change.
+    pub fn reset_rotation(&mut self, axes: [bool; 3]) -> Result<()> {
+        ensure!(
+            self.rotation_mode != 1,
+            "ResetRotation: rotation mode one matrix builder unsupported"
+        );
+        for (axis, selected) in axes.into_iter().enumerate() {
+            if selected {
+                self.local.angles[axis] = self.initial_angles[axis];
+            }
+        }
+        self.angle_history = self.local.angles;
+        self.local.matrix = Matrix::orientation(self.local.angles);
+        if self.parent.is_none() && self.effective.is_some() {
+            self.effective = Some(self.local);
+        }
+        Ok(())
     }
 
     /// Restore locked axes after ordinary script/movement work, before matrix refresh.
@@ -585,6 +611,7 @@ struct SavedSpatialActor {
     previous_local_position: [i32; 3],
     water_rollback_position: Option<[i32; 3]>,
     angle_history: [u16; 3],
+    initial_angles: [u16; 3],
     parent: Option<usize>,
     linked_position: Option<[i32; 3]>,
     no_slave_rotation: bool,
@@ -600,6 +627,7 @@ impl From<&ActorSpatial> for SavedSpatialActor {
             previous_local_position: actor.previous_local_position,
             water_rollback_position: actor.water_rollback_position,
             angle_history: actor.angle_history,
+            initial_angles: actor.initial_angles,
             parent: actor.parent,
             linked_position: actor.linked_position,
             no_slave_rotation: actor.no_slave_rotation,
@@ -671,7 +699,11 @@ impl SpatialWorld {
                 "actor {index}: saved authored locations differ"
             );
             ensure!(
-                saved.angle_history.iter().all(|&angle| angle < 2048),
+                saved
+                    .angle_history
+                    .iter()
+                    .chain(&saved.initial_angles)
+                    .all(|&angle| angle < 2048),
                 "actor {index}: saved angle history outside wrapped range"
             );
             restored.push(Some(ActorSpatial {
@@ -689,6 +721,7 @@ impl SpatialWorld {
                 previous_local_position: saved.previous_local_position,
                 water_rollback_position: saved.water_rollback_position,
                 angle_history: saved.angle_history,
+                initial_angles: saved.initial_angles,
                 parent: saved.parent,
                 linked_position: saved.linked_position,
                 no_slave_rotation: saved.no_slave_rotation,

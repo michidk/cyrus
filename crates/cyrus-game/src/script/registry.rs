@@ -3413,6 +3413,23 @@ impl Host for GameHost<'_, '_, '_, '_> {
             anyhow::ensure!(arguments.is_empty(), "KillMyTasks requires no arguments");
             return Ok(CallResult::CompleteAfterClearingTasks(0));
         }
+        if function.eq_ignore_ascii_case("ResetRotation") {
+            anyhow::ensure!(
+                arguments.len() == 3,
+                "ResetRotation requires three arguments"
+            );
+            let mut axes = [false; 3];
+            for (axis, argument) in arguments.iter().enumerate() {
+                axes[axis] = argument.integer()? != 0;
+            }
+            self.registry
+                .spatial
+                .as_mut()
+                .context("ResetRotation: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .reset_rotation(axes)?;
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
