@@ -381,6 +381,11 @@ refusal and timing errors before writes. Script task allocation and timing stay
 intact. Automatic spacing, deferred registration by its enclosing pass and
 selected-player movement remain open.
 
+**Verified:** live neighbor separation shares the spatial normalization and heading
+owners. Headless contracts cover quantization before conversion, vertical vectors,
+wrapping subtraction, signed half-turns and absent-neighbor spatial bypass.
+Ordered neighbor selection, sidestep dispatch and automatic spacing remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

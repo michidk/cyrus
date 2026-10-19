@@ -1106,3 +1106,12 @@ preserves existing tasks. Script calls retain their initial allocation/yield and
 function-encoded movement remains unavailable. Selected-player movement and the
 automatic spacing scheduler remain unsupported. The enclosing spacing pass owns
 map registration.
+
+`ScriptWorld::ordinary_neighbor_separation` reads ordinary local Q8 positions,
+wraps displacement subtraction before quantizing to whole map units, and uses
+shared normalization and heading owners. **Verified:** public headless contracts
+cover vertical normalization, positive and negative quantization, wrapped
+subtraction, both half-turn signs, and absent-neighbor spatial bypass. The query
+leaves receiver state unchanged. Neighbor traversal, sidestep dispatch and the
+automatic spacing scheduler remain unsupported. Rules come from preservation's
+[normalized neighbor heading](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).

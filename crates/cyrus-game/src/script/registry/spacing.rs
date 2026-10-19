@@ -37,6 +37,45 @@ pub struct OrdinaryForwardAmountInputs {
 }
 
 impl ScriptWorld {
+    /// Signed neighbor separation in 2048 units per turn, using ordinary local
+    /// Q8 positions and preservation's normalized vector-to-angle conversion.
+    /// Subtractions wrap before arithmetic shift eight; exact half-turn signs
+    /// remain distinct. An absent neighbor returns 1024 without spatial queries.
+    pub fn ordinary_neighbor_separation(
+        &self,
+        id: ScriptActorId,
+        target: ScriptActorId,
+        neighbor: Option<ScriptActorId>,
+    ) -> Result<i32> {
+        let Some(neighbor) = neighbor else {
+            return Ok(1024);
+        };
+        let result = (|| -> Result<i32> {
+            let target = self.spatial(target)?.local.position;
+            let angle = |actor| -> Result<i32> {
+                let position = self.spatial(actor)?.local.position;
+                let displacement =
+                    std::array::from_fn(|axis| position[axis].wrapping_sub(target[axis]) >> 8);
+                let [x, _, z] = super::super::spatial::normalized_direction(displacement);
+                Ok((-i32::from(super::super::spatial::query_bearing(x, z)) - 1024) & 2047)
+            };
+            let difference = angle(id)? - angle(neighbor)?;
+            Ok(if difference > 1024 {
+                difference - 2048
+            } else if difference < -1024 {
+                difference + 2048
+            } else {
+                difference
+            })
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} neighbor {} target {} spacing separation",
+                self.world, id.index, neighbor.index, target.index
+            )
+        })
+    }
+
     /// Invoke one ordinary movement update synchronously with shared native
     /// animation, item/shell, geometry and spatial services. Duration and elapsed
     /// use nominal ticks; returns zero on completion or one to continue.

@@ -16616,3 +16616,72 @@ fn synchronous_movement_rejects_unknown_timing_before_receiver_writes() {
         assert_eq!(world.inspect(0, 1), before);
     }
 }
+
+#[test]
+fn neighbor_spacing_uses_normalized_quantized_local_vectors_and_signed_half_turns() {
+    for (target, receiver, neighbor, expected) in [
+        ([0; 3], [256, 256000000, 256], [256, 256, 256], -256),
+        ([0; 3], [255, 0, 256], [256, 0, 256], -256),
+        ([0; 3], [-1, 0, 256], [0, 0, 256], -256),
+        ([0; 3], [0, 0, 256], [0, 0, -256], 1024),
+        ([0; 3], [0, 0, -256], [0, 0, 256], -1024),
+        (
+            [-8388608, 0, 0],
+            [i32::MAX, 0, 0],
+            [i32::MIN + 256, 0, 0],
+            -1024,
+        ),
+        ([0; 3], [0; 3], [0; 3], 0),
+    ] {
+        let mut scripts = cache();
+        scripts.instances[0].map_position = target;
+        add_standalone_receivers(&mut scripts);
+        let mut world = ScriptWorld::prepare(&scripts, 7).unwrap();
+        world.prepare_spatial().unwrap();
+        let target = world.id(0).unwrap();
+        let id = world.id(2).unwrap();
+        let other = world.id(3).unwrap();
+        world
+            .initialize_player_spatial(id, receiver, [0; 3])
+            .unwrap();
+        world
+            .initialize_player_spatial(other, neighbor, [0; 3])
+            .unwrap();
+        let before = serde_json::to_value(world.spatial(id).unwrap()).unwrap();
+        assert_eq!(
+            world
+                .ordinary_neighbor_separation(id, target, Some(other))
+                .unwrap(),
+            expected,
+            "receiver {receiver:?}, neighbor {neighbor:?}"
+        );
+        assert_eq!(
+            serde_json::to_value(world.spatial(id).unwrap()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
+fn absent_spacing_neighbor_bypasses_spatial_queries_and_errors_name_all_receivers() {
+    let world = ScriptWorld::prepare(&cache(), 7).unwrap();
+    let id = world.id(0).unwrap();
+    let target = world.id(1).unwrap();
+    assert_eq!(
+        world
+            .ordinary_neighbor_separation(id, target, None)
+            .unwrap(),
+        1024
+    );
+    let error = format!(
+        "{:#}",
+        world
+            .ordinary_neighbor_separation(id, target, Some(target))
+            .unwrap_err()
+    );
+    assert!(
+        error.contains("world 7 instance 0 neighbor 1 target 1 spacing separation"),
+        "{error}"
+    );
+    assert!(error.contains("spatial"), "{error}");
+}
