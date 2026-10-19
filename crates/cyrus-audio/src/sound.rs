@@ -16,7 +16,8 @@
 //!
 //! Script `Sound` supports positional starts without animation surface remapping.
 //! AmbientSound has a synchronous shared-channel adapter; automatic maintenance
-//! reset ownership remains unsupported. AmbientRTX, rope, torch and combat starts
+//! reset ownership remains unsupported. AmbientRTX starts its clip through the dialogue
+//! source and then follows it with positional volume and pan; rope, torch and combat starts
 //! remain unsupported. The decoder supports live gain updates.
 //! Animation sounds play only for actors
 //! whose [`SoundSurface`] is known, remapped through the installed SURFACE.INI tables.

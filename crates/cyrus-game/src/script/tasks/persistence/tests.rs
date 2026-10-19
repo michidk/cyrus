@@ -457,6 +457,30 @@ fn external_service_bindings_are_explicit_and_do_not_reset_continuations() {
         )
         .is_err()
     );
+    // AmbientRtx rebinds its saved clip slot through the same channel map; a missing binding fails.
+    let rtx = contract_vm("AmbientRtx", CallKind::Multitask, &[3, 40, 0]);
+    let saved = one(Task::AmbientRtx {
+        slot: Some(3),
+        lookup: Lookup::Done,
+    });
+    assert!(
+        NativeTasks::from_snapshot(saved.clone(), &rtx, &tokens, NativeTaskBindings::default())
+            .is_err()
+    );
+    let restored = NativeTasks::from_snapshot(
+        saved,
+        &rtx,
+        &tokens,
+        NativeTaskBindings {
+            ambient_channels: Some(&channels),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(restored.snapshot()).unwrap()["tasks"][0]["state"],
+        json!({"AmbientRtx":{"slot":9,"lookup":"Done"}})
+    );
     let owner = dialogue();
     for (name, args, state) in [
         ("WaitOnDialog", vec![], Task::Dialogue),
@@ -515,6 +539,9 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
     #[derive(Debug)]
     struct Source(Cell<u32>);
     impl DialogueSource for Source {
+        fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> anyhow::Result<bool> {
+            Ok(false)
+        }
         fn player_line(
             &self,
             _: [u8; 4],
@@ -694,6 +721,9 @@ fn rtxp_anim_speaks_and_animates_as_the_selected_player() {
     #[derive(Debug)]
     struct Source;
     impl DialogueSource for Source {
+        fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> anyhow::Result<bool> {
+            Ok(false)
+        }
         fn player_line(
             &self,
             _: [u8; 4],
@@ -812,6 +842,225 @@ fn rtxp_anim_speaks_and_animates_as_the_selected_player() {
             .unwrap()
     );
     assert!(!records.line_active(Some(1)));
+}
+
+/// `AmbientRtx` starts the label's clip once, creates no dialogue line, updates volume and pan each
+/// run with its volume offset and the receiver's killed state, and ends when the clip has finished.
+#[test]
+fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
+    use crate::script::tasks::{AmbientCall, PlayerDialogueCall};
+    use crate::script::{DialogueLine, DialogueSource, ScriptActorId};
+    use std::cell::{Cell, RefCell};
+    /// Sample slot, receiver position, volume offset and killed state of one run.
+    type Update = (u8, [i32; 3], i32, bool);
+    #[derive(Debug, Default)]
+    struct Source {
+        pending: Cell<u32>,
+        sample: Cell<Option<u8>>,
+        playing: Cell<bool>,
+        lookups: Cell<u32>,
+        updates: RefCell<Vec<Update>>,
+    }
+    impl DialogueSource for Source {
+        fn player_line(
+            &self,
+            _: [u8; 4],
+            _: ScriptActorId,
+            _: u32,
+        ) -> anyhow::Result<std::task::Poll<Option<DialogueLine>>> {
+            self.lookups.set(self.lookups.get() + 1);
+            if self.pending.get() != 0 {
+                self.pending.set(self.pending.get() - 1);
+                return Ok(std::task::Poll::Pending);
+            }
+            Ok(std::task::Poll::Ready(Some(DialogueLine {
+                text: "ignored".into(),
+                sample: self.sample.get(),
+                lifetime: 100,
+            })))
+        }
+        fn stop_sample(&self, _: u8) -> anyhow::Result<()> {
+            Ok(())
+        }
+        fn update_ambient_rtx(
+            &self,
+            sample: u8,
+            position: [i32; 3],
+            offset: i32,
+            killed: bool,
+        ) -> anyhow::Result<bool> {
+            self.updates
+                .borrow_mut()
+                .push((sample, position, offset, killed));
+            Ok(self.playing.get() && !killed)
+        }
+    }
+    fn services<'a>(
+        source: &'a Source,
+        records: &'a mut crate::script::DialogueState,
+        ambient: &'a AmbientCall<'a>,
+    ) -> NativeServices<'a> {
+        NativeServices {
+            ambient: Some(ambient),
+            dialogue: Some(records),
+            player_dialogue: Some(PlayerDialogueCall {
+                source: Some(source),
+                player: None,
+                reset: Some(false),
+                speaker: ScriptActorId {
+                    generation: 1,
+                    index: 0,
+                },
+                speaker_distance: Ok(0),
+                player_distance: Ok(0),
+                player_is_receiver: false,
+            }),
+            ..Default::default()
+        }
+    }
+    let alive = AmbientCall {
+        driver: None,
+        reset: Some(false),
+        position: Some([256, 0, -512]),
+        excluded: Some(false),
+        killed: Some(false),
+        generation: 1,
+        actor_index: 0,
+    };
+    let dead = AmbientCall {
+        killed: Some(true),
+        ..alive
+    };
+    let invocation = |elapsed| Invocation {
+        elapsed: Some(elapsed),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let args = [
+        Argument::Integer(i32::from_le_bytes(*b"TEST")),
+        Argument::Integer(-7),
+        Argument::Integer(0),
+    ];
+    let call = ("AmbientRtx", CallKind::Multitask);
+
+    // A pending lookup retries; the started clip is then followed with the task's offset.
+    let source = Source {
+        pending: Cell::new(1),
+        sample: Cell::new(Some(5)),
+        playing: Cell::new(true),
+        ..Default::default()
+    };
+    let mut records = dialogue();
+    let mut tasks = NativeTasks::default();
+    assert_eq!(
+        tasks
+            .call(
+                call,
+                &args,
+                invocation(0),
+                &mut None,
+                &mut None,
+                services(&source, &mut records, &alive)
+            )
+            .unwrap(),
+        Some(CallResult::Pending(1))
+    );
+    assert!(source.updates.borrow().is_empty());
+    assert!(
+        !tasks
+            .poll(
+                1,
+                &args,
+                invocation(1),
+                &mut None,
+                &mut None,
+                services(&source, &mut records, &alive)
+            )
+            .unwrap()
+    );
+    assert_eq!(*source.updates.borrow(), [(5, [256, 0, -512], -7, false)]);
+    assert_eq!(
+        source.lookups.get(),
+        2,
+        "the lookup is not repeated once started"
+    );
+    assert!(!records.waiting(), "no dialogue line is created");
+    // The clip finishing ends the task; the next run does not look it up again.
+    source.playing.set(false);
+    assert!(
+        tasks
+            .poll(
+                1,
+                &args,
+                invocation(2),
+                &mut None,
+                &mut None,
+                services(&source, &mut records, &alive)
+            )
+            .unwrap()
+    );
+    assert_eq!(source.lookups.get(), 2);
+
+    // A killed receiver is passed through and ends the task.
+    let source = Source {
+        sample: Cell::new(Some(5)),
+        playing: Cell::new(true),
+        ..Default::default()
+    };
+    let mut tasks = NativeTasks::default();
+    tasks
+        .call(
+            call,
+            &args,
+            invocation(0),
+            &mut None,
+            &mut None,
+            services(&source, &mut records, &alive),
+        )
+        .unwrap();
+    assert!(
+        tasks
+            .poll(
+                1,
+                &args,
+                invocation(1),
+                &mut None,
+                &mut None,
+                services(&source, &mut records, &dead)
+            )
+            .unwrap()
+    );
+    assert!(source.updates.borrow().last().unwrap().3);
+
+    // A text-only entry has no clip: the task completes on its next poll and never updates a channel.
+    let source = Source::default();
+    let mut tasks = NativeTasks::default();
+    assert_eq!(
+        tasks
+            .call(
+                call,
+                &args,
+                invocation(0),
+                &mut None,
+                &mut None,
+                services(&source, &mut records, &alive)
+            )
+            .unwrap(),
+        Some(CallResult::Pending(1))
+    );
+    assert!(
+        tasks
+            .poll(
+                1,
+                &args,
+                invocation(1),
+                &mut None,
+                &mut None,
+                services(&source, &mut records, &alive)
+            )
+            .unwrap()
+    );
+    assert!(source.updates.borrow().is_empty());
 }
 
 #[test]

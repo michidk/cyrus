@@ -67,6 +67,8 @@ pub(super) struct AmbientCall<'a> {
     pub reset: Option<bool>,
     pub position: Option<[i32; 3]>,
     pub excluded: Option<bool>,
+    /// The receiver's killed flag, which ends an `AmbientRtx` task.
+    pub killed: Option<bool>,
     pub generation: u64,
     pub actor_index: usize,
 }
@@ -298,6 +300,11 @@ enum Task {
     },
     Ambient {
         channel: Option<u8>,
+    },
+    /// `AmbientRtx`: the RTX clip's sample slot, once its lookup has started it.
+    AmbientRtx {
+        slot: Option<u8>,
+        lookup: Lookup,
     },
     ShowPlayer {
         counter: u32,
@@ -548,6 +555,60 @@ impl Task {
                 );
                 *channel = updated.channel;
                 !updated.active
+            }
+            Self::AmbientRtx { slot, lookup } => {
+                let [label, volume, _] = arguments else {
+                    anyhow::bail!("AmbientRtx requires three arguments")
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("AmbientRtx requires elapsed input")?;
+                let input = ambient.context("AmbientRtx playback inputs unavailable")?;
+                let dialogue_input = services
+                    .player_dialogue
+                    .context("AmbientRtx service inputs unavailable")?;
+                let source = dialogue_input
+                    .source
+                    .context("AmbientRtx source service unavailable")?;
+                let attempt = match *lookup {
+                    Lookup::Idle => elapsed == 0,
+                    Lookup::Pending => true,
+                    Lookup::Done => false,
+                };
+                if attempt {
+                    let width = services
+                        .dialogue
+                        .context("AmbientRtx dialogue settings unavailable")?
+                        .settings()
+                        .max_text_width;
+                    let std::task::Poll::Ready(line) = source.speaker_line(
+                        label.integer()?.to_le_bytes(),
+                        dialogue_input.speaker,
+                        width,
+                    )?
+                    else {
+                        *lookup = Lookup::Pending;
+                        return Ok(false);
+                    };
+                    *lookup = Lookup::Done;
+                    // No dialogue line is created: only the clip's sample matters.
+                    *slot = line.and_then(|line| line.sample);
+                    anyhow::ensure!(
+                        slot.is_none_or(|slot| slot < 16),
+                        "AmbientRtx source returned invalid sample slot"
+                    );
+                }
+                let Some(slot) = *slot else {
+                    // A missing or text-only entry has no clip, so there is nothing to keep playing.
+                    return Ok(true);
+                };
+                let position = input
+                    .position
+                    .context("AmbientRtx receiver pose unavailable")?;
+                let killed = input
+                    .killed
+                    .context("AmbientRtx receiver killed state unavailable")?;
+                !source.update_ambient_rtx(slot, position, volume.integer()?, killed)?
             }
             Self::FacePlayer => {
                 let [duration] = arguments else {
@@ -1376,6 +1437,15 @@ impl NativeTasks {
                 speech: Speech::default(),
                 index: 0,
                 player: function.eq_ignore_ascii_case("RTXpAnim"),
+            }
+        } else if function.eq_ignore_ascii_case("AmbientRtx") {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "AmbientRtx requires multitask encoding"
+            );
+            Task::AmbientRtx {
+                slot: None,
+                lookup: Lookup::Idle,
             }
         } else if function.eq_ignore_ascii_case("AmbientSound") {
             anyhow::ensure!(

@@ -2595,6 +2595,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 .control
                 .as_ref()
                 .map(|control| control.object_update_excluded),
+            killed: actor.control.as_ref().map(|control| control.killed),
             generation: self.generation,
             actor_index: self.index,
         }

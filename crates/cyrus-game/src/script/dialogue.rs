@@ -444,4 +444,14 @@ pub trait DialogueSource: std::fmt::Debug {
     }
     /// Stop the sample channel behind a dialogue record's remembered sample slot.
     fn stop_sample(&self, sample: u8) -> Result<()>;
+    /// One `AmbientRtx` run for a started clip: compute the positional volume (with the task's
+    /// volume offset) and pan from the receiver's signed Q8 `position`; a zero volume or a killed
+    /// receiver stops the clip. Returns whether the clip is still playing and the task keeps running.
+    fn update_ambient_rtx(
+        &self,
+        sample: u8,
+        position: [i32; 3],
+        volume_offset: i32,
+        killed: bool,
+    ) -> Result<bool>;
 }

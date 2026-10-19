@@ -10155,6 +10155,9 @@ fn player_dialogue_task_uses_reserved_record_once_and_reset_bypasses_lookup() {
         std::cell::Cell<u32>,
     );
     impl DialogueSource for Source {
+        fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> anyhow::Result<bool> {
+            Ok(false)
+        }
         fn stop_sample(&self, _: u8) -> anyhow::Result<()> {
             Ok(())
         }
@@ -14140,6 +14143,9 @@ fn speaker_dialogue_task_gates_on_distance_owns_a_record_and_cuts_far_lines() {
         stopped: RefCell<Vec<u8>>,
     }
     impl DialogueSource for Source {
+        fn update_ambient_rtx(&self, _: u8, _: [i32; 3], _: i32, _: bool) -> anyhow::Result<bool> {
+            Ok(false)
+        }
         fn player_line(
             &self,
             label: [u8; 4],

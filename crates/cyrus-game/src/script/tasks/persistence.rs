@@ -138,6 +138,19 @@ impl NativeTasks {
                             .get(channel)
                             .context("ambient saved channel has no binding")?;
                     }
+                    Task::AmbientRtx {
+                        slot: Some(slot), ..
+                    } => {
+                        ensure!(
+                            *slot < 16,
+                            "AmbientRtx saved sample slot {slot} exceeds sample slots"
+                        );
+                        *slot = *bindings
+                            .ambient_channels
+                            .context("ambient channel bindings unavailable")?
+                            .get(slot)
+                            .context("AmbientRtx saved sample slot has no binding")?;
+                    }
                     Task::Dialogue | Task::PlayerDialogue { .. } | Task::SpeakerDialogue(_) => {
                         ensure!(
                             bindings.dialogue.is_some(),
@@ -202,6 +215,7 @@ impl Task {
             Self::SpeakerAnimation { player: true, .. } => ("RTXpAnim", 4, Some(CallKind::Task)),
             Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
+            Self::AmbientRtx { .. } => ("AmbientRtx", 3, Some(CallKind::Multitask)),
             Self::Movement { .. } => ("MoveByAxis", 3, None),
             Self::ObjectMovement { .. } => ("MoveObjectAxis", 3, None),
             Self::ScaledMovement { .. } => ("sMoveByAxis", 3, None),

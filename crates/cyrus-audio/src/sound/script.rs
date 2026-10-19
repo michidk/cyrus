@@ -823,6 +823,42 @@ impl ScriptSounds<'_, '_> {
             .map_err(|error| anyhow::anyhow!("RTX volume: {error}"))
     }
 
+    /// One `AmbientRtx` run for a started clip. Volume and pan follow the receiver's signed Q8 position
+    /// with the task's volume offset; zero volume or a killed receiver stops the clip. Returns whether
+    /// the clip is still playing, as the task ends once it has finished.
+    pub fn update_ambient_rtx(
+        &mut self,
+        sample: u8,
+        position: [i32; 3],
+        volume_offset: i32,
+        killed: bool,
+    ) -> anyhow::Result<bool> {
+        anyhow::ensure!(sample < 16, "AmbientRtx: sample slot {sample} out of range");
+        let settings = anyhow::Context::context(
+            self.frame.settings.as_deref(),
+            "AmbientRtx: sound settings unavailable",
+        )?;
+        let listener = anyhow::Context::context(
+            self.frame.listener.as_deref(),
+            "AmbientRtx: listener unavailable",
+        )?;
+        let master = settings.master_volume;
+        let (volume, pan) = positional_q8(position, settings, listener, volume_offset)
+            .map_err(anyhow::Error::msg)?;
+        if killed || volume == 0 {
+            cyrus_assets::sound::DialogueSamples::stop(self, sample)?;
+            return Ok(false);
+        }
+        if !cyrus_assets::sound::DialogueSamples::playing(self, sample)? {
+            return Ok(false);
+        }
+        self.frame
+            .channels
+            .update_slot(sample, volume, master, pan)
+            .map_err(|error| anyhow::anyhow!("AmbientRtx volume: {error}"))?;
+        Ok(true)
+    }
+
     /// Lend feedback and immediate sound dispatch for one logical-world update.
     /// The caller owns timing/reset inputs and must drain earlier queued cues
     /// before invoking this service. Neither reference may escape the callback.
@@ -1065,6 +1101,19 @@ impl cyrus_game::script::DialogueSource for CachedDialogueSource<'_, '_, '_> {
     fn stop_sample(&self, sample: u8) -> anyhow::Result<()> {
         let mut state = self.state.borrow_mut();
         cyrus_assets::sound::DialogueSamples::stop(&mut *state.0, sample)
+    }
+
+    fn update_ambient_rtx(
+        &self,
+        sample: u8,
+        position: [i32; 3],
+        volume_offset: i32,
+        killed: bool,
+    ) -> anyhow::Result<bool> {
+        self.state
+            .borrow_mut()
+            .0
+            .update_ambient_rtx(sample, position, volume_offset, killed)
     }
 }
 
@@ -1636,6 +1685,36 @@ mod dialogue_tests {
         channels.samples.start(0, None, None).unwrap().unwrap();
         world.insert_resource(channels);
         world.run_system_cached(dialogue_playback).unwrap();
+        assert_eq!(world.resource::<Channels>().samples.status(Some(0)), 2);
+    }
+
+    #[derive(Resource, Default)]
+    struct AmbientRtxRuns(Vec<anyhow::Result<bool>>);
+
+    fn ambient_rtx_runs(mut sounds: ScriptSounds, mut runs: ResMut<AmbientRtxRuns>) {
+        runs.0.push(sounds.update_ambient_rtx(16, [0; 3], 0, false));
+        runs.0.push(sounds.update_ambient_rtx(0, [0; 3], 0, true));
+        runs.0.push(sounds.update_ambient_rtx(0, [0; 3], 0, false));
+    }
+
+    #[test]
+    fn ambient_rtx_stops_a_killed_receivers_clip_and_ends_once_it_has_finished() {
+        let mut world = World::new();
+        world.init_resource::<SoundEffects>();
+        world.init_resource::<AmbientRtxRuns>();
+        world.insert_resource(SoundSettings::parse("[system]\nsound_distance=64\n"));
+        world.insert_resource(crate::AudioListener(GlobalTransform::default()));
+        let mut channels = Channels::default();
+        channels.samples.start(0, None, None).unwrap().unwrap();
+        world.insert_resource(channels);
+        world.run_system_cached(ambient_rtx_runs).unwrap();
+        let runs = &world.resource::<AmbientRtxRuns>().0;
+        assert!(runs[0].is_err(), "slot 16 is outside the sixteen channels");
+        assert!(
+            !runs[1].as_ref().unwrap(),
+            "a killed receiver ends the task"
+        );
+        assert!(!runs[2].as_ref().unwrap(), "a finished clip ends the task");
         assert_eq!(world.resource::<Channels>().samples.status(Some(0)), 2);
     }
 
