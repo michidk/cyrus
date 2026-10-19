@@ -24109,6 +24109,72 @@ fn selected_health_resets_ledge_after_reaction_and_publishes_after_reset_sound()
 }
 
 #[test]
+fn selected_health_ledge_reset_uses_torch_counter_independently_of_weapon_state() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
+    for torch in [0u8, 1, 100, 255] {
+        for weapon_drawn in [false, true] {
+            let (scripts, world, mut data, _) = player_health_fixture();
+            let index = world
+                .actors()
+                .iter()
+                .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+                .unwrap();
+            let definition = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap();
+            for group in [56, 117, 118, 132, 133] {
+                definition["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}));
+            }
+            let mut world =
+                replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+                    saved["actors"][index]["control"]["living_state"] = 15.into();
+                    saved["actors"][index]["control"]["torch_burning"] = torch.into();
+                    saved["actors"][index]["control"]["weapon_drawn"] = weapon_drawn.into();
+                    saved["actors"][index]["control"]["motion_direction"] = 7.into();
+                    saved["actors"][index]["control"]["directional_state"] =
+                        serde_json::json!([128, 255]);
+                });
+            let id = world.id(index).unwrap();
+            world
+                .apply_selected_contact_health(
+                    id,
+                    -7,
+                    ScriptInputs {
+                        hud: Some(&ScriptHud::default()),
+                        nominal_ticks: Some(1),
+                        shell_execution: Some(false),
+                        ..Default::default()
+                    },
+                    &mut cyrus_game::random::EngineRandom::from_state(1),
+                    &mut |_, _| Ok(()),
+                )
+                .unwrap();
+            let control = world.actors()[index].control_state().unwrap();
+            assert_eq!(control.living_state, if torch == 0 { 0 } else { 17 });
+            assert_eq!(
+                control.action_transition_counter,
+                if torch == 0 { 6 } else { 0 }
+            );
+            assert_eq!(
+                control.directional_state,
+                if torch == 0 { [128, 255] } else { [0, 0] }
+            );
+            assert_eq!(control.motion_direction, if torch == 0 { 7 } else { 0 });
+            assert_eq!(control.torch_burning, torch);
+            assert_eq!(control.weapon_drawn, weapon_drawn);
+            assert_eq!(world.globals().selected_health().unwrap().displayed(), 43);
+            assert_eq!(
+                world.inspect(index, 1)["actors"][0]["animation"]["current_group"] == 56,
+                torch == 0,
+            );
+        }
+    }
+}
+
+#[test]
 fn selected_health_kind_one_reset_clears_support_and_directions_without_shell_or_starter() {
     use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs};
     let (scripts, world, mut data, _) = player_health_fixture();

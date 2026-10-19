@@ -93,12 +93,13 @@ impl ScriptWorld {
         self.actors[index].model.ledge_support = None;
         if self.actors[index].attributes[105] != 1 {
             self.globals.selected_ledge_result = Some(0);
-            let drawn = self.actors[index]
+            let torch_burning = self.actors[index]
                 .control
                 .as_ref()
                 .expect("validated control")
-                .weapon_drawn;
-            let shell = if !drawn && self.updates.animation_system {
+                .torch_burning
+                != 0;
+            let shell = if !torch_burning && self.updates.animation_system {
                 inputs
                     .shell_execution
                     .context("selected action shell context unavailable")?
@@ -113,13 +114,7 @@ impl ScriptWorld {
                     .as_ref()
                     .and_then(|animation| animation.playback.current_group())
                     .is_some_and(|group| matches!(group, 149 | 150));
-            if !actor
-                .control
-                .as_ref()
-                .expect("validated control")
-                .weapon_drawn
-                && !blocked
-            {
+            if !torch_burning && !blocked {
                 let ticks = inputs
                     .nominal_ticks
                     .context("selected action nominal ticks unavailable")?;
