@@ -5,6 +5,7 @@ mod attack;
 pub(super) mod body;
 pub(super) mod bounds;
 mod coordination;
+mod counter;
 mod defence;
 mod dialogue;
 pub(super) mod falling;

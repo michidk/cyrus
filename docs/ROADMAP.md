@@ -215,12 +215,22 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+**Verified:** explicit live counter selection reads receiver defense timing and
+the target motion's signed command-cursor gaps after its admission gates. Intent,
+pending move and action writes precede synchronous animation/sound execution;
+the target mark follows the starter's return. Public headless contracts cover
+partial errors, lazy shared RNG, strict gates and direct sidestep endpoints.
+Signed pacing overflow returns an error. All 1,920 original selector outcomes and
+RNG sequences match; the premature target-mark negative control fails. Final
+workspace gates pass 1,184 Rust executions with zero installed-data skips.
+Automatic traversal remains unavailable.
+
 **Verified:** the animation owner exposes the signed command cursor required by
 combat timing. All 80 controlled original forward-playback observations match
 the live owner through countdowns, delays, breakpoints and backward jumps. The
 public contract covers snapshot/checkpoint restore and group replacement; an
 off-by-one cursor fails. The final gate passes 1,177 Rust executions with zero
-install skips. This does not enable live counter-attack selection.
+install skips. Automatic combat traversal remains unavailable.
 
 **Verified:** the live combat coordinator shares attacker eligibility with spacing,
 uses original list/cyclic candidate order and retains the branch selected at
@@ -242,8 +252,8 @@ with 1,173 Rust test executions and zero installed-data skips.
 
 **Verified:** script cache schema 17 prepares the numbered defense table separately
 from attacks, using preservation's [runtime defense loading rules](https://github.com/michidk/redguard-preservation/blob/b0efa3795ee05819c00bf3fa31d43335170872dd/docs/config/combat-ini.md#runtime-defense-loading).
-Authored omissions remain explicit. Older caches require re-export. Live attack
-execution and automatic decision traversal remain unfinished. Cache preparation,
+Authored omissions remain explicit. Older caches require re-export. Automatic
+decision traversal remains unfinished. Cache preparation,
 round-trip/identity and installed-map contracts pass; workspace gates pass with
 1,171 Rust test executions and zero installed-data skips.
 

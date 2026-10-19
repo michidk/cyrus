@@ -1161,3 +1161,12 @@ messages before timed taunts and resets the close-distance counter on state
 assignment. Its result retains the branch selected at entry even after state
 changes. Spacing, counter-attack, defense selection and automatic traversal remain
 caller-owned stages.
+
+`counter_ordinary_combat` consumes the same distance/tick sample as fight spacing.
+Its live guards precede target motion timing and signed animation-cursor queries.
+Accepted counters preserve intent bits, assign the pending move and invoke
+`start_ordinary_combat_attack` before marking the target. The nonplayer starter
+assigns action nine before synchronous animation/sound execution. Earlier writes
+survive service failure. Timing misses use the ordinary movement primitives;
+random fits consume the shared stream lazily. Signed pacing faults return errors.
+These explicit services do not enable automatic combat traversal.
