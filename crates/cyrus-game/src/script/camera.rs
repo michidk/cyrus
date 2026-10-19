@@ -147,6 +147,39 @@ impl CameraRecord {
             flags: 0,
         }
     }
+
+    /// Write the request an actor's `attr_camera_move` selects: zero an absolute position
+    /// request (flag `0x08`), one a relative request (flag `0x04`), two an orbit from `orbit`'s
+    /// length and angles plus the bound angles; any other value writes nothing.
+    fn request_move(
+        &mut self,
+        camera_move: u8,
+        absolute: [i32; 3],
+        relative: [i32; 3],
+        orbit: [i32; 3],
+        bound_angles: [u16; 3],
+    ) -> Result<()> {
+        match camera_move {
+            0 => {
+                self.request = absolute;
+                self.flags = (self.flags | 0x08) & !0x04;
+            }
+            1 => {
+                self.request = relative;
+                self.flags = (self.flags | 0x04) & !0x08;
+            }
+            2 => {
+                self.distance = super::rounded_distance(orbit)? >> 8;
+                let angles = direction_angles(orbit)?;
+                self.angle_offset = std::array::from_fn(|axis| {
+                    angles[axis].wrapping_add(i32::from(bound_angles[axis])) & 2047
+                });
+                self.flags &= !0x0c;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 impl CameraState {
@@ -435,6 +468,42 @@ pub struct PanState {
     final_offset: [i32; 3],
 }
 
+/// The two object-pan handlers: `showObjPan` takes its vector in world axes, while
+/// `showObjPanLoc` rotates it by the bound actor's angles like the location camera.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ObjectPanKind {
+    Plain,
+    Loc,
+}
+
+/// Inputs of one object-pan invocation. `location.arguments` are the task's vector.
+#[derive(Clone, Copy, Debug)]
+pub struct ObjectPanInputs {
+    pub kind: ObjectPanKind,
+    pub location: LocationInputs,
+    /// The actor's `attr_camera_pan_type`: one interpolates the position request, any other
+    /// value interpolates the angle offset and distance.
+    pub pan_type: u8,
+    pub duration: i32,
+}
+
+/// Start values an object pan keeps between invocations (the original keeps them in shared scratch).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ObjectPanState {
+    /// The task vector, rotated by the bound angles for `showObjPanLoc`.
+    vector: [i32; 3],
+    /// The location offset rotated by the bound angles.
+    offset: [i32; 3],
+    /// The published camera position relative to the bound actor at the start.
+    start_position: [i32; 3],
+    /// Angles and length of the start position minus the offset.
+    start_angles: [i32; 3],
+    start_distance: i32,
+    /// Wrapped difference from the start angles to the vector's angles.
+    delta: [i32; 3],
+    final_distance: i32,
+}
+
 /// A single-step wrap into half a turn either side of zero (2048 units per turn).
 fn wrap_half_turn(value: i32) -> i32 {
     if value < -1024 {
@@ -645,31 +714,132 @@ impl CameraState {
         )?;
         let record = &mut next.records[slot];
         record.flags |= 0x01;
-        match inputs.camera_move {
-            0 => {
-                record.request = add(add(vector, offset), inputs.bound_position);
-                record.flags = (record.flags | 0x08) & !0x04;
-            }
-            1 => {
-                record.request = add(vector, offset);
-                record.flags = (record.flags | 0x04) & !0x08;
-            }
-            2 => {
-                record.distance = super::rounded_distance(vector)? >> 8;
-                let angles = direction_angles(vector)?;
-                record.angle_offset = std::array::from_fn(|axis| {
-                    angles[axis].wrapping_add(i32::from(inputs.bound_angles[axis])) & 2047
-                });
-                record.flags &= !0x0c;
-            }
-            _ => {}
-        }
+        let relative = add(vector, offset);
+        record.request_move(
+            inputs.camera_move,
+            add(relative, inputs.bound_position),
+            relative,
+            vector,
+            inputs.bound_angles,
+        )?;
         update(&mut next)?;
         let slot = next.selected.index();
         next.records[slot].flags &= !0x01;
         *self = next;
         *counter = next_counter;
         Ok(true)
+    }
+
+    /// One invocation of `showObjPan` or `showObjPanLoc`. The first invocation begins a scripted
+    /// camera bound to the actor, converts its camera attributes to offsets and records where the
+    /// camera is relative to it. Every invocation then runs the scripted release step; while it
+    /// keeps running (and the duration exceeds one) the selected record is interpolated from the
+    /// start towards the task's vector, otherwise the final request for `attr_camera_move` is
+    /// written, the retained flag cleared and the task completes. Unlike the location camera no
+    /// camera update runs here. Returns `true` while the task stays active.
+    ///
+    /// A negative duration completes before touching the counter or the camera; `showObjPan` has
+    /// already marked the selected record with flag `0x40` by then, and marks it again at the end.
+    /// All edits happen on a copy committed only on success. The original also sets a mark whose
+    /// reader is not ported; it is not modelled.
+    pub fn show_object_pan(
+        &mut self,
+        pan: &ObjectPanInputs,
+        state: &mut Option<ObjectPanState>,
+        counter: &mut u32,
+        elapsed: i32,
+    ) -> Result<bool> {
+        let plain = pan.kind == ObjectPanKind::Plain;
+        let inputs = &pan.location;
+        let mut next = self.clone();
+        if plain {
+            next.records[next.selected.index()].flags |= 0x40;
+        }
+        if pan.duration < 0 {
+            *self = next;
+            return Ok(false);
+        }
+        let next_counter = counter.wrapping_add(1);
+        let mut next_state = *state;
+        if next_counter == 1 && elapsed == 0 {
+            next.begin_scripted()?;
+            let slot = next.selected.index();
+            next.records[slot].actor = inputs.actor;
+            next.set_location_offsets(inputs.attributes);
+            let offset = rotate(next.records[slot].position_offset, inputs.bound_angles)?;
+            let mut vector = inputs.arguments.map(|argument| argument.wrapping_shl(8));
+            if !plain {
+                vector = rotate(vector, inputs.bound_angles)?;
+            }
+            let start_position: [i32; 3] = std::array::from_fn(|axis| {
+                next.current.position[axis].wrapping_sub(inputs.bound_position[axis])
+            });
+            let from_offset: [i32; 3] =
+                std::array::from_fn(|axis| start_position[axis].wrapping_sub(offset[axis]));
+            let start_angles = direction_angles(from_offset)?;
+            let end_angles = direction_angles(vector)?;
+            next_state = Some(ObjectPanState {
+                vector,
+                offset,
+                start_position,
+                start_distance: super::rounded_distance(from_offset)? >> 8,
+                final_distance: super::rounded_distance(vector)? >> 8,
+                delta: std::array::from_fn(|axis| {
+                    wrap_half_turn(end_angles[axis].wrapping_sub(start_angles[axis]))
+                }),
+                start_angles,
+            });
+        }
+        let saved = next_state.ok_or_else(|| {
+            anyhow::anyhow!("object pan start state unavailable (task restored mid-pan)")
+        })?;
+        let running = next.release_scripted(pan.duration, elapsed);
+        let relative = add(saved.vector, saved.offset);
+        let record = &mut next.records[next.selected.index()];
+        if running && pan.duration > 1 {
+            let span = pan.duration - 1;
+            let step = |from: i32, to: i32| {
+                from.wrapping_add(to.wrapping_sub(from).wrapping_mul(elapsed) / span)
+            };
+            if pan.pan_type == 1 {
+                record.flags = (record.flags | 0x04) & !0x08;
+                record.request =
+                    std::array::from_fn(|axis| step(saved.start_position[axis], relative[axis]));
+            } else {
+                record.flags &= !0x0c;
+                record.angle_offset = std::array::from_fn(|axis| {
+                    i32::from(inputs.bound_angles[axis]).wrapping_add(step(
+                        saved.start_angles[axis],
+                        saved.start_angles[axis].wrapping_add(saved.delta[axis]),
+                    ))
+                });
+                record.distance = step(saved.start_distance, saved.final_distance);
+            }
+            *self = next;
+            *state = next_state;
+            *counter = next_counter;
+            return Ok(true);
+        }
+        let absolute = if plain {
+            add(saved.vector, inputs.bound_position)
+        } else {
+            add(relative, inputs.bound_position)
+        };
+        record.request_move(
+            inputs.camera_move,
+            absolute,
+            relative,
+            saved.vector,
+            inputs.bound_angles,
+        )?;
+        record.flags &= !0x01;
+        if plain {
+            record.flags |= 0x40;
+        }
+        *self = next;
+        *state = next_state;
+        *counter = next_counter;
+        Ok(false)
     }
 
     /// Location-camera setup: the actor's six attribute bytes (target x/y/z, then camera
