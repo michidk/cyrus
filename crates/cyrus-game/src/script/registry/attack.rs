@@ -80,8 +80,9 @@ impl ScriptWorld {
     /// Defended candidates skip damage contact; the first combat hit consumes intent,
     /// sends the hit message and requests the attacker taunt before returning.
     /// Unowned static models query retained tip/base endpoints with enabled sidedness
-    /// and request ordered clank cues. Noncombat and actor-owned face responses
-    /// remain unsupported.
+    /// and request ordered clank cues. Actor-owned faces use independent actor
+    /// contact, then impact, additive health and caller-owned death dispatch.
+    /// Selected-player health and noncombat actor-list responses remain unsupported.
     pub(super) fn process_combat_attack_candidates(
         &mut self,
         id: ScriptActorId,
@@ -149,10 +150,6 @@ impl ScriptWorld {
             return Ok(());
         }
         for candidate in &ground.prepared.candidates.faces {
-            anyhow::ensure!(
-                matches!(candidate.owner, CandidateOwner::Static(_)),
-                "actor-owned static-face attack response unsupported"
-            );
             let endpoints = self
                 .equipped_weapon(id)?
                 .context("retained weapon endpoints unavailable")?
@@ -166,15 +163,104 @@ impl ScriptWorld {
                 .actor_collision
                 .as_ref()
                 .context("attack live geometry unavailable; re-export world")?;
+            let mut poses = std::collections::BTreeMap::new();
+            if let CandidateOwner::Actor(index) = candidate.owner {
+                let record = self.model_presentation(self.id(index)?)?.with_context(|| {
+                    format!("face candidate actor {index}: stored model pose unavailable")
+                })?;
+                poses.insert(index, record.collision_pose()?);
+            }
             let contacts = ground.scene.static_collision.runtime_segment_contacts(
                 &single,
                 models,
-                &Default::default(),
+                &poses,
                 endpoints[1],
                 endpoints[0],
                 true,
                 None,
             )?;
+            if let CandidateOwner::Actor(index) = candidate.owner {
+                let defender = self.id(index)?;
+                if !self.combat_motion_contact(id, defender, ground.animations, Some(models))? {
+                    continue;
+                }
+                let target = &self.actors[index];
+                if target
+                    .control
+                    .as_ref()
+                    .context("face target control unavailable")?
+                    .death_selector
+                    == 8
+                {
+                    continue;
+                }
+                anyhow::ensure!(
+                    geometry.environment.selected_player != Some(defender),
+                    "face target actor {index}: selected hit-inhibition owner unavailable"
+                );
+                let attacker = &self.actors[id.index];
+                let control = attacker
+                    .control
+                    .as_ref()
+                    .context("face attacker control unavailable")?;
+                let holding = super::super::activation::weapon_predicates(
+                    control.living_state,
+                    attacker
+                        .animation
+                        .as_ref()
+                        .map(|a| super::super::ActivationAnimation {
+                            group: a.playback.current_group(),
+                        }),
+                    control.combat.is_some(),
+                    control.weapon_drawn,
+                    attacker.attributes[110],
+                    geometry.environment.item_system_ready,
+                    geometry.environment.shell_execution,
+                )
+                .0;
+                if attacker.attributes[97] != 0
+                    && !holding
+                    && control
+                        .combat
+                        .as_ref()
+                        .is_none_or(|combat| combat.flags & 4 == 0)
+                {
+                    continue;
+                }
+                let effect = i32::from(attacker.attributes[86]);
+                let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+                sounds(
+                    id,
+                    crate::script::ScriptSound::Positional {
+                        effect,
+                        volume: 0,
+                        rate_offset_hz,
+                        position: self.sight_position(id.index)?,
+                    },
+                )?;
+                if self.actors[index].attributes[3] != 0 {
+                    let damage = if control
+                        .combat
+                        .as_ref()
+                        .is_some_and(|combat| combat.retained_action_indices[1] < 0)
+                    {
+                        0
+                    } else {
+                        self.current_combat_motion(id)?
+                            .damage
+                            .context("contact motion damage unavailable")?
+                    };
+                    self.apply_nonplayer_contact_health(
+                        defender,
+                        damage.wrapping_neg(),
+                        geometry.environment,
+                    )?;
+                    if self.actors[index].attributes[3] == 0 {
+                        self.dispatch_contact_death_zero(defender, inputs.nominal_ticks, sounds)?;
+                    }
+                }
+                continue;
+            }
             if contacts.is_empty() {
                 continue;
             }
@@ -193,6 +279,114 @@ impl ScriptWorld {
                 )?;
             }
         }
+        Ok(())
+    }
+
+    /// Additive contact health follows preservation's contact-health rules.
+    /// Death dispatch belongs to the contact caller, including after rejected changes.
+    pub fn apply_nonplayer_contact_health(
+        &mut self,
+        id: ScriptActorId,
+        change: i32,
+        environment: super::transition::ObstacleEnvironment,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        if actor.attributes[120] != 0 {
+            return Ok(());
+        }
+        let control = actor
+            .control
+            .as_ref()
+            .context("contact health control unavailable")?;
+        let holding = super::super::activation::weapon_predicates(
+            control.living_state,
+            actor
+                .animation
+                .as_ref()
+                .map(|animation| super::super::ActivationAnimation {
+                    group: animation.playback.current_group(),
+                }),
+            control.combat.is_some(),
+            control.weapon_drawn,
+            actor.attributes[110],
+            environment.item_system_ready,
+            environment.shell_execution,
+        )
+        .0;
+        if actor.attributes[97] != 0
+            && !holding
+            && control
+                .combat
+                .as_ref()
+                .is_none_or(|combat| combat.flags & 4 == 0)
+        {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            environment.selected_player != Some(id),
+            "selected contact health unavailable"
+        );
+        self.actors[index].attributes[3] =
+            super::falling::ordinary_health_value(actor.attributes[3], change);
+        Ok(())
+    }
+
+    /// Contact selector zero prefers group 122, then 121. A started combat
+    /// death releases walk nodes before retaining its default; selector eight is last.
+    pub fn dispatch_contact_death_zero(
+        &mut self,
+        id: ScriptActorId,
+        ticks: Option<u32>,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let group = self.actors[index].animation.as_ref().and_then(|animation| {
+            [122, 121]
+                .into_iter()
+                .find(|group| animation.playback.has_group(*group))
+        });
+        if let Some(group) = group {
+            let ticks = ticks.context("contact death nominal ticks unavailable")?;
+            let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let actor = &mut self.actors[index];
+            let surface = actor.surface;
+            let animation = actor
+                .animation
+                .as_mut()
+                .expect("validated contact death animation");
+            let frame =
+                animation
+                    .playback
+                    .force_request_with_sounds(group, 0, ticks, &mut |sound| {
+                        sounds(
+                            id,
+                            crate::script::ScriptSound::Animation {
+                                sound,
+                                surface,
+                                position,
+                            },
+                        )
+                    })?;
+            animation.frame = frame.or(animation.frame);
+            if actor
+                .control
+                .as_ref()
+                .is_some_and(|control| control.combat.is_some())
+            {
+                self.release_held_walk_nodes(id)?;
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("validated death control")
+                    .combat_death_default = Some(if group == 122 { 124 } else { 123 });
+            }
+        }
+        self.actors[index]
+            .control
+            .as_mut()
+            .context("contact death control unavailable")?
+            .death_selector = 8;
         Ok(())
     }
 

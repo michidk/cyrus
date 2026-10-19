@@ -3,6 +3,7 @@
 //!
 //! [preservation attachment documentation]: https://github.com/michidk/redguard-preservation/blob/079a83339850bf0e3e40c85fb78ccac3f74d48b7/docs/engine/attachment.md
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "parsers")]
 use std::collections::BTreeMap;
 
 /// Original item geometry, independent of presentation meshes and renderer bounds.

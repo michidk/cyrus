@@ -215,6 +215,57 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+#### Current support and parallel ownership
+
+This table is the current summary. The evidence paragraphs below include earlier
+limits that later changes supersede. **Done** means the named bounded contract
+is implemented and tested, not that every caller or the full game is accepted.
+**Partial** means supported branches coexist with explicit errors. **In progress**
+identifies the current uncommitted change until its verification and landing.
+**Todo** means the required live integration or behavior remains unavailable.
+Command names below are examples, not an exhaustive native catalogue. Decoding a
+command or retaining its request does not count as executing its gameplay effect.
+
+| Area / commands or features | Status | Working behavior | Remaining work |
+| --- | --- | --- | --- |
+| VM, attributes, flags, routing, task slots and waits | Partial | Portable execution; explicit hosts; `Wait`, `WaitOnTasks`, `WaitNonMulti`, receiver/player frame waits and retained continuation | Complete production eligibility, synchronization channels, scriptless receivers, recycling and cancellation/model-replacement lifecycle |
+| Animation and model points | Partial | Retained playback, reverse direction, command cursor, source-vertex queries, replacement snapshots | Actor events from animation opcode eleven; remaining group/model lifecycle and rendered continuation |
+| Defence and synchronous attacks | Partial | Receiver defence table/slots; paced selection, counter timing, reach/arc/sphere tests, synchronous starters and hit-defence response | Full installed duel outcomes and pacing; selected-player decisions; unsupported contact branches |
+| Ordinary nonplayer combat | Partial | Root composes coordination, spacing, counters, defence and taunts; production audio adapters; both START pirates traverse automatically | Combat message effects beyond supported coordination; complete movement prerequisites and outcome acceptance |
+| Weapon lifecycle and geometry | Partial | Nonplayer draw/sheath thresholds; installed hand/hilt definitions; retained attachment poses and tip/base endpoints | Renderer attachment binding, selected-player HUD/camera side effects, full weapon lifecycle acceptance |
+| Weapon contact and nonplayer health/death | Partial | Static and actor-owned face response, impact ordering, additive health and selector-zero death have focused tests and a successful headless START diagnostic | Noncombat actor-list response, attribute-126 segment path, transient response and selected-player health |
+| `MoveForward`, `MoveBackward`, `WalkForward`, `MoveLeft`, `MoveRight` | Partial | Supported synchronous ground/combat movement and collision probes; ordinary walking branches | Selected-player WalkForward; remaining noncombat strafe, deep-water/edge, ledge and unsupported movement branches |
+| Point walking, routes and `Wander` | Partial | Reservation/history ownership; supported direct/route phases, facing and phase-nine delays | Jump-route continuation, hit/collision transitions, direction-15 and exclusion branches; populated-map Wander |
+| Selected-player combat and health | Todo integration | Standalone role initialization, combat allocation/contact profile and shared logical actor exist | Separate hit inhibition, maximum/displayed health and timer, taunt/reaction, action/motion followups, death override and armed controller scheduling |
+| `SetHealth`, `AdjustHealth`, `ReplenishHealth`, `PlayerHealth` | Partial | Reads and supported nonplayer writes | Distinct health modes, selected-player HUD feedback, admission and death side effects; contact health does not automatically complete these commands |
+| `DrawSword`, `SheathSword`, weapon predicates | Partial | Shared holding/drawing/sheathing queries and supported nonplayer transitions | Selected-player HUD timer/camera selection and complete armed controls |
+| Script cameras and show/look/pan services | Todo integration | Installed camera settings/records, pose preparation, collision/terrain correction helpers | Session lifetime, live actor/geometry bindings, native dispatch/task continuation, publication and restoration; render-camera existence alone is insufficient |
+| `LoadWorld`, `PushPlayer`, `PopPlayer`, `WonGame` | Request only | Native handlers retain host requests | Shared lifecycle consumers, player-stack/endgame behavior, failure handling and story acceptance |
+| Dialogue, `RTXp`, `WaitOnDialog`, combat taunts | Partial | RTX preparation, cache and supported playback/wait/taunt services | Full topic/conversation execution and Brennan sequence; session/lifecycle acceptance |
+| Inventory, HUD, log and sound natives | Partial | Shared item acquisition/removal/selection; bitmap/log owners; supported effects/ambient and animation cues | New-game/death/save resets, remaining eligibility, rope/torch and cleanup branches; complete audible/rendered acceptance |
+| Visibility, lights and miscellaneous natives | Partial | Supported show/hide and retained light controls | Full renderer/light lifecycle, KillMe/Resurrect cleanup, remaining player queries/actions and native catalogue coverage |
+
+The five goal priorities are divided into the following ownership boundaries.
+Unassigned rows are available for another agent after it records its claim in
+Active assignments. Each agent uses a separate worktree. This does not authorize
+simultaneous edits to a shared file.
+
+| Work package | Owner / suggested files | Dependencies and completion evidence |
+| --- | --- | --- |
+| Combat contact and selected-player health | Current SOUP agent; `script/registry/attack.rs`, combat/contact modules, selected-health state and tests | Own contact response and selected damage/reaction/death. Verify public call ordering and retained writes, installed duel and HUD feedback; coordinate additions to `activation.rs` and registry snapshots |
+| Combat movement and route gaps | Unassigned; `script/registry/spacing.rs`, locomotion/point/navigation modules | Consume existing combat state, preserve collision and random order. Coordinate with player-controller owner before changing player movement. Verify edge/deep-water and populated-route branches against original evidence |
+| Session camera services | Unassigned; `script/camera.rs`, camera-specific session/render adapters and focused tests | Can proceed beside health work. Establish original behavior and session/actor bindings; integrate show/look/pan commands, continuation and publication. Compare matched native/browser camera sequences and restoration |
+| Story world transitions and player stack | Unassigned; host-request consumer and shared session lifecycle | Camera and player/combat owners supply required services. Verify pending/failed loads, preserved source world, player-stack behavior and destination entry; avoid claiming the opening complete before duel/Brennan sequence works |
+| Original/native/browser acceptance | Unassigned; replay fixtures and task artifacts | Baseline capture/fixture work can start immediately. Final acceptance follows relevant implementation. Match inputs, poses and timing; cover both pirates, player damage/death, Brennan cameras/dialogue and destination world |
+
+Shared integration files (`script/registry.rs`, `script/activation.rs`,
+`script/mod.rs`, session snapshots and `docs/ROADMAP.md`) require coordination
+before editing. Keep detailed contracts beside code and research under `magic/`.
+Publish engine facts in preservation and archive research privately. Other agents
+must not restart the explicitly stopped `cyrus-soup` preview. Acceptance requires
+relevant original/native/browser evidence; headless traversal alone is insufficient.
+
+
 **Verified:** ordinary maintenance consumes coordination transfers through the
 shared message service. Receiver/sender target ownership, ordered living-attacker
 resets, close-counter resets and aggression assignment are implemented. Unknown
@@ -726,26 +777,21 @@ intent. The installed production-audio START diagnostic reaches ordinary travers
 72 before the explicit actor-owned face-response limit. Complete owned response
 and original/native/browser combat acceptance remain open.
 
-Next, in dependency order:
+**Verified:** actor-owned face candidates now run actor contact independently of
+segment results, request impact sound before damage, apply nonplayer additive
+health and dispatch caller-owned death. Public tests cover segment misses with
+actor hits, sound failure before health mutation, lethal damage, health admission,
+wrapping/clamping and death-group preference/defaults. The installed production-
+audio headless START diagnostic completes 1,916 ordinary traversals with zero
+failed or unsupported script actors. Selected-player health, complete combat
+outcomes and original/native/browser acceptance remain open.
 
-1. Compare installed allocation assignments and complete live
-   combat before claiming automatic actor pacing or full START acceptance.
-   Preserve state changes and publish remaining recovered rules before implementing them.
-2. Complete fight spacing and its combat movement prerequisites: `WalkForward`,
-   ordinary per-point collision inputs and deep-water/edge admission. The terrain
-   edge probe exists; retain explicit errors for unsupported ledge/non-combat paths.
-3. Connect the combat decision root to ordinary updates. Sample live combat and
-   animation state, apply attacks, defences, taunts, steps and messages in original
-   order, then verify both START pirates through the automatic virtual-display path.
-   Headless START currently does not exercise that traversal.
-4. Establish the session-owned camera, actor bindings and live geometry admission;
-   connect show/look/pan natives and camera scheduling. `CameraState::prepare_pose`,
-   installed camera records/settings and exact terrain-height retention exist but
-   do not establish a live camera service.
-5. Complete opening-story progression: selected-player combat/health, damage/death
-   and HUD ownership, then consume host world-load requests through the shared
-   lifecycle. Verify the duel, pirate death flag, Brennan dialogue/camera sequence
-   and destination world on native and browser hosts against the original.
+Next, in dependency order: establish
+selected-player health/controller owners and remaining combat movement, complete
+session cameras, then connect story transitions and run the shared acceptance
+fixtures. Camera and transition work can proceed under the boundaries above.
+The automatic combat root is connected; completing its remaining branches and
+acceptance is still required.
 
 Outside those five steps, remaining services include non-combat strafes, the ledge
 system, Jump and action-word updates, player turn/space/scape/weapon queries, game-won and player-stack host consumers,

@@ -23631,3 +23631,252 @@ fn static_weapon_contact_uses_retained_tip_first_and_keeps_attack_intent() {
         );
     }
 }
+
+#[test]
+fn contact_health_keeps_addition_separate_from_caller_owned_death() {
+    use cyrus_game::script::{CombatControlState, ObstacleEnvironment};
+    for (health, change, immune, gated, flags, expected) in [
+        (50, -7, 0, 0, 0, 43),
+        (5, -7, 0, 0, 0, 0),
+        (50, 300, 0, 0, 0, 255),
+        (50, i32::MAX, 0, 0, 0, 0),
+        (50, -7, 1, 0, 0, 50),
+        (50, -7, 0, 1, 0, 50),
+        (50, -7, 0, 1, 4, 43),
+    ] {
+        let (mut world, _, _) = movement_fixture(
+            18,
+            false,
+            true,
+            |_| {},
+            |saved| {
+                saved["actors"][0]["attributes"][3] = health.into();
+                saved["actors"][0]["attributes"][120] = immune.into();
+                saved["actors"][0]["attributes"][97] = gated.into();
+                saved["actors"][0]["control"]["death_selector"] = 0.into();
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        flags,
+                        ..Default::default()
+                    })
+                    .unwrap();
+            },
+        );
+        let id = world.id(0).unwrap();
+        world
+            .apply_nonplayer_contact_health(
+                id,
+                change,
+                ObstacleEnvironment {
+                    selected_player: None,
+                    auto_grab: false,
+                    item_system_ready: true,
+                    shell_execution: false,
+                    ticks: 1,
+                },
+            )
+            .unwrap();
+        assert_eq!(world.actors()[0].attributes()[3], expected);
+        assert_eq!(world.actors()[0].control_state().unwrap().death_selector, 0);
+        // No death groups exist in this fixture. Dispatch must still mark death,
+        // without querying timing or calling animation sounds.
+        world
+            .dispatch_contact_death_zero(id, None, &mut |_, _| panic!("unexpected sound"))
+            .unwrap();
+        assert_eq!(world.actors()[0].control_state().unwrap().death_selector, 8);
+    }
+}
+
+#[test]
+fn contact_death_prefers_122_then_121_and_retains_combat_default() {
+    use cyrus_game::script::CombatControlState;
+    for (groups, expected) in [(vec![121, 122], 124), (vec![121], 123)] {
+        let (world, scripts, mut data) = movement_fixture(
+            18,
+            false,
+            true,
+            |_| {},
+            |saved| {
+                saved["actors"][0]["control"]["death_selector"] = 0.into();
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState::default()).unwrap();
+            },
+        );
+        for group in groups {
+            data.metadata["actors"][0]["animation_groups"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({
+                    "group_index":group,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]
+                }));
+        }
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["animation"] = serde_json::Value::Null;
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        world.bind_animation(id, &data, 18).unwrap();
+        world
+            .dispatch_contact_death_zero(id, Some(1), &mut |_, _| Ok(()))
+            .unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.death_selector, 8);
+        assert_eq!(control.combat_death_default, Some(expected));
+        assert_eq!(
+            (control.navigation.current, control.navigation.next),
+            (-1, -1)
+        );
+    }
+}
+
+#[test]
+fn owned_face_contact_ignores_segment_miss_and_applies_damage_after_sound() {
+    use cyrus_game::script::{
+        CombatControlState, LocomotionGeometry, OrdinaryGroundQuery, ScriptInputs,
+    };
+    for (health, fail_sound, expected_health) in [(50, false, 43), (5, false, 0), (50, true, 50)] {
+        let (tip_x, base_x, expected_cues) = (10, -10, 1);
+        let (world, scripts, mut data) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                for instance in &mut scripts.instances {
+                    instance.object_type = 1;
+                }
+                scripts.combat_clank_effects = [Some(31), None];
+                scripts
+                    .actors
+                    .get_mut("LOGIC")
+                    .unwrap()
+                    .attributes
+                    .insert("attr_86".into(), 31);
+                scripts.combat_attacks =
+                    vec![combat::Attack {
+                        is_combo: false,
+                        motions: vec![serde_json::from_value(serde_json::json!({
+                    "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                    "first_collide_frame":0,"collide_duration":1,"col_vertex":0,"col_sphere_size":10000,"damage":7
+                })).unwrap()],
+                        min_range: 0,
+                        max_range: 100,
+                    }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["death_selector"] = 0.into();
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        action: 0,
+                        flags: 1,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+            },
+        );
+        data.metadata["actors"][0]["model_load_path"] = "static".into();
+        data.metadata["actors"][0]["raex"] =
+            serde_json::json!({"unknown_12":0,"v_vertex":0,"v_size":0});
+        data.metadata["actors"][0]["mpsz_bounds_primary"] = (-1).into();
+        data.metadata["mpob_objects"] = serde_json::json!([{"model_id":-1},{"model_id":-1}]);
+        data.models.insert(
+            "WEAPON".into(),
+            cyrus_assets::animation::AnimationModel {
+                radius: Some(1.),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "animated_i16".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        );
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([262144, 0, 262144]);
+        saved["actors"][0]["model"]["weapon"] = serde_json::json!({
+            "item":1,"model":"WEAPON","position_bits":[0,0,0],
+            "matrix_bits":[[1065353216_u32,0,0],[0,1065353216_u32,0],[0,0,1065353216_u32]],
+            "retained_point":[0,0,0],"retained_angles":[0,0,0],
+            "endpoints":[[1024+base_x,0,1024],[1024+tip_x,0,1024]]
+        });
+        saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([262144, 0, 262144]);
+        saved["actors"][1]["attributes"][3] = health.into();
+        saved["actors"][1]["control"]["death_selector"] = 0.into();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        let id = world.id(0).unwrap();
+        let (_, _, models) = static_model_fixture(cache());
+        world.prepare_model_resources(&data, &models).unwrap();
+        let defender = world.id(1).unwrap();
+        world
+            .refresh_model_presentations(&data, &[id, defender])
+            .unwrap();
+        let scene = ordinary_collision_scene(world.world, models);
+        let prepared = world
+            .prepare_ordinary_collision_query(id, &scene, &data, [1024, 1024], &[defender])
+            .unwrap();
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let mut cues = Vec::new();
+        let result = world.maintain_map_combat(
+            id,
+            1,
+            false,
+            ScriptInputs {
+                locomotion_geometry: Some(LocomotionGeometry {
+                    ground: OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 0,
+                        sidedness: false,
+                    },
+                    environment: cyrus_game::script::ObstacleEnvironment {
+                        selected_player: Some(id),
+                        auto_grab: false,
+                        item_system_ready: true,
+                        shell_execution: false,
+                        ticks: 1,
+                    },
+                }),
+                ..Default::default()
+            },
+            Some(&mut random),
+            &mut |actor, sound| {
+                cues.push((actor, sound));
+                anyhow::ensure!(!fail_sound, "impact backend failed");
+                Ok(())
+            },
+        );
+        assert_eq!(result.is_err(), fail_sound);
+        assert_eq!(world.actors()[1].attributes()[3], expected_health);
+        assert_eq!(
+            world.actors()[1].control_state().unwrap().death_selector,
+            if expected_health == 0 { 8 } else { 0 }
+        );
+        assert_eq!(cues.len(), expected_cues, "tip {tip_x} base {base_x}");
+        assert_eq!(random.state(), 1103527590);
+        for ((actor, cue), expected_pitch) in cues.into_iter().zip([96, 992]) {
+            assert_eq!(actor, id);
+            assert!(matches!(
+                cue,
+                cyrus_game::script::ScriptSound::Positional {
+                    effect: 31,
+                    volume: 0,
+                    rate_offset_hz,
+                    ..
+                } if rate_offset_hz == expected_pitch
+            ));
+        }
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .flags,
+            0x21
+        );
+    }
+}
