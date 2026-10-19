@@ -1,4 +1,4 @@
-//! Point navigation retains actor commands through pauses, arrival and held-node facing transitions.
+//! Point navigation retains actor commands through pauses, arrival, facing and idle-delay transitions.
 use super::{ScriptActorId, ScriptInputs, ScriptWorld};
 use anyhow::{Context, Result};
 
@@ -7,9 +7,10 @@ impl ScriptWorld {
     /// Map validation precedes shared pause consumption. A consumed pause returns one
     /// even when it reaches zero. Immediate arrival and falling/queued motion use live
     /// actor owners. Phases one and 27 support held-node arrival and facing,
-    /// including attribute-90 delays on the session random stream. Walking, later
-    /// route phases and hit reactions remain unavailable. Animation requests require
-    /// nominal ticks and a synchronous sound sink; random is required only for delay admission.
+    /// including attribute-90 delay admission. Phase nine retains countdown and idle
+    /// requests on the session random stream. Walking, later route phases and hit
+    /// reactions remain unavailable. Animation requests require nominal ticks and a
+    /// synchronous sound sink; random is required only on admitted draw paths.
     pub fn move_ordinary_point(
         &mut self,
         id: ScriptActorId,
@@ -223,6 +224,61 @@ impl ScriptWorld {
         Ok(())
     }
 
+    fn advance_point_delay(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<()> {
+        let ticks = inputs
+            .nominal_ticks
+            .context("point delay requires nominal_ticks")?;
+        let command = &mut self.globals.native_command;
+        let word = command.point_word;
+        command.point_word = if (i32::from(word as i16) as u32) < ticks {
+            0
+        } else {
+            word.wrapping_sub(ticks as u16)
+        };
+        if command.point_word == 0 {
+            command.point_phase = 2;
+            return Ok(());
+        }
+        let (_, holding_weapon) = self.spacing_weapon(id, inputs)?;
+        if holding_weapon {
+            self.globals.native_command.point_phase = 2;
+            return Ok(());
+        }
+        let animation = self.actors[id.index]
+            .animation
+            .as_ref()
+            .context("point delay animation unavailable")?;
+        let current = animation
+            .playback
+            .current_group()
+            .context("point delay current animation group unavailable")?;
+        if current == animation.playback.default_group() {
+            let random = random.context("point delay requires shared engine random stream")?;
+            if random.draw() & 31 == 31 {
+                let group = loop {
+                    let choice = random.draw() & 3;
+                    if choice < 3 {
+                        break (choice + 1) as u16;
+                    }
+                };
+                self.request_ordinary_group(
+                    id,
+                    group,
+                    false,
+                    ticks,
+                    sounds.context("point delay requires synchronous sounds")?,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn move_point_held_node(
         &mut self,
         id: ScriptActorId,
@@ -247,10 +303,12 @@ impl ScriptWorld {
         );
         let phase = self.globals.native_command.point_phase;
         anyhow::ensure!(
-            matches!(phase, 1 | 27),
+            matches!(phase, 1 | 9 | 27),
             "ordinary combat routed point navigation unsupported: phase {phase}"
         );
-        if navigation.next == -1 {
+        if phase == 9 {
+            self.advance_point_delay(id, inputs, random, sounds)?;
+        } else if navigation.next == -1 {
             self.release_held_walk_nodes(id)?;
             self.globals.native_command.point_phase = 0;
         } else {

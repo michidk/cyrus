@@ -570,8 +570,17 @@ attribute-90 phase-nine delay. All 640 original/production turn, phase, retained
 node and random-consumption cases agree. A wrong combat-record-existence
 predicate fails the comparison. Synchronous cue failure stops before heading,
 phase and random changes. The [facing transition contract](https://github.com/michidk/redguard-preservation/commit/b4a25db81674547aaf4a7491b938ab818d145134)
-records the rules. Walking, delayed-phase continuation, phase-eight selection
+records the rules. Walking, phase-eight selection
 and full automatic START/native/browser acceptance remain open.
+
+**Verified:** phase-nine continuation now uses the session random stream,
+retained command word, live weapon predicate and synchronous animation requests.
+All 1,512 original/production countdown, phase, idle-request and random-state
+cases agree. Replacing rejection sampling with `Rnd(3)` fails. Public contracts
+cover snapshot continuation, missing owners and sound failure after consumed
+draws but before wrapper save. The [delay contract](https://github.com/michidk/redguard-preservation/commit/b9439822fee88783a87a6a7b2a86a236e362000b)
+records the rules. Walking, phase-eight routing and full automatic
+START/native/browser acceptance remain open.
 
 Next, in dependency order:
 

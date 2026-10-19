@@ -1280,5 +1280,17 @@ its session random owner through combat perception to point movement. Turning
 consumes no random draws. Missing owners fail contextually rather than inventing
 weapon state or a private random stream. **Verified:** 640 original/production
 turn, phase and random-consumption cases agree. Treating any combat record as
-active fails that comparison. Walking, delayed-phase continuation and phase-eight
-route selection remain unsupported; full automatic START combat is unverified.
+active fails that comparison. Walking and phase-eight route selection remain unsupported; full automatic START combat is unverified.
+
+
+Point phase nine now retains its nominal-tick countdown, weapon exit and idle
+requests. Countdown comparison sign-extends the word before its unsigned tick
+comparison. Matching current/default animation groups consume the shared idle
+admission draw; accepted idle admission rejects low-two-bit value three until
+it can request group one, two or three. Requests use the existing synchronous
+animation owner. Failed sounds retain consumed draws and the updated shared
+word while stopping before actor-command save and pending registration.
+**Verified:** 1,512 original/production countdown, phase, idle-request and random
+state cases agree; substituting `Rnd(3)` fails. Public contracts cover snapshot
+continuation and missing-owner ordering. Walking and phase-eight selection,
+full automatic START combat and native/browser acceptance remain open.

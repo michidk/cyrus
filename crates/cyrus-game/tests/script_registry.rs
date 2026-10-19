@@ -20931,3 +20931,416 @@ fn point_node_facing_requires_the_shared_random_owner_only_after_alignment() {
         serde_json::json!([])
     );
 }
+
+fn point_delay_fixture(
+    word: u16,
+    weapon: bool,
+    matching: bool,
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    let (_, scripts, mut data) = point_node_fixture(8);
+    for group in 1..=3 {
+        let definition = serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":100+group,"volume_shift":0},
+            {"opcode":0,"frame_reference":group},{"opcode":2,"value":0}
+        ]});
+        data.metadata["actors"][0]["animation_groups"]
+            .as_array_mut()
+            .unwrap()
+            .push(definition);
+    }
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world.bind_animation(id, &data, 18).unwrap();
+    world
+        .advance(
+            id,
+            cyrus_game::script::ScriptStage::Animation,
+            cyrus_game::script::ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["animation"]["frame"] = serde_json::Value::Null;
+    saved["actors"][0]["attributes"][110] = u8::from(weapon).into();
+    saved["actors"][0]["animation"]["playback"]["default"] = if matching { 18 } else { 0 }.into();
+    saved["actors"][0]["control"]["navigation"] =
+        serde_json::json!({"map":0,"current":0,"next":1,"previous_next":99,"destination":0});
+    saved["actors"][0]["control"]["point_command"] =
+        serde_json::json!({"value":7654321,"word":word,"phase":9,"counter":0});
+    saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([513, 200, 768]);
+    saved["spatial"]["actors"][0]["previous_local_position"] = serde_json::json!([513, 200, 768]);
+    (
+        restore_navigation_owner(saved, &scripts, &data).unwrap(),
+        scripts,
+        data,
+    )
+}
+
+#[test]
+fn point_delay_countdown_preserves_signed_word_comparison_and_weapon_exit() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for (word, ticks, weapon, expected_word, expected_phase) in [
+        (0, 0, false, 0, 2),
+        (1, 1, false, 0, 2),
+        (16, 17, false, 0, 2),
+        (16, 1, false, 15, 9),
+        (16, 1, true, 15, 2),
+        (32768, 65535, false, 32769, 9),
+        (65535, 1, false, 65534, 9),
+        (32768, u32::MAX, false, 0, 2),
+        (65535, u32::MAX, false, 0, 2),
+    ] {
+        let (mut world, scripts, data) = point_delay_fixture(word, weapon, false);
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [1000000, 999, 1000000],
+                    17,
+                    ScriptInputs {
+                        hud: Some(&hud),
+                        nominal_ticks: Some(ticks),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    Some(&mut random),
+                    None
+                )
+                .unwrap(),
+            1
+        );
+        let c = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                c.point_command.word,
+                c.point_command.phase,
+                c.death_selector
+            ),
+            (expected_word, expected_phase, 7)
+        );
+        assert_eq!(
+            (
+                c.navigation.current,
+                c.navigation.next,
+                c.navigation.previous_next
+            ),
+            (0, 1, 99)
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, [513, 200, 768]);
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["actors"][0]["animation"]["playback"]["current"]
+                [0],
+            serde_json::json!(18)
+        );
+        assert_eq!(random.state(), 42);
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["map_updates"],
+            serde_json::json!([0])
+        );
+    }
+}
+
+#[test]
+fn point_delay_idle_uses_shared_draws_rejects_three_and_dispatches_before_return() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for (seed, group, expected_state) in [
+        (71, 1, 3472157085),
+        (5, 2, 2701728395),
+        (10, 3, 1849040536),
+        (350, 1, 1391208277),
+        (284, 2, 847347883),
+        (416, 3, 1935068671),
+    ] {
+        let (mut world, scripts, data) = point_delay_fixture(16, false, true);
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(seed);
+        let mut effects = vec![];
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [1000000, 0, 1000000],
+                    0,
+                    ScriptInputs {
+                        hud: Some(&hud),
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    Some(&mut random),
+                    Some(&mut |actor, sound| {
+                        assert_eq!(actor, id);
+                        if let cyrus_game::script::ScriptSound::Animation {
+                            sound: cyrus_world::animation::AnimationSound::Play { effect, .. },
+                            position,
+                            ..
+                        } = sound
+                        {
+                            assert_eq!(position, Some([513, 200, 768]));
+                            effects.push(effect);
+                        }
+                        Ok(())
+                    })
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(effects, vec![100 + group as i16]);
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["actors"][0]["animation"]["playback"]["current"]
+                [0],
+            serde_json::json!(group)
+        );
+        assert_eq!(random.state(), expected_state);
+        let c = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                c.point_command.word,
+                c.point_command.phase,
+                c.death_selector
+            ),
+            (15, 9, 7)
+        );
+        assert_eq!(
+            (
+                c.navigation.current,
+                c.navigation.next,
+                c.navigation.previous_next
+            ),
+            (0, 1, 99)
+        );
+        let saved = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(saved["actors"][0]["animation"]["playback"]["default"], 18);
+        assert_eq!(saved["map_updates"], serde_json::json!([0]));
+        world
+            .move_ordinary_point(
+                id,
+                [1000000, 0, 1000000],
+                0,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .point_command
+                .word,
+            14
+        );
+        assert_eq!(random.state(), expected_state);
+    }
+}
+
+#[test]
+fn point_delay_sound_failure_retains_consumed_random_and_stops_before_wrapper_save() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (mut world, scripts, data) = point_delay_fixture(16, false, true);
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(350);
+    let mut effects = vec![];
+    let error = world
+        .move_ordinary_point(
+            id,
+            [1000000, 0, 1000000],
+            0,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut random),
+            Some(&mut |_, sound| {
+                if let cyrus_game::script::ScriptSound::Animation {
+                    sound: cyrus_world::animation::AnimationSound::Play { effect, .. },
+                    ..
+                } = sound
+                {
+                    effects.push(effect);
+                    anyhow::bail!("idle sound rejected");
+                }
+                Ok(())
+            }),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("idle sound rejected"));
+    assert_eq!(effects, vec![101]);
+    assert_eq!(random.state(), 1391208277);
+    assert_eq!(world.globals().native_command().point_word, 15);
+    let c = world.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (
+            c.point_command.word,
+            c.point_command.phase,
+            c.death_selector
+        ),
+        (16, 9, 0)
+    );
+    assert_eq!(
+        (
+            c.navigation.current,
+            c.navigation.next,
+            c.navigation.previous_next
+        ),
+        (0, 1, 99)
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [513, 200, 768]);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(saved["map_updates"], serde_json::json!([]));
+    assert!(
+        saved["actors"][0]["animation_failure"]
+            .as_str()
+            .unwrap()
+            .contains("idle sound rejected")
+    );
+}
+
+#[test]
+fn point_delay_snapshot_resumes_countdown_and_zero_exit_needs_no_optional_owners() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let (mut world, scripts, data) = point_delay_fixture(2, false, true);
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    let mut random = cyrus_game::random::EngineRandom::from_state(1);
+    world
+        .move_ordinary_point(
+            id,
+            [1000000, 0, 1000000],
+            0,
+            ScriptInputs {
+                hud: Some(&hud),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            Some(&mut random),
+            None,
+        )
+        .unwrap();
+    assert_eq!(random.state(), 1103527590);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    let mut restored = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    let id = restored.id(0).unwrap();
+    assert_eq!(
+        restored.actors()[0]
+            .control_state()
+            .unwrap()
+            .point_command
+            .word,
+        1
+    );
+    restored
+        .move_ordinary_point(
+            id,
+            [1000000, 0, 1000000],
+            0,
+            ScriptInputs {
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+        )
+        .unwrap();
+    let c = restored.actors()[0].control_state().unwrap();
+    assert_eq!(
+        (
+            c.point_command.word,
+            c.point_command.phase,
+            c.death_selector
+        ),
+        (0, 2, 7)
+    );
+    assert_eq!(
+        (
+            c.navigation.current,
+            c.navigation.next,
+            c.navigation.previous_next
+        ),
+        (0, 1, 99)
+    );
+    assert_eq!(
+        movement_snapshot(&restored, &scripts, &data)["map_updates"],
+        serde_json::json!([0])
+    );
+}
+
+#[test]
+fn point_delay_missing_random_or_sound_owner_preserves_failure_order() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    for missing_random in [false, true] {
+        let (mut world, scripts, data) = point_delay_fixture(16, false, true);
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(71);
+        let error = world
+            .move_ordinary_point(
+                id,
+                [1000000, 0, 1000000],
+                0,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                if missing_random {
+                    None
+                } else {
+                    Some(&mut random)
+                },
+                None,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains(if missing_random {
+            "point delay requires shared engine random stream"
+        } else {
+            "point delay requires synchronous sounds"
+        }));
+        assert_eq!(random.state(), if missing_random { 71 } else { 3472157085 });
+        assert_eq!(world.globals().native_command().point_word, 15);
+        let c = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            (
+                c.point_command.word,
+                c.point_command.phase,
+                c.death_selector
+            ),
+            (16, 9, 0)
+        );
+        assert_eq!(
+            (
+                c.navigation.current,
+                c.navigation.next,
+                c.navigation.previous_next
+            ),
+            (0, 1, 99)
+        );
+        assert_eq!(
+            movement_snapshot(&world, &scripts, &data)["map_updates"],
+            serde_json::json!([])
+        );
+    }
+}
