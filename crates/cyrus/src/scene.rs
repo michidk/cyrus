@@ -13,7 +13,8 @@ pub fn register_cache_source(app: &mut App) -> anyhow::Result<()> {
 }
 
 use cyrus_world::lifecycle::{
-    CurrentScene, PreparationProgress, PreparedWorld, SceneLoadError, SceneRequest, WorldChange,
+    CurrentScene, PreparationProgress, PreparedWorld, ReloadScene, SceneLoadError, SceneRequest,
+    WorldChange,
 };
 use std::sync::{Mutex, mpsc};
 
@@ -65,15 +66,19 @@ fn load_requested(
     current: Res<CurrentScene>,
     pending: Option<Res<Preparation>>,
     last: Option<Res<LastAttempt>>,
-    game: Option<Res<cyrus_startup::StartGame>>,
+    (game, reload): (
+        Option<Res<cyrus_startup::StartGame>>,
+        Option<Res<ReloadScene>>,
+    ),
 ) {
     let name = request.0.to_ascii_uppercase();
     if pending.is_some()
         || (!request.is_changed() && last.is_some_and(|last| last.0 == name))
-        || (game.is_none() && current.name == name)
+        || (game.is_none() && reload.is_none() && current.name == name)
     {
         return;
     }
+    commands.remove_resource::<ReloadScene>();
     commands.remove_resource::<SceneLoadError>();
     commands.remove_resource::<PreparationProgress>();
     commands.insert_resource(LastAttempt(name.clone()));
@@ -205,6 +210,32 @@ mod tests {
         app.update();
         assert!(!app.world().contains_resource::<Preparation>());
         assert!(!app.world().contains_resource::<LastAttempt>());
+    }
+
+    #[test]
+    fn reload_request_prepares_the_current_world_once() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            bevy::state::app::StatesPlugin,
+            AssetPlugin::default(),
+        ))
+        .insert_state(AppState::InGame)
+        .insert_resource(GameInstall {
+            root: std::env::temp_dir().join("cyrus-absent-install"),
+        })
+        .insert_resource(SceneRequest("START".into()))
+        .insert_resource(CurrentScene {
+            name: "START".into(),
+            world: Some(1),
+        })
+        .add_systems(Update, load_requested);
+        app.update();
+        assert!(!app.world().contains_resource::<Preparation>());
+        app.insert_resource(ReloadScene);
+        app.update();
+        assert!(app.world().contains_resource::<Preparation>());
+        assert!(!app.world().contains_resource::<ReloadScene>());
     }
 
     #[test]

@@ -2,7 +2,7 @@
 use super::ScriptActors;
 use crate::player::placement::MarkerEntry;
 use bevy::prelude::*;
-use cyrus_world::lifecycle::SceneRequest;
+use cyrus_world::lifecycle::{ReloadScene, SceneRequest};
 
 /// Destination of a `LoadWorld(world, marker, heading)` call. The heading is masked to 0 through
 /// 2047 as preservation documents; the world index is validated against WORLD.INI by the scene
@@ -36,6 +36,7 @@ pub(super) fn consume(mut actors: ResMut<ScriptActors>, mut commands: Commands) 
         Ok((scene, marker)) => {
             commands.insert_resource(marker);
             commands.insert_resource(scene);
+            commands.insert_resource(ReloadScene);
         }
         Err(error) => actors.report_runtime_error(format!("{error:#}")),
     }

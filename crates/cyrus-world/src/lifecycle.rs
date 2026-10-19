@@ -7,6 +7,10 @@ use cyrus_assets::script::{ScriptLoader, Scripts};
 /// WORLD.INI ID or map stem, retaining the control protocol's scene string.
 #[derive(Resource, Debug, Clone)]
 pub struct SceneRequest(pub String);
+/// The pending [`SceneRequest`] must be prepared even when it names the current world, as an
+/// authored `LoadWorld` does to re-enter a world at another marker. Removed when preparation starts.
+#[derive(Resource)]
+pub struct ReloadScene;
 /// A host preparation failure, retained for the loading presentation and control.
 #[derive(Resource)]
 pub struct SceneLoadError(pub String);
