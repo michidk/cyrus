@@ -534,6 +534,14 @@ Nonpaused route phases and automatic START/native/browser acceptance remain open
 The [wrapper contract](https://github.com/michidk/redguard-preservation/commit/dfc85308a4d47725a388fb47560cb66734170631)
 owns these rules.
 
+**Verified:** controlled original-executable probes cover 4,752 immediate-completion
+and falling/queued-motion cases, including wrapping blocked-route counters and
+conditional forced default-animation requests. A saturating-counter negative
+control fails. Separate phase-11/22 probes confirm that immediate arrival is
+skipped. The [point-core rules](https://github.com/michidk/redguard-preservation/commit/500093a932fbf75fffb3f6f86bb995a4b19cd375)
+are published. Arrival predicates and forced-animation dispatch were controlled
+in these probes; production integration and routed movement remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target
