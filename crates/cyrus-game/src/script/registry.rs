@@ -190,6 +190,8 @@ pub struct ActorControlState {
     pub motion_classification: u8,
     /// Allocator-zero directional-state bytes; low bits gate surface assignment.
     pub directional_state: [u8; 2],
+    /// Allocator-zero action-transition counter; state-17 reset assigns six.
+    pub action_transition_counter: u8,
     /// Packed left/right/forward/backward counters, two bits each; directional motion saturates its field.
     pub movement_flags: u8,
     /// Retained integer motion components; obstacle interruption only clears them here.

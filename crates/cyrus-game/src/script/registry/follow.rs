@@ -70,3 +70,53 @@ impl ScriptWorld {
         Ok(true)
     }
 }
+
+impl super::ActorControlState {
+    /// Advance the retained action counter before ordinary animation work.
+    /// Preservation's SOUP action-counter rule uses signed bytes and wrapping
+    /// tick subtraction. Living state does not participate in early clearing.
+    pub(super) fn advance_action_transition_counter(&mut self, ticks: u32) {
+        if self.action_transition_counter == 0 {
+            return;
+        }
+        if self.directional_state.contains(&0) && (self.action_transition_counter as i8) < 3 {
+            self.action_transition_counter = 0;
+            return;
+        }
+        self.directional_state = self.directional_state.map(|value| value & 127);
+        let remaining = self.action_transition_counter.wrapping_sub(ticks as u8) as i8;
+        self.action_transition_counter = remaining.max(0) as u8;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::ActorControlState;
+
+    #[test]
+    fn action_counter_preserves_direction_edges_and_signed_byte_timing() {
+        for (counter, directions, ticks, expected_counter, expected_directions) in [
+            (0, [128, 255], 1, 0, [128, 255]),
+            (2, [0, 255], 0, 0, [0, 255]),
+            (2, [128, 255], 1, 1, [0, 127]),
+            (6, [0, 255], 2, 4, [0, 127]),
+            (3, [1, 1], 6, 0, [1, 1]),
+            (1, [1, 1], 255, 2, [1, 1]),
+            (255, [0, 255], 1, 0, [0, 255]),
+            (6, [128, 255], 258, 4, [0, 127]),
+        ] {
+            for living_state in [0, 9, 10, 15, 17, 19, 20, 255] {
+                let mut control = ActorControlState {
+                    living_state,
+                    directional_state: directions,
+                    action_transition_counter: counter,
+                    ..Default::default()
+                };
+                control.advance_action_transition_counter(ticks);
+                assert_eq!(control.action_transition_counter, expected_counter);
+                assert_eq!(control.directional_state, expected_directions);
+                assert_eq!(control.living_state, living_state);
+            }
+        }
+    }
+}

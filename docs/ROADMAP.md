@@ -801,6 +801,18 @@ unsupported script actors. Full reaction cleanup,
 inhibition lifecycle, selected death and native/browser combat acceptance remain
 open. Contact integration does not complete the health command family.
 
+**Verified:** ordinary actor updates now retain and advance the action-transition
+counter before animation work. Signed-byte timing, wrapping tick subtraction,
+directional high-bit clearing and independence from living state follow the
+[published counter rule](https://github.com/michidk/redguard-preservation/commit/cf071ef86f290a2ab7b7487bffdb1d7c71b2541a).
+The focused contract covers zero/early-clear branches, signed boundaries and
+low-byte tick conversion. Snapshots retain the counter; older actor snapshots
+without it require recapture. Ledge entry/reset assignment, special support
+ownership and complete reaction cleanup remain unavailable. Full gates pass
+1,307 Rust test executions with zero installed-data skips, including the
+headless installed keyboard walk/release scheduler check. Native/browser ledge
+acceptance remains open.
+
 Next, in dependency order: establish
 selected-player health/controller owners and remaining combat movement, complete
 session cameras, then connect story transitions and run the shared acceptance

@@ -144,6 +144,11 @@ impl ScriptWorld {
                 }
                 self.snapshot_spatial(id)?;
                 self.actors[id.index].model.support = Default::default();
+                self.actors[id.index]
+                    .control
+                    .as_mut()
+                    .expect("admitted ordinary control")
+                    .advance_action_transition_counter(ticks);
                 if self.actors[id.index].animation.is_some() {
                     let items_ready = inputs
                         .hud
