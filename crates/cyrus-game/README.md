@@ -1198,3 +1198,17 @@ filtering, strict distance bounds, early return before later closer nodes, query
 pose selection and restoration. Invalid node coordinates and saved map indices
 produce contextual errors. Perception scheduling and routed movement remain open.
 Rules come from preservation's [nearest free walk node](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).
+
+`ActorControlState::navigation` retains the ordinary actor's map and held
+current/next/final node indices. Common initialization leaves the map absent
+and indices unset. Navigation preparation associates ordinary placements using
+authored local coordinates and the general nearest-node query. Explicit map
+validation and held-node release preserve the original disabled-map ordering and
+matching-owner rules; `KillMe` releases held nodes before sound cleanup.
+Snapshots retain actor navigation and runtime map enablement, reject unknown
+maps and unsupported negative indices, and preserve stale positive indices for
+runtime validation. **Verified:** 1,344 original/production state and reservation
+comparisons and 36 loading associations match. Public headless contracts cover
+initialization, restoration, foreign ownership and cleanup failure. Perception
+scheduling and routed movement remain unavailable. Rules come from preservation's
+[navigation facts](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).

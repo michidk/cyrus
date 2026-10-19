@@ -67,6 +67,7 @@ pub use registry::vertical::{
 };
 pub use registry::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput};
 mod navigation;
+pub use navigation::ActorNavigation;
 mod order;
 mod playback;
 mod presentation;

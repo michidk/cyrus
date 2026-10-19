@@ -477,6 +477,15 @@ owners, strict bounds and snapshot restoration; 54 original-helper comparisons
 match node and winning-map selection. Retained actor navigation state, perception
 scheduling and routed movement remain open.
 
+**Verified:** ordinary actors retain navigation map/current/next/final state.
+Loading associates placements from authored local coordinates through the general
+nearest-node query. Explicit validation handles absent, disabled and invalid maps;
+held-node release preserves foreign reservation owners and feeds `KillMe` cleanup.
+Actor state and runtime map enablement survive snapshot restoration. Public
+headless contracts and 1,344 original/production state comparisons plus 36 loading
+associations pass. Perception scheduling, routed movement and automatic START
+combat remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

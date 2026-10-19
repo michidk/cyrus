@@ -42,6 +42,28 @@ pub(super) fn wander_without_maps(
     Ok(displacement)
 }
 
+/// Ordinary actor navigation in stable file-map/node identities.
+/// Common initialization uses an absent map and -1 node sentinels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ActorNavigation {
+    pub map: Option<usize>,
+    /// Held node indices use -1 for unset; stale positive indices await validation.
+    pub current: i32,
+    pub next: i32,
+    pub destination: i32,
+}
+
+impl Default for ActorNavigation {
+    fn default() -> Self {
+        Self {
+            map: None,
+            current: -1,
+            next: -1,
+            destination: -1,
+        }
+    }
+}
+
 /// Runtime ownership bytes in WDNM file-map and node-index order.
 /// Loading discards authored reserved bytes. Acquisition/release use the low byte
 /// of the actor identifier; periodic sound maintenance clears every reservation.
@@ -49,6 +71,7 @@ pub(super) fn wander_without_maps(
 pub(super) struct WalkNodeReservations {
     maps: Vec<Vec<WalkNode>>,
     selected_map: Option<usize>,
+    disabled: Vec<bool>,
 }
 
 #[derive(Debug)]
@@ -101,8 +124,9 @@ impl WalkNodeReservations {
                     })
                     .collect::<Result<Vec<_>>>()
             })
-            .collect::<Result<_>>()?;
+            .collect::<Result<Vec<_>>>()?;
         Ok(Self {
+            disabled: vec![false; maps.len()],
             maps,
             selected_map: None,
         })
@@ -147,13 +171,22 @@ impl WalkNodeReservations {
     ) -> Option<(usize, usize)> {
         let mut position = position.map(|coordinate| coordinate >> 8);
         position[1] = position[1].wrapping_add(height);
+        self.search(position, true)
+    }
+
+    /// General loading association uses map units and ignores reservations.
+    pub(super) fn nearest(&mut self, position: [i32; 3]) -> Option<(usize, usize)> {
+        self.search(position, false)
+    }
+
+    fn search(&mut self, position: [i32; 3], free_only: bool) -> Option<(usize, usize)> {
         self.selected_map = None;
         let mut best = 4096;
         let mut selected = None;
         // Runtime loading prepends each map; stored indices remain in file order.
         for (map, nodes) in self.maps.iter().enumerate().rev() {
             for (index, node) in nodes.iter().enumerate() {
-                if node.owner != 0 {
+                if free_only && node.owner != 0 {
                     continue;
                 }
                 let distance = position
@@ -175,6 +208,69 @@ impl WalkNodeReservations {
         selected
     }
 
+    pub(super) fn set_enabled(&mut self, map: usize, enabled: bool) -> Result<()> {
+        *self
+            .disabled
+            .get_mut(map)
+            .ok_or_else(|| anyhow::anyhow!("walk-node map {map}: unavailable"))? = !enabled;
+        Ok(())
+    }
+
+    pub(super) fn check_state(&self, state: &ActorNavigation) -> Result<()> {
+        for (field, node) in [
+            ("current", state.current),
+            ("next", state.next),
+            ("destination", state.destination),
+        ] {
+            ensure!(
+                node >= -1,
+                "walk-node {field}: index below unset sentinel ({node})"
+            );
+        }
+        if let Some(map) = state.map {
+            ensure!(map < self.maps.len(), "walk-node map {map}: unavailable");
+        }
+        Ok(())
+    }
+
+    pub(super) fn release_held(&mut self, state: &mut ActorNavigation, actor: i16) -> Result<()> {
+        self.check_state(state)?;
+        if let Some(map) = state.map {
+            for index in [state.next, state.current] {
+                if let Ok(index) = usize::try_from(index)
+                    && index < self.maps[map].len()
+                {
+                    self.release(map, index, actor)?;
+                }
+            }
+        }
+        state.current = -1;
+        state.next = -1;
+        Ok(())
+    }
+
+    pub(super) fn validate(&mut self, state: &mut ActorNavigation, actor: i16) -> Result<bool> {
+        self.check_state(state)?;
+        let Some(map) = state.map else {
+            *state = ActorNavigation::default();
+            return Ok(false);
+        };
+        if self.disabled[map] {
+            self.release_held(state, actor)?;
+            state.map = None;
+            return Ok(false);
+        }
+        if [state.current, state.next, state.destination]
+            .iter()
+            .any(|&node| node >= 0 && node as usize >= self.maps[map].len())
+        {
+            self.release_held(state, actor)?;
+            *state = ActorNavigation::default();
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     pub(super) fn reset(&mut self) {
         for nodes in &mut self.maps {
             for node in nodes {
@@ -190,6 +286,8 @@ pub(super) struct WalkNodeSnapshot {
     maps: Vec<Vec<u8>>,
     #[serde(default)]
     selected_map: Option<usize>,
+    #[serde(default)]
+    disabled: Vec<bool>,
 }
 
 impl WalkNodeReservations {
@@ -201,6 +299,7 @@ impl WalkNodeReservations {
                 .map(|nodes| nodes.iter().map(|node| node.owner).collect())
                 .collect(),
             selected_map: self.selected_map,
+            disabled: self.disabled.clone(),
         }
     }
 
@@ -231,6 +330,13 @@ impl WalkNodeReservations {
             for (owner, node) in saved.into_iter().zip(nodes) {
                 node.owner = owner;
             }
+        }
+        ensure!(
+            snapshot.disabled.is_empty() || snapshot.disabled.len() == installed.maps.len(),
+            "world {world}: saved walk-map disabled count differs"
+        );
+        if !snapshot.disabled.is_empty() {
+            installed.disabled = snapshot.disabled;
         }
         installed.selected_map = snapshot.selected_map;
         Ok(installed)

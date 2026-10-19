@@ -156,6 +156,7 @@ pub(crate) struct ScriptAnimation {
 /// Player role transitions and death/removal transitions remain unsupported.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct ActorControlState {
+    pub navigation: super::ActorNavigation,
     /// Runtime script flags, separate from installed attribute bytes.
     pub script_control: u8,
     /// Lifecycle selector: combat entry uses six; IsDead tests eight.
@@ -730,8 +731,8 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Load cleared navigation reservations from the matching animation sidecar.
-    /// Nonempty maps remain explicit unsupported movement; an absent table is an error.
+    /// Load cleared reservations and associate ordinary placements from authored
+    /// local coordinates. Routed movement remains unavailable; an absent table fails.
     pub fn prepare_navigation(&mut self, data: &Animations) -> Result<()> {
         data.require_version()?;
         anyhow::ensure!(
@@ -745,10 +746,36 @@ impl ScriptWorld {
             "world {} navigation already prepared",
             self.world
         );
-        self.walk_nodes = Some(super::navigation::WalkNodeReservations::prepare(
+        let mut nodes = super::navigation::WalkNodeReservations::prepare(
             &data.metadata["walk_node_maps"],
             self.world,
-        )?);
+        )?;
+        let associations = self
+            .actors
+            .iter()
+            .enumerate()
+            .map(|(index, actor)| -> Result<_> {
+                let Some(placement) = actor.placement().filter(|_| actor.control.is_some()) else {
+                    return Ok(None);
+                };
+                let mut position = [0; 3];
+                for (axis, &coordinate) in placement.map_position.iter().enumerate() {
+                    position[axis] = coordinate.checked_mul(256).and_then(|value| i32::try_from(value).ok())
+                        .with_context(|| format!("world {} actor {index} navigation position axis {axis}: outside Q8 i32 range", self.world))? >> 8;
+                }
+                Ok(Some(nodes.nearest(position)))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        for (actor, association) in self.actors.iter_mut().zip(associations) {
+            if let Some(selected) = association
+                && let Some(control) = actor.control.as_mut()
+            {
+                let state = &mut control.navigation;
+                state.map = selected.map(|(map, _)| map);
+                state.current = selected.map_or(-1, |(_, node)| node as i32);
+            }
+        }
+        self.walk_nodes = Some(nodes);
         Ok(())
     }
 
@@ -772,6 +799,77 @@ impl ScriptWorld {
         result.with_context(|| {
             format!(
                 "world {} actor {} nearest free walk node",
+                self.world, actor.index
+            )
+        })
+    }
+
+    /// Set the retained runtime map flag. Searches remain independent of this flag;
+    /// actor map validation releases held nodes when the map is disabled.
+    pub fn set_walk_map_enabled(&mut self, map: usize, enabled: bool) -> Result<()> {
+        self.walk_nodes
+            .as_mut()
+            .context("walk-node navigation not prepared")?
+            .set_enabled(map, enabled)
+            .with_context(|| format!("world {} map {map} navigation enablement", self.world))
+    }
+
+    /// Validate the receiver's held map/indices against live map state.
+    /// Invalid or absent maps clear indices; disabled maps retain the destination
+    /// until the next absent-map validation, following preservation's SOUP rules.
+    pub fn validate_walk_navigation(&mut self, actor: ScriptActorId) -> Result<bool> {
+        let result = (|| {
+            let index = self.resolve(actor)?;
+            let receiver = &mut self.actors[index];
+            let identifier = receiver
+                .runtime_identifier
+                .context("actor identifier unavailable")?;
+            let state = &mut receiver
+                .control
+                .as_mut()
+                .context("actor navigation unavailable")?
+                .navigation;
+            self.walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .validate(state, identifier)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} validate navigation",
+                self.world, actor.index
+            )
+        })
+    }
+
+    /// Release held next/current nodes only when their reservation bytes match.
+    /// Clears both indices, including foreign-owned/out-of-range nodes, while
+    /// retaining the map and final destination. An absent map requires no table.
+    pub fn release_held_walk_nodes(&mut self, actor: ScriptActorId) -> Result<()> {
+        let result = (|| {
+            let index = self.resolve(actor)?;
+            let receiver = &mut self.actors[index];
+            let state = &mut receiver
+                .control
+                .as_mut()
+                .context("actor navigation unavailable")?
+                .navigation;
+            if state.map.is_none() {
+                state.current = -1;
+                state.next = -1;
+                return Ok(());
+            }
+            let identifier = receiver
+                .runtime_identifier
+                .context("actor identifier unavailable")?;
+            self.walk_nodes
+                .as_mut()
+                .context("walk-node navigation not prepared")?
+                .release_held(state, identifier)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} actor {} release held navigation",
                 self.world, actor.index
             )
         })
@@ -2929,8 +3027,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         );
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
-            // Walk-node release needs actor-side reservation indices; navigation maps stay
-            // unsupported, so no actor can hold a reservation here (shortcut: revisit with maps).
+            self.registry.release_held_walk_nodes(id)?;
             let control = self.registry.actors[self.index]
                 .control
                 .as_mut()

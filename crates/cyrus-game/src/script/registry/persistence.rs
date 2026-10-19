@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 struct ControlSnapshot {
+    #[serde(default)]
+    navigation: super::super::ActorNavigation,
     script_control: u8,
     death_selector: u8,
     death_response: u8,
@@ -73,6 +75,7 @@ struct CombatSnapshot {
 impl ControlSnapshot {
     fn capture(control: &ActorControlState) -> Self {
         Self {
+            navigation: control.navigation,
             script_control: control.script_control,
             death_selector: control.death_selector,
             death_response: control.death_response,
@@ -114,6 +117,7 @@ impl ControlSnapshot {
         rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
     ) -> Result<ActorControlState> {
         Ok(ActorControlState {
+            navigation: self.navigation,
             script_control: self.script_control,
             death_selector: self.death_selector,
             death_response: self.death_response,
@@ -748,6 +752,21 @@ impl WorldSnapshot {
                     .with_context(|| format!("world {} actor {index} replacement", self.world))
             })
             .collect::<Result<_>>()?;
+        for (index, actor) in candidate.actors.iter().enumerate() {
+            if let Some(control) = &actor.control {
+                if let Some(nodes) = &candidate.walk_nodes {
+                    nodes.check_state(&control.navigation).with_context(|| {
+                        format!("world {} actor {index} saved navigation", self.world)
+                    })?;
+                } else {
+                    ensure!(
+                        control.navigation == super::super::ActorNavigation::default(),
+                        "world {} actor {index}: saved navigation without prepared maps",
+                        self.world
+                    );
+                }
+            }
+        }
         candidate.restore_flags(self.flags)?;
         candidate.activation =
             super::super::ActivationState::from_snapshot(self.activation, &rebind)?;
