@@ -31,6 +31,14 @@ pub(super) fn wander_without_maps(
             break;
         }
     }
+    limit_point_displacement(spatial, frame_scale)
+}
+
+/// Apply the point wrapper's horizontal bound while restoring all local coordinates.
+pub(super) fn limit_point_displacement(
+    spatial: &mut ActorSpatial,
+    frame_scale: u32,
+) -> Result<i32> {
     let previous = spatial.previous_local_position;
     let displacement = rounded_distance([
         spatial.local.position[0].wrapping_sub(previous[0]),
@@ -42,6 +50,40 @@ pub(super) fn wander_without_maps(
         spatial.local.position = previous;
     }
     Ok(displacement)
+}
+
+/// Actor-owned point-command fields, separate from shared scratch and native task slots.
+/// Common initialization establishes the command word; fresh allocation clears the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PointCommandState {
+    pub value: u32,
+    pub word: u16,
+    pub phase: u8,
+    pub counter: u8,
+}
+impl Default for PointCommandState {
+    fn default() -> Self {
+        Self {
+            value: 0,
+            word: u16::MAX,
+            phase: 0,
+            counter: 0,
+        }
+    }
+}
+impl PointCommandState {
+    pub(super) fn load(self, shared: &mut super::NativeCommandState) {
+        shared.point_value = self.value;
+        shared.point_word = self.word;
+        shared.point_phase = self.phase;
+        shared.point_counter = self.counter;
+    }
+    pub(super) fn save(&mut self, shared: &super::NativeCommandState) {
+        self.value = shared.point_value;
+        self.word = shared.point_word;
+        self.phase = shared.point_phase;
+        self.counter = shared.point_counter;
+    }
 }
 
 /// Ordinary actor navigation in stable file-map/node identities.

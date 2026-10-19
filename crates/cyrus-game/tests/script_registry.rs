@@ -19891,3 +19891,202 @@ fn walk_route_metadata_rejects_missing_counts_and_invalid_links_in_context() {
         );
     }
 }
+
+fn point_wrapper_fixture(
+    pause: u32,
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    use cyrus_game::script::NativeCommandState;
+    let (_, _, mut data) = navigation_owner_fixture();
+    let mut scripts = wait_cache(vec![
+        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        Operation::End { target: 0 },
+    ]);
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [20, -2, 3];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    data.metadata["script_content_id"] = scripts.content_id.clone().into();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_navigation(&data).unwrap();
+    world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+    world.prepare_spatial().unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][0]["native_commands"][0] = serde_json::to_value(NativeCommandState {
+        continuation: 1234567,
+        pause_ticks: pause,
+        point_value: 987654,
+        point_word: 321,
+        point_phase: 99,
+        point_counter: 88,
+    })
+    .unwrap();
+    saved["actors"][0]["control"]["point_command"] =
+        serde_json::json!({"value":1001,"word":50001,"phase":11,"counter":21});
+    saved["actors"][1]["control"]["point_command"] =
+        serde_json::json!({"value":1002,"word":50002,"phase":12,"counter":22});
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    world
+        .advance(
+            world.id(0).unwrap(),
+            cyrus_game::script::ScriptStage::Tasks,
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            None,
+            0,
+        )
+        .unwrap();
+    (world, scripts, data)
+}
+
+#[test]
+fn point_wrapper_retains_actor_fields_separately_and_consumes_shared_unsigned_pause() {
+    use cyrus_game::script::{NativeCommandState, PointCommandState, ScriptInputs};
+    let (world, _, _) = navigation_owner_fixture();
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().point_command,
+        PointCommandState {
+            value: 0,
+            word: 65535,
+            phase: 0,
+            counter: 0
+        }
+    );
+    let (mut world, scripts, data) = point_wrapper_fixture(7);
+    let first = world.id(0).unwrap();
+    let second = world.id(1).unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(3),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    assert_eq!(
+        world
+            .move_ordinary_point(first, [111, 222, 333], 0, inputs)
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        *world.globals().native_command(),
+        NativeCommandState {
+            continuation: 1234567,
+            pause_ticks: 4,
+            point_value: 1001,
+            point_word: 50001,
+            point_phase: 11,
+            point_counter: 21,
+        }
+    );
+    let saved = movement_snapshot(&world, &scripts, &data);
+    let restored = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    assert_eq!(
+        restored.actors()[1].control_state().unwrap().point_command,
+        PointCommandState {
+            value: 1002,
+            word: 50002,
+            phase: 12,
+            counter: 22
+        }
+    );
+    assert_eq!(
+        world
+            .move_ordinary_point(second, [0; 3], 17, inputs)
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        *world.globals().native_command(),
+        NativeCommandState {
+            continuation: 1234567,
+            pause_ticks: 1,
+            point_value: 1002,
+            point_word: 50002,
+            point_phase: 12,
+            point_counter: 22,
+        }
+    );
+    assert_eq!(
+        world.move_ordinary_point(first, [0; 3], 0, inputs).unwrap(),
+        1
+    );
+    assert_eq!(world.globals().native_command().pause_ticks, 0);
+    let error = world
+        .move_ordinary_point(first, [0; 3], 0, inputs)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("routed point navigation unsupported"));
+    let (mut world, _, _) = point_wrapper_fixture(u32::MAX);
+    let id = world.id(0).unwrap();
+    assert_eq!(world.move_ordinary_point(id, [0; 3], 0, inputs).unwrap(), 1);
+    assert_eq!(world.globals().native_command().pause_ticks, u32::MAX - 3);
+}
+
+#[test]
+fn point_wrapper_validates_before_pause_and_restores_all_coordinates_above_horizontal_bound() {
+    use cyrus_game::script::ScriptInputs;
+    for (scale, distance, expected) in [
+        (256, 8192, [9892, -1991, 3300]),
+        (256, 8193, [1700, -2000, 3300]),
+        (262144, 0, [1700, -2000, 3300]),
+    ] {
+        let (world, scripts, data) = point_wrapper_fixture(7);
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["spatial"]["actors"][0]["local"]["position"] =
+            serde_json::json!([1700 + distance, -1991, 3300]);
+        saved["spatial"]["actors"][0]["previous_local_position"] =
+            serde_json::json!([1700, -2000, 3300]);
+        saved["actors"][0]["control"]["navigation"] =
+            serde_json::json!({"map":null,"current":0,"next":1,"destination":1});
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        world
+            .advance(
+                world.id(0).unwrap(),
+                cyrus_game::script::ScriptStage::Tasks,
+                cyrus_game::script::ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    ..Default::default()
+                },
+                None,
+                None,
+                0,
+            )
+            .unwrap();
+        let id = world.id(0).unwrap();
+        assert_eq!(
+            world
+                .move_ordinary_point(
+                    id,
+                    [0; 3],
+                    0,
+                    ScriptInputs {
+                        nominal_ticks: Some(1),
+                        frame_scale: Some(scale),
+                        ..Default::default()
+                    }
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().navigation,
+            Default::default()
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, expected);
+    }
+    let (mut world, _, _) = point_wrapper_fixture(7);
+    let id = world.id(0).unwrap();
+    world.set_walk_map_enabled(1, false).unwrap();
+    let error = world
+        .move_ordinary_point(id, [0; 3], 0, ScriptInputs::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("point pause requires nominal_ticks"));
+    assert_eq!(world.globals().native_command().pause_ticks, 7);
+    assert_eq!(
+        world.actors()[0].control_state().unwrap().navigation.map,
+        None
+    );
+}

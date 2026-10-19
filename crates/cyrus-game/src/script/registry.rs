@@ -19,6 +19,7 @@ pub(super) mod obstacle;
 pub(super) mod ordinary;
 pub(super) mod overlap;
 mod persistence;
+mod point;
 mod probe;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
@@ -163,6 +164,7 @@ pub(crate) struct ScriptAnimation {
 #[derive(Debug, Default, serde::Serialize)]
 pub struct ActorControlState {
     pub navigation: super::ActorNavigation,
+    pub point_command: super::PointCommandState,
     /// Runtime script flags, separate from installed attribute bytes.
     pub script_control: u8,
     /// Lifecycle selector: combat entry uses six; IsDead tests eight.

@@ -523,6 +523,17 @@ searches match the production implementation; the wrong-owner mutation fails.
 Five public contracts and preparation of all 27 installed maps pass. The point
 movement state machine and live pursuit remain unsupported.
 
+**Verified:** point navigation now retains its four actor-owned command fields
+separately from shared scratch and native task slots. Combat perception invokes
+the wrapper. Map validation precedes unsigned shared-pause consumption, and a
+pause remains pending on the invocation that reaches zero. Wrapper displacement
+rollback restores XYZ only above the signed horizontal bound. Production matches
+128 original pause-prefix and 80 pending-wrapper rollback cases; a signed-countdown
+mutation fails. Public contracts cover actor alternation, snapshots and validation.
+Nonpaused route phases and automatic START/native/browser acceptance remain open.
+The [wrapper contract](https://github.com/michidk/redguard-preservation/commit/dfc85308a4d47725a388fb47560cb66734170631)
+owns these rules.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

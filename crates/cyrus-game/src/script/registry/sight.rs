@@ -16,7 +16,8 @@ pub struct OrdinaryCombatSample {
 impl ScriptWorld {
     /// Run the nonplayer perception prepass before message and decision maintenance.
     /// Timer waiting and reacquisition use live collision/navigation owners. Routed
-    /// pursuit retains its transition and reports unsupported point navigation.
+    /// pursuit retains its transition and invokes the point wrapper. Shared pauses
+    /// are supported; nonpaused routing phases remain unavailable.
     pub fn maintain_combat_perception(
         &mut self,
         id: ScriptActorId,
@@ -44,7 +45,7 @@ impl ScriptWorld {
                 return Ok(());
             }
             // Preserve target-before-receiver query ordering.
-            self.query_position(target)?;
+            let target_position = self.query_position(target)?;
             self.query_position(id)?;
             let geometry = inputs
                 .locomotion_geometry
@@ -111,7 +112,16 @@ impl ScriptWorld {
                 .as_mut()
                 .expect("admitted combat")
                 .lost_sight_routing = 1;
-            anyhow::bail!("ordinary combat routed point navigation unsupported")
+            self.move_ordinary_point(
+                id,
+                target_position,
+                0,
+                super::ScriptInputs {
+                    nominal_ticks: Some(ticks),
+                    ..inputs
+                },
+            )?;
+            Ok(())
         })();
         result.with_context(|| {
             format!(

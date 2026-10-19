@@ -1231,3 +1231,15 @@ fails. Public contracts cover ordering, costs, duplicate links, player admission
 restoration and invalid metadata; all 27 installed maps prepare successfully.
 This service does not reserve nodes or move actors. The full point movement
 state machine, live pursuit and native/browser combat acceptance remain open.
+
+`ScriptWorld::move_ordinary_point` now owns the actor point-command wrapper.
+It loads and saves four actor fields independently of shared pause/continuation
+and the six native task slots. Map validation precedes unsigned pause consumption;
+a pause returns pending even when it reaches zero. Combat perception calls this
+shared service. The wrapper applies the original horizontal displacement bound
+and restores all local coordinates above it.
+**Verified:** 128 original/production pause-prefix cases and 80 pending-wrapper
+rollback cases agree. A signed-countdown mutation fails. Public contracts cover
+actor alternation, snapshot retention, initialization, validation order and bounds.
+Nonpaused routing phases remain explicitly unsupported; this does not enable
+automatic START combat or establish native/browser movement fidelity.

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 struct ControlSnapshot {
     #[serde(default)]
     navigation: super::super::ActorNavigation,
+    point_command: super::super::PointCommandState,
     script_control: u8,
     death_selector: u8,
     death_response: u8,
@@ -78,6 +79,7 @@ impl ControlSnapshot {
     fn capture(control: &ActorControlState) -> Self {
         Self {
             navigation: control.navigation,
+            point_command: control.point_command,
             script_control: control.script_control,
             death_selector: control.death_selector,
             death_response: control.death_response,
@@ -120,6 +122,7 @@ impl ControlSnapshot {
     ) -> Result<ActorControlState> {
         Ok(ActorControlState {
             navigation: self.navigation,
+            point_command: self.point_command,
             script_control: self.script_control,
             death_selector: self.death_selector,
             death_response: self.death_response,
