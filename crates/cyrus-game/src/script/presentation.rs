@@ -57,49 +57,50 @@ pub(super) fn bind_scene(
         }
         return;
     };
+    // The player entity is bound to the selected player; the other player role has a standalone entity.
+    let selected = world.selected_player_index();
     for (entity, binding) in &roles {
         if binding.is_none_or(|binding| {
-            binding.actor.generation != world.generation() || binding.source != request.0
+            binding.actor.generation != world.generation()
+                || binding.source != request.0
+                || Some(binding.actor.index) == selected
         }) {
             commands.entity(entity).despawn();
         }
     }
     if let Ok((player, binding)) = players.single() {
         for (index, actor) in world.actors().iter().enumerate() {
+            if !matches!(
+                actor.source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ) {
+                continue;
+            }
             let id = ScriptActorId {
                 generation: world.generation(),
                 index,
             };
-            match actor.source {
-                super::ScriptActorSource::Player => {
-                    if binding
-                        .is_none_or(|binding| binding.actor != id || binding.source != request.0)
-                    {
-                        commands.entity(player).insert(ScriptBinding {
-                            actor: id,
-                            source: request.0.clone(),
-                        });
-                    }
-                }
-                super::ScriptActorSource::AlternatePlayer
-                    if !roles.iter().any(|(_, binding)| {
-                        binding.is_some_and(|binding| {
-                            binding.actor == id && binding.source == request.0
-                        })
-                    }) =>
+            if Some(index) == selected {
+                if binding.is_none_or(|binding| binding.actor != id || binding.source != request.0)
                 {
-                    commands.spawn((
-                        StandaloneRole,
-                        cyrus_world::sound::PlayerAnimationSource,
-                        ScriptBinding {
-                            actor: id,
-                            source: request.0.clone(),
-                        },
-                        Transform::default(),
-                        ChildOf(player),
-                    ));
+                    commands.entity(player).insert(ScriptBinding {
+                        actor: id,
+                        source: request.0.clone(),
+                    });
                 }
-                _ => {}
+            } else if !roles.iter().any(|(_, binding)| {
+                binding.is_some_and(|binding| binding.actor == id && binding.source == request.0)
+            }) {
+                commands.spawn((
+                    StandaloneRole,
+                    cyrus_world::sound::PlayerAnimationSource,
+                    ScriptBinding {
+                        actor: id,
+                        source: request.0.clone(),
+                    },
+                    Transform::default(),
+                    ChildOf(player),
+                ));
             }
         }
     }
@@ -167,10 +168,7 @@ pub(super) fn apply(
                 .remove::<(ScriptBinding, AnimationPose, SoundSurface)>();
             continue;
         };
-        if world
-            .actors()
-            .get(binding.actor.index)
-            .is_some_and(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+        if world.selected_player_index() == Some(binding.actor.index)
             && let (Some(mut player_pose), Some(mut transform), Ok(spatial)) =
                 (player_pose, transform, world.spatial(binding.actor))
         {
@@ -257,7 +255,11 @@ impl super::ScriptWorld {
         Ok(ScriptEntityBinding {
             binding: ScriptBinding { actor, source },
             map: matches!(actor_source, super::ScriptActorSource::Map(_)),
-            alternate: matches!(actor_source, super::ScriptActorSource::AlternatePlayer),
+            // A player role other than the selected one is a standalone entity under the player.
+            alternate: matches!(
+                actor_source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ) && self.selected_player_index() != Some(actor.index),
         })
     }
 }

@@ -89,7 +89,7 @@ pub(super) fn capture(world: &World) -> Result<Vec<EntityBindingSnapshot>> {
                 .get::<AnimationPose>(entity)
                 .map(|pose| (pose.model.clone(), pose.frame)),
             surface: world.get::<SoundSurface>(entity).map(|surface| surface.0),
-            transform: if matches!(actor.source, ScriptActorSource::Player) {
+            transform: if current.selected_player() == Some(binding.actor) {
                 None
             } else {
                 world.get::<Transform>(entity).map(|pose| {
@@ -220,7 +220,7 @@ pub(super) fn restore(
                     "replacement map entity {entity:?}: expected node {expected}"
                 );
             }
-            let player = matches!(owner.source, ScriptActorSource::Player);
+            let player = current.selected_player() == Some(actor);
             ensure!(
                 !player || entry.transform.is_none(),
                 "selected-player transform must belong to placement snapshot"

@@ -369,6 +369,12 @@ impl ScriptWorld {
         selected_player_index(&self.actors, &self.globals)
     }
 
+    /// The selected player: CYRUS, or GREMLIN while the swap state is set. Hosts bind their player
+    /// entity, controller and camera to this actor rather than to a fixed role.
+    pub fn selected_player(&self) -> Option<ScriptActorId> {
+        self.id(self.selected_player_index()?).ok()
+    }
+
     /// Retained camera session, when the world has both a player and a CAMERA instance.
     pub fn camera(&self) -> Option<&super::camera::CameraState> {
         self.camera.as_ref()

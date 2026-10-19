@@ -42,8 +42,8 @@ use cyrus_game::{
     random::EngineRandom,
     script::{
         LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
-        LogicalSessionSnapshot, ScriptActorId, ScriptActorSource, ScriptActors, ScriptBinding,
-        ScriptHud, WorldSnapshotSources,
+        LogicalSessionSnapshot, ScriptActorId, ScriptActors, ScriptBinding, ScriptHud,
+        WorldSnapshotSources,
     },
 };
 use cyrus_render::camera::{CameraCandidate, CameraSnapshot};
@@ -365,10 +365,7 @@ impl RuntimeSessionSnapshot {
             .context("session capture: current logical world absent")?;
         ensure!(
             current.generation() == binding.actor.generation
-                && current
-                    .actors()
-                    .get(binding.actor.index)
-                    .is_some_and(|actor| matches!(actor.source, ScriptActorSource::Player)),
+                && current.selected_player() == Some(binding.actor),
             "session capture: presentation player is not the current logical player"
         );
         let scene = resource::<PlayerSceneRequest>(world, "player source")?;
@@ -972,10 +969,7 @@ impl RuntimeSessionPlan<'_> {
             .context("session replacement current world absent")?;
         ensure!(
             current.generation() == player_actor.generation
-                && current
-                    .actors()
-                    .get(player_actor.index)
-                    .is_some_and(|actor| matches!(actor.source, ScriptActorSource::Player)),
+                && current.selected_player() == Some(player_actor),
             "session replacement player is not the current logical player"
         );
         let entity_bindings = entities::restore(
