@@ -2,6 +2,7 @@
 use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
 mod attack;
+mod camera;
 mod health;
 pub use health::SelectedHealthState;
 pub(super) mod body;

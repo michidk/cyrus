@@ -118,6 +118,11 @@ pub struct CameraPose {
 pub struct CameraSlot(u8);
 
 impl CameraSlot {
+    /// Zero-based record index.
+    pub fn index(self) -> usize {
+        usize::from(self.0)
+    }
+
     pub fn new(slot: u8) -> Result<Self> {
         anyhow::ensure!(slot < 9, "camera slot {slot}: outside the nine records");
         Ok(Self(slot))
@@ -434,6 +439,7 @@ impl CameraState {
 }
 
 /// Initialized shared limiter parameters. No missing installed value is defaulted.
+#[derive(Clone, Copy, Debug)]
 pub struct MovementLimits {
     pub budget_increment: i32,
     pub vertical: i32,
@@ -630,6 +636,16 @@ pub trait CameraGeometry {
         excluded: super::ScriptActorId,
     ) -> Result<Vec<[i32; 3]>>;
     fn terrain_height(&mut self, horizontal: [i32; 2]) -> Result<f32>;
+}
+
+/// Correction settings for one live update; the bound actor's pose comes from the world.
+#[derive(Clone, Copy, Debug)]
+pub struct CameraUpdateSettings {
+    pub movement: MovementLimits,
+    pub body_radius: f32,
+    pub body_clearance: f32,
+    pub collision_inhibited: bool,
+    pub terrain_enabled: bool,
 }
 
 /// Settled actor pose and explicitly initialized correction settings for one update.

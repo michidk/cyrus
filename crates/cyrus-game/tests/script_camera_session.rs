@@ -296,3 +296,131 @@ fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
     assert_eq!(flags(&restored, 0), 0x40);
     assert_eq!(flags(&live, 0), 0x41, "the live world is unchanged");
 }
+
+mod live {
+    use super::*;
+    use cyrus_game::script::ScriptActorId;
+    use cyrus_game::script::camera::{
+        CameraGeometry, CameraHitSelection, CameraPose, CameraSettings, CameraUpdateSettings,
+        MovementLimits,
+    };
+
+    struct Geometry {
+        fail: bool,
+    }
+    impl CameraGeometry for Geometry {
+        fn segment(
+            &mut self,
+            _: [i32; 3],
+            _: [i32; 3],
+            _: ScriptActorId,
+        ) -> anyhow::Result<Vec<cyrus_collision::collision_mesh::IntegerSegmentContact>> {
+            anyhow::ensure!(!self.fail, "segment service failed");
+            Ok(vec![])
+        }
+        fn contacts(&mut self, _: [i32; 3], _: ScriptActorId) -> anyhow::Result<Vec<[i32; 3]>> {
+            Ok(vec![])
+        }
+        fn terrain_height(&mut self, _: [i32; 2]) -> anyhow::Result<f32> {
+            anyhow::bail!("terrain is disabled in this scene")
+        }
+    }
+
+    fn hits() -> CameraHitSelection {
+        CameraHitSelection {
+            minimum_position: [0; 3],
+            maximum_position: [0; 3],
+            minimum_normal: [0; 3],
+            maximum_normal: [0; 3],
+        }
+    }
+
+    fn settings() -> CameraUpdateSettings {
+        CameraUpdateSettings {
+            movement: MovementLimits {
+                budget_increment: 5000,
+                vertical: -5000,
+                frame_scale: 256,
+                selected_player_special_state: false,
+            },
+            body_radius: 10.0,
+            body_clearance: 5.0,
+            collision_inhibited: false,
+            terrain_enabled: false,
+        }
+    }
+
+    /// Player at (1000, 2000, 3000); record zero places the camera 2560 above it.
+    fn world() -> ScriptWorld {
+        let mut data = scripts(&["CYRUS", "CAMERA"]);
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            ..Default::default()
+        };
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        world.prepare_spatial().unwrap();
+        let player = world.id(PLAYER).unwrap();
+        world
+            .initialize_player_spatial(player, [1000, 2000, 3000], [0; 3])
+            .unwrap();
+        world
+    }
+
+    fn start() -> CameraPose {
+        CameraPose {
+            position: [1000, 3000, 3000],
+            angles: [0; 3],
+        }
+    }
+
+    #[test]
+    fn update_publishes_one_pose_to_the_state_and_the_camera_actor_together() {
+        let mut world = world();
+        world.initialize_camera_pose(start()).unwrap();
+        let camera = world.id(CAMERA).unwrap();
+        assert_eq!(
+            world.spatial(camera).unwrap().local.position,
+            start().position
+        );
+        let pose = world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: false })
+            .unwrap();
+        assert_eq!(pose.position, [1000, 4560, 3000]);
+        let state = world.camera().unwrap();
+        assert_eq!(state.current, pose);
+        assert_eq!(state.previous, start());
+        assert_eq!(world.spatial(camera).unwrap().local.position, pose.position);
+    }
+
+    #[test]
+    fn failed_update_changes_neither_the_session_nor_the_actor() {
+        let mut world = world();
+        world.initialize_camera_pose(start()).unwrap();
+        let camera = world.id(CAMERA).unwrap();
+        let error = world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: true })
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("segment service failed"));
+        assert_eq!(world.camera().unwrap().current, start());
+        assert_eq!(
+            world.spatial(camera).unwrap().local.position,
+            start().position
+        );
+    }
+
+    #[test]
+    fn update_requires_the_camera_actor_pose_first_and_initialization_happens_once() {
+        let mut world = world();
+        let error = world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: false })
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("published camera actor pose"),
+            "{error:#}"
+        );
+        world.initialize_camera_pose(start()).unwrap();
+        assert!(world.initialize_camera_pose(start()).is_err());
+    }
+}
