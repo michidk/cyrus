@@ -298,6 +298,62 @@ fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
 }
 
 #[test]
+fn show_player_pan_task_runs_to_completion_and_restores_the_selection() {
+    let mut data = scripts(&["CYRUS", "CAMERA"]);
+    data.definition.functions[1] = Function {
+        name: "showPlayerPan".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    };
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Call {
+        call: Call {
+            function_id: 1,
+            function: "showPlayerPan".into(),
+            target: Object::Me,
+            kind: CallKind::Task,
+            arguments: vec![Value::Integer { value: 3 }],
+        },
+    };
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    let player = world.id(PLAYER).unwrap();
+    world
+        .initialize_player_spatial(player, [4000, 9000, -6000], [100, 1900, 20])
+        .unwrap();
+    let hud = ScriptHud::default();
+    let before = world.camera().unwrap().records[0].clone();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
+    assert_eq!(
+        world.camera().unwrap().selected.index(),
+        2,
+        "pan edits record two"
+    );
+    assert_eq!(world.camera().unwrap().scripted_active, 1);
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the pan must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    let camera = world.camera().unwrap();
+    assert_eq!(camera.selected.index(), 0, "showPlayer re-selects the slot");
+    assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+    assert_eq!(camera.records[0].angle_offset, before.angle_offset);
+    assert_eq!(camera.records[0].flags, 0x40);
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    assert_eq!(world.flags(), [9], "the script continues after the pan");
+}
+
+#[test]
 fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
     use cyrus_game::script::camera::CameraSettings;
     let settings = CameraSettings {

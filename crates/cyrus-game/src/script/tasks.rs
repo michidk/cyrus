@@ -87,11 +87,12 @@ pub(super) struct NativeServices<'a> {
     pub camera: Option<CameraCall<'a>>,
 }
 
-/// Session camera and the selected player's slot request for `showPlayer`.
-/// A failed request read surfaces only when the task uses it.
+/// Session camera, the selected player's slot request and the selected player's pose for
+/// `showPlayer` and `showPlayerPan`. A failed read surfaces only when the task uses it.
 pub(super) struct CameraCall<'a> {
     pub state: &'a mut super::camera::CameraState,
     pub requested_slot: Result<Option<u8>, String>,
+    pub bound_pose: Result<([i32; 3], [u16; 3]), String>,
 }
 
 /// Receiver state sampled for locomotion tasks. Fallible reads surface only when used.
@@ -309,6 +310,10 @@ enum Task {
     ShowPlayer {
         counter: u32,
     },
+    ShowPlayerPan {
+        counter: u32,
+        pan: Option<super::camera::PanState>,
+    },
     Movement {
         target: i32,
     },
@@ -506,6 +511,31 @@ impl Task {
                     .context("showPlayer camera session unavailable")?;
                 let requested = camera.requested_slot.map_err(anyhow::Error::msg)?;
                 !camera.state.show_player(requested, counter, elapsed)?
+            }
+            Self::ShowPlayerPan { counter, pan } => {
+                let [duration] = arguments else {
+                    anyhow::bail!("showPlayerPan requires one argument");
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("showPlayerPan requires elapsed input")?;
+                let camera = services
+                    .camera
+                    .context("showPlayerPan camera session unavailable")?;
+                let requested_slot = camera.requested_slot.map_err(anyhow::Error::msg)?;
+                let (bound_position, bound_angles) =
+                    camera.bound_pose.map_err(anyhow::Error::msg)?;
+                !camera.state.show_player_pan(
+                    &super::camera::PanInputs {
+                        duration: duration.integer()?,
+                        requested_slot,
+                        bound_position,
+                        bound_angles,
+                    },
+                    pan,
+                    counter,
+                    elapsed,
+                )?
             }
             Self::Dialogue => {
                 anyhow::ensure!(arguments.is_empty(), "WaitOnDialog requires no arguments");
@@ -1456,6 +1486,15 @@ impl NativeTasks {
         } else if function.eq_ignore_ascii_case("showPlayer") {
             anyhow::ensure!(kind == CallKind::Task, "showPlayer requires task encoding");
             Task::ShowPlayer { counter: 0 }
+        } else if function.eq_ignore_ascii_case("showPlayerPan") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "showPlayerPan requires task encoding"
+            );
+            Task::ShowPlayerPan {
+                counter: 0,
+                pan: None,
+            }
         } else if function.eq_ignore_ascii_case("RotateByAxis") {
             Task::Rotation {
                 target: 0,
@@ -1556,9 +1595,12 @@ impl NativeTasks {
         }
         Ok(completed)
     }
-    /// Whether `token` is a `showPlayer` continuation, which needs the camera session.
-    pub(super) fn is_show_player(&self, token: u64) -> bool {
-        matches!(self.tasks.get(&token), Some(Task::ShowPlayer { .. }))
+    /// Whether `token` is a `showPlayer` or `showPlayerPan` continuation, which needs the camera session.
+    pub(super) fn is_camera_task(&self, token: u64) -> bool {
+        matches!(
+            self.tasks.get(&token),
+            Some(Task::ShowPlayer { .. } | Task::ShowPlayerPan { .. })
+        )
     }
     pub(super) fn cancel(&mut self, token: u64) -> Result<()> {
         self.tasks

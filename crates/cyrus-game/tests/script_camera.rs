@@ -25,8 +25,11 @@ fn state() -> CameraState {
     CameraState {
         records: std::array::from_fn(|_| record.clone()),
         selected: CameraSlot::new(1).unwrap(),
+        index: CameraSlot::new(1).unwrap(),
         transition: 2,
         scripted_active: 0,
+        scripted_nesting: 0,
+        reselect_pending: false,
         current: CameraPose {
             position: [7, 8, 9],
             angles: [11, 12, 13],
@@ -373,4 +376,189 @@ fn movement_limits_negate_the_installed_vertical_velocity() {
         ),
         (5000, -4000, 256, true)
     );
+}
+
+/// Every step of the original `showPlayerPan` for synthetic settings, recorded by running
+/// the original routine over controlled inputs: (elapsed, still active, selected record,
+/// selected index, scripted active word, nesting, private counter, angle offset, distance).
+#[test]
+fn show_player_pan_reproduces_the_original_step_by_step() {
+    type Step = (i32, bool, usize, usize, u16, u32, u32, [i32; 3], i32);
+    struct Case {
+        name: &'static str,
+        position: [i32; 3],
+        angles: [u16; 3],
+        published: [i32; 3],
+        duration: i32,
+        requested_slot: Option<u8>,
+        steps: Vec<Step>,
+    }
+    let case = |name, duration, requested_slot, steps: Vec<Step>| Case {
+        name,
+        position: [4000, 9000, -6000],
+        angles: [100, 1900, 20],
+        published: [4300, 12000, -9500],
+        duration,
+        requested_slot,
+        steps,
+    };
+    let cases = [
+        case(
+            "slot zero",
+            5,
+            None,
+            vec![
+                (0, true, 2, 0, 1, 1, 1, [1729, 3931, 20], 48),
+                (1, true, 2, 0, 1, 1, 2, [1816, 3456, 17], 116),
+                (2, true, 2, 0, 1, 1, 3, [1903, 2980, 13], 184),
+                (3, true, 2, 0, 1, 1, 4, [1990, 2504, 9], 252),
+                (4, false, 0, 0, 0, 0, 6, [30, -20, 5], 321),
+            ],
+        ),
+        case(
+            "combat slot",
+            4,
+            Some(3),
+            vec![
+                (0, true, 2, 3, 1, 1, 1, [1729, 3931, 20], 48),
+                (1, true, 2, 3, 1, 1, 2, [1837, 3306, 17], 82),
+                (2, true, 2, 3, 1, 1, 3, [1946, 2681, 13], 116),
+                (3, false, 3, 3, 0, 0, 5, [7, 8, 9], 150),
+            ],
+        ),
+        case(
+            "duration one",
+            1,
+            None,
+            vec![(0, false, 0, 0, 0, 0, 2, [30, -20, 5], 321)],
+        ),
+        Case {
+            position: [-800, 5000, 3300],
+            angles: [2000, 40, 1000],
+            published: [300, -4000, 9000],
+            ..case(
+                "wrapped differences",
+                7,
+                None,
+                vec![
+                    (0, true, 2, 0, 1, 1, 1, [2000, 1120, 1000], 22),
+                    (1, true, 2, 0, 1, 1, 2, [2013, 1271, 835], 71),
+                    (2, true, 2, 0, 1, 1, 3, [2026, 1422, 669], 121),
+                    (3, true, 2, 0, 1, 1, 4, [2039, 1574, 503], 171),
+                    (4, true, 2, 0, 1, 1, 5, [2052, 1725, 337], 221),
+                    (5, true, 2, 0, 1, 1, 6, [2065, 1876, 171], 271),
+                    (6, false, 0, 0, 0, 0, 8, [30, -20, 5], 321),
+                ],
+            )
+        },
+    ];
+    let mode = |angle_offset, distance| CameraModeSettings {
+        angle_offset,
+        distance,
+        max_vel: 0,
+    };
+    let settings = CameraSettings {
+        offset_pos: [100, -9000, 50],
+        offset_angle: [30, -20, 5],
+        target_offset: [-5000, -12000, 7],
+        distance: 321,
+        min_distance: 77,
+        max_vel: 800,
+        modes: std::array::from_fn(|slot| {
+            if slot == 0 {
+                mode([7, 8, 9], 150)
+            } else {
+                CameraModeSettings::default()
+            }
+        }),
+        limits: Default::default(),
+    };
+    let actor = |index| ScriptActorId {
+        generation: 1,
+        index,
+    };
+    for case in cases {
+        let mut state = CameraState::new(&settings, actor(2), actor(3), 0).unwrap();
+        state.current = CameraPose {
+            position: case.published,
+            angles: [0; 3],
+        };
+        let (mut counter, mut pan) = (0u32, None);
+        for (
+            elapsed,
+            active,
+            record,
+            index,
+            scripted,
+            nesting,
+            expected_counter,
+            angle,
+            distance,
+        ) in case.steps
+        {
+            let running = state
+                .show_player_pan(
+                    &PanInputs {
+                        duration: case.duration,
+                        requested_slot: case.requested_slot,
+                        bound_position: case.position,
+                        bound_angles: case.angles,
+                    },
+                    &mut pan,
+                    &mut counter,
+                    elapsed,
+                )
+                .unwrap();
+            let context = format!("{} elapsed {elapsed}", case.name);
+            assert_eq!(running, active, "{context}");
+            assert_eq!(
+                (state.selected.index(), state.index.index()),
+                (record, index),
+                "{context}"
+            );
+            assert_eq!(
+                (state.scripted_active, state.scripted_nesting, counter),
+                (scripted, nesting, expected_counter),
+                "{context}"
+            );
+            let selected = &state.records[record];
+            assert_eq!(
+                (selected.angle_offset, selected.distance),
+                (angle, distance),
+                "{context}"
+            );
+        }
+        // The real record survives the pan untouched.
+        assert_eq!(state.records[0].angle_offset, [30, -20, 5], "{}", case.name);
+        assert_eq!(
+            state.records[0].position_offset,
+            [100, -9000, 50],
+            "{}",
+            case.name
+        );
+    }
+    let negative = show_player_pan_error(&settings, -1);
+    assert!(negative.contains("negative"), "{negative}");
+}
+
+fn show_player_pan_error(settings: &CameraSettings, duration: i32) -> String {
+    let actor = |index| ScriptActorId {
+        generation: 1,
+        index,
+    };
+    let mut state = CameraState::new(settings, actor(2), actor(3), 0).unwrap();
+    state
+        .show_player_pan(
+            &PanInputs {
+                duration,
+                requested_slot: None,
+                bound_position: [0; 3],
+                bound_angles: [0; 3],
+            },
+            &mut None,
+            &mut 0,
+            0,
+        )
+        .unwrap_err()
+        .to_string()
 }

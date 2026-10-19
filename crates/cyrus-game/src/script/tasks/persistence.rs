@@ -214,6 +214,7 @@ impl Task {
             Self::SpeakerAnimation { player: false, .. } => ("rtxAnim", 4, Some(CallKind::Task)),
             Self::SpeakerAnimation { player: true, .. } => ("RTXpAnim", 4, Some(CallKind::Task)),
             Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
+            Self::ShowPlayerPan { .. } => ("showPlayerPan", 1, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
             Self::AmbientRtx { .. } => ("AmbientRtx", 3, Some(CallKind::Multitask)),
             Self::Movement { .. } => ("MoveByAxis", 3, None),

@@ -214,8 +214,11 @@ impl CameraState {
         let mut state = Self {
             records: Self::initial_records(settings, player)?,
             selected: CameraSlot(0),
+            index: CameraSlot(0),
             transition: 0,
             scripted_active: 0,
+            scripted_nesting: 0,
+            reselect_pending: false,
             current: pose,
             previous: pose,
             transformed_basis: [[0; 3]; 2],
@@ -256,6 +259,7 @@ impl CameraState {
         live.maximum_movement = record.maximum_movement;
         live.flags = 0x40;
         self.selected = CameraSlot(0);
+        self.index = CameraSlot(0);
         Ok(())
     }
 }
@@ -288,8 +292,11 @@ pub fn player_slot(
 pub(super) struct CameraSnapshot {
     records: Vec<RecordSnapshot>,
     selected: u8,
+    index: u8,
     transition: u16,
     scripted_active: u16,
+    scripted_nesting: u32,
+    reselect_pending: bool,
     current: ([i32; 3], [i32; 3]),
     previous: ([i32; 3], [i32; 3]),
     transformed_basis: [[i32; 3]; 2],
@@ -335,8 +342,11 @@ impl CameraState {
                 })
                 .collect(),
             selected: self.selected.0,
+            index: self.index.0,
             transition: self.transition,
             scripted_active: self.scripted_active,
+            scripted_nesting: self.scripted_nesting,
+            reselect_pending: self.reselect_pending,
             current: pose(self.current),
             previous: pose(self.previous),
             transformed_basis: self.transformed_basis,
@@ -376,8 +386,11 @@ impl CameraState {
         Ok(Self {
             records,
             selected: CameraSlot::new(saved.selected)?,
+            index: CameraSlot::new(saved.index)?,
             transition: saved.transition,
             scripted_active: saved.scripted_active,
+            scripted_nesting: saved.scripted_nesting,
+            reselect_pending: saved.reselect_pending,
             current: pose(saved.current),
             previous: pose(saved.previous),
             transformed_basis: saved.transformed_basis,
@@ -387,13 +400,56 @@ impl CameraState {
     }
 }
 
+/// Inputs of one `showPlayerPan` invocation.
+#[derive(Clone, Copy, Debug)]
+pub struct PanInputs {
+    pub duration: i32,
+    /// The slot the player camera selector requests; none selects slot zero.
+    pub requested_slot: Option<u8>,
+    pub bound_position: [i32; 3],
+    pub bound_angles: [u16; 3],
+}
+
+/// Start values a pan keeps between invocations (the original keeps them in shared scratch).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PanState {
+    /// Angles of the camera's direction from the player at the start.
+    start: [i32; 3],
+    /// Wrapped difference from those angles to the slot's own offset.
+    delta: [i32; 3],
+    start_distance: i32,
+    final_distance: i32,
+    /// The slot's angle offset minus the bound angles, as the pan's last step writes it.
+    final_offset: [i32; 3],
+}
+
+/// A single-step wrap into half a turn either side of zero (2048 units per turn).
+fn wrap_half_turn(value: i32) -> i32 {
+    if value < -1024 {
+        value.wrapping_add(2048)
+    } else if value > 1024 {
+        value.wrapping_sub(2048)
+    } else {
+        value
+    }
+}
+
 /// Session-owned camera state. Construction requires established initial values.
 #[derive(Clone, Debug)]
 pub struct CameraState {
     pub records: [CameraRecord; 9],
+    /// The selected record. Record fields are read and written through it.
     pub selected: CameraSlot,
+    /// The selected-index word, separate from the record: the limiter, orientation and
+    /// distance-height stages test it, and a pan leaves it on the slot being panned
+    /// while the record is its scratch copy.
+    pub index: CameraSlot,
     pub transition: u16,
     pub scripted_active: u16,
+    /// Nesting count of begun scripted cameras, wrapping.
+    pub scripted_nesting: u32,
+    /// Raised when the scripted-camera release step changes the selected record.
+    pub reselect_pending: bool,
     pub current: CameraPose,
     pub previous: CameraPose,
     pub transformed_basis: [[i32; 3]; 2],
@@ -403,12 +459,14 @@ pub struct CameraState {
 
 impl CameraState {
     /// Request a slot change, retaining the active transition's selection guard.
+    /// A change selects both the record and the selected index.
     pub fn select(&mut self, slot: u8) -> Result<()> {
         let slot = CameraSlot::new(slot)?;
         if slot != self.selected
             && (self.transition == 0 || self.records[usize::from(self.selected.0)].flags & 1 != 0)
         {
             self.selected = slot;
+            self.index = slot;
         }
         Ok(())
     }
@@ -432,6 +490,112 @@ impl CameraState {
             *flags &= !0x21;
             Ok(false)
         }
+    }
+
+    /// Begin a scripted camera: set the active word, request slot two (the selection guard
+    /// applies), clear the selected record's position offset, count the nesting and reset
+    /// the record's flags to `0x60`.
+    pub fn begin_scripted(&mut self) -> Result<()> {
+        self.scripted_active = 1;
+        self.select(2)?;
+        let record = &mut self.records[self.selected.index()];
+        record.position_offset = [0; 3];
+        self.scripted_nesting = self.scripted_nesting.wrapping_add(1);
+        record.flags = 0x60;
+        Ok(())
+    }
+
+    /// The scripted-camera release step. It selects record two, raising the reselect mark when
+    /// that changed the record. While `duration - 1` exceeds `elapsed` it returns `true`;
+    /// otherwise it ends one nesting level, clears the active word at zero and returns `false`.
+    pub fn release_scripted(&mut self, duration: i32, elapsed: i32) -> bool {
+        if self.selected.0 != 2 {
+            self.selected = CameraSlot(2);
+            self.reselect_pending = true;
+        }
+        if duration.wrapping_sub(1) > elapsed {
+            return true;
+        }
+        self.scripted_nesting = self.scripted_nesting.wrapping_sub(1);
+        if self.scripted_nesting == 0 {
+            self.scripted_active = 0;
+        }
+        false
+    }
+
+    /// One `showPlayerPan(duration)` invocation. The first invocation copies the requested
+    /// slot's record to record two, which the pan then edits, and records where the camera
+    /// currently is; each invocation interpolates record two's angle offset and distance
+    /// from there to the slot's own values. The last restores the record and selects the
+    /// slot through `showPlayer`. Returns `true` while the task stays active.
+    /// `bound_position`/`bound_angles` are the selected player's pose.
+    pub fn show_player_pan(
+        &mut self,
+        pan: &PanInputs,
+        state: &mut Option<PanState>,
+        counter: &mut u32,
+        elapsed: i32,
+    ) -> Result<bool> {
+        anyhow::ensure!(
+            pan.duration >= 0,
+            "showPlayerPan duration {}: negative unsupported",
+            pan.duration
+        );
+        *counter = counter.wrapping_add(1);
+        if *counter == 1 && elapsed == 0 {
+            let slot = CameraSlot::new(pan.requested_slot.unwrap_or(0))?;
+            self.selected = slot;
+            self.begin_scripted()?;
+            self.records[2] = self.records[slot.index()].clone();
+            self.index = slot;
+            let record = &self.records[self.selected.index()];
+            let from_player: [i32; 3] = std::array::from_fn(|axis| {
+                self.current.position[axis]
+                    .wrapping_sub(record.position_offset[axis])
+                    .wrapping_sub(pan.bound_position[axis])
+            });
+            let start = direction_angles(from_player)?;
+            let target: [i32; 3] = std::array::from_fn(|axis| {
+                record.angle_offset[axis].wrapping_sub(i32::from(pan.bound_angles[axis]))
+            });
+            *state = Some(PanState {
+                start_distance: super::rounded_distance(from_player)? >> 8,
+                final_distance: record.distance,
+                delta: std::array::from_fn(|axis| {
+                    wrap_half_turn(target[axis].wrapping_sub(start[axis]))
+                }),
+                start,
+                final_offset: target,
+            });
+        }
+        let saved = (*state).ok_or_else(|| {
+            anyhow::anyhow!("showPlayerPan start state unavailable (task restored mid-pan)")
+        })?;
+        let running = self.release_scripted(pan.duration, elapsed);
+        let record = &mut self.records[self.selected.index()];
+        if running && pan.duration > 1 {
+            let span = pan.duration - 1;
+            record.flags &= !0x0c;
+            record.angle_offset = std::array::from_fn(|axis| {
+                i32::from(pan.bound_angles[axis])
+                    .wrapping_add(saved.start[axis])
+                    .wrapping_add(saved.delta[axis].wrapping_mul(elapsed) / span)
+            });
+            record.distance = saved.start_distance.wrapping_add(
+                saved
+                    .final_distance
+                    .wrapping_sub(saved.start_distance)
+                    .wrapping_mul(elapsed)
+                    / span,
+            );
+            return Ok(true);
+        }
+        record.angle_offset = saved.final_offset;
+        record.distance = saved.final_distance;
+        record.flags &= !0x01;
+        record.flags &= !0x20;
+        self.show_player(pan.requested_slot, counter, elapsed)?;
+        Ok(false)
     }
 
     /// Location-camera setup: the actor's six attribute bytes (target x/y/z, then camera
@@ -519,7 +683,7 @@ impl CameraState {
         let mut next = *candidate;
         let mut delta: [i32; 3] = std::array::from_fn(|axis| next[axis].wrapping_sub(origin[axis]));
         let mut limited = false;
-        if self.selected.0 != 1 && !limits.selected_player_special_state {
+        if self.index.0 != 1 && !limits.selected_player_special_state {
             let lower = timing(limits.vertical.wrapping_shl(8)) >> 8;
             if delta[1] < lower {
                 delta[1] = lower;
@@ -624,7 +788,7 @@ impl CameraState {
                 angles: self.current.angles,
             });
         }
-        let offset = if self.selected.0 < 2 {
+        let offset = if self.index.0 < 2 {
             [0, record.target_offset[1], 0]
         } else {
             record.target_offset
@@ -733,8 +897,9 @@ impl CameraState {
     ) -> Result<CameraUpdate> {
         let mut state = self.clone();
         let mut hits = hits.clone();
-        let slot = state.selected.0;
-        let record = &mut state.records[usize::from(slot)];
+        let slot = state.index.0;
+        let record_slot = state.selected.0;
+        let record = &mut state.records[usize::from(record_slot)];
         let mut position = record.candidate(inputs.bound_position, inputs.bound_angles)?;
         let segment_enabled = record.flags & 0x40 != 0 && !inputs.collision_inhibited;
         let target = if segment_enabled {

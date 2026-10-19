@@ -2376,9 +2376,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             };
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
-        let camera_slot = function
-            .eq_ignore_ascii_case("showPlayer")
-            .then(|| self.camera_slot_request());
+        let camera_inputs = (function.eq_ignore_ascii_case("showPlayer")
+            || function.eq_ignore_ascii_case("showPlayerPan"))
+        .then(|| (self.camera_slot_request(), self.camera_bound_pose()));
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         // RTXpAnim animates the selected player, who emits animation sounds under their own identity.
@@ -2492,13 +2492,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     }),
                 called: &mut self.registry.globals.locomotion_called,
             }),
-            camera: camera_slot.and_then(|requested_slot| {
+            camera: camera_inputs.and_then(|(requested_slot, bound_pose)| {
                 self.registry
                     .camera
                     .as_mut()
                     .map(|state| super::tasks::CameraCall {
                         state,
                         requested_slot,
+                        bound_pose,
                     })
             }),
         };
@@ -2643,6 +2644,28 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             control.living_state,
             control.rope_attached,
         ))
+    }
+
+    /// The selected player's local pose, to which the camera binds. An attached player's
+    /// effective-pose binding is not established; fallible reads surface only when used.
+    fn camera_bound_pose(&self) -> Result<([i32; 3], [u16; 3]), String> {
+        let describe = |error: anyhow::Error| format!("{error:#}");
+        let player = self
+            .selected_player()
+            .ok_or("camera bound selected player unavailable")?;
+        let index = self.registry.resolve(player).map_err(describe)?;
+        if self.registry.actors[index].attributes[26] != 0 {
+            return Err("camera bound attached player unsupported".into());
+        }
+        let pose = self
+            .registry
+            .spatial
+            .as_ref()
+            .ok_or("camera bound spatial state not prepared")?
+            .actor(index)
+            .map_err(describe)?
+            .local;
+        Ok((pose.position, pose.angles))
     }
 
     /// Receiver state for locomotion tasks; fallible reads surface only when a task uses them.
@@ -4193,10 +4216,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .locomotion_operation(token);
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
-        let camera_slot = self.registry.actors[self.index]
+        let camera_inputs = self.registry.actors[self.index]
             .tasks
-            .is_show_player(token)
-            .then(|| self.camera_slot_request());
+            .is_camera_task(token)
+            .then(|| (self.camera_slot_request(), self.camera_bound_pose()));
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
         // RTXpAnim animates the selected player, who emits animation sounds under their own identity.
@@ -4316,13 +4339,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                         }),
                     called: &mut self.registry.globals.locomotion_called,
                 }),
-                camera: camera_slot.and_then(|requested_slot| {
+                camera: camera_inputs.and_then(|(requested_slot, bound_pose)| {
                     self.registry
                         .camera
                         .as_mut()
                         .map(|state| super::tasks::CameraCall {
                             state,
                             requested_slot,
+                            bound_pose,
                         })
                 }),
             },
