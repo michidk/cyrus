@@ -46,6 +46,113 @@ impl ScriptWorld {
         result.with_context(|| format!("world {} instance {} attack window", self.world, id.index))
     }
 
+    /// Query the current motion's defence contact window without changing combat state.
+    /// The signed command cursor includes `first_defend_frame` and excludes the
+    /// wrapping end. A cursor before the start does not require duration metadata.
+    /// This query has no attack-intent, contact-mark or reverse-direction gate.
+    /// Follows preservation's SOUP defence contact window contract.
+    pub fn combat_defence_window(&self, id: ScriptActorId) -> Result<bool> {
+        let result = (|| -> Result<bool> {
+            let actor = &self.actors[self.resolve(id)?];
+            let cursor = actor
+                .animation
+                .as_ref()
+                .context("receiver animation unavailable")?
+                .playback
+                .current_command_cursor()?
+                .context("receiver animation command cursor unavailable")?;
+            let motion = self.current_combat_motion(id)?;
+            let start = motion
+                .first_defend_frame
+                .context("first_defend_frame unavailable")?;
+            if cursor < start {
+                return Ok(false);
+            }
+            let duration = motion
+                .defend_duration
+                .context("defend_duration unavailable")?;
+            Ok(cursor < start.wrapping_add(duration))
+        })();
+        result.with_context(|| format!("world {} instance {} defence window", self.world, id.index))
+    }
+
+    /// Traverse the receiver-bound actor candidates in retained collision order.
+    /// Defended candidates skip damage contact; the first combat hit consumes intent,
+    /// sends the hit message and requests the attacker taunt before returning.
+    /// Noncombat hit responses and static-face weapon contact remain unsupported.
+    pub(super) fn process_combat_attack_candidates(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        use cyrus_collision::candidates::CandidateOwner;
+        let geometry = inputs
+            .locomotion_geometry
+            .context("attack candidate geometry unavailable")?;
+        let ground = geometry.ground;
+        self.require_collision_query(id, ground.prepared, ground.scene, ground.animations)?;
+        for candidate in &ground.prepared.candidates.actors {
+            let CandidateOwner::Actor(index) = candidate.owner else {
+                continue;
+            };
+            let defender = self.id(index)?;
+            if self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .is_some()
+                && self.try_combat_hit_defence(
+                    defender,
+                    id,
+                    ground.animations,
+                    ground.scene.actor_collision.as_ref(),
+                    inputs,
+                    random,
+                    sounds,
+                )?
+            {
+                continue;
+            }
+            if !self.combat_motion_contact(
+                id,
+                defender,
+                ground.animations,
+                ground.scene.actor_collision.as_ref(),
+            )? {
+                continue;
+            }
+            anyhow::ensure!(
+                self.actors[index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .is_some(),
+                "noncombat attack contact response unsupported"
+            );
+            self.actors[id.index]
+                .control
+                .as_mut()
+                .expect("admitted control")
+                .combat
+                .as_mut()
+                .expect("admitted combat")
+                .flags &= !3;
+            self.send_combat_message(id, defender, 0xd001)?;
+            let clock = inputs
+                .combat_clock_sample
+                .context("combat clock sample unavailable")? as i32;
+            self.request_timed_combat_taunt(id, 3, clock, inputs, random, sounds)?;
+            return Ok(());
+        }
+        anyhow::ensure!(
+            ground.prepared.candidates.faces.is_empty(),
+            "static-face weapon contact unsupported"
+        );
+        Ok(())
+    }
+
     /// Execute a caller-selected attack move synchronously, without allocating a VM task.
     /// The pending move selects one of this receiver's four defense slots. Animation and
     /// sound services precede combat start writes; prior service writes survive errors.

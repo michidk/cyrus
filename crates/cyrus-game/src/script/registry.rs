@@ -326,6 +326,7 @@ pub struct ScriptWorld {
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
     in_combat_threshold: Option<i32>,
     non_engaged_spacing: Option<i32>,
+    combat_clank_effects: [Option<i32>; 2],
     node_timer: Option<i32>,
     attribute_names: Vec<String>,
     reference_names: Vec<String>,
@@ -530,7 +531,9 @@ impl ScriptWorld {
                 id,
                 selected_player.context("combat decision selected player unavailable")?,
                 inputs,
-                random.context("combat decision random owner unavailable")?,
+                random
+                    .as_deref_mut()
+                    .context("combat decision random owner unavailable")?,
                 sounds,
             )?;
         }
@@ -564,7 +567,12 @@ impl ScriptWorld {
                             .as_mut()
                             .expect("admitted combat")
                             .flags |= 0x20;
-                        anyhow::bail!("ordinary combat attack candidate traversal unsupported");
+                        self.process_combat_attack_candidates(
+                            id,
+                            inputs,
+                            random.context("attack candidate random owner unavailable")?,
+                            sounds,
+                        )?;
                     }
                 } else {
                     combat.action = -1;
@@ -753,6 +761,7 @@ impl ScriptWorld {
             combat_defenses: scripts.combat_defenses.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
             non_engaged_spacing: scripts.non_engaged_spacing,
+            combat_clank_effects: scripts.combat_clank_effects,
             node_timer: scripts.node_timer,
             attribute_names: scripts.definition.attributes.clone(),
             reference_names: scripts.definition.references.clone(),
@@ -4262,6 +4271,7 @@ mod fighting_tests {
             combat_defenses: Vec::new(),
             in_combat_threshold: Some(threshold),
             non_engaged_spacing: None,
+            combat_clank_effects: [None; 2],
             node_timer: None,
             attribute_names: Vec::new(),
             reference_names: definition.references,

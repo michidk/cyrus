@@ -4,12 +4,13 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 19,
+        version: 20,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
+        combat_clank_effects: [None; 2],
         node_timer: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
@@ -256,6 +257,10 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
             .unwrap_or_else(|error| panic!("{}: {error:#}", path.display()));
         scripts.validate().unwrap();
         assert_eq!(scripts.node_timer, misc.node_timer, "{}", path.display());
+        assert_eq!(
+            scripts.combat_clank_effects,
+            [misc.sword_clank_1, misc.sword_clank_2]
+        );
         if !scripts.combat_attacks.is_empty() {
             assert_eq!(
                 scripts.non_engaged_spacing,
@@ -356,7 +361,7 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
                 assert_eq!(scripts.combat_attacks[0].motions[0].animation_group, 102);
                 assert_eq!(scripts.combat_attacks[0].motions[0].min_range, 12001);
                 assert_eq!(scripts.combat_attacks[0].motions[0].max_range, 20000);
-                assert_eq!(scripts.combat_attacks[0].motions[0].arc_center, None);
+                assert_eq!(scripts.combat_attacks[0].motions[0].arc_center, Some(0));
             }
             taunts += actor.combat_taunts.len();
             assert_eq!(attribute(115), attribute(6), "{name}: reserved weight");
@@ -621,7 +626,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 19);
+    assert_eq!(scripts.version, 20);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -1193,4 +1198,24 @@ fn perception_delay_retains_signed_ticks_and_invalidates_old_exports() {
             .to_string()
             .contains("re-export")
     );
+}
+
+#[test]
+fn clank_effects_are_required_and_participate_in_cache_identity() {
+    let mut scripts = cache();
+    let identity = scripts.content_identity().unwrap();
+    scripts.combat_clank_effects = [Some(31), Some(32)];
+    assert_ne!(identity, scripts.content_identity().unwrap());
+    let mut saved = serde_json::to_value(&scripts).unwrap();
+    assert_eq!(
+        serde_json::from_value::<Scripts>(saved.clone())
+            .unwrap()
+            .combat_clank_effects,
+        [Some(31), Some(32)]
+    );
+    saved
+        .as_object_mut()
+        .unwrap()
+        .remove("combat_clank_effects");
+    assert!(serde_json::from_value::<Scripts>(saved).is_err());
 }

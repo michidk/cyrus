@@ -447,7 +447,9 @@ impl ScriptWorld {
     }
 
     /// Prepare the selected standalone player's animated model owner without a
-    /// fictitious MPOB placement. Caller admission still owns presentation timing.
+    /// fictitious MPOB placement. Fresh animated players retain the allocator-zero
+    /// collision metadata described in preservation's animation rules.
+    /// Caller admission still owns presentation timing.
     pub fn prepare_player_model_resources(
         &mut self,
         id: ScriptActorId,
@@ -470,6 +472,7 @@ impl ScriptWorld {
             "world {} selected player: animated model definition required",
             self.world
         );
+        self.actors[index].model.collision_flags = Some(0);
         self.actors[index].model.prepared = true;
         Ok(())
     }
@@ -659,7 +662,7 @@ impl ScriptWorld {
     /// Live ordinary-map inputs in caller-established traversal order. Current model
     /// records supply bounds; logical movement cannot silently refresh those bounds.
     /// An absent current model contributes no candidate and needs no collision metadata.
-    /// The selected standalone player is excluded; other special-object paths remain unsupported.
+    /// The selected standalone player participates; the inactive alternate role is excluded.
     pub fn live_collision_inputs(
         &self,
         order: &[ScriptActorId],
@@ -669,8 +672,8 @@ impl ScriptWorld {
         for &id in order {
             let index = self.resolve(id)?;
             let actor = &self.actors[index];
-            // The designated player is excluded from ordinary live candidates.
-            if matches!(actor.source, super::ScriptActorSource::Player) {
+            // The inactive player role fails the original ordinary exclusion query.
+            if matches!(actor.source, super::ScriptActorSource::AlternatePlayer) {
                 continue;
             }
             // Candidate admission rejects an absent current record before reading
@@ -679,9 +682,7 @@ impl ScriptWorld {
                 continue;
             };
             ensure!(
-                actor
-                    .placement()
-                    .is_some_and(|placement| placement.object_type == 1),
+                actor.ordinary_collision_role(),
                 "world {} instance {index}: live collision object path unavailable",
                 self.world
             );
@@ -702,7 +703,7 @@ impl ScriptWorld {
                     position: record.pose.position.map(|value| (value >> 8) as f32),
                     radius: record.radius,
                 }),
-                // Designated-player exclusion does not select an ordinary MPOB actor.
+                // Player-role exclusion was applied before reading the current model.
                 ordinary_excluded: false,
                 animation_excluded: control.hidden,
                 attribute_55: actor.attributes()[55],

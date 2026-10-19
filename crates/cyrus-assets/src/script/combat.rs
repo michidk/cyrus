@@ -11,7 +11,9 @@ pub struct Attack {
     pub max_range: i32,
 }
 
-/// One COMBAT.INI motion. Optional fields have no inferred runtime default.
+/// One prepared COMBAT.INI motion. Preservation's numeric loading rules turn
+/// authored omissions into zero. Optional fields let runtime queries reject
+/// incomplete synthetic or stale captures instead of guessing values there.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Motion {
     pub section: u32,
@@ -48,10 +50,7 @@ pub fn prepare(ini: &rgpre::import::combat_ini::CombatIni) -> anyhow::Result<Vec
             break;
         }
         let context = format!("COMBAT.INI attack{index:02}");
-        let combo = record
-            .attack_type
-            .context(format!("{context}: type absent"))?
-            == AttackType::Combo;
+        let combo = record.attack_type.unwrap_or(AttackType::Melee) == AttackType::Combo;
         let sections = if combo {
             let count = record
                 .num_attacks
@@ -76,7 +75,7 @@ pub fn prepare(ini: &rgpre::import::combat_ini::CombatIni) -> anyhow::Result<Vec
                     .attacks
                     .get(&section)
                     .with_context(|| format!("{context}: referenced attack{section:02} absent"))?;
-                Motion::prepare(section, source).with_context(|| context.clone())
+                Ok(Motion::prepare(section, source))
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
         let (min_range, max_range) = if combo {
@@ -98,16 +97,9 @@ pub fn prepare(ini: &rgpre::import::combat_ini::CombatIni) -> anyhow::Result<Vec
 
 #[cfg(feature = "parsers")]
 impl Motion {
-    fn prepare(section: u32, source: &rgpre::import::combat_ini::Attack) -> anyhow::Result<Self> {
-        use anyhow::Context;
+    fn prepare(section: u32, source: &rgpre::import::combat_ini::Attack) -> Self {
         use rgpre::import::combat_ini::{AttackType, Elevation};
-        let required = |name: &str, value: Option<i32>| {
-            value.with_context(|| format!("attack{section:02}: {name} absent"))
-        };
-        let kind = match source
-            .attack_type
-            .with_context(|| format!("attack{section:02}: type absent"))?
-        {
+        let kind = match source.attack_type.unwrap_or(AttackType::Melee) {
             AttackType::Melee => 0,
             AttackType::Missile => 1,
             AttackType::Combo => 2,
@@ -115,32 +107,30 @@ impl Motion {
             AttackType::Finishing => 4,
             AttackType::Unknown(value) => value,
         };
-        Ok(Self {
+        Self {
             section,
             kind,
-            animation_group: required("animation", source.animation)?
-                .checked_add(97)
-                .context("combat animation group overflow")?,
-            min_range: required("min_range", source.min_range)?,
-            max_range: required("max_range", source.max_range)?,
-            first_collide_frame: required("first_collide_frame", source.first_collide_frame)?,
-            collide_duration: required("collide_duration", source.collide_duration)?,
-            arc: source.arc,
-            arc_center: source.arc_center,
-            elevation: source.elevation.map(|value| match value {
+            animation_group: source.animation.unwrap_or(0).wrapping_add(97),
+            min_range: source.min_range.unwrap_or(0),
+            max_range: source.max_range.unwrap_or(0),
+            first_collide_frame: source.first_collide_frame.unwrap_or(0),
+            collide_duration: source.collide_duration.unwrap_or(0),
+            arc: Some(source.arc.unwrap_or(0)),
+            arc_center: Some(source.arc_center.unwrap_or(0)),
+            elevation: Some(match source.elevation.unwrap_or(Elevation::Regular) {
                 Elevation::Regular => 0,
                 Elevation::Above => 1,
                 Elevation::Below => 2,
                 Elevation::Unknown(value) => value,
             }),
-            damage: source.damage,
-            force: source.force,
-            defense: source.defense,
-            first_defend_frame: source.first_defend_frame,
-            defend_duration: source.defend_duration,
-            col_vertex: source.col_vertex,
-            col_sphere_size: source.col_sphere_size,
-        })
+            damage: Some(source.damage.unwrap_or(0)),
+            force: Some(source.force.unwrap_or(0)),
+            defense: Some(source.defense.unwrap_or(0)),
+            first_defend_frame: Some(source.first_defend_frame.unwrap_or(0)),
+            defend_duration: Some(source.defend_duration.unwrap_or(0)),
+            col_vertex: Some(source.col_vertex.unwrap_or(0)),
+            col_sphere_size: Some(source.col_sphere_size.unwrap_or(0)),
+        }
     }
 }
 
@@ -174,7 +164,7 @@ mod tests {
         );
         assert_eq!((attacks[0].min_range, attacks[0].max_range), (65535, -1));
         assert_eq!(attacks[0].motions[0].animation_group, 102);
-        assert_eq!(attacks[0].motions[0].arc_center, None);
+        assert_eq!(attacks[0].motions[0].arc_center, Some(0));
     }
 
     #[test]
@@ -190,10 +180,45 @@ mod tests {
     }
 
     #[test]
-    fn absent_required_field_is_not_assigned_zero() {
-        let text = format!("[misc]\n{}", motion(0, 1, 2)).replace("animation=5\n", "");
-        let error = prepare(&CombatIni::parse(&text).unwrap()).unwrap_err();
-        assert!(format!("{error:#}").contains("attack00: animation absent"));
+    fn admitted_motion_omissions_load_as_zero_without_changing_raw_fields() {
+        let ini = CombatIni::parse("[misc]\n[attack00]\ndamage=1\n").unwrap();
+        assert_eq!(ini.attacks[&0].animation, None);
+        assert_eq!(ini.attacks[&0].col_sphere_size, None);
+        let attacks = prepare(&ini).unwrap();
+        let motion = &attacks[0].motions[0];
+        assert_eq!(
+            (
+                motion.kind,
+                motion.animation_group,
+                motion.min_range,
+                motion.max_range
+            ),
+            (0, 97, 0, 0)
+        );
+        assert_eq!(
+            (motion.first_collide_frame, motion.collide_duration),
+            (0, 0)
+        );
+        assert_eq!(
+            [
+                motion.arc,
+                motion.arc_center,
+                motion.elevation,
+                motion.force,
+                motion.defense,
+                motion.first_defend_frame,
+                motion.defend_duration,
+                motion.col_vertex,
+                motion.col_sphere_size
+            ],
+            [Some(0); 9]
+        );
+        assert_eq!(motion.damage, Some(1));
+        let ini = CombatIni::parse("[misc]\n[attack00]\ntype=0\nanimation=2147483647\n").unwrap();
+        assert_eq!(
+            prepare(&ini).unwrap()[0].motions[0].animation_group,
+            -2147483552
+        );
     }
     #[test]
     fn invalid_combo_references_report_the_owning_section() {

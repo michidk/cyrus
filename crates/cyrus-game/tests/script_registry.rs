@@ -74,12 +74,13 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 19,
+        version: 20,
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
+        combat_clank_effects: [None; 2],
         node_timer: None,
         dialogue: cyrus_assets::script::DialogueSettings {
             menu_start: [35, 25],
@@ -11696,7 +11697,7 @@ fn player_walking_fixture() -> (
     assert_eq!(world.model_radius(player).unwrap(), Some(31.0));
     assert_eq!(
         world.live_collision_inputs(&[player, map]).unwrap().len(),
-        1
+        2
     );
     let mut scene = ordinary_collision_scene(world.world, models);
     scene.settings.post_collide_height = 4;
@@ -23039,7 +23040,7 @@ fn attack_windows_use_command_cursor_current_motion_and_retained_mark() {
         if expected {
             assert!(
                 format!("{:#}", result.unwrap_err())
-                    .contains("attack candidate traversal unsupported")
+                    .contains("attack candidate random owner unavailable")
             );
         } else {
             result.unwrap();
@@ -23088,4 +23089,265 @@ fn reverse_attack_admission_returns_before_motion_metadata() {
         .as_ref()
         .unwrap();
     assert_eq!((combat.action, combat.flags), (0, 1));
+}
+
+#[test]
+fn defence_windows_use_current_motion_signed_boundaries_and_required_metadata() {
+    for (start, duration, cursor, flags, expected) in [
+        (1, Some(1), 0, 0, Some(false)),
+        (1, None, 0, 0, Some(false)),
+        (0, None, 0, 0, None),
+        (0, Some(1), 0, 0, Some(true)),
+        (0, Some(1), 1, 0x21, Some(false)),
+        (0, Some(0), 0, 0, Some(false)),
+        (0, Some(-1), 0, 1, Some(false)),
+        (i32::MAX, Some(1), 0, 1, Some(false)),
+        (0, Some(1), 0, 0x21, Some(true)),
+    ] {
+        let (world, _, _) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.combat_attacks = vec![combat::Attack {
+                    is_combo: true,
+                    motions: [0, start]
+                        .into_iter()
+                        .map(|start| {
+                            serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "first_collide_frame":0,"collide_duration":0,
+                        "first_defend_frame":start,"defend_duration":duration
+                    })).unwrap()
+                        })
+                        .collect(),
+                    min_range: 0,
+                    max_range: 100,
+                }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["death_selector"] = 0.into();
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        action: 0,
+                        flags,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][0]["control"]["combat"]["decision"]["move_selector"] = 1.into();
+                saved["actors"][0]["animation"]["playback"]["current"][1]["command"] =
+                    cursor.into();
+            },
+        );
+        let id = world.id(0).unwrap();
+        let result = world.combat_defence_window(id);
+        match expected {
+            Some(expected) => assert_eq!(
+                result.unwrap(),
+                expected,
+                "start {start} duration {duration:?} cursor {cursor} flags {flags}"
+            ),
+            None => assert!(
+                format!("{:#}", result.unwrap_err()).contains("defend_duration unavailable")
+            ),
+        }
+    }
+}
+
+#[test]
+fn selected_player_is_a_live_candidate_and_its_own_model_is_excluded() {
+    use cyrus_collision::candidates::{
+        CandidateOwner, CandidateQuery, CollisionCandidates, ModelBounds, ModelInstance,
+    };
+    use cyrus_game::script::ScriptActorSource;
+    let (_, world, _, _) = player_walking_fixture();
+    let player = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(player).unwrap();
+    let map = world.id(0).unwrap();
+    let alternate = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::AlternatePlayer))
+        .map(|index| world.id(index).unwrap());
+    let mut order = vec![player, map];
+    order.extend(alternate);
+    let live = world.live_collision_inputs(&order).unwrap();
+    assert_eq!(
+        live.iter().map(|actor| actor.actor).collect::<Vec<_>>(),
+        [player.index, map.index]
+    );
+    assert_eq!(live[0].collision_flags, 0);
+    let model = live[0].model.unwrap();
+    let query =
+        CandidateQuery::new(model.position.map(|value| (value * 256.0) as i32), None).unwrap();
+    let candidates = CollisionCandidates::build(&query, &[], &live, &[]).unwrap();
+    assert!(
+        candidates
+            .actors
+            .iter()
+            .any(|candidate| candidate.owner == CandidateOwner::Actor(player.index))
+    );
+    let query = CandidateQuery::new(
+        model.position.map(|value| (value * 256.0) as i32),
+        Some(ModelBounds {
+            instance: ModelInstance::Runtime(player.index),
+            ..model
+        }),
+    )
+    .unwrap();
+    let candidates = CollisionCandidates::build(&query, &[], &live, &[]).unwrap();
+    assert!(
+        !candidates
+            .actors
+            .iter()
+            .any(|candidate| candidate.owner == CandidateOwner::Actor(player.index))
+    );
+}
+
+#[test]
+fn hit_defence_retains_ordered_response_and_partial_writes() {
+    use cyrus_game::{
+        random::EngineRandom,
+        script::{CombatControlState, ScriptInputs, ScriptSound},
+    };
+    for (distance, flags, selector, fail_sound, clock, expected) in [
+        (0, 0x8a, 0, false, true, Some(true)),
+        (0, 0x82, 0, false, true, Some(true)),
+        (100, 0x8a, 0, false, true, Some(false)),
+        (0, 0x88, 0, false, true, Some(false)),
+        (0, 0x8a, 1, false, true, Some(false)),
+        (0, 0x8a, 0, true, true, None),
+        (0, 0x8a, 0, false, false, None),
+    ] {
+        let (mut world, scripts, mut data) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.combat_clank_effects = [Some(31), Some(32)];
+                scripts.combat_attacks =
+                    vec![combat::Attack {
+                        is_combo: false,
+                        motions: vec![serde_json::from_value(serde_json::json!({
+                    "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                    "first_collide_frame":0,"collide_duration":1,"first_defend_frame":0,
+                    "defend_duration":1,"defense":1,"col_vertex":0,"col_sphere_size":100
+                })).unwrap()],
+                        min_range: 0,
+                        max_range: 100,
+                    }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        action: 0,
+                        flags: 0xff,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][1]["control"]["combat"] =
+                    serde_json::to_value(CombatControlState {
+                        flags,
+                        retained_action_indices: [-1, selector],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["spatial"]["actors"][0]["local"]["position"] =
+                    serde_json::json!([5120, 0, 5120]);
+                saved["spatial"]["actors"][1]["local"]["position"] =
+                    serde_json::json!([distance, 0, 0]);
+            },
+        );
+        data.metadata["actors"][0]["model_load_path"] = "static".into();
+        let (_, _, statics) = static_model_fixture(cache());
+        let attacker = world.id(0).unwrap();
+        let defender = world.id(1).unwrap();
+        let mut random = EngineRandom::from_state(1);
+        let mut sounds = vec![];
+        let result = world.try_combat_hit_defence(
+            defender,
+            attacker,
+            &data,
+            Some(&statics),
+            ScriptInputs {
+                combat_clock_sample: clock.then_some(0),
+                ..Default::default()
+            },
+            &mut random,
+            &mut |actor, sound| {
+                sounds.push((actor, sound));
+                anyhow::ensure!(!fail_sound, "impact backend failed");
+                Ok(())
+            },
+        );
+        match expected {
+            Some(value) => assert_eq!(result.unwrap(), value),
+            None => assert!(result.is_err()),
+        }
+        let collision = cyrus_assets::collision::CollisionScene::default();
+        let sources = cyrus_game::script::WorldSnapshotSources {
+            player: None,
+            scripts: &scripts,
+            animations: &data,
+            collision: &collision,
+        };
+        let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        let hit = distance == 0 && flags & 2 != 0 && selector == 0;
+        assert_eq!(saved["actors"][0]["animation"]["playback"]["reverse"], hit);
+        let complete = expected == Some(true);
+        assert_eq!(
+            world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .flags,
+            if complete { 0xfc } else { 0xff }
+        );
+        let missed = distance == 100 && flags & 2 != 0 && selector == 0;
+        assert_eq!(
+            world.actors()[1]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .flags,
+            if complete {
+                (flags & !3) ^ 8
+            } else if missed {
+                flags & !8
+            } else {
+                flags
+            }
+        );
+        assert_eq!(sounds.len(), usize::from(hit));
+        if hit {
+            assert!(
+                matches!(sounds[0],(actor,ScriptSound::Positional {effect:31,volume:0,rate_offset_hz:96,..}) if actor==defender)
+            );
+            assert_eq!(random.state(), 1103527590);
+        } else {
+            assert_eq!(random.state(), 1);
+        }
+        let message = world.consume_combat_message(attacker).unwrap();
+        if hit && !fail_sound {
+            let message = message.unwrap();
+            assert_eq!(
+                (message.sender, message.receiver, message.code),
+                (defender, Some(attacker), 0xd000)
+            );
+        } else {
+            assert!(message.is_none());
+        }
+    }
 }

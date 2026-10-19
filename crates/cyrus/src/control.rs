@@ -700,7 +700,7 @@ mod tests {
         let mut app = app();
         let dialogue = json!({"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"});
         let mut script_json = json!({
-            "version":19,"dialogue":dialogue,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
+            "version":20,"dialogue":dialogue,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},"clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},"actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
                 {"name":"NullFunction","param_count":0,"kind":"function"},
                 {"name":"PushAnimation","param_count":2,"kind":"task"}
@@ -719,6 +719,7 @@ mod tests {
             "unsupported":{}
         });
         script_json["combat_attacks"] = json!([]);
+        script_json["combat_clank_effects"] = json!([null, null]);
         script_json["combat_defenses"] = json!([]);
         let mut scripts: Scripts = serde_json::from_value(script_json).unwrap();
         scripts.content_id = scripts.content_identity().unwrap();
@@ -813,7 +814,7 @@ mod tests {
         let mut app = app();
         let dialogue = json!({"menu_start":[35,25],"max_menu_items":300,"max_dialog_lines":20,"max_text_width":500,"menu_traverse_delay":4,"print_text":true,"use_speech":true,"max_distance":1600,"rtx_filename":"ENGLISH.RTX"});
         let mut script_json = json!({
-            "version":19,"dialogue":dialogue,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
+            "version":20,"dialogue":dialogue,"player_distance_override":false,"updates":{"task_system":true,"animation_system":true,"disable_slaves":false,"disable_master_slaves":false,"dummy_model_manager":false},
             "clock":{"normal_frame_rate":12,"min_frame_rate":6,"max_frame_rate":300,"use_smooth_fps":true,"use_smooth_divisor":true},
             "actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[
@@ -831,6 +832,7 @@ mod tests {
             "instances":[{"object_id":0,"actor":"ACTOR","object_type":0,"active":0,"model_name":"","model_mode":0,"light_intensity":0,"light_radius":0,"light_rgb":[0,0,0],"map_position":[0,0,0],"angles":[0,0,0]}],"unsupported":{}
         });
         script_json["combat_attacks"] = json!([]);
+        script_json["combat_clank_effects"] = json!([null, null]);
         script_json["combat_defenses"] = json!([]);
         let mut scripts: cyrus_assets::script::Scripts =
             serde_json::from_value(script_json).unwrap();

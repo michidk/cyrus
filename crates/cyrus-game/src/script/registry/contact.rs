@@ -5,6 +5,146 @@ use cyrus_assets::animation::Animations;
 use cyrus_collision::{actor_models::ActorModelCollision, distance::rounded_distance};
 
 impl ScriptWorld {
+    /// Dispatch the current motion's contact query without changing combat state.
+    /// A required zero sphere size selects range/arc; nonzero selects sphere contact.
+    pub fn combat_motion_contact(
+        &self,
+        attacker: ScriptActorId,
+        defender: ScriptActorId,
+        data: &Animations,
+        statics: Option<&ActorModelCollision>,
+    ) -> Result<bool> {
+        let size = self
+            .current_combat_motion(attacker)?
+            .col_sphere_size
+            .context("col_sphere_size unavailable")?;
+        if size == 0 {
+            self.combat_range_contact(attacker, defender, data, statics)
+        } else {
+            self.combat_sphere_contact(attacker, defender, data, statics)
+        }
+    }
+
+    /// Query a candidate's defence and synchronously apply an admitted block response.
+    /// Reverse playback precedes impact sound, message, taunt, both intent clears and
+    /// defender flag-eight toggle. Earlier writes survive later service failures.
+    /// A contact miss clears flag eight; earlier admission failures leave it unchanged.
+    /// Follows preservation's SOUP hit-defence response and impact-cue contracts.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Actor identities, installed geometry and ordered session services have separate owners"
+    )]
+    pub fn try_combat_hit_defence(
+        &mut self,
+        defender: ScriptActorId,
+        attacker: ScriptActorId,
+        data: &Animations,
+        statics: Option<&ActorModelCollision>,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let result = (|| -> Result<bool> {
+            let attacker_index = self.resolve(attacker)?;
+            let defender_index = self.resolve(defender)?;
+            let Some(combat) = self.actors[attacker_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+            else {
+                return Ok(false);
+            };
+            if matches!(combat.action, -1 | 9) {
+                return Ok(false);
+            }
+            let selector = self.actors[defender_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("defender combat unavailable")?
+                .retained_action_indices[1];
+            let required = self
+                .current_combat_motion(attacker)?
+                .defense
+                .context("current motion defense unavailable")?
+                .wrapping_sub(1);
+            if selector != required || !self.combat_defence_window(attacker)? {
+                return Ok(false);
+            }
+            let combat = self.actors[defender_index]
+                .control
+                .as_mut()
+                .unwrap()
+                .combat
+                .as_mut()
+                .unwrap();
+            if combat.flags & 2 == 0 {
+                return Ok(false);
+            }
+            if !self.combat_motion_contact(attacker, defender, data, statics)? {
+                self.actors[defender_index]
+                    .control
+                    .as_mut()
+                    .unwrap()
+                    .combat
+                    .as_mut()
+                    .unwrap()
+                    .flags &= !8;
+                return Ok(false);
+            }
+            self.actors[attacker_index]
+                .animation
+                .as_mut()
+                .context("attacker animation unavailable")?
+                .playback
+                .set_reverse(true)?;
+            let variant = (self.globals.world_loop_frame & 1) as usize;
+            let effect = self.combat_clank_effects[variant]
+                .with_context(|| format!("sword_clank_{} unavailable", variant + 1))?;
+            let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+            let position = self.sight_position(defender_index)?;
+            sounds(
+                defender,
+                crate::script::ScriptSound::Positional {
+                    effect,
+                    volume: 0,
+                    rate_offset_hz,
+                    position,
+                },
+            )?;
+            self.send_combat_message(defender, attacker, 0xd000)?;
+            let clock = inputs
+                .combat_clock_sample
+                .context("combat clock sample unavailable")? as i32;
+            self.request_timed_combat_taunt(defender, 4, clock, inputs, random, sounds)?;
+            for index in [defender_index, attacker_index] {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .unwrap()
+                    .combat
+                    .as_mut()
+                    .unwrap()
+                    .flags &= !3;
+            }
+            self.actors[defender_index]
+                .control
+                .as_mut()
+                .unwrap()
+                .combat
+                .as_mut()
+                .unwrap()
+                .flags ^= 8;
+            Ok(true)
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} defender {} attacker {} hit defence",
+                self.world, defender.index, attacker.index
+            )
+        })
+    }
+
     /// Test a local Q8 point against the current attack motion's orientation limit.
     /// Wrapping displacement shifts right eight before normalized bearing conversion.
     /// The absolute heading difference must be strictly below the wrapping sum of

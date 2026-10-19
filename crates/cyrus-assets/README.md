@@ -263,8 +263,9 @@ scroll geometry. The shared reader group prepares it on demand in browser worker
 native HUD preparation exports the same validated record.
 
 Script caches retain contiguous combat attack definitions, ordered combo motions,
-resolved animation groups and authored optional fields. Omitted numeric fields
-remain absent; combat decision execution must not treat them as implicit zero.
+resolved animation groups and runtime numeric fields. Motion preparation applies
+preservation's omitted-value conversion; raw INI parsing retains omissions.
+Runtime queries still reject missing fields in incomplete captures.
 
 Script caches retain the optional installed fighting-query threshold in Q8 units
 and the unscaled `COMBAT.INI` neighbor-spacing threshold. Both participate in
@@ -291,3 +292,6 @@ script caches require re-export before perception maintenance can use it.
 Script cache schema 19 retains the effective dummy 3D manager setting used by
 animation-vertex queries. Native and browser preparation derive it from installed
 manager and static-angle conversion settings. Older script caches require re-export.
+
+Script cache schema 20 retains installed combat impact cues in content identity.
+Re-export older script caches before using combat contact responses.

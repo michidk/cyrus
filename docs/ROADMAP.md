@@ -682,6 +682,28 @@ and original/native/browser combat acceptance remain open. The
 [reverse rules](https://github.com/michidk/redguard-preservation/blob/9f07979/docs/engine/animation.md#reverse-frame-countdown)
 own the engine contract.
 
+**Verified:** the defence contact-window query reads the current motion's required
+`first_defend_frame` and `defend_duration`, with signed wrapping and exclusive
+end admission. Selected-player live collision candidates now use fresh
+constructor-owned collision metadata and participate alongside map actors;
+the inactive alternate role remains excluded. Public registry tests cover
+window boundaries, missing-duration short circuits, candidate order and
+self-model exclusion. Installed ordinary combat acceptance remains open.
+
+**Verified:** the explicit hit-defence response uses installed clank cues and
+retained world-loop parity. Reverse state precedes sound, message and taunt;
+intent clearing and defender flag toggling follow successful services. Public
+contracts cover contact misses, admission rejection and retained writes on
+sound/clock errors. Script schema 20 requires re-export for combat impact cues.
+Ordered ordinary actor candidate dispatch now calls this response and returns
+after the first undefended combat hit. Noncombat-hit responses and static-face
+weapon contact remain explicitly unsupported. Shared motion preparation applies
+preservation's numeric omission-to-zero rule while raw INI parsing retains
+omissions. Four focused preparation tests cover this conversion. Installed START
+advances through actor contact to the explicit static-face weapon-contact guard.
+The full workspace gate passes with zero install-test skips. Successful combat
+and complete original/native/browser acceptance remain open.
+
 Next, in dependency order:
 
 1. Compare installed allocation assignments and complete live

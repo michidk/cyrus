@@ -373,6 +373,8 @@ pub struct Scripts {
     pub in_combat_threshold: Option<i32>,
     /// Installed multiple-attacker angular spacing threshold, without scaling.
     pub non_engaged_spacing: Option<i32>,
+    /// Installed misc sword_clank_1/2 effect IDs; omissions remain unavailable.
+    pub combat_clank_effects: [Option<i32>; 2],
     /// Installed lost-sight delay in nominal ticks, signed and unscaled.
     pub node_timer: Option<i32>,
     pub clock: ClockSettings,
@@ -400,7 +402,11 @@ impl Scripts {
             self.version,
             (&self.combat_attacks, &self.combat_defenses),
             self.in_combat_threshold,
-            (self.non_engaged_spacing, self.node_timer),
+            (
+                self.non_engaged_spacing,
+                self.node_timer,
+                self.combat_clank_effects,
+            ),
             &self.clock,
             &self.updates,
             &self.camera,
@@ -417,7 +423,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 19,
+            self.version == 20,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
