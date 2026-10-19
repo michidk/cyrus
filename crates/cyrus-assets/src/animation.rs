@@ -47,6 +47,17 @@ pub struct AnimationModel {
     pub normals: Vec<Vec<[f32; 3]>>,
 }
 
+/// Installed RAEX contact inputs, separate from an animation model's bounding radius.
+/// The original combat constructor retains the signed vertex and shifts the signed
+/// size left eight bits. An absent actor-extra record supplies zero for both.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CombatContactProfile {
+    /// Signed source-model vertex index. Geometry owners validate it before lookup.
+    pub vertex: i16,
+    /// Signed contact radius in runtime Q8 units.
+    pub radius: i32,
+}
+
 impl Animations {
     pub fn require_version(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
@@ -301,6 +312,36 @@ impl Animations {
             remaining -= count;
         }
         anyhow::bail!("{context}: outside RAAN frame table")
+    }
+
+    /// Read original contact inputs for either a map actor or standalone player.
+    /// Missing RAEX is the original zero profile; a present malformed record is an
+    /// error. Follows [preservation's combat-construction rules].
+    ///
+    /// [preservation's combat-construction rules]: https://github.com/michidk/redguard-preservation/commit/a4d6495
+    pub fn combat_contact_profile(&self, name: &str) -> anyhow::Result<CombatContactProfile> {
+        let actor = self.actor(name)?;
+        let Some(extra) = actor.get("raex").filter(|value| !value.is_null()) else {
+            return Ok(CombatContactProfile::default());
+        };
+        let field = |key: &str| -> anyhow::Result<i16> {
+            let value = extra[key].as_i64().with_context(|| {
+                format!(
+                    "world {} actor {name}: RAEX {key} missing or not an integer",
+                    self.world
+                )
+            })?;
+            i16::try_from(value).with_context(|| {
+                format!(
+                    "world {} actor {name}: RAEX {key} {value} outside signed 16-bit range",
+                    self.world
+                )
+            })
+        };
+        Ok(CombatContactProfile {
+            vertex: field("v_vertex")?,
+            radius: i32::from(field("v_size")?) << 8,
+        })
     }
 
     pub fn actor(&self, name: &str) -> anyhow::Result<&serde_json::Value> {

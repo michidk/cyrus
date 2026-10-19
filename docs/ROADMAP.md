@@ -640,6 +640,13 @@ and reaches SPIRATE2's unsupported attack-processing stage after 64 ordinary
 traversals. Weapon attachment geometry, hit positions, selected-player integration
 and full combat acceptance remain open.
 
+**Verified:** map and standalone-player combat construction retain the installed
+signed RAEX contact vertex and Q8 radius independently of model bounds. World
+snapshots preserve both and reject records missing the profile. Asset validation,
+public construction/restore contracts and 72 controlled original constructor
+cases cover the [published conversion](https://github.com/michidk/redguard-preservation/commit/a4d6495).
+Contact geometry and hit/damage processing remain unsupported.
+
 Next, in dependency order:
 
 1. Compare installed allocation assignments and complete live

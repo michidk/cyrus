@@ -151,3 +151,46 @@ fn actor_texture_set_comes_from_raex_and_names_a_separate_frame_source() {
     assert_eq!(frame_source_file("THUGA003", Some(454)), "THUGA003-454.glb");
     assert_eq!(frame_source_file("THUGA003", None), "THUGA003.glb");
 }
+
+#[test]
+fn combat_contact_profile_reads_signed_raex_and_absent_extra_defaults() {
+    use cyrus_assets::animation::CombatContactProfile;
+    let mut data = asset();
+    assert_eq!(
+        data.combat_contact_profile("ACTOR").unwrap(),
+        CombatContactProfile::default()
+    );
+    for (vertex, size, radius) in [
+        (-32768, -32768, -8388608),
+        (-1, -1, -256),
+        (0, 0, 0),
+        (7, 100, 25600),
+        (32767, 32767, 8388352),
+    ] {
+        data.metadata["actors"][0]["raex"] =
+            serde_json::json!({"v_vertex": vertex, "v_size": size});
+        assert_eq!(
+            data.combat_contact_profile("actor").unwrap(),
+            CombatContactProfile { vertex, radius }
+        );
+    }
+}
+
+#[test]
+fn malformed_contact_profile_reports_world_actor_and_field() {
+    let mut data = asset();
+    for (field, value) in [
+        ("v_vertex", serde_json::json!(32768)),
+        ("v_size", serde_json::json!("large")),
+        ("v_size", serde_json::Value::Null),
+    ] {
+        data.metadata["actors"][0]["raex"] = serde_json::json!({"v_vertex": 7, "v_size": 100});
+        data.metadata["actors"][0]["raex"][field] = value;
+        let error = data
+            .combat_contact_profile("ACTOR")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("world 17 actor ACTOR"), "{error}");
+        assert!(error.contains(field), "{error}");
+    }
+}

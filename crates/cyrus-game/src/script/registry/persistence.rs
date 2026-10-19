@@ -46,6 +46,7 @@ struct ControlSnapshot {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct CombatSnapshot {
+    contact_profile: cyrus_assets::animation::CombatContactProfile,
     attack_indices: [Option<u8>; 9],
     defense_indices: [Option<u8>; 4],
     target: Option<(u64, usize)>,
@@ -162,6 +163,7 @@ impl ControlSnapshot {
 impl CombatSnapshot {
     fn capture(combat: &super::super::CombatControlState) -> Self {
         Self {
+            contact_profile: combat.contact_profile,
             attack_indices: combat.attack_indices,
             defense_indices: combat.defense_indices,
             target: combat.target.map(|id| (id.generation, id.index)),
@@ -192,6 +194,7 @@ impl CombatSnapshot {
         rebind: &impl Fn(u64, usize) -> Result<ScriptActorId>,
     ) -> Result<super::super::CombatControlState> {
         Ok(super::super::CombatControlState {
+            contact_profile: self.contact_profile,
             attack_indices: self.attack_indices,
             defense_indices: self.defense_indices,
             target: self

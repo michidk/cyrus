@@ -4444,7 +4444,7 @@ fn static_model_fixture_session(
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id": scripts.content_id,
             "mpob_objects": scripts.instances.iter().map(|_| serde_json::json!({"model_id":-1})).collect::<Vec<_>>(),
-            "actors": scripts.actors.keys().map(|name| serde_json::json!({"script_name":name,"model_load_path":"static","mpsz_bounds_primary":-1,"raex":{"unknown_12":0}})).collect::<Vec<_>>()}),
+            "actors": scripts.actors.keys().map(|name| serde_json::json!({"script_name":name,"model_load_path":"static","mpsz_bounds_primary":-1,"raex":{"unknown_12":0,"v_vertex":0,"v_size":0}})).collect::<Vec<_>>()}),
         sections: Default::default(),
         models: Default::default(),
         unsupported: Default::default(),
@@ -6097,7 +6097,7 @@ fn ordinary_initial_overlap_shape_preserves_fractional_rotated_centers() {
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
             "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
-                "ravc_count":0,"mpsz_bounds_primary":0,"raex":{"unknown_12":0}}],
+                "ravc_count":0,"mpsz_bounds_primary":0,"raex":{"unknown_12":0,"v_vertex":0,"v_size":0}}],
             "mpsz_entries":[{"total_extent":[48,128,49],"pos_extent":[24,62,24],
                 "neg_extent":[24,66,25],"center_offset":[0,0,0]}]}),
         sections: Default::default(),
@@ -11181,7 +11181,7 @@ fn automatic_combat_ground_dispatch_preserves_pose_without_ordinary_support() {
             metadata: serde_json::json!({
                 "script_content_id": scripts.content_id,
                 "actors": [{"script_name":"LOGIC", "model_load_path":"animation_table",
-                    "ravc_count":0, "mpsz_bounds_primary":0, "raex":{"unknown_12":0},
+                    "ravc_count":0, "mpsz_bounds_primary":0, "raex":{"unknown_12":0,"v_vertex":0,"v_size":0},
                     "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
                     "animation_groups":([0,91].map(|group| serde_json::json!({
                         "group_index":group,"anim_id":1,"anim_type":0,
@@ -11658,7 +11658,7 @@ fn player_walking_fixture() -> (
         .unwrap();
     *definition = serde_json::json!({"script_name":"CYRUS", "model_load_path":"animation_table",
         "attributes":{"attr_forward_walk":9,"attr_forward_speed":99,"attr_step_type":1},
-        "ravc_count":0,"mpsz_bounds_primary":0,"raex":{"unknown_12":256},
+        "ravc_count":0,"mpsz_bounds_primary":0,"raex":{"unknown_12":256,"v_vertex":0,"v_size":0},
         "raan_entries":[{"file_path":"PLAYER.3D","frame_count":1}],
         "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
@@ -14607,6 +14607,7 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
             "mpob_objects":[{"script_name":"LOGIC"},{"script_name":"LOGIC"}],
             "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "raex":{"v_vertex":-7,"v_size":100},
                 "raan_entries":[{"frame_count":1,"file_path":"TEST.3D"}],
                 "animation_groups":[
                     {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
@@ -14652,10 +14653,12 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
         .combat
         .as_ref()
         .unwrap();
+    assert_eq!(constructed.contact_profile.vertex, -7);
+    assert_eq!(constructed.contact_profile.radius, 25600);
     assert_eq!(constructed.spacing_ranges, [10000, 30000, 20000]);
     assert_eq!(constructed.spacing_period, 129);
     let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
-    for field in ["spacing_ranges", "spacing_period"] {
+    for field in ["spacing_ranges", "spacing_period", "contact_profile"] {
         let mut incomplete = saved.clone();
         incomplete["actors"][0]["control"]["combat"]
             .as_object_mut()
@@ -14706,6 +14709,8 @@ fn live_defence_executor_uses_following_motion_loop_count_and_synchronous_sound(
             .combat
             .as_ref()
             .unwrap();
+        assert_eq!(restored.contact_profile.vertex, -7);
+        assert_eq!(restored.contact_profile.radius, 25600);
         assert_eq!(restored.spacing_ranges, [10, 90, 25]);
         assert_eq!(restored.spacing_period, -7);
         let id = world.id(0).unwrap();
@@ -22664,6 +22669,43 @@ fn grounded_static_overlap_uses_weighted_response_for_every_living_state() {
                 .unwrap()
                 .body_response_flags,
             4
+        );
+    }
+}
+
+#[test]
+fn standalone_player_combat_retains_installed_contact_profile() {
+    use cyrus_assets::animation::CombatContactProfile;
+    let (scripts, _, mut data, _) = player_walking_fixture();
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let player = world
+        .actors()
+        .iter()
+        .position(|actor| actor.name() == "CYRUS")
+        .unwrap();
+    let id = world.id(player).unwrap();
+    for (vertex, size, radius) in [(-7, 100, 25600), (9, -1, -256)] {
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let definition = data.metadata["actors"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|actor| actor["script_name"] == "CYRUS")
+            .unwrap();
+        definition["raex"]["v_vertex"] = vertex.into();
+        definition["raex"]["v_size"] = size.into();
+        world
+            .initialize_player_animation(id, &data, 0, &mut |_| Ok(()))
+            .unwrap();
+        assert_eq!(
+            world.actors()[player]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .contact_profile,
+            CombatContactProfile { vertex, radius }
         );
     }
 }

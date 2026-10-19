@@ -1419,6 +1419,11 @@ impl ScriptWorld {
     ) -> Result<()> {
         let index = self.validate_animation_binding(id, data)?;
         let position = animation_sound_position(self.spatial.as_ref(), index);
+        let contact_profile = if self.actors[index].attributes[14] != 0 {
+            data.combat_contact_profile(self.actors[index].name())?
+        } else {
+            Default::default()
+        };
         let actor = &mut self.actors[index];
         let placement = actor
             .placement()
@@ -1461,6 +1466,7 @@ impl ScriptWorld {
                     control.combat.as_ref(),
                     &mut self.next_combat_index,
                     &self.combat_attacks,
+                    contact_profile,
                 )
                 .with_context(|| {
                     format!("world {} instance {index} combat construction", self.world)
@@ -1605,6 +1611,11 @@ impl ScriptWorld {
         sounds: &mut dyn FnMut(cyrus_world::animation::AnimationSound) -> Result<()>,
     ) -> Result<()> {
         let index = self.validate_animation_binding(id, data)?;
+        let contact_profile = if self.actors[index].attributes[14] != 0 {
+            data.combat_contact_profile(self.actors[index].name())?
+        } else {
+            Default::default()
+        };
         let actor = &mut self.actors[index];
         anyhow::ensure!(
             matches!(
@@ -1625,6 +1636,7 @@ impl ScriptWorld {
             control.combat.as_ref(),
             &mut self.next_combat_index,
             &self.combat_attacks,
+            contact_profile,
         )
         .with_context(|| {
             format!(

@@ -52,6 +52,8 @@ impl CombatDecision {
 pub struct CombatControlState {
     /// Authored attack indices; empty slots do not terminate selection.
     pub attack_indices: [Option<u8>; 9],
+    /// Installed signed RAEX vertex and Q8 contact radius, independent of model bounds.
+    pub contact_profile: cyrus_assets::animation::CombatContactProfile,
     /// Authored defense indices, ending at the first zero attribute.
     pub defense_indices: [Option<u8>; 4],
     pub target: Option<ScriptActorId>,
@@ -92,6 +94,7 @@ impl Default for CombatControlState {
     fn default() -> Self {
         Self {
             attack_indices: [None; 9],
+            contact_profile: Default::default(),
             defense_indices: [None; 4],
             target: None,
             retained_target_position: [0; 3],
@@ -124,12 +127,14 @@ impl CombatControlState {
         previous: Option<&Self>,
         next_index: &mut i32,
         attacks: &[cyrus_assets::script::combat::Attack],
+        contact_profile: cyrus_assets::animation::CombatContactProfile,
     ) -> Result<Option<Self>> {
         if attributes[14] == 0 {
             return Ok(None);
         }
         let mut record = Self::from_attributes(attributes);
         record.spacing_ranges = record.derive_spacing_ranges(attacks)?;
+        record.contact_profile = contact_profile;
         let allocation_index = previous.map_or_else(
             || {
                 let index = *next_index;
@@ -629,15 +634,16 @@ mod constructor_tests {
         let mut attributes = [0; 256];
         let mut next = 7;
         assert!(
-            CombatControlState::initialize(&attributes, None, &mut next, &[])
+            CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
                 .unwrap()
                 .is_none()
         );
         assert_eq!(next, 7);
         attributes[14] = 1;
-        let mut record = CombatControlState::initialize(&attributes, None, &mut next, &[])
-            .unwrap()
-            .unwrap();
+        let mut record =
+            CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
+                .unwrap()
+                .unwrap();
         record.decision.attack_state = 2;
         record.spacing_ranges = [-1; 3];
         record.spacing_period = -1;
@@ -647,9 +653,15 @@ mod constructor_tests {
         record.retained_target_position = [1, 2, 3];
         attributes[87] = 124;
         attributes[88] = 126;
-        let record = CombatControlState::initialize(&attributes, Some(&record), &mut next, &[])
-            .unwrap()
-            .unwrap();
+        let record = CombatControlState::initialize(
+            &attributes,
+            Some(&record),
+            &mut next,
+            &[],
+            Default::default(),
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(
             (
                 record.allocation_index,
@@ -712,9 +724,15 @@ mod constructor_tests {
                 });
             }
             let mut next = 0;
-            let record = CombatControlState::initialize(&attributes, None, &mut next, &attacks)
-                .unwrap()
-                .unwrap();
+            let record = CombatControlState::initialize(
+                &attributes,
+                None,
+                &mut next,
+                &attacks,
+                Default::default(),
+            )
+            .unwrap()
+            .unwrap();
             assert_eq!(record.spacing_ranges, expected, "slots {slots:?}");
             assert_eq!(record.spacing_period, 2);
             assert_eq!(next, 1);
@@ -723,7 +741,9 @@ mod constructor_tests {
         attributes[14] = 1;
         attributes[70] = 9;
         let mut next = 5;
-        let error = CombatControlState::initialize(&attributes, None, &mut next, &[]).unwrap_err();
+        let error =
+            CombatControlState::initialize(&attributes, None, &mut next, &[], Default::default())
+                .unwrap_err();
         assert!(
             error
                 .to_string()
@@ -736,8 +756,14 @@ mod constructor_tests {
             min_range: 0,
             max_range: 0,
         };
-        let error = CombatControlState::initialize(&attributes, None, &mut next, &vec![empty; 10])
-            .unwrap_err();
+        let error = CombatControlState::initialize(
+            &attributes,
+            None,
+            &mut next,
+            &vec![empty; 10],
+            Default::default(),
+        )
+        .unwrap_err();
         assert!(
             error
                 .to_string()
