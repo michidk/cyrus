@@ -122,3 +122,7 @@ The shared rotation table retains the angle precision through sine and stores
 single-precision samples, including the extended cosine endpoint. Water reuses
 this owner. The construction follows preservation's
 [rotation-table correction](https://github.com/michidk/redguard-preservation/commit/7fb4970af38d225f2f0182f2af0d44885aea8569).
+
+`ActorAnimation::clear_pending_request` cancels only the queued group, preserving
+current sequence, frame, finite loop count and sound ownership. Combat callers
+use it after the forced request and loop-count assignment.

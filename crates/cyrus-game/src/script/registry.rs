@@ -1,6 +1,7 @@
 //! Logical script instances retain authored object order and reject stale world identities.
 use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
+mod attack;
 pub(super) mod body;
 pub(super) mod bounds;
 mod defence;
@@ -305,6 +306,7 @@ pub struct ScriptWorld {
     globals: super::GameplayGlobals,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
+    combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
     in_combat_threshold: Option<i32>,
     non_engaged_spacing: Option<i32>,
     attribute_names: Vec<String>,
@@ -683,6 +685,7 @@ impl ScriptWorld {
             actors,
             task_calls,
             combat_attacks: scripts.combat_attacks.clone(),
+            combat_defenses: scripts.combat_defenses.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
             non_engaged_spacing: scripts.non_engaged_spacing,
             attribute_names: scripts.definition.attributes.clone(),
@@ -3903,6 +3906,7 @@ mod fighting_tests {
             globals: Default::default(),
             task_calls: BTreeMap::new(),
             combat_attacks: Vec::new(),
+            combat_defenses: Vec::new(),
             in_combat_threshold: Some(threshold),
             non_engaged_spacing: None,
             attribute_names: Vec::new(),

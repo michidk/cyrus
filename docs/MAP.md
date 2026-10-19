@@ -157,6 +157,7 @@ module where it is defined and regenerate.
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
+- `src/script/registry/attack.rs` — Receiver-owned attack execution through the four defense slots and shared animation owner.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.

@@ -389,8 +389,8 @@ pub fn start_defence(
 pub enum AttackEffect {
     /// Nothing beyond the record changes.
     None,
-    /// Request `group` with flag zero, then mark the animation record: set its flag byte at
-    /// offset 15 to one and its word at offset 2 to 0xffff.
+    /// Force `group` with modifier zero, set its finite loop count to one, then clear
+    /// the animation's pending request.
     Start { group: i32 },
 }
 
@@ -406,7 +406,7 @@ pub struct AttackStep {
 ///
 /// `selected` is the selected move index (the action selector), `pending` the pending move
 /// index, `current_group` the actor's current animation group and `pending_group` the animation
-/// group of the pending move's attack record. Idle with a move requested and the actor not in the
+/// group of the pending move's four-slot defense record. Idle with a move requested and the actor not in the
 /// pending move's group, it starts the attack: state 2 and the aggression budget drops by 10.
 /// While attacking, once the actor leaves the pending move's group the attack ends: state 0, a
 /// selected index of 9 resets to -1 and the pending move clears.
@@ -417,6 +417,28 @@ pub fn attack_step(
     requested: i32,
     current_group: Option<i32>,
     pending_group: impl FnOnce() -> Option<i32>,
+) -> Result<AttackStep> {
+    attack_step_with_animation(
+        decision,
+        selected,
+        pending,
+        requested,
+        current_group,
+        pending_group,
+        &mut |_| Ok(()),
+    )
+}
+
+/// Run animation services before committing combat start state and aggression.
+/// A service failure retains its earlier animation writes and leaves combat unchanged.
+pub(crate) fn attack_step_with_animation(
+    decision: &mut CombatDecision,
+    selected: &mut i32,
+    pending: &mut i32,
+    requested: i32,
+    current_group: Option<i32>,
+    pending_group: impl FnOnce() -> Option<i32>,
+    request_animation: &mut dyn FnMut(i32) -> Result<()>,
 ) -> Result<AttackStep> {
     let mut effect = AttackEffect::None;
     if decision.attack_state == 0 {
@@ -430,6 +452,7 @@ pub fn attack_step(
                 effect = AttackEffect::Start {
                     group: group.expect("checked"),
                 };
+                request_animation(group.expect("checked"))?;
                 decision.attack_state = 2;
                 decision.aggression = decision.aggression.wrapping_sub(10);
             }

@@ -276,6 +276,12 @@ impl ActorAnimation {
         self.pending.map(|(group, _)| group)
     }
 
+    /// Cancel the queued group without changing current playback, its frame or sound.
+    /// Combat attack starts clear this after the forced request and finite-loop assignment.
+    pub fn clear_pending_request(&mut self) {
+        self.pending = None;
+    }
+
     /// The current group's BreakPoint marker for ordinary walking translation.
     pub fn translation_suppressed(&self) -> bool {
         self.current

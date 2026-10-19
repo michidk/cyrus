@@ -71,7 +71,7 @@ pub struct CombatControlState {
     pub allocation_index: i32,
     /// Fighting-query eligibility state; exactly one admits the candidate.
     pub attacker_selection_state: i32,
-    /// Retained action indices; their broader selection semantics are unsupported.
+    /// Pending attack move, then defense attack-slot selector. Selection remains caller-owned.
     pub retained_action_indices: [i32; 2],
     /// Shared RTX cache index, distinct from the retained dialogue record.
     pub taunt_cache: Option<usize>,

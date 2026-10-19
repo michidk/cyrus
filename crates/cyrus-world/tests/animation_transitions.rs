@@ -396,3 +396,55 @@ fn type_two_exits_for_a_pending_non_default_group() {
     assert_eq!(actor.advance(1).unwrap(), Some(8));
     assert_eq!(actor.current_group(), Some(8));
 }
+
+#[test]
+fn cancelling_a_pending_request_preserves_current_frame_sound_and_loop_count() {
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":7,"volume_shift":0},
+            {"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},
+            {"opcode":2,"value":0}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":80},{"opcode":2,"value":0}]}
+    ]));
+    let mut actor = cyrus_world::animation::ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut events = Vec::new();
+    assert_eq!(
+        actor
+            .force_request_with_sounds(7, 0, 1, &mut |event| {
+                events.push(event);
+                Ok(())
+            })
+            .unwrap(),
+        Some(70)
+    );
+    actor.set_loop_count(1).unwrap();
+    actor
+        .request_with_sounds(8, 0, 1, &mut |event| {
+            events.push(event);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(actor.pending_group(), Some(8));
+    let before = serde_json::to_value(actor.snapshot()).unwrap();
+    actor.clear_pending_request();
+    let after = serde_json::to_value(actor.snapshot()).unwrap();
+    assert_eq!(after["current"], before["current"]);
+    assert_eq!(actor.pending_group(), None);
+    assert_eq!(
+        actor
+            .advance_with_sounds(1, &mut |event| {
+                events.push(event);
+                Ok(())
+            })
+            .unwrap(),
+        Some(71)
+    );
+    assert_eq!(
+        events,
+        vec![AnimationSound::Play {
+            effect: 7,
+            rate_offset_hz: 0
+        }]
+    );
+}

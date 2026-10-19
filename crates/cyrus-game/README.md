@@ -1148,3 +1148,9 @@ snapshot round trip with rebound target identity and continuing counters.
 Construction clears retained target position and close-pass state. Live attack
 execution, decision scheduling and installed combat acceptance remain open.
 Rules come from preservation's [target retention](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).
+
+`ScriptWorld::execute_combat_attack` executes a caller-selected move through the
+receiver's four defense slots. Forced animation/sound dispatch, finite loop count
+and pending-request cancellation precede combat state and aggression writes.
+Continuation and cleanup need no timing input. This explicit service does not
+schedule ordinary combat decisions.

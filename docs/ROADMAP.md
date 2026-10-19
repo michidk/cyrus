@@ -215,6 +215,15 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+**Verified:** live attack execution resolves the receiver's four defense slots,
+forces animation with synchronous sound dispatch, sets one finite loop and clears
+the pending animation request before combat start writes. Public headless contracts
+cover start, continuation, cleanup, missing inputs and service failure ordering.
+The explicit executor does not enable automatic combat traversal. Original executor comparisons
+match 1,290 cases with controlled forced-animation service. The wrong service order
+fails the live sound-error contract; restored source passes. Workspace gates pass
+with 1,173 Rust test executions and zero installed-data skips.
+
 **Verified:** script cache schema 17 prepares the numbered defense table separately
 from attacks, using preservation's [runtime defense loading rules](https://github.com/michidk/redguard-preservation/blob/b0efa3795ee05819c00bf3fa31d43335170872dd/docs/config/combat-ini.md#runtime-defense-loading).
 Authored omissions remain explicit. Older caches require re-export. Live attack

@@ -17407,3 +17407,244 @@ fn combat_decision_prefix_rebinds_target_and_continues_counter_with_live_sight()
         snapshot = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
     }
 }
+
+#[test]
+fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_writes() {
+    use cyrus_game::script::{ScriptInputs, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..256).map(|index| format!("attr_{index}")).collect();
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .extend([("attr_14".into(), 1), ("attr_79".into(), 1)]);
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
+    scripts.combat_defenses = vec![
+        combat::Defense {
+            animation_group: 199,
+            min_range: None,
+            max_range: 1,
+            first_collide_frame: None,
+            collide_duration: None,
+            arc: None,
+        },
+        combat::Defense {
+            animation_group: 100,
+            min_range: None,
+            max_range: 1,
+            first_collide_frame: None,
+            collide_duration: None,
+            arc: None,
+        },
+    ];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id":scripts.content_id,
+            "mpob_objects":[{"script_name":"LOGIC"},{"script_name":"LOGIC"}],
+            "actors":[{"script_name":"LOGIC","model_load_path":"animation_table",
+                "raan_entries":[{"frame_count":1,"file_path":"TEST.3D"}],
+                "animation_groups":[
+                    {"group_index":0,"anim_id":1,"anim_type":0,"commands":[
+                        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+                    {"group_index":100,"anim_id":1,"anim_type":0,"commands":[
+                        {"opcode":4,"sound_param":-17,"volume_shift":0},
+                        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]}]}),
+        sections: Default::default(),
+        models: BTreeMap::from([(
+            "TEST".into(),
+            cyrus_assets::animation::AnimationModel {
+                radius: Some(1.0),
+                base_positions: vec![],
+                base_normals: vec![],
+                faces: vec![],
+                corner_normals: vec![],
+                encoding: "static_3d".into(),
+                positions: vec![vec![]],
+                normals: vec![vec![]],
+            },
+        )]),
+        unsupported: Default::default(),
+    };
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    // Idle cleanup needs neither move metadata nor timing.
+    assert!(
+        !world
+            .execute_combat_attack(id, -1, Default::default(), &mut |_, _| panic!("idle sound"))
+            .unwrap()
+    );
+    let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    saved["actors"][0]["control"]["combat"]["retained_action_indices"] = serde_json::json!([0, -1]);
+    saved["actors"][0]["control"]["combat"]["action"] = 9.into();
+    for missing in ["slot", "record", "animation"] {
+        let mut snapshot = saved.clone();
+        if missing == "slot" {
+            snapshot["actors"][0]["control"]["combat"]["retained_action_indices"][0] = 1.into();
+        } else if missing == "record" {
+            snapshot["actors"][0]["control"]["combat"]["defense_indices"][0] = 2.into();
+        } else {
+            snapshot["actors"][0]["animation"] = serde_json::Value::Null;
+        }
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let id = world.id(0).unwrap();
+        let error = world
+            .execute_combat_attack(
+                id,
+                0,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    ..Default::default()
+                },
+                &mut |_, _| panic!("missing metadata dispatched sound"),
+            )
+            .unwrap_err();
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("world 7 instance 0 attack executor"),
+            "{error}"
+        );
+        assert!(
+            error.contains(match missing {
+                "slot" => "defense slot 1: unpopulated",
+                "record" => "defense slot 0 record 2: unavailable",
+                _ => "receiver animation unavailable",
+            }),
+            "{error}"
+        );
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.decision.attack_state, combat.decision.aggression),
+            (0, 50)
+        );
+        if missing == "animation" {
+            assert!(
+                !world
+                    .execute_combat_attack(id, -1, Default::default(), &mut |_, _| panic!(
+                        "cleanup sound"
+                    ))
+                    .unwrap()
+            );
+        }
+    }
+    for (state, current, ticks, fail, expected_state, expected_budget, expected_pending) in [
+        (0, 0, Some(1), false, 2, 40, 0),
+        (0, 0, Some(1), true, 0, 50, 0),
+        (0, 0, None, false, 0, 50, 0),
+        (0, 100, None, false, 0, 50, 0),
+        (2, 100, None, false, 2, 50, 0),
+        (2, 0, None, false, 0, 50, -1),
+    ] {
+        let mut snapshot = saved.clone();
+        snapshot["actors"][0]["control"]["combat"]["decision"]["attack_state"] = state.into();
+        // Group definitions have identical sequence structure except for the already consumed sound.
+        snapshot["actors"][0]["animation"]["playback"]["current"][0] = current.into();
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 2,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let before = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        let id = world.id(0).unwrap();
+        let mut sounds = 0;
+        let result = world.execute_combat_attack(
+            id,
+            0,
+            ScriptInputs {
+                nominal_ticks: ticks,
+                ..Default::default()
+            },
+            &mut |owner, _| {
+                assert_eq!(owner, id);
+                sounds += 1;
+                anyhow::ensure!(!fail, "injected attack sound failure");
+                Ok(())
+            },
+        );
+        if fail || ticks.is_none() && state == 0 && current == 0 {
+            let error = format!("{:#}", result.unwrap_err());
+            assert!(
+                error.contains(if fail {
+                    "injected attack sound failure"
+                } else {
+                    "nominal ticks unavailable"
+                }),
+                "{error}"
+            );
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                expected_state != 0 && expected_pending != -1
+            );
+        }
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (
+                combat.decision.attack_state,
+                combat.decision.aggression,
+                combat.retained_action_indices[0]
+            ),
+            (expected_state, expected_budget, expected_pending)
+        );
+        assert_eq!(
+            combat.action,
+            if state == 2 && current == 0 { -1 } else { 9 }
+        );
+        assert_eq!(
+            sounds,
+            usize::from(state == 0 && current == 0 && ticks.is_some())
+        );
+        let after = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+        assert_eq!(after["actors"][0]["tasks"], before["actors"][0]["tasks"]);
+        if expected_state == 2 && state == 0 {
+            assert_eq!(
+                after["actors"][0]["animation"]["playback"]["current"][0],
+                100
+            );
+            assert_eq!(
+                after["actors"][0]["animation"]["playback"]["current"][1]["loops"],
+                1
+            );
+            assert!(after["actors"][0]["animation"]["playback"]["pending"].is_null());
+        }
+    }
+}
