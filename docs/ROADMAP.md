@@ -91,6 +91,7 @@ script dependencies. [MAP.md](MAP.md) owns module boundaries;
 | Player controller: movement, input, placement/runtime, collision and installed walking acceptance | In progress | Codex, controller completion; `magic/artifacts/2026-10-16-controller-completion/` |
 | Logbook reader scroll lighting: recover the shading rule from matched original/native captures | In progress | Claude, cyrus-84, `startup-comparison` worktree; `magic/artifacts/2026-10-17-book-lighting/` |
 | Characterise the original-vs-native Cyrus placement gap at spawn (diagnose and report, no camera or controller changes) and logbook reader style 5 | In progress | Claude, feeble-panther-1c; `magic/artifacts/2026-10-16-actor-fixes/` (`GOAL4.md`) |
+| SOUP session camera: show/look/pan commands, task continuation, publication and control-lockout restoration (`script/camera.rs` and camera-specific adapters) | In progress | Claude, cyrus-47, `soup-camera` worktree; `magic/artifacts/2026-10-19-soup-camera/` |
 
 Other rendering follow-ups, HUD integration and the save-slot menu are unassigned.
 Player-controller implementation and walking acceptance belong to the controller owner.
@@ -254,7 +255,7 @@ simultaneous edits to a shared file.
 | --- | --- | --- |
 | Combat contact and selected-player health | Current SOUP agent; `script/registry/attack.rs`, combat/contact modules, selected-health state and tests | Own contact response and selected damage/reaction/death. Verify public call ordering and retained writes, installed duel and HUD feedback; coordinate additions to `activation.rs` and registry snapshots |
 | Combat movement and route gaps | Unassigned; `script/registry/spacing.rs`, locomotion/point/navigation modules | Consume existing combat state, preserve collision and random order. Coordinate with player-controller owner before changing player movement. Verify edge/deep-water and populated-route branches against original evidence |
-| Session camera services | Unassigned; `script/camera.rs`, camera-specific session/render adapters and focused tests | Can proceed beside health work. Establish original behavior and session/actor bindings; integrate show/look/pan commands, continuation and publication. Compare matched native/browser camera sequences and restoration |
+| Session camera services | Claude cyrus-47 (claimed in Active assignments); `script/camera.rs`, camera-specific session/render adapters and focused tests | Can proceed beside health work. Establish original behavior and session/actor bindings; integrate show/look/pan commands, continuation and publication. Compare matched native/browser camera sequences and restoration |
 | Story world transitions and player stack | Unassigned; host-request consumer and shared session lifecycle | Camera and player/combat owners supply required services. Verify pending/failed loads, preserved source world, player-stack behavior and destination entry; avoid claiming the opening complete before duel/Brennan sequence works |
 | Original/native/browser acceptance | Unassigned; replay fixtures and task artifacts | Baseline capture/fixture work can start immediately. Final acceptance follows relevant implementation. Match inputs, poses and timing; cover both pirates, player damage/death, Brennan cameras/dialogue and destination world |
 
