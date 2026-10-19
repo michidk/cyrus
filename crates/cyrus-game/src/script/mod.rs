@@ -128,6 +128,7 @@ mod spatial;
 pub use sound::ScriptSound;
 mod status;
 mod tasks;
+mod world_request;
 pub use animation::AnimationScript;
 use bevy::prelude::*;
 pub use cyrus_script::Thread;
@@ -195,6 +196,10 @@ impl Plugin for ScriptPlugin {
                     .after(crate::player::input::InputSample)
                     .after(presentation::bind_scene)
                     .before(presentation::apply),
+            )
+            .add_systems(
+                Update,
+                world_request::consume.after(registry::ordinary::step),
             )
             .add_systems(
                 Update,
