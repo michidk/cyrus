@@ -49,10 +49,16 @@ that bind everyone are in `AGENTS.md`.
   intended scope, agent/session, worktree and shared-file ownership before
   editing. Check existing claims and coordinate with active owners.
 - Keep progress, blockers, dependencies, acceptance criteria and handoffs in
-  that issue. Record landing commits and verification evidence when work is
-  complete; distinguish parsed/exported data from working behavior. Update
-  crate documentation when supported behavior changes. Do not keep a second
-  task/status ledger in the repository.
+  that issue. Record completed substeps as checked items with landing commits,
+  verification results and limitations, even while the larger task remains open.
+  Link separate completed-work issues when available; do not leave the only
+  evidence in an archive. Distinguish parsed/exported data from working behavior.
+- Close an issue as completed when its full scope and acceptance criteria are
+  satisfied. A finished investigation or verification step does not complete a
+  broader feature. When importing historical completed work, retain its evidence
+  and limitations in closed issues rather than adding it to the open backlog.
+  Update crate documentation when supported behavior changes. Do not keep a
+  second task/status ledger in the repository.
 - Publish established format and engine facts in redguard-preservation. Keep
   internal research, detailed comparison records and historical checkpoints in
   redguard-decomp, with source paths and hashes; link the archive from the
