@@ -3513,16 +3513,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let value = match lower.as_str() {
                 "health" | "playerhealth" => i32::from(actor.attributes[3]),
                 "replenishhealth" => {
-                    anyhow::ensure!(
-                        !selected,
-                        "ReplenishHealth selected-player HUD health timer unavailable"
-                    );
-                    i32::from(
-                        actor.attributes[3] < 100 && {
-                            actor.attributes[3] = 100;
-                            true
-                        },
-                    )
+                    if actor.attributes[3] >= 100 {
+                        0
+                    } else {
+                        if selected {
+                            self.inputs
+                                .hud
+                                .context("ReplenishHealth selected-player HUD owner unavailable")?
+                                .request_replenish_health_feedback();
+                        }
+                        actor.attributes[3] = 100;
+                        1
+                    }
                 }
                 _ => {
                     let combat = actor

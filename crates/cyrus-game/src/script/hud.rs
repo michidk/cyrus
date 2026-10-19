@@ -164,6 +164,13 @@ impl ScriptHud {
         }
     }
 
+    /// Replenishing health raises feedback to 25 ticks while preserving longer timers.
+    /// This differs from additive-health feedback, which replaces unpinned timers.
+    pub(super) fn request_replenish_health_feedback(&self) {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        state.health_feedback_ticks = state.health_feedback_ticks.max(25);
+    }
+
     /// Weapon transitions explicitly replace the timer, including its pin.
     pub fn reset_health_feedback(&self) {
         self.0
@@ -523,6 +530,16 @@ impl ScriptHud {
 #[cfg(test)]
 mod tests {
     use super::ScriptHud;
+
+    #[test]
+    fn replenishing_health_preserves_longer_feedback_timers() {
+        for (initial, expected) in [(0, 25), (24, 25), (25, 25), (26, 26), (49, 49), (50, 50)] {
+            let hud = ScriptHud::default();
+            hud.0.lock().unwrap().health_feedback_ticks = initial;
+            hud.request_replenish_health_feedback();
+            assert_eq!(hud.health_feedback_ticks(), expected);
+        }
+    }
 
     #[test]
     fn health_feedback_has_one_timer_with_ordered_visibility_and_pin_rules() {

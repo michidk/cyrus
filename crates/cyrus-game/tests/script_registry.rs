@@ -13910,6 +13910,64 @@ fn health_strength_and_armor_queries_read_the_receiver() {
 }
 
 #[test]
+fn selected_replenish_health_uses_shared_feedback_without_additive_health_services() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage};
+    for (health, timer, with_hud, expected, feedback) in [
+        (40, 0, true, 100, 25),
+        (40, 50, true, 100, 50),
+        (100, 0, false, 100, 0),
+        (255, 0, false, 255, 0),
+        (40, 0, false, 40, 0),
+    ] {
+        let mut scripts = random_scripts("ReplenishHealth", vec![], Object::Player);
+        scripts.definition.functions[1].param_count = 0;
+        add_standalone_receivers(&mut scripts);
+        scripts.definition.attributes.resize(121, String::new());
+        scripts.definition.attributes[3] = "attr_health".into();
+        scripts.definition.attributes[120] = "attr_immune".into();
+        let player = scripts.actors.get_mut("CYRUS").unwrap();
+        player.attributes.insert("attr_health".into(), health);
+        player.attributes.insert("attr_immune".into(), 1);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let player_index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let caller = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        if timer == 50 {
+            hud.advance_health_feedback(true, 0, 0, 0);
+        }
+        let result = world.advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                hud: with_hud.then_some(&hud),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        );
+        if health < 100 && !with_hud {
+            assert!(format!("{:#}", result.unwrap_err()).contains("HUD owner unavailable"));
+        } else {
+            result.unwrap();
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().variables()[0],
+                i32::from(health < 100)
+            );
+        }
+        assert_eq!(world.actors()[player_index].attributes()[3], expected);
+        assert_eq!(hud.health_feedback_ticks(), feedback);
+        // This command bypasses additive-health initialization and inhibition.
+        assert!(world.globals().selected_health().is_none());
+    }
+}
+
+#[test]
 fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
     let health = |calls: &[(&str, &[i32])]| {
         let mut calls = calls.to_vec();
