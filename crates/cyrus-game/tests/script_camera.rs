@@ -537,28 +537,26 @@ fn show_player_pan_reproduces_the_original_step_by_step() {
             case.name
         );
     }
-    let negative = show_player_pan_error(&settings, -1);
-    assert!(negative.contains("negative"), "{negative}");
-}
-
-fn show_player_pan_error(settings: &CameraSettings, duration: i32) -> String {
-    let actor = |index| ScriptActorId {
-        generation: 1,
-        index,
-    };
-    let mut state = CameraState::new(settings, actor(2), actor(3), 0).unwrap();
-    state
+    // A negative duration completes at once and changes nothing, including the private word.
+    let mut state = CameraState::new(&settings, actor(2), actor(3), 0).unwrap();
+    let before = state.records[0].clone();
+    let mut counter = 7;
+    let running = state
         .show_player_pan(
             &PanInputs {
-                duration,
+                duration: -1,
                 requested_slot: None,
                 bound_position: [0; 3],
                 bound_angles: [0; 3],
             },
             &mut None,
-            &mut 0,
+            &mut counter,
             0,
         )
-        .unwrap_err()
-        .to_string()
+        .unwrap();
+    assert!(!running);
+    assert_eq!(counter, 7);
+    assert_eq!(state.selected.index(), 0);
+    assert_eq!(state.scripted_active, 0);
+    assert_eq!(state.records[0].angle_offset, before.angle_offset);
 }

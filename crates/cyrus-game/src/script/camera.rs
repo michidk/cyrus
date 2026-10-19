@@ -536,11 +536,10 @@ impl CameraState {
         counter: &mut u32,
         elapsed: i32,
     ) -> Result<bool> {
-        anyhow::ensure!(
-            pan.duration >= 0,
-            "showPlayerPan duration {}: negative unsupported",
-            pan.duration
-        );
+        if pan.duration < 0 {
+            // The original writes a diagnostic line and completes before touching any state.
+            return Ok(false);
+        }
         *counter = counter.wrapping_add(1);
         if *counter == 1 && elapsed == 0 {
             let slot = CameraSlot::new(pan.requested_slot.unwrap_or(0))?;
