@@ -495,6 +495,17 @@ boundary enters pursuit early and fails. Routed point navigation remains
 explicitly unsupported after its retained transition. Automatic decisions and
 installed START/native/browser combat acceptance remain open.
 
+**Verified:** routed command-state ownership now has original-code evidence for
+six-slot resumption and cross-actor inheritance. Empty and paused slots retain
+current scratch; active slots load it, pending calls save it, and completed calls
+leave their resulting scratch shared. Point navigation validates nodes before an
+unsigned shared pause countdown and stays pending on the update reaching zero.
+The 1,072 resumption and 128 pause cases cover these owners and ordering, with
+wrong idle-retention and signed-delay expectations rejected. They do not prove
+routed movement. Runtime integration and world-transition reset ownership remain
+open. The contract is recorded in
+[preservation](https://github.com/michidk/redguard-preservation/commit/01f31e048ac35399434f40f610ab163331beec68).
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target
