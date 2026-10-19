@@ -765,8 +765,13 @@ impl ScriptWorld {
                 matches!(source, ScriptActorSource::Camera)
             }))
             .map(|(player, camera)| {
-                super::camera::CameraState::new(&scripts.camera, player, camera)
-                    .with_context(|| format!("world {} camera initialization", scripts.world))
+                super::camera::CameraState::new(
+                    &scripts.camera,
+                    player,
+                    camera,
+                    actors[player.index].attributes[105],
+                )
+                .with_context(|| format!("world {} camera initialization", scripts.world))
             })
             .transpose()?;
         Ok(Self {

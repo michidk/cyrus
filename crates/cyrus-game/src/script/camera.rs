@@ -200,16 +200,18 @@ impl CameraState {
     /// published: slot zero selected, no transition, no scripted ownership. Both pose
     /// vectors are zero placeholders until that stage is connected to live geometry.
     /// `camera` is the CAMERA instance; setup stores it as both published-position owners.
+    /// `player_type` is the selected player's `attr_player_type`.
     pub fn new(
         settings: &CameraSettings,
         player: super::ScriptActorId,
         camera: super::ScriptActorId,
+        player_type: u8,
     ) -> Result<Self> {
         let pose = CameraPose {
             position: [0; 3],
             angles: [0; 3],
         };
-        Ok(Self {
+        let mut state = Self {
             records: Self::initial_records(settings, player)?,
             selected: CameraSlot(0),
             transition: 0,
@@ -219,7 +221,42 @@ impl CameraState {
             transformed_basis: [[0; 3]; 2],
             camera_actor: camera,
             alternate_actor: camera,
-        })
+        };
+        state.reload_player_defaults(settings, player, player_type)?;
+        Ok(state)
+    }
+
+    /// Reload record zero from the installed values for the selected player and select
+    /// it, as setup's final step and the defaults reload do. Player type one halves the
+    /// distance, minimum distance and horizontal offsets (arithmetic shift) and fixes both
+    /// vertical offsets at 6400, per preservation's player-type settings. Other records,
+    /// the transition and the published poses are untouched; the caller recomputes the
+    /// first pose.
+    pub fn reload_player_defaults(
+        &mut self,
+        settings: &CameraSettings,
+        player: super::ScriptActorId,
+        player_type: u8,
+    ) -> Result<()> {
+        let mut record = Self::initial_records(settings, player)?[0].clone();
+        if player_type == 1 {
+            let reduce = |[x, _, z]: [i32; 3]| [x >> 1, 6400, z >> 1];
+            record.distance >>= 1;
+            record.minimum_distance >>= 1;
+            record.position_offset = reduce(record.position_offset);
+            record.target_offset = reduce(record.target_offset);
+        }
+        let live = &mut self.records[0];
+        live.actor = player;
+        live.position_offset = record.position_offset;
+        live.angle_offset = record.angle_offset;
+        live.target_offset = record.target_offset;
+        live.distance = record.distance;
+        live.minimum_distance = record.minimum_distance;
+        live.maximum_movement = record.maximum_movement;
+        live.flags = 0x40;
+        self.selected = CameraSlot(0);
+        Ok(())
     }
 }
 

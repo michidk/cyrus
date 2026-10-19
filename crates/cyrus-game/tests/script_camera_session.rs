@@ -297,6 +297,50 @@ fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
     assert_eq!(flags(&live, 0), 0x41, "the live world is unchanged");
 }
 
+#[test]
+fn player_type_one_selects_the_reduced_camera_defaults_for_record_zero_only() {
+    use cyrus_game::script::camera::CameraSettings;
+    let settings = CameraSettings {
+        offset_pos: [-3, 2000, 3003],
+        target_offset: [41, 50, 63],
+        distance: 251,
+        min_distance: 121,
+        max_vel: 900,
+        ..Default::default()
+    };
+    for (player_type, offset, target, distance, minimum) in [
+        (0, [-3, 2000, 3003], [41, 50, 63], 251, 121),
+        (1, [-2, 6400, 1501], [20, 6400, 31], 125, 60),
+    ] {
+        let mut data = scripts(&["CYRUS", "CAMERA"]);
+        data.camera = settings.clone();
+        data.actors
+            .get_mut("CYRUS")
+            .unwrap()
+            .attributes
+            .insert("attr_105".into(), player_type);
+        data.content_id = data.content_identity().unwrap();
+        let world = ScriptWorld::prepare(&data, 7).unwrap();
+        let records = &world.camera().unwrap().records;
+        let zero = &records[0];
+        assert_eq!(
+            (
+                zero.position_offset,
+                zero.target_offset,
+                zero.distance,
+                zero.minimum_distance
+            ),
+            (offset, target, distance, minimum),
+            "player type {player_type}"
+        );
+        // Other records keep the installed values the setup copied before the reload.
+        assert_eq!(records[1].position_offset, [-3, 2000, 3003]);
+        assert_eq!(records[1].distance, 251);
+        assert_eq!(records[3].target_offset, [41, 50, 63]);
+        assert_eq!(zero.flags, 0x40);
+    }
+}
+
 mod live {
     use super::*;
     use cyrus_game::script::ScriptActorId;
