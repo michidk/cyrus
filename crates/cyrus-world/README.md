@@ -45,8 +45,9 @@ and does not complete its PushAnimation task. These rules are
 [published in preservation](https://github.com/michidk/redguard-preservation/blob/515e62f/docs/engine/animation.md#forward-animation-delays).
 Unsupported cues stop playback with a contextual error.
 
-`ActorAnimation` is the separate request core for forward types zero and one. The caller supplies the default group
-and nominal ticks. Ordinary requests
+`ActorAnimation` owns requests and playback direction for types zero through two.
+The caller supplies the default group and nominal ticks. Direction, timing and
+persistence contracts live beside the Rust APIs. Ordinary requests
 replace one pending group by the original numeric priority; forced requests
 bypass that priority. End selects a pending or default group in the same call,
 reusing its tick input. `set_loop_count` supplies the finite count when a

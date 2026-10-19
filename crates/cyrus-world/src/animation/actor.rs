@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One actor's current, pending and explicitly supplied default group.
-/// Only forward type-zero and type-one groups are supported. The caller owns eligibility,
+/// Type-zero, type-one and type-two groups retain forward/reverse playback state. The caller owns eligibility,
 /// default selection and each advancement's original nominal-tick input.
 pub struct ActorAnimation {
     context: String,
@@ -15,6 +15,7 @@ pub struct ActorAnimation {
     current: Option<(u16, FrameSequence)>,
     pending: Option<(u16, u8)>,
     frame_progress: u8,
+    reverse: bool,
     failure: Option<String>,
 }
 
@@ -26,6 +27,7 @@ pub struct ActorAnimationCheckpoint {
     current: Option<(u16, FrameSequence)>,
     pending: Option<(u16, u8)>,
     frame_progress: u8,
+    reverse: bool,
 }
 
 /// Complete, versioned playback state with exact installed group definitions.
@@ -40,6 +42,7 @@ pub struct ActorAnimationSnapshot {
     current: Option<(u16, SequenceSnapshot)>,
     pending: Option<(u16, u8)>,
     frame_progress: u8,
+    reverse: bool,
     failure: Option<String>,
 }
 
@@ -48,7 +51,7 @@ impl ActorAnimation {
     /// This does not advance commands or dispatch sounds, and is distinct from collision rollback.
     pub fn snapshot(&self) -> ActorAnimationSnapshot {
         ActorAnimationSnapshot {
-            version: 2,
+            version: 3,
             context: self.context.clone(),
             groups: self.groups.clone(),
             default: self.default,
@@ -58,6 +61,7 @@ impl ActorAnimation {
                 .map(|(group, sequence)| (*group, sequence.snapshot())),
             pending: self.pending,
             frame_progress: self.frame_progress,
+            reverse: self.reverse,
             failure: self.failure.clone(),
         }
     }
@@ -73,7 +77,7 @@ impl ActorAnimation {
         let context = format!("world {} actor {actor} animation restore", data.world);
         let restore = || -> anyhow::Result<Self> {
             anyhow::ensure!(
-                snapshot.version == 2,
+                snapshot.version == 3,
                 "unsupported snapshot version {}",
                 snapshot.version
             );
@@ -108,6 +112,7 @@ impl ActorAnimation {
             }
             animation.pending = snapshot.pending;
             animation.frame_progress = snapshot.frame_progress;
+            animation.reverse = snapshot.reverse;
             animation.failure = snapshot.failure;
             Ok(animation)
         };
@@ -122,6 +127,7 @@ impl ActorAnimation {
             current: self.current.clone(),
             pending: self.pending,
             frame_progress: self.frame_progress,
+            reverse: self.reverse,
         })
     }
 
@@ -141,6 +147,7 @@ impl ActorAnimation {
         self.current = checkpoint.current.clone();
         self.pending = checkpoint.pending;
         self.frame_progress = checkpoint.frame_progress;
+        self.reverse = checkpoint.reverse;
         Ok(())
     }
 
@@ -193,6 +200,7 @@ impl ActorAnimation {
             current: None,
             pending: None,
             frame_progress: 0,
+            reverse: false,
             failure: None,
         })
     }
@@ -227,6 +235,19 @@ impl ActorAnimation {
             frame = self.request_with_sounds(group, 0, ticks, sounds)?.or(frame);
         }
         Ok(frame)
+    }
+
+    /// Set playback direction without advancing, requesting a group or changing countdowns.
+    /// New group selection resets direction to forward. Follows preservation's reverse rules.
+    pub fn set_reverse(&mut self, reverse: bool) -> anyhow::Result<()> {
+        self.check_failure()?;
+        self.reverse = reverse;
+        Ok(())
+    }
+
+    /// Whether the receiver currently rejects forward-only attack admission.
+    pub fn is_reversed(&self) -> bool {
+        self.reverse
     }
 
     /// Current and pending signed groups plus the wrapping frame-progress byte.
@@ -509,6 +530,7 @@ impl ActorAnimation {
                     .get(&group)
                     .with_context(|| format!("{} group {group}: absent", self.context))?;
                 self.frame_progress = 0;
+                self.reverse = false;
                 self.current = Some((
                     group,
                     FrameSequence::from_group(
@@ -530,6 +552,7 @@ impl ActorAnimation {
                     exiting,
                     sounds,
                     &mut self.frame_progress,
+                    self.reverse,
                 )? {
                     return Ok(Some(reference));
                 }

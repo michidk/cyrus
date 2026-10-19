@@ -203,7 +203,7 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 - [x] Standalone player-role animation entry and initial mesh binding without a controller tick. **Verified:** headless scheduling checks cover ordered CYRUS/GREMLIN setup, marker-position cues, combat association, weapon validation, generation replacement and unload cleanup; omitting initialization fails the comparison. Installed entry-frame comparison, full installed gates and browser check pass. Automatic locomotion and complete player lifecycle remain open.
 - [ ] Complete production eligibility and invocation timing, model/default ownership, initialization, group types, cancellation and model replacement.
 - [ ] Complete receivers, properties, variable references, scriptless objects, allocation/recycling and model-coupled attributes.
-  Full-width property references, installed-name local-heading reads and signed local-position reads/writes are implemented. Heading public/installed shrine non-standing contracts and WASM check pass; four local-position contracts pass; the combined gate passes 983 Rust test executions with zero installed-data skips. Remaining embedded animation/session program fixtures now use the current schema. Program schema 3 requires re-export of older script caches. Current-animation reads and shared torch-counter reads/writes are implemented; all nine property contracts pass; combined verification passes 986 Rust test executions with zero installed-data skips. Receiver/player animation frame waits and retained progress are implemented; four focused task contracts and eleven animation-persistence tests pass; final WASM and workspace verification passes 992 Rust test executions with zero installed-data skips. Animation snapshot version 2 rejects older captures that lack progress.
+  Full-width property references, installed-name local-heading reads and signed local-position reads/writes are implemented. Heading public/installed shrine non-standing contracts and WASM check pass; four local-position contracts pass; the combined gate passes 983 Rust test executions with zero installed-data skips. Remaining embedded animation/session program fixtures now use the current schema. Program schema 3 requires re-export of older script caches. Current-animation reads and shared torch-counter reads/writes are implemented; all nine property contracts pass; combined verification passes 986 Rust test executions with zero installed-data skips. Receiver/player animation frame waits and retained progress are implemented; four focused task contracts and eleven animation-persistence tests pass; final WASM and workspace verification passes 992 Rust test executions with zero installed-data skips. Animation snapshot version 3 requires retained frame progress and playback direction.
 - [ ] Complete NPC collision/support/response, model-state refresh, transient geometry and populated walk-map navigation/perception.
 - [ ] Complete hooks, synchronization, lights, visibility and remaining native services through the SOUP completion checklist.
   `PlayerLooking` now uses the published effective-position and signed angular-threshold rules. Three public contracts, WASM checking and final workspace gates pass; installed automatic traversal remains pending.
@@ -667,6 +667,20 @@ including marked active windows and signed wrapping. The
 [published admission rules](https://github.com/michidk/redguard-preservation/blob/59c635a78d45aff683c9ae45adf88248e9f7f101/docs/engine/SOUP.md#attack-processing-admission)
 define the forward-playback admission and window boundaries. This does not enable
 contact dispatch or damage.
+
+**Verified:** shared actor animation retains reverse direction through complete
+snapshots and collision checkpoints. Reverse advancement follows the published
+command-cursor, frame-progress, finite-loop, delay and sound-dispatch rules;
+new group selection resets direction. Combat attack admission rejects reverse
+playback before motion queries. Animation snapshot version 3 rejects older
+captures and missing direction state. Public animation/persistence/transition
+contracts cover these services. An installed-data headless diagnostic exercises
+three groups for each START pirate through reverse frames, sound callbacks and
+default reset. Opcode eleven's actor events remain explicitly
+unsupported. Successful hit-defence dispatch, actual reverse combat presentation
+and original/native/browser combat acceptance remain open. The
+[reverse rules](https://github.com/michidk/redguard-preservation/blob/9f07979/docs/engine/animation.md#reverse-frame-countdown)
+own the engine contract.
 
 Next, in dependency order:
 

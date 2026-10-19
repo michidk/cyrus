@@ -5,8 +5,8 @@ use anyhow::{Context, Result};
 
 impl ScriptWorld {
     /// Read attack-processing admission without advancing playback or marking contact.
-    /// Playback supports only forward groups, so its reverse-playback admission byte is
-    /// zero. The signed command cursor admits the start-inclusive/end-exclusive active
+    /// Reverse playback rejects processing before intent or motion queries. The signed
+    /// command cursor admits the start-inclusive/end-exclusive active
     /// window, or a nonzero-duration extended window with combat flag 0x20 clear.
     /// Current-motion fields remain required; missing numeric metadata has no default.
     /// Follows preservation's SOUP attack-processing admission rules.
@@ -27,7 +27,7 @@ impl ScriptWorld {
                 .animation
                 .as_ref()
                 .context("receiver animation unavailable")?;
-            if combat.flags & 1 == 0 {
+            if animation.playback.is_reversed() || combat.flags & 1 == 0 {
                 return Ok(false);
             }
             let cursor = animation

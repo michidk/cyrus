@@ -317,7 +317,7 @@ module where it is defined and regenerate.
 - `src/animation/actor.rs` — Request arbitration and default fallback from preservation's engine/animation.md.
 - `src/animation/class.rs` — Animation group classes follow preservation's `engine/animation.md#animation-group-classes`.
 - `src/animation/playback.rs` — Explicitly activated group playback. The game scheduler owns eligibility and timing.
-- `src/animation/sequence.rs` — Forward current-group playback from preservation's engine/animation.md.
+- `src/animation/sequence.rs` — Current-group playback and reverse rules from preservation's engine/animation.md.
 - `src/lifecycle.rs` — Shared world identity and prepared cache references.
 - `src/sound.rs` — Sound intents; only a playback consumer registers the message queue.
 - `src/transform.rs` — Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.

@@ -1,4 +1,4 @@
-//! Forward current-group playback from preservation's engine/animation.md.
+//! Current-group playback and reverse rules from preservation's engine/animation.md.
 use super::Animations;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -34,13 +34,13 @@ pub enum AnimationSound {
 pub(super) type SoundDispatcher<'a> =
     Option<&'a mut dyn FnMut(AnimationSound) -> anyhow::Result<()>>;
 
-/// A forward current group. Callers supply activation, whole nominal ticks, and exit eligibility.
-/// Sound commands require actor-side dispatch; reverse playback and other group types are unsupported.
+/// A current group. Callers supply activation, whole nominal ticks, and exit eligibility.
+/// Sound commands require actor-side dispatch; actor events and remaining forward operations stay explicitly unsupported.
 #[derive(Clone)]
 pub struct FrameSequence {
     context: String,
     commands: Vec<Command>,
-    command: usize,
+    command: i16,
     speed: u8,
     countdown: u8,
     loops: u8,
@@ -59,7 +59,7 @@ pub struct FrameSequence {
 /// Mutable playback only; immutable commands and type come from matched installed groups.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct SequenceSnapshot {
-    command: usize,
+    command: i16,
     speed: u8,
     countdown: u8,
     loops: u8,
@@ -94,19 +94,24 @@ impl FrameSequence {
     ) -> anyhow::Result<Self> {
         let mut sequence = Self::from_group(context, group, 0, 0)?;
         let count = sequence.commands.len();
+        let index = usize::try_from(snapshot.command).ok();
         // A final Delay advances past the table before waiting. Its next tick may
         // advance once more before retaining an out-of-range failure.
         anyhow::ensure!(
-            snapshot.command < count
-                || (snapshot.command == count && snapshot.delay != 0)
-                || (snapshot.failure.is_some() && snapshot.command <= count.saturating_add(1)),
+            index.is_some_and(|index| index < count
+                || (index == count && snapshot.delay != 0)
+                || (snapshot.failure.is_some() && index <= count.saturating_add(1)))
+                || (snapshot.failure.is_some() && snapshot.command < 0),
             "{} command {}: saved cursor outside group",
             sequence.context,
             snapshot.command
         );
         anyhow::ensure!(
             !snapshot.ended
-                || matches!(sequence.commands.get(snapshot.command), Some(Command::End)),
+                || matches!(
+                    index.and_then(|index| sequence.commands.get(index)),
+                    Some(Command::End)
+                ),
             "{} command {}: saved End state mismatch",
             sequence.context,
             snapshot.command
@@ -290,7 +295,7 @@ impl FrameSequence {
     }
 
     pub(super) fn command_cursor(&self) -> i32 {
-        i32::from(self.command as u16 as i16)
+        i32::from(self.command)
     }
 
     /// Advances using the original whole nominal-tick input; returns a file frame reference.
@@ -306,7 +311,7 @@ impl FrameSequence {
         exit_requested: bool,
         sounds: &mut SoundDispatcher<'_>,
     ) -> anyhow::Result<Option<u32>> {
-        self.advance_with_progress(ticks, exit_requested, sounds, &mut 0)
+        self.advance_with_progress(ticks, exit_requested, sounds, &mut 0, false)
     }
 
     pub(super) fn advance_with_progress(
@@ -315,11 +320,12 @@ impl FrameSequence {
         exit_requested: bool,
         sounds: &mut SoundDispatcher<'_>,
         progress: &mut u8,
+        reverse: bool,
     ) -> anyhow::Result<Option<u32>> {
         if let Some(message) = &self.failure {
             anyhow::bail!("{message}");
         }
-        let result = self.advance_current(ticks, exit_requested, sounds, progress);
+        let result = self.advance_current(ticks, exit_requested, sounds, progress, reverse);
         if let Err(error) = &result {
             self.failure = Some(error.to_string());
         }
@@ -347,15 +353,17 @@ impl FrameSequence {
         exit_requested: bool,
         sounds: &mut SoundDispatcher<'_>,
         progress: &mut u8,
+        reverse: bool,
     ) -> anyhow::Result<Option<u32>> {
         if self.ended || self.waiting_for_delay(ticks) {
             return Ok(None);
         }
+        let step = if reverse { -1 } else { 1 };
         let mut skip = 0;
         if ticks != 0 {
             if self.countdown == 0 {
-                self.command += 1;
-                *progress = progress.wrapping_add(1);
+                self.command = self.command.wrapping_add(step);
+                *progress = progress.wrapping_add_signed(step as i8);
                 self.translation_suppressed = false;
                 self.countdown = self.speed;
                 skip = ticks - 1;
@@ -364,23 +372,38 @@ impl FrameSequence {
         }
         let mut visited = BTreeSet::new();
         loop {
+            if reverse {
+                self.exit_reached = false;
+                self.translation_suppressed = false;
+                if self.command < 1 {
+                    if self.sound_requested {
+                        self.dispatch_sound(sounds, AnimationSound::Stop)?;
+                        self.sound_requested = false;
+                    }
+                    self.ended = true;
+                    return Ok(None);
+                }
+            }
             anyhow::ensure!(
                 visited.insert((self.command, self.loops)),
                 "{} command {}: control cycle has no displayed frame",
                 self.context,
                 self.command
             );
-            let command = self.commands.get(self.command).with_context(|| {
-                format!("{} command {}: outside group", self.context, self.command)
-            })?;
+            let command = usize::try_from(self.command)
+                .ok()
+                .and_then(|index| self.commands.get(index))
+                .with_context(|| {
+                    format!("{} command {}: outside group", self.context, self.command)
+                })?;
             match *command {
                 Command::Frame(reference) => {
                     if skip == 0 {
                         return Ok(Some(reference));
                     }
                     skip -= 1;
-                    *progress = progress.wrapping_add(1);
-                    self.command += 1;
+                    *progress = progress.wrapping_add_signed(step as i8);
+                    self.command = self.command.wrapping_add(step);
                     self.translation_suppressed = false;
                     visited.clear();
                 }
@@ -396,32 +419,38 @@ impl FrameSequence {
                     if self.loops != 0 {
                         self.loops -= 1;
                         if self.loops == 0 {
-                            self.command += 1;
+                            self.command = self.command.wrapping_add(1);
                             continue;
                         }
                     }
-                    self.command = target;
-                    self.translation_suppressed = false;
+                    if reverse && self.loops == 0 {
+                        self.command = self.command.wrapping_sub(1);
+                    } else {
+                        self.command = target as i16;
+                        self.translation_suppressed = false;
+                    }
                 }
                 Command::Future(target) => {
                     // A type-two group ignores a pending default, even after its exit marker is set.
                     let exits = (exit_requested || self.exit_reached)
                         && !(self.type_two && self.pending_default);
-                    if self.loops == 0 && exits {
+                    if reverse && self.loops == 0 {
+                        self.command = self.command.wrapping_sub(1);
+                    } else if self.loops == 0 && exits {
                         self.exit_reached = true;
-                        self.command = target;
+                        self.command = target as i16;
                         self.translation_suppressed = false;
                     } else {
-                        self.command += 1;
+                        self.command = self.command.wrapping_add(1);
                     }
                 }
                 Command::Breakpoint => {
                     self.translation_suppressed = true;
-                    self.command += 1;
+                    self.command = self.command.wrapping_add(step);
                 }
                 Command::Delay(delay) => {
                     self.delay = delay;
-                    self.command += 1;
+                    self.command = self.command.wrapping_add(step);
                     if delay != 0 {
                         return Ok(None);
                     }
@@ -457,7 +486,10 @@ impl FrameSequence {
                         },
                     )?;
                     self.sound_requested = true;
-                    self.command += 1;
+                    self.command = self.command.wrapping_add(step);
+                }
+                Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {
+                    self.command = self.command.wrapping_sub(1);
                 }
                 Command::Unsupported(opcode) => anyhow::bail!(
                     "{} command {}: opcode {opcode} playback unsupported",

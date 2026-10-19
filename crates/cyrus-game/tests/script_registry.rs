@@ -23056,3 +23056,36 @@ fn attack_windows_use_command_cursor_current_motion_and_retained_mark() {
         );
     }
 }
+
+#[test]
+fn reverse_attack_admission_returns_before_motion_metadata() {
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |_| {},
+        |saved| {
+            saved["actors"][0]["control"]["death_selector"] = 0.into();
+            saved["actors"][0]["control"]["combat"] =
+                serde_json::to_value(cyrus_game::script::CombatControlState {
+                    action: 0,
+                    flags: 1,
+                    ..Default::default()
+                })
+                .unwrap();
+            saved["actors"][0]["animation"]["playback"]["reverse"] = true.into();
+        },
+    );
+    let id = world.id(0).unwrap();
+    assert!(!world.combat_attack_window(id).unwrap());
+    world
+        .maintain_map_combat(id, 1, false, Default::default(), None, &mut |_, _| Ok(()))
+        .unwrap();
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!((combat.action, combat.flags), (0, 1));
+}
