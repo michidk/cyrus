@@ -657,6 +657,17 @@ three-dimensional distance and shared elevation. Attribute 126 sphere/segment
 contact, omitted contact-field runtime defaults, ordinary contact dispatch and
 hit/damage processing remain unsupported. Full combat acceptance remains open.
 
+**Verified:** ordinary attack maintenance applies the current motion's command-cursor
+collision windows before candidate traversal. The active window includes its start
+and excludes its wrapping end. The extended window requires nonzero duration,
+a cursor at or beyond that end and a clear contact mark. Admitted maintenance
+sets flag `0x20` before the remaining explicit candidate-traversal error; rejected
+windows retain the action. Public query/maintenance tests cover these contracts,
+including marked active windows and signed wrapping. The
+[published admission rules](https://github.com/michidk/redguard-preservation/blob/59c635a78d45aff683c9ae45adf88248e9f7f101/docs/engine/SOUP.md#attack-processing-admission)
+define the forward-playback admission and window boundaries. This does not enable
+contact dispatch or damage.
+
 Next, in dependency order:
 
 1. Compare installed allocation assignments and complete live

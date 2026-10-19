@@ -4,6 +4,48 @@ use crate::script::decision::attack_step_with_animation;
 use anyhow::{Context, Result};
 
 impl ScriptWorld {
+    /// Read attack-processing admission without advancing playback or marking contact.
+    /// Playback supports only forward groups, so its reverse-playback admission byte is
+    /// zero. The signed command cursor admits the start-inclusive/end-exclusive active
+    /// window, or a nonzero-duration extended window with combat flag 0x20 clear.
+    /// Current-motion fields remain required; missing numeric metadata has no default.
+    /// Follows preservation's SOUP attack-processing admission rules.
+    pub fn combat_attack_window(&self, id: ScriptActorId) -> Result<bool> {
+        let result = (|| -> Result<bool> {
+            let actor = &self.actors[self.resolve(id)?];
+            let Some(combat) = actor
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+            else {
+                return Ok(false);
+            };
+            if matches!(combat.action, -1 | 9) {
+                return Ok(false);
+            }
+            let animation = actor
+                .animation
+                .as_ref()
+                .context("receiver animation unavailable")?;
+            if combat.flags & 1 == 0 {
+                return Ok(false);
+            }
+            let cursor = animation
+                .playback
+                .current_command_cursor()?
+                .context("receiver animation command cursor unavailable")?;
+            let motion = self.current_combat_motion(id)?;
+            let start = motion.first_collide_frame;
+            let duration = motion.collide_duration;
+            let end = start.wrapping_add(duration);
+            if start <= cursor && cursor < end {
+                return Ok(true);
+            }
+            Ok(duration != 0 && cursor >= end && combat.flags & 0x20 == 0)
+        })();
+        result.with_context(|| format!("world {} instance {} attack window", self.world, id.index))
+    }
+
     /// Execute a caller-selected attack move synchronously, without allocating a VM task.
     /// The pending move selects one of this receiver's four defense slots. Animation and
     /// sound services precede combat start writes; prior service writes survive errors.

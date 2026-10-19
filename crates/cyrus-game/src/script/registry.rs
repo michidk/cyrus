@@ -554,11 +554,21 @@ impl ScriptWorld {
             if combat.cooldown != 0 {
                 combat.cooldown = combat.cooldown.saturating_sub(ticks);
             } else if combat.action != -1 {
-                anyhow::ensure!(
-                    !(0..=6).contains(&combat.action),
-                    "ordinary combat attack stage unsupported"
-                );
-                combat.action = -1;
+                if (0..=6).contains(&combat.action) {
+                    if self.combat_attack_window(id)? {
+                        self.actors[index]
+                            .control
+                            .as_mut()
+                            .expect("admitted control")
+                            .combat
+                            .as_mut()
+                            .expect("admitted combat")
+                            .flags |= 0x20;
+                        anyhow::bail!("ordinary combat attack candidate traversal unsupported");
+                    }
+                } else {
+                    combat.action = -1;
+                }
             }
         }
         Ok(())

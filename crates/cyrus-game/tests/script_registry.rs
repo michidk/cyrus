@@ -22978,3 +22978,81 @@ fn range_contact_uses_first_motion_strict_ranges_and_candidate_radius() {
         );
     }
 }
+
+#[test]
+fn attack_windows_use_command_cursor_current_motion_and_retained_mark() {
+    for (start, duration, cursor, flags, expected) in [
+        (1, 1, 0, 1, false),
+        (0, 1, 0, 1, true),
+        (0, 1, 1, 1, true),
+        (0, 1, 1, 0x21, false),
+        (0, 1, 0, 0x21, true),
+        (0, 0, 0, 1, false),
+        (0, -1, 0, 1, true),
+        (i32::MAX, 1, 0, 1, true),
+        (0, 1, 0, 0, false),
+    ] {
+        let (mut world, _, _) = movement_fixture(
+            18,
+            false,
+            true,
+            |scripts| {
+                scripts.combat_attacks = vec![combat::Attack {
+                    is_combo: true,
+                    motions: [0, start]
+                        .into_iter()
+                        .map(|start| {
+                            serde_json::from_value(serde_json::json!({
+                        "section":0,"kind":0,"animation_group":18,"min_range":0,"max_range":100,
+                        "first_collide_frame":start,"collide_duration":duration
+                    })).unwrap()
+                        })
+                        .collect(),
+                    min_range: 0,
+                    max_range: 100,
+                }];
+            },
+            |saved| {
+                saved["actors"][0]["control"]["death_selector"] = 0.into();
+                saved["actors"][0]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        action: 0,
+                        flags,
+                        attack_indices: [Some(0); 9],
+                        retained_action_indices: [-1, 0],
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][0]["control"]["combat"]["decision"]["move_selector"] = 1.into();
+                saved["actors"][0]["animation"]["playback"]["current"][1]["command"] =
+                    cursor.into();
+            },
+        );
+        let id = world.id(0).unwrap();
+        assert_eq!(
+            world.combat_attack_window(id).unwrap(),
+            expected,
+            "start {start} duration {duration} cursor {cursor} flags {flags}"
+        );
+        let result =
+            world.maintain_map_combat(id, 1, false, Default::default(), None, &mut |_, _| Ok(()));
+        if expected {
+            assert!(
+                format!("{:#}", result.unwrap_err())
+                    .contains("attack candidate traversal unsupported")
+            );
+        } else {
+            result.unwrap();
+        }
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (combat.action, combat.flags),
+            (0, if expected { flags | 0x20 } else { flags })
+        );
+    }
+}
