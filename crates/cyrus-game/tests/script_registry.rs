@@ -14291,6 +14291,55 @@ fn speaker_dialogue_task_gates_on_distance_owns_a_record_and_cuts_far_lines() {
 }
 
 #[test]
+fn kill_my_tasks_clears_every_task_slot_at_once_and_later_tasks_survive() {
+    let build = |kill: bool| {
+        let mut ops = vec![wait(
+            4,
+            "Wait",
+            CallKind::Multitask,
+            vec![Value::Integer { value: 100 }],
+        )];
+        if kill {
+            ops.push(wait(5, "KillMyTasks", CallKind::Function, vec![]));
+        }
+        ops.extend([
+            wait(
+                4,
+                "Wait",
+                CallKind::Multitask,
+                vec![Value::Integer { value: 100 }],
+            ),
+            set_flag(7),
+            Operation::End { target: 0 },
+        ]);
+        let mut scripts = wait_cache(ops);
+        scripts.definition.functions.extend([
+            Function {
+                name: "Wait".into(),
+                param_count: 1,
+                kind: CallKind::Multitask,
+            },
+            Function {
+                name: "KillMyTasks".into(),
+                param_count: 0,
+                kind: CallKind::Function,
+            },
+        ]);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world.step(id, Thread::Main, 20).unwrap();
+        (
+            world.flags()[0],
+            world.actors()[0].runtime().unwrap().active_tasks(),
+        )
+    };
+    // Without the call both multitasks remain; with it only the one started afterwards does.
+    assert_eq!(build(false), (7, 2));
+    assert_eq!(build(true), (7, 1));
+}
+
+#[test]
 fn dialog_and_menu_natives_write_their_mode_words() {
     let state = |calls: &[(&str, &[i32])]| {
         let world = run_native_world(calls).unwrap();

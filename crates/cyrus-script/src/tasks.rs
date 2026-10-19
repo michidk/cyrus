@@ -187,6 +187,15 @@ impl Runtime {
                 );
                 Ok((None, false))
             }
+            CallResult::CompleteAfterClearingTasks(value) => {
+                anyhow::ensure!(
+                    call.kind == CallKind::Function,
+                    "native task {} cannot clear its own actor's tasks",
+                    call.function
+                );
+                self.cancel_tasks(host)?;
+                Ok((Some(value), false))
+            }
             CallResult::Pending(token) => {
                 anyhow::ensure!(
                     call.kind != CallKind::Function,

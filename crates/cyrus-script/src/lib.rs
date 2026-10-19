@@ -88,6 +88,9 @@ pub enum CallResult {
     /// Statements may discard it; consuming it as a value is unsupported.
     CompleteWithoutValue,
     Pending(u64),
+    /// Function-only: complete with the value after cancelling and clearing every task slot of the
+    /// calling actor at once, without invoking any task handler (`KillMyTasks`).
+    CompleteAfterClearingTasks(i32),
 }
 
 /// Native task input follows preservation's counter and unpaused-slot rules.

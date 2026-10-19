@@ -3408,6 +3408,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             "native {:?} {function} unsupported by inspection host",
             kind
         );
+        // KillMyTasks clears all six of the receiver's task slots at once, without running a handler.
+        if function.eq_ignore_ascii_case("KillMyTasks") {
+            anyhow::ensure!(arguments.is_empty(), "KillMyTasks requires no arguments");
+            return Ok(CallResult::CompleteAfterClearingTasks(0));
+        }
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;

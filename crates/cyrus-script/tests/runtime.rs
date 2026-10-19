@@ -527,6 +527,68 @@ fn actor_task_capacity_fails_before_a_seventh_effect_and_teardown_cancels_all() 
 }
 
 #[test]
+fn a_function_result_clears_every_task_slot_immediately_and_only_for_functions() {
+    #[derive(Default)]
+    struct Clearing {
+        next: u64,
+        cancelled: Vec<u64>,
+    }
+    impl Host for Clearing {
+        fn call(
+            &mut self,
+            _: &Target,
+            _: CallKind,
+            function: &str,
+            _: &[Argument],
+            _: cyrus_script::Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<CallResult> {
+            Ok(if function == "ClearTasks" {
+                CallResult::CompleteAfterClearingTasks(0)
+            } else {
+                self.next += 1;
+                CallResult::Pending(self.next)
+            })
+        }
+        fn poll(
+            &mut self,
+            _: u64,
+            _: &[Argument],
+            _: cyrus_script::Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+        fn cancel(&mut self, token: u64) -> anyhow::Result<()> {
+            self.cancelled.push(token);
+            Ok(())
+        }
+        fn end(&mut self, _: Thread) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    // Tasks started after the clear are not affected: it happens inside the call, not afterwards.
+    let mut ops = vec![call("Wait", CallKind::Multitask); 3];
+    ops.push(call("ClearTasks", CallKind::Function));
+    ops.push(call("Wait", CallKind::Multitask));
+    ops.push(Operation::End { target: 0 });
+    let mut vm = runtime(ops);
+    let mut host = Clearing::default();
+    vm.invoke(Thread::Main, &mut host, &mut [], 20).unwrap();
+    assert_eq!(host.cancelled, [1, 2, 3]);
+    assert_eq!(vm.active_tasks(), 1);
+
+    let mut vm = runtime(vec![
+        call("ClearTasks", CallKind::Multitask),
+        Operation::End { target: 0 },
+    ]);
+    let error = vm
+        .invoke(Thread::Main, &mut Clearing::default(), &mut [], 20)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("cannot clear its own actor's tasks"));
+}
+
+#[test]
 fn an_or_condition_still_evaluates_the_other_mutating_operand() {
     let mut vm = runtime(vec![
         Operation::If {
