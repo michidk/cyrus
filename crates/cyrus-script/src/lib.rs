@@ -40,7 +40,7 @@ pub enum Target {
 pub struct CodeOrigin(pub u32);
 
 /// Encoded task identity retains its source when routed to another actor.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskSource {
     pub origin: CodeOrigin,
     pub instruction: u32,
@@ -99,6 +99,24 @@ pub struct Invocation {
     pub unpaused_blocking_tasks: usize,
 }
 
+/// Native dispatch provenance controls the original command scratch setup.
+/// Hooks preserve it; object function values retain the point command value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativeCallSite {
+    Statement(Option<TaskSource>),
+    FunctionValue,
+    ObjectFunctionValue,
+    Hook,
+}
+impl NativeCallSite {
+    pub fn task_source(self) -> Option<TaskSource> {
+        match self {
+            Self::Statement(source) => source,
+            _ => None,
+        }
+    }
+}
+
 /// Immediate state changes occur synchronously. Unsupported services return an error.
 /// Task tokens must remain valid only for their owning world/actor generation.
 pub trait Host {
@@ -119,16 +137,22 @@ pub trait Host {
         invocation: Invocation,
         flags: &mut [i32],
     ) -> Result<bool>;
+    /// Applies call-site command setup before evaluating native operands.
+    fn prepare_native_command(&mut self, _: NativeCallSite) {}
+    /// Restore one of the six retained slots before reevaluating its operands.
+    fn load_native_command(&mut self, _: usize) {}
+    /// Retain current command state, including empty and paused slots.
+    fn save_native_command(&mut self, _: usize, _: &mut u8) {}
     /// Resolves an object before evaluating its native operands. Routed tasks belong to the receiver.
     fn route(
         &mut self,
         target: &Target,
         call: &crate::program::Call,
         strings: &[String],
-        source: Option<TaskSource>,
+        site: NativeCallSite,
         flags: &mut [i32],
     ) -> Result<Route> {
-        let _ = (call, strings, source, flags);
+        let _ = (call, strings, site, flags);
         anyhow::ensure!(
             target == &Target::Me,
             "object target {target:?} routing unsupported"
@@ -421,7 +445,9 @@ impl Runtime {
                         object_call: false,
                         thread,
                     });
-                    yield_now = self.dispatch(call, source, host, flags)?.1;
+                    yield_now = self
+                        .dispatch(call, NativeCallSite::Statement(source), host, flags)?
+                        .1;
                 }
                 Operation::ObjectCall { call } => {
                     let source = (call.kind != CallKind::Function).then_some(TaskSource {
@@ -430,7 +456,7 @@ impl Runtime {
                         object_call: true,
                         thread,
                     });
-                    self.dispatch(call, source, host, flags)?;
+                    self.dispatch(call, NativeCallSite::Statement(source), host, flags)?;
                 }
                 Operation::Anchor { value } => self.state.anchor = *value,
                 Operation::Yield => yield_now = true,

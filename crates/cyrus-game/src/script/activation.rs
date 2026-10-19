@@ -141,6 +141,9 @@ struct ControllerPrelude {
 /// The host retains these globals while replacing the logical world registry.
 #[derive(Default, Debug, Serialize)]
 pub struct GameplayGlobals {
+    /// Current native command context, shared by successive actor invocations.
+    pub(super) native_command: super::NativeCommandState,
+    pub(super) native_command_return: u8,
     /// Shared direction-called flags, reset at ordinary wrapper entry.
     pub(super) locomotion_called: u8,
     pub(super) ground_prevalidation_used: bool,
@@ -849,6 +852,8 @@ mod idle_tests {
 /// Session-only state is captured once, independently of retained world records.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct GameplayGlobalsSnapshot {
+    native_command: super::NativeCommandState,
+    native_command_return: u8,
     locomotion_called: u8,
     ground_prevalidation_used: bool,
     ground_prevalidation: Option<super::OrdinaryGroundPrevalidation>,
@@ -868,8 +873,15 @@ pub(super) struct GameplayGlobalsSnapshot {
     potions: [i32; 4],
 }
 impl GameplayGlobals {
+    /// Current shared execution state; task-slot load/save may replace it.
+    pub fn native_command(&self) -> &super::NativeCommandState {
+        &self.native_command
+    }
+
     pub(super) fn snapshot(&self) -> GameplayGlobalsSnapshot {
         GameplayGlobalsSnapshot {
+            native_command: self.native_command,
+            native_command_return: self.native_command_return,
             locomotion_called: self.locomotion_called,
             ground_prevalidation_used: self.ground_prevalidation_used,
             ground_prevalidation: self.ground_prevalidation,
@@ -924,6 +936,8 @@ impl GameplayGlobals {
             })
             .transpose()?;
         Ok(Self {
+            native_command: saved.native_command,
+            native_command_return: saved.native_command_return,
             locomotion_called: saved.locomotion_called,
             ground_prevalidation_used: saved.ground_prevalidation_used,
             ground_prevalidation: saved.ground_prevalidation,

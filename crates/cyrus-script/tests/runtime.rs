@@ -82,7 +82,7 @@ fn call(name: &str, kind: CallKind) -> Operation {
 }
 fn program(entry: u32, ops: Vec<Operation>) -> Program {
     Program {
-        version: 3,
+        version: 4,
         entry,
         variables: vec![0],
         strings: vec![],
@@ -768,7 +768,7 @@ fn routed_tasks_preserve_initial_strings_then_use_receiver_strings_and_locals() 
     vm.receive(
         &call,
         &["caller strings".into()],
-        Some(foreign_source()),
+        cyrus_script::NativeCallSite::Statement(Some(foreign_source())),
         &mut host,
         &mut [],
     )
@@ -810,16 +810,28 @@ fn routed_operand_aliases_share_one_slot_and_receiver_labels_control_that_operan
     call.kind = CallKind::Multitask;
     call.arguments.clear();
     let mut host = Tasks::default();
-    vm.receive(&call, &[], Some(foreign_source()), &mut host, &mut [])
-        .unwrap();
+    vm.receive(
+        &call,
+        &[],
+        cyrus_script::NativeCallSite::Statement(Some(foreign_source())),
+        &mut host,
+        &mut [],
+    )
+    .unwrap();
     let alias = TaskSource {
         origin: CodeOrigin(103),
         instruction: 0,
         object_call: false,
         thread: Thread::Interrupt,
     };
-    vm.receive(&call, &[], Some(alias), &mut host, &mut [])
-        .unwrap();
+    vm.receive(
+        &call,
+        &[],
+        cyrus_script::NativeCallSite::Statement(Some(alias)),
+        &mut host,
+        &mut [],
+    )
+    .unwrap();
     assert_eq!(host.next, 1);
     assert_eq!(vm.active_tasks(), 1);
     vm.invoke_body(Thread::Main, &mut host, &mut [], 20)
@@ -833,8 +845,14 @@ fn missing_foreign_task_source_fails_before_polling_and_is_sticky() {
     let mut call = foreign_call();
     call.arguments.clear();
     let mut host = Tasks::default();
-    vm.receive(&call, &[], Some(foreign_source()), &mut host, &mut [])
-        .unwrap();
+    vm.receive(
+        &call,
+        &[],
+        cyrus_script::NativeCallSite::Statement(Some(foreign_source())),
+        &mut host,
+        &mut [],
+    )
+    .unwrap();
     let error = vm
         .invoke_tasks_timed(&mut host, &mut [], 256)
         .unwrap_err()
@@ -863,15 +881,27 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
             instruction,
             ..foreign_source()
         };
-        vm.receive(&call, &[], Some(source), &mut host, &mut [])
-            .unwrap();
+        vm.receive(
+            &call,
+            &[],
+            cyrus_script::NativeCallSite::Statement(Some(source)),
+            &mut host,
+            &mut [],
+        )
+        .unwrap();
     }
     let source = TaskSource {
         instruction: 6,
         ..foreign_source()
     };
     let error = vm
-        .receive(&call, &[], Some(source), &mut host, &mut [])
+        .receive(
+            &call,
+            &[],
+            cyrus_script::NativeCallSite::Statement(Some(source)),
+            &mut host,
+            &mut [],
+        )
         .unwrap_err()
         .to_string();
     assert!(error.contains("actor task capacity exhausted"), "{error}");
@@ -883,7 +913,13 @@ fn routed_capacity_and_identity_overflow_fail_before_native_effects() {
         ..foreign_source()
     };
     let error = vm
-        .receive(&call, &[], Some(source), &mut host, &mut [])
+        .receive(
+            &call,
+            &[],
+            cyrus_script::NativeCallSite::Statement(Some(source)),
+            &mut host,
+            &mut [],
+        )
         .unwrap_err()
         .to_string();
     assert!(error.contains("task operand identity overflow"), "{error}");
@@ -950,12 +986,12 @@ fn entry_compares_foreign_task_operands_in_shared_code_identity() {
             .receive(
                 &call,
                 &[],
-                Some(TaskSource {
+                cyrus_script::NativeCallSite::Statement(Some(TaskSource {
                     origin: CodeOrigin(origin),
                     instruction: 0,
                     object_call: false,
                     thread: Thread::Main,
-                }),
+                })),
                 &mut host,
                 &mut [],
             )
@@ -1112,7 +1148,7 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
             target: &Target,
             _: &Call,
             _: &[String],
-            _: Option<TaskSource>,
+            _: cyrus_script::NativeCallSite,
             _: &mut [i32],
         ) -> anyhow::Result<Route> {
             if *target == Target::Player {
@@ -1204,7 +1240,14 @@ fn completed_effects_without_values_are_discarded_only_by_statements() {
         None
     );
     assert_eq!(
-        vm.receive(&call, &[], None, &mut host, &mut []).unwrap(),
+        vm.receive(
+            &call,
+            &[],
+            cyrus_script::NativeCallSite::Statement(None),
+            &mut host,
+            &mut []
+        )
+        .unwrap(),
         None
     );
 }
@@ -1245,10 +1288,221 @@ fn property_references_reach_the_host_without_byte_truncation() {
 
 #[test]
 fn previously_truncated_program_versions_require_reexport() {
-    let mut old = program(0, vec![Operation::End { target: 0 }]);
-    old.version = 2;
-    let error = Runtime::new(old, "old exported program".into())
-        .err()
+    for version in [1, 2, 3] {
+        let mut old = program(0, vec![Operation::End { target: 0 }]);
+        old.version = version;
+        let error = Runtime::new(old, "old exported program".into())
+            .err()
+            .unwrap();
+        assert!(format!("{error:#}").contains("re-export"));
+    }
+}
+
+#[test]
+fn native_command_setup_precedes_operands_and_preserves_call_provenance() {
+    #[derive(Default)]
+    struct Trace(Vec<String>);
+    impl Host for Trace {
+        fn route(
+            &mut self,
+            _: &Target,
+            _: &Call,
+            _: &[String],
+            site: NativeCallSite,
+            _: &mut [i32],
+        ) -> anyhow::Result<Route> {
+            self.0.push(format!("resolve {site:?}"));
+            Ok(Route::Here)
+        }
+        fn prepare_native_command(&mut self, site: NativeCallSite) {
+            self.0.push(format!("prepare {site:?}"));
+        }
+        fn read_property(&mut self, _: &Target, _: u16) -> anyhow::Result<i32> {
+            self.0.push("operand".into());
+            Ok(8)
+        }
+        fn call(
+            &mut self,
+            _: &Target,
+            _: CallKind,
+            _: &str,
+            arguments: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<CallResult> {
+            assert_eq!(arguments, &[Argument::Integer(8)]);
+            self.0.push("call".into());
+            Ok(CallResult::Complete(7))
+        }
+        fn poll(
+            &mut self,
+            _: u64,
+            _: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<bool> {
+            unreachable!()
+        }
+        fn end(&mut self, _: Thread) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let native = Call {
+        function_id: 0,
+        target: Object::Me,
+        kind: CallKind::Function,
+        function: "Query".into(),
+        arguments: vec![Value::Read {
+            place: Place::Property {
+                object: Object::Me,
+                reference: 0,
+            },
+        }],
+    };
+    let mut vm = runtime(vec![
+        Operation::Call {
+            call: native.clone(),
+        },
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::Call {
+                    call: Box::new(native.clone()),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::Assign {
+            destination: Place::Local { index: 0 },
+            formula: Formula {
+                first: Value::ObjectCall {
+                    call: Box::new(native.clone()),
+                },
+                rest: vec![],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    let mut trace = Trace::default();
+    vm.invoke_body(Thread::Main, &mut trace, &mut [], 100)
         .unwrap();
-    assert!(format!("{error:#}").contains("re-export"));
+    vm.invoke_native_hook(&native, &mut trace, &mut []).unwrap();
+    assert_eq!(
+        trace.0,
+        [
+            "resolve Statement(None)",
+            "prepare Statement(None)",
+            "operand",
+            "call",
+            "resolve FunctionValue",
+            "prepare FunctionValue",
+            "operand",
+            "call",
+            "resolve ObjectFunctionValue",
+            "prepare ObjectFunctionValue",
+            "operand",
+            "call",
+            "prepare Hook",
+            "operand",
+            "call",
+        ]
+    );
+}
+
+#[test]
+fn six_slot_pass_loads_active_and_saves_empty_paused_and_pending_context() {
+    #[derive(Default)]
+    struct ContextHost {
+        current: u32,
+        slots: [u32; 6],
+        events: Vec<String>,
+        complete: bool,
+    }
+    impl Host for ContextHost {
+        fn prepare_native_command(&mut self, _: NativeCallSite) {
+            self.current = 0;
+        }
+        fn load_native_command(&mut self, slot: usize) {
+            self.events.push(format!("load {slot}"));
+            self.current = self.slots[slot];
+        }
+        fn save_native_command(&mut self, slot: usize, result: &mut u8) {
+            self.events.push(format!("save {slot}"));
+            self.slots[slot] = self.current;
+            *result = 31;
+        }
+        fn call(
+            &mut self,
+            _: &Target,
+            _: CallKind,
+            _: &str,
+            _: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<CallResult> {
+            self.current = 100;
+            self.events.push("initial".into());
+            Ok(CallResult::Pending(1))
+        }
+        fn poll(
+            &mut self,
+            _: u64,
+            _: &[Argument],
+            _: Invocation,
+            _: &mut [i32],
+        ) -> anyhow::Result<bool> {
+            self.events.push(format!("poll {}", self.current));
+            self.current += 1;
+            Ok(self.complete)
+        }
+        fn end(&mut self, _: Thread) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let mut vm = runtime(vec![
+        call("Wait", CallKind::Multitask),
+        Operation::TaskPause { label: 0 },
+        Operation::Yield,
+        Operation::TaskResume { label: 0 },
+        Operation::End { target: 0 },
+    ]);
+    let mut host = ContextHost::default();
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 100)
+        .unwrap();
+    assert_eq!(host.events, ["initial", "save 0"]);
+    assert_eq!(vm.script_return(), 31);
+    host.events.clear();
+    host.current = 200;
+    vm.invoke_tasks(&mut host, &mut []).unwrap();
+    assert_eq!(
+        host.events,
+        ["save 0", "save 1", "save 2", "save 3", "save 4", "save 5"]
+    );
+    assert_eq!(host.slots, [200; 6]);
+    vm.invoke_body(Thread::Main, &mut host, &mut [], 100)
+        .unwrap();
+    host.events.clear();
+    host.current = 900;
+    vm.invoke_tasks(&mut host, &mut []).unwrap();
+    assert_eq!(
+        host.events,
+        [
+            "load 0", "poll 200", "save 0", "save 1", "save 2", "save 3", "save 4", "save 5"
+        ]
+    );
+    assert_eq!(host.slots, [201; 6]);
+    host.events.clear();
+    host.complete = true;
+    vm.invoke_tasks(&mut host, &mut []).unwrap();
+    assert_eq!(
+        host.events,
+        [
+            "load 0", "poll 201", "save 1", "save 2", "save 3", "save 4", "save 5"
+        ]
+    );
+    assert_eq!(host.slots, [201, 202, 202, 202, 202, 202]);
+    assert_eq!(vm.active_tasks(), 0);
+    let mut next_actor = runtime(vec![Operation::End { target: 0 }]);
+    next_actor.invoke_tasks(&mut host, &mut []).unwrap();
+    assert_eq!(host.slots, [202; 6]);
 }

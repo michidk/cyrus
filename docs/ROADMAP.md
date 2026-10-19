@@ -502,9 +502,14 @@ leave their resulting scratch shared. Point navigation validates nodes before an
 unsigned shared pause countdown and stays pending on the update reaching zero.
 The 1,072 resumption and 128 pause cases cover these owners and ordering, with
 wrong idle-retention and signed-delay expectations rejected. They do not prove
-routed movement. Runtime integration and world-transition reset ownership remain
-open. The contract is recorded in
-[preservation](https://github.com/michidk/redguard-preservation/commit/01f31e048ac35399434f40f610ab163331beec68).
+routed movement. Runtime integration now retains shared native command state,
+six actor slot banks and snapshot state. Call provenance preserves the distinct
+statement, direct expression, object expression and hook setup rules. Program
+schema 4 requires re-export of older script caches. Production resumption agrees
+with all 1,072 recorded cases; removing idle-slot saves fails the comparison.
+The final workspace gate passes 1,208 Rust test executions with zero installed-data
+skips. World-transition reset ownership and routed movement remain open. The contract is recorded in
+[preservation](https://github.com/michidk/redguard-preservation/commit/3e2532afe2e7b9ee349986f802bbfe5381ed3dc4).
 
 Next, in dependency order:
 

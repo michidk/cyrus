@@ -117,11 +117,26 @@ pub enum Place {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Value {
-    Integer { value: i32 },
-    String { index: u32 },
-    Read { place: Place },
-    Update { place: Place, delta: i32 },
-    Call { call: Box<Call> },
+    Integer {
+        value: i32,
+    },
+    String {
+        index: u32,
+    },
+    Read {
+        place: Place,
+    },
+    Update {
+        place: Place,
+        delta: i32,
+    },
+    Call {
+        call: Box<Call>,
+    },
+    /// Object expression encoding, including an explicit Me receiver.
+    ObjectCall {
+        call: Box<Call>,
+    },
 }
 
 /// Formula operators retain their byte values; evaluation is owned by the consumer.
@@ -144,7 +159,7 @@ impl Program {
     /// Validates entry points and continuations before any host side effect.
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 3,
+            self.version == 4,
             "unsupported program version {}; re-export the world",
             self.version
         );

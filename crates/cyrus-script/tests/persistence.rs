@@ -56,7 +56,7 @@ fn call(kind: CallKind) -> Call {
 }
 fn program(ops: Vec<Operation>) -> Arc<Program> {
     Arc::new(Program {
-        version: 3,
+        version: 4,
         entry: 0,
         variables: vec![0],
         strings: vec![],
@@ -303,12 +303,12 @@ fn foreign_task_slots_keep_order_pause_and_wrapping_counters_across_restore() {
         .receive(
             &call(CallKind::Multitask),
             &[],
-            Some(TaskSource {
+            cyrus_script::NativeCallSite::Statement(Some(TaskSource {
                 origin: CodeOrigin(300),
                 instruction: 0,
                 object_call: true,
                 thread: Thread::Interrupt,
-            }),
+            })),
             &mut host,
             &mut [0],
         )

@@ -19,7 +19,7 @@ fn script_visibility_hides_and_restores_the_bound_static_model() {
             "actor_pool_capacity":10,"content_id":"","world":17,
             "definition":{"functions":[{"name":"NullFunction","param_count":0,"kind":"function"},{"name":function,"param_count":0,"kind":"function"}],"flags":[],"references":[],"attributes":[]},
             "actors":{"STATIC":{"header_index":0,"code_origin":0,"instances":1,"instance_variables":[[]],"location_offsets":[],"attributes":{},
-                "program":{"version":3,"entry":0,"steps":{
+                "program":{"version":4,"entry":0,"steps":{
                     "0":{"next":1,"operation":{"type":"call","call":{"function_id":1,"kind":"function","target":{"type":"me"},"function":function,"arguments":[]}}},
                     "1":{"next":2,"operation":{"type":"end","target":0}}
                 }}}},

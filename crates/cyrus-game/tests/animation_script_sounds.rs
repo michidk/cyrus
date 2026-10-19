@@ -16,7 +16,7 @@ fn asset() -> Animations {
                     {"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":2},
                     {"opcode":1}]}
             ]}],
-            "animation_scripts":{"ACTOR":{"version":3,"entry":0,"steps":{
+            "animation_scripts":{"ACTOR":{"version":4,"entry":0,"steps":{
                 "0":{"next":14,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]}}},
                 "14":{"next":19,"operation":{"type":"end","target":0}}
             }}}

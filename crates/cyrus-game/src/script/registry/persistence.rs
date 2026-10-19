@@ -284,6 +284,7 @@ struct ActorSnapshot {
     player_movement: Option<player::PlayerMovementSnapshot>,
     light: Option<super::light::LightState>,
     tasks: super::super::NativeTasksSnapshot,
+    native_commands: [super::super::NativeCommandState; 6],
     animation: Option<AnimationSnapshot>,
     animation_failure: Option<String>,
     update_failure: Option<String>,
@@ -315,6 +316,7 @@ impl ActorSnapshot {
                 .as_ref()
                 .map(player::PlayerMovement::snapshot),
             tasks: actor.tasks.snapshot(),
+            native_commands: actor.native_commands,
             animation: actor.animation.as_ref().map(|animation| AnimationSnapshot {
                 playback: animation.playback.snapshot(),
                 frame: animation.frame,
@@ -455,6 +457,7 @@ impl ActorSnapshot {
         actor.message_read = self.message_read;
         actor.runtime = runtime;
         actor.tasks = tasks;
+        actor.native_commands = self.native_commands;
         actor.attributes = self.attributes;
         actor.control = self
             .control

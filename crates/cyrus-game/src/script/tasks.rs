@@ -7,6 +7,36 @@ use std::collections::BTreeMap;
 mod persistence;
 pub use persistence::{NativeTaskBindings, NativeTasksSnapshot};
 
+/// Generic native execution state shared by successive actors and task slots.
+/// Raw command bits preserve preservation's four-word load/save contract.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeCommandState {
+    pub continuation: u32,
+    /// Unsigned shared point-navigation pause in nominal ticks.
+    pub pause_ticks: u32,
+    pub point_value: u32,
+    pub point_word: u16,
+    pub point_phase: u8,
+    pub point_counter: u8,
+}
+impl NativeCommandState {
+    pub(super) fn prepare(&mut self, site: cyrus_script::NativeCallSite) {
+        match site {
+            cyrus_script::NativeCallSite::Hook => {}
+            cyrus_script::NativeCallSite::ObjectFunctionValue => {
+                *self = Self {
+                    point_value: self.point_value,
+                    ..Self::default()
+                };
+            }
+            cyrus_script::NativeCallSite::Statement(_)
+            | cyrus_script::NativeCallSite::FunctionValue => {
+                *self = Self::default();
+            }
+        }
+    }
+}
+
 /// One explicit invocation's animation and synchronous sound destination.
 pub(super) struct AnimationCall<'a, 'sound> {
     pub animation: &'a mut ActorAnimation,

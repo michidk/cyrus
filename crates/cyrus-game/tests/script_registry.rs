@@ -34,7 +34,7 @@ impl Host for NoServices {
 
 fn cache() -> Scripts {
     let program = Program {
-        version: 3,
+        version: 4,
         entry: 0,
         variables: vec![4],
         strings: vec![],
@@ -19551,4 +19551,154 @@ fn perception_waits_at_equality_wraps_ticks_and_reacquires_through_live_owners()
     assert_eq!(perception_case(3, 4, 5, false, 7), (4, 1, 7, false));
     assert_eq!(perception_case(3, 4, 5, true, 7), (0, 0, 6, true));
     assert_eq!(perception_case(3, 4, 5, true, 0), (0, 0, 7, true));
+}
+
+#[test]
+fn native_command_slots_restore_and_pass_shared_state_between_actors() {
+    use cyrus_game::script::NativeCommandState;
+    let scripts = wait_cache(vec![
+        wait(1, "Wait", CallKind::Task, vec![Value::Integer { value: 4 }]),
+        Operation::End { target: 0 },
+    ]);
+    let data = cyrus_assets::animation::Animations {
+        version: 2,
+        world: scripts.world,
+        metadata: serde_json::json!({"script_content_id": scripts.content_id,"actors":[]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.step(world.id(0).unwrap(), Thread::Main, 20).unwrap();
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    let retained = NativeCommandState {
+        continuation: 305419896,
+        pause_ticks: u32::MAX,
+        point_value: 7654321,
+        point_word: 4321,
+        point_phase: 67,
+        point_counter: 89,
+    };
+    saved["actors"][0]["native_commands"][0] = serde_json::to_value(retained).unwrap();
+    let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    world.step_tasks(world.id(0).unwrap(), Some(256)).unwrap();
+    assert_eq!(*world.globals().native_command(), retained);
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][0]["native_commands"],
+        serde_json::to_value([retained; 6]).unwrap()
+    );
+    world.step_tasks(world.id(1).unwrap(), Some(256)).unwrap();
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][1]["native_commands"],
+        serde_json::to_value([retained; 6]).unwrap()
+    );
+    let restored = restore_navigation_owner(saved, &scripts, &data).unwrap();
+    assert_eq!(
+        movement_snapshot(&restored, &scripts, &data)["actors"][1]["native_commands"],
+        serde_json::to_value([retained; 6]).unwrap()
+    );
+}
+
+#[test]
+fn game_host_native_setup_distinguishes_hook_statement_and_expression_encoding() {
+    use cyrus_game::script::{NativeCommandState, ScriptInputs, ScriptStage};
+    let retained = NativeCommandState {
+        continuation: 123,
+        pause_ticks: 456,
+        point_value: 789,
+        point_word: 12,
+        point_phase: 34,
+        point_counter: 56,
+    };
+    for encoding in 0..3 {
+        let health = Call {
+            function_id: 4,
+            target: Object::Me,
+            kind: CallKind::Function,
+            function: "Health".into(),
+            arguments: vec![],
+        };
+        let operation = if encoding == 0 {
+            Operation::Call {
+                call: health.clone(),
+            }
+        } else {
+            Operation::Assign {
+                destination: Place::Local { index: 0 },
+                formula: Formula {
+                    first: if encoding == 1 {
+                        Value::Call {
+                            call: Box::new(health.clone()),
+                        }
+                    } else {
+                        Value::ObjectCall {
+                            call: Box::new(health.clone()),
+                        }
+                    },
+                    rest: vec![],
+                },
+            }
+        };
+        let mut scripts = wait_cache(vec![
+            wait(
+                1,
+                "Wait",
+                CallKind::Multitask,
+                vec![Value::Integer { value: 100 }],
+            ),
+            Operation::Yield,
+            operation,
+            Operation::End { target: 0 },
+        ]);
+        scripts.definition.functions.push(Function {
+            name: "Health".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        });
+        scripts.actors.get_mut("LOGIC").unwrap().native_hook = Some(health);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let data = cyrus_assets::animation::Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: serde_json::json!({"script_content_id":scripts.content_id,"actors":[]}),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        for index in 0..2 {
+            world
+                .step(world.id(index).unwrap(), Thread::Main, 20)
+                .unwrap();
+        }
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][0]["native_commands"][0] = serde_json::to_value(retained).unwrap();
+        let mut world = restore_navigation_owner(saved, &scripts, &data).unwrap();
+        world.step_tasks(world.id(0).unwrap(), Some(256)).unwrap();
+        world
+            .advance(
+                world.id(1).unwrap(),
+                ScriptStage::NativeHook,
+                ScriptInputs::default(),
+                None,
+                None,
+                20,
+            )
+            .unwrap();
+        assert_eq!(*world.globals().native_command(), retained);
+        world.step(world.id(1).unwrap(), Thread::Main, 20).unwrap();
+        assert_eq!(
+            *world.globals().native_command(),
+            if encoding == 2 {
+                NativeCommandState {
+                    point_value: 789,
+                    ..Default::default()
+                }
+            } else {
+                NativeCommandState::default()
+            }
+        );
+    }
 }

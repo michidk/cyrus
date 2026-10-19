@@ -96,7 +96,16 @@ an admitted ordinary update. Its task-bypass input skips polling and the main
 blocking-slot gate, while retaining entry's operand gate. It does not choose
 actor eligibility or recheck game control flags between entry and main.
 
-Property references retain the full installed 16-bit index. Program schema 3
-rejects older exports because their decoder could discard the high byte.
+Property references retain the full installed 16-bit index. Program schema 4
+rejects older exports that could discard the high property byte or the distinct
+object function-expression encoding.
 The host owns property semantics; the portable runtime forwards the complete
 reference and does not select an actor field itself.
+
+The host receives native call provenance before operand evaluation. Statements
+and direct function values reset command state; object function values retain
+the point value, including explicit Me calls. Hooks preserve current state.
+Task passes load active slots and save empty, paused and pending slots. Completed
+slots leave their resulting command state shared without saving it. Initial
+allocation saves the first invocation result. Game hosts retain shared state
+above actors and six banks per actor; portable hosts may omit these callbacks.

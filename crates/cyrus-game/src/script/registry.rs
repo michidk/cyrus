@@ -42,9 +42,7 @@ use cyrus_assets::{
     animation::Animations,
     script::{CombatTaunt, Instance, Scripts},
 };
-use cyrus_script::{
-    Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, TaskSource, Thread,
-};
+use cyrus_script::{Argument, CallResult, CodeOrigin, Host, Route, Runtime, Target, Thread};
 use cyrus_world::lifecycle::PreparedWorld;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -234,6 +232,7 @@ pub struct ScriptActor {
     light: Option<light::LightState>,
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
+    native_commands: [super::NativeCommandState; 6],
     animation: Option<ScriptAnimation>,
     animation_failure: Option<String>,
     update_failure: Option<String>,
@@ -618,6 +617,7 @@ impl ScriptWorld {
                     .map(|actor| actor.location_offsets.clone())
                     .unwrap_or_default(),
                 tasks: Default::default(),
+                native_commands: Default::default(),
                 animation: None,
                 model: Default::default(),
                 collision: None,
@@ -2726,6 +2726,19 @@ impl Host for GameHost<'_, '_, '_, '_> {
         Ok(())
     }
 
+    fn prepare_native_command(&mut self, site: cyrus_script::NativeCallSite) {
+        self.registry.globals.native_command.prepare(site);
+    }
+    fn load_native_command(&mut self, slot: usize) {
+        self.registry.globals.native_command =
+            self.registry.actors[self.index].native_commands[slot];
+        self.registry.globals.native_command_return = 0;
+    }
+    fn save_native_command(&mut self, slot: usize, script_return: &mut u8) {
+        self.registry.actors[self.index].native_commands[slot] =
+            self.registry.globals.native_command;
+        *script_return = self.registry.globals.native_command_return;
+    }
     fn call(
         &mut self,
         target: &Target,
@@ -3863,7 +3876,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
         target: &Target,
         call: &Call,
         strings: &[String],
-        source: Option<TaskSource>,
+        site: cyrus_script::NativeCallSite,
         flags: &mut [i32],
     ) -> Result<Route> {
         let index = self.target_index(target)?;
@@ -3889,7 +3902,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )
         })?;
         let caller = std::mem::replace(&mut self.index, index);
-        let result = runtime.receive(call, strings, source, self, flags);
+        let result = runtime.receive(call, strings, site, self, flags);
         self.index = caller;
         self.registry.actors[index].runtime = Some(runtime);
         result.map(Route::Complete)
@@ -4003,6 +4016,7 @@ mod fighting_tests {
                 player_movement: None,
                 location_offsets: vec![],
                 tasks: Default::default(),
+                native_commands: Default::default(),
                 animation: None,
                 animation_failure: None,
                 update_failure: None,

@@ -41,7 +41,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         combat_taunts: vec![],
         native_hook: None,
         program: Program {
-            version: 3,
+            version: 4,
             entry: 0,
             variables: vec![],
             strings: vec!["OTHER".into()],
@@ -462,7 +462,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
             "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]
     }]);
     explicit_data.metadata["animation_scripts"] = json!({"ACTOR":{
-        "version":3,"entry":0,"steps":{"0":{"next":1,"operation":{"type":"end","target":0}}}
+        "version":4,"entry":0,"steps":{"0":{"next":1,"operation":{"type":"end","target":0}}}
     }});
     let explicit = app
         .world_mut()

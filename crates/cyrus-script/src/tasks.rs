@@ -1,5 +1,5 @@
 //! Actor-wide task slots and ordered operand reevaluation from preservation's SOUP rules.
-use super::{CallResult, Host, Invocation, Runtime, Target, TaskSource};
+use super::{CallResult, Host, Invocation, NativeCallSite, Runtime, Target, TaskSource};
 use crate::program::{Call, CallKind, Operation};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -87,11 +87,14 @@ impl Runtime {
         let program = Arc::clone(&self.program);
         for index in 0..self.state.tasks.len() {
             let Some(task) = self.state.tasks[index].clone() else {
+                host.save_native_command(index, &mut self.state.script_return);
                 continue;
             };
             if task.paused {
+                host.save_native_command(index, &mut self.state.script_return);
                 continue;
             }
+            host.load_native_command(index);
             let completed = (|| {
                 let call = if task.source.origin == self.origin {
                     let step = program
@@ -122,6 +125,8 @@ impl Runtime {
             })?;
             if completed {
                 self.state.tasks[index] = None;
+            } else {
+                host.save_native_command(index, &mut self.state.script_return);
             }
         }
         Ok(())
@@ -130,10 +135,11 @@ impl Runtime {
         &mut self,
         call: &Call,
         strings: &[String],
-        source: Option<TaskSource>,
+        site: NativeCallSite,
         host: &mut dyn Host,
         flags: &mut [i32],
     ) -> Result<(Option<i32>, bool)> {
+        let source = site.task_source();
         anyhow::ensure!(
             (call.kind == CallKind::Function) == source.is_none(),
             "native call/task source mismatch"
@@ -154,6 +160,7 @@ impl Runtime {
             call.kind == CallKind::Function || slot.is_some(),
             "actor task capacity exhausted"
         );
+        host.prepare_native_command(site);
         let arguments = self.arguments(call, flags, host, strings)?;
         let invocation = self.invocation((call.kind != CallKind::Function).then_some(0));
         match host.call(
@@ -196,7 +203,9 @@ impl Runtime {
                     "duplicate task token {token}"
                 );
                 let blocking = call.kind == CallKind::Task;
-                self.state.tasks[slot.context("task slot absent")?] = Some(Task {
+                let slot = slot.context("task slot absent")?;
+                host.save_native_command(slot, &mut self.state.script_return);
+                self.state.tasks[slot] = Some(Task {
                     token,
                     source: source.context("task source absent")?,
                     operand: operand.context("task operand absent")?,

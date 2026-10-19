@@ -168,9 +168,13 @@ impl ActorInventory {
                 self.place(place);
                 "update"
             }
-            Value::Call { call } => {
+            Value::Call { call } | Value::ObjectCall { call } => {
                 self.call(call);
-                "call"
+                if matches!(value, Value::ObjectCall { .. }) {
+                    "object_call"
+                } else {
+                    "call"
+                }
             }
         };
         count(&mut self.operands, format!("value:{kind}"));

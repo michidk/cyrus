@@ -508,6 +508,7 @@ mod tests {
             light: None,
             location_offsets: vec![],
             tasks: Default::default(),
+            native_commands: Default::default(),
             animation: Some(ScriptAnimation {
                 playback: cyrus_world::animation::ActorAnimation::from_asset(&data, "CYRUS", 0)
                     .unwrap(),

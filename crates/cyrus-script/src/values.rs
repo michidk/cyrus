@@ -41,14 +41,19 @@ impl Runtime {
                 self.write(place, value, flags, host)?;
                 Argument::Integer(value)
             }
-            Value::Call { call } => {
+            Value::Call { call } | Value::ObjectCall { call } => {
                 anyhow::ensure!(
                     call.kind == CallKind::Function,
                     "value call is not a function"
                 );
+                let site = if matches!(value, Value::ObjectCall { .. }) {
+                    super::NativeCallSite::ObjectFunctionValue
+                } else {
+                    super::NativeCallSite::FunctionValue
+                };
                 let target = self.target(&call.target)?;
-                let value = match host.route(&target, call, strings, None, flags)? {
-                    super::Route::Here => self.receive_inner(call, strings, None, host, flags)?.0,
+                let value = match host.route(&target, call, strings, site, flags)? {
+                    super::Route::Here => self.receive_inner(call, strings, site, host, flags)?.0,
                     super::Route::Complete(value) => value,
                 };
                 Argument::Integer(value.with_context(|| {

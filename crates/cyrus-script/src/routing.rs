@@ -1,5 +1,5 @@
 //! Synchronous receiver dispatch preserves foreign task identity and native string context.
-use super::{Host, Route, Runtime, TaskSource};
+use super::{Host, NativeCallSite, Route, Runtime};
 use crate::program::{Call, CallKind, Object};
 use anyhow::{Context, Result};
 use std::sync::Arc;
@@ -8,14 +8,14 @@ impl Runtime {
     pub(super) fn dispatch(
         &mut self,
         call: &Call,
-        source: Option<TaskSource>,
+        site: NativeCallSite,
         host: &mut dyn Host,
         flags: &mut [i32],
     ) -> Result<(Option<i32>, bool)> {
         let target = self.target(&call.target)?;
         let program = Arc::clone(&self.program);
-        match host.route(&target, call, &program.strings, source, flags)? {
-            Route::Here => self.receive_inner(call, &program.strings, source, host, flags),
+        match host.route(&target, call, &program.strings, site, flags)? {
+            Route::Here => self.receive_inner(call, &program.strings, site, host, flags),
             Route::Complete(value) => Ok((value, false)),
         }
     }
@@ -33,7 +33,7 @@ impl Runtime {
             "native hook must directly call a function on its actor"
         );
         let program = Arc::clone(&self.program);
-        self.receive(call, &program.strings, None, host, flags)
+        self.receive(call, &program.strings, NativeCallSite::Hook, host, flags)
     }
     /// Invokes a resolved receiving actor without running either of its script bodies.
     /// Initial string arguments retain the calling actor's table; locals use this instance.
@@ -43,7 +43,7 @@ impl Runtime {
         &mut self,
         call: &Call,
         strings: &[String],
-        source: Option<TaskSource>,
+        site: NativeCallSite,
         host: &mut dyn Host,
         flags: &mut [i32],
     ) -> Result<Option<i32>> {
@@ -51,7 +51,7 @@ impl Runtime {
             anyhow::bail!("{error}");
         }
         match self
-            .receive_inner(call, strings, source, host, flags)
+            .receive_inner(call, strings, site, host, flags)
             .context("routed native call")
         {
             Ok((value, _)) => Ok(value),

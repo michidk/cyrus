@@ -25,7 +25,10 @@ impl Program {
         );
         for argument in &hook.arguments {
             anyhow::ensure!(
-                !matches!(argument, Value::Call { .. } | Value::Update { .. }),
+                !matches!(
+                    argument,
+                    Value::Call { .. } | Value::ObjectCall { .. } | Value::Update { .. }
+                ),
                 "native hook parameter cannot call or update"
             );
             if let Value::Read { place } = argument {
@@ -74,7 +77,7 @@ impl Program {
                 while let Some(value) = values.pop() {
                     match value {
                         Value::Read { place } | Value::Update { place, .. } => places.push(place),
-                        Value::Call { call } => calls.push(call),
+                        Value::Call { call } | Value::ObjectCall { call } => calls.push(call),
                         _ => {}
                     }
                 }
@@ -191,7 +194,7 @@ impl Program {
                     "invalid conditional update {delta}"
                 );
             }
-            Value::Call { call } => {
+            Value::Call { call } | Value::ObjectCall { call } => {
                 anyhow::ensure!(
                     call.kind == super::CallKind::Function,
                     "value call is not a function"
@@ -206,7 +209,10 @@ impl Program {
         self.object(&call.target)?;
         for argument in &call.arguments {
             anyhow::ensure!(
-                !matches!(argument, Value::Call { .. } | Value::Update { .. }),
+                !matches!(
+                    argument,
+                    Value::Call { .. } | Value::ObjectCall { .. } | Value::Update { .. }
+                ),
                 "native parameter expression unsupported"
             );
             self.value(argument, depth)?;

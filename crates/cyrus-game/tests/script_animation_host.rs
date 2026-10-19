@@ -52,7 +52,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         combat_taunts: vec![],
         native_hook: None,
         program: Program {
-            version: 3,
+            version: 4,
             entry: 0,
             variables: vec![],
             strings: vec!["OTHER".into()],

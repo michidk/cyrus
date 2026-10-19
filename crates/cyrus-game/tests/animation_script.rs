@@ -21,7 +21,7 @@ fn asset() -> Animations {
                     {"group_index":10,"anim_type":0,"anim_id":1,"commands":[
                         {"opcode":0,"frame_reference":0},{"opcode":2,"value":0},{"opcode":1}]}
                 ]}],
-            "animation_scripts":{"ACTOR":{"version":3,"entry":0,"steps":{
+            "animation_scripts":{"ACTOR":{"version":4,"entry":0,"steps":{
                 "0":{"next":14,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":7},{"type":"integer","value":1}]}}},
                 "14":{"next":28,"operation":{"type":"call","call":{"function_id":0,"kind":"task","target":{"type":"me"},"function":"PushAnimation","arguments":[{"type":"integer","value":10},{"type":"integer","value":257}]}}},
                 "28":{"next":33,"operation":{"type":"end","target":0}}
