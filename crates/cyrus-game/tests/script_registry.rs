@@ -14055,21 +14055,47 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             40,
             Some("health initialization unavailable"),
         ),
+        ("AdjustHealth", 7, 2, true, 47, None),
         (
             "AdjustHealth",
-            7,
+            -7,
             2,
             true,
-            40,
-            Some("death-owning health unavailable"),
+            33,
+            Some("random stream unavailable"),
         ),
+        (
+            "AdjustHealth",
+            -40,
+            2,
+            true,
+            0,
+            Some("random stream unavailable"),
+        ),
+        (
+            "AdjustHealth",
+            -40,
+            3,
+            true,
+            0,
+            Some("native source unavailable"),
+        ),
+        ("AdjustHealth", -40, 4, true, 0, None),
+        ("AdjustHealth", -40, 5, true, 0, None),
+        ("AdjustHealth", -40, 6, true, 0, None),
+        ("AdjustHealth", i32::MAX, 8, true, 0, None),
+        ("AdjustHealth", -40, 9, true, 0, None),
+        ("AdjustHealth", -40, 10, true, 0, None),
+        ("AdjustHealth", -40, 11, true, 0, None),
         ("SetHealth", 60, 0, true, 40, None),
+        ("SetHealth", 0, 12, true, 0, None),
+        ("SetHealth", 60, 13, true, 60, None),
     ] {
         let (mut scripts, _, mut data, _) = player_walking_fixture();
         for (index, name, value) in [
             (3, "health", 40),
-            (97, "health_gate", 1),
-            (120, "health_ignore", 1),
+            (97, "health_gate", if mode >= 12 { 0 } else { 1 }),
+            (120, "health_ignore", if mode >= 12 { 0 } else { 1 }),
         ] {
             scripts.definition.attributes[index] = name.into();
             scripts
@@ -14078,6 +14104,50 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 .unwrap()
                 .attributes
                 .insert(name.into(), value);
+        }
+        scripts.definition.attributes[109] = "source_death".into();
+        scripts
+            .actors
+            .get_mut("LOGIC")
+            .unwrap()
+            .attributes
+            .insert("source_death".into(), 77);
+        if matches!(mode, 5 | 6 | 12) {
+            scripts.definition.attributes[105] = "skip_death_animation".into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert("skip_death_animation".into(), 1);
+        }
+        if mode >= 9 {
+            if mode >= 10 {
+                scripts.definition.attributes[110] = "held_weapon".into();
+                scripts
+                    .actors
+                    .get_mut("CYRUS")
+                    .unwrap()
+                    .attributes
+                    .insert("held_weapon".into(), 1);
+            }
+            let groups = data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap()["animation_groups"]
+                .as_array_mut()
+                .unwrap();
+            for group in [121, 122, 134] {
+                if mode == 11 && group == 122 {
+                    continue;
+                }
+                groups.push(
+                    serde_json::json!({"group_index":group,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}),
+                );
+            }
         }
         let function_id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
@@ -14111,7 +14181,8 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
         };
         scripts.content_id = scripts.content_identity().unwrap();
         data.metadata["script_content_id"] = scripts.content_id.clone().into();
-        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let (mut world, _, _) =
+            static_model_fixture_session(scripts.clone(), None, [10, 20, 30], true);
         let index = world
             .actors()
             .iter()
@@ -14123,7 +14194,32 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 .initialize_player_animation(player, &data, 0, &mut |_| Ok(()))
                 .unwrap();
         }
+        if mode >= 3 {
+            world
+                .initialize_player_spatial(player, [12, 34, 56], [0; 3])
+                .unwrap();
+        }
+        if mode >= 4 {
+            world
+                .advance(
+                    world.id(if mode == 4 { 0 } else { index }).unwrap(),
+                    ScriptStage::Entry,
+                    ScriptInputs {
+                        nominal_ticks: Some(0),
+                        frame_scale: Some(256),
+                        ..Default::default()
+                    },
+                    None,
+                    None,
+                    100,
+                )
+                .unwrap();
+            world
+                .set_actor_surface(player, if mode == 6 { 2 } else { 0 })
+                .unwrap();
+        }
         let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
         let result = world.advance(
             world.id(0).unwrap(),
             ScriptStage::Body(Thread::Main),
@@ -14131,10 +14227,11 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 hud: Some(&hud),
                 nominal_ticks: Some(0),
                 frame_scale: Some(256),
+                death_suppressed: Some(mode == 8),
                 ..Default::default()
             },
             None,
-            None,
+            (mode >= 3).then_some(&mut random),
             100,
         );
         match error {
@@ -14147,10 +14244,39 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
             "{function} mode {mode}"
         );
         assert_eq!(hud.health_feedback_ticks(), 25);
+        if (3..=12).contains(&mode) && mode != 8 {
+            let state = world.globals().selected_health().unwrap();
+            assert!(state.hit_inhibited());
+            assert_eq!(state.death().unwrap().progress(), 0);
+            assert_eq!(state.death().unwrap().local_position(), Some([12, 34, 56]));
+            assert_eq!(state.death().unwrap().mode(), if mode == 6 { 2 } else { 0 });
+            assert_eq!(
+                world.globals().player_death_override_group(),
+                Some(if mode == 4 {
+                    77
+                } else if mode == 7 {
+                    91
+                } else {
+                    0
+                })
+            );
+        }
+        if (9..=11).contains(&mode) {
+            assert_eq!(
+                world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+                if mode == 9 {
+                    134
+                } else if mode == 10 {
+                    122
+                } else {
+                    121
+                }
+            );
+        }
         if initialized {
             assert_eq!(
                 world.globals().selected_health().unwrap().displayed(),
-                if error.is_some() {
+                if error.is_some() && mode == 0 {
                     40
                 } else {
                     i32::from(expected)
@@ -14190,7 +14316,10 @@ fn set_and_adjust_health_clamp_and_leave_death_and_gates_unavailable() {
         0
     );
     let error = health(&[("SetMyAttr", &[97, 1]), ("SetHealth", &[60])]).unwrap_err();
-    assert!(format!("{error:#}").contains("invulnerability gate"));
+    assert!(
+        format!("{error:#}").contains("IsHoldingWeapon: inventory owner unavailable"),
+        "{error:#}"
+    );
 }
 
 #[test]

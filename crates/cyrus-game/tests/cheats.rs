@@ -53,6 +53,23 @@ fn toggles_assigns_lists_and_restores_only_after_savecheats() {
 }
 
 #[test]
+fn selected_death_suppression_reads_raw_nonzero_and_rejects_malformed_state() {
+    let mut runtime = Cheats::new(Store::default());
+    assert!(!runtime.death_suppressed().unwrap());
+    for value in [1, 42, u32::MAX] {
+        assert_eq!(
+            runtime.execute("drevil", Some(value)).unwrap(),
+            CheatEffect::Unsupported
+        );
+        assert!(runtime.death_suppressed().unwrap());
+    }
+    runtime.execute("drevil", Some(0)).unwrap();
+    assert!(!runtime.death_suppressed().unwrap());
+    let invalid = Cheats::new(Store(Arc::new(Mutex::new(Some(vec![1, 2, 3])))));
+    assert!(invalid.death_suppressed().is_err());
+}
+
+#[test]
 fn preserves_raw_values_and_unnamed_slots() {
     let mut bytes = vec![0; 256];
     bytes[252..].copy_from_slice(&[0x78, 0x56, 0x34, 0x12]);

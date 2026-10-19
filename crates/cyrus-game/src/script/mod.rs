@@ -29,6 +29,13 @@
 //! back to the receiver. World-reset source lifetime remains unsupported. See
 //! [preservation's retained-source contract](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#retained-health-source-context).
 //!
+//! Selected death-owning health publishes actor/display health before notification,
+//! retains captured pose and numeric death progress/mode, and consumes the retained
+//! source override. Missing rope cleanup and later death-controller/restart services
+//! remain explicit gaps. The caller supplies raw session death suppression; this
+//! does not establish complete cheat or death support. See
+//! [preservation's health ordering](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#selected-player-death-owning-health-mode).
+//!
 //! The implementation is grouped by responsibility:
 //!
 //! - [Registry](registry.rs), [ordinary scheduler](registry/ordinary.rs)
@@ -75,7 +82,7 @@ pub use dialogue::{
 mod flags;
 pub use flags::GlobalFlagsSnapshot;
 mod hud;
-pub use registry::SelectedHealthState;
+pub use registry::{SelectedDeathState, SelectedHealthState};
 mod inventory;
 mod journal;
 pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};

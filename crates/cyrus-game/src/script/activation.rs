@@ -240,6 +240,14 @@ impl GameplayGlobals {
             .map(|state| state.override_group)
     }
 
+    pub(super) fn set_player_death_override_group(&mut self, group: i32) -> Result<()> {
+        self.controller_prelude
+            .as_mut()
+            .context("selected death override owner unavailable")?
+            .override_group = group;
+        Ok(())
+    }
+
     /// Shared selected-health hit inhibition, independent of the animation override group.
     /// None means the selected-health owner has not been initialized.
     pub fn player_hit_inhibited(&self) -> Option<bool> {
@@ -256,6 +264,7 @@ impl GameplayGlobals {
         self.selected_combat_inhibition = Some(0);
         if let Some(health) = self.selected_health.as_mut() {
             health.set_hit_inhibited(false);
+            health.initialize_death();
         }
         self.selected_action_inhibition = Some(0);
         self.sound_maintenance.initialize_player();

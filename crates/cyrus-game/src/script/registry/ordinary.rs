@@ -909,6 +909,9 @@ pub fn run_ordinary(
             ScriptInputs {
                 hud: hud.as_deref(),
                 shell_execution: Some(false),
+                death_suppressed: cheats
+                    .as_ref()
+                    .and_then(|cheats| cheats.death_suppressed().ok()),
                 nominal_ticks: Some(timing.nominal_ticks),
                 ..Default::default()
             },

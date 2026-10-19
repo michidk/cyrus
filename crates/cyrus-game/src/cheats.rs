@@ -128,6 +128,16 @@ impl Cheats {
             != 0)
     }
 
+    /// Raw nonzero drevil state for selected death-owning health. Other drevil
+    /// damage paths are not integrated, so the catalog still reports Unsupported.
+    pub fn death_suppressed(&self) -> Result<bool> {
+        Ok(self
+            .state()?
+            .value("drevil")
+            .context("missing drevil state")?
+            != 0)
+    }
+
     /// Apply a named toggle or explicit raw value. Unsupported effects still retain
     /// their state for compatible CHT persistence and report their support status.
     /// `oracle` and `savecheats` without a value perform their documented actions.

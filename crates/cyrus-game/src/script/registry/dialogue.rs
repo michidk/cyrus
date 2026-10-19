@@ -103,7 +103,7 @@ impl ScriptWorld {
         self.request_combat_taunt(id, 2, 0, inputs, random, sounds)
     }
 
-    fn request_combat_taunt(
+    pub(super) fn request_combat_taunt(
         &mut self,
         id: ScriptActorId,
         trigger: u8,
@@ -143,7 +143,7 @@ impl ScriptWorld {
             {
                 return Ok(());
             }
-            if trigger != 2
+            if !matches!(trigger, 2 | 6)
                 && let Some(target) = combat.target
             {
                 let target = self.resolve(target)?;
@@ -156,7 +156,7 @@ impl ScriptWorld {
                     return Ok(());
                 }
             }
-            let taunt = if trigger == 2 {
+            let taunt = if matches!(trigger, 2 | 6) {
                 super::select_combat_taunt(actor, trigger, random).cloned()
             } else {
                 let chosen = super::super::combat::select_timed_combat_taunt(
@@ -206,7 +206,11 @@ impl ScriptWorld {
             Ok(())
         };
         request().with_context(|| {
-            let selection = if trigger == 2 { "ordered" } else { "timed" };
+            let selection = if matches!(trigger, 2 | 6) {
+                "ordered"
+            } else {
+                "timed"
+            };
             format!(
                 "world {world} instance {} {selection} combat taunt type {trigger}",
                 id.index

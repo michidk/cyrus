@@ -4,7 +4,7 @@ mod activation;
 mod attack;
 mod camera;
 mod health;
-pub use health::SelectedHealthState;
+pub use health::{SelectedDeathState, SelectedHealthState};
 pub(super) mod body;
 pub(super) mod bounds;
 mod combat_decision;
@@ -148,6 +148,8 @@ pub struct ScriptInputs<'a> {
     pub hud: Option<&'a super::ScriptHud>,
     /// Caller-established shell context for item operations; absence is unknown.
     pub shell_execution: Option<bool>,
+    /// Shared drevil state; absence remains unknown when fatal health needs it.
+    pub death_suppressed: Option<bool>,
     pub activation: Option<&'a super::ActivationInputs>,
     /// Held installed Activate binding for live logical-actor activation.
     pub activation_use_held: Option<bool>,
@@ -1703,8 +1705,15 @@ impl ScriptWorld {
             .expect("player role has allocation state");
         self.globals.initialize_player_controller();
         if matches!(actor.source, ScriptActorSource::Player) {
-            self.globals.selected_health =
-                Some(super::SelectedHealthState::initialized(actor.attributes[3]));
+            let captured = self
+                .globals
+                .selected_health
+                .as_ref()
+                .and_then(|health| health.death())
+                .and_then(|death| death.local_position());
+            let mut health = super::SelectedHealthState::initialized(actor.attributes[3]);
+            health.retain_death_position(captured);
+            self.globals.selected_health = Some(health);
         }
         control.combat_death_default = (actor.attributes[14] != 0).then_some(0);
         control.combat = super::CombatControlState::initialize(
@@ -3595,10 +3604,26 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     .with_context(|| format!("{function}: selected-player HUD owner unavailable"))?
                     .request_replenish_health_feedback();
                 if !set {
-                    anyhow::ensure!(
-                        arguments[1].integer()? == 0,
-                        "{function}: selected-player death-owning health unavailable"
-                    );
+                    if arguments[1].integer()? != 0 {
+                        let id = self.registry.id(self.index)?;
+                        let source = self.registry.globals.native_source;
+                        let sounds = &mut self.sounds;
+                        self.registry.apply_selected_death_health(
+                            id,
+                            arguments[0].integer()?,
+                            Some(source),
+                            self.inputs,
+                            self.random.as_deref_mut(),
+                            &mut |actor, sound| {
+                                sounds
+                                    .as_deref_mut()
+                                    .context("selected death sound executor unavailable")?(
+                                    actor, sound,
+                                )
+                            },
+                        )?;
+                        return Ok(CallResult::Complete(0));
+                    }
                     let id = self.registry.id(self.index)?;
                     let sounds = &mut self.sounds;
                     self.registry.apply_selected_additive_health(
@@ -3621,10 +3646,39 @@ impl Host for GameHost<'_, '_, '_, '_> {
             if attributes[120] != 0 {
                 return Ok(CallResult::Complete(0));
             }
-            anyhow::ensure!(
-                attributes[97] == 0 && !selected,
-                "{function}: invulnerability gate and selected-player health unavailable"
-            );
+            if attributes[97] != 0
+                && !self.receiver_weapon_predicates("IsHoldingWeapon")?.0
+                && self.registry.actors[self.index]
+                    .control
+                    .as_ref()
+                    .and_then(|control| control.combat.as_ref())
+                    .is_none_or(|combat| combat.flags & 4 == 0)
+            {
+                return Ok(CallResult::Complete(0));
+            }
+            if selected {
+                let id = self.registry.id(self.index)?;
+                let change = arguments[0]
+                    .integer()?
+                    .wrapping_sub(i32::from(self.registry.actors[self.index].attributes[3]));
+                let sounds = &mut self.sounds;
+                self.registry.apply_selected_death_health(
+                    id,
+                    change,
+                    None,
+                    self.inputs,
+                    self.random.as_deref_mut(),
+                    &mut |actor, sound| {
+                        sounds
+                            .as_deref_mut()
+                            .context("selected death sound executor unavailable")?(
+                            actor, sound
+                        )
+                    },
+                )?;
+                return Ok(CallResult::Complete(0));
+            }
+            let attributes = &mut self.registry.actors[self.index].attributes;
             let value = arguments[0].integer()?;
             let delta = if set {
                 value.wrapping_sub(i32::from(attributes[3]))
