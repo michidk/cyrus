@@ -1073,3 +1073,136 @@ fn walk_forward_rechecks_step_admission_after_the_startup_counter_saturates() {
     );
     assert_eq!((direction, counters, called), (0, 48, 0));
 }
+
+#[test]
+fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots() {
+    use crate::script::tasks::{LocomotionAdmission, LocomotionCall};
+    let mut called = 0;
+    let mut tasks = NativeTasks {
+        next: u64::MAX,
+        ..Default::default()
+    };
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let refused = || crate::script::locomotion::BackwardState {
+        rope_attached: true,
+        ..Default::default()
+    };
+    assert!(matches!(
+        tasks
+            .call_synchronous_movement(
+                "MoveForward",
+                &[Argument::Integer(1)],
+                invocation,
+                &mut None,
+                &mut None,
+                NativeServices {
+                    locomotion: Some(LocomotionCall {
+                        state: Ok(refused()),
+                        admission: LocomotionAdmission::default(),
+                        animation_system: true,
+                        motion: None,
+                        called: &mut called
+                    }),
+                    ..Default::default()
+                }
+            )
+            .unwrap(),
+        Some(CallResult::Complete(0))
+    ));
+    assert_eq!(tasks.next, u64::MAX);
+    assert!(tasks.tasks.is_empty());
+    assert_eq!(called, 0);
+    let error = tasks
+        .call_synchronous_movement(
+            "Wait",
+            &[Argument::Integer(1)],
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices::default(),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("not a movement operation"));
+    let error = tasks
+        .call(
+            ("MoveForward", CallKind::Function),
+            &[Argument::Integer(1)],
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices::default(),
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("function-encoded MoveForward timing unsupported")
+    );
+    let error = tasks
+        .call(
+            ("MoveForward", CallKind::Task),
+            &[Argument::Integer(1)],
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices::default(),
+        )
+        .unwrap_err();
+    assert!(error.to_string().contains("identity exhausted"));
+    assert_eq!(tasks.next, u64::MAX);
+    assert!(tasks.tasks.is_empty());
+
+    let mut tasks = NativeTasks::default();
+    assert!(matches!(
+        tasks
+            .call(
+                ("MoveForward", CallKind::Task),
+                &[Argument::Integer(1)],
+                invocation,
+                &mut None,
+                &mut None,
+                NativeServices {
+                    locomotion: Some(LocomotionCall {
+                        state: Ok(refused()),
+                        admission: LocomotionAdmission::default(),
+                        animation_system: true,
+                        motion: None,
+                        called: &mut called
+                    }),
+                    ..Default::default()
+                }
+            )
+            .unwrap(),
+        Some(CallResult::Pending(1))
+    ));
+    assert_eq!(tasks.next, 1);
+    assert_eq!(tasks.tasks.len(), 1);
+    assert!(matches!(
+        tasks
+            .call_synchronous_movement(
+                "MoveForward",
+                &[Argument::Integer(1)],
+                invocation,
+                &mut None,
+                &mut None,
+                NativeServices {
+                    locomotion: Some(LocomotionCall {
+                        state: Ok(refused()),
+                        admission: LocomotionAdmission::default(),
+                        animation_system: true,
+                        motion: None,
+                        called: &mut called
+                    }),
+                    ..Default::default()
+                }
+            )
+            .unwrap(),
+        Some(CallResult::Complete(0))
+    ));
+    assert_eq!(tasks.next, 1);
+    assert_eq!(tasks.tasks.len(), 1);
+}

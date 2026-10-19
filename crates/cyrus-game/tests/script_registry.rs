@@ -16105,7 +16105,17 @@ fn forward_amount_world(
     };
     let mut scripts = cache();
     scripts.updates.animation_system = animation_system;
-    for (attribute, value) in [(8, 8), (11, 1), (16, 6), (17, 10)] {
+    for (attribute, value) in [
+        (8, 8),
+        (9, 12),
+        (11, 1),
+        (12, 4),
+        (16, 6),
+        (17, 10),
+        (18, 6),
+        (19, 3),
+        (83, 4),
+    ] {
         scripts
             .actors
             .get_mut("LOGIC")
@@ -16118,7 +16128,7 @@ fn forward_amount_world(
         version: 2,
         world: scripts.world,
         metadata: serde_json::json!({"script_content_id":scripts.content_id,
-            "actors":[{"script_name":"LOGIC","animation_groups":([0,18,30,92,106,142].into_iter().map(|group| {
+            "actors":[{"script_name":"LOGIC","animation_groups":([0,18,19,20,21,30,31,92,93,94,95,106,142].into_iter().map(|group| {
                 let mut commands = vec![];
                 if suppressed {commands.push(serde_json::json!({"opcode":5}));}
                 commands.push(serde_json::json!({"opcode":0,"frame_reference":group}));
@@ -16368,5 +16378,241 @@ fn forward_amount_halves_deep_water_before_the_shared_startup_ramp() {
                 .unwrap(),
             expected
         );
+    }
+}
+
+#[test]
+fn synchronous_forward_resamples_the_counter_mutated_by_the_amount_query() {
+    use cyrus_game::script::{OrdinaryMovement, ScriptHud, ScriptInputs};
+    let mut world = forward_amount_world(18, false, true, |_| {});
+    let id = world.id(0).unwrap();
+    let hud = ScriptHud::default();
+    assert_eq!(
+        world
+            .ordinary_forward_amount(id, forward_amount_inputs(), None, &mut |_, _| Ok(()))
+            .unwrap(),
+        512
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, [0, 0, 0]);
+    for (expected_position, expected_counter) in [([0, 0, 682], 0x20), ([0, 0, 1706], 0x30)] {
+        assert_eq!(
+            world
+                .move_ordinary(
+                    id,
+                    OrdinaryMovement::Forward,
+                    1,
+                    0,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        forward_step_clear: Some(true),
+                        ..Default::default()
+                    },
+                    &mut |_, _| Ok(())
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, expected_position);
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().movement_flags,
+            expected_counter
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+        assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], 4);
+    }
+}
+
+#[test]
+fn synchronous_movement_retains_duration_and_animation_wait_results_without_tasks() {
+    use cyrus_game::script::{OrdinaryMovement, ScriptHud, ScriptInputs};
+    for (group, enabled, duration, elapsed, expected, position, counter) in [
+        (18, true, 4, 0, 1, [0, 0, 512], 0x10),
+        (18, true, 4, 3, 0, [0, 0, 512], 0x10),
+        (30, true, 4, 0, 1, [0, 0, 0], 0),
+        (30, true, 1, 0, 0, [0, 0, 0], 0),
+        (30, false, 1, 0, 0, [0, 0, 512], 0x10),
+    ] {
+        let mut world = forward_amount_world(group, false, enabled, |_| {});
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        assert_eq!(
+            world
+                .move_ordinary(
+                    id,
+                    OrdinaryMovement::Forward,
+                    duration,
+                    elapsed,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        forward_step_clear: Some(true),
+                        ..Default::default()
+                    },
+                    &mut |_, _| Ok(())
+                )
+                .unwrap(),
+            expected
+        );
+        assert_eq!(world.spatial(id).unwrap().local.position, position);
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().movement_flags,
+            counter
+        );
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn synchronous_backward_and_combat_strafes_use_existing_real_movement() {
+    use cyrus_game::script::{CombatControlState, OrdinaryMovement, ScriptHud, ScriptInputs};
+    for (movement, group, position, direction, counter, called) in [
+        (OrdinaryMovement::Backward, 19, [0, 0, -768], 7, 0x40, 8),
+        (OrdinaryMovement::Left, 18, [-1024, 0, 0], 4, 0, 0),
+        (OrdinaryMovement::Right, 18, [1024, 0, 0], 5, 0, 0),
+    ] {
+        let mut world = forward_amount_world(group, false, true, |actor| {
+            if matches!(movement, OrdinaryMovement::Left | OrdinaryMovement::Right) {
+                actor["control"]["combat"] = serde_json::to_value(CombatControlState {
+                    flags: 4,
+                    ..Default::default()
+                })
+                .unwrap();
+            }
+        });
+        let id = world.id(0).unwrap();
+        let hud = ScriptHud::default();
+        assert_eq!(
+            world
+                .move_ordinary(
+                    id,
+                    movement,
+                    1,
+                    0,
+                    ScriptInputs {
+                        frame_scale: Some(256),
+                        nominal_ticks: Some(1),
+                        hud: Some(&hud),
+                        shell_execution: Some(false),
+                        ..Default::default()
+                    },
+                    &mut |_, _| Ok(())
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            world.spatial(id).unwrap().local.position,
+            position,
+            "{movement:?}"
+        );
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(control.motion_direction, direction);
+        assert_eq!(control.movement_flags, counter);
+        assert_eq!(world.inspect(0, 1)["globals"]["locomotion_called"], called);
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn synchronous_walk_forward_uses_live_body_refusal_without_creating_a_task() {
+    use cyrus_game::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, OrdinaryMovement, ScriptHud,
+        ScriptInputs,
+    };
+    let (mut world, data, models) = static_model_fixture_at(cache(), Some(20.0), [10, 20, 30]);
+    let id = world.id(0).unwrap();
+    let other = world.id(1).unwrap();
+    world
+        .refresh_model_presentations(&data, &[id, other])
+        .unwrap();
+    let scene = ordinary_collision_scene(world.world, models);
+    let prepared = world
+        .prepare_ordinary_collision_query(id, &scene, &data, [10, 30], &[id, other])
+        .unwrap();
+    let hud = ScriptHud::default();
+    let before = world.spatial(id).unwrap().local.position;
+    assert_eq!(
+        world
+            .move_ordinary(
+                id,
+                OrdinaryMovement::WalkForward,
+                1,
+                0,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    forward_step_clear: Some(true),
+                    locomotion_geometry: Some(LocomotionGeometry {
+                        ground: OrdinaryGroundQuery {
+                            scene: &scene,
+                            animations: &data,
+                            prepared: &prepared,
+                            distance: u32::MAX,
+                            sidedness: false
+                        },
+                        environment: ObstacleEnvironment {
+                            selected_player: None,
+                            auto_grab: false,
+                            item_system_ready: true,
+                            shell_execution: false,
+                            ticks: 0
+                        }
+                    }),
+                    ..Default::default()
+                },
+                &mut |_, _| panic!("body refusal reached sounds")
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(world.spatial(id).unwrap().local.position, before);
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .collision_response_auxiliary,
+        [0x80, 0]
+    );
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
+fn synchronous_movement_rejects_unknown_timing_before_receiver_writes() {
+    use cyrus_game::script::{OrdinaryMovement, ScriptInputs};
+    for (scale, ticks) in [(None, Some(1)), (Some(256), None)] {
+        let mut world = forward_amount_world(18, false, true, |_| {});
+        let id = world.id(0).unwrap();
+        let before = world.inspect(0, 1);
+        let error = world
+            .move_ordinary(
+                id,
+                OrdinaryMovement::Forward,
+                1,
+                0,
+                ScriptInputs {
+                    frame_scale: scale,
+                    nominal_ticks: ticks,
+                    ..Default::default()
+                },
+                &mut |_, _| panic!("invalid timing reached sounds"),
+            )
+            .unwrap_err();
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("world 7 instance 0 Forward synchronous movement"),
+            "{error}"
+        );
+        assert!(
+            error.contains("requires frame_scale and nominal_ticks"),
+            "{error}"
+        );
+        assert_eq!(world.inspect(0, 1), before);
     }
 }

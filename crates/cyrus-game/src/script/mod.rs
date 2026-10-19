@@ -53,7 +53,7 @@ pub use registry::recovery::{OrdinaryRollbackSnapshot, OrdinaryStableRecoveryInp
 pub use registry::slope::{
     OrdinarySlide, OrdinarySlopeInputs, OrdinarySlopeTurn, ordinary_slide, ordinary_slope_turn,
 };
-pub use registry::spacing::OrdinaryForwardAmountInputs;
+pub use registry::spacing::{OrdinaryForwardAmountInputs, OrdinaryMovement};
 pub use registry::transition::{
     ObstacleEnvironment, ObstacleFallStart, ObstacleTransition, ObstacleTransitionInput,
     ordinary_obstacle_transition,

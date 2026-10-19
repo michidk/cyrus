@@ -1918,6 +1918,122 @@ struct GameHost<'a, 'sound, 'input, 'random> {
     walk_map_count: Option<usize>,
 }
 impl<'input> GameHost<'_, '_, 'input, '_> {
+    fn native_task_call(
+        &mut self,
+        (function, mode): (&str, super::tasks::NativeTaskMode),
+        arguments: &[Argument],
+        invocation: cyrus_script::Invocation,
+    ) -> Result<Option<CallResult>> {
+        let kind = mode.kind();
+        let id = ScriptActorId {
+            generation: self.generation,
+            index: self.index,
+        };
+        let ambient = self.ambient_call();
+        let player_dialogue = self.player_dialogue_call();
+        let frame_wait = self.frame_wait_call();
+        let operation =
+            if kind != CallKind::Function && arguments.len() == 1 && arguments[0].integer().is_ok()
+            {
+                super::tasks::LocomotionOperation::named(function)
+            } else {
+                None
+            };
+        let locomotion_admission = self.locomotion_probes(operation)?;
+        let locomotion_state = self.locomotion_state();
+        let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
+        let surface = self.registry.actors[self.index].surface;
+        let mut emit = |sound| match &mut self.sounds {
+            Some(sounds) => sounds(
+                id,
+                super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            ),
+            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
+        };
+        let actor = &mut self.registry.actors[self.index];
+        let mut animation =
+            actor
+                .animation
+                .as_mut()
+                .zip(self.inputs.nominal_ticks)
+                .map(|(animation, ticks)| super::tasks::AnimationCall {
+                    animation: &mut animation.playback,
+                    ticks,
+                    frame: &mut animation.frame,
+                    sounds: Some(&mut emit),
+                });
+        let player_position = self
+            .inputs
+            .player_query
+            .as_ref()
+            .and_then(|query| query.player.as_ref())
+            .map(|player| player.position);
+        let mut spatial_call = self
+            .registry
+            .spatial
+            .as_mut()
+            .and_then(|spatial| spatial.actor_mut(self.index).ok())
+            .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
+            .map(
+                |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
+                    matrix: spatial.local.matrix,
+                    locations: &spatial.locations,
+                    effective_position: spatial.effective.map(|pose| pose.position),
+                    player_position,
+                    slave: actor.attributes[26] != 0,
+                    actor_index: self.index,
+                    map_updates: &mut self.registry.map_updates,
+                    position: &mut spatial.local.position,
+                    angles: &mut spatial.local.angles,
+                    frame_scale,
+                    nominal_ticks,
+                },
+            );
+        let services = super::tasks::NativeServices {
+            ambient: Some(&ambient),
+            dialogue: self.registry.globals.dialogue.as_mut(),
+            player_dialogue: Some(player_dialogue),
+            frame_wait: Some(frame_wait),
+            locomotion: Some(super::tasks::LocomotionCall {
+                state: locomotion_state,
+                admission: locomotion_admission,
+                animation_system: self.animation_system,
+                motion: actor
+                    .control
+                    .as_mut()
+                    .map(|control| super::tasks::MotionCall {
+                        direction: &mut control.motion_direction,
+                        counters: &mut control.movement_flags,
+                    }),
+                called: &mut self.registry.globals.locomotion_called,
+            }),
+        };
+        match mode {
+            super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
+                (function, kind),
+                arguments,
+                invocation,
+                &mut animation,
+                &mut spatial_call,
+                services,
+            ),
+            super::tasks::NativeTaskMode::SynchronousMovement => {
+                actor.tasks.call_synchronous_movement(
+                    function,
+                    arguments,
+                    invocation,
+                    &mut animation,
+                    &mut spatial_call,
+                    services,
+                )
+            }
+        }
+    }
+
     fn actor_is_dead(&self, index: usize) -> Result<bool> {
         if self.selected_player()
             == Some(ScriptActorId {
@@ -2756,95 +2872,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 return Ok(CallResult::Complete(value));
             }
         }
-        let ambient = self.ambient_call();
-        let player_dialogue = self.player_dialogue_call();
-        let frame_wait = self.frame_wait_call();
-        let operation =
-            if kind != CallKind::Function && arguments.len() == 1 && arguments[0].integer().is_ok()
-            {
-                super::tasks::LocomotionOperation::named(function)
-            } else {
-                None
-            };
-        let locomotion_admission = self.locomotion_probes(operation)?;
-        let locomotion_state = self.locomotion_state();
-        let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
-        let surface = self.registry.actors[self.index].surface;
-        let mut emit = |sound| match &mut self.sounds {
-            Some(sounds) => sounds(
-                id,
-                super::ScriptSound::Animation {
-                    sound,
-                    surface,
-                    position,
-                },
-            ),
-            None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
-        };
-        let actor = &mut self.registry.actors[self.index];
-        let mut animation =
-            actor
-                .animation
-                .as_mut()
-                .zip(self.inputs.nominal_ticks)
-                .map(|(animation, ticks)| super::tasks::AnimationCall {
-                    animation: &mut animation.playback,
-                    ticks,
-                    frame: &mut animation.frame,
-                    sounds: Some(&mut emit),
-                });
-        let player_position = self
-            .inputs
-            .player_query
-            .as_ref()
-            .and_then(|query| query.player.as_ref())
-            .map(|player| player.position);
-        let mut spatial_call = self
-            .registry
-            .spatial
-            .as_mut()
-            .and_then(|spatial| spatial.actor_mut(self.index).ok())
-            .zip(self.inputs.frame_scale.zip(self.inputs.nominal_ticks))
-            .map(
-                |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
-                    matrix: spatial.local.matrix,
-                    locations: &spatial.locations,
-                    effective_position: spatial.effective.map(|pose| pose.position),
-                    player_position,
-                    slave: actor.attributes[26] != 0,
-                    actor_index: self.index,
-                    map_updates: &mut self.registry.map_updates,
-                    position: &mut spatial.local.position,
-                    angles: &mut spatial.local.angles,
-                    frame_scale,
-                    nominal_ticks,
-                },
-            );
-        if let Some(result) = actor.tasks.call(
-            (function, kind),
+        if let Some(result) = self.native_task_call(
+            (function, super::tasks::NativeTaskMode::Script(kind)),
             arguments,
             invocation,
-            &mut animation,
-            &mut spatial_call,
-            super::tasks::NativeServices {
-                ambient: Some(&ambient),
-                dialogue: self.registry.globals.dialogue.as_mut(),
-                player_dialogue: Some(player_dialogue),
-                frame_wait: Some(frame_wait),
-                locomotion: Some(super::tasks::LocomotionCall {
-                    state: locomotion_state,
-                    admission: locomotion_admission,
-                    animation_system: self.animation_system,
-                    motion: actor
-                        .control
-                        .as_mut()
-                        .map(|control| super::tasks::MotionCall {
-                            direction: &mut control.motion_direction,
-                            counters: &mut control.movement_flags,
-                        }),
-                    called: &mut self.registry.globals.locomotion_called,
-                }),
-            },
         )? {
             return Ok(result);
         }

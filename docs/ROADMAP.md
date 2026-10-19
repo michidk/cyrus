@@ -371,8 +371,15 @@ spacing and complete physical movement comparison remain open.
 marks the shared forward-called state and advances the actual startup counter
 without translating. Headless contracts cover live combat/action/surface choices,
 animation waits, deep-water ramping, suppression, signed scaling and geometry
-admission before counter saturation. Automatic spacing and synchronous movement
-integration remain open.
+admission before counter saturation. Automatic spacing integration remains open.
+
+**Verified:** explicit synchronous movement uses the existing native animation,
+locomotion and spatial services without persistent VM tasks. Headless contracts
+cover the amount query followed by real movement using the next startup step,
+backward movement, combat strafes, duration/animation waits, live WalkForward
+refusal and timing errors before writes. Script task allocation and timing stay
+intact. Automatic spacing, deferred registration by its enclosing pass and
+selected-player movement remain open.
 
 Next, in dependency order:
 

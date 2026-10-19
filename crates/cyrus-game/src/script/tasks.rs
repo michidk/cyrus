@@ -959,6 +959,21 @@ impl LocomotionOperation {
         }
     }
 }
+/// Internal execution retains script task timing while allowing immediate movement.
+#[derive(Clone, Copy)]
+pub(super) enum NativeTaskMode {
+    Script(CallKind),
+    SynchronousMovement,
+}
+impl NativeTaskMode {
+    pub(super) fn kind(self) -> CallKind {
+        match self {
+            Self::Script(kind) => kind,
+            Self::SynchronousMovement => CallKind::Task,
+        }
+    }
+}
+
 impl NativeTasks {
     pub(super) fn locomotion_operation(&self, token: u64) -> Option<LocomotionOperation> {
         match self.tasks.get(&token)? {
@@ -977,6 +992,51 @@ impl NativeTasks {
         spatial: &mut Option<SpatialCall<'_>>,
         services: NativeServices<'_>,
     ) -> Result<Option<CallResult>> {
+        self.invoke(
+            (function, NativeTaskMode::Script(kind)),
+            arguments,
+            invocation,
+            animation,
+            spatial,
+            services,
+        )
+    }
+
+    pub(super) fn call_synchronous_movement(
+        &mut self,
+        function: &str,
+        arguments: &[Argument],
+        invocation: Invocation,
+        animation: &mut Option<AnimationCall<'_, '_>>,
+        spatial: &mut Option<SpatialCall<'_>>,
+        services: NativeServices<'_>,
+    ) -> Result<Option<CallResult>> {
+        anyhow::ensure!(
+            LocomotionOperation::named(function).is_some()
+                || function.eq_ignore_ascii_case("MoveLeft")
+                || function.eq_ignore_ascii_case("MoveRight"),
+            "synchronous native {function} is not a movement operation"
+        );
+        self.invoke(
+            (function, NativeTaskMode::SynchronousMovement),
+            arguments,
+            invocation,
+            animation,
+            spatial,
+            services,
+        )
+    }
+
+    fn invoke(
+        &mut self,
+        (function, mode): (&str, NativeTaskMode),
+        arguments: &[Argument],
+        invocation: Invocation,
+        animation: &mut Option<AnimationCall<'_, '_>>,
+        spatial: &mut Option<SpatialCall<'_>>,
+        services: NativeServices<'_>,
+    ) -> Result<Option<CallResult>> {
+        let kind = mode.kind();
         let mut task = if function.eq_ignore_ascii_case("WaitOnDialog") {
             anyhow::ensure!(
                 kind == CallKind::Task,
@@ -1054,16 +1114,25 @@ impl NativeTasks {
             kind != CallKind::Function,
             "function-encoded {function} timing unsupported"
         );
-        let next = self
-            .next
-            .checked_add(1)
-            .context("native task identity exhausted")?;
-        // Initial completion still allocates a slot and yields until a later task pass.
-        task.complete(arguments, invocation, animation, spatial, services)?;
-        self.next = next;
-        self.tasks.insert(next, task);
-        Ok(Some(CallResult::Pending(next)))
+        let next = match mode {
+            NativeTaskMode::Script(_) => Some(
+                self.next
+                    .checked_add(1)
+                    .context("native task identity exhausted")?,
+            ),
+            NativeTaskMode::SynchronousMovement => None,
+        };
+        let complete = task.complete(arguments, invocation, animation, spatial, services)?;
+        if let Some(next) = next {
+            // Initial script completion still allocates and yields until a later task pass.
+            self.next = next;
+            self.tasks.insert(next, task);
+            Ok(Some(CallResult::Pending(next)))
+        } else {
+            Ok(Some(CallResult::Complete(i32::from(!complete))))
+        }
     }
+
     pub(super) fn poll(
         &mut self,
         token: u64,

@@ -1094,6 +1094,15 @@ action/group selection, startup-counter advancement, animation waits, deep-water
 halving, suppression's unscaled result, wrapping scaling and guards before
 geometry/animation access. It shares animation requests, hazard admission and
 startup arithmetic with movement. It changes no position and creates no VM task.
-Missing animation groups report unavailable. Automatic spacing and synchronous
-movement integration remain open. Rules come from preservation's SOUP forward
+Missing animation groups report unavailable. Automatic spacing integration remains open. Rules come from preservation's SOUP forward
 movement amount contract.
+
+`ScriptWorld::move_ordinary` invokes existing forward, backward, combat strafe and
+WalkForward executors synchronously through the same native services as scripts.
+**Verified:** headless contracts cover the amount-query-to-movement counter
+sequence, real translation, animation waits, live WalkForward body refusal and
+missing timing before writes. Internal movement allocates no continuation and
+preserves existing tasks. Script calls retain their initial allocation/yield and
+function-encoded movement remains unavailable. Selected-player movement and the
+automatic spacing scheduler remain unsupported. The enclosing spacing pass owns
+map registration.
