@@ -74,9 +74,10 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 16,
+        version: 17,
         camera: Default::default(),
         combat_attacks: vec![],
+        combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
         dialogue: cyrus_assets::script::DialogueSettings {

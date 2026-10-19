@@ -1,4 +1,4 @@
-//! Prepared combat attacks with authored omissions retained explicitly.
+//! Prepared combat moves with authored omissions retained explicitly.
 use serde::{Deserialize, Serialize};
 
 /// One attack's ordered motions and constructor range accumulators.
@@ -209,5 +209,83 @@ mod tests {
             let error = prepare(&CombatIni::parse(&text).unwrap()).unwrap_err();
             assert!(format!("{error:#}").contains(expected), "{error:#}");
         }
+    }
+}
+
+/// One defense move. Omitted geometry and timing remain explicitly unavailable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Defense {
+    pub animation_group: i32,
+    pub min_range: Option<i32>,
+    pub max_range: i32,
+    pub first_collide_frame: Option<i32>,
+    pub collide_duration: Option<i32>,
+    pub arc: Option<i32>,
+}
+
+/// Prepare the numbered defense prefix ending at the first zero maximum range.
+/// Admission and animation conversion follow preservation's runtime defense loading rules.
+#[cfg(feature = "parsers")]
+pub fn prepare_defenses(
+    ini: &rgpre::import::combat_ini::CombatIni,
+) -> anyhow::Result<Vec<Defense>> {
+    use anyhow::Context;
+    let mut defenses = Vec::new();
+    for section in 0.. {
+        let Some(source) = ini.defenses.get(&section) else {
+            break;
+        };
+        let max_range = source.max_range.unwrap_or(0);
+        if max_range == 0 {
+            break;
+        }
+        let animation_group = source
+            .animation
+            .with_context(|| format!("COMBAT.INI defend{section:02}: animation absent"))?
+            .wrapping_add(97);
+        defenses.push(Defense {
+            animation_group,
+            min_range: source.min_range,
+            max_range,
+            first_collide_frame: source.first_collide_frame,
+            collide_duration: source.collide_duration,
+            arc: source.arc,
+        });
+    }
+    Ok(defenses)
+}
+
+#[cfg(all(test, feature = "parsers"))]
+mod defense_tests {
+    use super::*;
+    use rgpre::import::combat_ini::CombatIni;
+
+    #[test]
+    fn defense_prefix_uses_nonzero_maximum_and_preserves_omissions() {
+        let ini = CombatIni::parse("[misc]\n[defend00]\nmax_range=-1\nanimation=5\n[defend01]\nmax_range=0\nanimation=6\n[defend02]\nmax_range=10\nanimation=7\n").unwrap();
+        assert_eq!(
+            prepare_defenses(&ini).unwrap(),
+            vec![Defense {
+                animation_group: 102,
+                min_range: None,
+                max_range: -1,
+                first_collide_frame: None,
+                collide_duration: None,
+                arc: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn absent_section_ends_scan_and_missing_animation_is_contextual() {
+        let ini = CombatIni::parse("[misc]\n[defend01]\nmax_range=1\nanimation=5\n").unwrap();
+        assert!(prepare_defenses(&ini).unwrap().is_empty());
+        let ini = CombatIni::parse("[misc]\n[defend00]\nmax_range=1\n").unwrap();
+        assert!(
+            prepare_defenses(&ini)
+                .unwrap_err()
+                .to_string()
+                .contains("defend00: animation absent")
+        );
     }
 }

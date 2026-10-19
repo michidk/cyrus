@@ -279,3 +279,7 @@ including the signed per-world height offset supplied by preservation's
 Terrain playback does not recover those values from GLB positions. Re-export
 older environments and recapture session documents before loading them with
 this height-aware terrain owner; incomplete terrain sources reject explicitly.
+
+Script cache schema 17 retains the contiguous installed defense table separately
+from the attack table, including converted animation groups and authored omissions.
+Native and browser preparation share this owner. Older script caches require re-export.

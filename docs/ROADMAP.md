@@ -215,6 +215,13 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+**Verified:** script cache schema 17 prepares the numbered defense table separately
+from attacks, using preservation's [runtime defense loading rules](https://github.com/michidk/redguard-preservation/blob/b0efa3795ee05819c00bf3fa31d43335170872dd/docs/config/combat-ini.md#runtime-defense-loading).
+Authored omissions remain explicit. Older caches require re-export. Live attack
+execution and automatic decision traversal remain unfinished. Cache preparation,
+round-trip/identity and installed-map contracts pass; workspace gates pass with
+1,171 Rust test executions and zero installed-data skips.
+
 Standalone defence selection, best/open and paced pickers, geometry and
 synchronous starters are implemented from
 [preservation PR 112](https://github.com/michidk/redguard-preservation/pull/112).

@@ -4,9 +4,10 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 16,
+        version: 17,
         camera: Default::default(),
         combat_attacks: vec![],
+        combat_defenses: vec![],
         in_combat_threshold: None,
         non_engaged_spacing: None,
         dialogue: cyrus_assets::script::DialogueSettings {
@@ -256,6 +257,18 @@ fn installed_worlds_keep_script_records_and_explicit_unsupported_actors() {
         if !scripts.combat_attacks.is_empty() {
             assert_eq!(scripts.non_engaged_spacing, spacing, "{}", path.display());
         }
+        assert_eq!(scripts.combat_defenses.len(), 5, "{}", path.display());
+        assert_eq!(
+            scripts
+                .combat_defenses
+                .iter()
+                .map(|move_| move_.animation_group)
+                .collect::<Vec<_>>(),
+            [98, 98, 99, 100, 101],
+            "{}",
+            path.display()
+        );
+        assert_eq!(scripts.combat_defenses[0].arc, None);
         assert!(!scripts.actors.is_empty());
         let placements: Vec<_> = map
             .sections
@@ -601,7 +614,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 16);
+    assert_eq!(scripts.version, 17);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -1075,6 +1088,31 @@ fn neighbor_spacing_retains_signed_unscaled_values_and_invalidates_old_identity(
     decoded.validate().unwrap();
     assert_eq!(decoded.non_engaged_spacing, Some(-123));
     scripts.non_engaged_spacing = None;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
+}
+
+#[test]
+fn defense_metadata_round_trips_and_participates_in_cache_identity() {
+    let mut scripts = cache();
+    scripts.combat_defenses.push(combat::Defense {
+        animation_group: 102,
+        min_range: None,
+        max_range: 100,
+        first_collide_frame: Some(3),
+        collide_duration: Some(2),
+        arc: None,
+    });
+    scripts.content_id = scripts.content_identity().unwrap();
+    let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(decoded.combat_defenses, scripts.combat_defenses);
+    scripts.combat_defenses[0].animation_group = 103;
     assert!(
         scripts
             .validate()

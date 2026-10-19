@@ -189,7 +189,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 16,
+        version: 17,
         in_combat_threshold: combat
             .as_ref()
             .and_then(|combat| combat.misc.in_combat_threshold)
@@ -202,6 +202,12 @@ pub fn prepare_source(
             .map(crate::script::combat::prepare)
             .transpose()
             .with_context(|| format!("world {world} combat attacks"))?
+            .unwrap_or_default(),
+        combat_defenses: combat
+            .as_ref()
+            .map(crate::script::combat::prepare_defenses)
+            .transpose()
+            .with_context(|| format!("world {world} combat defenses"))?
             .unwrap_or_default(),
         player_distance_override,
         clock,

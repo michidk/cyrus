@@ -355,6 +355,8 @@ pub struct Scripts {
     pub version: u32,
     /// Contiguous installed attack table, shared by all combat-capable actors.
     pub combat_attacks: Vec<combat::Attack>,
+    /// Contiguous installed defense table used by the four receiver defense slots.
+    pub combat_defenses: Vec<combat::Defense>,
     /// Installed fighting-query horizontal threshold in Q8 units, with wrapping conversion.
     pub in_combat_threshold: Option<i32>,
     /// Installed multiple-attacker angular spacing threshold, without scaling.
@@ -382,7 +384,7 @@ impl Scripts {
     pub fn content_identity(&self) -> anyhow::Result<String> {
         let bytes = serde_json::to_vec(&(
             self.version,
-            &self.combat_attacks,
+            (&self.combat_attacks, &self.combat_defenses),
             self.in_combat_threshold,
             self.non_engaged_spacing,
             &self.clock,
@@ -401,7 +403,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 16,
+            self.version == 17,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version
