@@ -128,13 +128,10 @@ impl ScriptWorld {
                 return Ok(());
             }
             let selected = inputs.activation.map(|input| input.player).or_else(|| {
-                self.actors
-                    .iter()
-                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
-                    .map(|index| ScriptActorId {
-                        generation: self.generation,
-                        index,
-                    })
+                self.selected_player_index().map(|index| ScriptActorId {
+                    generation: self.generation,
+                    index,
+                })
             });
             if selected == Some(id)
                 && self

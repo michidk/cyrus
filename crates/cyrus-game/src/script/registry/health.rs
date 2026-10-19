@@ -174,9 +174,7 @@ impl ScriptWorld {
             let selected = if let Some(activation) = inputs.activation {
                 Some(activation.player)
             } else {
-                self.actors
-                    .iter()
-                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                self.selected_player_index()
                     .map(|index| self.id(index))
                     .transpose()?
             };

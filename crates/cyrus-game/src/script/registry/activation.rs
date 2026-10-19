@@ -1,5 +1,5 @@
 //! Ordinary activation reads current logical actors at each invocation.
-use super::{ScriptActor, ScriptActorId, ScriptActorSource, ScriptWorld};
+use super::{ScriptActor, ScriptActorId, ScriptWorld};
 use crate::script::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, GameplayGlobals,
     ScriptHud,
@@ -36,9 +36,7 @@ pub(super) fn ordinary_inputs(
     use_held: bool,
     receiver: Option<(usize, &[Argument])>,
 ) -> Result<ActivationInputs> {
-    let index = actors
-        .iter()
-        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+    let index = super::selected_player_index(actors, globals)
         .context("activation selected player unavailable")?;
     let mut states = BTreeMap::from([(index, actor_state(&actors[index])?)]);
     let mut labels = BTreeMap::new();

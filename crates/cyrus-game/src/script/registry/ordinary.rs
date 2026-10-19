@@ -297,9 +297,8 @@ impl ScriptWorld {
                             .transpose()?
                             .unwrap_or(false)
                     {
-                        self.actors
-                            .iter()
-                            .find(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                        self.selected_player_index()
+                            .map(|index| &self.actors[index])
                             .and_then(|actor| {
                                 actor.control.as_ref().map(|control| (actor, control))
                             })
@@ -539,11 +538,7 @@ impl OrdinaryContext<'_, '_> {
         if sample.0 != world.generation()
             || !world.model_resources_prepared()
             || world.model_admission.is_none()
-            || (world
-                .actors
-                .iter()
-                .any(|actor| matches!(actor.source, super::ScriptActorSource::Player))
-                && self.players.single().is_err())
+            || (world.selected_player_index().is_some() && self.players.single().is_err())
         {
             return Ok(false);
         }
@@ -749,10 +744,7 @@ fn initialize_entry(
 ) -> anyhow::Result<()> {
     world.prepare_ordinary_models(data, ticks, send_sound)?;
     if let Some(pose) = player_pose
-        && world
-            .actors
-            .iter()
-            .any(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+        && world.selected_player_index().is_some()
     {
         for index in 0..world.actors.len() {
             if !matches!(
@@ -899,10 +891,7 @@ pub fn run_ordinary(
         )?;
         if players.single().is_ok()
             && let Some(hud) = hud.as_ref()
-            && let Some(index) = world
-                .actors
-                .iter()
-                .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+            && let Some(index) = world.selected_player_index()
         {
             world.check_player_weapon(
                 world.id(index)?,
@@ -929,11 +918,7 @@ pub fn run_ordinary(
         return;
     }
     let player_query = (|| -> anyhow::Result<_> {
-        let Some(index) = world
-            .actors
-            .iter()
-            .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
-        else {
+        let Some(index) = world.selected_player_index() else {
             return Ok(None);
         };
         if players.single().is_err() {

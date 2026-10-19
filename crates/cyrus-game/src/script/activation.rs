@@ -170,6 +170,10 @@ pub struct GameplayGlobals {
     /// Script potion counters (`SetPotion`, `GetPotion`); shipped scripts use indices 0 to 3.
     /// The engine table starts zero-filled.
     pub(super) potions: [i32; 4],
+    /// Swap state of the two player records: clear selects CYRUS, set selects GREMLIN. Retained across
+    /// world replacement and saves; nothing sets it yet (`PushPlayer`/`PopPlayer` need the host's player
+    /// controller, camera and entity binding to follow the selection first).
+    pub(super) player_swapped: bool,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
 }
@@ -188,6 +192,11 @@ pub struct HostRequests {
     pub pop_player: bool,
 }
 impl GameplayGlobals {
+    /// Whether the swap state selects GREMLIN instead of CYRUS as the selected player.
+    pub fn player_swapped(&self) -> bool {
+        self.player_swapped
+    }
+
     /// Takes and clears the pending script requests.
     pub fn take_host_requests(&mut self) -> HostRequests {
         std::mem::take(&mut self.host_requests)
@@ -1004,6 +1013,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     candle_show_requested: bool,
     #[serde(default)]
     potions: [i32; 4],
+    #[serde(default)]
+    player_swapped: bool,
 }
 impl GameplayGlobals {
     /// Shared next-hop link flags and backtracking inhibition.
@@ -1041,6 +1052,7 @@ impl GameplayGlobals {
             highlighted_choice: self.highlighted_choice.clone(),
             candle_show_requested: self.candle_show_requested,
             potions: self.potions,
+            player_swapped: self.player_swapped,
         }
     }
 
@@ -1105,6 +1117,7 @@ impl GameplayGlobals {
             highlighted_choice: saved.highlighted_choice,
             candle_show_requested: saved.candle_show_requested,
             potions: saved.potions,
+            player_swapped: saved.player_swapped,
             host_requests: HostRequests::default(),
         })
     }

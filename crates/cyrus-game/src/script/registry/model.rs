@@ -325,9 +325,7 @@ impl ScriptWorld {
                     return Ok(());
                 }
                 let selected_player = self
-                    .actors
-                    .iter()
-                    .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
+                    .selected_player_index()
                     .context("weapon model selected player unavailable")?;
                 if id.index == selected_player && actor.attributes[105] == 1 {
                     return Ok(());

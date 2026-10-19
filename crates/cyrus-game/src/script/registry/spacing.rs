@@ -395,13 +395,10 @@ impl ScriptWorld {
                 .activation
                 .map(|activation| activation.player)
                 .or_else(|| {
-                    self.actors
-                        .iter()
-                        .position(|actor| matches!(actor.source, super::ScriptActorSource::Player))
-                        .map(|index| ScriptActorId {
-                            generation: self.generation,
-                            index,
-                        })
+                    self.selected_player_index().map(|index| ScriptActorId {
+                        generation: self.generation,
+                        index,
+                    })
                 });
             let Some(pair) = self.ordinary_spacing_neighbors(id, target, selected)? else {
                 return Ok(false);

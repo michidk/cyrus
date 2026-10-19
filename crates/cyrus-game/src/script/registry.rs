@@ -61,6 +61,19 @@ pub struct ScriptActorId {
     pub index: usize,
 }
 
+/// Index of the selected player: CYRUS, or GREMLIN while the swap state is set. The standalone player
+/// roles are the only candidates, so a world without the selected role has no selected player.
+pub(super) fn selected_player_index(
+    actors: &[ScriptActor],
+    globals: &super::GameplayGlobals,
+) -> Option<usize> {
+    actors.iter().position(|actor| match actor.source {
+        ScriptActorSource::Player => !globals.player_swapped(),
+        ScriptActorSource::AlternatePlayer => globals.player_swapped(),
+        _ => false,
+    })
+}
+
 /// Player and camera instances are independent of authored map placements.
 #[derive(Debug, Clone)]
 pub enum ScriptActorSource {
@@ -351,6 +364,11 @@ pub struct ScriptWorld {
     camera: Option<super::camera::CameraState>,
 }
 impl ScriptWorld {
+    /// Index of the selected player (CYRUS, or GREMLIN while the swap state is set).
+    pub(super) fn selected_player_index(&self) -> Option<usize> {
+        selected_player_index(&self.actors, &self.globals)
+    }
+
     /// Retained camera session, when the world has both a player and a CAMERA instance.
     pub fn camera(&self) -> Option<&super::camera::CameraState> {
         self.camera.as_ref()
@@ -510,9 +528,7 @@ impl ScriptWorld {
                 .is_some_and(|combat| combat.flags & 4 != 0 && combat.target.is_some())
         {
             let player = self
-                .actors
-                .iter()
-                .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+                .selected_player_index()
                 .context("perception selected player unavailable")?;
             self.maintain_combat_perception(
                 id,
@@ -524,14 +540,10 @@ impl ScriptWorld {
             )?;
         }
         self.actors[index].attributes[1] = self.actors[index].attributes[119];
-        let selected_player = self
-            .actors
-            .iter()
-            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
-            .map(|index| ScriptActorId {
-                generation: self.generation,
-                index,
-            });
+        let selected_player = self.selected_player_index().map(|index| ScriptActorId {
+            generation: self.generation,
+            index,
+        });
         self.process_combat_message(id, selected_player)?;
         if !selected
             && self.actors[index]
@@ -1354,9 +1366,7 @@ impl ScriptWorld {
     /// Player switching and prompt lineup scheduling remain separate unsupported services.
     pub fn player_activation_state(&self) -> Result<(ScriptActorId, super::ActivationActor)> {
         let index = self
-            .actors
-            .iter()
-            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .selected_player_index()
             .context("selected player absent")?;
         let actor = &self.actors[index];
         let control = actor
@@ -2200,10 +2210,7 @@ impl ScriptActors {
     /// Ordinary world reloads retain globals and must not call this operation.
     pub fn begin_new_game(&mut self) {
         if let Some(world) = self.current.as_mut() {
-            let player = world
-                .actors
-                .iter()
-                .position(|actor| matches!(actor.source, ScriptActorSource::Player));
+            let player = world.selected_player_index();
             let lockout = world.globals.lockout_player(0);
             apply_player_lockout(&mut world.actors, &mut world.activation, player, lockout);
             world.globals.combat_messages.reset();
@@ -2607,9 +2614,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .map(|inputs| inputs.player)
             .or_else(|| {
                 self.registry
-                    .actors
-                    .iter()
-                    .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+                    .selected_player_index()
                     .map(|index| ScriptActorId {
                         generation: self.generation,
                         index,
@@ -2982,11 +2987,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     .as_ref()
                     .is_some_and(|namespace| namespace.eq_ignore_ascii_case(name))
             }),
-            Target::Player => self
-                .registry
-                .actors
-                .iter()
-                .position(|actor| matches!(actor.source, ScriptActorSource::Player)),
+            Target::Player => self.registry.selected_player_index(),
             Target::Camera => self
                 .registry
                 .actors
@@ -3336,12 +3337,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .inputs
                 .activation
                 .map(|inputs| inputs.player.index)
-                .or_else(|| {
-                    self.registry
-                        .actors
-                        .iter()
-                        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
-                })
+                .or_else(|| self.registry.selected_player_index())
                 .context("LockoutPlayer selected player unavailable")?;
             let lockout = self.registry.globals.lockout_player(value);
             apply_player_lockout(
@@ -4553,5 +4549,99 @@ mod fighting_tests {
         }
         assert!(!query(&[[1, 0, 0]], &[1], 10, 1, true));
         assert!(!query(&[[1, 0, 0]], &[], 10, 1, false));
+    }
+}
+
+#[cfg(test)]
+mod selector_tests {
+    use super::*;
+
+    fn actor(source: ScriptActorSource) -> ScriptActor {
+        ScriptActor {
+            light: None,
+            message_read: 0,
+            source,
+            runtime_identifier: None,
+            namespace: None,
+            native_hook: None,
+            combat_taunts: vec![],
+            runtime: None,
+            unavailable: None,
+            attributes: vec![0; 256],
+            control: Some(ActorControlState::default()),
+            surface: Some(0),
+            model: Default::default(),
+            collision: None,
+            player_movement: None,
+            location_offsets: vec![],
+            tasks: Default::default(),
+            native_commands: Default::default(),
+            animation: None,
+            animation_failure: None,
+            update_failure: None,
+        }
+    }
+
+    #[test]
+    fn selection_follows_the_retained_swap_state_across_snapshots() {
+        let map = ScriptActorSource::Map(Instance {
+            object_id: 1,
+            actor: "ACTOR".into(),
+            object_type: 0,
+            active: 0,
+            model_name: String::new(),
+            model_mode: 0,
+            light_intensity: 0,
+            light_radius: 0,
+            light_rgb: [0; 3],
+            map_position: [0; 3],
+            angles: [0; 3],
+        });
+        // Creation order: ordinary actors, then CYRUS, GREMLIN and CAMERA.
+        let actors: Vec<_> = [
+            map,
+            ScriptActorSource::Player,
+            ScriptActorSource::AlternatePlayer,
+            ScriptActorSource::Camera,
+        ]
+        .into_iter()
+        .map(actor)
+        .collect();
+        let mut globals = super::super::GameplayGlobals::new_session();
+        assert_eq!(selected_player_index(&actors, &globals), Some(1));
+        globals.player_swapped = true;
+        assert_eq!(selected_player_index(&actors, &globals), Some(2));
+        let snapshot = serde_json::to_value(globals.snapshot()).unwrap();
+        assert_eq!(snapshot["player_swapped"], true);
+        // Saves written before the swap state existed restore with it clear.
+        let mut legacy = snapshot;
+        legacy.as_object_mut().unwrap().remove("player_swapped");
+        let settings = cyrus_assets::script::DialogueSettings {
+            menu_start: [35, 25],
+            max_menu_items: 300,
+            max_dialog_lines: 20,
+            max_text_width: 500,
+            menu_traverse_delay: 4,
+            print_text: true,
+            use_speech: true,
+            max_distance: 1600,
+            rtx_filename: "ENGLISH.RTX".into(),
+        };
+        let restore = |value| {
+            super::super::GameplayGlobals::from_snapshot(
+                serde_json::from_value(value).unwrap(),
+                &settings,
+                &[],
+                &Default::default(),
+            )
+            .unwrap()
+        };
+        assert!(!restore(legacy).player_swapped());
+        assert!(restore(serde_json::to_value(globals.snapshot()).unwrap()).player_swapped());
+        // A world without the selected role has no selected player.
+        assert_eq!(selected_player_index(&actors[..2], &globals), None);
+        globals.player_swapped = false;
+        assert_eq!(selected_player_index(&actors[..2], &globals), Some(1));
+        assert_eq!(selected_player_index(&actors[2..], &globals), None);
     }
 }
