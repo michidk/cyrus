@@ -200,6 +200,7 @@ module where it is defined and regenerate.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
 - `src/script/tasks/persistence.rs` — Native task continuations validate against saved VM calls without execution.
 - `src/script/tasks/persistence/tests.rs` — Native continuations resume through VM calls and explicit restored service bindings.
+- `src/script/world_request.rs` — Consumes the `LoadWorld` session request raised by scripts.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 
