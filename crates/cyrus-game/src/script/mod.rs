@@ -65,6 +65,7 @@ pub use registry::vertical::{
     OrdinaryVerticalInputs, OrdinaryVerticalState, ordinary_falling_vertical,
     ordinary_queued_vertical, ordinary_vertical_factor,
 };
+pub use registry::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput};
 mod navigation;
 mod order;
 mod playback;

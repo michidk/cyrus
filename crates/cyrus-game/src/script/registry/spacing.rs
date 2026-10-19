@@ -62,7 +62,7 @@ impl ScriptWorld {
         ])
     }
 
-    fn spacing_weapon(
+    pub(super) fn spacing_weapon(
         &mut self,
         id: ScriptActorId,
         inputs: super::ScriptInputs<'_>,

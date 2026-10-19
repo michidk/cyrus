@@ -1154,3 +1154,10 @@ receiver's four defense slots. Forced animation/sound dispatch, finite loop coun
 and pending-request cancellation precede combat state and aggression writes.
 Continuation and cleanup need no timing input. This explicit service does not
 schedule ordinary combat decisions.
+
+`coordinate_ordinary_combat` uses the same retained coordination value as attacker
+and spacing queries. It preserves list/cyclic candidate order, queues addressed
+messages before timed taunts and resets the close-distance counter on state
+assignment. Its result retains the branch selected at entry even after state
+changes. Spacing, counter-attack, defense selection and automatic traversal remain
+caller-owned stages.

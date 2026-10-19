@@ -2292,7 +2292,7 @@ mod tests {
     impl DefenceSelectionServices for FallibleSelectionServices {
         fn best(&mut self, d: &mut CombatDecision, flags: u8) -> Result<Option<i32>> {
             assert_eq!(flags, 0xa1);
-            d.near_state = 11;
+            d.aggression = 11;
             self.visit("best".into())?;
             Ok(Some(3))
         }
@@ -2351,7 +2351,7 @@ mod tests {
             ["best", "reach3", "start3", "paced", "reach4", "start4"]
         );
         assert_eq!(
-            (d.attack_state, d.defence_counter, d.near_state, flags),
+            (d.attack_state, d.defence_counter, d.aggression, flags),
             (4, 7, 11, 0xb1)
         );
     }
@@ -2371,7 +2371,7 @@ mod tests {
                     .contains(fail)
             );
             assert_eq!(owner.events, all[..=index]);
-            assert_eq!(d.near_state, 11);
+            assert_eq!(d.aggression, 11);
             assert_eq!(d.defence_counter, if index >= 3 { 7 } else { 1 });
             assert_eq!(flags, if index >= 2 { 0xb1 } else { 0xa1 });
             assert_eq!(

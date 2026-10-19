@@ -1,0 +1,225 @@
+//! Combat coordination shares attacker eligibility, close counters and addressed class queues.
+use super::{ScriptActorId, ScriptInputs, ScriptWorld};
+use anyhow::{Context, Result};
+
+/// The original branch remains selected for the pass even when coordination changes its state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrdinaryCombatBranch {
+    Active,
+    Waiting,
+    Disengaged,
+}
+
+/// Scheduler-owned engagement, selected-player identity and shared timed-taunt counter.
+#[derive(Clone, Copy, Debug)]
+pub struct OrdinaryCombatCoordinationInput {
+    pub engaged: bool,
+    pub selected_player: ScriptActorId,
+    pub frame_value: i32,
+}
+
+impl ScriptWorld {
+    /// Assign coordination state, resetting consecutive close-distance passes first.
+    /// This is also the state consumed by ordinary attacker and spacing queries.
+    pub fn set_combat_coordination(&mut self, id: ScriptActorId, state: i32) -> Result<()> {
+        let index = self.resolve(id)?;
+        let combat = self.actors[index]
+            .control
+            .as_mut()
+            .and_then(|control| control.combat.as_mut())
+            .with_context(|| {
+                format!(
+                    "world {} instance {} coordination combat unavailable",
+                    self.world, id.index
+                )
+            })?;
+        combat.close_distance_passes = 0;
+        combat.attacker_selection_state = state;
+        Ok(())
+    }
+
+    /// First active coordinator in list order, excluding the supplied target. A nonnull
+    /// candidate target is required, but equality with the supplied target is not.
+    pub fn ordinary_waiting_coordinator(
+        &self,
+        target: ScriptActorId,
+    ) -> Result<Option<ScriptActorId>> {
+        self.resolve(target)?;
+        let traversal = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.retained_selected())
+            .context("waiting coordination ordinary traversal unavailable")?;
+        for &candidate in traversal {
+            let index = self.resolve(candidate)?;
+            if candidate == target {
+                continue;
+            }
+            let Some(control) = self.actors[index].control.as_ref() else {
+                continue;
+            };
+            let Some(combat) = control.combat.as_ref() else {
+                continue;
+            };
+            if combat.target.is_some()
+                && control.death_selector != 8
+                && combat.attacker_selection_state == 1
+            {
+                return Ok(Some(candidate));
+            }
+        }
+        Ok(None)
+    }
+
+    /// First other armed/combat-stance actor sharing the receiver's target, cycling
+    /// from the next ordinary actor and excluding the selected player.
+    pub fn ordinary_active_coordinator(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+    ) -> Result<Option<ScriptActorId>> {
+        let index = self.resolve(id)?;
+        self.resolve(selected_player)?;
+        let target = self.actors[index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("active coordination receiver combat unavailable")?
+            .target;
+        let traversal = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.retained_selected())
+            .context("active coordination ordinary traversal unavailable")?
+            .to_vec();
+        let start = traversal
+            .iter()
+            .position(|candidate| *candidate == id)
+            .context("active coordination receiver absent from ordinary traversal")?;
+        for offset in 1..traversal.len() {
+            let candidate = traversal[(start + offset) % traversal.len()];
+            let candidate_index = self.resolve(candidate)?;
+            let Some(control) = self.actors[candidate_index].control.as_ref() else {
+                continue;
+            };
+            let Some(combat) = control.combat.as_ref() else {
+                continue;
+            };
+            if combat.target != target || control.death_selector == 8 {
+                continue;
+            }
+            // The original tests the held-weapon owner before the stance flag and player exclusion.
+            let armed = self.spacing_weapon(candidate, inputs)?.1;
+            let flags = self.actors[candidate_index]
+                .control
+                .as_ref()
+                .expect("admitted control")
+                .combat
+                .as_ref()
+                .expect("admitted combat")
+                .flags;
+            if (armed || flags & 4 != 0) && candidate != selected_player {
+                return Ok(Some(candidate));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Run coordination after engagement sampling and inactive cleanup executors.
+    /// Message sends precede taunts and state assignment; earlier writes survive errors.
+    /// The returned original branch tells the caller which later decision stages to run.
+    /// This explicit service neither repeats sampling nor schedules automatic traversal.
+    pub fn coordinate_ordinary_combat(
+        &mut self,
+        id: ScriptActorId,
+        sample: OrdinaryCombatCoordinationInput,
+        inputs: ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<OrdinaryCombatBranch> {
+        let result = (|| -> Result<_> {
+            let index = self.resolve(id)?;
+            self.resolve(sample.selected_player)?;
+            let combat = self.actors[index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("receiver combat unavailable")?;
+            let active = combat.attacker_selection_state == 1;
+            let aggression = combat.decision.aggression;
+            let close = combat.close_distance_passes;
+            let target = combat.target;
+            if !sample.engaged {
+                if active {
+                    if let Some(candidate) =
+                        self.ordinary_active_coordinator(id, sample.selected_player, inputs)?
+                    {
+                        self.send_combat_message(id, candidate, 0xd002)?;
+                    }
+                    self.set_combat_coordination(id, 0)?;
+                }
+                return Ok(OrdinaryCombatBranch::Disengaged);
+            }
+            if active {
+                if aggression < 0
+                    && let Some(candidate) =
+                        self.ordinary_active_coordinator(id, sample.selected_player, inputs)?
+                {
+                    let far = self.actors[candidate.index]
+                        .control
+                        .as_ref()
+                        .expect("admitted control")
+                        .combat
+                        .as_ref()
+                        .expect("admitted combat")
+                        .spacing_ranges[1]
+                        .wrapping_mul(3);
+                    let from = self.query_position(candidate)?;
+                    let player = self.query_position(sample.selected_player)?;
+                    let distance =
+                        cyrus_collision::distance::rounded_distance(std::array::from_fn(|axis| {
+                            player[axis].wrapping_sub(from[axis])
+                        }))?;
+                    if distance < far {
+                        self.send_combat_message(id, candidate, 0xd002)?;
+                        self.request_timed_combat_taunt(
+                            id,
+                            9,
+                            sample.frame_value,
+                            inputs,
+                            random,
+                            sounds,
+                        )?;
+                        self.set_combat_coordination(id, 0)?;
+                    }
+                }
+                Ok(OrdinaryCombatBranch::Active)
+            } else {
+                let target = target.context("waiting coordination target unavailable")?;
+                if let Some(candidate) = self.ordinary_waiting_coordinator(target)? {
+                    if close > 10 {
+                        self.send_combat_message(id, candidate, 0xd003)?;
+                        self.request_timed_combat_taunt(
+                            id,
+                            8,
+                            sample.frame_value,
+                            inputs,
+                            random,
+                            sounds,
+                        )?;
+                    }
+                } else {
+                    self.set_combat_coordination(id, 1)?;
+                }
+                Ok(OrdinaryCombatBranch::Waiting)
+            }
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} combat coordination",
+                self.world, id.index
+            )
+        })
+    }
+}

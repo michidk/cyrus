@@ -17648,3 +17648,325 @@ fn live_attack_executor_uses_four_slots_and_orders_animation_before_combat_write
         }
     }
 }
+
+#[test]
+fn combat_coordination_reuses_attacker_state_and_preserves_the_entry_branch() {
+    use cyrus_game::script::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput};
+    for (
+        engaged,
+        state,
+        budget,
+        close,
+        candidate,
+        distance,
+        expected_branch,
+        expected_state,
+        expected_counter,
+        message,
+    ) in [
+        (
+            true,
+            0,
+            50,
+            11,
+            false,
+            20480,
+            OrdinaryCombatBranch::Waiting,
+            1,
+            0,
+            None,
+        ),
+        (
+            true,
+            0,
+            50,
+            10,
+            true,
+            20480,
+            OrdinaryCombatBranch::Waiting,
+            0,
+            10,
+            None,
+        ),
+        (
+            true,
+            0,
+            50,
+            11,
+            true,
+            20480,
+            OrdinaryCombatBranch::Waiting,
+            0,
+            11,
+            Some(0xd003),
+        ),
+        (
+            true,
+            1,
+            0,
+            11,
+            true,
+            20480,
+            OrdinaryCombatBranch::Active,
+            1,
+            11,
+            None,
+        ),
+        (
+            true,
+            1,
+            -1,
+            11,
+            true,
+            29999,
+            OrdinaryCombatBranch::Active,
+            0,
+            0,
+            Some(0xd002),
+        ),
+        (
+            true,
+            1,
+            -1,
+            11,
+            true,
+            30000,
+            OrdinaryCombatBranch::Active,
+            1,
+            11,
+            None,
+        ),
+        (
+            false,
+            1,
+            50,
+            11,
+            true,
+            20480,
+            OrdinaryCombatBranch::Disengaged,
+            0,
+            0,
+            Some(0xd002),
+        ),
+        (
+            false,
+            0,
+            50,
+            11,
+            true,
+            20480,
+            OrdinaryCombatBranch::Disengaged,
+            0,
+            11,
+            None,
+        ),
+    ] {
+        let (mut world, scripts, data) = spacing_fixture(|saved| {
+            let own = &mut saved["actors"][0]["control"]["combat"];
+            own["attacker_selection_state"] = state.into();
+            own["close_distance_passes"] = close.into();
+            own["decision"]["aggression"] = budget.into();
+            saved["actors"][2]["control"]["combat"] = serde_json::Value::Null;
+            let other = &mut saved["actors"][3]["control"]["combat"];
+            other["attacker_selection_state"] = i32::from(candidate).into();
+            other["spacing_ranges"] = serde_json::json!([1, 10000, 5000]);
+            if !candidate {
+                other["target"] = serde_json::Value::Null;
+            }
+            saved["actors"][3]["attributes"][110] = 1.into();
+            saved["spatial"]["actors"][3]["local"]["position"] = serde_json::json!([0, 0, 0]);
+            saved["spatial"]["actors"][1]["local"]["position"] =
+                serde_json::json!([0, distance, 0]);
+        });
+        world.ordinary_actors([0, 0]).unwrap();
+        let id = world.id(0).unwrap();
+        let other = world.id(3).unwrap();
+        let player = world.id(1).unwrap();
+        let before = movement_snapshot(&world, &scripts, &data);
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let branch = world
+            .coordinate_ordinary_combat(
+                id,
+                OrdinaryCombatCoordinationInput {
+                    engaged,
+                    selected_player: player,
+                    frame_value: 0,
+                },
+                Default::default(),
+                &mut random,
+                &mut |_, _| panic!("empty taunt list dispatched sound"),
+            )
+            .unwrap();
+        assert_eq!(branch, expected_branch);
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (
+                combat.attacker_selection_state,
+                combat.close_distance_passes
+            ),
+            (expected_state, expected_counter)
+        );
+        assert_eq!(combat.decision.aggression, budget);
+        let received = world.consume_combat_message(other).unwrap();
+        assert_eq!(
+            received.map(|m| (m.sender, m.receiver, m.code)),
+            message.map(|code| (id, Some(other), code))
+        );
+        assert!(world.consume_combat_message(other).unwrap().is_none());
+        assert_eq!(random.state(), 1);
+        let after = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(after["actors"][0]["tasks"], before["actors"][0]["tasks"]);
+        assert_eq!(after["spatial"], before["spatial"]);
+    }
+}
+
+#[test]
+fn combat_coordinator_queries_preserve_head_order_cycling_and_distinct_filters() {
+    let (mut world, _, _) = spacing_fixture(|saved| {
+        // Legacy duplicate fields cannot override the live coordination owner on restore.
+        saved["actors"][3]["control"]["combat"]["decision"]["near_state"] = 0.into();
+        saved["actors"][3]["control"]["combat"]["decision"]["far_ticks"] = 999.into();
+        // Waiting lookup admits a different nonnull target and does not query weapon state.
+        saved["actors"][3]["control"]["combat"]["target"] = serde_json::json!([1, 4]);
+        saved["actors"][3]["attributes"][110] = 1.into();
+        saved["actors"][2]["attributes"][110] = 1.into();
+        saved["actors"][0]["attributes"][110] = 1.into();
+    });
+    let own = world.id(0).unwrap();
+    let player = world.id(1).unwrap();
+    assert!(
+        format!(
+            "{:#}",
+            world.ordinary_waiting_coordinator(player).unwrap_err()
+        )
+        .contains("traversal unavailable")
+    );
+    world.ordinary_actors([0, 0]).unwrap();
+    assert_eq!(
+        world.ordinary_waiting_coordinator(player).unwrap(),
+        Some(world.id(3).unwrap())
+    );
+    assert_eq!(
+        world
+            .ordinary_active_coordinator(own, player, Default::default())
+            .unwrap(),
+        Some(world.id(2).unwrap())
+    );
+    assert_eq!(
+        world
+            .ordinary_active_coordinator(world.id(2).unwrap(), player, Default::default())
+            .unwrap(),
+        Some(own)
+    );
+    world
+        .set_combat_coordination(world.id(3).unwrap(), 0)
+        .unwrap();
+    assert_eq!(
+        world.ordinary_waiting_coordinator(player).unwrap(),
+        Some(world.id(2).unwrap())
+    );
+    world
+        .set_combat_coordination(world.id(2).unwrap(), 0)
+        .unwrap();
+    world.set_combat_coordination(own, 0).unwrap();
+    assert_eq!(world.ordinary_waiting_coordinator(player).unwrap(), None);
+    // Active lookup does not filter candidates by coordination state.
+    assert_eq!(
+        world
+            .ordinary_active_coordinator(own, player, Default::default())
+            .unwrap(),
+        Some(world.id(2).unwrap())
+    );
+}
+
+#[test]
+fn coordination_keeps_queued_message_and_prior_state_when_taunt_service_fails() {
+    use cyrus_game::script::OrdinaryCombatCoordinationInput;
+    let (mut world, _, _) = movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            let mut third = scripts.instances[0].clone();
+            third.object_id = 2;
+            scripts.instances.push(third);
+            for instance in &mut scripts.instances {
+                instance.active = 1;
+            }
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.instances = 3;
+            actor.instance_variables = vec![vec![4]; 3];
+            actor.attributes.insert("attr_num_taunts".into(), 1);
+            actor.combat_taunts = vec![CombatTaunt {
+                trigger: 9,
+                label: *b"TEST",
+                animation: 0,
+            }];
+        },
+        |saved| {
+            for index in [0, 2] {
+                saved["actors"][index]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        flags: 4,
+                        attacker_selection_state: 1,
+                        close_distance_passes: 11,
+                        taunt_period: 1,
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][index]["control"]["combat"]["target"] = serde_json::json!([1, 1]);
+            }
+            saved["actors"][0]["control"]["combat"]["decision"]["aggression"] = (-1).into();
+            saved["actors"][2]["attributes"][110] = 1.into();
+        },
+    );
+    world.ordinary_actors([0, 0]).unwrap();
+    let id = world.id(0).unwrap();
+    let player = world.id(1).unwrap();
+    let other = world.id(2).unwrap();
+    let mut random = cyrus_game::random::EngineRandom::default();
+    let error = world
+        .coordinate_ordinary_combat(
+            id,
+            OrdinaryCombatCoordinationInput {
+                engaged: true,
+                selected_player: player,
+                frame_value: 0,
+            },
+            Default::default(),
+            &mut random,
+            &mut |_, _| panic!("missing timing dispatched sound"),
+        )
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("nominal ticks unavailable"),
+        "{error:#}"
+    );
+    assert_eq!(
+        world.consume_combat_message(other).unwrap().unwrap().code,
+        0xd002
+    );
+    let combat = world.actors()[0]
+        .control_state()
+        .unwrap()
+        .combat
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (
+            combat.attacker_selection_state,
+            combat.close_distance_passes
+        ),
+        (1, 11)
+    );
+    let mut expected = cyrus_game::random::EngineRandom::default();
+    for _ in 0..15 {
+        expected.draw();
+    }
+    assert_eq!(random.state(), expected.state());
+}

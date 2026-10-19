@@ -4,6 +4,7 @@ mod activation;
 mod attack;
 pub(super) mod body;
 pub(super) mod bounds;
+mod coordination;
 mod defence;
 mod dialogue;
 pub(super) mod falling;
@@ -35,6 +36,7 @@ pub(super) mod vertical;
 mod weapon;
 use anyhow::{Context, Result};
 use bevy::prelude::{Assets, Commands, DetectChanges, Handle, Res, ResMut, Resource};
+pub use coordination::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput};
 use cyrus_assets::{
     animation::Animations,
     script::{CombatTaunt, Instance, Scripts},

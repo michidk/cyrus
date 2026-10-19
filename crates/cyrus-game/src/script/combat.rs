@@ -15,9 +15,6 @@ pub struct CombatDecision {
     pub move_selector: i32,
     /// Aggression budget: starts at 50, refilled by the stage and spent by each attack.
     pub aggression: i32,
-    /// Near state of the attacker slot (0 or 1) and the ticks spent far from the target.
-    pub near_state: i32,
-    pub far_ticks: i32,
     /// Pacing divisors: 129 minus attributes 63 (attack) and 62 (defence); the defence counter
     /// starts at 129 minus attribute 58.
     pub attack_pacing: i32,
@@ -31,8 +28,6 @@ impl Default for CombatDecision {
             attack_state: 0,
             move_selector: 0,
             aggression: 50,
-            near_state: 0,
-            far_ticks: 0,
             attack_pacing: 0,
             defence_pacing: 0,
             defence_counter: 0,
@@ -69,7 +64,7 @@ pub struct CombatControlState {
     pub cooldown: u32,
     /// World object-pool allocation index, retained across combat reinitialization.
     pub allocation_index: i32,
-    /// Fighting-query eligibility state; exactly one admits the candidate.
+    /// Combat coordination selector and attacker eligibility; exactly one admits a candidate.
     pub attacker_selection_state: i32,
     /// Pending attack move, then defense attack-slot selector. Selection remains caller-owned.
     pub retained_action_indices: [i32; 2],
@@ -762,7 +757,7 @@ mod constructor_tests {
                 decision.defence_pacing,
                 decision.defence_counter,
                 decision.attack_state,
-                decision.near_state
+                decision.move_selector
             ),
             (50, 120, 100, 29, 0, 0)
         );

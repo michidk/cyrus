@@ -215,6 +215,15 @@ Explicit-stage tests and export coverage do not close automatic acceptance.
 
 ### SOUP next work
 
+**Verified:** the live combat coordinator shares attacker eligibility with spacing,
+uses original list/cyclic candidate order and retains the branch selected at
+entry. State assignment resets the consecutive close-distance counter; addressed
+messages precede timed taunts and later state writes. All 96 controlled original
+coordination passes match the live world. Public contracts cover strict 3D range,
+legacy snapshots and partial failure; the wrong counter reset fails. The final
+gate passes 1,176 Rust executions with zero install skips. Explicit coordination
+does not enable automatic combat decisions.
+
 **Verified:** live attack execution resolves the receiver's four defense slots,
 forces animation with synchronous sound dispatch, sets one finite loop and clears
 the pending animation request before combat start writes. Public headless contracts
