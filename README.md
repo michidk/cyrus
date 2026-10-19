@@ -8,7 +8,7 @@
 
 Bring your own GOG install. cyrus ships no game data.
 
-[Setup](docs/SETUP.md) · [Roadmap](docs/ROADMAP.md) · [How cyrus is built](docs/METHOD.md) · [Contributing](CONTRIBUTING.md)
+[Setup](docs/SETUP.md) · [Delivery issues](https://github.com/michidk/cyrus/issues/92) · [How cyrus is built](docs/METHOD.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -24,7 +24,7 @@ Bring your own GOG install. cyrus ships no game data.
 - Load Redguard worlds from a local GOG install in the native or browser viewer.
 - Inspect loaded worlds with a free camera.
 
-See the [roadmap](docs/ROADMAP.md) for verified support and remaining work.
+See the [delivery issues](https://github.com/michidk/cyrus/issues/92) for remaining work and acceptance evidence.
 
 Join the [Discord](https://discord.com/invite/xjCCyqbxkp) and discuss cyrus in
 `rg-unity-devtalk`.
@@ -116,7 +116,7 @@ their research, implementation, and continued care for Redguard.
 - [How cyrus is built](docs/METHOD.md) explains how evidence and fidelity guide
   each change.
 - [Setup](docs/SETUP.md) covers native, browser, and original-game runs.
-- [Roadmap](docs/ROADMAP.md) tracks completed and planned game support.
+- [Delivery issues](https://github.com/michidk/cyrus/issues/92) track remaining game support and acceptance.
 - [Contributing](CONTRIBUTING.md) covers bug reports and pull requests.
 - [Agent contract](AGENTS.md) defines the rules for coding agents.
 

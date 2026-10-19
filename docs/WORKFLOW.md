@@ -1,6 +1,6 @@
 # WORKFLOW — how the maintainer's agents work
 
-This is the maintainer's own setup: direct commits, roadmap ownership, the
+This is the maintainer's own setup: direct commits, issue ownership, the
 untracked `magic/` working memory and how agents hand work to each other.
 Outside contributors do not need it; `CONTRIBUTING.md` is their path. Rules
 that bind everyone are in `AGENTS.md`.
@@ -12,7 +12,7 @@ that bind everyone are in `AGENTS.md`.
   clones, research, journals, task artifacts. Its `README.md` and
   `METHODOLOGY.md` are local and describe the research side.
 - **artifact** — one folder per task under `magic/artifacts/`. Knowledge that
-  is not in an artifact, the roadmap or the tracked docs does not exist for
+  is not in an archived artifact, a GitHub issue or the tracked docs does not exist for
   the next agent; chat history is not memory.
 - **slice** — one piece of work by one agent in one sitting.
 - **evidence** — something the next agent can rerun: a test, a command and its
@@ -44,12 +44,20 @@ that bind everyone are in `AGENTS.md`.
   work directly to `main` and push; no feature branches or pull requests
   unless asked. Other agents work in the same checkout: stage only the files
   your task touched.
-- Claim in `docs/ROADMAP.md` when starting (one row: items, agent/session,
-  artifact folder) and remove the row when finished. Progress, blockers and
-  handoff go in the task artifact, not the roadmap; the roadmap changes only
-  when something is done, with verification evidence. Update resource coverage
-  when loading or runtime support changes; distinguish parsed data from
-  working behavior. Preserve other agents' rows.
+- Find the owning issue through [delivery tracking](https://github.com/michidk/cyrus/issues/92)
+  or [SOUP #4](https://github.com/michidk/cyrus/issues/4). Claim it with the
+  intended scope, agent/session, worktree and shared-file ownership before
+  editing. Check existing claims and coordinate with active owners.
+- Keep progress, blockers, dependencies, acceptance criteria and handoffs in
+  that issue. Record landing commits and verification evidence when work is
+  complete; distinguish parsed/exported data from working behavior. Update
+  crate documentation when supported behavior changes. Do not keep a second
+  task/status ledger in the repository.
+- Publish established format and engine facts in redguard-preservation. Keep
+  internal research, detailed comparison records and historical checkpoints in
+  redguard-decomp, with source paths and hashes; link the archive from the
+  issue. Local `magic/` artifacts remain working copies and must be archived
+  before handoff.
 - One worktree per agent. Several agents in one checkout leave each other's
   half-done files in the tree and fight over the cargo build lock;
   `t3_thread_launch` with a `workspaceStrategy`, or `git worktree add`, gives
@@ -141,10 +149,10 @@ again to update).
 - [redguard-unity](https://github.com/RGUnity/redguard-unity) — code under
   `Assets/Scripts/` (`Core`, `FFI`, `GameTest`), consumes `rgpre` through FFI.
   Use its names and behavior as research hints; never copy its code. The
-  roadmap records the source review's limitations.
+  owning issue records the source review's limitations.
 
-References serve roadmap stages 1–3 (world playback, player controller,
-interaction and persistence); they do not create a separate feature-parity goal.
+References support world playback, player controller,
+interaction and persistence; they do not create a separate feature-parity goal.
 
 ## Playtesting
 

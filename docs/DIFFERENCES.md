@@ -5,7 +5,7 @@ particular way of running the original. Each entry names the original setup it
 differs from, the reason it is accepted, and how to select the alternative.
 Engine facts behind each entry live in
 [redguard-preservation](https://github.com/michidk/redguard-preservation).
-Unintended differences are bugs; they belong in [ROADMAP.md](ROADMAP.md), not here.
+Unintended differences are bugs; report them in [GitHub issues](https://github.com/michidk/cyrus/issues), not here.
 
 ## 3dfx splash variant
 

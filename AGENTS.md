@@ -9,9 +9,12 @@ Redguard's file formats and engine facts are owned by the sibling project
 
 Read in this order: this file, `docs/METHOD.md` (how a change is judged),
 `docs/MAP.md` (every crate and module, generated), `docs/SETUP.md` (running
-the new and the original game), `docs/ROADMAP.md` (delivery stages, what is
-done and what is next), `docs/DIFFERENCES.md` (accepted differences from the original), then the `README.md` of the crate you touch. The maintainer's agents also follow `docs/WORKFLOW.md`
-(direct commits, roadmap ownership, `magic/` artifacts, handoff). The root
+the new and the original game), `docs/DIFFERENCES.md` (accepted differences
+from the original), then the `README.md` of the crate you touch.
+[Delivery issues](https://github.com/michidk/cyrus/issues/92) and
+[SOUP #4](https://github.com/michidk/cyrus/issues/4) own remaining work,
+acceptance, status and session claims. The maintainer's agents also follow
+`docs/WORKFLOW.md` (direct commits, issue ownership, `magic/` artifacts, handoff). The root
 `README.md` is for players, `CONTRIBUTING.md` for human contributors.
 
 ## Hard rules
@@ -121,7 +124,7 @@ untracked working memory. Each crate has a `README.md` with its commands.
   without loading the full game.
 - Conventional Commits: `type(scope): description`. The scope is the crate
   without its prefix (`game`, `web`, `mcp`), the module (`scene`, `player`,
-  `loading`), or `dev`, `docs`, `roadmap`, `agents`, `repo`.
+  `loading`), or `dev`, `docs`, `agents`, `repo`.
 - Match verification to the change before committing:
   - Documentation-only changes, including Rust doc comments, need
     `dev/scripts/publish-check.sh` and `git diff --check`. Also run

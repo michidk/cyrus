@@ -144,7 +144,7 @@ untracked and are never included in application releases.
    modes where the extraction is small. Apply the egui styling pass.
 5. Verify both applications and update crate READMEs, setup instructions,
    generated map, workspace configuration, just recipes, web tooling, and CI.
-   Record accepted tooling progress in the roadmap during coordinated integration.
+   Record accepted tooling progress and verification evidence in the owning GitHub issue during coordinated integration.
 
 Commands are `cargo run -p cyrus-viewer -- --install PATH`,
 `just viewer-web-build`, and `just run-viewer-web PATH`. Their implementation should reuse the existing build
