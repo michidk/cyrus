@@ -42,7 +42,8 @@ ownership, host services and internal responsibilities. Hosts integrate through
 contextual errors. Explicit script operations do not establish automatic
 scheduler admission or complete gameplay support.
 
-The [roadmap](../../docs/ROADMAP.md) tracks supported behavior and remaining work.
+The [roadmap](../../docs/ROADMAP.md) summarizes support.
+[SOUP #4](https://github.com/michidk/cyrus/issues/4) tracks remaining work and acceptance.
 
 ## Verification
 
