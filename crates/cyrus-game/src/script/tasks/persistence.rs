@@ -144,7 +144,7 @@ impl NativeTasks {
                             "restored dialogue owner unavailable"
                         );
                     }
-                    Task::SpeakerAnimation { index, .. } => {
+                    Task::SpeakerAnimation { index, player, .. } => {
                         ensure!(
                             *index < 3,
                             "rtxAnim saved group index {index} exceeds three"
@@ -153,8 +153,9 @@ impl NativeTasks {
                             bindings.dialogue.is_some(),
                             "restored dialogue owner unavailable"
                         );
+                        // RTXpAnim animates the selected player, not the receiver this binds.
                         ensure!(
-                            bindings.animation.is_some(),
+                            *player || bindings.animation.is_some(),
                             "restored rtxAnim animation owner unavailable"
                         );
                     }
@@ -197,7 +198,8 @@ impl Task {
             }
             Self::PlayerDialogue { .. } => ("RTXp", 1, Some(CallKind::Task)),
             Self::SpeakerDialogue(_) => ("RTX", 1, Some(CallKind::Task)),
-            Self::SpeakerAnimation { .. } => ("rtxAnim", 4, Some(CallKind::Task)),
+            Self::SpeakerAnimation { player: false, .. } => ("rtxAnim", 4, Some(CallKind::Task)),
+            Self::SpeakerAnimation { player: true, .. } => ("RTXpAnim", 4, Some(CallKind::Task)),
             Self::ShowPlayer { .. } => ("showPlayer", 0, Some(CallKind::Task)),
             Self::Ambient { .. } => ("AmbientSound", 3, Some(CallKind::Multitask)),
             Self::Movement { .. } => ("MoveByAxis", 3, None),

@@ -2369,7 +2369,21 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .then(|| self.camera_slot_request());
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
-        let mut emit = |sound| match &mut self.sounds {
+        // RTXpAnim animates the selected player, who emits animation sounds under their own identity.
+        let player_slot = self.selected_player().filter(|player| {
+            player.generation == self.generation
+                && player.index != self.index
+                && player.index < self.registry.actors.len()
+        });
+        let player_sound = player_slot.map(|player| {
+            (
+                player,
+                animation_sound_position(self.registry.spatial.as_ref(), player.index),
+                self.registry.actors[player.index].surface,
+            )
+        });
+        let sound_handler = std::cell::RefCell::new(&mut self.sounds);
+        let mut emit = |sound| match &mut **sound_handler.borrow_mut() {
             Some(sounds) => sounds(
                 id,
                 super::ScriptSound::Animation {
@@ -2380,7 +2394,26 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
-        let actor = &mut self.registry.actors[self.index];
+        let mut emit_player = |sound| match (&mut **sound_handler.borrow_mut(), player_sound) {
+            (Some(sounds), Some((player, position, surface))) => sounds(
+                player,
+                super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            ),
+            _ => anyhow::bail!("selected player animation sound handler absent"),
+        };
+        let (actor, player_actor) = match player_slot.and_then(|player| {
+            self.registry
+                .actors
+                .get_disjoint_mut([self.index, player.index])
+                .ok()
+        }) {
+            Some([actor, player]) => (actor, Some(player)),
+            None => (&mut self.registry.actors[self.index], None),
+        };
         let mut animation =
             actor
                 .animation
@@ -2392,6 +2425,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
+        let player_animation = player_actor
+            .and_then(|player| player.animation.as_mut())
+            .zip(self.inputs.nominal_ticks)
+            .map(|(animation, ticks)| super::tasks::AnimationCall {
+                animation: &mut animation.playback,
+                ticks,
+                frame: &mut animation.frame,
+                sounds: Some(&mut emit_player),
+            });
         let player_position = self
             .inputs
             .player_query
@@ -2423,6 +2465,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             ambient: Some(&ambient),
             dialogue: self.registry.globals.dialogue.as_mut(),
             player_dialogue: Some(player_dialogue),
+            player_animation,
             frame_wait: Some(frame_wait),
             locomotion: Some(super::tasks::LocomotionCall {
                 state: locomotion_state,
@@ -2764,30 +2807,37 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
     }
 
     fn player_dialogue_call(&self) -> super::tasks::PlayerDialogueCall<'input> {
-        let speaker_distance = (|| -> Result<i32> {
-            let mut inputs = self
-                .inputs
-                .player_query
-                .context("player query inputs unavailable")?;
-            let spatial = self
-                .registry
-                .spatial
-                .as_ref()
-                .context("spatial state not prepared")?
-                .actor(self.index)?;
-            inputs.linked_position = Some(spatial.linked_position);
-            spatial.speaker_distance(inputs)
-        })()
-        .map_err(|error| format!("RTX speaker distance: {error:#}"));
+        let distance_of = |index: usize| -> Result<i32, String> {
+            (|| -> Result<i32> {
+                let mut inputs = self
+                    .inputs
+                    .player_query
+                    .context("player query inputs unavailable")?;
+                let spatial = self
+                    .registry
+                    .spatial
+                    .as_ref()
+                    .context("spatial state not prepared")?
+                    .actor(index)?;
+                inputs.linked_position = Some(spatial.linked_position);
+                spatial.speaker_distance(inputs)
+            })()
+            .map_err(|error| format!("RTX speaker distance: {error:#}"))
+        };
+        let player = self.selected_player();
         super::tasks::PlayerDialogueCall {
             source: self.inputs.dialogue_source,
-            player: self.selected_player(),
+            player,
             reset: self.inputs.sound_reset,
             speaker: ScriptActorId {
                 generation: self.generation,
                 index: self.index,
             },
-            speaker_distance,
+            speaker_distance: distance_of(self.index),
+            player_distance: player
+                .ok_or_else(|| "RTXpAnim selected player unavailable".to_string())
+                .and_then(|player| distance_of(player.index)),
+            player_is_receiver: player.is_some_and(|player| player.index == self.index),
         }
     }
 
@@ -4100,7 +4150,21 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .then(|| self.camera_slot_request());
         let position = animation_sound_position(self.registry.spatial.as_ref(), self.index);
         let surface = self.registry.actors[self.index].surface;
-        let mut emit = |sound| match &mut self.sounds {
+        // RTXpAnim animates the selected player, who emits animation sounds under their own identity.
+        let player_slot = self.selected_player().filter(|player| {
+            player.generation == self.generation
+                && player.index != self.index
+                && player.index < self.registry.actors.len()
+        });
+        let player_sound = player_slot.map(|player| {
+            (
+                player,
+                animation_sound_position(self.registry.spatial.as_ref(), player.index),
+                self.registry.actors[player.index].surface,
+            )
+        });
+        let sound_handler = std::cell::RefCell::new(&mut self.sounds);
+        let mut emit = |sound| match &mut **sound_handler.borrow_mut() {
             Some(sounds) => sounds(
                 id,
                 super::ScriptSound::Animation {
@@ -4111,7 +4175,26 @@ impl Host for GameHost<'_, '_, '_, '_> {
             ),
             None => anyhow::bail!("world actor {}: animation sound handler absent", id.index),
         };
-        let actor = &mut self.registry.actors[self.index];
+        let mut emit_player = |sound| match (&mut **sound_handler.borrow_mut(), player_sound) {
+            (Some(sounds), Some((player, position, surface))) => sounds(
+                player,
+                super::ScriptSound::Animation {
+                    sound,
+                    surface,
+                    position,
+                },
+            ),
+            _ => anyhow::bail!("selected player animation sound handler absent"),
+        };
+        let (actor, player_actor) = match player_slot.and_then(|player| {
+            self.registry
+                .actors
+                .get_disjoint_mut([self.index, player.index])
+                .ok()
+        }) {
+            Some([actor, player]) => (actor, Some(player)),
+            None => (&mut self.registry.actors[self.index], None),
+        };
         let mut animation =
             actor
                 .animation
@@ -4123,6 +4206,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     frame: &mut animation.frame,
                     sounds: Some(&mut emit),
                 });
+        let player_animation = player_actor
+            .and_then(|player| player.animation.as_mut())
+            .zip(self.inputs.nominal_ticks)
+            .map(|(animation, ticks)| super::tasks::AnimationCall {
+                animation: &mut animation.playback,
+                ticks,
+                frame: &mut animation.frame,
+                sounds: Some(&mut emit_player),
+            });
         let player_position = self
             .inputs
             .player_query
@@ -4160,6 +4252,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 ambient: Some(&ambient),
                 dialogue: self.registry.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
+                player_animation,
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,

@@ -565,6 +565,8 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
                     index: 0,
                 },
                 speaker_distance: Ok(0),
+                player_distance: Ok(0),
+                player_is_receiver: false,
             }),
             ..Default::default()
         }
@@ -680,6 +682,136 @@ fn speaker_tasks_retry_pending_lookups_and_rtx_anim_cycles_its_groups() {
             )
             .unwrap()
     );
+}
+
+/// `RTXpAnim` speaks and animates as the selected player: the record is theirs, their animation
+/// receives the requests, and only their own distance gates it, however far the receiver is.
+#[test]
+fn rtxp_anim_speaks_and_animates_as_the_selected_player() {
+    use crate::script::tasks::{AnimationCall, PlayerDialogueCall};
+    use crate::script::{DialogueLine, DialogueSource, ScriptActorId};
+    use cyrus_assets::animation::Animations;
+    #[derive(Debug)]
+    struct Source;
+    impl DialogueSource for Source {
+        fn player_line(
+            &self,
+            _: [u8; 4],
+            _: ScriptActorId,
+            _: u32,
+        ) -> anyhow::Result<std::task::Poll<Option<DialogueLine>>> {
+            Ok(std::task::Poll::Ready(Some(DialogueLine {
+                text: "line".into(),
+                sample: Some(2),
+                lifetime: 100,
+            })))
+        }
+        fn stop_sample(&self, _: u8) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+    let group = |index: u32| {
+        json!({"group_index":index,"anim_id":1,"anim_type":0,
+            "commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]})
+    };
+    let data = Animations {
+        version: 2,
+        world: 0,
+        metadata: json!({"actors":[{"script_name":"ACTOR",
+            "animation_groups":[group(0), group(11), group(12), group(13)]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let receiver = ScriptActorId {
+        generation: 1,
+        index: 0,
+    };
+    let player = ScriptActorId {
+        generation: 1,
+        index: 2,
+    };
+    fn speaking<'a>(
+        records: &'a mut crate::script::DialogueState,
+        player_distance: i32,
+        players: ScriptActorId,
+        receiver: ScriptActorId,
+        animation: Option<AnimationCall<'a, 'a>>,
+    ) -> NativeServices<'a> {
+        NativeServices {
+            dialogue: Some(records),
+            player_animation: animation,
+            player_dialogue: Some(PlayerDialogueCall {
+                source: Some(&Source),
+                player: Some(players),
+                reset: Some(false),
+                speaker: receiver,
+                // The receiver is far away, which must not matter for RTXpAnim.
+                speaker_distance: Ok(99_999),
+                player_distance: Ok(player_distance),
+                player_is_receiver: false,
+            }),
+            ..Default::default()
+        }
+    }
+    let invocation = |elapsed| Invocation {
+        elapsed: Some(elapsed),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let args = [
+        Argument::Integer(i32::from_le_bytes(*b"TEST")),
+        Argument::Integer(13),
+        Argument::Integer(11),
+        Argument::Integer(12),
+    ];
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut frame = None;
+    let mut records = dialogue();
+    let mut tasks = NativeTasks::default();
+    let result = tasks
+        .call(
+            ("RTXpAnim", CallKind::Task),
+            &args,
+            invocation(0),
+            // The receiver has no animation of its own; the player's serves.
+            &mut None,
+            &mut None,
+            speaking(
+                &mut records,
+                0,
+                player,
+                receiver,
+                Some(AnimationCall {
+                    animation: &mut animation,
+                    ticks: 1,
+                    frame: &mut frame,
+                    sounds: None,
+                }),
+            ),
+        )
+        .unwrap();
+    assert_eq!(result, Some(CallResult::Pending(1)));
+    assert_eq!(animation.current_group(), Some(11));
+    let snapshot = serde_json::to_value(&records).unwrap();
+    assert_eq!(
+        snapshot["records"][1]["owner"],
+        serde_json::to_value(player).unwrap()
+    );
+    // Beyond the limit for the player's own distance, the task completes and cuts the line.
+    assert!(
+        tasks
+            .poll(
+                1,
+                &args,
+                invocation(1),
+                &mut None,
+                &mut None,
+                speaking(&mut records, 1601, player, receiver, None)
+            )
+            .unwrap()
+    );
+    assert!(!records.line_active(Some(1)));
 }
 
 #[test]
