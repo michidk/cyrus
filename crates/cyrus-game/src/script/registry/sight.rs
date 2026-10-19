@@ -4,7 +4,134 @@ use super::{ScriptActorId, ScriptWorld, obstacle::OrdinaryObstacleQuery};
 use anyhow::{Context, Result};
 use cyrus_collision::{distance::rounded_distance, ground::SupportSource};
 
+/// Live samples established before the nonplayer decision stage's cleanup and selections.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OrdinaryCombatSample {
+    pub target: ScriptActorId,
+    /// Rounded three-dimensional query-position distance in Q8 units.
+    pub distance: i32,
+    pub engaged: bool,
+}
+
 impl ScriptWorld {
+    /// Prepare the admitted nonplayer decision stage's target, counter and engagement.
+    /// Only lifecycle selector six, not dead and a combat record admit this prefix.
+    /// Fallback copies target local position before distance; successful engagement
+    /// copies it again before cleanup. Earlier mutations survive later query errors.
+    /// Geometry is required only when live attributes request a sight test.
+    /// This explicit prefix does not enable automatic decision traversal.
+    pub fn prepare_ordinary_combat_decision(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: ScriptActorId,
+        query: Option<OrdinaryObstacleQuery<'_>>,
+    ) -> Result<Option<OrdinaryCombatSample>> {
+        let result = (|| -> Result<_> {
+            let index = self.resolve(id)?;
+            let actor = &self.actors[index];
+            anyhow::ensure!(
+                id != selected_player
+                    && !matches!(
+                        actor.source,
+                        super::ScriptActorSource::Player
+                            | super::ScriptActorSource::AlternatePlayer
+                    ),
+                "selected-player combat decision unavailable"
+            );
+            let control = actor
+                .control
+                .as_ref()
+                .context("combat decision control unavailable")?;
+            if control.death_selector != 6 || self.query_is_dead(id, Some(selected_player))? {
+                return Ok(None);
+            }
+            let Some(combat) = control.combat.as_ref() else {
+                return Ok(None);
+            };
+            let valid = match combat.target {
+                Some(target) => {
+                    let target_index = self.resolve(target)?;
+                    self.actors[target_index]
+                        .control
+                        .as_ref()
+                        .is_some_and(|control| combat_target_valid(control, target))
+                }
+                None => false,
+            };
+            let target = if valid {
+                combat.target.expect("admitted target")
+            } else {
+                self.resolve(selected_player)?;
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted control")
+                    .combat
+                    .as_mut()
+                    .expect("admitted combat")
+                    .target = Some(selected_player);
+                let position = self.spatial(selected_player)?.local.position;
+                let combat = self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted control")
+                    .combat
+                    .as_mut()
+                    .expect("admitted combat");
+                combat.retained_target_position = position;
+                selected_player
+            };
+            let from = self.query_position(id)?;
+            let to = self.query_position(target)?;
+            let distance = rounded_distance(std::array::from_fn(|axis| {
+                to[axis].wrapping_sub(from[axis])
+            }))?;
+            let combat = self.actors[index]
+                .control
+                .as_mut()
+                .expect("admitted control")
+                .combat
+                .as_mut()
+                .expect("admitted combat");
+            combat.close_distance_passes = if distance < 25000 {
+                combat.close_distance_passes.wrapping_add(1)
+            } else {
+                0
+            };
+            let engaged = match engagement(&self.actors[index].attributes) {
+                Engagement::Always => true,
+                Engagement::InSightWithin(limit) => self.actor_in_sight(
+                    id,
+                    target,
+                    limit,
+                    query.context("combat decision sight geometry unavailable")?,
+                )?,
+            };
+            if engaged {
+                let position = self.spatial(target)?.local.position;
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("admitted control")
+                    .combat
+                    .as_mut()
+                    .expect("admitted combat")
+                    .retained_target_position = position;
+            }
+            Ok(Some(OrdinaryCombatSample {
+                target,
+                distance,
+                engaged,
+            }))
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} combat decision prefix",
+                self.world, id.index
+            )
+        })
+    }
+
     /// The actor's query position: the attached pose, the linked position, or the local
     /// position, in that order (the selection shared by the fighting query).
     pub(super) fn sight_position(&self, index: usize) -> Result<[i32; 3]> {

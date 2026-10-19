@@ -46,6 +46,10 @@ struct CombatSnapshot {
     attack_indices: [Option<u8>; 9],
     defense_indices: [Option<u8>; 4],
     target: Option<(u64, usize)>,
+    #[serde(default)]
+    retained_target_position: [i32; 3],
+    #[serde(default)]
+    close_distance_passes: i32,
     flags: u8,
     action: i32,
     cooldown: u32,
@@ -152,6 +156,8 @@ impl CombatSnapshot {
             attack_indices: combat.attack_indices,
             defense_indices: combat.defense_indices,
             target: combat.target.map(|id| (id.generation, id.index)),
+            retained_target_position: combat.retained_target_position,
+            close_distance_passes: combat.close_distance_passes,
             flags: combat.flags,
             action: combat.action,
             cooldown: combat.cooldown,
@@ -181,6 +187,8 @@ impl CombatSnapshot {
                 .target
                 .map(|(generation, index)| rebind(generation, index))
                 .transpose()?,
+            retained_target_position: self.retained_target_position,
+            close_distance_passes: self.close_distance_passes,
             flags: self.flags,
             action: self.action,
             cooldown: self.cooldown,

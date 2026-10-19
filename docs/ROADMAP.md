@@ -401,6 +401,12 @@ use the same attribute-selected attached, linked or local owner as fighting and
 spacing. A public sight contract checks all three choices. Automatic target and
 decision sampling remain open.
 
+**Verified:** the explicit decision entry owns target fallback, retained local
+target position, three-dimensional query distance and the wrapping close-pass
+counter. Public headless contracts cover lazy admission, strict distance boundary,
+mutation order on sight failure and real sight across snapshot restoration.
+Live attack execution, selection scheduling and START combat acceptance remain open.
+
 Next, in dependency order:
 
 1. Supply the live selection owner with ordinary scheduler admission, receiver/target

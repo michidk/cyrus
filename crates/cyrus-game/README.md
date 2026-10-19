@@ -1136,3 +1136,15 @@ selects the attached effective pose; otherwise a retained linked position preced
 the local position. A public sight contract distinguishes all three choices,
 including an effective pose without a parent link. This does not enable the
 automatic combat decision stage.
+
+
+`ScriptWorld::prepare_ordinary_combat_decision` supplies the live nonplayer
+entry samples for defence/attack execution and combat selection. **Verified:** public headless
+contracts cover lifecycle admission, real target validity and selected-player
+fallback, local target-position copies, three-dimensional linked/query distance,
+the strict 25000 boundary, wrapping close-pass counters and mutations retained
+when sight is unavailable. Real retained-candidate sight executes across a
+snapshot round trip with rebound target identity and continuing counters.
+Construction clears retained target position and close-pass state. Live attack
+execution, decision scheduling and installed combat acceptance remain open.
+Rules come from preservation's [target retention](https://github.com/michidk/redguard-preservation/compare/main...docs/combat-construction-order).

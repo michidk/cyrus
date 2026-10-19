@@ -50,6 +50,7 @@ pub use registry::player::PlayerControllerInput;
 pub use registry::prevalidation::{OrdinaryGroundPrevalidation, ordinary_ground_prevalidation};
 pub use registry::queued::{OrdinaryQueuedAction, OrdinaryQueuedInputs, ordinary_queued_action};
 pub use registry::recovery::{OrdinaryRollbackSnapshot, OrdinaryStableRecoveryInputs};
+pub use registry::sight::OrdinaryCombatSample;
 pub use registry::slope::{
     OrdinarySlide, OrdinarySlopeInputs, OrdinarySlopeTurn, ordinary_slide, ordinary_slope_turn,
 };

@@ -17175,3 +17175,234 @@ fn sight_uses_attribute_selected_attached_then_linked_then_local_positions() {
         );
     }
 }
+
+#[test]
+fn combat_decision_prefix_admission_precedes_target_and_geometry_queries() {
+    for (selector, combat) in [(5, true), (8, true), (6, false)] {
+        let (mut world, scripts, data) = spacing_fixture(|saved| {
+            saved["actors"][0]["control"]["death_selector"] = selector.into();
+            if !combat {
+                saved["actors"][0]["control"]["combat"] = serde_json::Value::Null;
+            }
+        });
+        let before = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            world
+                .prepare_ordinary_combat_decision(
+                    world.id(0).unwrap(),
+                    cyrus_game::script::ScriptActorId {
+                        generation: 999,
+                        index: 999
+                    },
+                    None
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(movement_snapshot(&world, &scripts, &data), before);
+    }
+}
+
+#[test]
+fn combat_decision_prefix_uses_real_target_validity_and_accepts_invalid_player_fallback() {
+    for kind in [
+        "missing",
+        "valid",
+        "self",
+        "dead-killed",
+        "dead-live",
+        "no-combat",
+    ] {
+        let (mut world, scripts, data) = spacing_fixture(|saved| {
+            saved["actors"][0]["control"]["death_selector"] = 6.into();
+            saved["actors"][0]["attributes"][121] = 1.into();
+            saved["actors"][0]["control"]["combat"]["retained_target_position"] =
+                serde_json::json!([7, 8, 9]);
+            saved["actors"][1]["control"]["combat"] =
+                serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
+            if kind == "missing" {
+                saved["actors"][0]["control"]["combat"]["target"] = serde_json::Value::Null;
+            }
+            if kind == "self" {
+                saved["actors"][1]["control"]["combat"]["target"] = serde_json::json!([1, 1]);
+            }
+            if kind.starts_with("dead") {
+                saved["actors"][1]["control"]["death_selector"] = 8.into();
+                saved["actors"][1]["control"]["killed"] = (kind == "dead-killed").into();
+            }
+            if kind == "no-combat" {
+                saved["actors"][1]["control"]["combat"] = serde_json::Value::Null;
+            }
+            saved["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([111, 222, 333]);
+            saved["spatial"]["actors"][4]["local"]["position"] =
+                serde_json::json!([-444, 555, -666]);
+        });
+        let own = world.id(0).unwrap();
+        let player = world.id(4).unwrap();
+        let sample = world
+            .prepare_ordinary_combat_decision(own, player, None)
+            .unwrap()
+            .unwrap();
+        let valid = matches!(kind, "valid" | "dead-live");
+        assert_eq!(
+            sample.target,
+            world.id(if valid { 1 } else { 4 }).unwrap(),
+            "{kind}"
+        );
+        assert!(sample.engaged);
+        let saved = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            saved["actors"][0]["control"]["combat"]["retained_target_position"],
+            if valid {
+                serde_json::json!([111, 222, 333])
+            } else {
+                serde_json::json!([-444, 555, -666])
+            }
+        );
+        assert_eq!(
+            saved["actors"][0]["control"]["combat"]["close_distance_passes"],
+            1
+        );
+        assert_eq!(saved["map_updates"], serde_json::json!([]));
+        assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+    }
+}
+
+#[test]
+fn combat_decision_prefix_samples_3d_query_distance_and_wraps_counter_before_engagement() {
+    for (query_position, initial, expected) in [
+        ([0, 24999, 0], 10, 11),
+        ([15000, 20000, 0], 10, 0),
+        ([0, 25001, 0], 10, 0),
+        ([0, 1, 0], i32::MAX, i32::MIN),
+    ] {
+        let (mut world, scripts, data) = spacing_fixture(|saved| {
+            saved["actors"][0]["control"]["death_selector"] = 6.into();
+            saved["actors"][0]["control"]["combat"]["close_distance_passes"] = initial.into();
+            saved["actors"][0]["control"]["combat"]["retained_target_position"] =
+                serde_json::json!([7, 8, 9]);
+            saved["actors"][1]["control"]["combat"] =
+                serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
+            saved["spatial"]["actors"][1]["linked_position"] = serde_json::json!(query_position);
+        });
+        let error = world
+            .prepare_ordinary_combat_decision(world.id(0).unwrap(), world.id(4).unwrap(), None)
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("combat decision sight geometry unavailable"));
+        let saved = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            saved["actors"][0]["control"]["combat"]["close_distance_passes"],
+            expected
+        );
+        assert_eq!(
+            saved["actors"][0]["control"]["combat"]["retained_target_position"],
+            serde_json::json!([7, 8, 9])
+        );
+    }
+}
+
+#[test]
+fn combat_decision_prefix_retains_fallback_local_copy_when_sight_is_unavailable() {
+    let (mut world, scripts, data) = spacing_fixture(|saved| {
+        saved["actors"][0]["control"]["death_selector"] = 6.into();
+        saved["actors"][0]["control"]["combat"]["target"] = serde_json::Value::Null;
+        saved["spatial"]["actors"][4]["local"]["position"] = serde_json::json!([111, 222, 333]);
+        saved["spatial"]["actors"][4]["linked_position"] = serde_json::json!([0, 25000, 0]);
+    });
+    let error = world
+        .prepare_ordinary_combat_decision(world.id(0).unwrap(), world.id(4).unwrap(), None)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("world 7 instance 0 combat decision prefix"));
+    let saved = movement_snapshot(&world, &scripts, &data);
+    assert_eq!(
+        saved["actors"][0]["control"]["combat"]["retained_target_position"],
+        serde_json::json!([111, 222, 333])
+    );
+    assert_eq!(
+        saved["actors"][0]["control"]["combat"]["close_distance_passes"],
+        0
+    );
+    assert_eq!(
+        world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .target,
+        Some(world.id(4).unwrap())
+    );
+}
+
+#[test]
+fn combat_decision_prefix_rebinds_target_and_continues_counter_with_live_sight() {
+    use cyrus_game::script::{OrdinaryObstacleQuery, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+        instance.map_position = [0; 3];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (world, data, models) = static_model_fixture_at(scripts.clone(), None, [0; 3]);
+    let scene = ordinary_collision_scene(world.world, models);
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &scene.collision,
+    };
+    let mut snapshot = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    for index in [0, 1] {
+        snapshot["actors"][index]["control"]["combat"] =
+            serde_json::to_value(cyrus_game::script::CombatControlState::default()).unwrap();
+    }
+    snapshot["actors"][0]["control"]["death_selector"] = 6.into();
+    snapshot["spatial"]["actors"][1]["local"]["position"] = serde_json::json!([1000, 0, 0]);
+    for generation in [2, 3] {
+        let mut world = ScriptWorld::from_snapshot(
+            serde_json::from_value(snapshot).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let ids = [world.id(0).unwrap(), world.id(1).unwrap()];
+        let prepared = world
+            .prepare_ordinary_collision_query(ids[0], &scene, &data, [0, 0], &ids)
+            .unwrap();
+        let sample = world
+            .prepare_ordinary_combat_decision(
+                ids[0],
+                ids[1],
+                Some(OrdinaryObstacleQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                }),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            sample,
+            cyrus_game::script::OrdinaryCombatSample {
+                target: ids[1],
+                distance: 1000,
+                engaged: true
+            }
+        );
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(combat.retained_target_position, [1000, 0, 0]);
+        assert_eq!(combat.close_distance_passes, generation as i32 - 1);
+        snapshot = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    }
+}
