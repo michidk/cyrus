@@ -2347,6 +2347,7 @@ pub(super) fn prepare(
             world.globals = std::mem::take(&mut actors.globals);
             world.globals.sound_maintenance.enter_world();
             world.globals.world_loop_frame = 0;
+            world.globals.group_sync = Default::default();
             actors.current = Some(world);
         }
         Err(error) => {
@@ -2499,6 +2500,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             dialogue: self.registry.globals.dialogue.as_mut(),
             player_dialogue: Some(player_dialogue),
             player_animation,
+            group_sync: Some(super::tasks::GroupSyncCall {
+                state: &mut self.registry.globals.group_sync,
+                actor_index: self.index,
+                channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+            }),
             frame_wait: Some(frame_wait),
             locomotion: Some(super::tasks::LocomotionCall {
                 state: locomotion_state,
@@ -4378,6 +4384,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 dialogue: self.registry.globals.dialogue.as_mut(),
                 player_dialogue: Some(player_dialogue),
                 player_animation,
+                group_sync: Some(super::tasks::GroupSyncCall {
+                    state: &mut self.registry.globals.group_sync,
+                    actor_index: self.index,
+                    channel: actor.attributes[super::group_sync::CHANNEL_ATTRIBUTE],
+                }),
                 frame_wait: Some(frame_wait),
                 locomotion: Some(super::tasks::LocomotionCall {
                     state: locomotion_state,
@@ -4452,11 +4463,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .with_context(|| format!("task source {} instruction {instruction} absent", origin.0))
     }
     fn end(&mut self, _: Thread) -> Result<()> {
+        let attributes = &self.registry.actors[self.index].attributes;
         anyhow::ensure!(
-            self.registry.actors[self.index].attributes[29] == 0
-                && self.registry.actors[self.index].attributes[30] == 0,
-            "synchronization channels unsupported"
+            attributes[30] == 0,
+            "user synchronization channels unsupported"
         );
+        // End clears the actor's pending group synchronization state.
+        if attributes[super::group_sync::CHANNEL_ATTRIBUTE] != 0 {
+            self.registry.globals.group_sync.reset(self.index);
+        }
         Ok(())
     }
 }

@@ -14531,6 +14531,74 @@ fn kill_my_tasks_clears_every_task_slot_at_once_and_later_tasks_survive() {
 }
 
 #[test]
+fn group_channels_let_an_actor_end_wait_in_sync_with_group_and_keep_user_channels_unsupported() {
+    let build = |channel: u8, user: u8, task: bool| {
+        let mut ops = vec![];
+        if task {
+            ops.push(wait(
+                4,
+                "SyncWithGroup",
+                CallKind::Task,
+                vec![Value::Integer { value: 3 }],
+            ));
+        }
+        ops.extend([set_flag(7), Operation::End { target: 0 }]);
+        let mut scripts = wait_cache(ops);
+        scripts.definition.functions.push(Function {
+            name: "SyncWithGroup".into(),
+            param_count: 1,
+            kind: CallKind::Task,
+        });
+        let logic = scripts.actors.get_mut("LOGIC").unwrap();
+        logic.attributes.insert("attr_29".into(), channel);
+        logic.attributes.insert("attr_30".into(), user);
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        let result = world.step(id, Thread::Main, 20);
+        (
+            result,
+            world.flags()[0],
+            world.actors()[0].runtime().unwrap().active_tasks(),
+        )
+    };
+    // End used to fail for any actor with a channel; with a group channel it now ends normally.
+    let (result, flag, tasks) = build(5, 0, false);
+    result.unwrap();
+    assert_eq!((flag, tasks), (7, 0));
+    // A user channel remains explicitly unsupported.
+    let error = build(0, 5, false).0.unwrap_err();
+    assert!(format!("{error:#}").contains("user synchronization channels unsupported"));
+    // The barrier wait registers a task that keeps waiting while the channel has not released group 3
+    // (nothing has run the channel update), and the thread does not reach its flag write.
+    let (result, flag, tasks) = build(5, 0, true);
+    result.unwrap();
+    assert_eq!((flag, tasks), (12, 1));
+    // An actor without a channel never waits: the task completes on its first poll.
+    let mut scripts = wait_cache(vec![
+        wait(
+            4,
+            "SyncWithGroup",
+            CallKind::Task,
+            vec![Value::Integer { value: 3 }],
+        ),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    scripts.definition.functions.push(Function {
+        name: "SyncWithGroup".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let id = world.id(0).unwrap();
+    world.step(id, Thread::Main, 20).unwrap();
+    world.step_tasks(id, Some(256)).unwrap();
+    assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
+}
+
+#[test]
 fn dialog_and_menu_natives_write_their_mode_words() {
     let state = |calls: &[(&str, &[i32])]| {
         let world = run_native_world(calls).unwrap();

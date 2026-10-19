@@ -210,6 +210,7 @@ impl Task {
                 ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))
             }
             Self::PlayerDialogue { .. } => ("RTXp", 1, Some(CallKind::Task)),
+            Self::GroupSync => ("SyncWithGroup", 1, Some(CallKind::Task)),
             Self::SpeakerDialogue(_) => ("RTX", 1, Some(CallKind::Task)),
             Self::SpeakerAnimation { player: false, .. } => ("rtxAnim", 4, Some(CallKind::Task)),
             Self::SpeakerAnimation { player: true, .. } => ("RTXpAnim", 4, Some(CallKind::Task)),

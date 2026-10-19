@@ -187,6 +187,8 @@ pub struct GameplayGlobals {
     /// world replacement and saves; nothing sets it yet (`PushPlayer`/`PopPlayer` need the host's player
     /// controller, camera and entity binding to follow the selection first).
     pub(super) player_swapped: bool,
+    /// Group synchronization channels; cleared on world entry.
+    pub(super) group_sync: super::GroupSync,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
 }
@@ -1084,6 +1086,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     potions: [i32; 4],
     #[serde(default)]
     player_swapped: bool,
+    #[serde(default)]
+    group_sync: super::GroupSync,
 }
 impl GameplayGlobals {
     /// Shared next-hop link flags and backtracking inhibition.
@@ -1123,6 +1127,7 @@ impl GameplayGlobals {
             candle_show_requested: self.candle_show_requested,
             potions: self.potions,
             player_swapped: self.player_swapped,
+            group_sync: self.group_sync.clone(),
         }
     }
 
@@ -1199,6 +1204,7 @@ impl GameplayGlobals {
             candle_show_requested: saved.candle_show_requested,
             potions: saved.potions,
             player_swapped: saved.player_swapped,
+            group_sync: saved.group_sync,
             host_requests: HostRequests::default(),
         })
     }

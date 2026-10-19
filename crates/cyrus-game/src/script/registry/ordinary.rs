@@ -419,6 +419,8 @@ impl ScriptWorld {
             }
         }
         self.refresh_families()?;
+        // The group system updates after the family system.
+        self.globals.group_sync.update(&self.actors);
         self.update_separate(view, inputs, random, sounds, budget)
     }
 }

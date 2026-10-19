@@ -133,8 +133,10 @@ pub use registry::ordinary::{
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;
+mod group_sync;
 mod status;
 mod tasks;
+pub use group_sync::GroupSync;
 mod world_request;
 pub use animation::AnimationScript;
 use bevy::prelude::*;

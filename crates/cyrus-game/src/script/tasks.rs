@@ -83,6 +83,7 @@ pub(super) struct NativeServices<'a> {
     /// The selected player's animation, for `RTXpAnim`. Absent when the player is the receiver,
     /// whose own animation then serves, or when the player has no prepared animation.
     pub player_animation: Option<AnimationCall<'a, 'a>>,
+    pub group_sync: Option<GroupSyncCall<'a>>,
     pub locomotion: Option<LocomotionCall<'a>>,
     pub camera: Option<CameraCall<'a>>,
 }
@@ -122,6 +123,13 @@ pub(super) struct MotionCall<'a> {
 pub(super) struct FrameWaitCall {
     pub receiver: Result<(i32, i32, u8), String>,
     pub player: Result<Option<(i32, i32, u8)>, String>,
+}
+
+/// The session's group channels and the receiver's channel (attribute 29) for `SyncWithGroup`.
+pub(super) struct GroupSyncCall<'a> {
+    pub state: &'a mut super::GroupSync,
+    pub actor_index: usize,
+    pub channel: u8,
 }
 
 /// Inputs shared by the `RTXp` and `RTX` dialogue tasks.
@@ -289,6 +297,8 @@ enum Task {
     PlayerDialogue {
         started: bool,
     },
+    /// `SyncWithGroup`.
+    GroupSync,
     /// `RTX`.
     SpeakerDialogue(Speech),
     /// `rtxAnim` and `RTXpAnim`: `RTX` plus a cycle through three animation groups while the line
@@ -398,6 +408,19 @@ impl Task {
                     }
                 }
                 !dialogue.line_active(Some(0))
+            }
+            Self::GroupSync => {
+                let [group] = arguments else {
+                    anyhow::bail!("SyncWithGroup requires one argument");
+                };
+                let input = services
+                    .group_sync
+                    .context("SyncWithGroup channel state unavailable")?;
+                // Without a channel the actor never waits.
+                input.channel == 0
+                    || input
+                        .state
+                        .post(input.actor_index, input.channel, group.integer()?)
             }
             Self::SpeakerDialogue(speech) => {
                 let [label] = arguments else {
@@ -1456,6 +1479,12 @@ impl NativeTasks {
         } else if function.eq_ignore_ascii_case("RTXp") {
             anyhow::ensure!(kind == CallKind::Task, "RTXp requires task encoding");
             Task::PlayerDialogue { started: false }
+        } else if function.eq_ignore_ascii_case("SyncWithGroup") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "SyncWithGroup requires task encoding"
+            );
+            Task::GroupSync
         } else if function.eq_ignore_ascii_case("RTX") {
             anyhow::ensure!(kind == CallKind::Task, "RTX requires task encoding");
             Task::SpeakerDialogue(Speech::default())
