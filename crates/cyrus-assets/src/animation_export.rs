@@ -87,12 +87,25 @@ fn corner_normals(model: &Model3DFile) -> Vec<Vec<Option<[f32; 3]>>> {
         .collect()
 }
 
-fn archive_model(name: &str, registry: &Registry) -> anyhow::Result<Model3DFile> {
+fn archive_model(
+    name: &str,
+    registry: &Registry,
+    selected_archive: Option<&str>,
+) -> anyhow::Result<Model3DFile> {
     let mut payload = None;
     for entry in registry
         .files
         .values()
         .filter(|entry| entry.file_type == FileType::Rob)
+        .filter(|entry| {
+            selected_archive.is_none_or(|path| {
+                entry
+                    .path
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .eq_ignore_ascii_case(path)
+            })
+        })
     {
         let bytes = entry
             .data
@@ -159,7 +172,7 @@ pub(crate) fn resolve_model<'a>(
             .with_context(|| format!("model bytes absent: {}", entry.path.display()))?;
         model3d::parse_3d_file(bytes).with_context(|| entry.path.display().to_string())?
     } else {
-        archive_model(name, registry)?
+        archive_model(name, registry, None)?
     };
     Ok(std::borrow::Cow::Owned(model))
 }
@@ -206,6 +219,10 @@ pub(crate) fn prepare(
         );
     }
     let mut names = BTreeSet::new();
+    for weapon in scripts.weapons.values() {
+        names.insert(weapon.hand_model.clone());
+        names.insert(weapon.hilt_model.clone());
+    }
     for actor in metadata["actors"]
         .as_array()
         .context("rgpre metadata: missing actors")?
@@ -256,8 +273,23 @@ pub(crate) fn prepare(
         models: BTreeMap::new(),
         unsupported: BTreeMap::new(),
     };
+    let weapon_names: BTreeSet<_> = scripts
+        .weapons
+        .values()
+        .flat_map(|weapon| [&weapon.hand_model, &weapon.hilt_model])
+        .collect();
+    let weapon_archive = if weapon_names.is_empty() {
+        None
+    } else {
+        Some(crate::script::weapon::world_archive_path(source, world)?)
+    };
     for name in names {
-        let decoded = resolve_model(&name, placed, registry).and_then(|model| model_data(&model));
+        let decoded = if weapon_names.contains(&name) {
+            archive_model(&name, registry, weapon_archive.as_deref())
+                .and_then(|model| model_data(&model))
+        } else {
+            resolve_model(&name, placed, registry).and_then(|model| model_data(&model))
+        };
         match decoded {
             Ok(model) => {
                 result.models.insert(name, model);

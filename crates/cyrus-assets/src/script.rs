@@ -1,6 +1,7 @@
 //! World script caches and validated installed clock/update settings.
 pub mod combat;
 pub mod inventory;
+pub mod weapon;
 use anyhow::Context;
 use cyrus_script::program::{Call, Definition, Program};
 use serde::{Deserialize, Serialize};
@@ -365,6 +366,8 @@ pub struct Instance {
 #[derive(bevy::prelude::Asset, bevy::prelude::TypePath, Debug, Clone, Serialize, Deserialize)]
 pub struct Scripts {
     pub version: u32,
+    /// Installed hand/hilt model identities and signed ROB weapon lengths.
+    pub weapons: BTreeMap<u16, weapon::Weapon>,
     /// Contiguous installed attack table, shared by all combat-capable actors.
     pub combat_attacks: Vec<combat::Attack>,
     /// Contiguous installed defense table used by the four receiver defense slots.
@@ -400,7 +403,7 @@ impl Scripts {
     pub fn content_identity(&self) -> anyhow::Result<String> {
         let bytes = serde_json::to_vec(&(
             self.version,
-            (&self.combat_attacks, &self.combat_defenses),
+            (&self.combat_attacks, &self.combat_defenses, &self.weapons),
             self.in_combat_threshold,
             (
                 self.non_engaged_spacing,
@@ -423,7 +426,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 20,
+            self.version == 21,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

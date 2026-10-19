@@ -704,6 +704,19 @@ advances through actor contact to the explicit static-face weapon-contact guard.
 The full workspace gate passes with zero install-test skips. Successful combat
 and complete original/native/browser acceptance remain open.
 
+**Verified:** script schema 21 retains installed hand/hilt model identities and
+signed ROB weapon lengths. Weapon metadata and model decoding use the selected
+world's primary archive. Ordinary model updates retain grip/scabbard attachment
+poses and combat endpoints after draw/sheath transitions. The geometry matches
+192 allocated original equipped-owner cases with identity actor matrices and
+length 17. Public-owner checks cover stowed publication, the sheath-group hilt
+exception, snapshot bit preservation, malformed geometry and stale identities.
+The installed production-audio headless START diagnostic publishes stowed and
+drawn records for both pirates and reaches the static-face contact guard after
+71 ordinary traversals. This is logical publication; renderer attachment binding,
+complete selected-player scheduling, static contact parity and original/native/
+browser combat acceptance remain open.
+
 Next, in dependency order:
 
 1. Compare installed allocation assignments and complete live

@@ -44,6 +44,8 @@
 //!   must supply live bindings, geometry and publication.
 
 mod activation;
+/// Equipped weapon poses and retained combat endpoints.
+pub mod attachment;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
     GameplayGlobals, HostRequests,

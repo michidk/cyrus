@@ -57,6 +57,7 @@ module where it is defined and regenerate.
 - `src/script.rs` — World script caches and validated installed clock/update settings.
 - `src/script/combat.rs` — Prepared combat moves with authored omissions retained explicitly.
 - `src/script/inventory.rs` — Static SOUP census; occurrence counts do not establish runtime support or reachability.
+- `src/script/weapon.rs` — Installed weapon model identities and original signed ROB length inputs.
 - `src/script_export.rs` — Shared SOUP preparation through preservation's typed decoder and installed definitions.
 - `src/sound.rs` — Portable sound settings and exported effect metadata.
 - `src/sound/cache.rs` — Portable RTX payload retention; the caller owns synchronous sample feedback.

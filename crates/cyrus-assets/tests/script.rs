@@ -4,7 +4,8 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 20,
+        version: 21,
+        weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -572,6 +573,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             let bytes = match path {
                 "SYSTEM.INI" => self.system.as_slice(),
                 "soup386/SOUP386.DEF" => &[],
+                "ITEMS.INI" => b"[items]\n",
                 "REDGUARD.CHT" => self.cheats.as_deref().unwrap(),
                 _ => anyhow::bail!("unexpected source {path}"),
             };
@@ -583,13 +585,18 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         }
     }
     let prepare = |normal: i32, min: i32, cheats: Option<Vec<u8>>| {
-        let system = format!("[system]\nmax_active_objects=10\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\nconvert_static_angles=no\ndisable_slaves=yes\ndisable_master_slaves=no\n[3dmanager]\ndummy_manager=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
+        let system = format!("[system]\nmax_active_objects=10\nitem_ini=ITEMS.INI\nrtx_filename=ENGLISH.RTX\nnormal_frame_rate={normal}\nmin_frame_rate={min}\nmax_frame_rate=300\nuse_smooth_fps=yes\nuse_smooth_divisor=no\ntask_system=yes\nanimation_system=no\n[debug]\nconvert_static_angles=no\ndisable_slaves=yes\ndisable_master_slaves=no\n[3dmanager]\ndummy_manager=no\n[dialog]\nmenu_start_x=35\nmenu_start_y=25\ndialog_max_menu_items=20\ndialog_max_dialog_lines=20\ndialog_max_text_width=500\nmenu_traverse_delay=4\ndialog_print_text=yes\ndialog_use_speech=yes\ndialog_max_distance=1600\n{camera}", camera = camera_ini(None).replacen("[system]\n", "", 1)).into_bytes();
         let mut source = Source {
             manifest: Manifest {
                 files: vec![
                     FileInfo {
                         path: "SYSTEM.INI".into(),
                         bytes: system.len() as u64,
+                        digest: "0".repeat(64),
+                    },
+                    FileInfo {
+                        path: "ITEMS.INI".into(),
+                        bytes: 8,
                         digest: "0".repeat(64),
                     },
                     FileInfo {
@@ -626,7 +633,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 20);
+    assert_eq!(scripts.version, 21);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -1218,4 +1225,29 @@ fn clank_effects_are_required_and_participate_in_cache_identity() {
         .unwrap()
         .remove("combat_clank_effects");
     assert!(serde_json::from_value::<Scripts>(saved).is_err());
+}
+
+#[test]
+fn weapon_geometry_round_trips_and_invalidates_changed_lengths() {
+    let mut scripts = cache();
+    scripts.weapons.insert(
+        1,
+        weapon::Weapon {
+            hand_model: "HAND".into(),
+            hilt_model: "HILT".into(),
+            length: -17,
+        },
+    );
+    scripts.content_id = scripts.content_identity().unwrap();
+    let decoded: Scripts = serde_json::from_slice(&serde_json::to_vec(&scripts).unwrap()).unwrap();
+    decoded.validate().unwrap();
+    assert_eq!(decoded.weapons[&1].length, -17);
+    scripts.weapons.get_mut(&1).unwrap().length = 18;
+    assert!(
+        scripts
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("identity mismatch")
+    );
 }

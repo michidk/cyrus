@@ -49,6 +49,7 @@ pub(super) struct ModelState {
     pub animation_radius: Option<f32>,
     pub collision_flags: Option<u8>,
     pub current: Option<ModelPresentation>,
+    pub weapon: Option<super::super::attachment::EquippedWeapon>,
 }
 
 impl ModelState {
@@ -345,7 +346,8 @@ impl ScriptWorld {
                         .nominal_ticks
                         .context("weapon model nominal ticks unavailable")?,
                     sounds,
-                )
+                )?;
+                self.refresh_actor_weapon_attachment(id, data, weapon)
             })();
             if let Err(error) = refreshed {
                 self.actors[id.index].update_failure = Some(format!(
@@ -581,6 +583,30 @@ impl ScriptWorld {
         statics: Option<&ActorModelCollision>,
         vertex: i32,
     ) -> Result<[i32; 3]> {
+        let source = self.actor_model_source_vertex(id, data, statics, vertex)?;
+        let local = self.spatial(id)?.local;
+        local
+            .matrix
+            .model_point(source, local.position)
+            .with_context(|| {
+                format!(
+                    "world {} instance {} actor {} model vertex {vertex}",
+                    self.world,
+                    id.index,
+                    self.actors[id.index].name()
+                )
+            })
+    }
+
+    /// Original Q8 source vertex before the actor matrix and position are applied.
+    /// Attachment publication shares this conversion with model-point queries.
+    pub(super) fn actor_model_source_vertex(
+        &self,
+        id: ScriptActorId,
+        data: &Animations,
+        statics: Option<&ActorModelCollision>,
+        vertex: i32,
+    ) -> Result<[f32; 3]> {
         self.require_model_identity(data)?;
         let index = self.resolve(id)?;
         let actor = &self.actors[index];
@@ -593,35 +619,9 @@ impl ScriptWorld {
         };
         let source = match data.actor(actor.name())?["model_load_path"].as_str() {
             Some("animation_table") if self.updates.dummy_model_manager => [0.0; 3],
-            Some("animation_table") => {
-                let vertex_index = usize::try_from(vertex).with_context(context)?;
-                let reference = self
-                    .animation_frame(id)?
-                    .with_context(|| format!("{}: animation frame unavailable", context()))?;
-                let frame = if actor.placement().is_some() {
-                    data.resolve_map_frame(index, reference)
-                } else {
-                    data.resolve_frame(actor.name(), reference)
-                }
-                .with_context(context)?;
-                let position = data
-                    .models
-                    .get(&frame.model)
-                    .and_then(|model| model.positions.get(frame.frame))
-                    .and_then(|positions| positions.get(vertex_index))
-                    .copied()
-                    .with_context(|| {
-                        format!(
-                            "{}: model {} frame {} source vertex unavailable",
-                            context(),
-                            frame.model,
-                            frame.frame
-                        )
-                    })?;
-                cyrus_world::transform::animation_vertex_q8(position)
-                    .with_context(context)?
-                    .map(|value| value as f32)
-            }
+            Some("animation_table") => self
+                .actor_animation_source_vertex(id, data, vertex)?
+                .map(|value| value as f32),
             Some("static") => {
                 let vertex_index = usize::try_from(vertex).with_context(context)?;
                 statics
@@ -633,11 +633,141 @@ impl ScriptWorld {
             }
             path => anyhow::bail!("{}: model path {path:?} unsupported", context()),
         };
-        let local = self.spatial(id)?.local;
-        local
-            .matrix
-            .model_point(source, local.position)
-            .with_context(context)
+        Ok(source)
+    }
+
+    fn actor_animation_source_vertex(
+        &self,
+        id: ScriptActorId,
+        data: &Animations,
+        vertex: i32,
+    ) -> Result<[i32; 3]> {
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
+        let context = || {
+            format!(
+                "world {} instance {index} actor {} model vertex {vertex}",
+                self.world,
+                actor.name()
+            )
+        };
+        let vertex_index = usize::try_from(vertex).with_context(context)?;
+        let reference = self
+            .animation_frame(id)?
+            .with_context(|| format!("{}: animation frame unavailable", context()))?;
+        let frame = if actor.placement().is_some() {
+            data.resolve_map_frame(index, reference)
+        } else {
+            data.resolve_frame(actor.name(), reference)
+        }
+        .with_context(context)?;
+        let position = data
+            .models
+            .get(&frame.model)
+            .and_then(|model| model.positions.get(frame.frame))
+            .and_then(|positions| positions.get(vertex_index))
+            .copied()
+            .with_context(|| {
+                format!(
+                    "{}: model {} frame {} source vertex unavailable",
+                    context(),
+                    frame.model,
+                    frame.frame
+                )
+            })?;
+        cyrus_world::transform::animation_vertex_q8(position).with_context(context)
+    }
+
+    /// Last attachment published in an admitted model pass, independent of later movement.
+    pub fn equipped_weapon(
+        &self,
+        id: ScriptActorId,
+    ) -> Result<Option<&super::super::attachment::EquippedWeapon>> {
+        Ok(self.actors[self.resolve(id)?].model.weapon.as_ref())
+    }
+
+    /// Publish the equipped model and combat endpoints after its synchronous transition.
+    /// Explicit calls require established item-system and shell admission.
+    pub fn refresh_actor_weapon_attachment(
+        &mut self,
+        id: ScriptActorId,
+        data: &Animations,
+        inputs: super::WeaponInputs,
+    ) -> Result<()> {
+        self.require_model_identity(data)?;
+        self.resolve(inputs.selected_player)?;
+        if !inputs.item_system_ready || inputs.shell_execution {
+            return Ok(());
+        }
+        let actor = &self.actors[self.resolve(id)?];
+        let control = actor
+            .control
+            .as_ref()
+            .context("weapon attachment control unavailable")?;
+        if control.combat.is_none() && actor.attributes[110] == 0 {
+            return Ok(());
+        }
+        ensure!(
+            actor.attributes[110] == 0,
+            "intrinsic weapon attachment unsupported"
+        );
+        let item = u16::from(actor.attributes[23]);
+        let definition = self
+            .weapons
+            .get(&item)
+            .with_context(|| format!("item {item}: prepared weapon geometry unavailable"))?;
+        let group = actor
+            .animation
+            .as_ref()
+            .and_then(|animation| animation.playback.current_group());
+        let hand_model =
+            control.living_state != 20 && (control.living_state == 21 || control.weapon_drawn);
+        let drawn = hand_model || (control.living_state != 20 && group == Some(129));
+        let model = if hand_model {
+            &definition.hand_model
+        } else {
+            &definition.hilt_model
+        };
+        ensure!(
+            data.models.contains_key(model),
+            "item {item}: attachment model {model} unavailable"
+        );
+        let fields = if drawn {
+            ["grip0", "grip1"]
+        } else {
+            ["scabbard0", "scabbard1"]
+        };
+        let metadata = data.actor(actor.name())?;
+        let mut vertices = [[0; 3]; 2];
+        for (vertex, field) in vertices.iter_mut().zip(fields) {
+            let index = metadata["raex"][field]
+                .as_i64()
+                .and_then(|value| i16::try_from(value).ok())
+                .with_context(|| format!("actor {} RAEX {field} unavailable", actor.name()))?;
+            *vertex = if self.updates.dummy_model_manager {
+                [0; 3]
+            } else {
+                self.actor_animation_source_vertex(id, data, i32::from(index))?
+            };
+        }
+        let pose = self.spatial(id)?.local;
+        let geometry = super::super::attachment::prepare_weapon_attachment(
+            vertices,
+            [0; 3],
+            pose.matrix,
+            pose.position.map(|value| value as f32 / 256.0),
+            pose.angles[2],
+            drawn,
+        )?;
+        let endpoints = geometry.combat_endpoints(definition.length)?;
+        let weapon = super::super::attachment::EquippedWeapon {
+            item,
+            model: model.clone(),
+            geometry,
+            endpoints,
+        };
+        self.actors[id.index].model.weapon = Some(weapon);
+        Ok(())
     }
 
     /// Current collision-facing model, retaining its presentation-time pose.
@@ -777,6 +907,7 @@ pub(super) struct ModelSnapshot {
     animation_radius: Option<u32>,
     collision_flags: Option<u8>,
     current: Option<ModelPresentationSnapshot>,
+    weapon: Option<super::super::attachment::EquippedWeaponSnapshot>,
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ModelPresentationSnapshot {
@@ -788,6 +919,7 @@ impl ModelState {
     pub(super) fn snapshot(&self) -> ModelSnapshot {
         ModelSnapshot {
             prepared: self.prepared,
+            weapon: self.weapon.as_ref().map(|weapon| weapon.snapshot()),
             support_actor: self.support.actor.map(|id| (id.generation, id.index)),
             support_static: self.support.static_placement,
             static_radius: self.static_radius.map(f32::to_bits),
@@ -859,7 +991,16 @@ impl ModelState {
                 })
             })
             .transpose()?;
+        let weapon = saved.weapon.map(|saved| saved.restore()).transpose()?;
+        if let Some(weapon) = &weapon {
+            ensure!(
+                data.models.contains_key(&weapon.model),
+                "saved weapon model {} unavailable",
+                weapon.model
+            );
+        }
         Ok(Self {
+            weapon,
             prepared: saved.prepared,
             support,
             static_radius: saved.static_radius.map(radius).transpose()?,

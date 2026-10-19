@@ -74,7 +74,8 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 20,
+        version: 21,
+        weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
@@ -23350,4 +23351,136 @@ fn hit_defence_retains_ordered_response_and_partial_writes() {
             assert!(message.is_none());
         }
     }
+}
+
+#[test]
+fn equipped_weapon_retains_stowed_geometry_and_snapshot_bits() {
+    use cyrus_assets::animation::AnimationModel;
+    use cyrus_game::script::{WeaponInputs, WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    scripts.definition.attributes = (0..256).map(|i| format!("attr_{i}")).collect();
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .extend([("attr_14".into(), 1), ("attr_23".into(), 1)]);
+    scripts.weapons.insert(
+        1,
+        weapon::Weapon {
+            hand_model: "HAND".into(),
+            hilt_model: "HILT".into(),
+            length: 17,
+        },
+    );
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+        instance.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, mut data, _) = static_model_fixture(scripts.clone());
+    data.metadata["actors"][0] = serde_json::json!({"script_name":"LOGIC","model_load_path":"animation_table",
+        "raex":{"grip0":0,"grip1":1,"scabbard0":1,"scabbard1":0,"v_vertex":0,"v_size":0,"unknown_12":0},
+        "raan_entries":[{"file_path":"BODY.3D","frame_count":1}],
+        "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}]});
+    data.metadata["mpob_objects"][0]["script_name"] = "LOGIC".into();
+    let group = data.metadata["actors"][0]["animation_groups"][0].clone();
+    data.metadata["actors"][0]["animation_groups"]
+        .as_array_mut()
+        .unwrap()
+        .push(group);
+    data.metadata["actors"][0]["animation_groups"][1]["group_index"] = 129.into();
+    let model = || AnimationModel {
+        radius: Some(1.0),
+        base_positions: vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        base_normals: vec![],
+        faces: vec![],
+        corner_normals: vec![],
+        encoding: "animated_i16".into(),
+        positions: vec![vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]],
+        normals: vec![vec![]],
+    };
+    for name in ["BODY", "HAND", "HILT"] {
+        data.models.insert(name.into(), model());
+    }
+    let id = world.id(0).unwrap();
+    world
+        .initialize_map_animation(id, &data, 0, &mut |_, _| Ok(()))
+        .unwrap();
+    let inputs = WeaponInputs {
+        selected_player: world.id(1).unwrap(),
+        item_system_ready: true,
+        shell_execution: false,
+    };
+    world
+        .refresh_actor_weapon_attachment(id, &data, inputs)
+        .unwrap();
+    let retained = world.equipped_weapon(id).unwrap().unwrap().clone();
+    assert_eq!(retained.model, "HILT");
+    assert_eq!(retained.geometry.position, [10.0, 21.0, 30.0]);
+    assert_eq!(retained.geometry.retained_point, [2560, 5376, 7680]);
+    let collision = cyrus_assets::collision::CollisionScene::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = world.snapshot(&sources).unwrap();
+    let mut malformed = serde_json::to_value(&saved).unwrap();
+    let restored = ScriptWorld::from_snapshot(
+        saved,
+        &sources,
+        WorldRestoreContext {
+            generation: 8,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        restored.equipped_weapon(restored.id(0).unwrap()).unwrap(),
+        Some(&retained)
+    );
+    malformed["actors"][0]["model"]["weapon"]["matrix_bits"][0][0] = f32::NAN.to_bits().into();
+    let invalid = ScriptWorld::from_snapshot(
+        serde_json::from_value(malformed).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 9,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    );
+    assert!(format!("{:#}", invalid.err().unwrap()).contains("nonfinite"));
+    let mut sheathed = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    sheathed["actors"][0]["animation"]["playback"]["current"][0] = 129.into();
+    world = ScriptWorld::from_snapshot(
+        serde_json::from_value(sheathed).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 10,
+            globals: Default::default(),
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let id = world.id(0).unwrap();
+    let inputs = WeaponInputs {
+        selected_player: world.id(1).unwrap(),
+        ..inputs
+    };
+    world
+        .refresh_actor_weapon_attachment(id, &data, inputs)
+        .unwrap();
+    let retained = world.equipped_weapon(id).unwrap().unwrap().clone();
+    assert_eq!(retained.model, "HILT");
+    assert_eq!(retained.geometry.position, [10.0, 20.0, 30.0]);
+    data.metadata["script_content_id"] = "stale".into();
+    assert!(
+        world
+            .refresh_actor_weapon_attachment(id, &data, inputs)
+            .is_err()
+    );
+    assert_eq!(world.equipped_weapon(id).unwrap(), Some(&retained));
 }
