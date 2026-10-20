@@ -4963,6 +4963,10 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "RotateByAxis",
                 "sRotateByAxis",
                 "RotateToAxis",
+                "Move",
+                "Rotate",
+                "sMove",
+                "sRotate",
             ]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))

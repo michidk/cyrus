@@ -467,6 +467,17 @@ enum Task {
     FacePlayer,
     /// `FacePlayerInertia`: `FacePlayer` whose step shrinks by the elapsed input.
     FacePlayerInertia,
+    /// `Move(x, y, z, duration)`: adds each axis's operand times the nominal tick count to the
+    /// position on every invocation until the elapsed input reaches `duration - 1`.
+    Move,
+    /// `Rotate(x, y, z, duration)`: adds each axis's angle step to the angles on every
+    /// invocation until the elapsed input reaches `duration - 1`.
+    Rotate,
+    /// `sMove(x, y, z, duration)`: `Move` with each operand divided by the duration instead of
+    /// scaled by the tick count.
+    ScaledMove,
+    /// `sRotate(x, y, z, duration)`: the same step as `Rotate`.
+    ScaledRotate,
     /// `FaceAngle(angle)`: one turn step per invocation toward a heading, completing on arrival.
     FaceAngle,
     /// `FacePos(x, z)`: `FaceAngle` toward a point, snapping onto it within the facing threshold.
@@ -979,6 +990,47 @@ impl Task {
                     .killed
                     .context("AmbientRtx receiver killed state unavailable")?;
                 !source.update_ambient_rtx(slot, position, volume.integer()?, killed)?
+            }
+            Self::Move | Self::Rotate | Self::ScaledMove | Self::ScaledRotate => {
+                let [x, y, z, duration] = arguments else {
+                    anyhow::bail!("Move, Rotate, sMove and sRotate require four arguments")
+                };
+                let operands = [x.integer()?, y.integer()?, z.integer()?];
+                let duration = duration.integer()?;
+                let elapsed = invocation
+                    .elapsed
+                    .context("Move, Rotate, sMove and sRotate require explicit elapsed input")?;
+                let input = spatial.as_mut().context(
+                    "Move, Rotate, sMove and sRotate require spatial state and nominal_ticks",
+                )?;
+                for (axis, operand) in operands.into_iter().enumerate() {
+                    if operand == 0 {
+                        continue;
+                    }
+                    if matches!(self, Self::Move | Self::ScaledMove) {
+                        let step = if matches!(self, Self::Move) {
+                            operand.wrapping_mul(input.nominal_ticks as i32)
+                        } else {
+                            operand
+                                .wrapping_shl(8)
+                                .checked_div(duration)
+                                .context("sMove division by zero")?
+                                >> 8
+                        };
+                        input.position[axis] = input.position[axis].wrapping_add(step);
+                    } else {
+                        // The magnitude is scaled by the elapsed input, then given its sign back.
+                        let step = (operand.wrapping_abs().wrapping_shl(8))
+                            .checked_div(duration)
+                            .context("Rotate division by zero")?
+                            .wrapping_mul(elapsed)
+                            >> 8;
+                        let step = if operand < 0 { -step } else { step };
+                        input.angles[axis] =
+                            (i32::from(input.angles[axis]).wrapping_add(step) & 2047) as u16;
+                    }
+                }
+                duration.wrapping_sub(1) <= elapsed
             }
             Self::FaceAngle | Self::FacePos => {
                 let target = match (&*self, arguments) {
@@ -2330,6 +2382,14 @@ impl NativeTasks {
                 "PlayerParallelLineUp requires task encoding"
             );
             Task::ParallelLineUp
+        } else if function.eq_ignore_ascii_case("Move") {
+            Task::Move
+        } else if function.eq_ignore_ascii_case("Rotate") {
+            Task::Rotate
+        } else if function.eq_ignore_ascii_case("sMove") {
+            Task::ScaledMove
+        } else if function.eq_ignore_ascii_case("sRotate") {
+            Task::ScaledRotate
         } else if function.eq_ignore_ascii_case("FaceAngle") {
             Task::FaceAngle
         } else if function.eq_ignore_ascii_case("FacePos") {

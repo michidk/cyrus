@@ -2562,6 +2562,103 @@ fn axis_movement_and_rotation_match_the_original_routines() {
 }
 
 #[test]
+fn move_and_rotate_add_the_per_invocation_step_until_the_elapsed_input_reaches_the_duration() {
+    // Move adds each operand times the nominal tick count; Rotate adds the operand magnitude
+    // shifted by eight, divided by the duration, times the elapsed input, shifted back, signed
+    // like the operand. Both report "continue" while duration - 1 exceeds the elapsed input.
+    for (task, name, operands, ticks, rows) in [
+        (
+            Task::Move,
+            "Move",
+            [10, 0, -5],
+            3,
+            vec![
+                (0, [1030, 2000, 2985], [100, 300, 50], true),
+                (1, [1060, 2000, 2970], [100, 300, 50], true),
+                (2, [1090, 2000, 2955], [100, 300, 50], false),
+            ],
+        ),
+        (
+            Task::ScaledMove,
+            "sMove",
+            [10, 0, -5],
+            3,
+            // (10 << 8) / 3 >> 8 is 3 and (-5 << 8) / 3 >> 8 is -2 (truncating division, then
+            // an arithmetic shift), added on every invocation whatever the tick count.
+            vec![
+                (0, [1003, 2000, 2998], [100, 300, 50], true),
+                (1, [1006, 2000, 2996], [100, 300, 50], true),
+                (2, [1009, 2000, 2994], [100, 300, 50], false),
+            ],
+        ),
+        (
+            Task::ScaledRotate,
+            "sRotate",
+            [80, 0, -40],
+            3,
+            vec![
+                (0, [1000, 2000, 3000], [100, 300, 50], true),
+                (1, [1000, 2000, 3000], [126, 300, 37], true),
+                (2, [1000, 2000, 3000], [179, 300, 11], false),
+            ],
+        ),
+        (
+            Task::Rotate,
+            "Rotate",
+            [80, 0, -40],
+            3,
+            vec![
+                (0, [1000, 2000, 3000], [100, 300, 50], true),
+                (1, [1000, 2000, 3000], [126, 300, 37], true),
+                (2, [1000, 2000, 3000], [179, 300, 11], false),
+            ],
+        ),
+    ] {
+        let mut task = task;
+        let mut position = [1000, 2000, 3000];
+        let mut angles = [100, 300, 50];
+        let mut updates = vec![];
+        for (elapsed, expected_position, expected_angles, report) in rows {
+            let done = task
+                .complete(
+                    &[
+                        Argument::Integer(operands[0]),
+                        Argument::Integer(operands[1]),
+                        Argument::Integer(operands[2]),
+                        Argument::Integer(3),
+                    ],
+                    Invocation {
+                        elapsed: Some(elapsed),
+                        unpaused_tasks: 0,
+                        unpaused_blocking_tasks: 0,
+                    },
+                    &mut None,
+                    &mut Some(SpatialCall {
+                        position: &mut position,
+                        angles: &mut angles,
+                        frame_scale: 256,
+                        turn: 0,
+                        nominal_ticks: ticks,
+                        matrix: Matrix::IDENTITY,
+                        slave: false,
+                        locations: &[],
+                        markers: None,
+                        effective_position: None,
+                        player_position: None,
+                        actor_index: 0,
+                        map_updates: &mut updates,
+                    }),
+                    NativeServices::default(),
+                )
+                .unwrap();
+            assert_eq!(position, expected_position, "{name} elapsed {elapsed}");
+            assert_eq!(angles, expected_angles, "{name} elapsed {elapsed}");
+            assert_eq!(!done, report, "{name} elapsed {elapsed}");
+        }
+    }
+}
+
+#[test]
 fn scaled_axis_movement_and_rotation_match_the_original_routines() {
     // Rows from the original scaled routines in an emulator, starting at position (1000, 2000,
     // 3000) and angles (100, 300, 50): axis, delta or target, duration, frame scale, then per call
