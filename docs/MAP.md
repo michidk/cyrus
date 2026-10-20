@@ -179,7 +179,6 @@ module where it is defined and regenerate.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/effects.rs` — World-local environmental effects follow preservation's SOUP pool and lifetime rules.
-- `src/script/registry/face.rs` — The receiver's side of `FaceAngle` and `FacePos`: one ordinary turn step per task invocation.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
 - `src/script/registry/flat.rs` — Retained actor flat records follow the original's per-actor flat sprite controls.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
@@ -196,6 +195,7 @@ module where it is defined and regenerate.
 - `src/script/registry/persistence.rs` — Complete actor and world replacements are assembled away from live execution.
 - `src/script/registry/player.rs` — Explicit grounded player updates retain movement continuation with the logical actor.
 - `src/script/registry/point.rs` — Point navigation retains walking, direct visibility, held-node routes and command transitions.
+- `src/script/registry/point_tasks.rs` — The receiver's side of the point tasks: one ordinary turn step per `FaceAngle`/`FacePos`
 - `src/script/registry/prevalidation.rs` — Ordinary slope prevalidation precedes support and its response stages.
 - `src/script/registry/probe.rs` — The nonplayer blocked-ahead probe follows preservation's engine/SOUP.md "Nonplayer blocked-ahead probe".
 - `src/script/registry/queued.rs` — Queued motion admission precedes its request and vertical writer.

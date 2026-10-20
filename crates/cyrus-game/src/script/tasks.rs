@@ -102,8 +102,8 @@ pub(super) struct NativeServices<'a> {
     pub player_face: Option<PlayerFaceCall<'a>>,
     /// The selected player's alignment owner, for the lineup natives.
     pub lineup: Option<&'a mut (dyn super::lineup::LineupHost + 'a)>,
-    /// The receiver's facing owner, for `FaceAngle` and `FacePos`.
-    pub face: Option<&'a mut (dyn FaceHost + 'a)>,
+    /// The receiver's facing and point-walking owner, for the `Face*` and `MoveNode*` tasks.
+    pub point: Option<&'a mut (dyn PointHost + 'a)>,
 }
 
 /// What `FaceAngle` and `FacePos` turn the receiver toward.
@@ -115,8 +115,24 @@ pub(super) enum FaceTarget {
     Point([i32; 2]),
 }
 
-/// The receiver's facing owner: one `FaceAngle` or `FacePos` step.
-pub(super) trait FaceHost {
+/// What `MoveNodeMarker`, `MoveNodeLocation` and `MoveNodePosition` walk toward.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MoveTarget {
+    /// A local Q8 position.
+    Position([i32; 3]),
+    /// A marker index; the receiver's Y offset applies to its position.
+    Marker(i32),
+    /// A location index of the receiver.
+    Location(i32),
+}
+
+/// The receiver's facing and point-walking owner: one `FaceAngle`/`FacePos` turn step or one
+/// ordinary point-wrapper step per invocation.
+pub(super) trait PointHost {
+    /// One point-wrapper step toward `target` within a Q8 arrival tolerance; the wrapper's
+    /// return, nonzero while the walk continues.
+    fn move_to(&mut self, target: MoveTarget, tolerance: i32) -> Result<i32>;
+
     /// The signed pre-turn difference, or zero when the receiver cannot turn, has arrived or its
     /// turn finished in this step.
     fn face(&mut self, target: FaceTarget) -> Result<i32>;
@@ -481,6 +497,12 @@ enum Task {
     ScaledMove,
     /// `sRotate(x, y, z, duration)`: the same step as `Rotate`.
     ScaledRotate,
+    /// `MoveNodeMarker(marker, tolerance)`: the point wrapper toward a marker.
+    MoveNodeMarker,
+    /// `MoveNodeLocation(location, tolerance)`: the point wrapper toward a receiver location.
+    MoveNodeLocation,
+    /// `MoveNodePosition(x, y, z, tolerance)`: the point wrapper toward a Q8 position.
+    MoveNodePosition,
     /// `FaceAngle(angle)`: one turn step per invocation toward a heading, completing on arrival.
     FaceAngle,
     /// `FacePos(x, z)`: `FaceAngle` toward a point, snapping onto it within the facing threshold.
@@ -1073,6 +1095,28 @@ impl Task {
                 }
                 duration.wrapping_sub(1) <= elapsed
             }
+            Self::MoveNodeMarker | Self::MoveNodeLocation | Self::MoveNodePosition => {
+                let (target, tolerance) = match (&*self, arguments) {
+                    (Self::MoveNodeMarker, [marker, tolerance]) => {
+                        (MoveTarget::Marker(marker.integer()?), tolerance.integer()?)
+                    }
+                    (Self::MoveNodeLocation, [location, tolerance]) => (
+                        MoveTarget::Location(location.integer()?),
+                        tolerance.integer()?,
+                    ),
+                    (Self::MoveNodePosition, [x, y, z, tolerance]) => (
+                        MoveTarget::Position([x.integer()?, y.integer()?, z.integer()?]),
+                        tolerance.integer()?,
+                    ),
+                    _ => anyhow::bail!(
+                        "MoveNodeMarker and MoveNodeLocation take two arguments, MoveNodePosition four"
+                    ),
+                };
+                let host = services
+                    .point
+                    .context("MoveNode tasks require the receiver's point-walking owner")?;
+                host.move_to(target, tolerance)? == 0
+            }
             Self::FaceAngle | Self::FacePos => {
                 let target = match (&*self, arguments) {
                     (Self::FaceAngle, [angle]) => FaceTarget::Angle(angle.integer()?),
@@ -1080,7 +1124,7 @@ impl Task {
                     _ => anyhow::bail!("FaceAngle takes one argument and FacePos two"),
                 };
                 let host = services
-                    .face
+                    .point
                     .context("FaceAngle and FacePos require the receiver's facing owner")?;
                 host.face(target)? == 0
             }
@@ -2433,6 +2477,12 @@ impl NativeTasks {
             Task::ScaledMove
         } else if function.eq_ignore_ascii_case("sRotate") {
             Task::ScaledRotate
+        } else if function.eq_ignore_ascii_case("MoveNodeMarker") {
+            Task::MoveNodeMarker
+        } else if function.eq_ignore_ascii_case("MoveNodeLocation") {
+            Task::MoveNodeLocation
+        } else if function.eq_ignore_ascii_case("MoveNodePosition") {
+            Task::MoveNodePosition
         } else if function.eq_ignore_ascii_case("FaceAngle") {
             Task::FaceAngle
         } else if function.eq_ignore_ascii_case("FacePos") {
@@ -2561,17 +2611,29 @@ impl NativeTasks {
     }
 
     /// Whether `function` is a facing task, which needs the receiver's facing owner.
-    pub(super) fn is_face_function(function: &str) -> bool {
-        ["FaceAngle", "FacePos"]
-            .iter()
-            .any(|name| function.eq_ignore_ascii_case(name))
+    pub(super) fn is_point_function(function: &str) -> bool {
+        [
+            "FaceAngle",
+            "FacePos",
+            "MoveNodeMarker",
+            "MoveNodeLocation",
+            "MoveNodePosition",
+        ]
+        .iter()
+        .any(|name| function.eq_ignore_ascii_case(name))
     }
 
     /// Whether `token` is a facing continuation.
-    pub(super) fn is_face_task(&self, token: u64) -> bool {
+    pub(super) fn is_point_task(&self, token: u64) -> bool {
         matches!(
             self.tasks.get(&token),
-            Some(Task::FaceAngle | Task::FacePos)
+            Some(
+                Task::FaceAngle
+                    | Task::FacePos
+                    | Task::MoveNodeMarker
+                    | Task::MoveNodeLocation
+                    | Task::MoveNodePosition
+            )
         )
     }
 

@@ -7,7 +7,6 @@ mod camera_drive;
 pub use camera_drive::{CameraDrive, CameraFrameState, PublishedCamera};
 mod death_exit;
 mod effects;
-mod face;
 mod health;
 pub use death_exit::WorldLoopOutcome;
 pub use effects::{ActorEvent, EnvironmentalEffect, EnvironmentalEffects};
@@ -34,6 +33,7 @@ pub(super) mod ordinary;
 pub(super) mod overlap;
 mod persistence;
 mod point;
+mod point_tasks;
 mod probe;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
@@ -2547,9 +2547,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             return self.lineup_call(function, kind, arguments, invocation);
         }
         if matches!(mode, super::tasks::NativeTaskMode::Script(_))
-            && super::tasks::NativeTasks::is_face_function(function)
+            && super::tasks::NativeTasks::is_point_function(function)
         {
-            return self.face_call(function, kind, arguments, invocation);
+            return self.point_call(function, kind, arguments, invocation);
         }
         let id = ScriptActorId {
             generation: self.generation,
@@ -2747,7 +2747,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 outcome: &mut player_face_outcome,
             }),
             lineup: None,
-            face: None,
+            point: None,
         };
         let result = match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
@@ -5008,6 +5008,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "sMove",
                 "sRotate",
                 "sMoveAlongAxis",
+                "MoveNodeMarker",
+                "MoveNodeLocation",
+                "MoveNodePosition",
             ]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
@@ -5248,8 +5251,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if self.registry.actors[self.index].tasks.is_lineup_task(token) {
             return self.lineup_poll(token, arguments, invocation);
         }
-        if self.registry.actors[self.index].tasks.is_face_task(token) {
-            return self.face_poll(token, arguments, invocation);
+        if self.registry.actors[self.index].tasks.is_point_task(token) {
+            return self.point_poll(token, arguments, invocation);
         }
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
@@ -5450,7 +5453,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     outcome: &mut player_face_outcome,
                 }),
                 lineup: None,
-                face: None,
+                point: None,
             },
         );
         self.finish_camera_update(result.is_ok())?;

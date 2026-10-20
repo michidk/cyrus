@@ -1,7 +1,8 @@
 //! Native continuations resume through VM calls and explicit restored service bindings.
 use super::*;
 use crate::script::tasks::{
-    Lookup, NativeServices, PlayerFaceCall, PlayerFaceOutcome, PlayerFaceState, SpatialCall, Speech,
+    FaceTarget, Lookup, MoveTarget, NativeServices, PlayerFaceCall, PlayerFaceOutcome,
+    PlayerFaceState, PointHost, SpatialCall, Speech,
 };
 use cyrus_script::{
     Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread, program::*,
@@ -2558,6 +2559,104 @@ fn axis_movement_and_rotation_match_the_original_routines() {
                 assert_eq!(!done, report != 0, "{label}");
             }
         }
+    }
+}
+
+#[derive(Default)]
+struct RecordingPointHost {
+    moves: Vec<(MoveTarget, i32)>,
+    faces: Vec<FaceTarget>,
+    result: i32,
+}
+impl PointHost for RecordingPointHost {
+    fn move_to(&mut self, target: MoveTarget, tolerance: i32) -> Result<i32> {
+        self.moves.push((target, tolerance));
+        Ok(self.result)
+    }
+    fn face(&mut self, target: FaceTarget) -> Result<i32> {
+        self.faces.push(target);
+        Ok(self.result)
+    }
+}
+
+#[test]
+fn point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zero() {
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let integers = |values: &[i32]| -> Vec<Argument> {
+        values
+            .iter()
+            .map(|&value| Argument::Integer(value))
+            .collect()
+    };
+    for (task, arguments, expected) in [
+        (
+            Task::MoveNodeMarker,
+            integers(&[7, 300]),
+            (MoveTarget::Marker(7), 300),
+        ),
+        (
+            Task::MoveNodeLocation,
+            integers(&[2, -5]),
+            (MoveTarget::Location(2), -5),
+        ),
+        (
+            Task::MoveNodePosition,
+            integers(&[256, -512, 1024, 0]),
+            (MoveTarget::Position([256, -512, 1024]), 0),
+        ),
+    ] {
+        for (result, done) in [(1, false), (-3, false), (0, true)] {
+            let mut host = RecordingPointHost {
+                result,
+                ..Default::default()
+            };
+            let mut task = task;
+            let completed = task
+                .complete(
+                    &arguments,
+                    invocation,
+                    &mut None,
+                    &mut None,
+                    NativeServices {
+                        point: Some(&mut host),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert_eq!(completed, done, "{task:?} result {result}");
+            assert_eq!(host.moves, [expected], "{task:?}");
+            assert!(host.faces.is_empty());
+        }
+        let mut wrong = task;
+        let error = wrong
+            .complete(
+                &arguments[1..],
+                invocation,
+                &mut None,
+                &mut None,
+                NativeServices {
+                    point: Some(&mut RecordingPointHost::default()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("argument"), "{task:?}");
+        let mut absent = task;
+        assert!(
+            absent
+                .complete(
+                    &arguments,
+                    invocation,
+                    &mut None,
+                    &mut None,
+                    NativeServices::default()
+                )
+                .is_err()
+        );
     }
 }
 
