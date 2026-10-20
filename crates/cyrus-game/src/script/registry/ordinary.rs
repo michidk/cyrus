@@ -219,6 +219,12 @@ impl ScriptWorld {
                             })
                         })
                         .transpose()?,
+                    player_collision: scene.map(|scene| super::PlayerCollisionSource {
+                        scene,
+                        animations: data,
+                        view,
+                        actors: &selected,
+                    }),
                     ..inputs
                 };
                 let player_query = if selected_player {

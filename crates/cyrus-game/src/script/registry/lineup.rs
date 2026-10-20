@@ -11,6 +11,8 @@ use anyhow::{Context, Result};
 pub(super) struct PlayerLineup<'h, 'a, 's, 'i, 'r> {
     host: &'h mut GameHost<'a, 's, 'i, 'r>,
     player: ScriptActorId,
+    /// The player-bound collision query, prepared on first use and kept for the call.
+    prepared: Option<super::model::OrdinaryCollisionQuery>,
     error: Option<anyhow::Error>,
 }
 
@@ -27,6 +29,7 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
         Ok(Self {
             host,
             player,
+            prepared: None,
             error: None,
         })
     }
@@ -160,6 +163,24 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
         Ok(turn.group.is_some())
     }
 
+    fn prepare(&mut self) -> Result<super::PlayerCollisionSource<'i>> {
+        let source = self
+            .host
+            .inputs
+            .player_collision
+            .context("lineup requires collision geometry bound to the selected player")?;
+        if self.prepared.is_none() {
+            self.prepared = Some(self.host.registry.prepare_ordinary_collision_query(
+                self.player,
+                source.scene,
+                source.animations,
+                source.view,
+                source.actors,
+            )?);
+        }
+        Ok(source)
+    }
+
     fn walk(&mut self, step: CloseStep) -> Result<()> {
         let function = match step {
             CloseStep::Forward => "WalkForward",
@@ -167,7 +188,31 @@ impl<'h, 'a, 's, 'i, 'r> PlayerLineup<'h, 'a, 's, 'i, 'r> {
             CloseStep::Left => "MoveLeft",
             CloseStep::Backward => "WalkBackward",
         };
-        let inputs = self.host.inputs;
+        let source = self.prepare()?;
+        let prepared = self.prepared.as_ref().expect("prepared above");
+        let mut inputs = self.host.inputs;
+        inputs.locomotion_geometry = Some(super::LocomotionGeometry {
+            ground: super::ground::OrdinaryGroundQuery {
+                scene: source.scene,
+                animations: source.animations,
+                prepared,
+                distance: source.scene.settings.post_collide_height,
+                sidedness: false,
+            },
+            environment: super::transition::ObstacleEnvironment {
+                selected_player: Some(self.player),
+                auto_grab: false,
+                item_system_ready: inputs
+                    .hud
+                    .map(crate::script::ScriptHud::inventory_ready)
+                    .transpose()?
+                    .unwrap_or(false),
+                shell_execution: inputs.shell_execution.unwrap_or(false),
+                ticks: inputs
+                    .nominal_ticks
+                    .context("lineup requires nominal_ticks")?,
+            },
+        });
         let sounds = self
             .host
             .sounds
@@ -281,13 +326,24 @@ impl LineupPort for PlayerLineup<'_, '_, '_, '_, '_> {
         })();
         self.record((), result);
     }
-    fn path_clear(&mut self, _: [i32; 3]) -> bool {
-        // The visibility query needs collision geometry bound to the player; a receiver's call
-        // carries geometry bound to the receiver.
-        self.error.get_or_insert_with(|| {
-            anyhow::anyhow!("PlayerPickupLineUp path check: player-bound geometry unavailable")
-        });
-        false
+    fn path_clear(&mut self, target: [i32; 3]) -> bool {
+        let result = (|| -> Result<bool> {
+            let source = self.prepare()?;
+            let prepared = self.prepared.as_ref().expect("prepared above");
+            self.host.registry.point_direct_visible(
+                self.player,
+                self.player,
+                target,
+                super::obstacle::OrdinaryObstacleQuery {
+                    scene: source.scene,
+                    animations: source.animations,
+                    prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                },
+            )
+        })();
+        self.record(false, result)
     }
     fn face_point(&mut self, x: i32, z: i32) -> bool {
         let result = (|| -> Result<bool> {

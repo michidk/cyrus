@@ -180,6 +180,26 @@ pub struct ScriptInputs<'a> {
     pub locomotion_geometry: Option<LocomotionGeometry<'a>>,
     /// The camera pose update the location natives run in their first invocation.
     pub camera_update: Option<super::camera::CameraUpdateHandle<'a>>,
+    /// What preparing collision geometry bound to the selected player needs, for natives that
+    /// move the player from another actor's script.
+    pub player_collision: Option<PlayerCollisionSource<'a>>,
+}
+
+/// Matching world geometry and traversal from which a native prepares the selected player's own
+/// collision query.
+#[derive(Clone, Copy)]
+pub struct PlayerCollisionSource<'a> {
+    pub scene: &'a crate::player::data::PlayerScene,
+    pub animations: &'a cyrus_assets::animation::Animations,
+    pub view: [i32; 2],
+    pub actors: &'a [ScriptActorId],
+}
+impl std::fmt::Debug for PlayerCollisionSource<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlayerCollisionSource")
+            .field("view", &self.view)
+            .finish_non_exhaustive()
+    }
 }
 
 pub(crate) struct ScriptAnimation {
