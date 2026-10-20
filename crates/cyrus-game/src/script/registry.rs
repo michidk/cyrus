@@ -4396,6 +4396,15 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
             return Ok(CallResult::Complete(test(control)));
         }
+        if function.eq_ignore_ascii_case("PrintSingleParm") {
+            let [value] = arguments else {
+                anyhow::bail!("{function} requires one argument");
+            };
+            let value = value.integer()?;
+            let name = self.registry.actors[self.index].name().to_owned();
+            self.registry.globals.print_line(format!("{name} {value}"));
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("PlayerInSight") {
             anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
             let geometry = self

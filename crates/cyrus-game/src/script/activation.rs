@@ -148,6 +148,9 @@ pub(super) enum NativeSource {
     },
 }
 
+/// Console lines available to `PrintSingleParm` output.
+const PRINTED_LINE_LIMIT: usize = 66;
+
 /// Gameplay globals retain engine initialization and native-call assignments.
 /// Unknown startup values remain None.
 /// The host retains these globals while replacing the logical world registry.
@@ -191,6 +194,8 @@ pub struct GameplayGlobals {
     pub(super) group_sync: super::GroupSync,
     /// Held-direction turn accumulators; transient input state outside snapshots.
     pub(super) turn: crate::player::turn::GroundTurn,
+    /// Lines printed by `PrintSingleParm`, kept up to the console's 66 lines; display is host-owned.
+    pub(super) printed: Vec<String>,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
 }
@@ -277,6 +282,18 @@ impl GameplayGlobals {
             action_ticks: 0,
             secondary_ticks: 0,
         });
+    }
+
+    /// Lines printed by `PrintSingleParm` since world entry, oldest first. The original writes
+    /// them to the first free of the console's 66 lines and drops further text once none is free.
+    pub fn printed_lines(&self) -> &[String] {
+        &self.printed
+    }
+
+    pub(super) fn print_line(&mut self, text: String) {
+        if self.printed.len() < PRINTED_LINE_LIMIT {
+            self.printed.push(text);
+        }
     }
 
     /// Advance preliminary timers before idle reset or lockout admission.
@@ -1206,6 +1223,7 @@ impl GameplayGlobals {
             player_swapped: saved.player_swapped,
             group_sync: saved.group_sync,
             turn: Default::default(),
+            printed: Vec::new(),
             host_requests: HostRequests::default(),
         })
     }

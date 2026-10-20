@@ -4727,6 +4727,38 @@ fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
     );
 }
 
+#[test]
+fn print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit() {
+    let mut data = scripts(vec![
+        Operation::Call {
+            call: Call {
+                function_id: 3,
+                kind: CallKind::Function,
+                target: Object::Me,
+                function: "PrintSingleParm".into(),
+                arguments: vec![Value::Integer { value: -7 }],
+            },
+        },
+        Operation::End { target: 0 },
+    ]);
+    data.definition.functions.push(Function {
+        name: "PrintSingleParm".into(),
+        param_count: 1,
+        kind: CallKind::Function,
+    });
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    let id = world.id(0).unwrap();
+    for _ in 0..70 {
+        world
+            .step(id, cyrus_game::script::Thread::Main, 20)
+            .unwrap();
+    }
+    let lines = world.globals().printed_lines();
+    assert_eq!(lines.len(), 66);
+    assert_eq!(lines[0], "ACTOR -7");
+}
+
 fn move_backward_scripts(step: u8) -> Scripts {
     let mut data = scripts(vec![
         Operation::Call {
