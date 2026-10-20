@@ -55,7 +55,8 @@ pub fn backward_admission(
     state: BackwardState,
     blocked_ahead_30: impl FnOnce() -> bool,
 ) -> BackwardAdmission {
-    if !idle_admitted(&state) {
+    // Unlike the strafes, MoveBackward admits only lifecycle byte 0: byte 15 is refused too.
+    if !idle_admitted(&state) || state.living_state != 0 {
         return BackwardAdmission::Refused;
     }
     if state.holding_weapon || state.combat_mode {
@@ -408,17 +409,22 @@ mod tests {
         ] {
             assert_eq!(backward_admission(state, never), BackwardAdmission::Refused);
         }
-        for living_state in [0, 15] {
-            assert!(matches!(
-                backward_admission(
-                    BackwardState {
-                        living_state,
-                        ..ready()
-                    },
-                    never
+        // The original runs the lifecycle test with byte 15 refused, as emulated.
+        for (living_state, admitted) in [(0, true), (15, false)] {
+            assert_eq!(
+                matches!(
+                    backward_admission(
+                        BackwardState {
+                            living_state,
+                            ..ready()
+                        },
+                        never
+                    ),
+                    BackwardAdmission::Proceed { .. }
                 ),
-                BackwardAdmission::Proceed { .. }
-            ));
+                admitted,
+                "living state {living_state}"
+            );
         }
     }
 
