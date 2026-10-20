@@ -157,6 +157,20 @@ fn modern_keys_and_held_run_switch_without_changing_faithful_bindings() {
         *app.world().resource::<PlayerInput>(),
         PlayerInput::default()
     );
+    app.world_mut()
+        .insert_resource(cyrus_world::lifecycle::WorldPreparationPending);
+    app.world_mut()
+        .resource_mut::<cyrus_game::player::input::InputSuppressed>()
+        .0 = false;
+    app.world_mut()
+        .resource_mut::<cyrus_game::fidelity::Fidelity>()
+        .player_controller = Mode::Faithful;
+    app.update();
+    assert_eq!(
+        *app.world().resource::<PlayerInput>(),
+        PlayerInput::default(),
+        "LoadWorld preparation suspends gameplay input"
+    );
 }
 
 #[test]

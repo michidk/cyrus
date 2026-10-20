@@ -176,6 +176,7 @@ pub(super) fn sample(
     mouse: Option<Res<ButtonInput<MouseButton>>>,
     bindings: Res<PlayerBindings>,
     suppressed: Res<InputSuppressed>,
+    pending_world: Option<Res<cyrus_world::lifecycle::WorldPreparationPending>>,
     logbook: Option<Res<crate::logbook::LogbookScreen>>,
     console: Option<Res<cyrus_console::Console>>,
     fidelity: Res<Fidelity>,
@@ -183,6 +184,7 @@ pub(super) fn sample(
     mut dialogue_skip: ResMut<DialogueSkip>,
 ) {
     if suppressed.0
+        || pending_world.is_some()
         || logbook.is_some_and(|screen| screen.suspended())
         || console.is_some_and(|console| console.open)
     {
