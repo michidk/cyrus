@@ -529,6 +529,18 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Peek one addressed message without changing its retained read cursor.
+    pub fn peek_combat_message(
+        &self,
+        actor: ScriptActorId,
+    ) -> Result<Option<super::CombatMessage>> {
+        let index = self.resolve(actor)?;
+        let receiver = &self.actors[index];
+        self.globals
+            .combat_messages
+            .peek(receiver.attributes[125], actor, receiver.message_read)
+    }
+
     /// Consume one addressed message using the actor's retained class cursor.
     /// This is message transport; combat effects belong to the maintenance stage.
     pub fn consume_combat_message(

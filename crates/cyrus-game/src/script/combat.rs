@@ -358,6 +358,29 @@ impl CombatMessages {
         Ok(None)
     }
 
+    /// Inspect the next addressed nonzero message without advancing the actor cursor.
+    /// This lets production response dispatch choose a service-aware path before consuming.
+    pub fn peek(&self, class: u8, actor: ScriptActorId, read: u8) -> Result<Option<CombatMessage>> {
+        anyhow::ensure!(
+            usize::from(read) < QUEUE_CAPACITY,
+            "combat message class {class} actor {} read cursor {} outside queue",
+            actor.index,
+            read
+        );
+        let queue = &self.classes[usize::from(class)];
+        let mut cursor = read;
+        while cursor != queue.write {
+            let Some(message) = queue.entries[usize::from(cursor)] else {
+                return Ok(None);
+            };
+            cursor = (cursor + 1) % QUEUE_CAPACITY as u8;
+            if message.receiver.is_none_or(|receiver| receiver == actor) {
+                return Ok(Some(message));
+            }
+        }
+        Ok(None)
+    }
+
     /// Clear all class queues; actor cursor reset belongs to actor lifecycle.
     pub fn reset(&mut self) {
         *self = Self::default();
