@@ -2849,9 +2849,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         )
     }
 
-    /// An actor as a camera native's target: its camera attributes, local pose (an attached
-    /// actor's effective-pose binding is not established) and the camera-wide reads the natives
-    /// share. Fallible reads surface only when used.
+    /// An actor as a camera native's target: its camera attributes, the pose the camera binds to
+    /// (`camera_binding_pose`) and the camera-wide reads the natives share. Fallible reads
+    /// surface only when used.
     fn camera_target(
         &self,
         actor: Option<ScriptActorId>,
@@ -2866,21 +2866,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 "camera target actor {index}: attribute block too short"
             ));
         }
-        let pose = (|| {
-            anyhow::ensure!(
-                attributes[26] == 0,
-                "camera target attached actor unsupported"
-            );
-            let pose = self
-                .registry
-                .spatial
-                .as_ref()
-                .context("camera target spatial state not prepared")?
-                .actor(index)?
-                .local;
-            Ok((pose.position, pose.angles))
-        })()
-        .map_err(describe);
+        let pose = self.registry.camera_binding_pose(index).map_err(describe);
         let selected_bound_position = (|| {
             let camera = self
                 .registry
@@ -2890,18 +2876,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             let bound = self
                 .registry
                 .resolve(camera.records[camera.selected.index()].actor)?;
-            anyhow::ensure!(
-                self.registry.actors[bound].attributes[26] == 0,
-                "camera selected record's attached actor unsupported"
-            );
-            Ok(self
-                .registry
-                .spatial
-                .as_ref()
-                .context("camera spatial state not prepared")?
-                .actor(bound)?
-                .local
-                .position)
+            Ok(self.registry.camera_binding_pose(bound)?.0)
         })()
         .map_err(describe);
         let holding_weapon = if guard_weapon {
@@ -2922,26 +2897,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         })
     }
 
-    /// The selected player's local pose, to which the camera binds. An attached player's
-    /// effective-pose binding is not established; fallible reads surface only when used.
+    /// The selected player's pose to which the camera binds (`camera_binding_pose`); fallible
+    /// reads surface only when used.
     fn camera_bound_pose(&self) -> Result<([i32; 3], [u16; 3]), String> {
         let describe = |error: anyhow::Error| format!("{error:#}");
         let player = self
             .selected_player()
             .ok_or("camera bound selected player unavailable")?;
         let index = self.registry.resolve(player).map_err(describe)?;
-        if self.registry.actors[index].attributes[26] != 0 {
-            return Err("camera bound attached player unsupported".into());
-        }
-        let pose = self
-            .registry
-            .spatial
-            .as_ref()
-            .ok_or("camera bound spatial state not prepared")?
-            .actor(index)
-            .map_err(describe)?
-            .local;
-        Ok((pose.position, pose.angles))
+        self.registry.camera_binding_pose(index).map_err(describe)
     }
 
     /// The selected player's state for `PlayerFaceObj`; fallible reads surface only when the task

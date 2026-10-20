@@ -15,6 +15,27 @@ fn wrapped_angles(angles: [i32; 3]) -> Result<[u16; 3]> {
 }
 
 impl ScriptWorld {
+    /// The position and angles the camera reads from an actor it binds or targets: the composed
+    /// pose of an attached actor (nonzero slave attribute) and the local pose otherwise.
+    /// **Inferred**: the original binds the camera's pose reads to a second pose set when the
+    /// slave attribute is nonzero, which preservation's attached position maps to; an attached
+    /// actor whose pose no family refresh has composed fails instead of falling back to local.
+    pub(super) fn camera_binding_pose(&self, index: usize) -> Result<([i32; 3], [u16; 3])> {
+        let spatial = self
+            .spatial
+            .as_ref()
+            .context("camera spatial state not prepared")?
+            .actor(index)?;
+        let pose = if self.actors[index].attributes[26] != 0 {
+            spatial
+                .effective
+                .context("attached actor's pose requires an explicit family refresh")?
+        } else {
+            spatial.local
+        };
+        Ok((pose.position, pose.angles))
+    }
+
     /// Establish the camera's first published pose. Setup computes it with one pose pass
     /// that omits movement limiting; the caller supplies that pose. Both history poses
     /// start equal, and the CAMERA actor's spatial state is created once.
@@ -63,7 +84,7 @@ impl ScriptWorld {
     /// session state, the hit history and both logical actor positions change together.
     /// Every identity and pose is validated before any state changes, and a geometry or
     /// correction error leaves the world and `hits` untouched.
-    /// An attached bound actor is rejected; its effective-pose binding is not established.
+    /// An attached bound actor binds through its composed pose (see `camera_binding_pose`).
     pub fn update_camera(
         &mut self,
         hits: &mut CameraHitSelection,
@@ -76,19 +97,13 @@ impl ScriptWorld {
             .as_ref()
             .with_context(|| context("session unavailable"))?;
         let bound = self.resolve(camera.records[camera.selected.index()].actor)?;
-        anyhow::ensure!(
-            self.actors[bound].attributes[26] == 0,
-            "{}",
-            context("attached bound actor unsupported")
-        );
+        let (bound_position, bound_angles) = self
+            .camera_binding_pose(bound)
+            .with_context(|| context("bound actor pose"))?;
         let spatial = self
             .spatial
             .as_ref()
             .with_context(|| context("spatial state not prepared"))?;
-        let bound_pose = spatial
-            .actor(bound)
-            .with_context(|| context("bound actor pose"))?
-            .local;
         for id in [camera.camera_actor, camera.alternate_actor] {
             let id: ScriptActorId = id;
             spatial
@@ -98,8 +113,8 @@ impl ScriptWorld {
         let update = camera.prepare_pose(
             hits,
             &CameraUpdateInputs {
-                bound_position: bound_pose.position,
-                bound_angles: bound_pose.angles,
+                bound_position,
+                bound_angles,
                 movement: settings.movement,
                 body_radius: settings.body_radius,
                 body_clearance: settings.body_clearance,

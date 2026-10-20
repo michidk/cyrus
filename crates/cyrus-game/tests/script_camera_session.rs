@@ -487,6 +487,53 @@ fn object_pan_task_binds_the_receiver_and_finishes_with_its_request() {
 }
 
 #[test]
+fn object_pan_binds_an_attached_receiver_through_its_composed_pose() {
+    let mut data = scripts_calling("showObjPan", &[3, -2, 5, 3]);
+    // A nonzero slave attribute selects the composed pose: the master's pose plus the offset.
+    let mut master = actor(vec![Operation::End { target: 0 }], 900);
+    master.attributes.insert("attr_25".into(), 1);
+    data.actors.insert("MASTER".into(), master);
+    let mut placement = data.instances[0].clone();
+    placement.object_id = 1;
+    placement.actor = "MASTER".into();
+    placement.map_position = [20, 30, 40];
+    data.instances.push(placement);
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_26".into(), 1);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+    world.prepare_spatial().unwrap();
+    // The second map instance shifts the standalone roles by one.
+    let player = world.id(PLAYER + 1).unwrap();
+    world
+        .initialize_player_spatial(player, [4000, 9000, -6000], [100, 1900, 20])
+        .unwrap();
+    world.refresh_families().unwrap();
+    let receiver = world.id(0).unwrap();
+    let spatial = world.spatial(receiver).unwrap();
+    let composed = spatial.effective.unwrap().position;
+    assert_ne!(
+        composed, spatial.local.position,
+        "the test must tell the poses apart"
+    );
+    let hud = ScriptHud::default();
+    run(&mut world, 0, BODY, Some(&hud)).unwrap();
+    let mut passes = 0;
+    while world.actors()[0].runtime().unwrap().active_tasks() != 0 {
+        passes += 1;
+        assert!(passes <= 8, "the pan must finish within its duration");
+        run(&mut world, 0, TASKS, Some(&hud)).unwrap();
+    }
+    assert_eq!(
+        world.camera().unwrap().records[2].request,
+        [768 + composed[0], -512 + composed[1], 1280 + composed[2]]
+    );
+}
+
+#[test]
 fn world_snapshot_resumes_an_object_pan_mid_flight() {
     let mut data = scripts_calling("showObjPan", &[3, -2, 5, 4]);
     let mut live = prepared(&mut data);

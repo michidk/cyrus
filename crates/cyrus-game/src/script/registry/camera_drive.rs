@@ -107,18 +107,9 @@ impl ScriptWorld {
         let camera = self.camera.as_ref().context("camera session unavailable")?;
         let record = &camera.records[camera.selected.index()];
         let bound = self.resolve(record.actor)?;
-        anyhow::ensure!(
-            self.actors[bound].attributes[26] == 0,
-            "camera bound attached actor unsupported"
-        );
-        let pose = self
-            .spatial
-            .as_ref()
-            .context("spatial state not prepared")?
-            .actor(bound)?
-            .local;
+        let (position, angles) = self.camera_binding_pose(bound)?;
         let mut record = record.clone();
-        let candidate = record.candidate(pose.position, pose.angles)?;
+        let candidate = record.candidate(position, angles)?;
         self.initialize_camera_pose(CameraPose {
             position: candidate,
             angles: [0; 3],
