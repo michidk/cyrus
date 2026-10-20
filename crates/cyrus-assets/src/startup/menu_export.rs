@@ -67,6 +67,7 @@ pub(crate) fn prepare_menu(
         "menu: transition artwork {flash_name}: expected 640x480 frames"
     );
     let loading_font_bytes = read("fonts/REDSEL.FNT")?;
+    let confirmation_bytes = read("system/MINIMENU.GXA")?;
     let ini = std::str::from_utf8(&ini_bytes).context("menu: MENU.INI is not UTF-8")?;
     let general = menu_ini::MenuGeneral::parse(ini).map_err(anyhow::Error::msg)?;
     let mut pages = BTreeMap::new();
@@ -165,7 +166,12 @@ pub(crate) fn prepare_menu(
     (
         crate::menu::MENU_VERSION,
         &ini_bytes,
-        (&world_bytes, &flash_bytes, &loading_font_bytes),
+        (
+            &world_bytes,
+            &flash_bytes,
+            &loading_font_bytes,
+            &confirmation_bytes,
+        ),
         &keys_bytes,
         &system_bytes,
         &archive_bytes,
@@ -268,6 +274,26 @@ pub(crate) fn prepare_menu(
             pixel[3] = 255;
         }
     }
+    let style = |values: Option<[i32; 2]>, field: &str| -> anyhow::Result<[u8; 2]> {
+        let values = values.with_context(|| format!("menu: SYSTEM.INI [3dfx] {field} missing"))?;
+        Ok([
+            u8::try_from(values[0])
+                .with_context(|| format!("menu: {field} colour factor outside 0..255"))?,
+            u8::try_from(values[1])
+                .with_context(|| format!("menu: {field} alpha outside 0..255"))?,
+        ])
+    };
+    let confirmation = crate::menu::ConfirmationArtwork {
+        picture: pictures(&confirmation_bytes)?
+            .into_iter()
+            .next()
+            .context("menu: MINIMENU.GXA has no frames")?,
+        font: font(&loading_font_bytes)?,
+        styles: [
+            style(system.glide.font_norm, "font_norm")?,
+            style(system.glide.font_sel, "font_sel")?,
+        ],
+    };
     let book = MenuAsset {
         version: crate::menu::MENU_VERSION,
         clock,
@@ -293,6 +319,7 @@ pub(crate) fn prepare_menu(
         textures,
         palette: palette.colors.to_vec(),
         fonts: [font(&normal_bytes)?, font(&selected_bytes)?],
+        confirmation,
         checks: pictures(&widget_bytes[0])?,
         sliders: pictures(&widget_bytes[1])?,
         movies,

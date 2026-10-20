@@ -59,6 +59,12 @@ and applies the selected actor override to Save/Continue availability. Returning
 clears hit inhibition and the terminal outcome. Available-save confirmation and
 loading and Quit automatic-save preparation remain explicitly unavailable;
 direct-scene hosts do not install this service.
+The shared `LastGameConfirmation` core applies the published Yes/No input ordering,
+context-three entry delay and release-before-return rules. Its CPU painter restores
+a supplied canonical capture for each redraw and uses installed MINIMENU artwork,
+REDSEL, and SYSTEM.INI colour/alpha styles. Menu cache schema 16 includes those
+assets and rejects older exports. This core is not yet connected to live death
+entry, GPU background capture or saved-game loading.
 Its portable `cache/menu/book.menu` retains all authored model frames and topology,
 textures, indexed fonts, previews, and defaults. Native and browser builds project
 the current book pose and redraw neighboring-page text during camera entry, page

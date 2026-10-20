@@ -5,8 +5,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Menu cache revision preserving authored flags for caller-specific restrictions.
-pub const MENU_VERSION: u32 = 15;
+/// Menu cache revision including installed mini-confirmation artwork and font styles.
+pub const MENU_VERSION: u32 = 16;
 
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 pub struct MenuAsset {
@@ -21,6 +21,7 @@ pub struct MenuAsset {
     pub textures: Vec<PageTexture>,
     pub palette: Vec<[u8; 3]>,
     pub fonts: [cyrus_text::Font; 2],
+    pub confirmation: ConfirmationArtwork,
     pub checks: Vec<MenuPicture>,
     pub sliders: Vec<MenuPicture>,
     pub movies: Vec<MenuPicture>,
@@ -28,6 +29,15 @@ pub struct MenuAsset {
     pub waiting_message: String,
     pub defaults: MenuPreferences,
     pub repeat_seconds: f32,
+}
+
+/// Installed mini-menu image and REDSEL styles, per preservation's book-menu rules.
+#[derive(Serialize, Deserialize)]
+pub struct ConfirmationArtwork {
+    pub picture: MenuPicture,
+    pub font: cyrus_text::Font,
+    /// Normal then selected, each `[colour factor, main alpha]` from SYSTEM.INI.
+    pub styles: [[u8; 2]; 2],
 }
 
 /// Validated starting-world identity, marker, and 640×480 transition presentation.
@@ -114,6 +124,10 @@ impl MenuAsset {
         );
         self.clock.validate()?;
         ensure!(
+            self.confirmation.font.line_height > 0,
+            "menu: confirmation font has no line height"
+        );
+        ensure!(
             self.palette.len() == 256 && self.key_names.len() == 140,
             "menu: invalid palette/key-name count"
         );
@@ -143,6 +157,7 @@ impl MenuAsset {
             .chain(&self.sliders)
             .chain(&self.movies)
             .chain(&self.new_game.loading)
+            .chain(std::iter::once(&self.confirmation.picture))
         {
             ensure!(
                 picture.width > 0
@@ -169,6 +184,7 @@ impl MenuAsset {
             .fonts
             .iter()
             .chain(std::iter::once(&self.new_game.font))
+            .chain(std::iter::once(&self.confirmation.font))
         {
             for glyph in &font.glyphs {
                 ensure!(
