@@ -288,8 +288,10 @@ selected player to the target; object-side lineups and conversation progression
 remain unavailable. World shell scripts (`COMMON` and the map's own script, plus the debug
 shell when SYSTEM.INI `final_version` is off) run every update before the ordinary actors until
 `KillMe`. `OpenShell` starts a named shell script. The `UseItem` native starts a general item's use script as a shell, within the item's
-instance limit, and applies its drop list and use flags; weapon and torch items, a burning torch
-and `shoot` creation remain unavailable, and no inventory screen calls it yet. Script caches need re-export
+instance limit, and applies its drop list and use flags, and lights or puts out a torch; weapon
+items and `shoot` creation remain unavailable, and no inventory screen calls it yet. `LightTorch`,
+`UnlightTorch`, the torch burn countdown and the held-torch lighting and dousing progression run on
+logical actor state; the held torch model and its light remain unpresented. Script caches need re-export
 (schema 27). Scripts and
 the HUD share session inventory
 through `AddItem`, `DropItem`, `HaveItem` and `SelectItem`. Recursive prerequisites,

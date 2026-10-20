@@ -188,6 +188,7 @@ impl ScriptWorld {
             self.globals.locomotion_called = 0;
             self.globals.ground_prevalidation_used = false;
             let result = (|| -> anyhow::Result<()> {
+                self.advance_torch_burn(id, inputs, ticks, sounds)?;
                 if selected_player {
                     if !self.actors[id.index].model.prepared {
                         self.prepare_player_model_resources(id, data)?;
@@ -485,6 +486,11 @@ impl ScriptWorld {
                     id.index,
                     self.actors[id.index].name()
                 ));
+            }
+        }
+        for &id in &selected {
+            if self.actors[id.index].failure().is_none() {
+                self.run_held_torch(id, inputs, ticks, sounds);
             }
         }
         self.update_separate(view, inputs, random, sounds, budget)?;

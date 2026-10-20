@@ -262,6 +262,10 @@ impl Inventory {
         Ok(())
     }
 
+    pub(super) fn begin_use_definition(&self, id: u16) -> bool {
+        self.items.contains_key(&id)
+    }
+
     /// Check that `id` can be used and report what using it starts.
     pub(super) fn begin_use(&self, id: u16) -> Result<ItemUse> {
         let item = self

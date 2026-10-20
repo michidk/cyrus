@@ -318,6 +318,7 @@ pub(crate) fn prepare(
         text_alpha,
         player_text_alpha,
         used_text_alpha,
+        torch_time: definitions.settings.torch_time,
         labels,
     };
 

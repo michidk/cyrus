@@ -12,9 +12,10 @@ impl GameHost<'_, '_, '_, '_> {
     /// Use `item` for the receiver. Every refusal that is not an error (player lockout, an edge
     /// state, a second attempt in one world-loop iteration, shell context, deep water, a held
     /// weapon, a torch being lit or doused, a closed inventory) leaves the world unchanged. The
-    /// compass toggles; a general item starts its use script unless the item's instance limit is
-    /// reached, then consumes its drop list and flags. Weapon and torch items, a burning torch and
-    /// the flagged item are explicitly unsupported.
+    /// compass toggles; a torch item lights the torch and is held, and any use while a torch burns
+    /// puts it out; a general item starts its use script unless the item's instance limit is
+    /// reached, then consumes its drop list and flags. Weapon items and the flagged item are
+    /// explicitly unsupported.
     pub(super) fn use_item(&mut self, item: u16) -> Result<()> {
         let hud = self
             .inputs
@@ -59,19 +60,42 @@ impl GameHost<'_, '_, '_, '_> {
         if deep_water || holding || torch_change {
             return Ok(());
         }
-        anyhow::ensure!(
-            control.torch_burning == 0,
-            "UseItem: putting out a burning torch unsupported"
-        );
+        let burning = control.torch_burning != 0;
+        let player_id = self.registry.id(selected)?;
+        if burning {
+            // While a torch burns, any item use puts it out instead.
+            return self.douse_torch(player_id, selected);
+        }
         let used = hud.begin_item_use(item)?;
         if item == 0 {
             hud.toggle_compass();
             return Ok(());
         }
         anyhow::ensure!(
-            used.item_type != WEAPON_ITEM && used.item_type != TORCH_ITEM,
-            "UseItem({item}): weapon and torch items unsupported"
+            used.item_type != WEAPON_ITEM,
+            "UseItem({item}): weapon items unsupported"
         );
+        if used.item_type == TORCH_ITEM {
+            let torch = self.torch_inputs(selected, "UseItem")?;
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .context("UseItem nominal ticks unavailable")?;
+            let sounds = self
+                .sounds
+                .as_deref_mut()
+                .context("UseItem sound handler unavailable")?;
+            self.registry.light_torch(player_id, torch, ticks, sounds)?;
+            let control = self.registry.actors[selected]
+                .control
+                .as_mut()
+                .context("UseItem: selected player control unavailable")?;
+            // Only a torch that began lighting is held and consumed.
+            if control.living_state != 33 {
+                return Ok(());
+            }
+            control.held_item = Some(item as u8);
+        }
         anyhow::ensure!(
             item != FLAGGED_ITEM,
             "UseItem({item}): the item's separate use flag is unrecovered"
@@ -82,5 +106,18 @@ impl GameHost<'_, '_, '_, '_> {
             self.registry.spawn_shell(&name)?;
         }
         hud.finish_item_use(item)
+    }
+
+    fn douse_torch(&mut self, player: super::ScriptActorId, index: usize) -> Result<()> {
+        let torch = self.torch_inputs(index, "UseItem")?;
+        let ticks = self
+            .inputs
+            .nominal_ticks
+            .context("UseItem nominal ticks unavailable")?;
+        let sounds = self
+            .sounds
+            .as_deref_mut()
+            .context("UseItem sound handler unavailable")?;
+        self.registry.unlight_torch(player, torch, ticks, sounds)
     }
 }

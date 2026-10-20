@@ -59,6 +59,9 @@ pub struct HudAsset {
     pub player_text_alpha: [u8; 2],
     /// SYSTEM.INI [3dfx] font_used, for scripted menu items already chosen.
     pub used_text_alpha: [u8; 2],
+    /// ITEM.INI `torch_time`: torch burn duration in seconds; absent when unset.
+    #[serde(default)]
+    pub torch_time: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

@@ -3874,6 +3874,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
+        torch_time: None,
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12411,6 +12412,10 @@ fn player_walking_fixture_with(
                 {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":24,"anim_id":1,"anim_type":0,"commands":[
                 {"opcode":0,"frame_reference":0},{"opcode":1}]},
+            {"group_index":149,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":0,"frame_reference":0},{"opcode":1}]},
+            {"group_index":150,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":20,"anim_id":1,"anim_type":0,"commands":[
                 {"opcode":4,"sound_param":9,"volume_shift":0},
                 {"opcode":0,"frame_reference":0},{"opcode":1}]}]});
@@ -12748,6 +12753,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
+        torch_time: None,
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12854,6 +12860,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
+        torch_time: None,
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12959,6 +12966,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
+        torch_time: None,
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -13064,6 +13072,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
+        torch_time: None,
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -28537,6 +28546,7 @@ fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
         used_text_alpha: [0; 2],
+        torch_time: None,
     }
 }
 
@@ -28660,4 +28670,132 @@ fn open_shell_starts_the_named_script_regardless_of_case_and_rejects_unknown_nam
     };
     assert_eq!(open("itemlist").unwrap(), 1);
     assert!(open("nothing").is_err());
+}
+
+#[test]
+fn a_torch_is_lit_burns_down_is_doused_and_relit_from_its_saved_counter() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let (_, mut world, _, _) = player_walking_fixture_with(|scripts| {
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "UseItem".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        let call = Operation::ObjectCall {
+            call: Call {
+                function_id: id,
+                function: "UseItem".into(),
+                target: Object::Player,
+                kind: CallKind::Function,
+                arguments: vec![Value::Integer { value: 45 }],
+            },
+        };
+        scripts.actors.get_mut("LOGIC").unwrap().program.steps =
+            [call, Operation::End { target: 0 }]
+                .into_iter()
+                .enumerate()
+                .map(|(index, operation)| {
+                    (
+                        index as u32,
+                        Step {
+                            next: index as u32 + 1,
+                            operation,
+                        },
+                    )
+                })
+                .collect();
+    });
+    let hud = cyrus_game::script::ScriptHud::default();
+    let mut asset = inventory_asset(&[(45, 1)]);
+    asset.inventory.get_mut(&45).unwrap().item_type = 3;
+    asset.torch_time = Some(60);
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let map = world.id(0).unwrap();
+    let player = world
+        .id(world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, cyrus_game::script::ScriptActorSource::Player))
+            .unwrap())
+        .unwrap();
+    let inputs = || ScriptInputs {
+        hud: Some(&hud),
+        shell_execution: Some(false),
+        nominal_ticks: Some(2),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let torch = |world: &ScriptWorld| {
+        let control = world.actors()[player.index].control_state().unwrap();
+        (
+            control.living_state,
+            control.torch_burning,
+            control.torch_saved,
+        )
+    };
+    let use_item = |world: &mut ScriptWorld| {
+        world.globals_mut().end_item_use_attempt();
+        world
+            .advance(
+                map,
+                ScriptStage::OrdinaryMain,
+                inputs(),
+                Some(&mut |_, _| Ok(())),
+                None,
+                100,
+            )
+            .unwrap();
+    };
+    let progress = |world: &mut ScriptWorld| {
+        for _ in 0..4 {
+            world.run_held_torch(player, inputs(), 2, &mut |_, _| Ok(()));
+            world
+                .advance(
+                    player,
+                    ScriptStage::Animation,
+                    inputs(),
+                    Some(&mut |_, _| Ok(())),
+                    None,
+                    100,
+                )
+                .unwrap();
+        }
+        assert!(
+            world.actors()[player.index].failure().is_none(),
+            "{:?}",
+            world.actors()[player.index].failure()
+        );
+    };
+    use_item(&mut world);
+    assert_eq!(torch(&world), (33, 0, 0), "lighting begins");
+    progress(&mut world);
+    assert_eq!(
+        torch(&world),
+        (0, 90, 90),
+        "sixty seconds burn for ninety counts"
+    );
+    world
+        .advance_torch_burn(player, inputs(), 2, &mut |_, _| Ok(()))
+        .unwrap();
+    assert_eq!(torch(&world).1, 88, "the countdown loses the nominal ticks");
+    use_item(&mut world);
+    assert_eq!(
+        torch(&world).0,
+        34,
+        "any use while burning puts the torch out"
+    );
+    progress(&mut world);
+    assert_eq!(
+        torch(&world),
+        (0, 0, 88),
+        "the counter is saved when doused"
+    );
+    use_item(&mut world);
+    progress(&mut world);
+    assert_eq!(
+        torch(&world),
+        (0, 88, 88),
+        "relighting restores the saved counter"
+    );
 }

@@ -38,6 +38,7 @@ mod persistence;
 mod point;
 mod point_tasks;
 mod probe;
+mod torch;
 pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
     LogicalSessionSnapshot, WorldRestoreContext, WorldSnapshot, WorldSnapshotSources,
@@ -296,6 +297,8 @@ pub struct ActorControlState {
     pub ground_kind: u8,
     pub rope_attached: bool,
     pub torch_burning: u8,
+    /// The counter saved when a torch is put out, restored when it is lit again; zero starts afresh.
+    pub torch_saved: u8,
     pub weapon_drawn: bool,
     /// Low byte assigned by admitted HandItem; None leaves initial attachment state unestablished.
     pub held_item: Option<u8>,
@@ -4150,6 +4153,27 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let item =
                 u16::try_from(item.integer()?).context("AddItem item ID outside u16 range")?;
             self.add_session_item(item, amount.integer()?)?;
+            return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function
+            && (function.eq_ignore_ascii_case("LightTorch")
+                || function.eq_ignore_ascii_case("UnlightTorch"))
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let inputs = self.torch_inputs(self.index, function)?;
+            let ticks = self
+                .inputs
+                .nominal_ticks
+                .with_context(|| format!("{function} nominal ticks unavailable"))?;
+            let sounds = self
+                .sounds
+                .as_deref_mut()
+                .with_context(|| format!("{function} sound handler unavailable"))?;
+            if function.eq_ignore_ascii_case("LightTorch") {
+                self.registry.light_torch(id, inputs, ticks, sounds)?;
+            } else {
+                self.registry.unlight_torch(id, inputs, ticks, sounds)?;
+            }
             return Ok(CallResult::Complete(0));
         }
         // OpenShell(name) starts the named shell script; it runs from the next update.

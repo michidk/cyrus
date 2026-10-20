@@ -1251,6 +1251,7 @@ mod tests {
             text_alpha: [255, 199],
             player_text_alpha: [255, 97],
             used_text_alpha: [128, 100],
+            torch_time: None,
         }
     }
 

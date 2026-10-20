@@ -50,6 +50,8 @@ struct State {
     compass_on: bool,
     use_consumed: bool,
     health_feedback_ticks: u32,
+    /// Installed ITEM.INI `torch_time`, in seconds.
+    torch_time: Option<i32>,
 }
 
 impl std::fmt::Debug for ScriptHud {
@@ -144,6 +146,7 @@ impl ScriptHud {
             compass_on: snapshot.compass_on,
             use_consumed: snapshot.use_consumed,
             health_feedback_ticks: snapshot.health_feedback_ticks,
+            torch_time: hud.torch_time,
         })))
     }
 
@@ -205,6 +208,7 @@ impl ScriptHud {
             Err(error) => state.inventory_error = Some(format!("{error:#}")),
         }
         state.data = Some(hud.powerup_sizes.len());
+        state.torch_time = hud.torch_time;
         state.journal = Some(super::Journal::load(hud, preferences));
     }
 
@@ -323,6 +327,36 @@ impl ScriptHud {
             Some(items) => items.finish_use(id),
             None => anyhow::bail!("UseItem({id}): inventory unavailable"),
         }
+    }
+
+    /// Initial torch counter: the installed burn time in seconds, scaled by one and a half,
+    /// rounded to even and capped at 255. A missing `torch_time` is unavailable, not defaulted.
+    pub(super) fn torch_start(&self) -> Result<u8> {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        let seconds = state
+            .torch_time
+            .context("ITEM.INI torch_time unavailable")?;
+        Ok((f64::from(seconds.max(1)) * 1.5)
+            .round_ties_even()
+            .min(255.0) as u8)
+    }
+
+    /// Drop one unit of `id` as the `DropItem` native does.
+    pub(super) fn drop_one(&self, id: u16) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        match state.inventory.as_mut() {
+            Some(items) => items.remove(id, 1),
+            None => Ok(()),
+        }
+    }
+
+    /// Whether an item definition exists, for rules that treat an unknown held item as an error.
+    pub(super) fn item_defined(&self, id: u16) -> bool {
+        let state = self.0.lock().expect("script HUD lock poisoned");
+        state
+            .inventory
+            .as_ref()
+            .is_some_and(|items| items.begin_use_definition(id))
     }
 
     /// Item zero is the compass: using it flips the shared flag.

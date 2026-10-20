@@ -207,6 +207,7 @@ module where it is defined and regenerate.
 - `src/script/registry/sight.rs` — Line of sight between two actors follows preservation's combat decision "In sight" rules.
 - `src/script/registry/slope.rs` — Ordinary slope response follows preservation's player engine rules.
 - `src/script/registry/spacing.rs` — Fight spacing reads and mutates the receiver's shared movement state.
+- `src/script/registry/torch.rs` — Torches: `LightTorch` and `UnlightTorch`, the burn countdown and the held-torch progression.
 - `src/script/registry/transition.rs` — Obstacle motion transitions follow preservation's ordinary forward wrapper.
 - `src/script/registry/vertical.rs` — Queued and falling vertical arithmetic retains the original byte timer.
 - `src/script/registry/weapon.rs` — Authoritative combat entry and weapon transitions follow preservation's engine/animation.md.
