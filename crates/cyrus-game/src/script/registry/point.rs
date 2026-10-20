@@ -700,7 +700,7 @@ impl ScriptWorld {
         Ok(None)
     }
 
-    fn point_facing_inputs(
+    pub(super) fn point_facing_inputs(
         &mut self,
         id: ScriptActorId,
         inputs: ScriptInputs<'_>,

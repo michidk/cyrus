@@ -4880,6 +4880,85 @@ fn face_player_turns_toward_the_selected_player_over_its_duration() {
     assert_eq!(world.spatial(id).unwrap().local.position, origin);
 }
 
+#[test]
+fn face_angle_and_face_pos_turn_one_step_per_invocation_and_complete_on_arrival() {
+    let hud = cyrus_game::script::ScriptHud::default();
+    // (function, literal arguments, start heading, turn rate, headings after each invocation)
+    let far_ahead = 1_000_000;
+    let down: Vec<u16> = (0..62).map(|step| 984 - 16 * step).collect();
+    for (function, arguments, start, rate, expected) in [
+        // Rate 16 closes the 32 units to 432 in two steps, snapping on the second.
+        ("FaceAngle", vec![432], 400, 16u8, vec![416, 432]),
+        // A point far along +Z has bearing zero; the shortest way from 1000 is down.
+        (
+            "FacePos",
+            vec![0, far_ahead],
+            1000,
+            16,
+            down.iter().copied().chain([0]).collect(),
+        ),
+        // A zero turn rate completes the task, on its next pass like any task, without turning.
+        ("FaceAngle", vec![432], 400, 0, vec![400, 400]),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Call {
+                call: Call {
+                    function_id: 3,
+                    kind: CallKind::Task,
+                    target: Object::Me,
+                    function: function.into(),
+                    arguments: arguments
+                        .iter()
+                        .map(|&value| Value::Integer { value })
+                        .collect(),
+                },
+            },
+            flag(),
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: function.into(),
+            param_count: arguments.len() as u8,
+            kind: CallKind::Task,
+        });
+        data.actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .attributes
+            .insert("attr_15".into(), rate);
+        data.instances[0].angles[1] = start;
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        world.prepare_spatial().unwrap();
+        let id = world.id(0).unwrap();
+        let origin = world.spatial(id).unwrap().local.position;
+        let inputs = || cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            ..Default::default()
+        };
+        let mut sounds =
+            |_: cyrus_game::script::ScriptActorId, _: cyrus_game::script::ScriptSound| Ok(());
+        let mut headings = Vec::new();
+        for index in 0..expected.len() {
+            let stage = if index == 0 { BODY } else { TASKS };
+            world
+                .advance(id, stage, inputs(), Some(&mut sounds), None, 30)
+                .unwrap();
+            headings.push(world.spatial(id).unwrap().local.angles[1]);
+            assert_eq!(
+                world.actors()[0].runtime().unwrap().active_tasks(),
+                usize::from(index + 1 < expected.len()),
+                "{function} rate {rate} invocation {index}"
+            );
+        }
+        assert_eq!(headings, expected, "{function} rate {rate}");
+        assert_eq!(world.spatial(id).unwrap().local.position, origin);
+    }
+}
+
 fn play_animation_scripts(arguments: [i32; 2]) -> Scripts {
     let mut data = scripts(vec![
         Operation::Call {

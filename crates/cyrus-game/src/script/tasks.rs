@@ -102,6 +102,24 @@ pub(super) struct NativeServices<'a> {
     pub player_face: Option<PlayerFaceCall<'a>>,
     /// The selected player's alignment owner, for the lineup natives.
     pub lineup: Option<&'a mut (dyn super::lineup::LineupHost + 'a)>,
+    /// The receiver's facing owner, for `FaceAngle` and `FacePos`.
+    pub face: Option<&'a mut (dyn FaceHost + 'a)>,
+}
+
+/// What `FaceAngle` and `FacePos` turn the receiver toward.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum FaceTarget {
+    /// A heading in 2048ths of a turn.
+    Angle(i32),
+    /// A local Q8 X/Z point.
+    Point([i32; 2]),
+}
+
+/// The receiver's facing owner: one `FaceAngle` or `FacePos` step.
+pub(super) trait FaceHost {
+    /// The signed pre-turn difference, or zero when the receiver cannot turn, has arrived or its
+    /// turn finished in this step.
+    fn face(&mut self, target: FaceTarget) -> Result<i32>;
 }
 
 /// The selected player's state for `PlayerFaceObj`, read before the call.
@@ -449,6 +467,10 @@ enum Task {
     FacePlayer,
     /// `FacePlayerInertia`: `FacePlayer` whose step shrinks by the elapsed input.
     FacePlayerInertia,
+    /// `FaceAngle(angle)`: one turn step per invocation toward a heading, completing on arrival.
+    FaceAngle,
+    /// `FacePos(x, z)`: `FaceAngle` toward a point, snapping onto it within the facing threshold.
+    FacePos,
     Backward,
     /// `WalkBackward`: `MoveBackward` outside deep water with its own groups, step attributes and
     /// step check.
@@ -957,6 +979,17 @@ impl Task {
                     .killed
                     .context("AmbientRtx receiver killed state unavailable")?;
                 !source.update_ambient_rtx(slot, position, volume.integer()?, killed)?
+            }
+            Self::FaceAngle | Self::FacePos => {
+                let target = match (&*self, arguments) {
+                    (Self::FaceAngle, [angle]) => FaceTarget::Angle(angle.integer()?),
+                    (Self::FacePos, [x, z]) => FaceTarget::Point([x.integer()?, z.integer()?]),
+                    _ => anyhow::bail!("FaceAngle takes one argument and FacePos two"),
+                };
+                let host = services
+                    .face
+                    .context("FaceAngle and FacePos require the receiver's facing owner")?;
+                host.face(target)? == 0
             }
             Self::FacePlayer | Self::FacePlayerInertia => {
                 let [duration] = arguments else {
@@ -2297,6 +2330,10 @@ impl NativeTasks {
                 "PlayerParallelLineUp requires task encoding"
             );
             Task::ParallelLineUp
+        } else if function.eq_ignore_ascii_case("FaceAngle") {
+            Task::FaceAngle
+        } else if function.eq_ignore_ascii_case("FacePos") {
+            Task::FacePos
         } else if function.eq_ignore_ascii_case("FacePlayer") {
             Task::FacePlayer
         } else if function.eq_ignore_ascii_case("FacePlayerInertia") {
@@ -2417,6 +2454,21 @@ impl NativeTasks {
         matches!(
             self.tasks.get(&token),
             Some(Task::PickupLineUp { .. } | Task::ParallelLineUp | Task::LineUp { .. })
+        )
+    }
+
+    /// Whether `function` is a facing task, which needs the receiver's facing owner.
+    pub(super) fn is_face_function(function: &str) -> bool {
+        ["FaceAngle", "FacePos"]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+    }
+
+    /// Whether `token` is a facing continuation.
+    pub(super) fn is_face_task(&self, token: u64) -> bool {
+        matches!(
+            self.tasks.get(&token),
+            Some(Task::FaceAngle | Task::FacePos)
         )
     }
 

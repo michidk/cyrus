@@ -236,6 +236,8 @@ impl Task {
             Self::LineUp { .. } => ("PlayerLineUp", 3, Some(CallKind::Task)),
             Self::FacePlayer => ("FacePlayer", 1, None),
             Self::FacePlayerInertia => ("FacePlayerInertia", 1, None),
+            Self::FaceAngle => ("FaceAngle", 1, None),
+            Self::FacePos => ("FacePos", 2, None),
             Self::Backward => ("MoveBackward", 1, None),
             Self::WalkBackward => ("WalkBackward", 1, None),
             Self::Forward => ("MoveForward", 1, None),

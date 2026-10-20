@@ -162,50 +162,90 @@ impl ScriptWorld {
             if self.snap_ordinary_horizontal(index, destination, threshold)? {
                 return Ok(0);
             }
-            let actor = &self.actors[index];
-            let desired = super::super::spatial::query_bearing(x, z);
-            let torch = actor
-                .control
-                .as_ref()
-                .context("facing control unavailable")?
-                .torch_burning
-                != 0;
-            let turn = ordinary_slope_turn(
-                origin.angles[1],
-                desired,
-                actor.attributes[if inputs.holding_weapon || inputs.combat_active {
-                    21
-                } else {
-                    15
-                }],
-                inputs.frame_scale,
-                inputs.holding_weapon,
-                torch,
-            );
-            if actor.animation.is_some()
-                && let Some(group) = turn.group
-            {
-                self.request_ordinary_group(id, group, false, inputs.ticks, sounds)?;
-            }
-            self.spatial
-                .as_mut()
-                .context("spatial owner unavailable")?
-                .actor_mut(index)?
-                .local
-                .angles[1] = turn.heading;
-            Ok(if turn.group.is_none() {
-                0
-            } else {
-                super::super::decision::heading_difference(
-                    i32::from(desired),
-                    i32::from(origin.angles[1]),
-                )
-            })
+            self.turn_ordinary_toward(
+                id,
+                super::super::spatial::query_bearing(x, z),
+                inputs,
+                sounds,
+            )
         })();
         result.with_context(|| {
             format!(
                 "world {} instance {} point {destination:?} facing",
                 self.world, id.index
+            )
+        })
+    }
+
+    /// One ordinary turn step toward a heading, without an arrival snap. Returns the signed
+    /// pre-turn difference, or zero when the turn snaps onto the heading. Selected-player camera
+    /// feedback remains unavailable.
+    pub fn face_ordinary_angle(
+        &mut self,
+        id: ScriptActorId,
+        heading: u16,
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        self.resolve(id)?;
+        ensure!(
+            inputs.selected_player != Some(id),
+            "selected-player facing camera unavailable"
+        );
+        self.turn_ordinary_toward(id, heading, inputs, sounds)
+            .with_context(|| {
+                format!(
+                    "world {} instance {} heading {heading} facing",
+                    self.world, id.index
+                )
+            })
+    }
+
+    fn turn_ordinary_toward(
+        &mut self,
+        id: ScriptActorId,
+        desired: u16,
+        inputs: OrdinarySlopeInputs,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        let origin = self.spatial(id)?.local;
+        let actor = &self.actors[index];
+        let torch = actor
+            .control
+            .as_ref()
+            .context("facing control unavailable")?
+            .torch_burning
+            != 0;
+        let turn = ordinary_slope_turn(
+            origin.angles[1],
+            desired,
+            actor.attributes[if inputs.holding_weapon || inputs.combat_active {
+                21
+            } else {
+                15
+            }],
+            inputs.frame_scale,
+            inputs.holding_weapon,
+            torch,
+        );
+        if actor.animation.is_some()
+            && let Some(group) = turn.group
+        {
+            self.request_ordinary_group(id, group, false, inputs.ticks, sounds)?;
+        }
+        self.spatial
+            .as_mut()
+            .context("spatial owner unavailable")?
+            .actor_mut(index)?
+            .local
+            .angles[1] = turn.heading;
+        Ok(if turn.group.is_none() {
+            0
+        } else {
+            super::super::decision::heading_difference(
+                i32::from(desired),
+                i32::from(origin.angles[1]),
             )
         })
     }
