@@ -797,11 +797,12 @@ fn queued_step(
 }
 
 /// Decide a forward animation `Transition` command. **Inferred** from the original's decision
-/// routine: masks 1 and 2 take the transition only when a jump-request word is set, and no
-/// shipped engine code ever sets it, so they continue with the next command; mask 8 acts only for
-/// the selected player, so every other actor continues; any other mask continues. Mask 4 reads a
-/// combat state byte and mask 8 for the selected player reads a combat input global, neither of
-/// which cyrus models, so those fail instead of guessing.
+/// routine: masks 1 and 2 take the transition only when the actor's pending action word has a
+/// jump bit, which only the `SetAction` native sets. Cyrus does not implement `SetAction` (a
+/// script calling it fails), so that word is always clear and these masks continue with the next
+/// command. Mask 8 acts only for the selected player, so every other actor continues; any other
+/// mask continues. Mask 4 reads a combat record byte and mask 8 for the selected player reads a
+/// combat input flag, neither of which cyrus models, so those fail instead of guessing.
 fn transition_continues(
     actor: ScriptActorId,
     mask: u32,
