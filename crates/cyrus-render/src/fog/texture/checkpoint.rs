@@ -3,7 +3,7 @@ use super::{Playback, TextureAnimations};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
-/// Exact decoded frame identities for the bound scene, independent of runtime handles.
+/// Exact decoded frame identities for scene and effect images, independent of runtime handles.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextureSourcesSnapshot {
     images: std::collections::BTreeMap<String, Vec<[u8; 32]>>,
@@ -19,6 +19,11 @@ impl TextureAnimations {
     ) -> Result<TextureSourcesSnapshot> {
         use anyhow::Context;
         use bevy::prelude::{Assets, Children, Image};
+        ensure!(
+            self.effects_error.is_none(),
+            "environment effect image preparation failed: {:?}",
+            self.effects_error
+        );
         let assets = world
             .get_resource::<Assets<Image>>()
             .context("texture image assets absent")?;
@@ -53,38 +58,11 @@ impl TextureAnimations {
             let Some(binding) = binding else {
                 continue;
             };
-            let mut frames = Vec::with_capacity(binding.frames.len());
-            for (index, handle) in binding.frames.iter().enumerate() {
-                let image = assets.get(handle).with_context(|| {
-                    format!("texture {} frame {index}: image absent", binding.key)
-                })?;
-                let data = image.data.as_ref().with_context(|| {
-                    format!(
-                        "texture {} frame {index}: CPU image bytes absent",
-                        binding.key
-                    )
-                })?;
-                let descriptor = &image.texture_descriptor;
-                let mut hash = blake3::Hasher::new();
-                hash.update(&serde_json::to_vec(&(
-                    descriptor.size.width,
-                    descriptor.size.height,
-                    descriptor.size.depth_or_array_layers,
-                    descriptor.mip_level_count,
-                    descriptor.sample_count,
-                    format!("{:?}", descriptor.dimension),
-                    format!("{:?}", descriptor.format),
-                    format!("{:?}", image.data_order),
-                ))?);
-                hash.update(data);
-                frames.push(*hash.finalize().as_bytes());
-            }
-            if let Some(previous) = images.insert(binding.key.clone(), frames.clone()) {
-                ensure!(
-                    previous == frames,
-                    "texture {}: shared frame contents differ",
-                    binding.key
-                );
+            fingerprint_binding(binding, assets, &mut images)?;
+        }
+        if let Some(effects) = &self.effects {
+            for binding in effects.bindings.values() {
+                fingerprint_binding(binding, assets, &mut images)?;
             }
         }
         ensure!(
@@ -96,6 +74,48 @@ impl TextureAnimations {
         );
         Ok(TextureSourcesSnapshot { images })
     }
+}
+
+fn fingerprint_binding(
+    binding: &super::Binding,
+    assets: &bevy::prelude::Assets<bevy::prelude::Image>,
+    images: &mut std::collections::BTreeMap<String, Vec<[u8; 32]>>,
+) -> Result<()> {
+    use anyhow::Context;
+    let mut frames = Vec::with_capacity(binding.frames.len());
+    for (index, handle) in binding.frames.iter().enumerate() {
+        let image = assets
+            .get(handle)
+            .with_context(|| format!("texture {} frame {index}: image absent", binding.key))?;
+        let data = image.data.as_ref().with_context(|| {
+            format!(
+                "texture {} frame {index}: CPU image bytes absent",
+                binding.key
+            )
+        })?;
+        let descriptor = &image.texture_descriptor;
+        let mut hash = blake3::Hasher::new();
+        hash.update(&serde_json::to_vec(&(
+            descriptor.size.width,
+            descriptor.size.height,
+            descriptor.size.depth_or_array_layers,
+            descriptor.mip_level_count,
+            descriptor.sample_count,
+            format!("{:?}", descriptor.dimension),
+            format!("{:?}", descriptor.format),
+            format!("{:?}", image.data_order),
+        ))?);
+        hash.update(data);
+        frames.push(*hash.finalize().as_bytes());
+    }
+    if let Some(previous) = images.insert(binding.key.clone(), frames.clone()) {
+        ensure!(
+            previous == frames,
+            "texture {}: shared frame contents differ",
+            binding.key
+        );
+    }
+    Ok(())
 }
 
 impl TextureSourcesSnapshot {
@@ -140,6 +160,11 @@ impl TextureAnimations {
             self.environment.is_some(),
             "texture playback environment is not bound"
         );
+        ensure!(
+            self.effects_error.is_none(),
+            "environment effect image preparation failed: {:?}",
+            self.effects_error
+        );
         let mut images: Vec<_> = self
             .states
             .iter()
@@ -169,6 +194,11 @@ impl TextureAnimations {
         ensure!(
             prepared.environment.is_some(),
             "texture replacement environment is not bound"
+        );
+        ensure!(
+            prepared.effects_error.is_none(),
+            "replacement effect image preparation failed: {:?}",
+            prepared.effects_error
         );
         ensure!(
             snapshot.images.len() == prepared.states.len(),
@@ -259,6 +289,7 @@ mod tests {
             .into_iter()
             .collect(),
             restored_binding: false,
+            ..Default::default()
         }
     }
 
@@ -400,6 +431,8 @@ mod tests {
         let saved = live.snapshot_playback()?;
         let mut app = App::new();
         app.init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<Environment>>()
+            .init_resource::<Assets<Image>>()
             .insert_resource(EnvironmentRequest(Handle::default()))
             .insert_resource(TextureAnimations::from_snapshot(prepared(), saved.clone())?)
             .add_systems(Update, bind);

@@ -264,7 +264,29 @@ impl SessionSceneInstances {
             .chain(self.model)
             .chain(self.actor_models.values().copied())
             .collect();
-        cyrus_render::fog::TextureAnimations::prepare(world, environment.id(), &roots)
+        use bevy::prelude::{Assets, Image, Mut};
+        use cyrus_assets::environment::Environment;
+        ensure!(
+            world.contains_resource::<Assets<Environment>>(),
+            "session texture environment store absent"
+        );
+        let mut textures =
+            cyrus_render::fog::TextureAnimations::prepare(world, environment.id(), &roots)?;
+        world.resource_scope(
+            |world, environments: Mut<Assets<Environment>>| -> Result<()> {
+                let environment = environments
+                    .get(environment)
+                    .context("session effect texture environment absent")?;
+                if let Some(source) = &environment.effects {
+                    let mut images = world
+                        .get_resource_mut::<Assets<Image>>()
+                        .context("session effect texture image store absent")?;
+                    textures.prepare_effects(source, &mut images)?;
+                }
+                Ok(())
+            },
+        )?;
+        Ok(textures)
     }
 
     /// Prepare destination materials from saved camera, fidelity and clipping state.

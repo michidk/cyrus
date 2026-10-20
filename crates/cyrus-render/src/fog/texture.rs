@@ -1,6 +1,7 @@
 //! Demand-driven texture frames from preservation's texture-animation contract.
 pub(super) mod admission;
 mod checkpoint;
+mod effects;
 mod frames;
 pub use checkpoint::{TexturePlaybackSnapshot, TextureSourcesSnapshot};
 
@@ -87,6 +88,8 @@ pub struct TextureAnimations {
     environment: Option<AssetId<Environment>>,
     states: HashMap<String, ImageState>,
     restored_binding: bool,
+    effects: Option<effects::PreparedEffects>,
+    effects_error: Option<String>,
 }
 
 /// Observed zero-based image frame and inspection state, sorted by canonical image name.
@@ -167,6 +170,8 @@ fn bind(
     request: Res<EnvironmentRequest>,
     mut images: ResMut<TextureAnimations>,
     meshes: Res<Assets<Mesh>>,
+    environments: Res<Assets<Environment>>,
+    mut frame_assets: ResMut<Assets<Image>>,
     (parents, names, staged): (
         Query<&ChildOf>,
         Query<&Name>,
@@ -189,6 +194,22 @@ fn bind(
     if images.environment != Some(request.0.id()) || (request.is_changed() && !restored_binding) {
         images.environment = Some(request.0.id());
         images.states.clear();
+        images.effects = None;
+        images.effects_error = None;
+    }
+    if images.effects.is_none()
+        && images.effects_error.is_none()
+        && let Some(source) = environments
+            .get(&request.0)
+            .and_then(|env| env.effects.as_ref())
+        && let Err(error) = images.prepare_effects(source, &mut frame_assets)
+    {
+        let message = format!(
+            "world {:?}: environmental effect images unavailable: {error:#}",
+            request.0.path()
+        );
+        error!("{message}");
+        images.effects_error = Some(message);
     }
     for (entity, material, extras, geometry, mesh, frames, flat) in &candidates {
         if std::iter::once(entity)
@@ -389,6 +410,8 @@ mod tests {
         let mut app = App::new();
         app.init_resource::<Assets<Mesh>>()
             .init_resource::<TextureAnimations>()
+            .init_resource::<Assets<Environment>>()
+            .init_resource::<Assets<Image>>()
             .insert_resource(EnvironmentRequest(Handle::default()))
             .add_systems(Update, bind);
         app.update();
@@ -734,6 +757,28 @@ mod tests {
 }
 
 impl TextureAnimations {
+    fn validate_image(&self, name: &str, count: usize, delay_ms: i16) -> anyhow::Result<u32> {
+        ensure!(
+            name.len() == 6 && name.bytes().all(|b| b.is_ascii_alphanumeric()),
+            "texture name {name:?} is not a shipped canonical image key"
+        );
+        ensure!(count > 0, "texture {name} has no frames");
+        ensure!(
+            delay_ms >= 0,
+            "texture {name} has unsupported negative delay {delay_ms}"
+        );
+        let delay = (f64::from(delay_ms) * 18.2 / 1000.0)
+            .round_ties_even()
+            .max(1.0) as u32;
+        if let Some(existing) = self.states.get(&name.to_ascii_lowercase()) {
+            ensure!(
+                existing.count == count && existing.delay == delay,
+                "texture {name} has conflicting shared frame metadata"
+            );
+        }
+        Ok(delay)
+    }
+
     fn bind_mesh(
         &mut self,
         mesh: &Mesh,
@@ -780,32 +825,9 @@ impl TextureAnimations {
             "texture {} has no frames",
             description.image_name
         );
-        ensure!(
-            description.delay_ms >= 0,
-            "texture {} has unsupported negative delay {}",
-            description.image_name,
-            description.delay_ms
-        );
-        ensure!(
-            description.image_name.len() == 6
-                && description
-                    .image_name
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric()),
-            "texture name {:?} is not a shipped canonical image key",
-            description.image_name
-        );
         let key = description.image_name.to_ascii_lowercase();
-        let delay = (f64::from(description.delay_ms) * 18.2 / 1000.0)
-            .round_ties_even()
-            .max(1.0) as u32;
         let count = description.textures.len();
-        if let Some(existing) = self.states.get(&key) {
-            ensure!(
-                existing.count == count && existing.delay == delay,
-                "texture {key} has conflicting shared frame metadata"
-            );
-        }
+        let delay = self.validate_image(&description.image_name, count, description.delay_ms)?;
         let frames = frames.ok_or_else(|| {
             anyhow::anyhow!("animated texture frames were not retained by the GLTF loader")
         })?;
