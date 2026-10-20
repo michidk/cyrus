@@ -84,10 +84,16 @@ export async function testSessionSlots(operate = operateSlots) {
     Date.now = () => 1000;
     await write(name, 'diagnostic', 'accepted named snapshot');
     assert((await operation({ type: 'list' })).slots.length === 0, 'new catalog not empty');
+    const writesBeforePlan = durability.length;
+    const planned = await operation({ type: 'create', description: 'PLANNED', prepare: true });
+    assert(planned.slot.slot === 2 && planned.slot.description === 'PLANNED', 'save admission selected the wrong slot');
+    assert((await operation({ type: 'list' })).slots.length === 0, 'save admission wrote a slot');
+    assert(durability.length === writesBeforePlan, 'save admission opened a write transaction');
     const created = await Promise.all(Array.from({ length: 5 }, (_, index) =>
       operation({ type: 'create', description: `SAVE ${index}` }, `session ${index}`)));
     const numbers = created.map(value => value.slot.slot).sort((a, b) => a - b);
     assert(JSON.stringify(numbers) === '[2,3,4,5,6]', 'concurrent allocation overwrote a slot');
+    await rejected({ type: 'create', description: 'PLANNED', expected_slot: planned.slot.slot }, 'late capture');
     listing = true;
     const tied = (await operation({ type: 'list' })).slots;
     listing = false;
@@ -109,6 +115,9 @@ export async function testSessionSlots(operate = operateSlots) {
     abortDelete = false;
     assert((await operation({ type: 'load', ...accepted })).document === payload, 'aborted deletion removed payload');
     Date.now = () => 2000;
+    const plannedOverwrite = await operation({ type: 'overwrite', ...accepted, description: 'UPDATED', prepare: true });
+    assert(plannedOverwrite.slot.slot === accepted.slot && plannedOverwrite.slot.description === 'UPDATED', 'overwrite admission lost selection');
+    assert((await operation({ type: 'load', ...accepted })).slot.description === accepted.description, 'overwrite admission changed saved metadata');
     const replacement = (await operation({ type: 'overwrite', ...accepted, description: 'UPDATED' }, 'replacement')).slot;
     assert(replacement.revision !== accepted.revision, 'overwrite retained stale revision');
     for (const type of ['load', 'delete', 'overwrite']) await rejected({ type, ...accepted }, 'stale');

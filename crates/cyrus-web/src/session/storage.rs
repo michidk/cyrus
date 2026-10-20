@@ -40,8 +40,30 @@ pub enum SlotRequest {
 }
 
 pub async fn slots(request: &SlotRequest, document: &str) -> Result<serde_json::Value> {
+    operate(serde_json::to_value(request)?, document).await
+}
+
+pub async fn plan(request: &SlotRequest) -> Result<serde_json::Value> {
+    let mut request = serde_json::to_value(request)?;
+    request["prepare"] = true.into();
+    operate(request, "").await
+}
+
+pub async fn publish(
+    request: &SlotRequest,
+    slot: u16,
+    document: &str,
+) -> Result<serde_json::Value> {
+    let mut encoded = serde_json::to_value(request)?;
+    if matches!(request, SlotRequest::Create { .. }) {
+        encoded["expected_slot"] = slot.into();
+    }
+    operate(encoded, document).await
+}
+
+async fn operate(request: serde_json::Value, document: &str) -> Result<serde_json::Value> {
     let database = "cyrus-save-slots";
-    let request = serde_json::to_string(request)?;
+    let request = serde_json::to_string(&request)?;
     let value = operate_slots(database, &request, document)
         .await
         .map_err(|error| anyhow::anyhow!("{error:?}"))

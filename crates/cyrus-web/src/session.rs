@@ -16,6 +16,9 @@ mod session_storage;
 #[path = "session/storage.rs"]
 mod storage;
 use storage::SlotRequest;
+#[path = "session/selection.rs"]
+mod selection;
+use selection::retain_selection;
 
 const DATABASE: &str = "cyrus-sessions";
 
@@ -43,12 +46,14 @@ impl Request {
 
 enum IoResult {
     Read(Box<RuntimeSessionSnapshot>),
+    SlotRead(Value),
+    Planned(SlotRequest, Value),
     Written,
     Response(Value),
 }
 enum SaveTarget {
     Named(String),
-    Slot(SlotRequest),
+    Slot(SlotRequest, u16),
 }
 type Io = Mutex<mpsc::Receiver<Result<IoResult>>>;
 enum Phase {
@@ -132,19 +137,15 @@ impl Host {
                     operation,
                     SlotRequest::Create { .. } | SlotRequest::Overwrite { .. }
                 ) {
-                    world.resource_mut::<SessionBoundary>().capture_live()?;
-                    self.phase = Some(Phase::Capture(Some(SaveTarget::Slot(operation))));
+                    self.phase = Some(Phase::Io(task(async move {
+                        let plan = storage::plan(&operation).await?;
+                        Ok(IoResult::Planned(operation, plan))
+                    })));
                 } else {
                     self.phase = Some(Phase::Io(task(async move {
-                        let mut value = storage::slots(&operation, "").await?;
+                        let value = storage::slots(&operation, "").await?;
                         if matches!(operation, SlotRequest::Load { .. }) {
-                            let document = value["document"].take();
-                            let text = document
-                                .as_str()
-                                .context("slot load omitted its document")?;
-                            let snapshot = RuntimeSessionSnapshot::decode_document(text.as_bytes())
-                                .context("decoding browser save slot")?;
-                            Ok(IoResult::Read(Box::new(snapshot)))
+                            Ok(IoResult::SlotRead(value))
                         } else {
                             Ok(IoResult::Response(value))
                         }
@@ -173,10 +174,10 @@ impl Host {
                                 session_storage::write(DATABASE, &key, &snapshot).await?;
                                 Ok(IoResult::Written)
                             }
-                            SaveTarget::Slot(operation) => {
+                            SaveTarget::Slot(operation, slot) => {
                                 let document = String::from_utf8(snapshot.encode_document()?)?;
                                 Ok(IoResult::Response(
-                                    storage::slots(&operation, &document).await?,
+                                    storage::publish(&operation, slot, &document).await?,
                                 ))
                             }
                         }
@@ -196,6 +197,26 @@ impl Host {
                     .try_recv();
                 match received {
                     Ok(result) => match result? {
+                        IoResult::Planned(operation, value) => {
+                            let slot = retain_selection(world, &value)?;
+                            world.resource_mut::<SessionBoundary>().capture_live()?;
+                            Ok(Some(Phase::Capture(Some(SaveTarget::Slot(
+                                operation, slot,
+                            )))))
+                        }
+                        IoResult::SlotRead(value) => {
+                            retain_selection(world, &value)?;
+                            let text = value["document"]
+                                .as_str()
+                                .context("slot load omitted its document")?;
+                            let snapshot = RuntimeSessionSnapshot::decode_document(text.as_bytes())
+                                .context("decoding browser save slot")?;
+                            let assets = load_assets::LoadAssets::request(
+                                &snapshot,
+                                world.resource::<AssetServer>(),
+                            )?;
+                            Ok(Some(Phase::Prepare(Box::new(snapshot), Box::new(assets))))
+                        }
                         IoResult::Response(mut value) => {
                             value["pending"] = json!(false);
                             self.result = Some(Ok(value));

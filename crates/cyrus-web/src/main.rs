@@ -11,6 +11,9 @@ mod debug;
 mod preferences;
 #[cfg(target_arch = "wasm32")]
 mod session;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "session/selection.rs"]
+mod session_selection;
 mod storage;
 
 use bevy::prelude::*;

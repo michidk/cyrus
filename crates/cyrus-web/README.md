@@ -36,8 +36,10 @@ snapshots are unchanged. These operations do not provide the book's dialogs,
 thumbnails, quick saves, autosaves or complete gameplay save eligibility.
 Retained-save death confirmation can load an existing slot through this host
 without capture mode. Missing slots, stale revisions and failed restoration
-report errors and retain the live session. Ordinary browser slot diagnostics do
-not yet update the retained last-save selection; manual book integration remains
+report errors and retain the live session. Browser slot diagnostics retain an admitted
+save selection before capture and a load selection before document decoding.
+Save preparation reads metadata without writing; publication rejects a changed
+planned slot or stale overwrite revision. Manual book integration remains
 unavailable.
 Run `testSessionStorage()` and `testSessionSlots()` from
 `dev/scripts/test-session-storage.mjs` in a browser with real IndexedDB to verify

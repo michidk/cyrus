@@ -46,10 +46,13 @@ export const write = (name, key, document) => transact(name, key, 'readwrite', s
 // Slot metadata and opaque payloads share a transaction, but listing reads metadata only.
 export async function operateSlots(name, encodedRequest, document) {
   const request = JSON.parse(encodedRequest);
-  const { type, slot, revision, description } = request;
+  const { type, slot, revision, description, prepare = false, expected_slot } = request;
   const context = `${name}/${type}/${slot ?? 'new'}`;
   const check = (condition, message) => { if (!condition) throw new Error(`${context}: ${message}`); };
   check(['list', 'create', 'overwrite', 'load', 'delete'].includes(type), 'unknown slot operation');
+  check(typeof prepare === 'boolean' && (!prepare || type === 'create' || type === 'overwrite'), 'invalid slot preparation');
+  check(expected_slot === undefined || (type === 'create' && Number.isInteger(expected_slot)
+    && expected_slot >= 2 && expected_slot <= 299), 'invalid planned slot');
   if (type !== 'list' && type !== 'create') {
     check(Number.isInteger(slot) && slot >= 0 && slot <= 299, 'invalid slot');
     check(typeof revision === 'string' && revision.length > 0, 'missing slot revision');
@@ -57,7 +60,7 @@ export async function operateSlots(name, encodedRequest, document) {
   if (type === 'create' || type === 'overwrite') {
     check(typeof description === 'string' && description.length > 0 && description.length <= 64
       && !/[^\x0b\x0d\x20-\x7e]/.test(description), 'description must contain 1..64 original input characters');
-    check(typeof document === 'string' && document.length > 0, 'empty session document');
+    check(prepare || (typeof document === 'string' && document.length > 0), 'empty session document');
     check(type !== 'overwrite' || slot !== 0, 'quick-save slot cannot be manually overwritten');
   }
   const metadataKey = value => ['metadata', value];
@@ -74,7 +77,7 @@ export async function operateSlots(name, encodedRequest, document) {
   const db = await open(name);
   try {
     return await new Promise((resolve, reject) => {
-      const mode = type === 'list' || type === 'load' ? 'readonly' : 'readwrite';
+      const mode = prepare || type === 'list' || type === 'load' ? 'readonly' : 'readwrite';
       const transaction = mode === 'readwrite'
         ? db.transaction('documents', mode, { durability: 'strict' })
         : db.transaction('documents', mode);
@@ -90,6 +93,7 @@ export async function operateSlots(name, encodedRequest, document) {
         };
       };
       const publish = number => {
+        if (prepare) { result = { slot: { slot: number, description } }; return; }
         const metadata = { slot: number, description, modified_ms: Date.now(), revision: crypto.randomUUID() };
         store.put(document, payloadKey(number));
         store.put(metadata, metadataKey(number));
@@ -116,6 +120,7 @@ export async function operateSlots(name, encodedRequest, document) {
             let number = 2;
             while (number <= 299 && occupied.has(number)) number++;
             check(number <= 299, 'no free manual save slots');
+            check(expected_slot === undefined || number === expected_slot, 'planned slot changed; prepare the save again');
             publish(number);
           });
         });
@@ -128,7 +133,7 @@ export async function operateSlots(name, encodedRequest, document) {
             if (type === 'load') {
               consume(store.get(payloadKey(slot)), value => {
                 check(typeof value === 'string' && value.length > 0, 'slot payload is not session text');
-                result = { document: value };
+                result = { document: value, slot: metadata };
               });
             } else if (type === 'overwrite') {
               publish(slot);
