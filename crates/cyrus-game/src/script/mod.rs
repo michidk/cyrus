@@ -88,7 +88,9 @@ pub use dialogue::{
 mod flags;
 pub use flags::GlobalFlagsSnapshot;
 mod hud;
-pub use registry::{SelectedDeathState, SelectedHealthState};
+pub use registry::{
+    EnvironmentalEffect, EnvironmentalEffects, SelectedDeathState, SelectedHealthState,
+};
 mod inventory;
 mod journal;
 pub use hud::{CompassUse, ScriptHud, ScriptHudSnapshot};

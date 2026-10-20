@@ -176,6 +176,7 @@ module where it is defined and regenerate.
 - `src/script/registry/death_exit.rs` — End-of-frame exits use selected state after ordinary traversal, never mid-actor.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
+- `src/script/registry/effects.rs` — World-local environmental effects follow preservation's SOUP pool and lifetime rules.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
 - `src/script/registry/ground.rs` — Ordinary ground queries retain model ownership and selected-player fallback history.

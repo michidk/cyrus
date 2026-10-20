@@ -26924,3 +26924,6 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
         assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + 2048]);
     }
 }
+
+#[path = "script_registry/effects.rs"]
+mod environmental_effect_tests;

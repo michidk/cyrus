@@ -601,6 +601,14 @@ pub struct WorldSnapshot {
 impl WorldSnapshot {
     fn capture(world: &ScriptWorld, sources: &WorldSnapshotSources<'_>) -> Result<Self> {
         ensure!(
+            world
+                .effects
+                .as_ref()
+                .is_none_or(EnvironmentalEffects::is_empty),
+            "world {}: saving active environmental effects is unavailable",
+            world.world
+        );
+        ensure!(
             world.world == sources.scripts.world && world.content_id == sources.scripts.content_id,
             "world {}: snapshot source identity differs",
             world.world

@@ -503,13 +503,51 @@ impl ScriptWorld {
                 .as_mut()
                 .context("selected death progress owner unavailable")?;
             death.progress = death.progress.wrapping_add(ticks);
-            match death.mode {
-                1 => anyhow::bail!("selected death environmental effect spawning unavailable"),
-                2 if (random.draw() as u32) & death.progress.wrapping_add(1) == 0 => {
-                    anyhow::bail!("selected death environmental effect spawning unavailable")
+            let (mode, progress) = (death.mode, death.progress);
+            match mode {
+                1 => {
+                    self.emit_selected_death_effect(id, 0xb081, 32, 4096, random)?;
+                    let bound = (progress as i32 / 6).wrapping_add(1);
+                    if random.rnd(bound)? == 0 {
+                        self.emit_selected_death_effect(id, 0x22480, 8, 1024, random)?;
+                    }
+                    if random.rnd(bound)? == 0 {
+                        self.emit_selected_death_effect(id, 0x2580, 8, 1024, random)?;
+                    }
+                    if progress as i32 > 12 {
+                        self.emit_selected_death_effect(id, 0x32480, 8, 1024, random)?;
+                    }
                 }
-                _ => Ok(()),
+                2 if (random.draw() as u32) & progress.wrapping_add(1) == 0 => {
+                    let early = (progress as i32) < 12;
+                    self.emit_selected_death_effect(
+                        id,
+                        if early { 0x2500 } else { 0x12500 },
+                        8,
+                        1024,
+                        random,
+                    )?;
+                    let variation = random.rnd(64)? - 32;
+                    sounds(
+                        id,
+                        ScriptSound::Positional {
+                            effect: if early { 71 } else { 70 },
+                            volume: 0,
+                            rate_offset_hz: variation,
+                            position: {
+                                let spatial = self.spatial(id)?;
+                                if spatial.parent.is_some() {
+                                    spatial.query_pose()?.position
+                                } else {
+                                    spatial.linked_position.unwrap_or(spatial.local.position)
+                                }
+                            },
+                        },
+                    )?;
+                }
+                _ => {}
             }
+            Ok(())
         })();
         result.with_context(|| {
             format!(
@@ -517,6 +555,46 @@ impl ScriptWorld {
                 self.world, id.index
             )
         })
+    }
+
+    fn emit_selected_death_effect(
+        &mut self,
+        id: ScriptActorId,
+        descriptor: u32,
+        bound: i32,
+        offset: i32,
+        random: &mut crate::random::EngineRandom,
+    ) -> Result<()> {
+        ensure!(
+            self.effects.is_some(),
+            "selected death environmental effect spawning unavailable"
+        );
+        let point = self
+            .globals
+            .selected_health
+            .as_ref()
+            .and_then(|health| health.death.as_ref())
+            .and_then(|death| death.local_position)
+            .context("selected death captured effect point unavailable")?;
+        let camera = self
+            .camera
+            .as_ref()
+            .context("selected death published camera unavailable")?;
+        self.spatial(camera.camera_actor)
+            .context("selected death camera pose not initialized")?;
+        let camera = camera.current.position;
+        let mut point = super::effects::death_effect_point(point, camera);
+        point[0] = point[0]
+            .wrapping_add(random.rnd(bound)?.wrapping_mul(256))
+            .wrapping_sub(offset);
+        point[2] = point[2]
+            .wrapping_add(random.rnd(bound)?.wrapping_mul(256))
+            .wrapping_sub(offset);
+        let height = self.ordinary_collision_shape(id)?.positive_extent[1];
+        point[1] = point[1]
+            .wrapping_add(height.wrapping_mul(256))
+            .wrapping_add(1536);
+        self.spawn_death_effect(descriptor, point)
     }
 
     /// Death-owning health publishes displayed health before notifications. A missing

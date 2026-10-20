@@ -4,8 +4,10 @@ mod activation;
 mod attack;
 mod camera;
 mod death_exit;
+mod effects;
 mod health;
 pub use death_exit::WorldLoopOutcome;
+pub use effects::{EnvironmentalEffect, EnvironmentalEffects};
 pub use health::{SelectedDeathState, SelectedHealthState};
 pub(super) mod body;
 pub(super) mod bounds;
@@ -396,6 +398,7 @@ pub struct ScriptWorld {
     camera: Option<super::camera::CameraState>,
     /// Installed render-camera glide factors.
     camera_glide: super::camera::GlideSettings,
+    effects: Option<EnvironmentalEffects>,
 }
 impl ScriptWorld {
     /// Index of the selected player (CYRUS, or GREMLIN while the swap state is set).
@@ -861,6 +864,7 @@ impl ScriptWorld {
             surface_veto: None,
             camera,
             camera_glide: scripts.camera.glide.into(),
+            effects: None,
             model_admission: None,
             spatial: None,
             activation: Default::default(),
@@ -5299,6 +5303,7 @@ mod fighting_tests {
             surface_veto: None,
             camera: None,
             camera_glide: Default::default(),
+            effects: None,
         };
         let host = GameHost {
             native_source_program: None,
