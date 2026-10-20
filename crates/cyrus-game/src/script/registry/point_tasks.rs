@@ -32,26 +32,8 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
                     position[2],
                 ]
             }
-            // The receiver's location list; an out-of-range selector uses its home.
             MoveTarget::Location(location) => {
-                let locations = &self
-                    .registry
-                    .spatial
-                    .as_ref()
-                    .context("MoveNodeLocation spatial state unavailable")?
-                    .actor(self.index)?
-                    .locations;
-                let count = i32::try_from(locations.len())
-                    .context("MoveNodeLocation location count exceeds signed range")?;
-                *if location < 0 || location > count {
-                    locations
-                        .first()
-                        .context("MoveNodeLocation home unavailable")?
-                } else {
-                    locations.get(location as usize).context(
-                        "MoveNodeLocation selector equals location count: original out-of-range access unsupported",
-                    )?
-                }
+                self.receiver_location("MoveNodeLocation", location)?
             }
         };
         let inputs = self.inputs;
@@ -96,6 +78,29 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
 }
 
 impl GameHost<'_, '_, '_, '_> {
+    /// A position from the receiver's location list; an out-of-range selector uses its home.
+    pub(super) fn receiver_location(&self, native: &str, location: i32) -> Result<[i32; 3]> {
+        let locations = &self
+            .registry
+            .spatial
+            .as_ref()
+            .with_context(|| format!("{native} spatial state unavailable"))?
+            .actor(self.index)?
+            .locations;
+        let count = i32::try_from(locations.len())
+            .with_context(|| format!("{native} location count exceeds signed range"))?;
+        let position = if location < 0 || location > count {
+            locations
+                .first()
+                .with_context(|| format!("{native} home unavailable"))?
+        } else {
+            locations.get(location as usize).with_context(|| {
+                format!("{native} selector equals location count: original out-of-range access unsupported")
+            })?
+        };
+        Ok(*position)
+    }
+
     /// First invocation of a facing task. The receiver's native tasks leave the actor for the call
     /// so the facing step can use the world.
     pub(super) fn point_call(
@@ -142,5 +147,55 @@ impl GameHost<'_, '_, '_, '_> {
         );
         self.registry.actors[self.index].tasks = tasks;
         result
+    }
+}
+
+/// `AtNodeLocation`: the location's height must lie within half the receiver's total Y extent in
+/// whole map units (truncating), and its horizontal rounded distance within `distance`.
+pub(super) fn within_location(
+    position: [i32; 3],
+    target: [i32; 3],
+    total_height: i32,
+    distance: i32,
+) -> Result<bool> {
+    if (target[1].wrapping_sub(position[1])).wrapping_abs() >> 8 > total_height / 2 {
+        return Ok(false);
+    }
+    let horizontal = crate::script::spatial::rounded_distance([
+        target[0].wrapping_sub(position[0]),
+        0,
+        target[2].wrapping_sub(position[2]),
+    ])?;
+    Ok(horizontal <= distance)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::within_location;
+
+    #[test]
+    fn at_node_location_tests_height_in_map_units_then_horizontal_distance() {
+        let origin = [1000, 5000, -2000];
+        // Total height 50: half is 25 map units, 6400 Q8 units, compared after the shift.
+        for (target, total, distance, expected) in [
+            ([1000 + 768, 5000, -2000 + 1024], 50, 1279, false),
+            ([1000 + 768, 5000, -2000 + 1024], 50, 1280, true),
+            ([1000, 5000 + 25 * 256 + 255, -2000], 50, 0, true),
+            ([1000, 5000 + 26 * 256, -2000], 50, 0, false),
+            ([1000, 5000 - 26 * 256, -2000], 50, 0, false),
+            ([1000, 5000 - 25 * 256, -2000], 50, 0, true),
+            // An odd total truncates: 49 / 2 is 24.
+            ([1000, 5000 + 25 * 256, -2000], 49, 0, false),
+            ([1000, 5000 + 24 * 256 + 255, -2000], 49, 0, true),
+            // The height difference is ignored by the horizontal distance.
+            ([1000, 5000 + 24 * 256, -2000], 49, -1, false),
+            ([1000, 5000 + 24 * 256, -2000], 49, 0, true),
+        ] {
+            assert_eq!(
+                within_location(origin, target, total, distance).unwrap(),
+                expected,
+                "target {target:?} total {total} distance {distance}"
+            );
+        }
     }
 }

@@ -5074,6 +5074,31 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .contains(marker.integer()?, position, distance.integer()?)?;
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        // AtNodeLocation compares a receiver location with the receiver's own position; the height
+        // limit is half the actor's total Y extent (positive plus negative extent).
+        if function.eq_ignore_ascii_case("AtNodeLocation") {
+            let [location, distance] = arguments else {
+                anyhow::bail!("AtNodeLocation requires two arguments")
+            };
+            let id = ScriptActorId {
+                generation: self.generation,
+                index: self.index,
+            };
+            let shape = self.registry.ordinary_collision_shape(id)?;
+            let total_height = shape.positive_extent[1].wrapping_add(shape.negative_extent[1]);
+            let position = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("AtNodeLocation spatial state not prepared")?
+                .actor(self.index)?
+                .local
+                .position;
+            let target = self.receiver_location("AtNodeLocation", location.integer()?)?;
+            return Ok(CallResult::Complete(i32::from(
+                point_tasks::within_location(position, target, total_height, distance.integer()?)?,
+            )));
+        }
         if function.eq_ignore_ascii_case("PlayerStand") {
             anyhow::ensure!(arguments.is_empty(), "PlayerStand requires no arguments");
             let player = self
