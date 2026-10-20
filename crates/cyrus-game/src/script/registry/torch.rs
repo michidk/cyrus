@@ -43,7 +43,8 @@ impl ScriptWorld {
         if !self.torch_gates(id, &inputs, LIGHT_GROUP)? {
             return Ok(());
         }
-        let actor = &self.actors[id.index];
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
         let control = actor.control.as_ref().expect("gated control");
         let animating = lighting_or_dousing(actor);
         let refused = matches!(actor.surface, Some(1..=4))
@@ -60,10 +61,7 @@ impl ScriptWorld {
             return Ok(());
         }
         self.request_ordinary_group(id, LIGHT_GROUP, false, ticks, sounds)?;
-        let control = self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("gated control");
+        let control = self.actors[index].control.as_mut().expect("gated control");
         control.living_state = LIGHTING;
         control.motion_companion = 0;
         Ok(())
@@ -80,14 +78,12 @@ impl ScriptWorld {
         if !self.torch_gates(id, &inputs, DOUSE_GROUP)? {
             return Ok(());
         }
-        if lighting_or_dousing(&self.actors[id.index]) || inputs.drawing || inputs.sheathing {
+        let index = self.resolve(id)?;
+        if lighting_or_dousing(&self.actors[index]) || inputs.drawing || inputs.sheathing {
             return Ok(());
         }
         self.request_ordinary_group(id, DOUSE_GROUP, false, ticks, sounds)?;
-        let control = self.actors[id.index]
-            .control
-            .as_mut()
-            .expect("gated control");
+        let control = self.actors[index].control.as_mut().expect("gated control");
         control.living_state = DOUSING;
         control.motion_companion = 0;
         Ok(())
@@ -103,7 +99,8 @@ impl ScriptWorld {
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let actor = &self.actors[id.index];
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
         let Some(control) = actor.control.as_ref() else {
             return Ok(());
         };
@@ -114,7 +111,7 @@ impl ScriptWorld {
             return Ok(());
         }
         let surface = actor.surface.unwrap_or(0);
-        let control = self.actors[id.index]
+        let control = self.actors[index]
             .control
             .as_mut()
             .expect("checked control");
@@ -145,7 +142,8 @@ impl ScriptWorld {
         spend: &mut dyn FnMut(u8) -> Result<()>,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        let actor = &self.actors[id.index];
+        let index = self.resolve(id)?;
+        let actor = &self.actors[index];
         let Some(control) = actor.control.as_ref() else {
             return Ok(());
         };
@@ -156,7 +154,7 @@ impl ScriptWorld {
             return Ok(());
         }
         if matches!(actor.surface, Some(2 | 4)) || inputs.holding {
-            self.actors[id.index]
+            self.actors[index]
                 .control
                 .as_mut()
                 .expect("checked control")
@@ -170,7 +168,7 @@ impl ScriptWorld {
             _ => return Ok(()),
         };
         self.request_ordinary_group(id, group, false, ticks, sounds)?;
-        let actor = &mut self.actors[id.index];
+        let actor = &mut self.actors[index];
         let (current, _, progress) = actor
             .animation
             .as_ref()
@@ -270,8 +268,8 @@ impl ScriptWorld {
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
-        self.resolve(id)?;
-        let torch = self.ordinary_torch_inputs(id.index, inputs)?;
+        let index = self.resolve(id)?;
+        let torch = self.ordinary_torch_inputs(index, inputs)?;
         self.update_torch_burn(id, torch, ticks, sounds)
     }
 
@@ -283,7 +281,10 @@ impl ScriptWorld {
         ticks: u32,
         sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) {
-        let Some(item) = self.actors[id.index]
+        let Ok(index) = self.resolve(id) else {
+            return;
+        };
+        let Some(item) = self.actors[index]
             .control
             .as_ref()
             .and_then(|control| control.held_item)
@@ -292,7 +293,7 @@ impl ScriptWorld {
             return;
         };
         let result = (|| -> Result<()> {
-            let torch = self.ordinary_torch_inputs(id.index, inputs)?;
+            let torch = self.ordinary_torch_inputs(index, inputs)?;
             let hud = inputs
                 .hud
                 .context("held torch inventory host unavailable")?;
@@ -310,11 +311,11 @@ impl ScriptWorld {
             )
         })();
         if let Err(error) = result {
-            let actor = &mut self.actors[id.index];
+            let actor = &mut self.actors[index];
             actor.update_failure = Some(format!(
                 "world {} instance {} actor {} held torch: {error:#}",
                 self.world,
-                id.index,
+                index,
                 actor.name()
             ));
         }
