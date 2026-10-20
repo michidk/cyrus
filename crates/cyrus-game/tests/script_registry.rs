@@ -9033,6 +9033,68 @@ fn reset_rotation_restores_only_the_selected_axes_and_rebuilds_the_matrix() {
 }
 
 #[test]
+fn reload_rotation_keeps_the_angles_and_rebuilds_the_matrix_and_history() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    use cyrus_world::transform::Matrix;
+    let mut scripts = cache();
+    for (name, kind, count) in [
+        ("RotateByAxis", CallKind::Multitask, 3),
+        ("ReloadRotation", CallKind::Function, 0),
+    ] {
+        scripts.definition.functions.push(Function {
+            name: name.into(),
+            param_count: count,
+            kind,
+        });
+    }
+    let rotate = [1, 512, 1].map(|value| Value::Integer { value });
+    scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+        wait(1, "RotateByAxis", CallKind::Multitask, rotate.to_vec()),
+        Operation::Yield,
+        wait(2, "ReloadRotation", CallKind::Function, vec![]),
+        Operation::End { target: 0 },
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, operation)| {
+        (
+            index as u32,
+            Step {
+                next: index as u32 + 1,
+                operation,
+            },
+        )
+    })
+    .collect();
+    for instance in &mut scripts.instances {
+        instance.object_type = 1;
+    }
+    scripts.instances[0].angles = [128, 2000, 64];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(0),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let run = |world: &mut ScriptWorld, stage| {
+        world.advance(id, stage, inputs, None, None, 20).unwrap();
+    };
+    run(&mut world, ScriptStage::Body(Thread::Main));
+    run(&mut world, ScriptStage::Tasks);
+    let rotated = world.spatial(id).unwrap().local.angles;
+    assert_ne!(rotated[1], 2000, "the rotation task must have changed yaw");
+    run(&mut world, ScriptStage::Body(Thread::Main));
+    let state = world.spatial(id).unwrap();
+    let expected = [128, rotated[1], 64];
+    assert_eq!(state.local.angles, expected, "no axis is restored");
+    assert_eq!(state.angle_history, expected);
+    assert_eq!(state.local.matrix, Matrix::orientation(expected));
+}
+
+#[test]
 fn ordinary_support_follow_carries_position_and_heading_before_axis_locks() {
     use cyrus_game::script::{ModelSupportOwners, ScriptInputs, ScriptStage};
     for enabled in [false, true] {

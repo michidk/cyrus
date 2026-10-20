@@ -3684,6 +3684,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation(axes)?;
             return Ok(CallResult::Complete(0));
         }
+        if function.eq_ignore_ascii_case("ReloadRotation") {
+            anyhow::ensure!(arguments.is_empty(), "ReloadRotation requires no arguments");
+            self.registry
+                .spatial
+                .as_mut()
+                .context("ReloadRotation: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .reset_rotation([false; 3])?;
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("KillMe") {
             anyhow::ensure!(arguments.is_empty(), "KillMe requires no arguments");
             self.registry.release_held_walk_nodes(id)?;
