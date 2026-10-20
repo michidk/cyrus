@@ -13,6 +13,29 @@ pub enum WorldLoopOutcome {
 }
 
 impl ScriptWorld {
+    /// Moves the selected player to the placement `MovePlayerAboveMe` raised during the frame and
+    /// cuts the camera there. The original consumes the request once per frame; its place among the
+    /// frame's stages is **Inferred** to be late.
+    fn apply_pending_player_placement(&mut self) -> Result<()> {
+        let Some((position, yaw)) = self.pending_player_placement.take() else {
+            return Ok(());
+        };
+        let player = self
+            .selected_player()
+            .context("MovePlayerAboveMe: selected player unavailable")?;
+        let index = self.resolve(player)?;
+        self.spatial
+            .as_mut()
+            .context("MovePlayerAboveMe: spatial state not prepared")?
+            .actor_mut(index)?
+            .relocate(position, yaw);
+        self.refresh_transform(player)?;
+        if let Some(camera) = self.camera.as_mut() {
+            camera.mark_cut();
+        }
+        Ok(())
+    }
+
     /// Evaluate once after this frame's actor/presentation work. Pending world
     /// transitions bypass timer updates; falling timeout precedes inhibited death,
     /// which precedes the win request. `ticks` is the shared nominal-tick increment.
@@ -21,6 +44,7 @@ impl ScriptWorld {
         if let Some(destination) = self.globals.request_mut().load_world {
             return Ok(WorldLoopOutcome::WorldTransition(destination));
         }
+        self.apply_pending_player_placement()?;
         let result = (|| {
             if let Some(index) = self.selected_player_index() {
                 let actor = &self.actors[index];

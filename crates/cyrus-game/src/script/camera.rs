@@ -366,6 +366,11 @@ impl CameraState {
         };
     }
 
+    /// Mark the next render step a cut, as a teleported player requires.
+    pub fn mark_cut(&mut self) {
+        self.marks.snap = true;
+    }
+
     /// Whether the render camera glides to the published pose this frame instead of cutting:
     /// a hold marks a cut and a forced glide a glide, then a held weapon or a rope association
     /// glides, an active scripted camera cuts, a pending snap cuts, a record that is marked

@@ -453,6 +453,14 @@ impl ActorSpatial {
         }))
     }
 
+    /// Teleport to `position` facing `yaw`: the previous-position snapshot follows at once and the
+    /// yaw change turns the matrix on the next transform refresh, the caller's.
+    pub fn relocate(&mut self, position: [i32; 3], yaw: u16) {
+        self.local.position = position;
+        self.previous_local_position = position;
+        self.local.angles[1] = yaw & 2047;
+    }
+
     /// Restore locked axes after ordinary script/movement work, before matrix refresh.
     /// Uses current attribute bytes and the pre-update snapshot; slaves bypass restoration.
     /// The matrix is unchanged, following preservation's SOUP ordinary axis-lock rules.
@@ -964,6 +972,15 @@ mod tests {
         assert_eq!(change, [-9, 0, -27]);
         assert_eq!(actor.reset_position([false; 3]).unwrap(), [0; 3]);
         assert!(receiver([0; 3], vec![]).reset_position([true; 3]).is_err());
+    }
+
+    #[test]
+    fn relocate_moves_the_actor_and_its_previous_position_and_wraps_the_yaw() {
+        let mut actor = receiver([10, 20, 30], vec![[1, 2, 3]]);
+        actor.relocate([7, 8, 9], 2048 + 5);
+        assert_eq!(actor.local.position, [7, 8, 9]);
+        assert_eq!(actor.previous_local_position, [7, 8, 9]);
+        assert_eq!(actor.local.angles[1], 5);
     }
 
     #[test]

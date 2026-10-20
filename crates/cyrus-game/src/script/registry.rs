@@ -444,6 +444,11 @@ pub struct ScriptWorld {
     camera_limits: cyrus_assets::script::CameraLimits,
     /// Installed `[camera]` values, kept to reload record zero on a camera reset.
     camera_settings: cyrus_assets::script::CameraSettings,
+    /// Installed `[system]` `standing_height`, learned when collision shapes are prepared.
+    standing_height: Option<i32>,
+    /// The selected player's placement raised by `MovePlayerAboveMe`, applied at the end of the
+    /// frame loop.
+    pending_player_placement: Option<([i32; 3], u16)>,
     effects: Option<EnvironmentalEffects>,
 }
 impl ScriptWorld {
@@ -934,6 +939,8 @@ impl ScriptWorld {
             camera_glide: scripts.camera.glide.into(),
             camera_limits: scripts.camera.limits,
             camera_settings: scripts.camera.clone(),
+            standing_height: None,
+            pending_player_placement: None,
             effects: None,
             model_admission: None,
             spatial: None,
@@ -4199,6 +4206,41 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if function.eq_ignore_ascii_case("MovePlayerAboveMe") {
+            anyhow::ensure!(
+                arguments.len() == 4,
+                "MovePlayerAboveMe requires four arguments"
+            );
+            let offset = [
+                arguments[0].integer()?,
+                arguments[1].integer()?,
+                arguments[2].integer()?,
+            ];
+            let yaw = arguments[3].integer()?;
+            let player = self
+                .registry
+                .selected_player()
+                .context("MovePlayerAboveMe: selected player unavailable")?;
+            let standing_height = self
+                .registry
+                .standing_height
+                .context("MovePlayerAboveMe: standing height unavailable")?;
+            // The offset turns with the receiver, the player stands on the result, and its
+            // vertical extent and the standing height lower the stored Y.
+            let rotated = self.registry.spatial(id)?.local.matrix.transform(offset)?;
+            let base = self.registry.query_position(id)?;
+            let extent = self
+                .registry
+                .ordinary_collision_shape(player)?
+                .positive_extent[1];
+            let mut position: [i32; 3] =
+                std::array::from_fn(|axis| base[axis].wrapping_add(rotated[axis]));
+            position[1] = position[1]
+                .wrapping_sub(extent.wrapping_shl(8))
+                .wrapping_sub(standing_height.wrapping_shl(8));
+            self.registry.pending_player_placement = Some((position, (yaw & 0x7ff) as u16));
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("cameraController") {
             anyhow::ensure!(
                 arguments.is_empty(),
@@ -5811,6 +5853,8 @@ mod fighting_tests {
             camera_glide: Default::default(),
             camera_limits: Default::default(),
             camera_settings: Default::default(),
+            standing_height: None,
+            pending_player_placement: None,
             effects: None,
         };
         let host = GameHost {

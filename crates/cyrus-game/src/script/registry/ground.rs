@@ -171,6 +171,7 @@ impl ScriptWorld {
         data: &cyrus_assets::animation::Animations,
         scene: &crate::player::data::PlayerScene,
     ) -> Result<()> {
+        self.standing_height = Some(scene.settings.standing_height);
         for index in 0..self.actors.len() {
             if self.actors[index]
                 .placement()
