@@ -54,7 +54,26 @@ impl ScriptWorld {
                 .flags &= !3;
         }
         let random = random.context("hit response random stream unavailable")?;
-        self.process_hit_response_core(id, message.sender, inputs, random, sounds)
+        self.process_hit_response_core(id, message.sender, inputs, random, sounds)?;
+        // The d001 tail clears the sender's active action only when the receiver
+        // was in an ordinary action.  Preserve -1 (idle) and 9 (counter/dead)
+        // exactly; this write occurs after the response services succeed.
+        let receiver_action = self.actors[self.resolve(id)?]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("hit response receiver combat unavailable")?
+            .action;
+        if !matches!(receiver_action, -1 | 9) {
+            let sender_index = self.resolve(message.sender)?;
+            self.actors[sender_index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .context("hit response sender combat unavailable")?
+                .action = -1;
+        }
+        Ok(())
     }
 
     pub fn process_combat_message(
