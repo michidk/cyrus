@@ -28453,7 +28453,7 @@ fn use_item_starts_the_use_script_once_per_instance_limit_and_consumes_the_drop_
     let mut asset = inventory_asset(&[(0, 1), (4, 3), (5, 2)]);
     {
         let item = asset.inventory.get_mut(&4).unwrap();
-        item.use_script = Some("ITEMSCR".into());
+        item.use_script = Some("itemscr".into());
         item.script_instances = 1;
         item.drop_use_items = vec![5];
     }
@@ -28597,4 +28597,67 @@ fn a_shell_started_after_preparation_survives_a_snapshot_roundtrip() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn open_shell_starts_the_named_script_regardless_of_case_and_rejects_unknown_names() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let open = |name: &str| {
+        let mut scripts = cache();
+        let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+        scripts.definition.functions.push(Function {
+            name: "OpenShell".into(),
+            param_count: 1,
+            kind: CallKind::Function,
+        });
+        let mut shell = scripts.actors["LOGIC"].clone();
+        shell.code_origin += 1000;
+        shell.header_index += 100;
+        scripts.actors.insert("ITEMLIST".into(), shell);
+        let logic = scripts.actors.get_mut("LOGIC").unwrap();
+        logic.program.strings = vec![name.into()];
+        logic.program.steps = [
+            Operation::Call {
+                call: Call {
+                    function_id: id,
+                    function: "OpenShell".into(),
+                    target: Object::Me,
+                    kind: CallKind::Function,
+                    arguments: vec![Value::String { index: 0 }],
+                },
+            },
+            Operation::End { target: 0 },
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, operation)| {
+            (
+                index as u32,
+                Step {
+                    next: index as u32 + 1,
+                    operation,
+                },
+            )
+        })
+        .collect();
+        scripts.content_id = scripts.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .advance(
+                id,
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .map(|()| world.running_shells("ITEMLIST"))
+    };
+    assert_eq!(open("itemlist").unwrap(), 1);
+    assert!(open("nothing").is_err());
 }

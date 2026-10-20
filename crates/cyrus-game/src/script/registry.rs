@@ -4152,6 +4152,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.add_session_item(item, amount.integer()?)?;
             return Ok(CallResult::Complete(0));
         }
+        // OpenShell(name) starts the named shell script; it runs from the next update.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("OpenShell") {
+            let [Argument::String(name)] = arguments else {
+                anyhow::bail!("OpenShell requires one script name")
+            };
+            self.registry.spawn_shell(name)?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("UseItem") {
             let [item] = arguments else {
                 anyhow::bail!("UseItem requires one argument")

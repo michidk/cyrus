@@ -7,13 +7,15 @@ impl ScriptWorld {
     /// The new shell runs from the next update, newest first. Fails when the world has no such script.
     pub fn spawn_shell(&mut self, name: &str) -> Result<ScriptActorId> {
         let index = self.actors.len();
-        let template = self.shell_templates.get(name);
-        ensure!(
-            template.is_some(),
-            "world {}: shell script {name} not installed",
-            self.world
-        );
-        let actor = super::ScriptActor::shell(self.world, index, name, template);
+        // Script names compare without case: ITEM.INI and scripts spell them differently.
+        let installed = self
+            .shell_templates
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name));
+        let Some((key, template)) = installed else {
+            anyhow::bail!("world {}: shell script {name} not installed", self.world)
+        };
+        let actor = super::ScriptActor::shell(self.world, index, key, Some(template));
         self.actors.push(actor);
         if let Some(spatial) = &mut self.spatial {
             spatial.push_absent();
@@ -26,7 +28,7 @@ impl ScriptWorld {
         self.actors
             .iter()
             .filter(|actor| {
-                matches!(&actor.source, super::ScriptActorSource::Shell(shell) if shell == name)
+                matches!(&actor.source, super::ScriptActorSource::Shell(shell) if shell.eq_ignore_ascii_case(name))
                     && actor.runtime.is_some()
             })
             .count()
