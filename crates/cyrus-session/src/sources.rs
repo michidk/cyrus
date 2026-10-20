@@ -349,10 +349,16 @@ impl SessionWorldAssets {
         (prepared, player)
     }
 
-    /// Transfer prepared handles after all source borrows and candidate construction.
-    /// This does not publish or initialize any world.
-    pub fn into_worlds(self) -> BTreeMap<u32, (PreparedWorld, Handle<PlayerScene>)> {
-        self.worlds
+    /// Bind cache world IDs only after all decoded sources agree and are ready.
+    /// Retains player and environment handles without publishing a live world.
+    pub fn resolve_world_ids(&mut self, world: &World) -> Result<bool> {
+        if self.sources(world)?.is_none() {
+            return Ok(false);
+        }
+        for (&id, (prepared, _)) in &mut self.worlds {
+            prepared.world = Some(id);
+        }
+        Ok(true)
     }
 }
 

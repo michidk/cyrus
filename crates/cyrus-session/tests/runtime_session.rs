@@ -564,6 +564,16 @@ fn exercise_runtime_session(
         .err()
         .expect("saved pool requires an environment source");
         assert!(missing.to_string().contains("effect environment sources"));
+        let mut unresolved = prepared();
+        unresolved.world = None;
+        let mut loaded = cyrus_session::SessionWorldAssets::from_loaded(
+            &saved,
+            BTreeMap::from([(17, (unresolved, scene_handle.clone()))]),
+            environment_handles.clone(),
+        )?;
+        assert!(loaded.resolve_world_ids(app.world())?);
+        assert_eq!(loaded.current().0.world, Some(17));
+        assert!(loaded.sources(app.world())?.unwrap()[&17].effects.is_some());
     }
     let shared_sources = BTreeMap::from([(
         17,
