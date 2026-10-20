@@ -261,16 +261,6 @@ pub(super) fn death_effect_point(point: [i32; 3], camera: [i32; 3]) -> [i32; 3] 
     )
 }
 
-/// `point` moved horizontally by `distance` Q8 units directly away from `from`: the push the
-/// original applies to the sender of a deflected-attack message.
-pub(super) fn point_pushed_away(point: [i32; 3], from: [i32; 3], distance: f64) -> [i32; 3] {
-    let bearing = super::super::spatial::query_bearing(
-        point[0].wrapping_sub(from[0]),
-        point[2].wrapping_sub(from[2]),
-    );
-    displaced(point, usize::from(bearing.wrapping_neg() & 2047), distance)
-}
-
 /// Move the horizontal axes along rotation-table `index` (x from the sample, z from the sample a
 /// quarter turn on), with the original's float stores and integer conversion.
 fn displaced(point: [i32; 3], index: usize, distance: f64) -> [i32; 3] {
