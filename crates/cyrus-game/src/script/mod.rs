@@ -151,6 +151,8 @@ pub use sound::ScriptSound;
 /// Pure player-alignment arithmetic: `PlayerFaceObj`'s facing step and `PlayerLineUp`'s helpers.
 pub mod alignment;
 mod group_sync;
+/// `PlayerStatus` classification.
+pub mod player_status;
 mod status;
 mod tasks;
 pub use group_sync::GroupSync;

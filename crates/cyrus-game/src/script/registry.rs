@@ -4058,6 +4058,40 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 spatial.local.position != spatial.previous_local_position,
             )));
         }
+        // PlayerStatus classifies the selected player; the motion bytes are the inferred
+        // actor bytes +0x1b1 through +0x1b3 and the living state +0x1b4.
+        if function.eq_ignore_ascii_case("PlayerStatus") {
+            anyhow::ensure!(arguments.is_empty(), "PlayerStatus requires no arguments");
+            let player = self
+                .selected_player()
+                .context("PlayerStatus: selected player unavailable")?;
+            let index = self.registry.resolve(player)?;
+            let actor = &self.registry.actors[index];
+            let control = actor
+                .control
+                .as_ref()
+                .context("PlayerStatus: selected-player control unavailable")?;
+            let animation = actor
+                .animation
+                .as_ref()
+                .context("PlayerStatus: selected-player animation unavailable")?;
+            let spatial = self
+                .registry
+                .spatial
+                .as_ref()
+                .context("spatial state not prepared")?
+                .actor(index)?;
+            return Ok(CallResult::Complete(super::player_status::player_status(
+                super::player_status::PlayerStatusInput {
+                    queued_motion: control.queued_motion,
+                    falling_state: control.falling_state,
+                    sliding_state: control.sliding_state,
+                    living_state: control.living_state,
+                    group: animation.playback.current_group(),
+                    moved: spatial.local.position != spatial.previous_local_position,
+                },
+            )));
+        }
         // The dialogue and topic-menu mode words. DialogBegin also clears one retained byte whose
         // owner is not yet identified; that write is not modelled.
         if let Some((dialogue, begin)) = [
