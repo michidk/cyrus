@@ -210,9 +210,17 @@ fn show_player_holds_the_snap_bit_for_one_poll_then_completes() {
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 1);
     assert_eq!(world.flags(), [0]);
     assert_eq!(flags(&world, 0), 0x41);
+    assert!(
+        !world.camera().unwrap().marks.hold,
+        "the first call only cuts"
+    );
     run(&mut world, 0, TASKS, Some(&hud)).unwrap();
     assert_eq!(world.actors()[0].runtime().unwrap().active_tasks(), 0);
     assert_eq!(flags(&world, 0), 0x40);
+    assert!(
+        world.camera().unwrap().marks.hold,
+        "the release holds the render camera"
+    );
     run(&mut world, 0, BODY, Some(&hud)).unwrap();
     assert_eq!(world.flags(), [9]);
 }
@@ -634,7 +642,6 @@ mod live {
             },
             body_radius: 10.0,
             body_clearance: 5.0,
-            collision_inhibited: false,
             terrain_enabled: false,
         }
     }

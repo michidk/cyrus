@@ -50,6 +50,7 @@ struct Case {
     active: u16,
     nesting: u32,
     counter: u32,
+    marks: (bool, bool, bool),
     pose: [i32; 3],
     pose_angles: [i32; 3],
     scratch: Record,
@@ -74,6 +75,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [-17920, 2298880, 0],
         pose_angles: [1543, 241, 0],
         scratch: Record {
@@ -102,6 +104,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [-17920, 2298880, 0],
         pose_angles: [1543, 241, 0],
         scratch: Record {
@@ -130,6 +133,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [-12786, 2299830, 11036],
         pose_angles: [1542, 268, 0],
         scratch: Record {
@@ -158,6 +162,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [102707, 25874, 48448],
         pose_angles: [2, 1510, 0],
         scratch: Record {
@@ -186,6 +191,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [-17920, 2298880, 0],
         pose_angles: [1537, 325, 0],
         scratch: Record {
@@ -214,6 +220,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [-120240, 2288416, 125196],
         pose_angles: [1558, 779, 0],
         scratch: Record {
@@ -242,6 +249,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [-793600, 2380800, 2035200],
         pose_angles: [1778, 904, 0],
         scratch: Record {
@@ -297,6 +305,7 @@ fn world_location_reproduces_the_original_handler() {
             position: [4200, 11900, -9400],
             angles: [3, 1990, 0],
         };
+        state.marks = CameraMarks::default();
         let inputs = WorldLocationInputs {
             actor: actor(4),
             camera_move: case.camera_move,
@@ -320,7 +329,6 @@ fn world_location_reproduces_the_original_handler() {
                     },
                     body_radius: 10.0,
                     body_clearance: 5.0,
-                    collision_inhibited: false,
                     terrain_enabled: false,
                 },
                 &mut NoGeometry,
@@ -372,6 +380,12 @@ fn world_location_reproduces_the_original_handler() {
             case.name
         );
         assert_eq!(scratch.actor, actor(4), "{}: bound actor", case.name);
+        assert_eq!(
+            (state.marks.snap, state.marks.hold, state.marks.forced_glide),
+            case.marks,
+            "{}: render marks",
+            case.name
+        );
         assert_eq!(
             state.records[0].flags, case.record_zero_flags,
             "{}: record zero flags",

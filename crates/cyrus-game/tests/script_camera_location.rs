@@ -48,6 +48,7 @@ struct Case {
     active: u16,
     nesting: u32,
     counter: u32,
+    marks: (bool, bool, bool),
     pose: [i32; 3],
     pose_angles: [i32; 3],
     scratch: Record,
@@ -72,6 +73,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [19475, 30410, 47279],
         pose_angles: [1854, 985, 0],
         scratch: Record {
@@ -100,6 +102,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [19475, 30410, 47279],
         pose_angles: [1854, 985, 0],
         scratch: Record {
@@ -128,6 +131,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [19506, 30427, 47256],
         pose_angles: [1853, 987, 0],
         scratch: Record {
@@ -156,6 +160,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [102707, 25874, 48448],
         pose_angles: [2, 1510, 0],
         scratch: Record {
@@ -184,6 +189,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [-12837, 18292, -14969],
         pose_angles: [1911, 102, 0],
         scratch: Record {
@@ -212,6 +218,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [44338, 50077, 65541],
         pose_angles: [1808, 1068, 0],
         scratch: Record {
@@ -240,6 +247,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [214101, -629911, -732530],
         pose_angles: [235, 1959, 0],
         scratch: Record {
@@ -268,6 +276,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, true, false),
         pose: [20710, 50625, 46435],
         pose_angles: [1598, 1060, 0],
         scratch: Record {
@@ -296,6 +305,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [21478, 30401, 47715],
         pose_angles: [1868, 1092, 0],
         scratch: Record {
@@ -324,6 +334,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [21478, 30401, 47715],
         pose_angles: [1868, 1092, 0],
         scratch: Record {
@@ -352,6 +363,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [28310, 25878, 59114],
         pose_angles: [12, 1165, 0],
         scratch: Record {
@@ -380,6 +392,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [102707, 25874, 48448],
         pose_angles: [2, 1510, 0],
         scratch: Record {
@@ -408,6 +421,7 @@ const CASES: &[Case] = &[
         active: 1,
         nesting: 1,
         counter: 1,
+        marks: (true, false, false),
         pose: [53756, 45951, 63739],
         pose_angles: [1813, 1090, 0],
         scratch: Record {
@@ -463,6 +477,7 @@ fn location_camera_reproduces_the_original_handler() {
             position: [4200, 11900, -9400],
             angles: [3, 1990, 0],
         };
+        state.marks = CameraMarks::default();
         let inputs = LocationInputs {
             frame: case.frame,
             actor: actor(4),
@@ -486,7 +501,6 @@ fn location_camera_reproduces_the_original_handler() {
                     },
                     body_radius: 10.0,
                     body_clearance: 5.0,
-                    collision_inhibited: false,
                     terrain_enabled: false,
                 },
                 &mut NoGeometry,
@@ -538,6 +552,12 @@ fn location_camera_reproduces_the_original_handler() {
             case.name
         );
         assert_eq!(scratch.actor, actor(4), "{}: bound actor", case.name);
+        assert_eq!(
+            (state.marks.snap, state.marks.hold, state.marks.forced_glide),
+            case.marks,
+            "{}: render marks",
+            case.name
+        );
         assert_eq!(
             state.records[0].flags, case.record_zero_flags,
             "{}: record zero flags",

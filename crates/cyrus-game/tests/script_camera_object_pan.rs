@@ -23,6 +23,7 @@ struct Step {
     active: u16,
     nesting: u32,
     counter: u32,
+    marks: (bool, bool, bool),
     scratch: Record,
     record_zero_flags: u8,
 }
@@ -64,6 +65,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -81,6 +83,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [113, 357, 20],
@@ -98,6 +101,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [114, 122, 20],
@@ -115,6 +119,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [115, -113, 20],
@@ -132,6 +137,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 5,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [115, -113, 20],
@@ -164,6 +170,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -181,6 +188,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -198,6 +206,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -215,6 +224,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -247,6 +257,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -264,6 +275,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -281,6 +293,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -298,6 +311,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -330,6 +344,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -347,6 +362,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [113, 279, 20],
@@ -364,6 +380,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [115, -34, 20],
@@ -381,6 +398,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [117, 1700, 20],
@@ -413,6 +431,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -430,6 +449,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [114, 122, 20],
@@ -447,6 +467,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [114, 122, 20],
@@ -478,6 +499,7 @@ const CASES: &[Case] = &[
             active: 0,
             nesting: 0,
             counter: 1,
+            marks: (false, false, true),
             scratch: Record {
                 position_offset: [6500, 500, -500],
                 angle_offset: [30, -20, 5],
@@ -508,6 +530,7 @@ const CASES: &[Case] = &[
             active: 0,
             nesting: 0,
             counter: 1,
+            marks: (false, false, true),
             scratch: Record {
                 position_offset: [6500, 500, -500],
                 angle_offset: [30, -20, 5],
@@ -538,6 +561,7 @@ const CASES: &[Case] = &[
             active: 0,
             nesting: 0,
             counter: 0,
+            marks: (false, false, true),
             scratch: Record {
                 position_offset: [100, -9000, 50],
                 angle_offset: [30, -20, 5],
@@ -569,6 +593,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3754, 381, 1000],
@@ -586,6 +611,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3780, 359, 1000],
@@ -603,6 +629,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3807, 337, 1000],
@@ -620,6 +647,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3833, 315, 1000],
@@ -637,6 +665,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 5,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3860, 293, 1000],
@@ -654,6 +683,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 6,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [1839, 270, 1000],
@@ -686,6 +716,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -703,6 +734,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 745, 20],
@@ -720,6 +752,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [113, 899, 20],
@@ -737,6 +770,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [114, 1053, 20],
@@ -754,6 +788,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 5,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [114, 1053, 20],
@@ -786,6 +821,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -803,6 +839,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -820,6 +857,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -837,6 +875,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -869,6 +908,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -886,6 +926,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -903,6 +944,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -920,6 +962,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -952,6 +995,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -969,6 +1013,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [113, 797, 20],
@@ -986,6 +1031,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [114, 1002, 20],
@@ -1003,6 +1049,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [115, 1207, 20],
@@ -1035,6 +1082,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -1052,6 +1100,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [113, 899, 20],
@@ -1069,6 +1118,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [113, 899, 20],
@@ -1100,6 +1150,7 @@ const CASES: &[Case] = &[
             active: 0,
             nesting: 0,
             counter: 1,
+            marks: (false, false, true),
             scratch: Record {
                 position_offset: [6500, 500, -500],
                 angle_offset: [30, -20, 5],
@@ -1130,6 +1181,7 @@ const CASES: &[Case] = &[
             active: 0,
             nesting: 0,
             counter: 0,
+            marks: (false, false, true),
             scratch: Record {
                 position_offset: [100, -9000, 50],
                 angle_offset: [30, -20, 5],
@@ -1161,6 +1213,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3754, 381, 1000],
@@ -1178,6 +1231,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3855, 257, 1000],
@@ -1195,6 +1249,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [3956, 132, 1000],
@@ -1212,6 +1267,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [4058, 8, 1000],
@@ -1229,6 +1285,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 5,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [4159, -117, 1000],
@@ -1246,6 +1303,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 6,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-63000, 64000, 0],
                     angle_offset: [165, 1806, 1000],
@@ -1278,6 +1336,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-18500, 11500, 0],
                     angle_offset: [30, -20, 5],
@@ -1295,6 +1354,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-18500, 11500, 0],
                     angle_offset: [30, -20, 5],
@@ -1312,6 +1372,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-18500, 11500, 0],
                     angle_offset: [30, -20, 5],
@@ -1329,6 +1390,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-18500, 11500, 0],
                     angle_offset: [30, -20, 5],
@@ -1346,6 +1408,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 5,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-18500, 11500, 0],
                     angle_offset: [30, -20, 5],
@@ -1363,6 +1426,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 6,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [-18500, 11500, 0],
                     angle_offset: [30, -20, 5],
@@ -1395,6 +1459,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -1412,6 +1477,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [158, 791, 20],
@@ -1429,6 +1495,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [204, 990, 20],
@@ -1446,6 +1513,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [250, 1189, 20],
@@ -1463,6 +1531,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 5,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [250, 1189, 20],
@@ -1495,6 +1564,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1512,6 +1582,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1529,6 +1600,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1546,6 +1618,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1578,6 +1651,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1595,6 +1669,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1612,6 +1687,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [30, -20, 5],
@@ -1644,6 +1720,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 1,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [112, 592, 20],
@@ -1661,6 +1738,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 2,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [146, 923, 20],
@@ -1678,6 +1756,7 @@ const CASES: &[Case] = &[
                 active: 1,
                 nesting: 1,
                 counter: 3,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [181, 1254, 20],
@@ -1695,6 +1774,7 @@ const CASES: &[Case] = &[
                 active: 0,
                 nesting: 0,
                 counter: 4,
+                marks: (false, false, true),
                 scratch: Record {
                     position_offset: [6500, 500, -500],
                     angle_offset: [216, 1586, 20],
@@ -1726,6 +1806,7 @@ const CASES: &[Case] = &[
             active: 0,
             nesting: 0,
             counter: 0,
+            marks: (false, false, false),
             scratch: Record {
                 position_offset: [100, -9000, 50],
                 angle_offset: [30, -20, 5],
@@ -1771,6 +1852,7 @@ fn object_pans_reproduce_the_original_handlers() {
             position: [4200, 11900, -9400],
             angles: [3, 1990, 0],
         };
+        state.marks = CameraMarks::default();
         let inputs = ObjectPanInputs {
             location: LocationInputs {
                 frame: case.frame,
@@ -1831,6 +1913,11 @@ fn object_pans_reproduce_the_original_handlers() {
                 },
                 step.scratch,
                 "{label}: selected record"
+            );
+            assert_eq!(
+                (state.marks.snap, state.marks.hold, state.marks.forced_glide),
+                step.marks,
+                "{label}: render marks"
             );
             assert_eq!(
                 state.records[0].flags, step.record_zero_flags,

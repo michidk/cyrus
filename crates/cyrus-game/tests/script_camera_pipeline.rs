@@ -511,7 +511,6 @@ fn pose_stage_reproduces_the_original_without_obstacles() {
                     },
                     body_radius: 10.0,
                     body_clearance: 5.0,
-                    collision_inhibited: false,
                     terrain_enabled: false,
                 },
                 &mut NoGeometry,

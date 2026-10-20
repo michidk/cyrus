@@ -44,6 +44,11 @@ fn state() -> CameraState {
             generation: 7,
             index: 2,
         },
+        marks: CameraMarks::default(),
+        render: RenderPose {
+            position: [0.0; 3],
+            angles: [0; 3],
+        },
     }
 }
 
@@ -101,7 +106,6 @@ fn pose_preparation_orders_corrections_and_preserves_live_state_on_rejection() {
         },
         body_radius: 1.0,
         body_clearance: 0.0,
-        collision_inhibited: false,
         terrain_enabled: true,
     };
     let mut geometry = Geometry {

@@ -113,6 +113,51 @@ pub struct CameraPose {
     pub angles: [i32; 3],
 }
 
+/// Marks the camera natives and setup leave for the render step (`CameraState::present`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CameraMarks {
+    /// A cut: the render camera takes the published pose instead of gliding to it.
+    pub snap: bool,
+    /// Overrides every other glide condition and forces a cut.
+    pub hold: bool,
+    /// Forces a glide, and skips the pose update's obstacle segment check for this frame.
+    pub forced_glide: bool,
+}
+
+/// The render camera's retained pose: position in whole map units as floats, angles in
+/// 2048 units per turn. Glide and cuts move it; the published pose stays the logical one.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RenderPose {
+    pub position: [f32; 3],
+    pub angles: [i32; 3],
+}
+
+/// The installed `[camera]` glide factors: `glide_x/y/z` for the position axes and
+/// `glide_angle_x/y/z` for the angles.
+#[derive(Clone, Copy, Debug)]
+pub struct GlideSettings {
+    pub position: [f32; 3],
+    pub angles: [f32; 3],
+}
+
+/// What the render step reads from the selected player to decide between gliding and cutting.
+#[derive(Clone, Copy, Debug)]
+pub struct GlidePlayer {
+    pub holding_weapon: bool,
+    pub rope_attached: bool,
+}
+
+impl RenderPose {
+    /// The render pose of a cut to `pose`: its position shifted right eight bits, truncating
+    /// toward zero.
+    pub fn cut_to(pose: CameraPose) -> Self {
+        Self {
+            position: pose.position.map(|axis| (axis / 256) as f32),
+            angles: pose.angles,
+        }
+    }
+}
+
 /// Validated index into the nine retained camera records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CameraSlot(u8);
@@ -258,9 +303,103 @@ impl CameraState {
             transformed_basis: [[0; 3]; 2],
             camera_actor: camera,
             alternate_actor: camera,
+            marks: CameraMarks {
+                snap: true,
+                ..CameraMarks::default()
+            },
+            render: RenderPose::cut_to(pose),
         };
         state.reload_player_defaults(settings, player, player_type)?;
         Ok(state)
+    }
+
+    /// Cut the render camera to the published pose, as setup does once the first pose exists.
+    pub fn reset_render(&mut self) {
+        self.render = RenderPose::cut_to(self.current);
+        self.marks = CameraMarks {
+            snap: true,
+            ..CameraMarks::default()
+        };
+    }
+
+    /// Whether the render camera glides to the published pose this frame instead of cutting:
+    /// a hold marks a cut and a forced glide a glide, then a held weapon or a rope association
+    /// glides, an active scripted camera cuts, a pending snap cuts, a record that is marked
+    /// scripted cuts, and otherwise only the three player slots (zero, three and four) glide.
+    fn glides(&self, player: &GlidePlayer) -> bool {
+        if self.marks.hold {
+            return false;
+        }
+        if self.marks.forced_glide || player.holding_weapon || player.rope_attached {
+            return true;
+        }
+        if self.scripted_active != 0 {
+            return false;
+        }
+        if !self.marks.snap {
+            return true;
+        }
+        self.records[self.selected.index()].flags & 0x20 == 0 && matches!(self.index.0, 0 | 3 | 4)
+    }
+
+    /// The render step, once per frame after the pose update: glide the render camera towards
+    /// the published pose or cut to it, as the marks decide. A glide moves each position axis
+    /// by its factor of the way (single-precision, then the terrain stage on the whole-unit
+    /// result) and rewrites the published angles the same way; a cut copies the published
+    /// position. The factors for the two angles are `angles[1]` for pitch and `angles[0]` for
+    /// yaw, as the original reads them. Clears the forced-glide mark, retains the angles as the
+    /// next frame's start and consumes `in_frame` (the main loop's frame mark).
+    /// `terrain` corrects a position in Q8 units in place. Edits commit only on success.
+    pub fn present(
+        &mut self,
+        settings: &GlideSettings,
+        player: &GlidePlayer,
+        in_frame: bool,
+        terrain: &mut dyn FnMut(&mut [i32; 3]) -> Result<()>,
+    ) -> Result<()> {
+        let mut next = self.clone();
+        let clamp = |value: f32| {
+            let value = value.max(0.0);
+            if value.to_bits() as i32 > 0x477f_ff00 {
+                65535.0
+            } else {
+                value
+            }
+        };
+        next.render.position[0] = clamp(next.render.position[0]);
+        next.render.position[2] = clamp(next.render.position[2]);
+        if next.glides(player) && !next.marks.snap && in_frame {
+            // x87 evaluates each expression in extended precision and stores one single.
+            let mut whole = [0i32; 3];
+            for (axis, whole) in whole.iter_mut().enumerate() {
+                let published = (f64::from(next.current.position[axis]) / 256.0) as f32;
+                let previous = f64::from(next.render.position[axis]);
+                let moved = ((f64::from(published) - previous) * f64::from(settings.position[axis])
+                    + previous) as f32;
+                *whole = (f64::from(moved) * 256.0).trunc() as i32;
+            }
+            terrain(&mut whole)?;
+            next.render.position = whole.map(|axis| (axis / 256) as f32);
+            for (axis, factor) in [(0, 1), (1, 0), (2, 2)] {
+                let previous = next.render.angles[axis];
+                let mut gap = (previous & 0x7ff) - (next.current.angles[axis] & 0x7ff);
+                if gap > 0x400 {
+                    gap -= 0x800;
+                } else if gap < -0x400 {
+                    gap += 0x800;
+                }
+                let step = (-f64::from(gap as f32) * f64::from(settings.angles[factor])) as f32;
+                next.current.angles[axis] = (f64::from(step).trunc() as i32 + previous) & 0x7ff;
+            }
+        } else {
+            next.render.position = next.current.position.map(|axis| (axis / 256) as f32);
+            next.marks.snap = false;
+            next.marks.hold = false;
+        }
+        next.marks.forced_glide = false;
+        next.render.angles = next.current.angles;
+        *self = next;
+        Ok(())
     }
 
     /// Reload record zero from the installed values for the selected player and select
@@ -336,6 +475,11 @@ pub(super) struct CameraSnapshot {
     transformed_basis: [[i32; 3]; 2],
     camera_actor: (u64, usize),
     alternate_actor: (u64, usize),
+    /// Absent in snapshots that predate the render camera: restore as a cut to the published pose.
+    #[serde(default)]
+    marks: Option<CameraMarks>,
+    #[serde(default)]
+    render: Option<RenderPose>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -386,6 +530,8 @@ impl CameraState {
             transformed_basis: self.transformed_basis,
             camera_actor: id(self.camera_actor),
             alternate_actor: id(self.alternate_actor),
+            marks: Some(self.marks),
+            render: Some(self.render),
         }
     }
 
@@ -430,6 +576,13 @@ impl CameraState {
             transformed_basis: saved.transformed_basis,
             camera_actor: rebind(saved.camera_actor.0, saved.camera_actor.1)?,
             alternate_actor: rebind(saved.alternate_actor.0, saved.alternate_actor.1)?,
+            marks: saved.marks.unwrap_or(CameraMarks {
+                snap: true,
+                ..CameraMarks::default()
+            }),
+            render: saved
+                .render
+                .unwrap_or(RenderPose::cut_to(pose(saved.current))),
         })
     }
 }
@@ -628,6 +781,8 @@ pub struct CameraState {
     pub transformed_basis: [[i32; 3]; 2],
     pub camera_actor: super::ScriptActorId,
     pub alternate_actor: super::ScriptActorId,
+    pub marks: CameraMarks,
+    pub render: RenderPose,
 }
 
 impl CameraState {
@@ -658,9 +813,11 @@ impl CameraState {
         let flags = &mut self.records[usize::from(self.selected.0)].flags;
         if *counter == 1 && elapsed == 0 {
             *flags |= 1;
+            self.marks.snap = true;
             Ok(true)
         } else {
             *flags &= !0x21;
+            self.marks.hold = true;
             Ok(false)
         }
     }
@@ -796,6 +953,8 @@ impl CameraState {
             return Ok(false);
         }
         next.records[next.selected.index()].flags |= 0x01;
+        next.marks.snap = true;
+        next.marks.hold |= inputs.frame == VectorFrame::Actor;
         next.begin_scripted()?;
         let slot = next.selected.index();
         next.records[slot].actor = inputs.actor;
@@ -845,6 +1004,7 @@ impl CameraState {
         let plain = pan.location.frame == VectorFrame::World;
         let inputs = &pan.location;
         let mut next = self.clone();
+        next.marks.forced_glide = true;
         if plain {
             next.records[next.selected.index()].flags |= 0x40;
         }
@@ -1049,6 +1209,7 @@ impl CameraState {
                 .wrapping_shl(8)
         });
         entry.flags |= 0x21;
+        next.marks.snap = true;
         next.begin_scripted()?;
         let slot = next.selected.index();
         next.records[slot].actor = inputs.actor;
@@ -1361,7 +1522,6 @@ pub struct CameraUpdateSettings {
     pub movement: MovementLimits,
     pub body_radius: f32,
     pub body_clearance: f32,
-    pub collision_inhibited: bool,
     pub terrain_enabled: bool,
 }
 
@@ -1372,7 +1532,6 @@ pub struct CameraUpdateInputs {
     pub movement: MovementLimits,
     pub body_radius: f32,
     pub body_clearance: f32,
-    pub collision_inhibited: bool,
     pub terrain_enabled: bool,
 }
 
@@ -1398,7 +1557,8 @@ impl CameraState {
         let record_slot = state.selected.0;
         let record = &mut state.records[usize::from(record_slot)];
         let mut position = record.candidate(inputs.bound_position, inputs.bound_angles)?;
-        let segment_enabled = record.flags & 0x40 != 0 && !inputs.collision_inhibited;
+        // A pan marks the frame to glide, which also skips the obstacle segment check.
+        let segment_enabled = record.flags & 0x40 != 0 && !state.marks.forced_glide;
         let target = if segment_enabled {
             Some(add(
                 inputs.bound_position,

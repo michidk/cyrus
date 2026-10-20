@@ -37,6 +37,7 @@ impl ScriptWorld {
         let camera = self.camera.as_mut().expect("checked above");
         camera.current = pose;
         camera.previous = pose;
+        camera.reset_render();
         Ok(())
     }
 
@@ -84,7 +85,6 @@ impl ScriptWorld {
                 movement: settings.movement,
                 body_radius: settings.body_radius,
                 body_clearance: settings.body_clearance,
-                collision_inhibited: settings.collision_inhibited,
                 terrain_enabled: settings.terrain_enabled,
             },
             geometry,
