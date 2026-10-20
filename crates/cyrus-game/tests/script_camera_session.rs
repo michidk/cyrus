@@ -278,6 +278,7 @@ fn world_snapshot_resumes_show_player_on_the_rebound_camera_session() {
     };
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        effects: None,
         player: None,
         scripts: &data,
         animations: &animations,
@@ -497,6 +498,7 @@ fn world_snapshot_resumes_an_object_pan_mid_flight() {
     };
     let collision = cyrus_assets::collision::CollisionScene::default();
     let sources = WorldSnapshotSources {
+        effects: None,
         player: None,
         scripts: &data,
         animations: &animations,
@@ -1014,5 +1016,86 @@ mod live {
         );
         world.initialize_camera_pose(start()).unwrap();
         assert!(world.initialize_camera_pose(start()).is_err());
+    }
+}
+
+#[test]
+fn initialized_camera_and_both_player_roles_restore_their_spatial_state() {
+    use cyrus_game::script::{ScriptActorSource, camera::CameraPose};
+    let data = scripts(&["CYRUS", "GREMLIN", "CAMERA"]);
+    let animations = Animations {
+        version: 2,
+        world: data.world,
+        sections: BTreeMap::new(),
+        models: BTreeMap::new(),
+        unsupported: BTreeMap::new(),
+        metadata: json!({"script_content_id":data.content_id,"actors":[]}),
+    };
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &data,
+        animations: &animations,
+        collision: &collision,
+    };
+    let mut live = ScriptWorld::prepare(&data, 7).unwrap();
+    live.prepare_spatial().unwrap();
+    let players = live
+        .actors()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, actor)| {
+            matches!(
+                actor.source,
+                ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
+            )
+            .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(players.len(), 2);
+    for (offset, &index) in players.iter().enumerate() {
+        live.initialize_player_spatial(
+            live.id(index).unwrap(),
+            [100 + offset as i32, -40, 256],
+            [20, 30, 40],
+        )
+        .unwrap();
+    }
+    live.initialize_camera_pose(CameraPose {
+        position: [500, -600, 700],
+        angles: [80, 90, 100],
+    })
+    .unwrap();
+    let camera = live.camera().unwrap().camera_actor.index;
+    let saved = serde_json::to_value(live.snapshot(&sources).unwrap()).unwrap();
+    let samples = BTreeMap::new();
+    let context = || WorldRestoreContext {
+        generation: 19,
+        globals: GameplayGlobals::default(),
+        samples: &samples,
+    };
+    let restored = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved.clone()).unwrap(),
+        &sources,
+        context(),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap()["spatial"],
+        saved["spatial"]
+    );
+    assert_eq!(restored.camera().unwrap().camera_actor.generation, 19);
+    for index in players.into_iter().chain([camera]) {
+        let mut corrupt = saved.clone();
+        corrupt["spatial"]["actors"][index]["parent"] = 0.into();
+        assert!(
+            ScriptWorld::from_snapshot(
+                serde_json::from_value(corrupt).unwrap(),
+                &sources,
+                context()
+            )
+            .is_err()
+        );
     }
 }

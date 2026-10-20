@@ -495,6 +495,9 @@ pub(crate) fn sample_clock(
 #[derive(SystemParam)]
 pub(crate) struct OrdinaryAssets<'w> {
     view: Option<Res<'w, ScriptView>>,
+    prepared_world: Option<Res<'w, cyrus_world::lifecycle::PreparedWorld>>,
+    server: Option<Res<'w, AssetServer>>,
+    environments: Option<Res<'w, Assets<cyrus_assets::environment::Environment>>>,
     request: Option<Res<'w, AnimationRequest>>,
     assets: Res<'w, Assets<Animations>>,
     scripts: Option<Res<'w, Assets<cyrus_assets::script::Scripts>>>,
@@ -610,6 +613,23 @@ impl OrdinaryContext<'_, '_> {
             .ok_or_else(|| anyhow::anyhow!("revisit player/collision source unavailable"))?;
         self.actors.restore_visited(
             &super::WorldSnapshotSources {
+                effects: self
+                    .prepared
+                    .prepared_world
+                    .as_ref()
+                    .zip(self.prepared.server.as_ref())
+                    .and_then(|(prepared, server)| {
+                        server.get_handle::<cyrus_assets::environment::Environment>(
+                            prepared.environment_path.clone(),
+                        )
+                    })
+                    .and_then(|handle| {
+                        self.prepared
+                            .environments
+                            .as_ref()
+                            .and_then(|assets| assets.get(&handle))
+                    })
+                    .and_then(|environment| environment.effects.as_ref()),
                 scripts,
                 animations: data,
                 collision: &scene.collision,
@@ -865,6 +885,7 @@ pub fn run_ordinary(
         console,
         logbook,
         state,
+        ..
     } = prepared;
     if !state.is_some_and(|state| *state.get() == crate::AppState::InGame)
         || logbook.is_some_and(|screen| screen.suspended())

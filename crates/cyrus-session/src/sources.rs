@@ -5,7 +5,7 @@ use bevy::{
     asset::LoadState,
     prelude::{AssetServer, Assets, Handle, Resource, World},
 };
-use cyrus_assets::{animation::Animations, script::Scripts};
+use cyrus_assets::{animation::Animations, environment::Environment, script::Scripts};
 use cyrus_game::{player::data::PlayerScene, script::WorldSnapshotSources};
 use cyrus_world::lifecycle::PreparedWorld;
 use std::collections::{BTreeMap, BTreeSet};
@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Resource, Default)]
 pub struct SessionSourceCatalog {
     worlds: BTreeMap<u32, (PreparedWorld, Handle<PlayerScene>)>,
+    environments: BTreeMap<u32, Handle<Environment>>,
 }
 
 impl SessionSourceCatalog {
@@ -25,12 +26,18 @@ impl SessionSourceCatalog {
         world: u32,
         prepared: PreparedWorld,
         player: Handle<PlayerScene>,
+        environment: Option<Handle<Environment>>,
     ) -> Result<()> {
         ensure!(
             prepared.world.is_none_or(|id| id == world),
             "session source catalog world {world}: prepared identity differs"
         );
         self.worlds.insert(world, (prepared, player));
+        if let Some(environment) = environment {
+            self.environments.insert(world, environment);
+        } else {
+            self.environments.remove(&world);
+        }
         Ok(())
     }
 
@@ -53,8 +60,23 @@ impl SessionSourceCatalog {
                     .map(|prepared| (id, prepared))
             })
             .collect::<Result<BTreeMap<_, _>>>()?;
+        let effect_worlds = environmental_effect_worlds(actors);
         Ok(SessionWorldAssets {
             current,
+            environments: effect_worlds
+                .into_iter()
+                .map(|id| {
+                    self.environments
+                        .get(&id)
+                        .cloned()
+                        .with_context(|| {
+                            format!(
+                                "session capture world {id}: retained effect environment absent"
+                            )
+                        })
+                        .map(|handle| (id, handle))
+                })
+                .collect::<Result<_>>()?,
             worlds: prepared,
         })
     }
@@ -107,19 +129,27 @@ pub(crate) fn retain_settled_sources(world: &mut World) {
     }
     let player = player.0.clone();
     let prepared = prepared.clone();
-    world
-        .resource_mut::<SessionSourceCatalog>()
-        .worlds
-        .insert(current, (prepared, player));
+    let environment = world
+        .get_resource::<AssetServer>()
+        .and_then(|server| server.get_handle::<Environment>(prepared.environment_path.clone()));
+    let mut catalog = world.resource_mut::<SessionSourceCatalog>();
+    catalog.worlds.insert(current, (prepared, player));
+    if let Some(environment) = environment {
+        catalog.environments.insert(current, environment);
+    } else {
+        catalog.environments.remove(&current);
+    }
 }
 
 /// Keeps all current and visited world sidecars alive during off-live preparation.
 /// Hosts resolve IDs against their installed world catalog and prepare cache files
-/// first. Construction loads player sidecars but publishes no lifecycle resource.
+/// first. Construction loads player sidecars and environments required by saved
+/// effect pools, but publishes no lifecycle resource.
 #[derive(Clone)]
 pub struct SessionWorldAssets {
     current: u32,
     worlds: BTreeMap<u32, (PreparedWorld, Handle<PlayerScene>)>,
+    environments: BTreeMap<u32, Handle<Environment>>,
 }
 
 impl SessionWorldAssets {
@@ -130,10 +160,12 @@ impl SessionWorldAssets {
             .map(|(&id, (prepared, _))| (id, prepared))
     }
     /// Adopt already loaded current and visited handles without requesting assets.
+    /// Environment handles must match exactly the worlds with saved effect pools.
     /// Decoded content is checked against the logical plan during assembly.
     pub fn from_loaded(
         snapshot: &RuntimeSessionSnapshot,
         worlds: BTreeMap<u32, (PreparedWorld, Handle<PlayerScene>)>,
+        environments: BTreeMap<u32, Handle<Environment>>,
     ) -> Result<Self> {
         ensure!(
             worlds.keys().copied().collect::<BTreeSet<_>>()
@@ -146,8 +178,14 @@ impl SessionWorldAssets {
                 "session loaded source world {id}: prepared identity differs"
             );
         }
+        ensure!(
+            environments.keys().copied().collect::<BTreeSet<_>>()
+                == snapshot.logical.environmental_effect_worlds().collect(),
+            "session effect environment sources must match the saved pool census"
+        );
         Ok(Self {
             current: snapshot.current_world(),
+            environments,
             worlds,
         })
     }
@@ -155,6 +193,7 @@ impl SessionWorldAssets {
     pub(crate) fn into_catalog(self) -> SessionSourceCatalog {
         SessionSourceCatalog {
             worlds: self.worlds,
+            environments: self.environments,
         }
     }
 
@@ -167,6 +206,7 @@ impl SessionWorldAssets {
             snapshot.current_world(),
             snapshot.world_ids().collect(),
             prepared,
+            snapshot.logical.environmental_effect_worlds().collect(),
             assets,
         )
     }
@@ -185,13 +225,20 @@ impl SessionWorldAssets {
         let ids = std::iter::once(current)
             .chain(actors.visited_worlds().keys().copied())
             .collect();
-        Self::load(current, ids, prepared, assets)
+        Self::load(
+            current,
+            ids,
+            prepared,
+            environmental_effect_worlds(actors),
+            assets,
+        )
     }
 
     fn load(
         current: u32,
         ids: Vec<u32>,
         prepared: BTreeMap<u32, PreparedWorld>,
+        effect_worlds: BTreeSet<u32>,
         assets: &AssetServer,
     ) -> Result<Self> {
         let unique: BTreeSet<_> = ids.iter().copied().collect();
@@ -211,6 +258,11 @@ impl SessionWorldAssets {
         }
         Ok(Self {
             current,
+            environments: prepared
+                .iter()
+                .filter(|(id, _)| effect_worlds.contains(id))
+                .map(|(&id, world)| (id, assets.load(world.environment_path.clone())))
+                .collect(),
             worlds: prepared
                 .into_iter()
                 .map(|(id, world)| {
@@ -239,6 +291,7 @@ impl SessionWorldAssets {
         let players = world
             .get_resource::<Assets<PlayerScene>>()
             .context("session player assets absent")?;
+        let environments = world.get_resource::<Assets<Environment>>();
         let mut result = BTreeMap::new();
         let mut pending = false;
         for (&id, (prepared, player)) in &self.worlds {
@@ -251,6 +304,18 @@ impl SessionWorldAssets {
                     anyhow::bail!("session source world {id} {owner}: {error}");
                 }
             }
+            let environment = if let Some(handle) = self.environments.get(&id) {
+                if let Some(LoadState::Failed(error)) = server.get_load_state(handle.id()) {
+                    anyhow::bail!("session source world {id} environment: {error}");
+                }
+                let Some(environment) = environments.and_then(|assets| assets.get(handle)) else {
+                    pending = true;
+                    continue;
+                };
+                Some(environment)
+            } else {
+                None
+            };
             let (Some(scripts), Some(animations), Some(player)) = (
                 scripts.get(&prepared.scripts),
                 animations.get(&prepared.animations),
@@ -266,6 +331,7 @@ impl SessionWorldAssets {
             result.insert(
                 id,
                 WorldSnapshotSources {
+                    effects: environment.and_then(|environment| environment.effects.as_ref()),
                     player: Some(player),
                     scripts,
                     animations,
@@ -319,4 +385,14 @@ pub(crate) fn validate_retained(
         "session retained source content differs from validated logical plan"
     );
     Ok(())
+}
+
+fn environmental_effect_worlds(actors: &cyrus_game::script::ScriptActors) -> BTreeSet<u32> {
+    actors
+        .current
+        .iter()
+        .chain(actors.visited_worlds().values())
+        .filter(|world| world.environmental_effects().is_some())
+        .map(|world| world.world)
+        .collect()
 }

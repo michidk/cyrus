@@ -495,6 +495,8 @@ impl ActorSnapshot {
 
 /// Immutable inputs required by a world candidate. The enclosing session owns them.
 pub struct WorldSnapshotSources<'a> {
+    /// Exact installed effect images and pool settings, independent of live slot state.
+    pub effects: Option<&'a cyrus_assets::effects::Effects>,
     /// Decoded player inputs when this world has a prepared player scene.
     /// A complete gameplay session supplies this for every retained world.
     pub player: Option<&'a crate::player::data::PlayerScene>,
@@ -504,7 +506,8 @@ pub struct WorldSnapshotSources<'a> {
 }
 impl WorldSnapshotSources<'_> {
     /// Validate and fingerprint the complete decoded source set used by registry restore.
-    /// Includes collision and optional player content as well as scripts and animation.
+    /// Includes collision, optional player/effect content, scripts and animation.
+    /// Absent effect inputs preserve the identity used by older pool-free documents.
     pub fn identity(&self) -> Result<String> {
         struct Digest(blake3::Hasher);
         impl std::io::Write for Digest {
@@ -525,6 +528,9 @@ impl WorldSnapshotSources<'_> {
             "world {}: save source generations differ",
             self.scripts.world
         );
+        if let Some(effects) = self.effects {
+            effects.validate()?;
+        }
         let player_identity = self
             .player
             .map(|player| -> Result<&str> {
@@ -552,6 +558,9 @@ impl WorldSnapshotSources<'_> {
                 player_identity,
             ),
         )?;
+        if let Some(effects) = self.effects {
+            serde_json::to_writer(&mut buffered, effects)?;
+        }
         std::io::Write::flush(&mut buffered)?;
         drop(buffered);
         Ok(digest.0.finalize().to_hex().to_string())
@@ -597,17 +606,11 @@ pub struct WorldSnapshot {
     map_updates: Vec<usize>,
     surface_veto: Option<bool>,
     camera: Option<super::super::camera::CameraSnapshot>,
+    #[serde(default)]
+    effects: Option<super::effects::EffectsSnapshot>,
 }
 impl WorldSnapshot {
     fn capture(world: &ScriptWorld, sources: &WorldSnapshotSources<'_>) -> Result<Self> {
-        ensure!(
-            world
-                .effects
-                .as_ref()
-                .is_none_or(EnvironmentalEffects::is_empty),
-            "world {}: saving active environmental effects is unavailable",
-            world.world
-        );
         ensure!(
             world.world == sources.scripts.world && world.content_id == sources.scripts.content_id,
             "world {}: snapshot source identity differs",
@@ -616,6 +619,18 @@ impl WorldSnapshot {
         let source_identity = sources.identity()?;
         let programs = sources.programs()?;
         Ok(Self {
+            effects: world
+                .effects
+                .as_ref()
+                .map(|effects| {
+                    effects.snapshot(
+                        sources
+                            .effects
+                            .context("world effect snapshot source unavailable")?,
+                    )
+                })
+                .transpose()
+                .with_context(|| format!("world {} environmental effect capture", world.world))?,
             version: 1,
             world: world.world,
             content_id: world.content_id.clone(),
@@ -824,6 +839,18 @@ impl WorldSnapshot {
             .map(|saved| super::super::camera::CameraState::from_snapshot(saved, &rebind))
             .transpose()
             .with_context(|| format!("world {} camera replacement", self.world))?;
+        candidate.effects = self
+            .effects
+            .map(|saved| {
+                EnvironmentalEffects::from_snapshot(
+                    saved,
+                    sources
+                        .effects
+                        .context("saved environmental effect source unavailable")?,
+                )
+            })
+            .transpose()
+            .with_context(|| format!("world {} environmental effect replacement", self.world))?;
         candidate.globals = super::super::GameplayGlobals::default();
         Ok(candidate)
     }
@@ -1100,6 +1127,16 @@ impl LogicalSessionSnapshot {
     /// World assets the host must prepare before validating a replacement.
     pub fn world_ids(&self) -> impl ExactSizeIterator<Item = u32> + '_ {
         self.registry.worlds.iter().map(|world| world.world)
+    }
+
+    /// Worlds whose retained effect pools require installed environment inputs.
+    /// These are preparation hints until the complete document has been validated.
+    pub fn environmental_effect_worlds(&self) -> impl Iterator<Item = u32> + '_ {
+        self.registry
+            .worlds
+            .iter()
+            .filter(|world| world.effects.is_some())
+            .map(|world| world.world)
     }
 
     /// Saved active world. This is an unvalidated document value until `plan` succeeds.

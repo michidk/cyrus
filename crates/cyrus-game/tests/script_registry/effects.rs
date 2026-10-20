@@ -29,9 +29,9 @@ fn source(capacity: u32, disabled: bool) -> Effects {
 }
 
 #[test]
-fn routed_fatal_health_emits_retained_effects_and_rejects_lossy_capture() {
+fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
     for (capacity, disabled) in [(2, false), (1, false), (0, false), (2, true)] {
-        let (scripts, mut world, data, scene) = player_walking_fixture_with(|scripts| {
+        let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
             for (index, name, value) in [(3, "health", 40), (105, "skip_death", 1)] {
                 scripts.definition.attributes[index] = name.into();
                 scripts
@@ -65,6 +65,8 @@ fn routed_fatal_health_emits_retained_effects_and_rejects_lossy_capture() {
                 },
             };
         });
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
         let player = world
             .id(world
                 .actors()
@@ -190,18 +192,97 @@ fn routed_fatal_health_emits_retained_effects_and_rejects_lossy_capture() {
             let mut changed = effects.clone();
             changed.images.get_mut(&0x2500).unwrap().alpha = 152;
             assert!(world.prepare_environment_effects(&changed).is_err());
-            let error = world
-                .snapshot(&WorldSnapshotSources {
-                    player: Some(&scene),
-                    scripts: &scripts,
-                    animations: &data,
-                    collision: &scene.collision,
-                })
-                .err()
-                .unwrap();
+            let sources = WorldSnapshotSources {
+                effects: Some(&effects),
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &scene.collision,
+            };
+            let missing = WorldSnapshotSources {
+                effects: None,
+                ..sources
+            };
+            let error = world.snapshot(&missing).err().unwrap();
             assert!(
-                format!("{error:#}").contains("saving active environmental effects is unavailable")
+                format!("{error:#}").contains("world effect snapshot source unavailable"),
+                "{error:#}"
             );
+            let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+            let samples = BTreeMap::new();
+            let context = || cyrus_game::script::WorldRestoreContext {
+                generation: world.generation() + 1,
+                globals: cyrus_game::script::GameplayGlobals::default(),
+                samples: &samples,
+            };
+            for field in ["source", "slots", "descriptor", "frame"] {
+                let mut corrupt = saved.clone();
+                match field {
+                    "source" => corrupt["effects"]["source"] = "wrong-source".into(),
+                    "slots" => {
+                        corrupt["effects"]["slots"]
+                            .as_array_mut()
+                            .unwrap()
+                            .push(serde_json::Value::Null);
+                    }
+                    "descriptor" => corrupt["effects"]["slots"][0]["descriptor"] = 1.into(),
+                    "frame" => corrupt["effects"]["slots"][0]["frame"] = 4.into(),
+                    _ => unreachable!(),
+                }
+                assert!(
+                    ScriptWorld::from_snapshot(
+                        serde_json::from_value(corrupt).unwrap(),
+                        &sources,
+                        context()
+                    )
+                    .is_err(),
+                    "accepted corrupt {field}"
+                );
+                assert_eq!(
+                    serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap(),
+                    saved
+                );
+            }
+            assert!(
+                ScriptWorld::from_snapshot(
+                    serde_json::from_value(saved.clone()).unwrap(),
+                    &missing,
+                    context()
+                )
+                .is_err()
+            );
+            let changed_sources = WorldSnapshotSources {
+                effects: Some(&changed),
+                ..sources
+            };
+            assert!(
+                ScriptWorld::from_snapshot(
+                    serde_json::from_value(saved.clone()).unwrap(),
+                    &changed_sources,
+                    context()
+                )
+                .is_err()
+            );
+            let mut restored = ScriptWorld::from_snapshot(
+                serde_json::from_value(saved.clone()).unwrap(),
+                &sources,
+                context(),
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap()["effects"],
+                saved["effects"]
+            );
+            restored.advance_environment_effects(3);
+            assert!(
+                restored
+                    .environmental_effects()
+                    .unwrap()
+                    .active()
+                    .all(|(_, effect)| effect.frame == 3)
+            );
+            restored.advance_environment_effects(1);
+            assert!(restored.environmental_effects().unwrap().is_empty());
             world.advance_environment_effects(3);
             assert!(
                 world

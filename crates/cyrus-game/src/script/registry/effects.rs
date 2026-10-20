@@ -2,6 +2,7 @@
 use super::ScriptWorld;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::effects::Effects;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// One retained type-one effect. Positions are whole original map units, Y downward.
@@ -13,6 +14,19 @@ pub struct EnvironmentalEffect {
     /// Lifetime frame, independent of the image's automatic playback frame.
     pub frame: i32,
     target: i32,
+}
+
+/// Slot continuation only; metadata and capacity come from the exact installed source.
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct EffectsSnapshot {
+    source: String,
+    slots: Vec<Option<EffectSnapshot>>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+struct EffectSnapshot {
+    descriptor: u32,
+    position: [i32; 3],
+    frame: i32,
 }
 
 /// Fixed-capacity slots in original retained-list traversal order.
@@ -56,6 +70,63 @@ impl EnvironmentalEffects {
         Ok(blake3::hash(&serde_json::to_vec(source)?)
             .to_hex()
             .to_string())
+    }
+    pub(super) fn snapshot(&self, source: &Effects) -> Result<EffectsSnapshot> {
+        ensure!(
+            self.source == Self::identity(source)?,
+            "environmental effect capture source changed"
+        );
+        Ok(EffectsSnapshot {
+            source: self.source.clone(),
+            slots: self
+                .slots
+                .iter()
+                .map(|effect| {
+                    effect.as_ref().map(|effect| EffectSnapshot {
+                        descriptor: effect.descriptor,
+                        position: effect.position,
+                        frame: effect.frame,
+                    })
+                })
+                .collect(),
+        })
+    }
+    pub(super) fn from_snapshot(saved: EffectsSnapshot, source: &Effects) -> Result<Self> {
+        let mut pool = Self::prepare(source)?;
+        ensure!(
+            saved.source == pool.source,
+            "saved environmental effect source changed"
+        );
+        ensure!(
+            saved.slots.len() == pool.slots.len(),
+            "saved environmental effect slot count differs"
+        );
+        for (index, saved) in saved.slots.into_iter().enumerate() {
+            let Some(saved) = saved else { continue };
+            let &(_, target) = pool
+                .images
+                .get(&(saved.descriptor as u16))
+                .with_context(|| {
+                    format!(
+                        "saved environmental effect slot {index}: texture {} unavailable",
+                        saved.descriptor as u16
+                    )
+                })?;
+            ensure!(
+                saved.frame == -1
+                    || (target == 0 && saved.frame == 0)
+                    || (target > 0 && saved.frame <= target),
+                "saved environmental effect slot {index}: frame {} exceeds lifetime target {target}",
+                saved.frame
+            );
+            pool.slots[index] = Some(EnvironmentalEffect {
+                descriptor: saved.descriptor,
+                position: saved.position,
+                frame: saved.frame,
+                target,
+            });
+        }
+        Ok(pool)
     }
     /// Active effects in retained pool order, with stable slot indices until world replacement.
     pub fn active(&self) -> impl Iterator<Item = (usize, &EnvironmentalEffect)> {
@@ -189,7 +260,8 @@ mod tests {
 
     #[test]
     fn expired_slots_are_reused_in_retained_order() {
-        let mut effects = EnvironmentalEffects::prepare(&source(4)).unwrap();
+        let source = source(4);
+        let mut effects = EnvironmentalEffects::prepare(&source).unwrap();
         effects.spawn(0x2500, [256, 0, -1]).unwrap();
         effects.advance(1);
         effects.spawn(0x12500, [512, 0, -257]).unwrap();
@@ -201,6 +273,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(1, 3)]
         );
+        effects = EnvironmentalEffects::from_snapshot(effects.snapshot(&source).unwrap(), &source)
+            .unwrap();
         effects.spawn(0x2500, [768, 0, -513]).unwrap();
         assert_eq!(
             effects

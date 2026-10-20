@@ -206,6 +206,14 @@ available for cache paths. Assembly compares every world's complete registry sou
 collision and player content, with the logical plan, and publication rechecks those
 assets before mutation. Successful commit replaces the source catalog with this
 same complete census so subsequent captures retain restored visited-world sources.
+
+Worlds with bound environmental effect pools retain their installed environment
+handles alongside player sources. Captures save slot order, descriptors, positions
+and lifetime frames. Replacement derives image metadata and lifetime targets from
+the exact prepared source; missing or changed sources and malformed slots reject
+before publication. `SessionWorldAssets::from_loaded` requires environment handles
+for exactly the saved pool census. Pool-free documents retain their prior source
+identity. This retention does not prepare effect presentation assets.
 The current prepared world and player handle come from that census.
 
 Capture and commit reject `WorldPreparationPending`. Completed loading-bar

@@ -209,8 +209,8 @@ impl cyrus_game::cheats::CheatStore for CheatStore {
 #[test]
 fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, false)?;
-        exercise_runtime_session(true, from_menu, false)?;
+        exercise_runtime_session(false, from_menu, false, false)?;
+        exercise_runtime_session(true, from_menu, false, false)?;
     }
     Ok(())
 }
@@ -218,13 +218,24 @@ fn runtime_session_prepares_all_owners_without_changing_live_resources() -> Resu
 #[test]
 fn asynchronous_load_waits_for_assets_and_preserves_live_state_on_rejection() -> Result<()> {
     for from_menu in [false, true] {
-        exercise_runtime_session(false, from_menu, true)?;
-        exercise_runtime_session(true, from_menu, true)?;
+        exercise_runtime_session(false, from_menu, true, false)?;
+        exercise_runtime_session(true, from_menu, true, false)?;
     }
     Ok(())
 }
 
-fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) -> Result<()> {
+#[test]
+fn environmental_effect_sources_survive_session_capture_and_load() -> Result<()> {
+    exercise_runtime_session(false, false, false, true)?;
+    exercise_runtime_session(false, false, true, true)
+}
+
+fn exercise_runtime_session(
+    with_camera: bool,
+    from_menu: bool,
+    via_load: bool,
+    with_effects: bool,
+) -> Result<()> {
     let mut scripts = scripts(vec![Operation::End { target: 0 }]);
     let mut player_script = scripts.actors["ACTOR"].clone();
     player_script.code_origin = 200;
@@ -246,21 +257,30 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     }))?;
     let scene = PlayerScene::decode(&scene_bytes)?;
     let collision = cyrus_assets::collision::CollisionScene::default();
+    let effects = with_effects.then(|| cyrus_assets::effects::Effects {
+        capacity: 2,
+        disabled: false,
+        images: BTreeMap::new(),
+    });
     let sources = BTreeMap::from([(
         17,
         WorldSnapshotSources {
+            effects: effects.as_ref(),
             player: Some(&scene),
             scripts: &scripts,
             animations: &animations,
             collision: &collision,
         },
     )]);
-    let original_source_bytes = serde_json::to_vec(&(
+    let mut original_source_bytes = serde_json::to_vec(&(
         &scripts,
         &animations,
         &collision,
         scene.source_identity.as_deref(),
     ))?;
+    if let Some(effects) = &effects {
+        original_source_bytes.extend(serde_json::to_vec(effects)?);
+    }
     assert_eq!(
         sources[&17].identity()?,
         blake3::hash(&original_source_bytes).to_hex().to_string(),
@@ -273,9 +293,33 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     let mut registry = ScriptActors::default();
     let mut current = ScriptWorld::prepare(&scripts, 7)?;
     current.assign_global_flag(0, 33, true)?;
+    if let Some(effects) = &effects {
+        current.prepare_environment_effects(effects)?;
+    }
     let player_actor = current.id(2)?;
     registry.current = Some(current);
     let mut app = App::new();
+    if with_effects {
+        use bevy::asset::io::{
+            AssetSourceBuilder, AssetSourceId,
+            memory::{Dir, MemoryAssetReader},
+        };
+        let directory = Dir::default();
+        directory.insert_asset_text(std::path::Path::new("test.environment"), &json!({
+            "effects":effects,"texture_scale":[1,1],"sky":null,"background":[0,0,0],"clipping":[7.0,3800.0],
+            "fog_table":vec![[0,0,0,0];16],"water":null,"terrain_lighting":null,
+            "model_lighting":{"ambient":[64.0,64.0,64.0],"directional":[255.0,255.0,255.0],"direction":[0.0,-1.0,0.0]},
+            "prelighting":{"instances":{},"lights":[]},"object_lights":[]
+        }).to_string());
+        app.register_asset_source(
+            AssetSourceId::Default,
+            AssetSourceBuilder::new(move || {
+                Box::new(MemoryAssetReader {
+                    root: directory.clone(),
+                })
+            }),
+        );
+    }
     app.insert_resource(cyrus_game::fidelity::Fidelity {
         water: cyrus_game::fidelity::Mode::Modern,
         ..Default::default()
@@ -291,6 +335,8 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     .init_asset::<AudioSource>()
     .init_asset::<PlayerScene>()
     .init_asset::<Animations>()
+    .init_asset::<cyrus_assets::environment::Environment>()
+    .init_asset_loader::<cyrus_assets::environment::EnvironmentLoader>()
     .init_asset::<cyrus_assets::script::Scripts>()
     .insert_resource(State::new(cyrus_game::AppState::InGame))
     .insert_resource(registry)
@@ -304,6 +350,29 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     .insert_resource(cyrus_audio::music::Music::default())
     .insert_resource(PlayerRuntime::default())
     .insert_resource(MarkerEntry::default());
+    let environment_handles = if with_effects {
+        let handle = app
+            .world()
+            .resource::<AssetServer>()
+            .load::<cyrus_assets::environment::Environment>("test.environment");
+        let started = std::time::Instant::now();
+        while app
+            .world()
+            .resource::<Assets<cyrus_assets::environment::Environment>>()
+            .get(&handle)
+            .is_none()
+        {
+            anyhow::ensure!(
+                started.elapsed().as_secs() < 5,
+                "effect environment fixture did not load"
+            );
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        BTreeMap::from([(17, handle)])
+    } else {
+        BTreeMap::new()
+    };
     let scene_handle = app
         .world_mut()
         .resource_mut::<Assets<PlayerScene>>()
@@ -486,9 +555,20 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     cheats.execute("neversaydie", Some(42))?;
     app.insert_resource(cheats);
     let saved = RuntimeSessionSnapshot::capture(app.world(), &sources, &hud_asset)?;
+    if with_effects {
+        let missing = cyrus_session::SessionWorldAssets::from_loaded(
+            &saved,
+            BTreeMap::from([(17, (prepared(), scene_handle.clone()))]),
+            BTreeMap::new(),
+        )
+        .err()
+        .expect("saved pool requires an environment source");
+        assert!(missing.to_string().contains("effect environment sources"));
+    }
     let shared_sources = BTreeMap::from([(
         17,
         WorldSnapshotSources {
+            effects: effects.as_ref(),
             player: Some(&scene),
             scripts: app
                 .world()
@@ -598,6 +678,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
             let retained_sources = cyrus_session::SessionWorldAssets::from_loaded(
                 &saved,
                 BTreeMap::from([(17, (prepared(), scene.clone()))]),
+                environment_handles.clone(),
             )?;
             let plan = saved.plan(LogicalSessionRestoreInputs {
                 sources: &sources,
@@ -713,6 +794,26 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     let rejected = finish(saved.clone(), scene_handle.clone(), None)?;
     let candidate = finish(saved.clone(), scene_handle.clone(), None)?;
     candidate.validate_publication(app.world())?;
+    if let Some(handle) = environment_handles.get(&17) {
+        app.world_mut()
+            .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
+            .get_mut(handle)
+            .unwrap()
+            .effects
+            .as_mut()
+            .unwrap()
+            .capacity += 1;
+        assert!(candidate.validate_publication(app.world()).is_err());
+        app.world_mut()
+            .resource_mut::<Assets<cyrus_assets::environment::Environment>>()
+            .get_mut(handle)
+            .unwrap()
+            .effects
+            .as_mut()
+            .unwrap()
+            .capacity -= 1;
+        candidate.validate_publication(app.world())?;
+    }
     app.insert_resource(cyrus_world::lifecycle::PreparationProgress {
         done: 1,
         total: 1,
@@ -786,7 +887,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
     assert!(
         app.world_mut()
             .resource_mut::<cyrus_session::SessionSourceCatalog>()
-            .retain(99, prepared(), scene_handle.clone())
+            .retain(99, prepared(), scene_handle.clone(), None)
             .is_err()
     );
     let unread_sources = capture_sources(app.world())?;
@@ -1050,6 +1151,7 @@ fn exercise_runtime_session(with_camera: bool, from_menu: bool, via_load: bool) 
             sources: cyrus_session::SessionWorldAssets::from_loaded(
                 &saved,
                 BTreeMap::from([(17, (prepared(), scene_handle.clone()))]),
+                environment_handles.clone(),
             )?,
             hud: hud_handle.clone(),
             hud_images: None,

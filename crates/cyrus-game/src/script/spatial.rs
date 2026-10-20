@@ -718,7 +718,12 @@ impl SpatialWorld {
                 home
             } else {
                 ensure!(
-                    matches!(actors[index].source, super::ScriptActorSource::Player),
+                    matches!(
+                        actors[index].source,
+                        super::ScriptActorSource::Player
+                            | super::ScriptActorSource::AlternatePlayer
+                            | super::ScriptActorSource::Camera
+                    ),
                     "actor {index}: unexpected standalone spatial owner"
                 );
                 ensure!(
