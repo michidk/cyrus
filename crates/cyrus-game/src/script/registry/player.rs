@@ -173,25 +173,28 @@ impl ScriptWorld {
             match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
                 SheathedAction::Sidestep(strafe) => {
-                    world.sidestep_player(id, strafe, inputs, sounds)
+                    let function = match strafe {
+                        super::super::locomotion::Strafe::Left => "MoveLeft",
+                        super::super::locomotion::Strafe::Right => "MoveRight",
+                    };
+                    world.step_player(id, function, inputs, sounds)
                 }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
                     Ok(())
                 }
-                SheathedAction::RunForward => {
-                    anyhow::bail!("player controller running stage unsupported")
-                }
+                SheathedAction::RunForward => world.step_player(id, "MoveForward", inputs, sounds),
             }
         })
     }
 
-    /// The controller's sidestep: the scripted `MoveLeft` or `MoveRight` stepper with duration 1,
-    /// run synchronously on the selected player. The ordinary late stages resolve its translation.
-    fn sidestep_player(
+    /// One of the controller's steppers (`MoveForward` for running, `MoveLeft` or `MoveRight` for a
+    /// sidestep): the scripted native with duration 1, run synchronously on the selected player.
+    /// The ordinary late stages resolve its translation.
+    fn step_player(
         &mut self,
         id: super::ScriptActorId,
-        strafe: super::super::locomotion::Strafe,
+        function: &'static str,
         inputs: super::ScriptInputs<'_>,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
@@ -215,10 +218,6 @@ impl ScriptWorld {
             random: None,
             inputs,
         };
-        let function = match strafe {
-            super::super::locomotion::Strafe::Left => "MoveLeft",
-            super::super::locomotion::Strafe::Right => "MoveRight",
-        };
         host.native_task_call(
             (
                 function,
@@ -231,7 +230,7 @@ impl ScriptWorld {
                 unpaused_blocking_tasks: 0,
             },
         )
-        .with_context(|| format!("player {function} sidestep"))?;
+        .with_context(|| format!("player {function} step"))?;
         Ok(())
     }
 

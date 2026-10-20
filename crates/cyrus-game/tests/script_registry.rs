@@ -11655,6 +11655,7 @@ fn player_walking_fixture() -> (
         .insert("attr_1".into(), 15);
     scripts.definition.attributes.resize(203, String::new());
     for (index, name, value) in [
+        (8, "attr_run_step", 8),
         (10, "attr_lateral_step", 8),
         (14, "attr_combat", 1),
         (119, "attr_normal_collision", 15),
@@ -11732,6 +11733,8 @@ fn player_walking_fixture() -> (
         "raan_entries":[{"file_path":"PLAYER.3D","frame_count":1}],
         "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
             "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
+            {"group_index":18,"anim_id":1,"anim_type":0,"commands":[
+                {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":24,"anim_id":1,"anim_type":0,"commands":[
                 {"opcode":0,"frame_reference":0},{"opcode":1}]},
             {"group_index":20,"anim_id":1,"anim_type":0,"commands":[
@@ -12058,6 +12061,110 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
             .unwrap()
             .motion_direction,
         4
+    );
+}
+
+#[test]
+fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
+    use cyrus_game::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptActorSource, ScriptInputs,
+    };
+    let (_, mut world, data, scene) = player_walking_fixture();
+    let index = world
+        .actors()
+        .iter()
+        .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+        .unwrap();
+    let player = world.id(index).unwrap();
+    let map = world.id(0).unwrap();
+    let prepared = world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+        .unwrap();
+    let hud_asset = cyrus_assets::hud::HudAsset {
+        labels: Default::default(),
+        images: vec![],
+        candle_mode: 0,
+        candle: [0; 2],
+        candle_size: [0; 2],
+        pickup: [0; 2],
+        prompt: [0; 2],
+        override_ticks: 0,
+        compass: [0; 2],
+        compass_size: [0; 2],
+        world_compass: Default::default(),
+        powerup_slots: [[0; 2]; 2],
+        powerup_sizes: vec![],
+        logbook: [0; 2],
+        logbook_size: [0; 2],
+        walk_mode: false,
+        auto_defend: false,
+        notices: Default::default(),
+        inventory: Default::default(),
+        start_items: vec![],
+        items: vec![],
+        selected: None,
+        bindings: [0; 15],
+        font: Default::default(),
+        text_alpha: [0; 2],
+        player_text_alpha: [0; 2],
+    };
+    let hud = cyrus_game::script::ScriptHud::default();
+    hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
+    world.begin_player_movement_update(player, 0).unwrap();
+    let before = world.spatial(player).unwrap().local;
+    let held = cyrus_game::player::input::PlayerInput {
+        forward: true,
+        ..Default::default()
+    };
+    let mut cues = Vec::new();
+    world
+        .advance_player_controller(
+            player,
+            OrdinaryGroundQuery {
+                scene: &scene,
+                animations: &data,
+                prepared: &prepared,
+                distance: 4,
+                sidedness: false,
+            },
+            cyrus_game::clock::ClockStep {
+                frame_scale: 256,
+                nominal_ticks: 0,
+                fine_ticks: 0,
+            },
+            ScriptInputs {
+                player_controller: Some(PlayerControllerInput {
+                    held: &held,
+                    walk_mode: false,
+                }),
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                forward_step_clear: Some(true),
+                ..Default::default()
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |id, cue| {
+                cues.push((id, cue));
+                Ok(())
+            },
+        )
+        .unwrap();
+    let after = world.spatial(player).unwrap().local;
+    // Running steps along the heading (zero: +Z): Z advances; X and the heading do not.
+    assert!(
+        after.position[2] > before.position[2],
+        "{before:?} -> {after:?}"
+    );
+    assert_eq!(after.position[0], before.position[0]);
+    assert_eq!(after.angles, before.angles);
+    assert_eq!(
+        world.actors()[index]
+            .control_state()
+            .unwrap()
+            .motion_direction,
+        2
     );
 }
 
