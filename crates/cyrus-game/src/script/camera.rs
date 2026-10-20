@@ -97,6 +97,17 @@ fn correct_terrain_height(position: &mut [i32; 3], height: f32, clearance: f32) 
     Ok(false)
 }
 
+/// The terrain stage on a Q8 position: clamp it below the terrain height at its map-unit
+/// column, with `clearance` as the body clearance. Returns whether it moved.
+pub fn correct_terrain(
+    position: &mut [i32; 3],
+    geometry: &mut dyn CameraGeometry,
+    clearance: f32,
+) -> Result<bool> {
+    let height = geometry.terrain_height([position[0] >> 8, position[2] >> 8])?;
+    correct_terrain_height(position, height, clearance)
+}
+
 fn truncated_i32(value: f64, field: &str) -> Result<i32> {
     let value = value.trunc();
     anyhow::ensure!(
@@ -822,8 +833,14 @@ impl LocationCommand {
 /// shared); the world applies the logical camera actor positions it publishes only after the
 /// native succeeded.
 pub trait CameraUpdateService: std::fmt::Debug {
-    /// Replace `state` with its updated pose. A failure must leave `state` untouched.
-    fn update(&self, state: &mut CameraState) -> Result<()>;
+    /// Replace `state` with its updated pose for the record's bound actor, whose pose is
+    /// `bound_position` and `bound_angles`. A failure must leave `state` untouched.
+    fn update(
+        &self,
+        state: &mut CameraState,
+        bound_position: [i32; 3],
+        bound_angles: [u16; 3],
+    ) -> Result<()>;
     /// The camera actors' new positions from the updates since the last call.
     fn take_published(&self) -> Vec<(super::ScriptActorId, [i32; 3])>;
 }
@@ -1628,6 +1645,29 @@ pub struct CameraUpdateSettings {
     pub body_radius: f32,
     pub body_clearance: f32,
     pub terrain_enabled: bool,
+}
+
+impl CameraUpdateSettings {
+    /// The settings the installed `[camera]` values give: the camera size is the body radius and
+    /// the scape size the terrain clearance (**Inferred** from the two radius slots the original's
+    /// contact and terrain stages read).
+    pub fn installed(
+        limits: &CameraLimits,
+        frame_scale: i32,
+        selected_player_special_state: bool,
+        terrain_enabled: bool,
+    ) -> Self {
+        Self {
+            movement: MovementLimits::from_installed(
+                limits,
+                frame_scale,
+                selected_player_special_state,
+            ),
+            body_radius: limits.camera_size as f32,
+            body_clearance: limits.camera_scape_size as f32,
+            terrain_enabled,
+        }
+    }
 }
 
 /// Settled actor pose and explicitly initialized correction settings for one update.

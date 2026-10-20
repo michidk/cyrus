@@ -697,7 +697,7 @@ impl Task {
                 // Only the first invocation runs the pose update; later ones never reach it.
                 let update = camera.update;
                 let mut run = |state: &mut super::camera::CameraState| match update {
-                    Some(service) => service.update(state),
+                    Some(service) => service.update(state, bound_position, bound_angles),
                     None => anyhow::bail!("{name} camera update service unavailable"),
                 };
                 !if command.world() {

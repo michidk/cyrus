@@ -750,7 +750,7 @@ mod live {
     /// A pose update backed by the camera pipeline with no obstacles and no terrain.
     #[derive(Debug)]
     struct PoseService {
-        bound: ([i32; 3], [u16; 3]),
+        seen: std::cell::RefCell<Option<([i32; 3], [u16; 3])>>,
         hits: std::cell::RefCell<CameraHitSelection>,
         published: std::cell::RefCell<Vec<(ScriptActorId, [i32; 3])>>,
         fail: bool,
@@ -759,13 +759,16 @@ mod live {
         fn update(
             &self,
             state: &mut cyrus_game::script::camera::CameraState,
+            bound_position: [i32; 3],
+            bound_angles: [u16; 3],
         ) -> anyhow::Result<()> {
+            *self.seen.borrow_mut() = Some((bound_position, bound_angles));
             anyhow::ensure!(!self.fail, "pose service failed");
             let update = state.prepare_pose(
                 &self.hits.borrow(),
                 &cyrus_game::script::camera::CameraUpdateInputs {
-                    bound_position: self.bound.0,
-                    bound_angles: self.bound.1,
+                    bound_position,
+                    bound_angles,
                     movement: settings().movement,
                     body_radius: 10.0,
                     body_clearance: 5.0,
@@ -822,9 +825,8 @@ mod live {
         }
         let mut world = prepared(&mut data);
         world.initialize_camera_pose(start()).unwrap();
-        let pose = world.spatial(world.id(0).unwrap()).unwrap().local;
         let service = PoseService {
-            bound: (pose.position, pose.angles),
+            seen: Default::default(),
             hits: std::cell::RefCell::new(hits()),
             published: Default::default(),
             fail: false,
@@ -855,6 +857,17 @@ mod live {
                 world.spatial(actor).unwrap().local.position,
                 camera.current.position,
                 "{name}: the camera actor carries the published pose"
+            );
+            let receiver = world.spatial(world.id(0).unwrap()).unwrap().local;
+            let expected = if name == "showCyrusLoc" {
+                ([4000, 9000, -6000], [100, 1900, 20])
+            } else {
+                (receiver.position, receiver.angles)
+            };
+            assert_eq!(
+                *service.seen.borrow(),
+                Some(expected),
+                "{name}: the target's pose"
             );
             run_with(&mut world, TASKS, Some(&service)).unwrap();
             assert_eq!(
@@ -914,6 +927,63 @@ mod live {
         assert_eq!(camera.scripted_active, 0);
         assert_eq!(camera.current, before.current);
         assert_eq!(camera.marks, before.marks);
+    }
+
+    #[test]
+    fn camera_frame_publishes_the_pose_then_cuts_and_glides_the_render_camera() {
+        use cyrus_game::script::camera::GlidePlayer;
+        let mut world = world();
+        world.initialize_camera_pose(start()).unwrap();
+        let player = GlidePlayer {
+            holding_weapon: false,
+            rope_attached: false,
+        };
+        let (mut hits, settings) = (hits(), settings());
+        let first = world
+            .advance_camera_frame(
+                &mut hits,
+                &settings,
+                &mut Geometry { fail: false },
+                player,
+                true,
+            )
+            .unwrap();
+        let state = world.camera().unwrap();
+        assert_eq!(state.current, first);
+        assert_eq!(
+            state.render.position,
+            first.position.map(|axis| (axis / 256) as f32),
+            "the snap left by setup cuts the render camera to the published pose"
+        );
+        assert!(!state.marks.snap);
+        let actor = world.id(CAMERA).unwrap();
+        assert_eq!(world.spatial(actor).unwrap().local.position, first.position);
+        // The glide factors are zero in this scene, so a gliding frame leaves the render position.
+        let second = world
+            .advance_camera_frame(
+                &mut hits,
+                &settings,
+                &mut Geometry { fail: false },
+                player,
+                true,
+            )
+            .unwrap();
+        let state = world.camera().unwrap();
+        assert_eq!(state.current.position, second.position);
+        assert_eq!(
+            state.render.position,
+            first.position.map(|axis| (axis / 256) as f32)
+        );
+        let error = world
+            .advance_camera_frame(
+                &mut hits,
+                &settings,
+                &mut Geometry { fail: true },
+                player,
+                true,
+            )
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("segment service failed"));
     }
 
     #[test]

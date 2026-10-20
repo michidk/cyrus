@@ -271,3 +271,107 @@ impl ScriptWorld {
         })
     }
 }
+
+/// The pose update the location natives run, over the loaded scene: the same geometry and hit
+/// history as the per-frame update, behind the shared handle `ScriptInputs::camera_update` takes.
+pub struct SceneCameraUpdate<'a, T> {
+    geometry: std::cell::RefCell<SceneCameraGeometry<'a, T>>,
+    hits: std::cell::RefCell<CameraHitSelection>,
+    settings: CameraUpdateSettings,
+    published: std::cell::RefCell<Vec<(ScriptActorId, [i32; 3])>>,
+}
+
+impl<T> std::fmt::Debug for SceneCameraUpdate<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SceneCameraUpdate")
+            .field("settings", &self.settings)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<T> SceneCameraUpdate<'_, T> {
+    /// The hit history after the updates so far, for the owner to retain between frames.
+    pub fn into_hits(self) -> CameraHitSelection {
+        self.hits.into_inner()
+    }
+}
+
+impl<T: crate::script::camera::CameraTerrainHeights> crate::script::camera::CameraUpdateService
+    for SceneCameraUpdate<'_, T>
+{
+    fn update(
+        &self,
+        state: &mut crate::script::camera::CameraState,
+        bound_position: [i32; 3],
+        bound_angles: [u16; 3],
+    ) -> Result<()> {
+        let update = state.prepare_pose(
+            &self.hits.borrow(),
+            &CameraUpdateInputs {
+                bound_position,
+                bound_angles,
+                movement: self.settings.movement,
+                body_radius: self.settings.body_radius,
+                body_clearance: self.settings.body_clearance,
+                terrain_enabled: self.settings.terrain_enabled,
+            },
+            &mut *self.geometry.borrow_mut(),
+        )?;
+        *state = update.state;
+        *self.hits.borrow_mut() = update.hits;
+        *self.published.borrow_mut() = update.actor_positions.to_vec();
+        Ok(())
+    }
+
+    fn take_published(&self) -> Vec<(ScriptActorId, [i32; 3])> {
+        std::mem::take(&mut *self.published.borrow_mut())
+    }
+}
+
+impl ScriptWorld {
+    /// Build the pose update the location natives need for one scheduler pass.
+    #[allow(clippy::too_many_arguments)] // The scene, view, actor order, limits, settings, terrain and hit history are independent owners' inputs.
+    pub fn scene_camera_update<'a, T: crate::script::camera::CameraTerrainHeights>(
+        &self,
+        scene: &'a crate::player::data::PlayerScene,
+        view: [i32; 2],
+        actors: &[ScriptActorId],
+        limits: cyrus_assets::script::CameraLimits,
+        settings: CameraUpdateSettings,
+        terrain: Option<T>,
+        hits: CameraHitSelection,
+    ) -> Result<SceneCameraUpdate<'a, T>> {
+        Ok(SceneCameraUpdate {
+            geometry: std::cell::RefCell::new(
+                self.scene_camera_geometry(scene, view, actors, limits, terrain)?,
+            ),
+            hits: std::cell::RefCell::new(hits),
+            settings,
+            published: Default::default(),
+        })
+    }
+
+    /// One frame of the camera: the pose update (publishing the logical camera actors), then the
+    /// render step. The terrain stage the glide runs uses the same geometry and clearance.
+    pub fn advance_camera_frame(
+        &mut self,
+        hits: &mut CameraHitSelection,
+        settings: &CameraUpdateSettings,
+        geometry: &mut impl CameraGeometry,
+        player: GlidePlayer,
+        in_frame: bool,
+    ) -> Result<CameraPose> {
+        let pose = self.update_camera(hits, settings, geometry)?;
+        self.present_camera(player, in_frame, &mut |position| {
+            if settings.terrain_enabled {
+                crate::script::camera::correct_terrain(
+                    position,
+                    geometry,
+                    settings.body_clearance,
+                )?;
+            }
+            Ok(())
+        })?;
+        Ok(pose)
+    }
+}
