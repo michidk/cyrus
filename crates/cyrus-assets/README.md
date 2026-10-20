@@ -4,6 +4,10 @@ Script cache schema 26 retains the installed falling-death limit in nominal tick
 installed lineup distance in Q8 units, and the frame count of every installed texture bank
 image. Re-export older script caches; omitted limits remain unavailable.
 
+Player records retain optional effective installed `swim_depth` in map units for
+model-height displacement. Preparation replaces configured zero with 40; older
+records retain unknown depth. Catalog version 26 invalidates older generated caches.
+
 Validated portable animation, player, collision, environment, menu, HUD, movie and
 sound cache records. Data-only lookup and validation live with their serialized
 records. Runtime animation, collision queries, mesh bindings and audio handles

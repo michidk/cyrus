@@ -198,6 +198,19 @@ fn world_exports_include_declared_terrain_and_textures() {
     ] {
         let path = output.join(format!("{name}.glb"));
         cyrus_assets::scene::export_scene(&install, name, &path).unwrap();
+        let player: cyrus_assets::player::SceneData =
+            serde_json::from_slice(&std::fs::read(path.with_extension("player")).unwrap()).unwrap();
+        let system = rgpre::import::system_ini::SystemIni::parse(
+            &std::fs::read_to_string(install.root.join("SYSTEM.INI")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            player.settings.swim_depth,
+            system
+                .game
+                .swim_depth
+                .map(|depth| if depth == 0 { 40 } else { depth })
+        );
         let bytes = std::fs::read(&path).unwrap();
         assert_eq!(&bytes[..4], b"glTF");
         let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;

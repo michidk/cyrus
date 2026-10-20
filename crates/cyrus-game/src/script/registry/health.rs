@@ -604,7 +604,7 @@ impl ScriptWorld {
         point[1] = point[1]
             .wrapping_add(height.wrapping_mul(256))
             .wrapping_add(1536);
-        self.spawn_death_effect(descriptor, point)
+        self.spawn_environment_effect(descriptor, point)
     }
 
     /// Selected `AdjustHealth` routing, shared by native commands and model hazards.

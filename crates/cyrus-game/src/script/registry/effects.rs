@@ -317,10 +317,14 @@ impl ScriptWorld {
         }
         self.effects.iter().flat_map(EnvironmentalEffects::active)
     }
-    pub(super) fn spawn_death_effect(&mut self, descriptor: u32, point: [i32; 3]) -> Result<()> {
+    pub(super) fn spawn_environment_effect(
+        &mut self,
+        descriptor: u32,
+        point: [i32; 3],
+    ) -> Result<()> {
         self.effects
             .as_mut()
-            .context("selected death environmental effect spawning unavailable")?
+            .context("environmental effect spawning unavailable")?
             .spawn(descriptor, point)
     }
     /// Apply captured actor events in emission order. Each surface-gated bit spawns its effect at

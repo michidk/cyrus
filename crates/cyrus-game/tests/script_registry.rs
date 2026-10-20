@@ -5049,6 +5049,7 @@ fn script_plugin_prepares_model_resources_only_from_current_scene_asset() {
             post_collide_height: 1,
             slide_range: 1,
             slide_speed: None,
+            swim_depth: None,
             turn_speed: 1,
             turn_max_speed: 1,
             poly_push_units: 1,
@@ -5243,6 +5244,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [0; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5266,6 +5268,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [0; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5286,6 +5289,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [0; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5297,6 +5301,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [256; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5316,6 +5321,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [256; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5326,6 +5332,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [0; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5384,6 +5391,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         .refresh_automatic_models(
             &data,
             [0; 3],
+            None,
             cyrus_game::script::ScriptInputs::default(),
             None,
             &mut |_, _| Ok(()),
@@ -5581,6 +5589,7 @@ fn ordinary_collision_scene(
             post_collide_height: 1,
             slide_range: 1,
             slide_speed: None,
+            swim_depth: None,
             turn_speed: 1,
             turn_max_speed: 1,
             poly_push_units: 1,
@@ -6155,6 +6164,7 @@ fn ordinary_primary_response_owns_grounded_pose_heading_and_marks() {
             post_collide_height: 50,
             slide_range,
             slide_speed: None,
+            swim_depth: None,
             turn_speed: 12,
             turn_max_speed: 48,
             poly_push_units: 16,
@@ -6242,6 +6252,7 @@ fn ordinary_collision_loader_distinguishes_authored_static_and_model_less_shapes
                 post_collide_height: 50,
                 slide_range: 1,
                 slide_speed: None,
+                swim_depth: None,
                 turn_speed: 1,
                 turn_max_speed: 1,
                 poly_push_units: 1,
@@ -12389,6 +12400,50 @@ fn keyboard_walk_runs_through_ordinary_scheduler_and_projects_release() {
         .release(KeyCode::ArrowLeft);
     app.update();
     assert_eq!(heading(&app)[1], turning[1]);
+    {
+        let mut scenes = app
+            .world_mut()
+            .resource_mut::<Assets<cyrus_game::player::data::PlayerScene>>();
+        let mut scene = scenes.get_mut(&scene_handle).unwrap();
+        scene.terrain = Some(
+            cyrus_collision::ground::TerrainGround::new(
+                vec![0; 256 * 256],
+                vec![false; 256 * 256],
+                Some(vec![0; 256 * 256]),
+            )
+            .unwrap(),
+        );
+        scene.collision.texture_surfaces = Some(Default::default());
+    }
+    {
+        let mut actors = app.world_mut().resource_mut::<ScriptActors>();
+        let world = actors.current.as_mut().unwrap();
+        world.set_actor_surface(player_id, 3).unwrap();
+        world
+            .initialize_camera_pose(cyrus_game::script::camera::CameraPose {
+                position: [0; 3],
+                angles: [0; 3],
+            })
+            .unwrap();
+        world
+            .prepare_environment_effects(&water_model_tests::effects())
+            .unwrap();
+    }
+    let logical = position(&app);
+    app.update();
+    let actors = app.world().resource::<ScriptActors>();
+    let world = actors.current.as_ref().unwrap();
+    assert!(
+        world.actors()[player_id.index]
+            .failure()
+            .unwrap()
+            .contains("player controller water/lava dispatch unsupported")
+    );
+    assert_eq!(
+        world.model_position(player_id).unwrap().unwrap()[1],
+        (logical[1] >> 8).wrapping_add(64) as f32
+    );
+    assert_eq!(world.environmental_effects().unwrap().active().count(), 1);
 }
 
 #[test]
@@ -27387,6 +27442,7 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
             .refresh_automatic_models(
                 &data,
                 logical,
+                None,
                 ScriptInputs {
                     hud: Some(&hud),
                     shell_execution: Some(false),
@@ -27426,3 +27482,6 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
         );
     }
 }
+
+#[path = "script_registry/water_model.rs"]
+mod water_model_tests;

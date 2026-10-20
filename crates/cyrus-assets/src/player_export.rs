@@ -28,6 +28,10 @@ pub(crate) fn prepare(
         post_collide_height: config.post_collide_height,
         slide_range: config.slide_range,
         slide_speed: system.game.slide_speed,
+        swim_depth: system
+            .game
+            .swim_depth
+            .map(|depth| if depth == 0 { 40 } else { depth }),
         turn_speed: config.turn_speed,
         turn_max_speed: config.turn_max_speed,
         poly_push_units: config.poly_push_units,

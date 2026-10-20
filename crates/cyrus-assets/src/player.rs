@@ -10,6 +10,10 @@ pub struct MovementSettings {
     /// Installed [game] slide_speed; absent old caches cannot perform slope motion.
     #[serde(default)]
     pub slide_speed: Option<i32>,
+    /// Effective [game] swim_depth in map units; zero initializes to 40.
+    /// Missing older cache/config values remain unknown.
+    #[serde(default)]
+    pub swim_depth: Option<i32>,
     pub turn_speed: u32,
     pub turn_max_speed: u32,
     pub poly_push_units: u32,

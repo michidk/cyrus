@@ -1045,6 +1045,9 @@ pub fn run_ordinary(
             world.refresh_automatic_models(
                 data,
                 view.position,
+                scene_request
+                    .as_ref()
+                    .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0))),
                 ScriptInputs {
                     hud: hud.as_deref(),
                     shell_execution: Some(false),

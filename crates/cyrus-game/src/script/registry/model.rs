@@ -1,6 +1,11 @@
 //! Collision-facing model records follow preservation's current-model lifecycle.
 //!
 //! Position and geometry have distinct lifetimes; see the [engine contract].
+//! Automatic model preparation applies surface 1–4 displacement using the matching
+//! player scene's terrain and effective swim depth, and dispatches water effects
+//! through the shared pool without drawing random values. Selected attr105-one
+//! prepasses clear direction before null-source health; surface5/11 retains its
+//! separate native-source route. Attached/linked water positioning remains unavailable.
 //!
 //! [engine contract]: https://michidk.github.io/redguard-preservation/engine/SOUP.html#current-model-presentation
 use super::super::Pose;
@@ -299,10 +304,13 @@ impl ScriptWorld {
     /// Refresh camera-selected models before ordinary simulation. Camera coordinates
     /// are Q8; PVO lookup truncates toward zero, while map membership uses its own rule.
     /// PVO-rejected ordinary actors retain records; rejected animation support clears them.
+    /// `scene` must belong to this world when terrain or swim-depth inputs are needed.
+    /// Missing cache settings, previous model coordinates or effect services fail explicitly.
     pub fn refresh_automatic_models(
         &mut self,
         data: &Animations,
         camera: [i32; 3],
+        scene: Option<&crate::player::data::PlayerScene>,
         inputs: super::ScriptInputs<'_>,
         mut random: Option<&mut crate::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
@@ -347,6 +355,7 @@ impl ScriptWorld {
                     data,
                     &[id],
                     Some(inputs),
+                    scene,
                     random.as_deref_mut(),
                     Some(sounds),
                     !rejected_animation,
@@ -535,14 +544,16 @@ impl ScriptWorld {
         data: &Animations,
         admitted: &[ScriptActorId],
     ) -> Result<()> {
-        self.refresh_model_presentations_with_health(data, admitted, None, None, None, true)
+        self.refresh_model_presentations_with_health(data, admitted, None, None, None, None, true)
     }
 
+    #[allow(clippy::too_many_arguments)] // Model publication shares caller-owned scene, health, random and sound services.
     fn refresh_model_presentations_with_health(
         &mut self,
         data: &Animations,
         admitted: &[ScriptActorId],
         inputs: Option<super::ScriptInputs<'_>>,
+        scene: Option<&crate::player::data::PlayerScene>,
         mut random: Option<&mut crate::random::EngineRandom>,
         mut sounds: Option<&mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>>,
         publish_geometry: bool,
@@ -613,17 +624,11 @@ impl ScriptWorld {
                 let surface = actor.surface.context("model surface unavailable")?;
                 matches!(surface, 1..=5 | 11).then_some(surface)
             };
-            if let Some(surface) = water_surface {
+            if water_surface.is_some() {
                 ensure!(
                     inputs.is_some(),
                     "world {} instance {index}: water-dependent model position owner unavailable",
                     self.world
-                );
-                ensure!(
-                    matches!(surface, 5 | 11),
-                    "world {} instance {index}: surface {} model displacement unavailable",
-                    self.world,
-                    surface
                 );
                 ensure!(
                     actor.attributes()[26] == 0
@@ -633,10 +638,34 @@ impl ScriptWorld {
                     self.world
                 );
             }
+            let selected = self.selected_player_index() == Some(index);
+            if selected
+                && self.actors[index].attributes()[105] == 1
+                && let Some(1..=4) = water_surface
+            {
+                self.actors[index]
+                    .control
+                    .as_mut()
+                    .expect("validated control")
+                    .directional_state = [0; 2];
+                if matches!(water_surface, Some(2 | 4)) {
+                    self.apply_selected_death_health(
+                        id,
+                        -255,
+                        None,
+                        inputs.expect("validated model health services"),
+                        random.as_deref_mut(),
+                        sounds
+                            .as_deref_mut()
+                            .context("model health sound executor unavailable")?,
+                    )?;
+                }
+            }
             if self.spatial(id)?.parent.is_none() {
                 self.refresh_transform(id)?;
             }
             let pose = self.spatial(id)?.query_pose()?;
+            let previous_position = self.actors[index].model.position;
             if animation.is_some() {
                 self.actors[index].model.animation_radius = radius;
             }
@@ -648,8 +677,11 @@ impl ScriptWorld {
                 radius,
                 animation,
             });
+            if let Some(surface @ 1..=4) = water_surface {
+                self.position_water_model(id, surface, pose, previous_position, scene)?;
+                continue;
+            }
             if let Some(surface) = water_surface {
-                let selected = self.selected_player_index() == Some(index);
                 let progress = if selected {
                     self.globals
                         .selected_health
@@ -725,6 +757,128 @@ impl ScriptWorld {
                         sounds,
                     )?;
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn position_water_model(
+        &mut self,
+        id: ScriptActorId,
+        surface: u8,
+        pose: Pose,
+        previous: Option<[f32; 3]>,
+        scene: Option<&crate::player::data::PlayerScene>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let selected = self.selected_player_index() == Some(index);
+        let health = if selected {
+            Some(
+                self.globals
+                    .selected_health
+                    .as_ref()
+                    .context("water model selected health unavailable")?,
+            )
+        } else {
+            None
+        };
+        let inhibited = health.is_some_and(|health| health.hit_inhibited());
+        let y = if surface == 1 || inhibited {
+            let progress = if surface != 1 {
+                health
+                    .and_then(|health| health.death())
+                    .context("water model death progress unavailable")?
+                    .progress()
+            } else {
+                0
+            };
+            (pose.position[1] >> 8)
+                .wrapping_add(64)
+                .wrapping_add(progress as i32) as f32
+        } else {
+            let mut coverage =
+                if surface == 2 {
+                    256
+                } else {
+                    let scene = scene.context("water model terrain scene unavailable")?;
+                    ensure!(
+                        scene.world == self.world,
+                        "world {} water model scene belongs to world {}",
+                        self.world,
+                        scene.world
+                    );
+                    let position = self.actors[index]
+                        .model
+                        .position
+                        .expect("published position");
+                    let sample = position.map(|value| i64::from(value as i32) * 256);
+                    scene
+                        .terrain
+                        .as_ref()
+                        .context("water model terrain unavailable")?
+                        .material(
+                            sample,
+                            scene.collision.texture_surfaces.as_ref().context(
+                                "water model surface assignments unavailable; re-export",
+                            )?,
+                        )?
+                        .context("water model sample outside terrain")?
+                        .coverage
+                };
+            if coverage != 0 && coverage != 256 {
+                coverage = (coverage * 2).min(256);
+            }
+            let mut y = (pose.position[1] >> 8).wrapping_add(i32::from(coverage >> 2)) as f32;
+            if matches!(
+                self.actors[index].bound_animation_group().flatten(),
+                Some(141..=143)
+            ) {
+                let scene = scene.context("water model swim-depth scene unavailable")?;
+                ensure!(
+                    scene.world == self.world,
+                    "world {} water model scene belongs to world {}",
+                    self.world,
+                    scene.world
+                );
+                y = (f64::from(y)
+                    + f64::from(
+                        scene
+                            .settings
+                            .swim_depth
+                            .context("water model swim_depth unavailable; re-export")?,
+                    )) as f32;
+            }
+            y
+        };
+        self.actors[index]
+            .model
+            .position
+            .as_mut()
+            .expect("published position")[1] = y;
+        if let Some(current) = self.actors[index].model.current.as_mut() {
+            current.position[1] = y;
+        }
+        if surface != 1 && !inhibited {
+            let old_y = previous
+                .context("water model prior coordinates unavailable; recapture session")?[1];
+            let difference = f64::from(float_to_model_integer(f64::from(old_y))) - f64::from(y);
+            let difference = float_to_model_integer(difference).wrapping_abs();
+            if difference > 16 {
+                let camera = self
+                    .camera
+                    .as_ref()
+                    .context("water model published camera unavailable")?;
+                self.spatial(camera.camera_actor)
+                    .context("water model camera pose not initialized")?;
+                let mut point = super::effects::death_effect_point(
+                    self.spatial(id)?.local.position,
+                    camera.current.position,
+                );
+                let height = self.ordinary_collision_shape(id)?.positive_extent[1];
+                point[1] = point[1]
+                    .wrapping_add(height.wrapping_mul(256))
+                    .wrapping_add(1536);
+                self.spawn_environment_effect(0x2500, point)?;
             }
         }
         Ok(())
@@ -1259,5 +1413,14 @@ impl AdmissionState {
             secondary,
             static_count,
         })
+    }
+}
+
+// Original float-to-integer conversion returns signed minimum outside its range.
+fn float_to_model_integer(value: f64) -> i32 {
+    if (f64::from(i32::MIN)..2147483648.0).contains(&value) {
+        value as i32
+    } else {
+        i32::MIN
     }
 }
