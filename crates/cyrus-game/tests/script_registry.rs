@@ -1184,6 +1184,141 @@ fn routed_task_uses_receiver_locals_and_slots_while_the_caller_continues() {
     world.step(receiver, Thread::Main, 20).unwrap();
     assert_eq!(world.flags(), [8]);
 }
+fn offset_world(caller: Vec<Operation>, slave: bool) -> ScriptWorld {
+    let mut scripts = routed_cache(caller, vec![Operation::End { target: 0 }]);
+    scripts.definition.functions.extend([
+        Function {
+            name: "Offset".into(),
+            param_count: 3,
+            kind: CallKind::Function,
+        },
+        Function {
+            name: "UnOffset".into(),
+            param_count: 0,
+            kind: CallKind::Function,
+        },
+    ]);
+    scripts.instances[0].map_position = [10, 0, 5];
+    scripts.instances[1].map_position = [4, 0, 1];
+    // A quarter turn of the owner makes the stored offset differ from the world delta.
+    scripts.instances[1].angles[1] = 512;
+    if slave {
+        for (actor, attribute) in [("LOGIC", "attr_26"), ("RECEIVER", "attr_25")] {
+            scripts
+                .actors
+                .get_mut(actor)
+                .unwrap()
+                .attributes
+                .insert(attribute.into(), 1);
+        }
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    world
+}
+
+fn offset_call(arguments: [i32; 3]) -> Operation {
+    Operation::ObjectCall {
+        call: Call {
+            function_id: 4,
+            function: "Offset".into(),
+            target: Object::Named { string: 0 },
+            kind: CallKind::Function,
+            arguments: arguments.map(|value| Value::Integer { value }).to_vec(),
+        },
+    }
+}
+
+#[test]
+fn offset_attaches_the_caller_to_a_rotated_receiver_and_unoffset_restores_its_position() {
+    use cyrus_game::script::{ScriptInputs, ScriptStage};
+    let end = || Operation::End { target: 0 };
+    let run = |world: &mut ScriptWorld, caller| {
+        world.advance(
+            caller,
+            ScriptStage::Body(Thread::Main),
+            ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(0),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+    };
+    let positions = |world: &ScriptWorld| {
+        let (caller, receiver) = (world.id(0).unwrap(), world.id(1).unwrap());
+        (
+            world.spatial(caller).unwrap().local.position,
+            world.spatial(receiver).unwrap().local.position,
+        )
+    };
+    // Offset zeroes the caller's own position; the cache catches up at the next update boundary and
+    // then reproduces the original world position through the receiver's rotation.
+    let mut world = offset_world(vec![offset_call([0, 0, 0]), end()], false);
+    let (original, _) = positions(&world);
+    let caller = world.id(0).unwrap();
+    run(&mut world, caller).unwrap();
+    assert_eq!(world.spatial(caller).unwrap().local.position, [0; 3]);
+    assert_eq!(
+        world.spatial(caller).unwrap().linked_position(),
+        Some([0; 3])
+    );
+    world.snapshot_spatial(caller).unwrap();
+    assert_eq!(
+        world.spatial(caller).unwrap().linked_position(),
+        Some(original)
+    );
+    // Offsetting again to the same owner keeps the stored offset.
+    let mut again = offset_world(
+        vec![offset_call([0, 0, 0]), offset_call([256, 0, 0]), end()],
+        false,
+    );
+    let caller = again.id(0).unwrap();
+    run(&mut again, caller).unwrap();
+    again.snapshot_spatial(caller).unwrap();
+    assert_eq!(
+        again.spatial(caller).unwrap().linked_position(),
+        Some(original)
+    );
+    // UnOffset gives the owner-relative position back as local coordinates and clears the owner.
+    let mut detached = offset_world(
+        vec![
+            offset_call([0, 0, 0]),
+            wait(5, "UnOffset", CallKind::Function, vec![]),
+            end(),
+        ],
+        false,
+    );
+    let caller = detached.id(0).unwrap();
+    run(&mut detached, caller).unwrap();
+    assert_eq!(detached.spatial(caller).unwrap().local.position, original);
+    assert_eq!(detached.spatial(caller).unwrap().linked_position(), None);
+    let expected = original.map(|value| (value >> 8) as f32);
+    assert_eq!(detached.model_position(caller).unwrap(), Some(expected));
+    // The arguments shift the attachment point in the world frame before the owner's rotation.
+    let mut shifted = offset_world(
+        vec![
+            offset_call([256, -512, 768]),
+            wait(5, "UnOffset", CallKind::Function, vec![]),
+            end(),
+        ],
+        false,
+    );
+    let caller = shifted.id(0).unwrap();
+    run(&mut shifted, caller).unwrap();
+    assert_eq!(
+        shifted.spatial(caller).unwrap().local.position,
+        [original[0] + 256, original[1] - 512, original[2] + 768]
+    );
+    // An attached caller is fatal in the original.
+    let mut slave = offset_world(vec![offset_call([0, 0, 0]), end()], true);
+    let caller = slave.id(0).unwrap();
+    assert!(run(&mut slave, caller).is_err());
+}
+
 #[test]
 fn source_operand_identity_keeps_equal_cursors_distinct_and_receiver_labels_local() {
     let scripts = routed_cache(

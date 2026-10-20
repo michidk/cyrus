@@ -54,9 +54,26 @@ pub struct ActorSpatial {
     pub initial_angles: [u16; 3],
     pub parent: Option<usize>,
     /// Fresh allocation has no linked-position record; dynamic creation is unsupported.
+    /// The record's cached position while it names an owner, for effective-position queries.
     pub(super) linked_position: Option<[i32; 3]>,
+    /// The record's owner and the offset in the owner's frame, set by `Offset`.
+    pub(super) link: Option<PositionLink>,
+    /// The record's cached position, retained when it no longer names an owner.
+    pub(super) link_cache: [i32; 3],
+    /// The cached position before the latest refresh.
+    pub(super) link_previous: [i32; 3],
     no_slave_rotation: bool,
     rotation_mode: u8,
+}
+
+/// A linked-position record that names an owner: the actor's position is the owner's effective
+/// position plus `offset` rotated by the owner's orientation, plus the actor's own local position.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct PositionLink {
+    /// Owner actor index within the world.
+    pub owner: usize,
+    /// Q8 offset in the owner's frame.
+    pub offset: [i32; 3],
 }
 
 pub(super) struct SpatialWorld {
@@ -162,6 +179,9 @@ impl SpatialWorld {
                 initial_angles: original.angles,
                 parent,
                 linked_position: None,
+                link: None,
+                link_cache: [0; 3],
+                link_previous: [0; 3],
                 no_slave_rotation: actor.attributes()[33] != 0,
                 rotation_mode: actor.attributes()[28],
             }));
@@ -255,6 +275,9 @@ impl SpatialWorld {
             initial_angles: angles,
             parent: None,
             linked_position: None,
+            link: None,
+            link_cache: [0; 3],
+            link_previous: [0; 3],
             no_slave_rotation: actor.attributes()[33] != 0,
             rotation_mode: actor.attributes()[28],
         });
@@ -353,6 +376,32 @@ impl ActorSpatial {
             self.effective
                 .context("attached pose requires an explicit family refresh")
         }
+    }
+
+    /// The linked record's cached position while it names an owner, as effective-position
+    /// queries use it; `None` without an owner.
+    pub fn linked_position(&self) -> Option<[i32; 3]> {
+        self.linked_position
+    }
+
+    /// `Offset`: name the owner and the offset in its frame. The cached position stays as it was
+    /// until the next refresh.
+    pub(super) fn link_to(&mut self, owner: usize, offset: [i32; 3]) {
+        self.link = Some(PositionLink { owner, offset });
+        self.linked_position = Some(self.link_cache);
+    }
+
+    /// `UnOffset`: the record keeps its cache but names no owner.
+    pub(super) fn unlink(&mut self) {
+        self.link = None;
+        self.linked_position = None;
+    }
+
+    /// Publish a refreshed cached position, keeping the one it replaces.
+    pub(super) fn set_link_cache(&mut self, position: [i32; 3]) {
+        self.link_previous = self.link_cache;
+        self.link_cache = position;
+        self.linked_position = Some(position);
     }
 
     /// Copy local position and angles at the ordinary actor-update boundary.
@@ -676,6 +725,12 @@ struct SavedSpatialActor {
     initial_angles: [u16; 3],
     parent: Option<usize>,
     linked_position: Option<[i32; 3]>,
+    #[serde(default)]
+    link: Option<PositionLink>,
+    #[serde(default)]
+    link_cache: [i32; 3],
+    #[serde(default)]
+    link_previous: [i32; 3],
     no_slave_rotation: bool,
     rotation_mode: u8,
 }
@@ -692,6 +747,9 @@ impl From<&ActorSpatial> for SavedSpatialActor {
             initial_angles: actor.initial_angles,
             parent: actor.parent,
             linked_position: actor.linked_position,
+            link: actor.link,
+            link_cache: actor.link_cache,
+            link_previous: actor.link_previous,
             no_slave_rotation: actor.no_slave_rotation,
             rotation_mode: actor.rotation_mode,
         }
@@ -791,6 +849,9 @@ impl SpatialWorld {
                 initial_angles: saved.initial_angles,
                 parent: saved.parent,
                 linked_position: saved.linked_position,
+                link: saved.link,
+                link_cache: saved.link_cache,
+                link_previous: saved.link_previous,
                 no_slave_rotation: saved.no_slave_rotation,
                 rotation_mode: saved.rotation_mode,
             }));
@@ -877,6 +938,9 @@ mod tests {
             initial_angles: [0; 3],
             parent: None,
             linked_position: None,
+            link: None,
+            link_cache: [0; 3],
+            link_previous: [0; 3],
             no_slave_rotation: false,
             rotation_mode: 0,
         }

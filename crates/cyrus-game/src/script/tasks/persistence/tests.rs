@@ -2566,6 +2566,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
 struct RecordingPointHost {
     moves: Vec<(PointWrapper, MoveTarget, i32)>,
     faces: Vec<FaceTarget>,
+    offsets: Vec<[i32; 3]>,
     result: i32,
 }
 impl PointHost for RecordingPointHost {
@@ -2581,6 +2582,10 @@ impl PointHost for RecordingPointHost {
     fn face(&mut self, target: FaceTarget) -> Result<i32> {
         self.faces.push(target);
         Ok(self.result)
+    }
+    fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
+        self.offsets.push(offset);
+        Ok(())
     }
 }
 
@@ -2686,6 +2691,61 @@ fn point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zer
                 .is_err()
         );
     }
+}
+
+#[test]
+fn player_offset_task_places_the_player_every_invocation_and_never_completes() {
+    let invocation = Invocation {
+        elapsed: Some(0),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let arguments = [
+        Argument::Integer(256),
+        Argument::Integer(-512),
+        Argument::Integer(1024),
+    ];
+    let mut host = RecordingPointHost::default();
+    let mut task = Task::PlayerOffset;
+    for _ in 0..3 {
+        let done = task
+            .complete(
+                &arguments,
+                invocation,
+                &mut None,
+                &mut None,
+                NativeServices {
+                    point: Some(&mut host),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(!done);
+    }
+    assert_eq!(host.offsets, [[256, -512, 1024]; 3]);
+    assert!(
+        task.complete(
+            &arguments[1..],
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices {
+                point: Some(&mut host),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        task.complete(
+            &arguments,
+            invocation,
+            &mut None,
+            &mut None,
+            NativeServices::default()
+        )
+        .is_err()
+    );
 }
 
 #[test]

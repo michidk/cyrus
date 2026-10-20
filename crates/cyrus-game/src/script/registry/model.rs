@@ -631,12 +631,19 @@ impl ScriptWorld {
                     self.world
                 );
             }
-            let water_surface = if family_position || actor.attributes()[1] & 4 == 0 {
+            // A linked actor takes its owner-relative position and skips water processing.
+            let linked_position = if family_position {
                 None
             } else {
-                let surface = actor.surface.context("model surface unavailable")?;
-                matches!(surface, 1..=5 | 11).then_some(surface)
+                self.linked_model_position(index)?
             };
+            let water_surface =
+                if family_position || linked_position.is_some() || actor.attributes()[1] & 4 == 0 {
+                    None
+                } else {
+                    let surface = actor.surface.context("model surface unavailable")?;
+                    matches!(surface, 1..=5 | 11).then_some(surface)
+                };
             if water_surface.is_some() {
                 ensure!(
                     inputs.is_some(),
@@ -684,6 +691,8 @@ impl ScriptWorld {
             }
             let position = if family_position {
                 previous_position.context("family model coordinates unavailable")?
+            } else if let Some(position) = linked_position {
+                position
             } else {
                 pose.position.map(|value| (value >> 8) as f32)
             };

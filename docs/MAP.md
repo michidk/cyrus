@@ -189,6 +189,7 @@ module where it is defined and regenerate.
 - `src/script/registry/late.rs` — Automatic late collision composes retained candidates and logical actor response.
 - `src/script/registry/light.rs` — Retained actor light controls follow preservation's script light lifecycle.
 - `src/script/registry/lineup.rs` — The selected player's side of the lineup natives: the helpers the movers call, over live state.
+- `src/script/registry/linked.rs` — Linked-position records: `Offset` and `UnOffset`, the `PlayerOffset` natives and the per-update
 - `src/script/registry/model.rs` — Collision-facing model records follow preservation's current-model lifecycle.
 - `src/script/registry/obstacle.rs` — Ordinary forward segment response retains the pre-script candidate list.
 - `src/script/registry/ordinary.rs` — Automatic ordinary map stages share the installed clock and logical actor state.

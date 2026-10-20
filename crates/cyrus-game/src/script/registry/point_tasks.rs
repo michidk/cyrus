@@ -9,6 +9,11 @@ use anyhow::{Context, Result};
 const TURN_RATE_ATTRIBUTE: usize = 15;
 
 impl PointHost for GameHost<'_, '_, '_, '_> {
+    fn player_offset(&mut self, offset: [i32; 3]) -> Result<()> {
+        self.registry
+            .offset_selected_player(self.index, offset, true)
+    }
+
     fn move_to(
         &mut self,
         wrapper: PointWrapper,

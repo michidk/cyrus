@@ -145,6 +145,10 @@ pub(super) trait PointHost {
     /// The signed pre-turn difference, or zero when the receiver cannot turn, has arrived or its
     /// turn finished in this step.
     fn face(&mut self, target: FaceTarget) -> Result<i32>;
+
+    /// One `PlayerOffsettask` step: place the selected player relative to the receiver and give it
+    /// the receiver's orientation.
+    fn player_offset(&mut self, offset: [i32; 3]) -> Result<()>;
 }
 
 /// The selected player's state for `PlayerFaceObj`, read before the call.
@@ -506,6 +510,9 @@ enum Task {
     ScaledMove,
     /// `sRotate(x, y, z, duration)`: the same step as `Rotate`.
     ScaledRotate,
+    /// `PlayerOffsettask(x, y, z)`: every invocation places the selected player at the receiver's
+    /// position plus the offset and gives it the receiver's orientation; it never completes.
+    PlayerOffset,
     /// `MoveMarker(marker, tolerance)`: the direct point wrapper toward a marker.
     MoveMarker,
     /// `MoveLocation(location, tolerance)`: the direct point wrapper toward a receiver location.
@@ -1144,6 +1151,16 @@ impl Task {
                     .point
                     .context("Move point tasks require the receiver's point-walking owner")?;
                 host.move_to(wrapper, target, tolerance)? == 0
+            }
+            Self::PlayerOffset => {
+                let [x, y, z] = arguments else {
+                    anyhow::bail!("PlayerOffsettask requires three arguments")
+                };
+                let host = services
+                    .point
+                    .context("PlayerOffsettask requires the receiver's placement owner")?;
+                host.player_offset([x.integer()?, y.integer()?, z.integer()?])?;
+                false
             }
             Self::FaceAngle | Self::FacePos => {
                 let target = match (&*self, arguments) {
@@ -2505,6 +2522,12 @@ impl NativeTasks {
             Task::ScaledMove
         } else if function.eq_ignore_ascii_case("sRotate") {
             Task::ScaledRotate
+        } else if function.eq_ignore_ascii_case("PlayerOffsettask") {
+            anyhow::ensure!(
+                kind == CallKind::Multitask,
+                "PlayerOffsettask requires multitask encoding"
+            );
+            Task::PlayerOffset
         } else if function.eq_ignore_ascii_case("MoveMarker") {
             Task::MoveMarker
         } else if function.eq_ignore_ascii_case("MoveLocation") {
@@ -2649,6 +2672,7 @@ impl NativeTasks {
         [
             "FaceAngle",
             "FacePos",
+            "PlayerOffsettask",
             "MoveMarker",
             "MoveLocation",
             "MovePosition",
@@ -2667,6 +2691,7 @@ impl NativeTasks {
             Some(
                 Task::FaceAngle
                     | Task::FacePos
+                    | Task::PlayerOffset
                     | Task::MoveMarker
                     | Task::MoveLocation
                     | Task::MovePosition

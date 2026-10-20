@@ -28,6 +28,7 @@ pub(super) mod hazard;
 mod late;
 mod light;
 mod lineup;
+mod linked;
 pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
@@ -398,6 +399,9 @@ pub struct ScriptWorld {
     activation: super::ActivationState,
     globals: super::GameplayGlobals,
     task_calls: BTreeMap<(CodeOrigin, u32), Call>,
+    /// While a call routed to another actor runs, the actor that made it: the original's current
+    /// script actor, which `Offset` attaches. Transient.
+    routed_caller: Option<usize>,
     weapons: BTreeMap<u16, cyrus_assets::script::weapon::Weapon>,
     combat_attacks: Vec<cyrus_assets::script::combat::Attack>,
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
@@ -895,6 +899,7 @@ impl ScriptWorld {
                 .collect(),
             actors,
             task_calls,
+            routed_caller: None,
             weapons: scripts.weapons.clone(),
             combat_attacks: scripts.combat_attacks.clone(),
             combat_defenses: scripts.combat_defenses.clone(),
@@ -1522,7 +1527,7 @@ impl ScriptWorld {
             .context("spatial state not prepared")?
             .actor_mut(index)?
             .snapshot();
-        Ok(())
+        self.refresh_linked_position(index)
     }
 
     /// Restore the current attribute-controlled axes after this actor's movement/script work.
@@ -5127,6 +5132,37 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .contains(marker.integer()?, position, distance.integer()?)?;
             return Ok(CallResult::Complete(i32::from(result)));
         }
+        // Offset attaches the calling actor (the original's current script actor, which differs from
+        // the receiver when the call is routed) to the receiver; UnOffset detaches the receiver.
+        // PlayerOffset places the selected player relative to the receiver once.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("Offset") {
+            let [x, y, z] = arguments else {
+                anyhow::bail!("Offset requires three arguments")
+            };
+            let caller = self.registry.routed_caller.unwrap_or(self.index);
+            self.registry.offset_actor(
+                caller,
+                self.index,
+                [x.integer()?, y.integer()?, z.integer()?],
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("UnOffset") {
+            anyhow::ensure!(arguments.is_empty(), "UnOffset requires no arguments");
+            self.registry.unoffset_actor(self.index)?;
+            return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("PlayerOffset") {
+            let [x, y, z] = arguments else {
+                anyhow::bail!("PlayerOffset requires three arguments")
+            };
+            self.registry.offset_selected_player(
+                self.index,
+                [x.integer()?, y.integer()?, z.integer()?],
+                false,
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
         // AtNodeLocation compares a receiver location with the receiver's own position; the height
         // limit is half the actor's total Y extent (positive plus negative extent).
         if function.eq_ignore_ascii_case("AtNodeLocation") {
@@ -5574,7 +5610,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )
         })?;
         let caller = std::mem::replace(&mut self.index, index);
+        let outer_caller = self.registry.routed_caller.replace(caller);
         let result = runtime.receive(call, strings, site, self, flags);
+        self.registry.routed_caller = outer_caller;
         self.index = caller;
         self.registry.actors[index].runtime = Some(runtime);
         result.map(Route::Complete)
@@ -5736,6 +5774,7 @@ mod fighting_tests {
             activation: Default::default(),
             globals: Default::default(),
             task_calls: BTreeMap::new(),
+            routed_caller: None,
             weapons: BTreeMap::new(),
             combat_attacks: Vec::new(),
             combat_defenses: Vec::new(),
