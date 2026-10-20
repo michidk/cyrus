@@ -10092,7 +10092,7 @@ fn fresh_combat_maintenance_restores_collision_and_rejects_addressed_effects() {
                 &mut |_, _| Ok(()),
             )
             .unwrap_err();
-        assert!(format!("{error:#}").contains("combat message 53249 from actor 1 unsupported"));
+        assert!(format!("{error:#}").contains("hit message actor 1 combat unavailable"));
         assert_eq!(world.consume_combat_message(first).unwrap(), None);
         let stale = cyrus_game::script::ScriptActorId {
             generation: 2,
