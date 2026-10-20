@@ -27,6 +27,11 @@ Native and browser exports use the same math backend for placement transforms th
 preservation's [portable export](https://github.com/michidk/redguard-preservation/commit/8c6bdb15c783fca72a6399aa226f25f596585407).
 Re-export manually prepared worlds and models after updating. Session documents
 retain exact source identities and reject incompatible exports.
+Environment preparation also retains installed effect pool settings and the four
+selected-death texture images, with complete palette-decoded frames, source dimensions,
+texture scale, timing and map `FLAT` drawing attributes. Re-export older environments
+before consuming effect inputs; absent metadata remains unavailable. This prepares
+data only; effect spawning and presentation are not enabled by the cache.
 Environment caches require the installed 256-size and 128-size texture reduction
 factors. Re-export older environments and model GLBs for original pixel-coordinate
 metadata before using fixed model sampling.

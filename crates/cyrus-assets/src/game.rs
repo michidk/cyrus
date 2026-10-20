@@ -61,7 +61,15 @@ pub(crate) fn scene(
     )?;
     crate::runtime::geometry::report_textures(source, &world.textures);
     source.progress(3, 6, "Environment");
-    crate::environment_export::prepare(source, entry, world.terrain.as_deref(), out, output)?;
+    crate::environment_export::prepare(
+        source,
+        entry,
+        world.terrain.as_deref(),
+        &world.rgm,
+        &world.palette,
+        out,
+        output,
+    )?;
     source.progress(4, 6, "Player inputs");
     crate::player_export::prepare(source, &world, &radii, out, output)?;
     source.progress(5, 6, "Scene file");

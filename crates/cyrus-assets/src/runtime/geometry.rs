@@ -32,7 +32,7 @@ fn map_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
         .map(|file| file.path.clone())
         .with_context(|| format!("missing map {path}"))
 }
-pub(super) fn palette_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
+pub(crate) fn palette_path(source: &dyn ReadAssets, path: &str) -> Result<String> {
     let name = path
         .rsplit(['/', '\\'])
         .next()

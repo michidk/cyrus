@@ -265,10 +265,16 @@ pub fn export(
     out: &Path,
 ) -> anyhow::Result<()> {
     let source = crate::native::Files::scan(install, false)?;
+    let map = rgpre::import::rgm::parse_rgm_file(&crate::preparation::read(&source, &entry.map)?)
+        .with_context(|| format!("world {}: effect map {}", entry.index, entry.map))?;
+    let palette_path = crate::runtime::geometry::palette_path(&source, &entry.palette)?;
+    let palette = Palette::parse(&source.read(&palette_path)?)?;
     prepare(
         &source,
         entry,
         terrain,
+        &map,
+        &palette,
         Path::new(out.file_name().context("environment output filename")?),
         &mut crate::preparation::DiskOutput(out.parent().unwrap_or(Path::new("."))),
     )
@@ -278,6 +284,8 @@ pub(crate) fn prepare(
     source: &dyn ReadAssets,
     entry: &WorldEntry,
     terrain: Option<&wld::WldFile>,
+    map: &rgpre::import::rgm::RgmFile,
+    palette: &Palette,
     out: &Path,
     output: &mut dyn crate::preparation::Output,
 ) -> anyhow::Result<()> {
@@ -375,10 +383,8 @@ pub(crate) fn prepare(
         })
         .transpose()?;
     let (prelighting, object_lights) = model_lights(source, entry, &system)?;
-    let texture_scale = rgpre::import::system_ini::SystemIni::parse(&system)?
-        .glide
-        .text_scale
-        .unwrap_or([4, 2]);
+    let system_settings = rgpre::import::system_ini::SystemIni::parse(&system)?;
+    let texture_scale = system_settings.glide.text_scale.unwrap_or([4, 2]);
     rgpre::import::bsi::GlideTextureLayout::new([1, 1], Some(texture_scale))?;
     let terrain_heights = terrain
         .map(|terrain| -> anyhow::Result<_> {
@@ -395,6 +401,12 @@ pub(crate) fn prepare(
         })
         .transpose()?;
     let environment = Environment {
+        effects: Some(crate::effects::prepare(
+            source,
+            &system_settings.system,
+            map,
+            palette,
+        )?),
         terrain_heights,
         texture_scale,
         prelighting,

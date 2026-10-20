@@ -264,6 +264,7 @@ mod tests {
 
     fn environment() -> Environment {
         Environment {
+            effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                 side: 2,
                 offset: 0,

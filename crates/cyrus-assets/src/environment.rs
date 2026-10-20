@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Asset, TypePath, Serialize, Deserialize)]
 /// Per-world rendering inputs extracted from WORLD.INI and the installed assets.
 pub struct Environment {
+    /// Installed environmental effect inputs; absent in caches predating effect preparation.
+    #[serde(default)]
+    pub effects: Option<crate::effects::Effects>,
     /// SYSTEM.INI 256-size and 128-size texture reduction factors, in that order.
     pub texture_scale: [i32; 2],
     /// Decoded Glide BSI sky and its plane parameters, if the world declares a sky.
@@ -140,6 +143,9 @@ pub struct ModelLighting {
 
 impl Environment {
     pub fn validate(&self) -> anyhow::Result<()> {
+        if let Some(effects) = &self.effects {
+            effects.validate()?;
+        }
         if let Some(terrain) = &self.terrain_heights {
             terrain.validate()?;
         }

@@ -725,6 +725,7 @@ mod tests {
         let mut app = App::new();
         let mut environments = Assets::<Environment>::default();
         let environment = environments.add(Environment {
+            effects: None,
             terrain_heights: Some(cyrus_assets::environment::TerrainHeights {
                 side: 2,
                 offset: 0,

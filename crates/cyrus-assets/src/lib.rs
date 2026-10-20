@@ -468,6 +468,7 @@ pub mod animation_export;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod audio;
 pub mod collision;
+pub mod effects;
 pub mod environment;
 #[cfg(feature = "parsers")]
 pub mod environment_export;

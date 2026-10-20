@@ -26,6 +26,7 @@ module where it is defined and regenerate.
 - `src/console.rs` — Original console paper and configured monochrome font, decoded through preservation.
 - `src/decode.rs` — In-memory presentation of preservation parser results, shared by both targets.
 - `src/disc.rs` — CD cue-sheet interpretation shared by both runtime targets.
+- `src/effects.rs` — Installed environmental effect textures and map-owned drawing attributes.
 - `src/environment.rs` — Validated world environment records.
 - `src/environment_export.rs` — Per-world environment preparation from original bytes on either target.
 - `src/game.rs` — Game asset preparation from the same read-only byte source on native and browser targets.
