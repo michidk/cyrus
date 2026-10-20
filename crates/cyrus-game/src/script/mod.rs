@@ -148,7 +148,7 @@ pub use registry::ordinary::{
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;
-/// Pure `PlayerLineUp` arithmetic; the native itself is not implemented.
+/// Pure player-alignment arithmetic: `PlayerFaceObj`'s facing step and `PlayerLineUp`'s helpers.
 pub mod alignment;
 mod group_sync;
 mod status;

@@ -248,6 +248,9 @@ pub struct ActorControlState {
     pub hidden: bool,
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
+    /// The player's alignment flag: set while `PlayerFaceObj` or `PlayerLineUp` is still turning
+    /// or moving the player, cleared on completion.
+    pub alignment_active: bool,
     pub combat_death_default: Option<i32>,
     pub combat: Option<super::CombatControlState>,
 }
@@ -2438,6 +2441,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             };
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
+        let player_face_requested = function.eq_ignore_ascii_case("PlayerFaceObj");
+        let player_face = player_face_requested.then(|| self.player_face_state());
+        let mut player_face_outcome = super::tasks::PlayerFaceOutcome::default();
         let camera_update_handle = self.inputs.camera_update;
         let camera_inputs = super::tasks::NativeTasks::camera_function(function).then(|| {
             (
@@ -2580,6 +2586,10 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         })
                 },
             ),
+            player_face: player_face.map(|state| super::tasks::PlayerFaceCall {
+                state,
+                outcome: &mut player_face_outcome,
+            }),
         };
         let result = match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
@@ -2602,6 +2612,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             }
         };
         self.finish_camera_update(result.is_ok())?;
+        if result.is_ok() && player_face_requested {
+            self.apply_player_face(player_face_outcome)?;
+        }
         result
     }
 
@@ -2862,6 +2875,99 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             .map_err(describe)?
             .local;
         Ok((pose.position, pose.angles))
+    }
+
+    /// The selected player's state for `PlayerFaceObj`; fallible reads surface only when the task
+    /// uses them.
+    fn player_face_state(&self) -> Result<super::tasks::PlayerFaceState, String> {
+        let describe = |error: anyhow::Error| format!("{error:#}");
+        let player = self
+            .selected_player()
+            .ok_or("PlayerFaceObj selected player unavailable")?;
+        let index = self.registry.resolve(player).map_err(describe)?;
+        if index == self.index {
+            return Err("PlayerFaceObj receiver is the selected player".into());
+        }
+        let actor = &self.registry.actors[index];
+        let control = actor
+            .control
+            .as_ref()
+            .ok_or("PlayerFaceObj selected-player control unavailable")?;
+        let animation = actor
+            .animation
+            .as_ref()
+            .ok_or("PlayerFaceObj selected-player animation unavailable")?;
+        let pose = self
+            .registry
+            .spatial
+            .as_ref()
+            .ok_or("PlayerFaceObj spatial state not prepared")?
+            .actor(index)
+            .map_err(describe)?
+            .local;
+        let (holding_weapon, _, _) = self
+            .actor_weapon_predicates(index, "IsHoldingWeapon")
+            .map_err(describe)?;
+        let combat_mode = control
+            .combat
+            .as_ref()
+            .is_some_and(|combat| combat.flags & 4 != 0);
+        Ok(super::tasks::PlayerFaceState {
+            position: pose.position,
+            angles: pose.angles,
+            speed: super::alignment::speed(
+                animation.playback.current_group(),
+                Some(&actor.attributes[..]),
+            ),
+            rate_attribute: actor.attributes[if holding_weapon || combat_mode {
+                21
+            } else {
+                15
+            }],
+            holding_weapon,
+            torch: control.torch_burning != 0,
+            response_present: control.body_response_flags != 0
+                || control.collision_transition_flags != 0
+                || control.collision_response_auxiliary != [0, 0],
+            response_age: control.collision_response_age,
+        })
+    }
+
+    /// Apply a successful `PlayerFaceObj` call's changes to the selected player.
+    fn apply_player_face(&mut self, outcome: super::tasks::PlayerFaceOutcome) -> Result<()> {
+        let player = self
+            .selected_player()
+            .context("PlayerFaceObj selected player unavailable")?;
+        let index = self.registry.resolve(player)?;
+        let spatial = self
+            .registry
+            .spatial
+            .as_mut()
+            .context("PlayerFaceObj spatial state not prepared")?
+            .actor_mut(index)?;
+        let mut refresh = false;
+        if let Some(angles) = outcome.angles {
+            refresh = spatial.local.angles != angles;
+            spatial.local.angles = angles;
+        }
+        if let Some(position) = outcome.position {
+            spatial.local.position = position;
+            if !self.registry.map_updates.contains(&index) {
+                self.registry.map_updates.push(index);
+            }
+        }
+        if refresh {
+            spatial.refresh_transform()?;
+        }
+        self.registry.actors[index]
+            .control
+            .as_mut()
+            .context("PlayerFaceObj selected-player control unavailable")?
+            .alignment_active = outcome.aligning;
+        if let Some(state) = outcome.return_state {
+            self.registry.globals.native_command_return = state;
+        }
+        Ok(())
     }
 
     /// Receiver state for locomotion tasks; fallible reads surface only when a task uses them.
@@ -4608,6 +4714,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             .locomotion_operation(token);
         let locomotion_admission = self.locomotion_probes(operation)?;
         let locomotion_state = self.locomotion_state();
+        let player_face_requested = self.registry.actors[self.index]
+            .tasks
+            .is_player_face_task(token);
+        let player_face = player_face_requested.then(|| self.player_face_state());
+        let mut player_face_outcome = super::tasks::PlayerFaceOutcome::default();
         let camera_update_handle = self.inputs.camera_update;
         let camera_inputs = self.registry.actors[self.index]
             .tasks
@@ -4759,9 +4870,16 @@ impl Host for GameHost<'_, '_, '_, '_> {
                             })
                     },
                 ),
+                player_face: player_face.map(|state| super::tasks::PlayerFaceCall {
+                    state,
+                    outcome: &mut player_face_outcome,
+                }),
             },
         );
         self.finish_camera_update(result.is_ok())?;
+        if result.is_ok() && player_face_requested {
+            self.apply_player_face(player_face_outcome)?;
+        }
         result
     }
     fn cancel(&mut self, token: u64) -> Result<()> {

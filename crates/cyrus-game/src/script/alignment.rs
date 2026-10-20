@@ -1,6 +1,7 @@
-//! `PlayerLineUp` arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
-//! targets" and "Alignment distance thresholds". The functions are pure; the native handler that
-//! owns the mode, fallback flag and reference, and the player's movement, are not implemented.
+//! Player alignment arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
+//! targets", "Alignment distance thresholds" and "PlayerFaceObj". The functions are pure.
+//! `PlayerFaceObj` runs on them as a native task; the `PlayerLineUp` native that owns the mode,
+//! fallback flag and reference, and the player's movement, is not implemented.
 
 /// Attribute index of the speed byte for the player's current animation group, or `None` when
 /// the group selects no speed (the speed is then zero).
@@ -116,6 +117,86 @@ pub fn level_roll(roll: u16, ticks: u32) -> u16 {
     }
 }
 
+/// Whether the player's packed collision-response word carries a mark that makes alignment fall
+/// back: the `0x01e2` mask over the body-response byte followed by the transition byte.
+pub fn fallback_response(body: u8, transition: u8) -> bool {
+    body & 0xe2 != 0 || transition & 1 != 0
+}
+
+/// Whether a collision response older than eight updates abandons alignment: a nonzero packed
+/// response word with an age above eight.
+pub fn response_expired(word_nonzero: bool, age: u8) -> bool {
+    word_nonzero && age > 8
+}
+
+/// The facing helper's inputs: the player's pose and animation-derived values, and the target.
+#[derive(Clone, Copy, Debug)]
+pub struct FacingInput {
+    pub position: [i32; 3],
+    pub heading: u16,
+    pub target: [i32; 3],
+    /// [`speed`] of the player's current group.
+    pub speed: u8,
+    pub frame_scale: u32,
+    /// Attribute 21 holding a weapon or in combat mode, otherwise attribute 15.
+    pub rate_attribute: u8,
+    pub holding_weapon: bool,
+    pub torch: bool,
+}
+
+/// One facing step.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Facing {
+    /// Within the facing arrival threshold: the player's X/Z snap to the target's. Reports zero.
+    Arrived,
+    /// The heading after the step and the turn animation it requests. No requested group means the
+    /// heading reached the target, which reports zero; otherwise the step reports nonzero.
+    Turning { heading: u16, group: Option<u16> },
+}
+
+impl Facing {
+    /// Whether the facing helper reports an unfinished turn.
+    pub fn ongoing(self) -> bool {
+        matches!(self, Self::Turning { group: Some(_), .. })
+    }
+}
+
+/// The facing helper behind `PlayerFaceObj`: snaps onto the target within the facing arrival
+/// threshold of the horizontal distance, otherwise turns toward the target's bearing by the
+/// [support-response turn](super::ordinary_slope_turn).
+pub fn face(input: FacingInput) -> anyhow::Result<Facing> {
+    let FacingInput {
+        position,
+        heading,
+        target,
+        ..
+    } = input;
+    let distance = super::spatial::rounded_distance([
+        position[0].wrapping_sub(target[0]),
+        0,
+        position[2].wrapping_sub(target[2]),
+    ])?;
+    if distance <= facing_threshold(input.speed, input.frame_scale as i32) {
+        return Ok(Facing::Arrived);
+    }
+    let bearing = i32::from(super::spatial::query_bearing(
+        target[0].wrapping_sub(position[0]),
+        target[2].wrapping_sub(position[2]),
+    ));
+    let turn = super::ordinary_slope_turn(
+        heading,
+        (-bearing & 0x7ff) as u16,
+        input.rate_attribute,
+        input.frame_scale,
+        input.holding_weapon,
+        input.torch,
+    );
+    Ok(Facing::Turning {
+        heading: turn.heading,
+        group: turn.group,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +259,64 @@ mod tests {
         assert!(movement_permitted(7, 3, 256, 0));
         // A zero scale makes the threshold zero: nonpositive, so movement is permitted.
         assert!(movement_permitted(0, 3, 0, 0));
+    }
+
+    fn facing(position: [i32; 3], heading: u16, target: [i32; 3], speed: u8) -> Facing {
+        face(FacingInput {
+            position,
+            heading,
+            target,
+            speed,
+            frame_scale: 256,
+            rate_attribute: 12,
+            holding_weapon: false,
+            torch: false,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn facing_snaps_within_the_facing_threshold_and_otherwise_turns_toward_the_target() {
+        // Speed zero at scale 256: the facing threshold is 256, inclusive.
+        assert_eq!(facing([0; 3], 0, [0, 90, 256], 0), Facing::Arrived);
+        assert!(matches!(
+            facing([0; 3], 0, [0, 0, 257], 0),
+            Facing::Turning { .. }
+        ));
+        // The target straight toward negative Z has heading 1024; the turn is one rate step.
+        for (heading, expected) in [(0, (12, 14)), (2047, (2035, 15)), (1100, (1088, 15))] {
+            assert_eq!(
+                facing([0; 3], heading, [0, 0, -25600], 0),
+                Facing::Turning {
+                    heading: expected.0,
+                    group: Some(expected.1),
+                },
+                "heading {heading}"
+            );
+        }
+        // Already at the target heading: no animation request, so the helper reports zero.
+        let aligned = facing([0; 3], 1024, [0, 0, -25600], 0);
+        assert_eq!(
+            aligned,
+            Facing::Turning {
+                heading: 1024,
+                group: None
+            }
+        );
+        assert!(!aligned.ongoing());
+    }
+
+    #[test]
+    fn collision_responses_gate_alignment() {
+        assert!(!fallback_response(0, 0));
+        assert!(!fallback_response(0x1d, 0xfe));
+        for mark in [0x02, 0x20, 0x40, 0x80] {
+            assert!(fallback_response(mark, 0), "body mark {mark:#x}");
+        }
+        assert!(fallback_response(0, 1));
+        assert!(!response_expired(true, 8));
+        assert!(response_expired(true, 9));
+        assert!(!response_expired(false, 200));
     }
 
     #[test]

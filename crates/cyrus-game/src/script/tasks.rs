@@ -88,6 +88,39 @@ pub(super) struct NativeServices<'a> {
     pub group_sync: Option<GroupSyncCall<'a>>,
     pub locomotion: Option<LocomotionCall<'a>>,
     pub camera: Option<CameraCall<'a>>,
+    pub player_face: Option<PlayerFaceCall<'a>>,
+}
+
+/// The selected player's state for `PlayerFaceObj`, read before the call.
+pub(super) struct PlayerFaceState {
+    pub position: [i32; 3],
+    pub angles: [u16; 3],
+    /// [`super::alignment::speed`] of the player's current group.
+    pub speed: u8,
+    pub rate_attribute: u8,
+    pub holding_weapon: bool,
+    pub torch: bool,
+    /// Whether the packed collision-response word is nonzero.
+    pub response_present: bool,
+    pub response_age: u8,
+}
+
+/// What `PlayerFaceObj` changed on the selected player; its owner applies it after the call.
+#[derive(Default)]
+pub(super) struct PlayerFaceOutcome {
+    pub position: Option<[i32; 3]>,
+    pub angles: Option<[u16; 3]>,
+    /// The player's alignment flag after the call.
+    pub aligning: bool,
+    /// Value for the native return-state byte, when the call sets it.
+    pub return_state: Option<u8>,
+}
+
+/// The selected player's state and the destination of the call's changes. A failed read surfaces
+/// only when the task uses it.
+pub(super) struct PlayerFaceCall<'a> {
+    pub state: Result<PlayerFaceState, String>,
+    pub outcome: &'a mut PlayerFaceOutcome,
 }
 
 /// Session camera, the selected player's slot request and the selected player's pose for
@@ -421,6 +454,8 @@ enum Task {
         target: i32,
         accumulated: i32,
     },
+    /// `PlayerFaceObj`: turns the selected player toward the receiver.
+    PlayerFace,
 }
 impl Task {
     fn complete(
@@ -909,6 +944,63 @@ impl Task {
                 };
                 input.angles[1] = (heading & 0x7ff) as u16;
                 elapsed >= duration.wrapping_sub(1)
+            }
+            Self::PlayerFace => {
+                use super::alignment::{self, Facing};
+                anyhow::ensure!(arguments.is_empty(), "PlayerFaceObj takes no arguments");
+                let call = services
+                    .player_face
+                    .context("PlayerFaceObj selected-player state unavailable")?;
+                let player = call.state.map_err(anyhow::Error::msg)?;
+                let outcome = call.outcome;
+                // A collision response left unresolved for over eight updates abandons the turn.
+                if alignment::response_expired(player.response_present, player.response_age) {
+                    outcome.return_state = Some(6);
+                    return Ok(true);
+                }
+                let input = spatial
+                    .as_mut()
+                    .context("PlayerFaceObj requires receiver pose and frame_scale")?;
+                let facing = alignment::face(alignment::FacingInput {
+                    position: player.position,
+                    heading: player.angles[1],
+                    target: *input.position,
+                    speed: player.speed,
+                    frame_scale: input.frame_scale,
+                    rate_attribute: player.rate_attribute,
+                    holding_weapon: player.holding_weapon,
+                    torch: player.torch,
+                })?;
+                let mut angles = player.angles;
+                angles[2] = alignment::level_roll(angles[2], input.nominal_ticks);
+                match facing {
+                    Facing::Arrived => {
+                        outcome.position =
+                            Some([input.position[0], player.position[1], input.position[2]]);
+                    }
+                    Facing::Turning { heading, group } => {
+                        angles[1] = heading;
+                        if let Some(group) = group {
+                            let animation = services
+                                .player_animation
+                                .as_mut()
+                                .context("PlayerFaceObj selected-player animation unavailable")?;
+                            let frame = match &mut animation.sounds {
+                                Some(sounds) => animation.animation.request_with_sounds(
+                                    group,
+                                    0,
+                                    animation.ticks,
+                                    *sounds,
+                                )?,
+                                None => animation.animation.request(group, 0, animation.ticks)?,
+                            };
+                            *animation.frame = frame.or(*animation.frame);
+                        }
+                    }
+                }
+                outcome.angles = (angles != player.angles).then_some(angles);
+                outcome.aligning = facing.ongoing();
+                !facing.ongoing()
             }
             Self::Backward => {
                 use super::locomotion::{
@@ -1942,6 +2034,12 @@ impl NativeTasks {
             Task::ScaledRotation { origin: 0 }
         } else if function.eq_ignore_ascii_case("sRotateByAxis") {
             Task::ScaledRelativeRotation { origin: 0 }
+        } else if function.eq_ignore_ascii_case("PlayerFaceObj") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "PlayerFaceObj requires task encoding"
+            );
+            Task::PlayerFace
         } else if function.eq_ignore_ascii_case("FacePlayer") {
             Task::FacePlayer
         } else if function.eq_ignore_ascii_case("MoveBackward") {
@@ -2043,6 +2141,11 @@ impl NativeTasks {
         }
         Ok(completed)
     }
+    /// Whether `token` is a `PlayerFaceObj` continuation, which needs the selected player's state.
+    pub(super) fn is_player_face_task(&self, token: u64) -> bool {
+        matches!(self.tasks.get(&token), Some(Task::PlayerFace))
+    }
+
     /// Whether `token` is a camera continuation (`showPlayer`, `showPlayerPan`, an object pan or
     /// `lookObj`), which needs the camera session.
     pub(super) fn is_camera_task(&self, token: u64) -> bool {

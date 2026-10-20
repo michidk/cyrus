@@ -1,6 +1,8 @@
 //! Native continuations resume through VM calls and explicit restored service bindings.
 use super::*;
-use crate::script::tasks::{Lookup, NativeServices, SpatialCall, Speech};
+use crate::script::tasks::{
+    Lookup, NativeServices, PlayerFaceCall, PlayerFaceOutcome, PlayerFaceState, SpatialCall, Speech,
+};
 use cyrus_script::{
     Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread, program::*,
 };
@@ -1063,6 +1065,89 @@ fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
             .unwrap()
     );
     assert!(source.updates.borrow().is_empty());
+}
+
+fn player_face(receiver: [i32; 3], player: PlayerFaceState) -> PlayerFaceOutcome {
+    let mut tasks = NativeTasks::default();
+    let mut position = receiver;
+    let mut angles = [0; 3];
+    let mut updates = vec![];
+    let mut spatial = Some(SpatialCall {
+        position: &mut position,
+        angles: &mut angles,
+        frame_scale: 256,
+        turn: 0,
+        nominal_ticks: 8,
+        matrix: Matrix::IDENTITY,
+        slave: false,
+        locations: &[],
+        effective_position: None,
+        player_position: None,
+        actor_index: 5,
+        map_updates: &mut updates,
+    });
+    let mut outcome = PlayerFaceOutcome::default();
+    let result = tasks
+        .call(
+            ("PlayerFaceObj", CallKind::Task),
+            &[],
+            Invocation {
+                elapsed: Some(0),
+                unpaused_tasks: 0,
+                unpaused_blocking_tasks: 0,
+            },
+            &mut None,
+            &mut spatial,
+            NativeServices {
+                player_face: Some(PlayerFaceCall {
+                    state: Ok(player),
+                    outcome: &mut outcome,
+                }),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(result, Some(CallResult::Pending(1)));
+    outcome
+}
+
+fn face_state() -> PlayerFaceState {
+    PlayerFaceState {
+        position: [256, 77, 0],
+        angles: [0, 1024, 600],
+        speed: 0,
+        rate_attribute: 12,
+        holding_weapon: false,
+        torch: false,
+        response_present: false,
+        response_age: 0,
+    }
+}
+
+#[test]
+fn player_face_obj_snaps_onto_a_near_receiver_and_levels_the_roll_when_facing() {
+    // The receiver is 256 away (the speed-zero facing threshold): the player's X/Z snap, Y stays.
+    let outcome = player_face([512, 5, 0], face_state());
+    assert_eq!(outcome.position, Some([512, 77, 0]));
+    assert!(!outcome.aligning);
+    assert_eq!(outcome.return_state, None);
+    // Far away and already facing it (heading 1024 faces negative Z): the roll levels by the
+    // elapsed ticks (600 -> 592) and the alignment is complete.
+    let outcome = player_face([256, 0, -25600], face_state());
+    assert_eq!(outcome.position, None);
+    assert_eq!(outcome.angles, Some([0, 1024, 592]));
+    assert!(!outcome.aligning);
+}
+
+#[test]
+fn player_face_obj_abandons_after_a_stale_collision_response() {
+    let mut player = face_state();
+    player.response_present = true;
+    player.response_age = 9;
+    let outcome = player_face([256, 0, -25600], player);
+    assert_eq!(outcome.return_state, Some(6));
+    assert_eq!(outcome.angles, None);
+    assert!(!outcome.aligning);
 }
 
 #[test]
