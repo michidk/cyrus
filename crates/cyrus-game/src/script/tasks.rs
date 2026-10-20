@@ -1309,7 +1309,9 @@ impl Task {
                     1 => 1,
                     _ => 2,
                 }] = step;
-                let rotated = input.matrix.transform(offset)?;
+                // An ordinary actor rotates by its angles, the sense opposite the stored matrix's.
+                let rotated = cyrus_world::transform::Matrix::orientation(*input.angles)
+                    .inverse_transform(offset)?;
                 for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
                     *coordinate = coordinate.wrapping_add(amount);
                 }
