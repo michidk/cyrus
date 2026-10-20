@@ -11715,6 +11715,18 @@ fn player_walking_fixture() -> (
     cyrus_assets::animation::Animations,
     cyrus_game::player::data::PlayerScene,
 ) {
+    player_walking_fixture_with(|_| {})
+}
+
+/// The walking fixture with the caller's changes to the scripts before they are identified.
+fn player_walking_fixture_with(
+    prepare: impl FnOnce(&mut Scripts),
+) -> (
+    Scripts,
+    ScriptWorld,
+    cyrus_assets::animation::Animations,
+    cyrus_game::player::data::PlayerScene,
+) {
     use cyrus_assets::animation::AnimationModel;
     use cyrus_game::script::ScriptActorSource;
     let mut scripts = cache();
@@ -11788,6 +11800,7 @@ fn player_walking_fixture() -> (
         placement.object_type = 1;
         placement.map_position = [10, 20, 30];
     }
+    prepare(&mut scripts);
     scripts.content_id = scripts.content_identity().unwrap();
     let (mut world, mut data, models) =
         static_model_fixture_session(scripts.clone(), None, [10, 20, 30], true);
@@ -26780,5 +26793,134 @@ fn player_distance_natives_match_the_original_routines() {
             Some(expected),
             "{function} {base:?} {offset:?}"
         );
+    }
+}
+
+#[test]
+fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
+    use cyrus_game::script::{
+        LocomotionGeometry, ObstacleEnvironment, OrdinaryGroundQuery, PlayerCollisionSource,
+        ScriptActorSource, ScriptInputs, ScriptStage,
+    };
+    // The receiver stands where the player does; the target is 8 map units ahead (+Z) and the
+    // final heading (receiver heading 0 + angle 1024 + 1024) is the player's own, so no turn runs.
+    for function in ["PlayerParallelLineUp", "PlayerPickupLineUp"] {
+        let (_, mut world, data, scene) = player_walking_fixture_with(|scripts| {
+            let id = u16::try_from(scripts.definition.functions.len()).unwrap();
+            scripts.definition.functions.push(Function {
+                name: function.into(),
+                param_count: 3,
+                kind: CallKind::Task,
+            });
+            scripts.definition.attributes[12] = "attr_walk_speed".into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert("attr_walk_speed".into(), 3);
+            scripts.actors.get_mut("LOGIC").unwrap().program.steps = [
+                wait(
+                    id,
+                    function,
+                    CallKind::Task,
+                    vec![
+                        Value::Integer { value: 1024 },
+                        Value::Integer { value: 0 },
+                        Value::Integer { value: 2048 },
+                    ],
+                ),
+                set_flag(7),
+                Operation::End { target: 0 },
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, operation)| {
+                (
+                    index as u32,
+                    Step {
+                        next: index as u32 + 1,
+                        operation,
+                    },
+                )
+            })
+            .collect();
+        });
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let player = world.id(index).unwrap();
+        let map = world.id(0).unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        let actors = [player, map];
+        let mut random = cyrus_game::random::EngineRandom::default();
+        let mut positions = vec![];
+        // The player's own update has begun, as it has by the time a receiver's script runs.
+        world.begin_player_movement_update(player, 0).unwrap();
+        for round in 0..40 {
+            let prepared = world
+                .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &actors)
+                .unwrap();
+            let inputs = ScriptInputs {
+                hud: Some(&hud),
+                shell_execution: Some(false),
+                nominal_ticks: Some(1),
+                frame_scale: Some(256),
+                player_collision: Some(PlayerCollisionSource {
+                    scene: &scene,
+                    animations: &data,
+                    view: [10, 30],
+                    actors: &actors,
+                }),
+                locomotion_geometry: Some(LocomotionGeometry {
+                    ground: OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 4,
+                        sidedness: false,
+                    },
+                    environment: ObstacleEnvironment {
+                        selected_player: Some(player),
+                        auto_grab: false,
+                        item_system_ready: false,
+                        shell_execution: false,
+                        ticks: 1,
+                    },
+                }),
+                ..Default::default()
+            };
+            // The main thread runs the call once and resumes after the task completes.
+            let stages: &[ScriptStage] = if round == 0 {
+                &[ScriptStage::Body(cyrus_script::Thread::Main)]
+            } else {
+                &[
+                    ScriptStage::Tasks,
+                    ScriptStage::Body(cyrus_script::Thread::Main),
+                ]
+            };
+            for &stage in stages {
+                world
+                    .advance(
+                        map,
+                        stage,
+                        inputs,
+                        Some(&mut |_, _| Ok(())),
+                        Some(&mut random),
+                        20,
+                    )
+                    .unwrap_or_else(|error| panic!("round {round}: {error:#}"));
+            }
+            positions.push(world.spatial(player).unwrap().local.position);
+            if world.flags() == [7] {
+                break;
+            }
+        }
+        assert_eq!(world.flags(), [7], "{function}: positions {positions:?}");
+        let receiver = world.spatial(map).unwrap().local.position;
+        let end = world.spatial(player).unwrap().local.position;
+        assert_eq!([end[0], end[2]], [receiver[0], receiver[2] + 2048]);
     }
 }

@@ -166,9 +166,10 @@ pub use playback::ScriptedPlayback;
 pub use presentation::{ScriptBinding, ScriptEntityBinding, ScriptScene};
 pub use registry::{
     ActorControlState, CombatEntryInputs, LocomotionGeometry, LogicalSessionCandidate,
-    LogicalSessionRestoreInputs, LogicalSessionRestorePlan, LogicalSessionSnapshot, ScriptActor,
-    ScriptActorId, ScriptActorSource, ScriptActors, ScriptInputs, ScriptStage, ScriptWorld,
-    WeaponInputs, WorldRestoreContext, WorldSnapshot, WorldSnapshotSources,
+    LogicalSessionRestoreInputs, LogicalSessionRestorePlan, LogicalSessionSnapshot,
+    PlayerCollisionSource, ScriptActor, ScriptActorId, ScriptActorSource, ScriptActors,
+    ScriptInputs, ScriptStage, ScriptWorld, WeaponInputs, WorldRestoreContext, WorldSnapshot,
+    WorldSnapshotSources,
 };
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
