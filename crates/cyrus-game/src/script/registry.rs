@@ -3625,6 +3625,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "LightFlicker",
                 "FlickerLight",
                 "LightFlickerOff",
+                "LightSize",
+                "LightSizeOff",
             ]
             .iter()
             .any(|name| function.eq_ignore_ascii_case(name))
@@ -3648,9 +3650,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .collect::<Result<Vec<_>>>()?;
             let name = function.to_ascii_lowercase();
             let expected = match name.as_str() {
-                "light" | "lightflicker" => 2,
+                "light" | "lightflicker" | "lightsize" => 2,
                 "lightoffset" => 3,
-                "lightflickeroff" => 0,
+                "lightflickeroff" | "lightsizeoff" => 0,
                 _ => 1,
             };
             anyhow::ensure!(values.len() == expected, "{function}: wrong argument count");
@@ -3679,6 +3681,8 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     light.offset = [values[0] as i16, values[1] as i16, values[2] as i16]
                 }
                 "lightflicker" => light.flicker = [values[0] as u16, 0, values[1] as u16],
+                "lightsize" => light.size = [values[0] as u16, 0, values[1] as u16],
+                "lightsizeoff" => light.size[0] = 0,
                 "flickerlight" => light.flicker = [values[0] as u16, 0, 1],
                 _ => light.flicker[0] = 0,
             }

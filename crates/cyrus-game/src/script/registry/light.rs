@@ -18,6 +18,9 @@ pub(super) struct LightState {
     /// Script flicker parameters (`LightFlicker`): first value, phase, second value.
     #[serde(default)]
     pub flicker: [u16; 3],
+    /// Script size-effect parameters (`LightSize`), laid out like `flicker`: first, phase, second.
+    #[serde(default)]
+    pub size: [u16; 3],
 }
 
 impl LightState {
@@ -34,6 +37,7 @@ impl LightState {
             radius: placement.light_radius,
             rgb: placement.light_rgb,
             flicker: [0; 3],
+            size: [0; 3],
         }
     }
 
@@ -52,6 +56,7 @@ impl LightState {
             radius: 100,
             rgb: [0; 3],
             flicker: [0; 3],
+            size: [0; 3],
         }
     }
 }

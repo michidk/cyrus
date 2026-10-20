@@ -3023,6 +3023,15 @@ fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores()
         light(&[("LightFlicker", &[7, 9]), ("LightFlickerOff", &[])])["flicker"],
         serde_json::json!([0, 0, 9])
     );
+    assert_eq!(
+        light(&[("LightSize", &[7, 9])])["size"],
+        serde_json::json!([7, 0, 9])
+    );
+    assert_eq!(
+        light(&[("LightSize", &[7, 9]), ("LightSizeOff", &[])])["size"],
+        serde_json::json!([0, 0, 9]),
+        "the size effect has its own words, apart from the flicker's"
+    );
     assert!(
         run_native_world(&[("Light", &[1])]).is_err(),
         "wrong argument count"
