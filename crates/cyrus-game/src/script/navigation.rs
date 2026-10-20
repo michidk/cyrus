@@ -319,6 +319,10 @@ impl WalkNodeReservations {
         Ok(())
     }
 
+    pub(super) fn set_all_enabled(&mut self, enabled: bool) {
+        self.disabled.fill(!enabled);
+    }
+
     pub(super) fn check_state(&self, state: &ActorNavigation) -> Result<()> {
         for (field, node) in [
             ("current", state.current),

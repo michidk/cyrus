@@ -1114,6 +1114,15 @@ impl ScriptWorld {
             .with_context(|| format!("world {} map {map} navigation enablement", self.world))
     }
 
+    /// DisableNodeMaps and EnableNodeMaps: set the runtime flag of every loaded map.
+    pub fn set_all_walk_maps_enabled(&mut self, enabled: bool) -> Result<()> {
+        self.walk_nodes
+            .as_mut()
+            .context("walk-node navigation not prepared")?
+            .set_all_enabled(enabled);
+        Ok(())
+    }
+
     /// Validate the receiver's held map/indices against live map state.
     /// Invalid or absent maps clear indices; disabled maps retain the destination
     /// until the next absent-map validation, following preservation's SOUP rules.
@@ -4516,6 +4525,14 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 anyhow::bail!("QueueMovie requires one argument")
             };
             self.registry.globals.queue_movie(movie.integer()?);
+            return Ok(CallResult::Complete(0));
+        }
+        if let Some(enabled) = [("EnableNodeMaps", true), ("DisableNodeMaps", false)]
+            .into_iter()
+            .find_map(|(name, enabled)| function.eq_ignore_ascii_case(name).then_some(enabled))
+        {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            self.registry.set_all_walk_maps_enabled(enabled)?;
             return Ok(CallResult::Complete(0));
         }
         // HoldAnimation, PauseAnimation and ReleaseAnimation write the receiver's animation wait

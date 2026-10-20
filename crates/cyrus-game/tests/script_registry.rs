@@ -22296,6 +22296,22 @@ fn walk_route_reads_live_source_reservations_and_preserves_them_on_restore() {
 }
 
 #[test]
+fn disable_and_enable_node_maps_set_every_map_flag_and_need_prepared_navigation() {
+    let (mut world, _, _) = route_fixture(&[vec![(1, 1)], vec![]]);
+    let actor = world.id(0).unwrap();
+    world.reserve_walk_node(actor, 0, 0).unwrap();
+    assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), 1);
+    world.set_all_walk_maps_enabled(false).unwrap();
+    assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), -1);
+    world.set_all_walk_maps_enabled(true).unwrap();
+    assert_eq!(world.next_walk_node(actor, 1, None).unwrap(), 1);
+    for name in ["DisableNodeMaps", "EnableNodeMaps"] {
+        assert!(run_native_world(&[(name, &[])]).is_err());
+        assert!(run_native_world(&[(name, &[1])]).is_err());
+    }
+}
+
+#[test]
 fn walk_route_player_exclusion_uses_local_map_units_and_admits_equality() {
     use cyrus_game::script::{ScriptActorId, WalkRouteExclusion};
     let (world, scripts, data) = route_fixture(&[vec![(1, 1)], vec![]]);
