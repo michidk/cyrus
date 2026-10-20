@@ -186,12 +186,12 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
 /// One combat-stance strafe step: the receiver's new heading (the left call subtracts the scaled
 /// turn rate, the right call adds it) and the translation (movement heading and distance), or
 /// `None` when no movement happens. The movement heading is the new heading plus 512 for left and
-/// minus 512 for right.
+/// minus 512 for right. `distance` is the Q8 step after the packed step counter's adjustment.
 pub fn strafe_motion(
     strafe: Strafe,
     angle_y: u16,
     turn: u8,
-    step: u8,
+    distance: i32,
     frame_scale: i32,
     translation_suppressed: bool,
 ) -> (u16, Option<(u16, i32)>) {
@@ -201,13 +201,7 @@ pub fn strafe_motion(
         Strafe::Right => delta,
     };
     let angle = (i32::from(angle_y).wrapping_add(signed) & 2047) as u16;
-    let offset = match strafe {
-        Strafe::Left => 512,
-        Strafe::Right => -512,
-    };
-    let heading = (i32::from(angle).wrapping_add(offset) & 2047) as u16;
-    let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
-    let movement = (!translation_suppressed && distance > 0).then_some((heading, distance));
+    let movement = strafe_translation(strafe, angle, distance, frame_scale, translation_suppressed);
     (angle, movement)
 }
 
@@ -621,17 +615,17 @@ mod tests {
     fn strafe_turns_by_the_scaled_rate_and_moves_a_quarter_turn_off_the_new_heading() {
         // Left: heading 100 minus (4 * 256 >> 8 = 4) = 96; movement heading 96 + 512.
         assert_eq!(
-            strafe_motion(Strafe::Left, 100, 4, 6, 256, false),
+            strafe_motion(Strafe::Left, 100, 4, 6 << 8, 256, false),
             (96, Some((608, 1536)))
         );
         // Right: heading 100 plus 4 = 104; movement heading 104 - 512 wraps to 1640.
         assert_eq!(
-            strafe_motion(Strafe::Right, 100, 4, 6, 256, false),
+            strafe_motion(Strafe::Right, 100, 4, 6 << 8, 256, false),
             (104, Some((1640, 1536)))
         );
         // The turn wraps, and suppression or a zero distance only removes the movement.
         assert_eq!(
-            strafe_motion(Strafe::Left, 2, 8, 6, 256, true),
+            strafe_motion(Strafe::Left, 2, 8, 6 << 8, 256, true),
             (2042, None)
         );
         assert_eq!(

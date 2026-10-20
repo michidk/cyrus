@@ -31,6 +31,9 @@ pub enum SheathedAction {
     Idle,
     WalkForward,
     RunForward,
+    /// Left or right alone with the walk key held: the scripted `MoveLeft` or `MoveRight`
+    /// stepper with duration 1, which a left press takes over a right press.
+    Sidestep(crate::script::locomotion::Strafe),
 }
 
 /// Select an ordinary sheathed-ground action without changing actor state.
@@ -46,7 +49,7 @@ pub enum SheathedAction {
 /// `input` must contain Faithful held-key samples: `walk` is installed key_a,
 /// not a Modern walking request or the retained Tab toggle. Left and right apply
 /// the caller's [ground turn](super::turn); the held walk key with only left or
-/// right is a sidestep. Jumping, activation, and backward-only movement require
+/// right selects a sidestep. Jumping, activation, and backward-only movement require
 /// separate implementations.
 /// A return or idle selection does not suppress later animation continuation.
 pub fn select_sheathed_action(
@@ -68,10 +71,6 @@ pub fn select_sheathed_action(
         return Ok(SheathedAction::Returned(reason));
     }
     anyhow::ensure!(
-        !((input.left || input.right) && input.walk && !input.forward && !input.backward),
-        "sheathed player controller: sidestepping unsupported"
-    );
-    anyhow::ensure!(
         !input.jump,
         "sheathed player controller: jumping unsupported"
     );
@@ -79,6 +78,14 @@ pub fn select_sheathed_action(
         !input.action,
         "sheathed player controller: activation unsupported"
     );
+    if (input.left || input.right) && input.walk && !input.forward && !input.backward {
+        use crate::script::locomotion::Strafe;
+        return Ok(SheathedAction::Sidestep(if input.left {
+            Strafe::Left
+        } else {
+            Strafe::Right
+        }));
+    }
     if input.forward {
         Ok(if state.walk_mode ^ input.walk {
             SheathedAction::WalkForward

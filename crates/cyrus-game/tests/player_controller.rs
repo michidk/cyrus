@@ -174,24 +174,32 @@ fn turning_alone_or_with_forward_is_left_to_the_caller() {
 }
 
 #[test]
+fn the_walk_key_with_only_left_or_right_selects_a_sidestep() {
+    use cyrus_game::script::locomotion::Strafe;
+    for (left, right, forward, expected) in [
+        (true, false, false, Some(Strafe::Left)),
+        (false, true, false, Some(Strafe::Right)),
+        (true, true, false, Some(Strafe::Left)),
+        (true, false, true, None),
+    ] {
+        let input = PlayerInput {
+            left,
+            right,
+            forward,
+            walk: true,
+            ..Default::default()
+        };
+        let action = select_sheathed_action(&input, state()).unwrap();
+        match expected {
+            Some(strafe) => assert_eq!(action, SheathedAction::Sidestep(strafe)),
+            None => assert!(!matches!(action, SheathedAction::Sidestep(_))),
+        }
+    }
+}
+
+#[test]
 fn unsupported_actions_are_not_silently_treated_as_idle_or_forward() {
     for (input, reason) in [
-        (
-            PlayerInput {
-                left: true,
-                walk: true,
-                ..Default::default()
-            },
-            "sidestepping",
-        ),
-        (
-            PlayerInput {
-                right: true,
-                walk: true,
-                ..Default::default()
-            },
-            "sidestepping",
-        ),
         (
             PlayerInput {
                 forward: true,

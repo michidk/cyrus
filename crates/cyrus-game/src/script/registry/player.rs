@@ -172,6 +172,9 @@ impl ScriptWorld {
             world.turn_player(id, input.held, timing, sounds)?;
             match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
+                SheathedAction::Sidestep(strafe) => {
+                    world.sidestep_player(id, strafe, inputs, sounds)
+                }
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
                     Ok(())
@@ -181,6 +184,55 @@ impl ScriptWorld {
                 }
             }
         })
+    }
+
+    /// The controller's sidestep: the scripted `MoveLeft` or `MoveRight` stepper with duration 1,
+    /// run synchronously on the selected player. The ordinary late stages resolve its translation.
+    fn sidestep_player(
+        &mut self,
+        id: super::ScriptActorId,
+        strafe: super::super::locomotion::Strafe,
+        inputs: super::ScriptInputs<'_>,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let ordinary_actors = self
+            .actor_lists
+            .as_ref()
+            .and_then(|lists| lists.retained_selected())
+            .map(<[_]>::to_vec);
+        let mut host = super::GameHost {
+            native_source_program: None,
+            world: self.world,
+            animation_system: self.updates.animation_system,
+            task_system: self.updates.task_system,
+            index,
+            generation: self.generation,
+            ordinary_actors: ordinary_actors.as_deref(),
+            walk_map_count: self.walk_nodes.as_ref().map(|nodes| nodes.map_count()),
+            registry: self,
+            sounds: Some(sounds),
+            random: None,
+            inputs,
+        };
+        let function = match strafe {
+            super::super::locomotion::Strafe::Left => "MoveLeft",
+            super::super::locomotion::Strafe::Right => "MoveRight",
+        };
+        host.native_task_call(
+            (
+                function,
+                super::super::tasks::NativeTaskMode::SynchronousMovement,
+            ),
+            &[cyrus_script::Argument::Integer(1)],
+            cyrus_script::Invocation {
+                elapsed: Some(0),
+                unpaused_tasks: 0,
+                unpaused_blocking_tasks: 0,
+            },
+        )
+        .with_context(|| format!("player {function} sidestep"))?;
+        Ok(())
     }
 
     /// Ordinary keyboard ground turn of the sheathed selected player, with its

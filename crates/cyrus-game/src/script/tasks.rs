@@ -1115,11 +1115,17 @@ impl Task {
                 };
                 *input.frame = frame.or(*input.frame);
                 *motion.called |= strafe.called_flag();
+                let distance = super::locomotion::initial_step_distance(
+                    receiver.counters,
+                    strafe.counter_shift(),
+                    state.step_adjustment,
+                    i32::from(step) << 8,
+                );
                 let (angle, movement) = strafe_motion(
                     *strafe,
                     spatial.angles[1],
                     turn,
-                    step,
+                    distance,
                     spatial.frame_scale as i32,
                     input.animation.translation_suppressed(),
                 );
