@@ -150,6 +150,28 @@ fn finite_loops_and_wrapped_effective_speed_countdown_are_retained() {
 }
 
 #[test]
+fn hold_pause_and_release_write_the_wait_byte_the_advance_honours() {
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},
+            {"opcode":0,"frame_reference":72},{"opcode":0,"frame_reference":73}]}
+    ]));
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 99).unwrap();
+    actor.request(7, 0, 0).unwrap();
+    let first = actor.advance(1).unwrap();
+    assert!(first.is_some());
+    actor.set_wait(u8::MAX).unwrap();
+    assert!((0..4).all(|_| actor.advance(1).unwrap().is_none()));
+    actor.set_wait(2).unwrap();
+    actor.release_hold().unwrap();
+    assert!(actor.advance(1).unwrap().is_none());
+    actor.release_hold().unwrap();
+    actor.set_wait(u8::MAX).unwrap();
+    actor.release_hold().unwrap();
+    assert!(actor.advance(1).unwrap().is_some());
+}
+
+#[test]
 fn delay_and_translation_latch_resume_at_the_same_frame_without_synthetic_ticks() {
     let data = asset(json!([
         {"group_index":7,"anim_id":2,"anim_type":0,"commands":[

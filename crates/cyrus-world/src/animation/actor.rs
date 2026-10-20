@@ -300,6 +300,25 @@ impl ActorAnimation {
             .map(|(_, sequence)| sequence.command_cursor()))
     }
 
+    /// Writes the animation wait byte (HoldAnimation 255, PauseAnimation value). The byte lives
+    /// on the current group's sequence, so an actor without one has nothing to write.
+    pub fn set_wait(&mut self, wait: u8) -> anyhow::Result<()> {
+        self.check_failure()?;
+        if let Some((_, sequence)) = self.current.as_mut() {
+            sequence.set_wait(wait);
+        }
+        Ok(())
+    }
+
+    /// ReleaseAnimation: clears the wait byte only when it holds the animation.
+    pub fn release_hold(&mut self) -> anyhow::Result<()> {
+        self.check_failure()?;
+        if let Some((_, sequence)) = self.current.as_mut() {
+            sequence.release_hold();
+        }
+        Ok(())
+    }
+
     /// Cancel only a matching pending group, preserving current playback and progress.
     /// Equipped-weapon sheath completion cancels group 129 this way.
     pub fn cancel_pending_group(&mut self, group: u16) -> anyhow::Result<()> {

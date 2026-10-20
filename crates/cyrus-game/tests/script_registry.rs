@@ -3114,6 +3114,21 @@ fn speed_scale_scales_by_the_frame_scale_and_mainloop_exit_keeps_codes_from_5000
 }
 
 #[test]
+fn animation_hold_pause_and_release_take_the_receiver_and_reject_wrong_argument_counts() {
+    // The wait byte itself is covered in cyrus-world; an actor without playback has no record.
+    for calls in [
+        &[("HoldAnimation", &[][..])][..],
+        &[("PauseAnimation", &[7][..])][..],
+        &[("ReleaseAnimation", &[][..])][..],
+    ] {
+        run_native_world(calls).unwrap();
+    }
+    assert!(run_native_world(&[("HoldAnimation", &[1])]).is_err());
+    assert!(run_native_world(&[("PauseAnimation", &[])]).is_err());
+    assert!(run_native_world(&[("ReleaseAnimation", &[1])]).is_err());
+}
+
+#[test]
 fn queue_movie_plays_five_through_ten_at_once_and_queues_the_rest_for_the_next_load() {
     let queued = |calls: &[(&str, &[i32])]| {
         let mut world = run_native_world(calls).unwrap();

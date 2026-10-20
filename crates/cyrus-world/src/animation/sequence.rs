@@ -269,6 +269,18 @@ impl FrameSequence {
         self.loops = count;
     }
 
+    /// Writes the wait byte: zero runs, 255 holds until released, other values count ticks.
+    pub(super) fn set_wait(&mut self, wait: u8) {
+        self.delay = wait;
+    }
+
+    /// Clears the wait byte only when it holds the animation (255).
+    pub(super) fn release_hold(&mut self) {
+        if self.delay == u8::MAX {
+            self.delay = 0;
+        }
+    }
+
     pub(super) fn clear_exit_marker(&mut self) {
         self.exit_reached = false;
     }

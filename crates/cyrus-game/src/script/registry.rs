@@ -4518,6 +4518,27 @@ impl Host for GameHost<'_, '_, '_, '_> {
             self.registry.globals.queue_movie(movie.integer()?);
             return Ok(CallResult::Complete(0));
         }
+        // HoldAnimation, PauseAnimation and ReleaseAnimation write the receiver's animation wait
+        // byte: 255 holds, a pause value counts nominal ticks, release clears only a hold.
+        if kind == CallKind::Function
+            && ["HoldAnimation", "PauseAnimation", "ReleaseAnimation"]
+                .iter()
+                .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            let wait = match (arguments, function.to_ascii_lowercase().as_str()) {
+                ([], "holdanimation") => Some(u8::MAX),
+                ([value], "pauseanimation") => Some(value.integer()? as u8),
+                ([], "releaseanimation") => None,
+                _ => anyhow::bail!("{function}: wrong argument count"),
+            };
+            if let Some(animation) = self.registry.actors[self.index].animation.as_mut() {
+                match wait {
+                    Some(wait) => animation.playback.set_wait(wait)?,
+                    None => animation.playback.release_hold()?,
+                }
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("LoadWorld") {
             let [world, a, b] = arguments else {
                 anyhow::bail!("LoadWorld requires three arguments")
