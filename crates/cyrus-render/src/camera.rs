@@ -141,6 +141,26 @@ pub fn driven_view_transform(camera: &cyrus_game::script::PublishedCamera) -> Op
     )
 }
 
+/// Hand the loaded world's map terrain heights to the camera driver.
+fn provide_camera_terrain(
+    request: Option<Res<crate::environment::EnvironmentRequest>>,
+    environments: Option<Res<Assets<cyrus_assets::environment::Environment>>>,
+    mut frame: ResMut<cyrus_game::script::CameraFrameState>,
+    mut provided: Local<Option<AssetId<cyrus_assets::environment::Environment>>>,
+) {
+    let (Some(request), Some(environments)) = (request, environments) else {
+        return;
+    };
+    let id = request.0.id();
+    if *provided == Some(id) {
+        return;
+    }
+    if let Some(environment) = environments.get(&request.0) {
+        frame.terrain = environment.terrain_heights.clone().map(std::sync::Arc::new);
+        *provided = Some(id);
+    }
+}
+
 /// Draw the driven camera. Active only when the driver is switched on and has published a pose.
 fn drive_view_camera(
     drive: Res<cyrus_game::script::CameraDrive>,
@@ -206,6 +226,7 @@ impl Plugin for CameraPlugin {
                         .run_if(|f: Res<FlycamSettings>, drive: Res<cyrus_game::script::CameraDrive>| {
                             !f.enabled && !drive.enabled
                         }),
+                    provide_camera_terrain.before(cyrus_game::script::OrdinaryUpdates),
                     drive_view_camera
                         .after(cyrus_game::script::OrdinaryUpdates)
                         .run_if(|f: Res<FlycamSettings>| !f.enabled),
@@ -215,6 +236,8 @@ impl Plugin for CameraPlugin {
             );
     }
 }
+// A Bevy system: its parameters are independent resources and queries.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn script_view(
     mut commands: Commands,
     request: Option<Res<cyrus_world::animation::AnimationRequest>>,
@@ -229,6 +252,8 @@ pub(crate) fn script_view(
             With<cyrus_game::player::placement::PlayerPose>,
         ),
     >,
+    drive: Option<Res<cyrus_game::script::CameraDrive>>,
+    driven: Option<Res<cyrus_game::script::CameraFrameState>>,
 ) {
     let (Some(request), Ok(camera)) = (request, camera.single()) else {
         commands.remove_resource::<cyrus_game::script::ScriptView>();
@@ -239,6 +264,19 @@ pub(crate) fn script_view(
         || (!flycam.enabled && placed_player.single().is_err())
     {
         commands.remove_resource::<cyrus_game::script::ScriptView>();
+        return;
+    }
+    // A driven camera's world view is its published position, as the original builds its map list.
+    if let Some(published) = drive
+        .as_deref()
+        .zip(driven.as_deref().and_then(|state| state.published.as_ref()))
+        .filter(|(drive, _)| drive.enabled && !flycam.enabled)
+        .map(|(_, published)| published)
+    {
+        commands.insert_resource(cyrus_game::script::ScriptView {
+            source: request.0.clone(),
+            position: published.pose.position,
+        });
         return;
     }
     let position = camera.translation;

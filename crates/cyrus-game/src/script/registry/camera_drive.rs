@@ -24,25 +24,35 @@ pub struct PublishedCamera {
 }
 
 /// Driver state kept between frames: whether setup ran, the hit history and the published camera.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Default)]
 pub struct CameraFrameState {
     pub(super) world: Option<u64>,
     pub(super) hits: Option<CameraHitSelection>,
     pub published: Option<PublishedCamera>,
+    /// The world's map terrain, supplied by the presentation once its environment has loaded.
+    pub terrain: Option<std::sync::Arc<cyrus_assets::environment::TerrainHeights>>,
 }
 
-/// Terrain heights are not wired to the driver yet, so its terrain stage stays off.
-pub(super) struct NoTerrain;
+/// The world's exact map terrain heights, as the camera's terrain stage reads them. **Inferred**:
+/// the retained, wave-animated window is not consulted, so over water the base height is used.
+pub(super) struct MapTerrain<'a>(&'a cyrus_assets::environment::TerrainHeights);
 
-impl CameraTerrainHeights for NoTerrain {
+impl CameraTerrainHeights for MapTerrain<'_> {
     fn retained_center(&self) -> [i32; 2] {
-        [0; 2]
+        // Far outside the map, so no sample selects the retained grid.
+        [-1000, -1000]
     }
     fn retained_height(&self, _: [i32; 2]) -> Result<f32> {
-        anyhow::bail!("camera terrain heights are not wired")
+        anyhow::bail!("camera retained terrain heights are not available")
     }
-    fn map_height(&self, _: [i32; 2]) -> Result<f32> {
-        anyhow::bail!("camera terrain heights are not wired")
+    fn map_height(&self, [x, z]: [i32; 2]) -> Result<f32> {
+        let side = self.0.side;
+        let row = side as i64 - i64::from(z);
+        anyhow::ensure!(
+            (0..side as i32).contains(&x) && (0..side as i64).contains(&row),
+            "camera terrain cell [{x}, {z}]: outside the {side}-wide map"
+        );
+        Ok(self.0.heights[row as usize * side + x as usize])
     }
 }
 
@@ -120,7 +130,7 @@ impl ScriptWorld {
             view_of(self.camera.as_ref().expect("initialized").current)?,
             actors,
             limits,
-            None::<NoTerrain>,
+            None::<MapTerrain<'_>>,
         )?;
         let selected = self.camera.as_ref().expect("initialized").selected.index();
         self.camera.as_mut().expect("initialized").records[selected].flags |= 0x01;
@@ -139,9 +149,10 @@ pub(super) fn begin<'a>(
     world: &mut ScriptWorld,
     scene: &'a crate::player::data::PlayerScene,
     state: &mut CameraFrameState,
+    terrain: Option<&'a cyrus_assets::environment::TerrainHeights>,
     view: [i32; 2],
     frame_scale: i32,
-) -> Result<Option<SceneCameraUpdate<'a, NoTerrain>>> {
+) -> Result<Option<SceneCameraUpdate<'a, MapTerrain<'a>>>> {
     if world.camera.is_none() {
         return Ok(None);
     }
@@ -157,7 +168,7 @@ pub(super) fn begin<'a>(
         Ok(())
     };
     let limits = world.camera_limits;
-    let settings = CameraUpdateSettings::installed(&limits, frame_scale, false, false);
+    let settings = CameraUpdateSettings::installed(&limits, frame_scale, false, terrain.is_some());
     let built = established.and_then(|()| {
         let current = world.camera.as_ref().expect("checked above").current;
         world.scene_camera_update(
@@ -166,7 +177,7 @@ pub(super) fn begin<'a>(
             &actors,
             limits,
             settings,
-            None::<NoTerrain>,
+            terrain.map(MapTerrain),
             hits.clone(),
         )
     });
@@ -182,7 +193,8 @@ pub(super) fn end(
     world: &mut ScriptWorld,
     scene: &crate::player::data::PlayerScene,
     state: &mut CameraFrameState,
-    update: SceneCameraUpdate<'_, NoTerrain>,
+    update: SceneCameraUpdate<'_, MapTerrain<'_>>,
+    terrain: Option<&cyrus_assets::environment::TerrainHeights>,
     view: [i32; 2],
     frame_scale: i32,
 ) -> Result<()> {
@@ -195,13 +207,14 @@ pub(super) fn end(
             .context("camera session unavailable")?
             .current;
         let limits = world.camera_limits;
-        let settings = CameraUpdateSettings::installed(&limits, frame_scale, false, false);
+        let settings =
+            CameraUpdateSettings::installed(&limits, frame_scale, false, terrain.is_some());
         let mut geometry = world.scene_camera_geometry(
             scene,
             view_of(current)?,
             &actors,
             limits,
-            None::<NoTerrain>,
+            terrain.map(MapTerrain),
         )?;
         let player = world.selected_glide_player()?;
         let pose = world.advance_camera_frame(&mut hits, &settings, &mut geometry, player, true)?;

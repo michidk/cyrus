@@ -1106,12 +1106,16 @@ pub fn run_ordinary(
         .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0)));
     let drive_view = [view.position[0] >> 8, view.position[2] >> 8];
     let mut camera_frame = camera_frame;
+    let terrain_arc = camera_frame
+        .as_deref()
+        .and_then(|frame| frame.terrain.clone());
     let driven = match (drive_scene, camera_frame.as_deref_mut()) {
         (Some(scene), Some(frame)) => {
             match super::camera_drive::begin(
                 world,
                 scene,
                 frame,
+                terrain_arc.as_deref(),
                 drive_view,
                 timing.frame_scale as i32,
             ) {
@@ -1165,6 +1169,7 @@ pub fn run_ordinary(
             scene,
             frame.into_inner(),
             update,
+            terrain_arc.as_deref(),
             drive_view,
             timing.frame_scale as i32,
         )
