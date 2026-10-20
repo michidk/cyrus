@@ -3529,6 +3529,29 @@ impl Host for GameHost<'_, '_, '_, '_> {
             )?;
             return Ok(CallResult::CompleteWithoutValue);
         }
+        if kind == CallKind::Function
+            && (function.eq_ignore_ascii_case("ShowItem")
+                || function.eq_ignore_ascii_case("ShowItemNoRtx"))
+        {
+            // ShowItem(item, text, first, second) ignores its text argument here; ShowItemNoRtx
+            // has no text argument. Both leave the viewer request pending.
+            let rtx = function.eq_ignore_ascii_case("ShowItem");
+            let values = arguments
+                .iter()
+                .map(|argument| argument.integer())
+                .collect::<Result<Vec<_>>>()?;
+            let (item, words) = match (rtx, values.as_slice()) {
+                (true, &[item, _, first, second]) => (item, [first, second]),
+                (false, &[item, first, second]) => (item, [first, second]),
+                _ => anyhow::bail!("{function} requires {} arguments", if rtx { 4 } else { 3 }),
+            };
+            let request = &mut self.registry.globals.item_viewer;
+            request.pending = true;
+            request.no_rtx |= !rtx;
+            request.item = item;
+            request.words = words;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("AddItem") {
             let [item, amount] = arguments else {
                 anyhow::bail!("AddItem requires two arguments")

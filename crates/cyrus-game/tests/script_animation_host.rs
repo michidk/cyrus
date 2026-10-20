@@ -4728,6 +4728,48 @@ fn play_animation_requests_the_group_immediately_and_never_blocks_the_script() {
 }
 
 #[test]
+fn show_item_natives_leave_a_pending_viewer_request() {
+    for (name, values, expected) in [
+        ("ShowItem", vec![5, 99, 7, 8], (false, 5, [7, 8])),
+        ("ShowItemNoRtx", vec![6, 1, 2], (true, 6, [1, 2])),
+    ] {
+        let mut data = scripts(vec![
+            Operation::Call {
+                call: Call {
+                    function_id: 3,
+                    kind: CallKind::Function,
+                    target: Object::Me,
+                    function: name.into(),
+                    arguments: values
+                        .iter()
+                        .map(|&value| Value::Integer { value })
+                        .collect(),
+                },
+            },
+            Operation::End { target: 0 },
+        ]);
+        data.definition.functions.push(Function {
+            name: name.into(),
+            param_count: values.len() as u8,
+            kind: CallKind::Function,
+        });
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+        let id = world.id(0).unwrap();
+        world
+            .step(id, cyrus_game::script::Thread::Main, 20)
+            .unwrap();
+        let request = world.globals().item_viewer_request();
+        assert!(request.pending, "{name}");
+        assert_eq!(
+            (request.no_rtx, request.item, request.words),
+            expected,
+            "{name}"
+        );
+    }
+}
+
+#[test]
 fn print_single_parm_retains_the_script_name_and_value_up_to_the_console_limit() {
     let mut data = scripts(vec![
         Operation::Call {

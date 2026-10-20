@@ -148,6 +148,19 @@ pub(super) enum NativeSource {
     },
 }
 
+/// Item viewer request left by `ShowItem` and `ShowItemNoRtx` for the main loop's viewer.
+/// The viewer itself is host-owned and not implemented; the request words are retained.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct ItemViewerRequest {
+    /// A request is waiting for the viewer.
+    pub pending: bool,
+    /// Set by `ShowItemNoRtx` and left set by `ShowItem` until the viewer consumes the request.
+    pub no_rtx: bool,
+    pub item: i32,
+    /// The two trailing request words, unnamed in the original.
+    pub words: [i32; 2],
+}
+
 /// Console lines available to `PrintSingleParm` output.
 const PRINTED_LINE_LIMIT: usize = 66;
 
@@ -196,6 +209,8 @@ pub struct GameplayGlobals {
     pub(super) turn: crate::player::turn::GroundTurn,
     /// Lines printed by `PrintSingleParm`, kept up to the console's 66 lines; display is host-owned.
     pub(super) printed: Vec<String>,
+    /// The latest `ShowItem`/`ShowItemNoRtx` request, retained for the viewer.
+    pub(super) item_viewer: ItemViewerRequest,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
 }
@@ -288,6 +303,11 @@ impl GameplayGlobals {
     /// them to the first free of the console's 66 lines and drops further text once none is free.
     pub fn printed_lines(&self) -> &[String] {
         &self.printed
+    }
+
+    /// The retained item viewer request; consuming it is the host viewer's job.
+    pub fn item_viewer_request(&self) -> ItemViewerRequest {
+        self.item_viewer
     }
 
     pub(super) fn print_line(&mut self, text: String) {
@@ -1224,6 +1244,7 @@ impl GameplayGlobals {
             group_sync: saved.group_sync,
             turn: Default::default(),
             printed: Vec::new(),
+            item_viewer: ItemViewerRequest::default(),
             host_requests: HostRequests::default(),
         })
     }

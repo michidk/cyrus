@@ -68,7 +68,7 @@ mod activation;
 pub mod attachment;
 pub use activation::{
     ActivationActor, ActivationAnimation, ActivationInputs, ActivationOverlay, ActivationState,
-    GameplayGlobals, HostRequests,
+    GameplayGlobals, HostRequests, ItemViewerRequest,
 };
 mod animation;
 mod attributes;
