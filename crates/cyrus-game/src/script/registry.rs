@@ -3071,7 +3071,10 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             generation: self.generation,
             index: self.index,
         };
-        if walking || walking_backward {
+        // The selected player's WalkBackward runs its step check through the player support
+        // query; its WalkForward is the controller's own walking stage.
+        let player_backward = walking_backward && self.selected_player() == Some(id);
+        if walking || (walking_backward && !player_backward) {
             anyhow::ensure!(
                 self.selected_player() != Some(id)
                     && !matches!(
@@ -3111,13 +3114,18 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     let mut missing_sound =
                         |_, _| anyhow::bail!("WalkBackward collision sound handler unavailable");
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
-                    admission.backward_step_clear = Some(self.registry.ordinary_step_clear(
-                        id,
-                        hazard::OrdinaryStepDirection::Backward,
-                        geometry.ground,
-                        geometry.environment,
-                        sounds,
-                    )?);
+                    admission.backward_step_clear = Some(if player_backward {
+                        self.registry
+                            .player_backward_step_clear(id, geometry.ground)?
+                    } else {
+                        self.registry.ordinary_step_clear(
+                            id,
+                            hazard::OrdinaryStepDirection::Backward,
+                            geometry.ground,
+                            geometry.environment,
+                            sounds,
+                        )?
+                    });
                 }
             }
             LocomotionOperation::Backward => {

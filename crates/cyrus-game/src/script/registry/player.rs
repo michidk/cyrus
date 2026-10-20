@@ -188,7 +188,7 @@ impl ScriptWorld {
                     world.step_player(id, "MoveBackward", inputs, sounds)
                 }
                 SheathedAction::WalkBackward => {
-                    anyhow::bail!("selected-player WalkBackward step check unavailable")
+                    world.step_player(id, "WalkBackward", inputs, sounds)
                 }
             }
         })
@@ -439,6 +439,35 @@ impl ScriptWorld {
         movement.startup.finish_update(accepted);
         Ok(())
     }
+    /// The selected player's `WalkBackward` step check: the support query at the position one
+    /// step behind (attribute 13 plus the rear body extent, along the heading plus 1024),
+    /// without moving the player. The admission is the forward walking admission applied to
+    /// the backward probe, which is inferred.
+    pub fn player_backward_step_clear(
+        &mut self,
+        id: super::ScriptActorId,
+        query: super::ground::OrdinaryGroundQuery<'_>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        let shape = self.ordinary_collision_shape(id)?;
+        let step = i32::from(self.actors[index].attributes[13])
+            .wrapping_add(shape.negative_extent[2])
+            .wrapping_mul(256);
+        let pose = self.spatial(id)?.local;
+        let rotated = pose.matrix.transform([0, 0, step.wrapping_neg()])?;
+        let mut proposed = pose.position;
+        proposed[0] = proposed[0].wrapping_add(rotated[0]);
+        proposed[2] = proposed[2].wrapping_add(rotated[2]);
+        let mut movement = self.actors[index]
+            .player_movement
+            .take()
+            .context("player backward step check requires an active movement update")?;
+        let result =
+            self.query_player_forward_support(id, query, proposed, &mut movement.history, false);
+        self.actors[index].player_movement = Some(movement);
+        result
+    }
+
     /// Probe an ordinary selected player's proposed forward position against the
     /// retained mixed candidates. This never moves the actor. Completed support
     /// queries commit history and surface even when final forward admission fails.
