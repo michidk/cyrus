@@ -254,11 +254,30 @@ pub(super) fn death_effect_point(point: [i32; 3], camera: [i32; 3]) -> [i32; 3] 
         point[0].wrapping_sub(camera[0]),
         point[2].wrapping_sub(camera[2]),
     );
-    let index = usize::from(bearing.wrapping_neg().wrapping_sub(1024) & 2047);
+    displaced(
+        point,
+        usize::from(bearing.wrapping_neg().wrapping_sub(1024) & 2047),
+        2048.0,
+    )
+}
+
+/// `point` moved horizontally by `distance` Q8 units directly away from `from`: the push the
+/// original applies to the sender of a deflected-attack message.
+pub(super) fn point_pushed_away(point: [i32; 3], from: [i32; 3], distance: f64) -> [i32; 3] {
+    let bearing = super::super::spatial::query_bearing(
+        point[0].wrapping_sub(from[0]),
+        point[2].wrapping_sub(from[2]),
+    );
+    displaced(point, usize::from(bearing.wrapping_neg() & 2047), distance)
+}
+
+/// Move the horizontal axes along rotation-table `index` (x from the sample, z from the sample a
+/// quarter turn on), with the original's float stores and integer conversion.
+fn displaced(point: [i32; 3], index: usize, distance: f64) -> [i32; 3] {
     let mut result = point;
     for (axis, sample) in [(0, index), (2, index + 512)] {
         let value = (f64::from(point[axis] as f32)
-            + 2048.0 * f64::from(cyrus_world::transform::rotation_sample(sample)))
+            + distance * f64::from(cyrus_world::transform::rotation_sample(sample)))
             as f32;
         // The original integer conversion returns signed minimum on overflow.
         result[axis] = if f64::from(value) >= f64::from(i32::MIN) && f64::from(value) < 2147483648.0

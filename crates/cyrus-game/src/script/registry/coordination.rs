@@ -21,7 +21,8 @@ pub struct OrdinaryCombatCoordinationInput {
 impl ScriptWorld {
     /// Consume at most one combat message. Coordination transfers clear living
     /// active attackers in ordinary list order before assigning state and budget.
-    /// Unknown codes are inert; movement and damage messages remain unsupported.
+    /// A deflected attack (`0xd000`) pushes its sender back and joins coordination.
+    /// Unknown codes are inert; the hit (`0xd001`) and `0xd005` messages remain unsupported.
     /// Consumption and earlier state writes survive a later service error.
     pub fn process_combat_message(
         &mut self,
@@ -42,9 +43,12 @@ impl ScriptWorld {
                 return Ok(());
             };
             let selected = match message.code {
+                0xd000 => {
+                    return self.receive_deflected_attack(id, message.sender, selected_player);
+                }
                 0xd002 => id,
                 0xd003 => message.sender,
-                0xd000 | 0xd001 | 0xd005 => anyhow::bail!(
+                0xd001 | 0xd005 => anyhow::bail!(
                     "ordinary combat message {} from actor {} unsupported",
                     message.code,
                     message.sender.index
@@ -95,6 +99,64 @@ impl ScriptWorld {
             Ok(())
         })();
         result.with_context(|| format!("world {} instance {} combat message", self.world, id.index))
+    }
+
+    /// Message `0xd000`, sent by a defender to the attacker it defended against (`id` is the
+    /// attacker, `sender` the defender). **Inferred** from the original's handler: both actors
+    /// lose their attack-intent flags (`0x01` and `0x02`), the defender is pushed 3000 Q8 units
+    /// horizontally away from the attacker, and the attacker then joins coordination.
+    fn receive_deflected_attack(
+        &mut self,
+        id: ScriptActorId,
+        sender: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+    ) -> Result<()> {
+        for actor in [id, sender] {
+            let index = self.resolve(actor)?;
+            self.actors[index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .with_context(|| {
+                    format!("deflected attack actor {} combat unavailable", actor.index)
+                })?
+                .flags &= !3;
+        }
+        let from = self.spatial(id)?.local.position;
+        let defender = self.resolve(sender)?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("deflected attack spatial state not prepared")?
+            .actor_mut(defender)?;
+        spatial.local.position =
+            super::effects::point_pushed_away(spatial.local.position, from, 3000.0);
+        self.join_coordination_after_response(id, sender, selected_player)
+    }
+
+    /// Shared tail of the attack response messages: a receiver with no coordination state that
+    /// is neither the selected player nor dead sends `0xd003` to the first waiting coordinator
+    /// other than the sender, or becomes the active coordinator itself when there is none.
+    fn join_coordination_after_response(
+        &mut self,
+        id: ScriptActorId,
+        sender: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let state = self.actors[index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("coordination recipient combat unavailable")?
+            .attacker_selection_state;
+        if state != 0 || Some(id) == selected_player || self.query_is_dead(id, selected_player)? {
+            return Ok(());
+        }
+        match self.ordinary_waiting_coordinator(sender)? {
+            Some(coordinator) => self.send_combat_message(id, coordinator, 0xd003),
+            None => self.set_combat_coordination(id, 1),
+        }
     }
 
     /// Assign coordination state, resetting consecutive close-distance passes first.

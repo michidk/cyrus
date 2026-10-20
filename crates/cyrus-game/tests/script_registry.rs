@@ -21092,7 +21092,7 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
             .code,
         0xd003
     );
-    for code in [0xd000, 0xd001, 0xd005] {
+    for code in [0xd001, 0xd005] {
         world.send_combat_message(sender, receiver, code).unwrap();
         let error = format!(
             "{:#}",
@@ -21101,6 +21101,128 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
         assert!(error.contains("unsupported"), "{error}");
         assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
     }
+}
+
+/// Six combat actors in a line along Z (receiver first, defender second), all with combat flags 7
+/// and coordination state one except where `edit` changes them.
+fn deflected_attack_fixture(
+    edit: impl FnOnce(&mut serde_json::Value),
+) -> (ScriptWorld, Scripts, cyrus_assets::animation::Animations) {
+    movement_fixture(
+        18,
+        false,
+        true,
+        |scripts| {
+            for index in 2..6 {
+                let mut instance = scripts.instances[0].clone();
+                instance.object_id = index;
+                scripts.instances.push(instance);
+            }
+            let actor = scripts.actors.get_mut("LOGIC").unwrap();
+            actor.instances = 6;
+            actor.instance_variables = vec![vec![4]; 6];
+            for (index, instance) in scripts.instances.iter_mut().enumerate() {
+                instance.active = 1;
+                instance.map_position = [1000, 0, 1000 + 500 * index as i64];
+            }
+        },
+        |saved| {
+            for index in 0..6 {
+                saved["actors"][index]["control"]["combat"] =
+                    serde_json::to_value(cyrus_game::script::CombatControlState {
+                        attacker_selection_state: 1,
+                        flags: 7,
+                        ..Default::default()
+                    })
+                    .unwrap();
+                saved["actors"][index]["control"]["combat"]["target"] = serde_json::json!([1, 5]);
+            }
+            saved["actors"][4]["control"]["death_selector"] = 8.into();
+            edit(saved);
+        },
+    )
+}
+
+#[test]
+fn deflected_attack_pushes_the_defender_back_and_joins_coordination() {
+    let flags = |world: &ScriptWorld, index: usize| {
+        world.actors()[index]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .flags
+    };
+    let state = |world: &ScriptWorld, index: usize| {
+        world.actors()[index]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap()
+            .attacker_selection_state
+    };
+    // No coordination state: the receiver asks the first waiting coordinator other than the
+    // defender (actor 5; the dead actor 4 is skipped) to take over.
+    let (mut world, _, _) = deflected_attack_fixture(|saved| {
+        saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 0.into();
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let (receiver, sender) = (world.id(0).unwrap(), world.id(1).unwrap());
+    let before = world.spatial(sender).unwrap().local.position;
+    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world.process_combat_message(receiver, None).unwrap();
+    assert_eq!((flags(&world, 0), flags(&world, 1)), (4, 4));
+    let after = world.spatial(sender).unwrap().local.position;
+    assert_eq!(
+        [
+            after[0] - before[0],
+            after[1] - before[1],
+            after[2] - before[2]
+        ],
+        [0, 0, 3000],
+        "the defender moves 3000 Q8 units directly away from the attacker"
+    );
+    let message = world
+        .consume_combat_message(world.id(5).unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!((message.code, message.sender), (0xd003, receiver));
+    assert_eq!(state(&world, 0), 0, "the receiver waits for the transfer");
+
+    // No other waiting coordinator: the receiver becomes the active one itself.
+    let (mut world, _, _) = deflected_attack_fixture(|saved| {
+        for index in 0..6 {
+            let value: i32 = if index == 0 { 0 } else { 2 };
+            saved["actors"][index]["control"]["combat"]["attacker_selection_state"] = value.into();
+        }
+    });
+    world.ordinary_actors([0, 0]).unwrap();
+    let (receiver, sender) = (world.id(0).unwrap(), world.id(1).unwrap());
+    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world.process_combat_message(receiver, None).unwrap();
+    assert_eq!(state(&world, 0), 1);
+    assert_eq!(
+        world.consume_combat_message(world.id(5).unwrap()).unwrap(),
+        None
+    );
+
+    // A receiver that already has a coordination state keeps it and sends nothing; the flags and
+    // the push still apply.
+    let (mut world, _, _) = deflected_attack_fixture(|_| {});
+    world.ordinary_actors([0, 0]).unwrap();
+    let (receiver, sender) = (world.id(0).unwrap(), world.id(1).unwrap());
+    let before = world.spatial(sender).unwrap().local.position;
+    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    world.process_combat_message(receiver, None).unwrap();
+    assert_eq!(state(&world, 0), 1);
+    assert_eq!((flags(&world, 0), flags(&world, 1)), (4, 4));
+    assert_ne!(world.spatial(sender).unwrap().local.position, before);
+    assert_eq!(
+        world.consume_combat_message(world.id(5).unwrap()).unwrap(),
+        None
+    );
 }
 
 #[test]
