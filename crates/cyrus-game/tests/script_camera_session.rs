@@ -936,7 +936,12 @@ mod live {
     }
 
     fn reset_world() -> (ScriptWorld, PoseService) {
-        let mut data = scripts_calling("XResetCamera", &[]);
+        function_world("XResetCamera")
+    }
+
+    /// A world whose map actor calls the argument-free camera function `name` once.
+    fn function_world(name: &str) -> (ScriptWorld, PoseService) {
+        let mut data = scripts_calling(name, &[]);
         data.definition.functions[1].kind = CallKind::Function;
         let step = data
             .actors
@@ -997,6 +1002,45 @@ mod live {
             "the selected player's pose"
         );
         assert_eq!(world.globals().lockout(), Some(0), "the player is unlocked");
+    }
+
+    #[test]
+    fn camera_controller_runs_one_pose_update_and_publishes_the_camera_actor() {
+        let (mut world, service) = function_world("cameraController");
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let camera = world.camera().unwrap();
+        assert_ne!(camera.current, start(), "the pose updated");
+        assert_eq!(
+            camera.previous,
+            start(),
+            "an ordinary frame keeps the old pose as previous"
+        );
+        assert_eq!(
+            world
+                .spatial(world.id(CAMERA).unwrap())
+                .unwrap()
+                .local
+                .position,
+            camera.current.position,
+            "the camera actor carries the published pose"
+        );
+        assert_eq!(
+            *service.seen.borrow(),
+            Some(([4000, 9000, -6000], [100, 1900, 20])),
+            "the selected record's bound actor"
+        );
+    }
+
+    #[test]
+    fn camera_controller_without_the_update_service_changes_nothing() {
+        let (mut world, _) = function_world("cameraController");
+        let before = world.camera().unwrap().clone();
+        let error = run_with(&mut world, BODY, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("camera update service unavailable"),
+            "{error:#}"
+        );
+        assert_eq!(world.camera().unwrap().current, before.current);
     }
 
     #[test]

@@ -2786,20 +2786,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if !succeeded {
             return Ok(());
         }
-        for (id, position) in published {
-            let index = self.registry.resolve(id)?;
-            let spatial = self
-                .registry
-                .spatial
-                .as_mut()
-                .context("camera publication: spatial state not prepared")?
-                .actor_mut(index)?;
-            spatial.local.position = position;
-            if let Some(effective) = &mut spatial.effective {
-                effective.position = position;
-            }
-        }
-        Ok(())
+        self.registry.apply_camera_publication(published)
     }
 
     fn actor_is_dead(&self, index: usize) -> Result<bool> {
@@ -4143,6 +4130,18 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .context("ResetRotation: spatial state not prepared")?
                 .actor_mut(self.index)?
                 .reset_rotation(axes)?;
+            return Ok(CallResult::Complete(0));
+        }
+        if function.eq_ignore_ascii_case("cameraController") {
+            anyhow::ensure!(
+                arguments.is_empty(),
+                "cameraController requires no arguments"
+            );
+            let service = self
+                .inputs
+                .camera_update
+                .context("cameraController: camera update service unavailable")?;
+            self.registry.run_camera_controller(service)?;
             return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("XResetCamera") {

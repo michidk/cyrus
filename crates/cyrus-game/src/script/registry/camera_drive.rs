@@ -191,7 +191,7 @@ pub(super) fn end(
     view: [i32; 2],
     frame_scale: i32,
 ) -> Result<()> {
-    let mut hits = update.into_hits();
+    let hits = update.into_hits();
     let result = (|| -> Result<PublishedCamera> {
         let actors = world.ordinary_actors(view)?.to_vec();
         let current = world
@@ -209,11 +209,23 @@ pub(super) fn end(
             limits,
             terrain.map(MapTerrain),
         )?;
+        // The pose update already ran at the camera actor's slot in the update; this is the render
+        // step with the terrain stage it glides through.
         let player = world.selected_glide_player()?;
-        let pose = world.advance_camera_frame(&mut hits, &settings, &mut geometry, player, true)?;
+        world.present_camera(player, true, &mut |position| {
+            if settings.terrain_enabled {
+                crate::script::camera::correct_terrain(
+                    position,
+                    &mut geometry,
+                    settings.body_clearance,
+                )?;
+            }
+            Ok(())
+        })?;
+        let camera = world.camera.as_ref().expect("checked above");
         Ok(PublishedCamera {
-            pose,
-            render: world.camera.as_ref().expect("checked above").render,
+            pose: camera.current,
+            render: camera.render,
         })
     })();
     state.hits = Some(hits);

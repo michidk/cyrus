@@ -36,6 +36,48 @@ impl ScriptWorld {
         Ok((pose.position, pose.angles))
     }
 
+    /// The `cameraController` native, the CAMERA actor's per-update hook: one pose update for the
+    /// selected record's bound actor through `service`, then the logical camera actors take the
+    /// published positions. Nothing changes when the update fails.
+    pub(super) fn run_camera_controller(
+        &mut self,
+        service: &dyn crate::script::camera::CameraUpdateService,
+    ) -> Result<()> {
+        let camera = self
+            .camera
+            .as_ref()
+            .with_context(|| format!("world {}: camera session unavailable", self.world))?;
+        let bound = self.resolve(camera.records[camera.selected.index()].actor)?;
+        let (position, angles) = self.camera_binding_pose(bound)?;
+        let mut state = camera.clone();
+        let updated = service.update(&mut state, position, angles);
+        let published = service.take_published();
+        updated?;
+        self.apply_camera_publication(published)?;
+        self.camera = Some(state);
+        Ok(())
+    }
+
+    /// Give the logical camera actors the positions a pose update published.
+    pub(super) fn apply_camera_publication(
+        &mut self,
+        published: Vec<(ScriptActorId, [i32; 3])>,
+    ) -> Result<()> {
+        for (id, position) in published {
+            let index = self.resolve(id)?;
+            let spatial = self
+                .spatial
+                .as_mut()
+                .context("camera publication: spatial state not prepared")?
+                .actor_mut(index)?;
+            spatial.local.position = position;
+            if let Some(effective) = &mut spatial.effective {
+                effective.position = position;
+            }
+        }
+        Ok(())
+    }
+
     /// `XResetCamera` for the selected player `player`: reload record zero's defaults, select it,
     /// zero the scripted-camera words, recompute the first published pose through `service` as
     /// setup does (limiter bypassed, current and previous equal), clear the player's and the

@@ -20,15 +20,17 @@ with angles (0, 2027, 0) for a player at (32464, -275, 33892), angles (0, 22, 0)
 the pose pipeline reproduces it (`script_camera_original`); a START screenshot shows
 Cyrus from behind, upright, on the ship deck. **Verified:** at START's first world
 frame the original's overlay (camera (32706, -330, 33396), angles 0; player (32706,
--275, 33646)) and the driven camera have the same pose, and the rendered mast, rail
-and deck land within a few pixels of each other at 640x480 (measured by eye on
-landmark crops; the remaining offsets are consistent with the ship's own motion,
-because the cyrus capture is from later in the run). **Inferred:** the angle-to-view
-mapping (local +Z along the look direction with X mirrored) fits that pose and the
-earlier one; it is not compared with a frame-synchronized capture or at a nonzero
-yaw. The driven camera's position feeds `ScriptView` and the map's terrain heights
-feed its terrain correction (retained-window terrain is ignored); roll and shake are
-not wired.
+-275, 33646)) and the driven camera have the same pose, and at a capture from the same
+early moment of the run the rail corner and slopes, deck edge and horizon land within
+about one pixel at 640x480 (measured by eye on landmark crops; the mast bracket
+differs by about three pixels horizontally, consistent with the sail's sway).
+**Inferred:** the angle-to-view mapping (local +Z along the look direction with X
+mirrored) fits that pose and the earlier one; it is not compared at a nonzero yaw or
+with a capture synchronized to the same frame. The camera's pose update runs as the
+CAMERA actor's `cameraController` hook at that actor's slot in the update, and the
+driver adds only the render step. The driven camera's position feeds `ScriptView` and
+the map's terrain heights feed its terrain correction (retained-window terrain is
+ignored); roll and shake are not wired.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition

@@ -140,6 +140,24 @@ impl ScriptWorld {
         self.prepare_ordinary_models(data, ticks, sounds)?;
         let selected = self.ordinary_actors(view)?.to_vec();
         for &id in &selected {
+            if matches!(
+                self.actors[id.index].source,
+                super::ScriptActorSource::Camera
+            ) {
+                // The camera actor has no script body: its `cameraController` native hook runs the
+                // camera update at its place in the list, ahead of the selected player's update.
+                if let Some(service) = inputs.camera_update
+                    && let Err(error) = self.run_camera_controller(service)
+                {
+                    self.actors[id.index].update_failure = Some(format!(
+                        "world {} instance {} actor {} ordinary update: {error:#}",
+                        self.world,
+                        id.index,
+                        self.actors[id.index].name()
+                    ));
+                }
+                continue;
+            }
             let actor = &mut self.actors[id.index];
             let selected_player = matches!(actor.source, super::ScriptActorSource::Player)
                 && inputs.player_controller.is_some();
