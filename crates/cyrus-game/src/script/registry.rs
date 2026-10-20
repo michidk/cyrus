@@ -2508,6 +2508,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
+                    turn: self.registry.globals.turn.delta(frame_scale),
                     nominal_ticks,
                 },
             );
@@ -4531,6 +4532,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     position: &mut spatial.local.position,
                     angles: &mut spatial.local.angles,
                     frame_scale,
+                    turn: self.registry.globals.turn.delta(frame_scale),
                     nominal_ticks,
                 },
             );

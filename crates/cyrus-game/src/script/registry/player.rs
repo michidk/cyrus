@@ -71,12 +71,6 @@ impl ScriptWorld {
             let input = inputs
                 .player_controller
                 .context("player controller input unavailable")?;
-            let settings = &query.scene.settings;
-            world.globals.turn.update(
-                [input.held.left, input.held.right],
-                settings.turn_speed,
-                settings.turn_max_speed,
-            );
             let actor = &world.actors[id.index];
             let control = actor.control.as_ref().expect("validated control");
             let group = actor

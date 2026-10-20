@@ -178,7 +178,7 @@ impl NativeTasks {
                             "restored frame-wait animation owner unavailable"
                         );
                     }
-                    Task::Animation { group, .. } => {
+                    Task::Animation { group, .. } | Task::ControlAnimation { group, .. } => {
                         ensure!(
                             *group <= i16::MAX as u16,
                             "animation group {group} exceeds supported signed range"
@@ -239,6 +239,7 @@ impl Task {
             Self::Tasks => ("WaitOnTasks", 0, None),
             Self::Blocking => ("WaitNonMulti", 0, None),
             Self::Animation { .. } => ("PushAnimation", 2, None),
+            Self::ControlAnimation { .. } => ("PushControlAnimation", 2, None),
         }
     }
 }

@@ -240,6 +240,15 @@ impl ScriptWorld {
                     nominal_ticks: ticks,
                     fine_ticks: 0,
                 };
+                // The input update runs every frame, including while a script task owns the player.
+                if let (Some(query), Some(controller)) = (&player_query, inputs.player_controller) {
+                    let settings = &query.scene.settings;
+                    self.globals.turn.update(
+                        [controller.held.left, controller.held.right],
+                        settings.turn_speed,
+                        settings.turn_max_speed,
+                    );
+                }
                 if let Some(query) = player_query {
                     self.advance_player_controller(
                         id,

@@ -33,6 +33,7 @@ impl Host for NativeHost {
             position: &mut self.position,
             angles: &mut self.angles,
             frame_scale: 256,
+            turn: 0,
             nominal_ticks: 1,
             matrix: Matrix::IDENTITY,
             slave: false,
@@ -71,6 +72,7 @@ impl Host for NativeHost {
             position: &mut self.position,
             angles: &mut self.angles,
             frame_scale: 256,
+            turn: 0,
             nominal_ticks: 1,
             matrix: Matrix::IDENTITY,
             slave: false,
@@ -1064,6 +1066,97 @@ fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
 }
 
 #[test]
+fn control_animation_turns_the_receiver_only_while_its_group_plays() {
+    use crate::script::tasks::AnimationCall;
+    use cyrus_assets::animation::Animations;
+    let data = Animations {
+        version: 2,
+        world: 0,
+        metadata: json!({"actors":[{
+        "script_name":"ACTOR", "animation_groups":[
+            {"group_index":0,"anim_id":1,"anim_type":0,"commands":[{"opcode":0,"frame_reference":10},{"opcode":2,"value":0}]},
+            {"group_index":7,"anim_id":1,"anim_type":1,"commands":[{"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},{"opcode":1}]}
+        ]}]}),
+        sections: Default::default(),
+        models: Default::default(),
+        unsupported: Default::default(),
+    };
+    let mut animation = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut frame = None;
+    let mut tasks = NativeTasks::default();
+    let args = [Argument::Integer(7), Argument::Integer(2)];
+    let mut position = [0; 3];
+    let mut angles = [0, 100, 0];
+    let mut updates = vec![];
+    let mut step = |tasks: &mut NativeTasks,
+                    animation: &mut ActorAnimation,
+                    angles: &mut [u16; 3],
+                    token: Option<u64>| {
+        let invocation = Invocation {
+            elapsed: Some(0),
+            unpaused_tasks: 0,
+            unpaused_blocking_tasks: 0,
+        };
+        let mut input = Some(AnimationCall {
+            animation,
+            ticks: 1,
+            frame: &mut frame,
+            sounds: None,
+        });
+        let mut spatial = Some(SpatialCall {
+            position: &mut position,
+            angles,
+            frame_scale: 256,
+            turn: -12,
+            nominal_ticks: 1,
+            matrix: Matrix::IDENTITY,
+            slave: false,
+            locations: &[],
+            effective_position: None,
+            player_position: None,
+            actor_index: 0,
+            map_updates: &mut updates,
+        });
+        match token {
+            None => {
+                assert_eq!(
+                    tasks
+                        .call(
+                            ("PushControlAnimation", CallKind::Task),
+                            &args,
+                            invocation,
+                            &mut input,
+                            &mut spatial,
+                            NativeServices::default(),
+                        )
+                        .unwrap(),
+                    Some(CallResult::Pending(1))
+                );
+                false
+            }
+            Some(token) => tasks
+                .poll(
+                    token,
+                    &args,
+                    invocation,
+                    &mut input,
+                    &mut spatial,
+                    NativeServices::default(),
+                )
+                .unwrap(),
+        }
+    };
+    // Requesting and starting do not turn; the started task then adds the held turn each pass.
+    step(&mut tasks, &mut animation, &mut angles, None);
+    assert!(!step(&mut tasks, &mut animation, &mut angles, Some(1)));
+    assert_eq!(angles[1], 100);
+    assert!(!step(&mut tasks, &mut animation, &mut angles, Some(1)));
+    assert_eq!(angles[1], 112);
+    assert!(!step(&mut tasks, &mut animation, &mut angles, Some(1)));
+    assert_eq!(angles[1], 124);
+}
+
+#[test]
 fn animation_restore_keeps_started_state_without_repeating_requests_or_cues() {
     use crate::script::tasks::AnimationCall;
     use cyrus_assets::animation::Animations;
@@ -1520,6 +1613,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
                         position: &mut position,
                         angles: &mut angles,
                         frame_scale: 256,
+                        turn: 0,
                         nominal_ticks: 1,
                         matrix: Matrix::IDENTITY,
                         slave: false,

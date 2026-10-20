@@ -50,6 +50,8 @@ pub(super) struct SpatialCall<'a> {
     pub position: &'a mut [i32; 3],
     pub angles: &'a mut [u16; 3],
     pub frame_scale: u32,
+    /// Held-turn amount at `frame_scale` from the shared accumulators; negative turns left.
+    pub turn: i64,
     pub nominal_ticks: u32,
     pub matrix: cyrus_world::transform::Matrix,
     pub slave: bool,
@@ -394,6 +396,11 @@ enum Task {
         group: u16,
         started: bool,
     },
+    /// `PushControlAnimation`: `PushAnimation` that also applies the held ground turn.
+    ControlAnimation {
+        group: u16,
+        started: bool,
+    },
 }
 impl Task {
     fn complete(
@@ -405,6 +412,7 @@ impl Task {
         mut services: NativeServices<'_>,
     ) -> Result<bool> {
         let ambient = services.ambient;
+        let turning = matches!(self, Self::ControlAnimation { .. });
         Ok(match self {
             Self::PlayerDialogue { started } => {
                 let [label] = arguments else {
@@ -1442,23 +1450,35 @@ impl Task {
                     _ => invocation.unpaused_blocking_tasks <= 1,
                 }
             }
-            Self::Animation { group, started } => {
+            Self::Animation { group, started } | Self::ControlAnimation { group, started } => {
+                let name = if turning {
+                    "PushControlAnimation"
+                } else {
+                    "PushAnimation"
+                };
                 let [requested, count] = arguments else {
-                    anyhow::bail!("PushAnimation requires two arguments")
+                    anyhow::bail!("{name} requires two arguments")
                 };
                 let requested = u16::try_from(requested.integer()?)
-                    .context("PushAnimation group outside supported range")?;
+                    .with_context(|| format!("{name} group outside supported range"))?;
                 anyhow::ensure!(
                     requested <= i16::MAX as u16,
-                    "PushAnimation signed group unsupported"
+                    "{name} signed group unsupported"
                 );
                 let count = count.integer()? as u8;
-                let input = animation.as_mut().context(
-                    "PushAnimation requires prepared animation and explicit nominal ticks",
-                )?;
+                let input = animation.as_mut().with_context(|| {
+                    format!("{name} requires prepared animation and explicit nominal ticks")
+                })?;
                 *group = requested;
                 if *started {
-                    input.animation.current_group() != Some(requested)
+                    let running = input.animation.current_group() == Some(requested);
+                    if turning && running {
+                        let pose = spatial
+                            .as_mut()
+                            .context("PushControlAnimation requires receiver pose")?;
+                        pose.angles[1] = crate::player::turn::turned(pose.angles[1], pose.turn);
+                    }
+                    !running
                 } else {
                     if input.animation.current_group() == Some(requested) {
                         input.animation.set_loop_count(count)?;
@@ -1709,6 +1729,11 @@ impl NativeTasks {
             }
         } else if function.eq_ignore_ascii_case("PushAnimation") {
             Task::Animation {
+                group: 0,
+                started: false,
+            }
+        } else if function.eq_ignore_ascii_case("PushControlAnimation") {
+            Task::ControlAnimation {
                 group: 0,
                 started: false,
             }
