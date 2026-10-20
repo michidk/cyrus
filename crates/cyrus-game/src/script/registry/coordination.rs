@@ -55,10 +55,15 @@ impl ScriptWorld {
                             .control
                             .as_mut()
                             .and_then(|control| control.combat.as_mut())
-                            .with_context(|| format!("hit message actor {index} combat unavailable"))?
+                            .with_context(|| {
+                                format!("hit message actor {index} combat unavailable")
+                            })?
                             .flags &= !3;
                     }
-                    anyhow::bail!("ordinary combat message {} response services unsupported", message.code)
+                    anyhow::bail!(
+                        "ordinary combat message {} response services unsupported",
+                        message.code
+                    )
                 }
                 0xd005 => anyhow::bail!(
                     "ordinary combat message {} response services unsupported",
