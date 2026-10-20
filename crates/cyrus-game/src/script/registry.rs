@@ -4396,6 +4396,32 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .with_context(|| format!("{function}: receiver control state unavailable"))?;
             return Ok(CallResult::Complete(test(control)));
         }
+        if function.eq_ignore_ascii_case("PlayerInSight") {
+            anyhow::ensure!(arguments.is_empty(), "{function} requires no arguments");
+            let geometry = self
+                .inputs
+                .locomotion_geometry
+                .context("PlayerInSight requires the receiver's collision candidates")?;
+            let player = self
+                .selected_player()
+                .context("PlayerInSight requires a selected player")?;
+            let id = ScriptActorId {
+                generation: self.generation,
+                index: self.index,
+            };
+            let visible = self.registry.player_in_sight(
+                id,
+                player,
+                obstacle::OrdinaryObstacleQuery {
+                    scene: geometry.ground.scene,
+                    animations: geometry.ground.animations,
+                    prepared: geometry.ground.prepared,
+                    vertical_offset: 0,
+                    respond: false,
+                },
+            )?;
+            return Ok(CallResult::Complete(i32::from(visible)));
+        }
         if function.eq_ignore_ascii_case("PlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
             || function.eq_ignore_ascii_case("PlayerLooking")

@@ -340,10 +340,37 @@ impl ScriptWorld {
         limit: i32,
         query: OrdinaryObstacleQuery<'_>,
     ) -> Result<bool> {
-        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let target_index = self.resolve(target)?;
         let from = self.sight_position(id.index)?;
         let to = self.sight_position(target_index)?;
+        self.segment_in_sight(id, target_index, from, to, limit, query)
+    }
+
+    /// `PlayerInSight`: the same test as [`Self::actor_in_sight`] against the selected player,
+    /// with the fixed limit 262144 and the actors' local positions instead of their query
+    /// positions.
+    pub fn player_in_sight(
+        &self,
+        id: ScriptActorId,
+        player: ScriptActorId,
+        query: OrdinaryObstacleQuery<'_>,
+    ) -> Result<bool> {
+        let player_index = self.resolve(player)?;
+        let from = self.spatial(id)?.local.position;
+        let to = self.spatial(player)?.local.position;
+        self.segment_in_sight(id, player_index, from, to, 0x40000, query)
+    }
+
+    fn segment_in_sight(
+        &self,
+        id: ScriptActorId,
+        target_index: usize,
+        from: [i32; 3],
+        to: [i32; 3],
+        limit: i32,
+        query: OrdinaryObstacleQuery<'_>,
+    ) -> Result<bool> {
+        self.require_collision_query(id, query.prepared, query.scene, query.animations)?;
         let distance = rounded_distance(std::array::from_fn(|axis| {
             to[axis].wrapping_sub(from[axis])
         }))?;

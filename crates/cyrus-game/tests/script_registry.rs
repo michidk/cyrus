@@ -14020,6 +14020,12 @@ fn actor_in_sight_is_blocked_by_candidate_models_and_gated_by_distance() {
             expected,
             "wall {wall}, limit {limit}"
         );
+        // PlayerInSight uses the fixed limit 262144 (inclusive), which these actors sit at exactly.
+        assert_eq!(
+            world.player_in_sight(ids[0], ids[1], query).unwrap(),
+            !wall,
+            "wall {wall}"
+        );
     }
 }
 
