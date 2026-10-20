@@ -110,7 +110,7 @@ pub(super) struct PlayerFaceState {
 pub(super) struct PlayerFaceOutcome {
     pub position: Option<[i32; 3]>,
     pub angles: Option<[u16; 3]>,
-    /// The player's alignment flag after the call.
+    /// The player's alignment flag (script-control bit 2, hook disabled) after the call.
     pub aligning: bool,
     /// Value for the native return-state byte, when the call sets it.
     pub return_state: Option<u8>,

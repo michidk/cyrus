@@ -248,9 +248,6 @@ pub struct ActorControlState {
     pub hidden: bool,
     /// Set by `KillMe`, cleared by `Resurrect`; independent of the death selector.
     pub killed: bool,
-    /// The player's alignment flag: set while `PlayerFaceObj` or `PlayerLineUp` is still turning
-    /// or moving the player, cleared on completion.
-    pub alignment_active: bool,
     pub combat_death_default: Option<i32>,
     pub combat: Option<super::CombatControlState>,
 }
@@ -2959,11 +2956,17 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         if refresh {
             spatial.refresh_transform()?;
         }
-        self.registry.actors[index]
+        // The alignment flag is the hook-disabled bit `DisableHook` also sets, so the player's
+        // controller hook stays suppressed while the player is still being aligned.
+        let control = self.registry.actors[index]
             .control
             .as_mut()
-            .context("PlayerFaceObj selected-player control unavailable")?
-            .alignment_active = outcome.aligning;
+            .context("PlayerFaceObj selected-player control unavailable")?;
+        if outcome.aligning {
+            control.script_control |= 2;
+        } else {
+            control.script_control &= !2;
+        }
         if let Some(state) = outcome.return_state {
             self.registry.globals.native_command_return = state;
         }
