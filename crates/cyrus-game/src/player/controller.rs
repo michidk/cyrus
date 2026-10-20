@@ -44,8 +44,10 @@ pub enum SheathedAction {
 /// establish that eligibility or admit the selected movement helper.
 ///
 /// `input` must contain Faithful held-key samples: `walk` is installed key_a,
-/// not a Modern walking request or the retained Tab toggle. Turning, jumping,
-/// activation, and backward-only movement require separate implementations.
+/// not a Modern walking request or the retained Tab toggle. Left and right apply
+/// the caller's [ground turn](super::turn); the held walk key with only left or
+/// right is a sidestep. Jumping, activation, and backward-only movement require
+/// separate implementations.
 /// A return or idle selection does not suppress later animation continuation.
 pub fn select_sheathed_action(
     input: &PlayerInput,
@@ -66,8 +68,8 @@ pub fn select_sheathed_action(
         return Ok(SheathedAction::Returned(reason));
     }
     anyhow::ensure!(
-        !input.left && !input.right,
-        "sheathed player controller: turning and strafing unsupported"
+        !((input.left || input.right) && input.walk && !input.forward && !input.backward),
+        "sheathed player controller: sidestepping unsupported"
     );
     anyhow::ensure!(
         !input.jump,

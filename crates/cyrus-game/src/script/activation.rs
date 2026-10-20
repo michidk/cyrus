@@ -189,6 +189,8 @@ pub struct GameplayGlobals {
     pub(super) player_swapped: bool,
     /// Group synchronization channels; cleared on world entry.
     pub(super) group_sync: super::GroupSync,
+    /// Held-direction turn accumulators; transient input state outside snapshots.
+    pub(super) turn: crate::player::turn::GroundTurn,
     /// Requests for the host's main loop; transient, so saves neither store nor restore them.
     host_requests: HostRequests,
 }
@@ -1203,6 +1205,7 @@ impl GameplayGlobals {
             potions: saved.potions,
             player_swapped: saved.player_swapped,
             group_sync: saved.group_sync,
+            turn: Default::default(),
             host_requests: HostRequests::default(),
         })
     }

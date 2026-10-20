@@ -5,6 +5,7 @@ use crate::player::{
     grounded::{self, ForwardWalk, GroundedUpdate, GroundedWalk, StaticGroundQuery},
     placement::PlayerPose,
     runtime::GroundedTick,
+    turn,
     walk::WalkingStartup,
 };
 use anyhow::{Context, Result, ensure};
@@ -67,6 +68,15 @@ impl ScriptWorld {
                     sounds,
                 );
             }
+            let input = inputs
+                .player_controller
+                .context("player controller input unavailable")?;
+            let settings = &query.scene.settings;
+            world.globals.turn.update(
+                [input.held.left, input.held.right],
+                settings.turn_speed,
+                settings.turn_max_speed,
+            );
             let actor = &world.actors[id.index];
             let control = actor.control.as_ref().expect("validated control");
             let group = actor
@@ -141,10 +151,11 @@ impl ScriptWorld {
                 !(1..=5).contains(&world.actor_surface(id)?),
                 "player controller water/lava dispatch unsupported"
             );
-            let input = inputs
-                .player_controller
-                .context("player controller input unavailable")?;
-            match select_sheathed_action(
+            ensure!(
+                world.actors[id.index].attributes[110] == 0,
+                "player controller swimmer actor unsupported"
+            );
+            let action = select_sheathed_action(
                 input.held,
                 SheathedControllerState {
                     lockout,
@@ -152,7 +163,20 @@ impl ScriptWorld {
                     menu_state,
                     walk_mode: input.walk_mode,
                 },
-            )? {
+            )?;
+            if matches!(action, SheathedAction::Returned(_)) {
+                return Ok(());
+            }
+            // The drawing group and the scabbard-grip idle group return before turning.
+            let group = world.actors[id.index]
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group());
+            if matches!(group, Some(129 | 91)) {
+                return Ok(());
+            }
+            world.turn_player(id, input.held, timing, sounds)?;
+            match action {
                 SheathedAction::Returned(_) | SheathedAction::Idle => Ok(()),
                 SheathedAction::WalkForward => {
                     world.advance_player_walking(id, query, timing, false, sounds)?;
@@ -163,6 +187,90 @@ impl ScriptWorld {
                 }
             }
         })
+    }
+
+    /// Ordinary keyboard ground turn of the sheathed selected player, with its
+    /// turn animation and roll, following preservation's
+    /// [ground-turn rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-turn-eligibility-and-animation).
+    /// Mouse turning is not detected: the installed `mouse_turn` setting is not
+    /// exported, so a nonzero value is silently ignored.
+    fn turn_player(
+        &mut self,
+        id: super::ScriptActorId,
+        held: &crate::player::input::PlayerInput,
+        timing: crate::clock::ClockStep,
+        sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let index = self.resolve(id)?;
+        let control = self.actors[index]
+            .control
+            .as_ref()
+            .context("player turn control unavailable")?;
+        let torch = control.torch_burning != 0;
+        let free = control.directional_state == [0, 0];
+        // The held walk key turns only with forward or backward, and silently.
+        let (turns, animates) = if held.walk {
+            (free && (held.forward || held.backward), false)
+        } else {
+            (free && matches!(control.living_state, 0 | 27), true)
+        };
+        let running = matches!(
+            self.actors[index]
+                .animation
+                .as_ref()
+                .and_then(|animation| animation.playback.current_group()),
+            Some(18 | 30)
+        );
+        let delta = self.globals.turn.delta(timing.frame_scale);
+        let angles = self.spatial(id)?.local.angles;
+        let heading = if turns {
+            turn::turned(angles[1], delta)
+        } else {
+            angles[1]
+        };
+        let roll = if turns && animates {
+            turn::lean(angles[2], delta, running)
+        } else if running {
+            angles[2]
+        } else {
+            turn::relax(angles[2])
+        };
+        if turns && animates && delta != 0 {
+            let group = 14 + u16::from(delta > 0) + 2 * u16::from(torch);
+            let position = self.spatial(id)?.local.position;
+            let surface = self.actor_surface(id)?;
+            let animation = self.actors[index]
+                .animation
+                .as_mut()
+                .context("player turn animation unavailable")?;
+            let frame = animation.playback.request_with_sounds(
+                group,
+                0,
+                timing.nominal_ticks,
+                &mut |sound| {
+                    sounds(
+                        id,
+                        super::super::ScriptSound::Animation {
+                            sound,
+                            surface: Some(surface),
+                            position: Some(position),
+                        },
+                    )
+                },
+            )?;
+            animation.frame = frame.or(animation.frame);
+        }
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("player spatial registry unavailable")?
+            .actor_mut(index)?;
+        if spatial.local.angles[1] != heading || spatial.local.angles[2] != roll {
+            spatial.local.angles[1] = heading;
+            spatial.local.angles[2] = roll;
+            spatial.refresh_transform()?;
+        }
+        Ok(())
     }
 
     /// Invoke the selected player's zero-argument native hook synchronously.

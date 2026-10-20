@@ -11930,6 +11930,26 @@ fn keyboard_walk_runs_through_ordinary_scheduler_and_projects_release() {
         app.world().get::<PlayerPose>(player).unwrap().position,
         stopped.map(i64::from)
     );
+    let heading = |app: &App| {
+        let actors = app.world().resource::<ScriptActors>();
+        let world = actors.current.as_ref().unwrap();
+        assert!(world.actors()[player_id.index].failure().is_none());
+        world.spatial(player_id).unwrap().local.angles
+    };
+    let before = heading(&app);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowLeft);
+    app.update();
+    let turning = heading(&app);
+    let gained = (turning[1] + 2048 - before[1]) % 2048;
+    assert!((1..=48).contains(&gained), "{before:?} -> {turning:?}");
+    assert_eq!(position(&app), stopped);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::ArrowLeft);
+    app.update();
+    assert_eq!(heading(&app)[1], turning[1]);
 }
 
 #[test]

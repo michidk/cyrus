@@ -156,23 +156,41 @@ fn view_returns_before_unsupported_actions() {
 }
 
 #[test]
+fn turning_alone_or_with_forward_is_left_to_the_caller() {
+    for (left, right, forward, expected) in [
+        (true, false, false, SheathedAction::Idle),
+        (false, true, false, SheathedAction::Idle),
+        (true, true, false, SheathedAction::Idle),
+        (true, false, true, SheathedAction::RunForward),
+    ] {
+        let input = PlayerInput {
+            left,
+            right,
+            forward,
+            ..Default::default()
+        };
+        assert_eq!(select_sheathed_action(&input, state()).unwrap(), expected);
+    }
+}
+
+#[test]
 fn unsupported_actions_are_not_silently_treated_as_idle_or_forward() {
     for (input, reason) in [
         (
             PlayerInput {
-                forward: true,
                 left: true,
+                walk: true,
                 ..Default::default()
             },
-            "turning",
+            "sidestepping",
         ),
         (
             PlayerInput {
-                forward: true,
                 right: true,
+                walk: true,
                 ..Default::default()
             },
-            "turning",
+            "sidestepping",
         ),
         (
             PlayerInput {

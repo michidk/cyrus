@@ -198,6 +198,44 @@ fn ground_turn_rounds_directions_separately_and_preserves_overshoot() {
 }
 
 #[test]
+fn ground_turn_delta_is_signed_and_turned_wraps() {
+    use cyrus_game::player::turn::{GroundTurn, turned};
+    let mut turn = GroundTurn::default();
+    turn.update([true, false], 12, 48);
+    assert_eq!(turn.delta(256), -12);
+    turn.update([false, true], 12, 48);
+    assert_eq!(turn.delta(256), 12);
+    turn.update([false, false], 12, 48);
+    turn.update([true, true], 12, 48);
+    assert_eq!(turn.delta(256), 0);
+    assert_eq!(turned(5, 12), 2041);
+    assert_eq!(turned(2040, -12), 4);
+}
+
+#[test]
+fn running_turn_leans_to_thirty_two_and_relaxes_by_eight() {
+    use cyrus_game::player::turn::{lean, relax};
+    // Left banks up by 4 to 32, right down by 4 to 2016, then both hold.
+    assert_eq!(lean(0, -1, true), 4);
+    assert_eq!(lean(28, -1, true), 32);
+    assert_eq!(lean(32, -1, true), 32);
+    assert_eq!(lean(0, 1, true), 2040);
+    assert_eq!(lean(2044, 1, true), 2040);
+    assert_eq!(lean(0x7e0, 1, true), 0x7e0);
+    // Banked the other way, a left turn returns by 8 and wraps to zero.
+    assert_eq!(lean(2040, -1, true), 0);
+    assert_eq!(lean(2000, -1, true), 2008);
+    // Walking or no input relaxes toward zero from either side.
+    assert_eq!(lean(20, -1, false), 12);
+    assert_eq!(lean(20, 0, true), 12);
+    assert_eq!(
+        (relax(5), relax(0x400), relax(0x7f8), relax(0x7f9)),
+        (0, 0x3f8, 0, 0)
+    );
+    assert_eq!(relax(0x401), 0x409);
+}
+
+#[test]
 fn walking_startup_matches_original_animation_gated_displacements() {
     let mut walk = cyrus_game::player::walk::WalkingStartup::new(1).unwrap();
     assert_eq!(walk.advance(8, 0, 161, false), 0);
