@@ -12,6 +12,16 @@ remain unsupported and unverified, respectively.
 intersects the animated CYRUS mesh, exposing a moving outline above the ship rail.
 An explicit inspection view outside the player avoids that symptom; it does not
 implement the original follow camera.
+The follow camera lives in `cyrus-game` (`script::camera`, driven per frame by
+`CameraDrive`) and is **off by default**; `CYRUS_ORIGINAL_CAMERA=1` makes the view
+camera draw it instead of the player's transform. **Verified:** for one START
+player pose the original's debug overlay showed the camera at (32481, -330, 33642)
+with angles (0, 2027, 0) for a player at (32464, -275, 33892), angles (0, 22, 0), and
+the pose pipeline reproduces it (`script_camera_original`); a START screenshot shows
+Cyrus from behind, upright, on the ship deck. **Inferred:** the angle-to-view
+mapping (local +Z along the look direction with X mirrored) fits those poses but was
+not compared pixel for pixel; terrain correction, the camera's own view position for
+`ScriptView`, and roll or shake are not wired.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition

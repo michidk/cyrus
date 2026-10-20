@@ -123,6 +123,40 @@ fn flycam_controller(
     }
 }
 
+/// The view transform of a driven camera: the render position in map units (the inverse of
+/// `script_view`'s mapping) and a look direction taken from the published angles. The angle
+/// triple's orientation matrix carries the local +Z axis along the look direction with the
+/// engine X axis mirrored, and the scene axes negate X and Y (**Inferred** from the camera
+/// orientation stage's angles for known offsets; the comparison with the original decides).
+pub fn driven_view_transform(camera: &cyrus_game::script::PublishedCamera) -> Option<Transform> {
+    let angles = camera.pose.angles.map(|angle| (angle & 2047) as u16);
+    let forward = cyrus_world::transform::Matrix::orientation(angles)
+        .transform([0, 0, 256])
+        .ok()?;
+    let look = Vec3::new(forward[0] as f32, -(forward[1] as f32), forward[2] as f32);
+    let [x, y, z] = camera.render.position;
+    Some(
+        Transform::from_xyz(-x / 20.0, -y / 20.0, (z - (65_536.0 - 1.0 / 256.0)) / 20.0)
+            .looking_to(look.normalize_or_zero(), Vec3::Y),
+    )
+}
+
+/// Draw the driven camera. Active only when the driver is switched on and has published a pose.
+fn drive_view_camera(
+    drive: Res<cyrus_game::script::CameraDrive>,
+    frame: Res<cyrus_game::script::CameraFrameState>,
+    mut camera: Query<&mut Transform, With<ViewCamera>>,
+) {
+    let (true, Some(published), Ok(mut camera)) =
+        (drive.enabled, frame.published.as_ref(), camera.single_mut())
+    else {
+        return;
+    };
+    if let Some(transform) = driven_view_transform(published) {
+        *camera = transform;
+    }
+}
+
 // shortcut: the player view uses its pose directly until the original follow camera is implemented.
 fn follow_player(
     player: Query<&Transform, (With<Player>, Without<ViewCamera>)>,
@@ -136,7 +170,13 @@ fn follow_player(
 pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<crate::fog::RenderDistance>()
+        // Experimental: draw the original follow camera instead of the player's own view.
+        if std::env::var_os("CYRUS_ORIGINAL_CAMERA").is_some() {
+            app.insert_resource(cyrus_game::script::CameraDrive { enabled: true });
+        }
+        app.init_resource::<cyrus_game::script::CameraDrive>()
+            .init_resource::<cyrus_game::script::CameraFrameState>()
+            .init_resource::<crate::fog::RenderDistance>()
             .init_resource::<FrameScene>()
             .init_resource::<FlycamSettings>()
             .init_resource::<InputSuppressed>()
@@ -162,6 +202,11 @@ impl Plugin for CameraPlugin {
                     ),
                     follow_player
                         .after(cyrus_game::player::placement::PlayerPlacement)
+                        .run_if(|f: Res<FlycamSettings>, drive: Res<cyrus_game::script::CameraDrive>| {
+                            !f.enabled && !drive.enabled
+                        }),
+                    drive_view_camera
+                        .after(cyrus_game::script::OrdinaryUpdates)
                         .run_if(|f: Res<FlycamSettings>| !f.enabled),
                 )
                     .chain()

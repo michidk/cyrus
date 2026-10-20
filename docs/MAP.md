@@ -169,6 +169,7 @@ module where it is defined and regenerate.
 - `src/script/registry/body.rs` — Ordinary primary body queries use the actor's initial shape and current pose.
 - `src/script/registry/bounds.rs` — State-fifteen bounds segments retain stored extent magnitudes and contact order.
 - `src/script/registry/camera.rs` — Live session camera services: first pose establishment and one atomic update.
+- `src/script/registry/camera_drive.rs` — The original follow camera as a per-frame driver of the world's camera session.
 - `src/script/registry/combat_decision.rs` — Ordinary combat composes live services in the original decision order.
 - `src/script/registry/contact.rs` — Combat contact queries follow preservation's SOUP motion-contact rules.
 - `src/script/registry/coordination.rs` — Combat coordination shares attacker eligibility, close counters and addressed class queues.

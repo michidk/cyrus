@@ -529,6 +529,8 @@ pub struct OrdinaryContext<'w, 's> {
     actors: ResMut<'w, ScriptActors>,
     clock: Option<Res<'w, SimulationClock>>,
     random: ResMut<'w, crate::random::EngineRandom>,
+    camera_drive: Option<Res<'w, super::CameraDrive>>,
+    camera_frame: Option<ResMut<'w, super::CameraFrameState>>,
     bindings: Query<'w, 's, (Entity, &'static super::super::ScriptBinding)>,
     players:
         Query<'w, 's, &'static crate::player::placement::PlayerPose, With<crate::player::Player>>,
@@ -867,6 +869,8 @@ pub fn run_ordinary(
         mut actors,
         clock,
         mut random,
+        camera_drive,
+        camera_frame,
         bindings,
         players,
     } = context;
@@ -1011,6 +1015,31 @@ pub fn run_ordinary(
     } else {
         None
     };
+    let drive_scene = camera_drive
+        .as_deref()
+        .filter(|drive| drive.enabled)
+        .and(scene_request.as_ref())
+        .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0)));
+    let drive_view = [view.position[0] >> 8, view.position[2] >> 8];
+    let mut camera_frame = camera_frame;
+    let driven = match (drive_scene, camera_frame.as_deref_mut()) {
+        (Some(scene), Some(frame)) => {
+            match super::camera_drive::begin(
+                world,
+                scene,
+                frame,
+                drive_view,
+                timing.frame_scale as i32,
+            ) {
+                Ok(update) => update,
+                Err(error) => {
+                    actors.error = Some(format!("camera setup: {error:#}"));
+                    return;
+                }
+            }
+        }
+        _ => None,
+    };
     let result = world.update_ordinary(
         data,
         [view.position[0] >> 8, view.position[2] >> 8],
@@ -1031,6 +1060,9 @@ pub fn run_ordinary(
                 dialogue_source,
                 combat_taunts,
                 sound_reset,
+                camera_update: driven
+                    .as_ref()
+                    .map(|update| update as &dyn super::super::camera::CameraUpdateService),
                 ..default()
             },
         },
@@ -1040,5 +1072,19 @@ pub fn run_ordinary(
     );
     if let Err(error) = result {
         actors.error = Some(format!("automatic ordinary update: {error:#}"));
+        return;
+    }
+    if let (Some(update), Some(frame), Some(scene), Some(world)) =
+        (driven, camera_frame, drive_scene, actors.current.as_mut())
+        && let Err(error) = super::camera_drive::end(
+            world,
+            scene,
+            frame.into_inner(),
+            update,
+            drive_view,
+            timing.frame_scale as i32,
+        )
+    {
+        actors.error = Some(format!("camera frame: {error:#}"));
     }
 }

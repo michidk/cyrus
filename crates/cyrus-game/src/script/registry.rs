@@ -3,6 +3,8 @@ use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
 mod attack;
 mod camera;
+mod camera_drive;
+pub use camera_drive::{CameraDrive, CameraFrameState, PublishedCamera};
 mod death_exit;
 mod effects;
 mod health;
@@ -398,6 +400,8 @@ pub struct ScriptWorld {
     camera: Option<super::camera::CameraState>,
     /// Installed render-camera glide factors.
     camera_glide: super::camera::GlideSettings,
+    /// Installed shared camera limits.
+    camera_limits: cyrus_assets::script::CameraLimits,
     effects: Option<EnvironmentalEffects>,
 }
 impl ScriptWorld {
@@ -864,6 +868,7 @@ impl ScriptWorld {
             surface_veto: None,
             camera,
             camera_glide: scripts.camera.glide.into(),
+            camera_limits: scripts.camera.limits,
             effects: None,
             model_admission: None,
             spatial: None,
@@ -5303,6 +5308,7 @@ mod fighting_tests {
             surface_veto: None,
             camera: None,
             camera_glide: Default::default(),
+            camera_limits: Default::default(),
             effects: None,
         };
         let host = GameHost {

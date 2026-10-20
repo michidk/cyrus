@@ -89,7 +89,8 @@ mod flags;
 pub use flags::GlobalFlagsSnapshot;
 mod hud;
 pub use registry::{
-    EnvironmentalEffect, EnvironmentalEffects, SelectedDeathState, SelectedHealthState,
+    CameraDrive, CameraFrameState, EnvironmentalEffect, EnvironmentalEffects, PublishedCamera,
+    SelectedDeathState, SelectedHealthState,
 };
 mod inventory;
 mod journal;
@@ -184,7 +185,9 @@ pub use world_request::{
 pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ScriptStatus>()
+        app.init_resource::<CameraDrive>()
+            .init_resource::<CameraFrameState>()
+            .init_resource::<ScriptStatus>()
             .init_resource::<PlaybackDiagnostics>()
             .init_resource::<crate::random::EngineRandom>()
             .init_resource::<ScriptActors>()
