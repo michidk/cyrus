@@ -185,6 +185,7 @@ fn hud_asset() -> cyrus_assets::hud::HudAsset {
         font: Default::default(),
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
     }
 }
 

@@ -289,8 +289,11 @@ remain unavailable. Script caches need re-export (schema 26). Scripts and
 the HUD share session inventory
 through `AddItem`, `DropItem`, `HaveItem` and `SelectItem`. Recursive prerequisites,
 ordered acquisition/removal lists and starting acquisitions use that owner.
-New-game/death resets and save restore remain unsupported. Re-export older HUD
-caches for inventory definitions and all selectable artwork. `state.script_hud.compass_on` reports the retained
+New-game/death resets and save restore remain unsupported. Scripted choice menus
+(`menuNew`, `menuAddItem`, `menuProc`, `menuSelection`) draw as HUD text at the installed
+menu origin, one font line apart, with the selected, normal and used alphas from
+SYSTEM.INI; the font colour parameter beyond its alpha is not modelled. Re-export older HUD
+caches for inventory definitions, all selectable artwork and menu text alphas. `state.script_hud.compass_on` reports the retained
 session flag. Installed `ShowBitmap`,
 `UnShowBitmap` and `AddLog` calls feed shared native/browser HUD state.
 `state.script_hud` reports native dispatch readiness, power-up slots and accepted

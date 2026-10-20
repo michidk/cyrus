@@ -717,6 +717,7 @@ fn hud_export_uses_installed_positions_items_and_artwork() {
     assert!(hud.join("item-07.png").is_file());
     assert_eq!(data["text_alpha"], serde_json::json!([255, 199]));
     assert_eq!(data["player_text_alpha"], serde_json::json!([255, 199]));
+    assert_eq!(data["used_text_alpha"], serde_json::json!([128, 100]));
     assert_eq!(data["font"]["line_height"], 26, "REDSEL.FNT");
     assert_eq!(data["prompt"], serde_json::json!([12, 436]));
     assert_eq!(data["override_ticks"], 24);

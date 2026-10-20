@@ -3722,6 +3722,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         font: Default::default(),
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12562,6 +12563,7 @@ fn the_walk_key_with_left_sidesteps_the_player_without_turning() {
         font: Default::default(),
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12667,6 +12669,7 @@ fn forward_with_walk_mode_off_runs_the_player_along_the_heading() {
         font: Default::default(),
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12771,6 +12774,7 @@ fn backward_with_walk_mode_off_runs_the_player_against_the_heading() {
         font: Default::default(),
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());
@@ -12875,6 +12879,7 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
         font: Default::default(),
         text_alpha: [0; 2],
         player_text_alpha: [0; 2],
+        used_text_alpha: [0; 2],
     };
     let hud = cyrus_game::script::ScriptHud::default();
     hud.configure(&hud_asset, &cyrus_game::preferences::Preferences::default());

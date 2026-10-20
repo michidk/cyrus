@@ -158,6 +158,9 @@ pub struct HudState {
     text: Vec<(String, [i32; 2])>,
     #[serde(skip)]
     dialogue_text: Option<(usize, String)>,
+    /// Scripted menu items currently drawn: text, pen position and alpha.
+    #[serde(skip)]
+    menu_text: Vec<MenuLine>,
     #[serde(skip)]
     redraw_text: bool,
 }
@@ -232,6 +235,7 @@ impl HudState {
             frames,
             text: Vec::new(),
             dialogue_text: None,
+            menu_text: Vec::new(),
             redraw_text: false,
         }
     }
@@ -449,6 +453,37 @@ fn text_lines(
     lines
 }
 
+/// One drawn scripted-menu item: its text, pen position and main/shadow alpha.
+type MenuLine = (String, [i32; 2], [u8; 2]);
+
+/// Scripted menu items stacked from the installed menu origin, one font line apart, in 640×480
+/// pixels. The highlighted item uses `font_sel`, items already chosen `font_used`, the rest
+/// `font_norm`. The font's colour parameter beyond its alpha is not modelled.
+fn menu_lines(
+    hud: &HudAsset,
+    start: [i32; 2],
+    menu: &cyrus_game::script::MenuState,
+) -> Vec<MenuLine> {
+    menu.items()
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let alpha = if index == menu.highlighted() {
+                hud.text_alpha
+            } else if item.flag == 1 {
+                hud.used_text_alpha
+            } else {
+                hud.player_text_alpha
+            };
+            let at = [
+                start[0],
+                start[1] + i32::from(hud.font.line_height) * index as i32,
+            ];
+            (item.text.clone(), at, alpha)
+        })
+        .collect()
+}
+
 /// Already formatted dialogue uses preservation's fixed virtual-screen band.
 fn dialogue_lines(hud: &HudAsset, text: &str) -> Vec<(String, [i32; 2])> {
     let breaks = text.bytes().filter(|byte| *byte == b'\n').count();
@@ -469,6 +504,7 @@ fn text_image(
     hud: &HudAsset,
     lines: &[(String, [i32; 2])],
     dialogue: Option<&(usize, String)>,
+    menu: &[MenuLine],
 ) -> Image {
     let mut rgba = vec![0; 640 * 480 * 4];
     for (text, at) in lines {
@@ -484,6 +520,9 @@ fn text_image(
         for (line, at) in dialogue_lines(hud, text) {
             hud.font.draw_shadowed(&mut rgba, 640, &line, at, alpha);
         }
+    }
+    for (text, at, alpha) in menu {
+        hud.font.draw_shadowed(&mut rgba, 640, text, *at, *alpha);
     }
     let mut image = Image::new(
         Extent3d {
@@ -657,6 +696,21 @@ fn update(
         .is_some_and(|world| world.globals_mut().take_candle_show_request())
     {
         script_hud.reset_health_feedback();
+    }
+    // The menu is drawn while its active word is set; each draw also remembers the highlighted text.
+    let mut menu_text = Vec::new();
+    if let Some(world) = world.as_mut() {
+        let globals = world.globals();
+        let mut remembered = None;
+        if globals.menu_state() == 1
+            && let Some(dialogue) = globals.dialogue()
+        {
+            menu_text = menu_lines(hud, dialogue.settings().menu_start, globals.menu());
+            remembered = globals.menu().highlighted_text().map(str::to_owned);
+        }
+        if let Some(text) = remembered {
+            world.globals_mut().remember_choice(text);
+        }
     }
     let activation = activation.as_deref().filter(|inputs| {
         world
@@ -949,12 +1003,16 @@ fn update(
     if let Some(prompt) = prompt {
         text.push((prompt, hud.prompt));
     }
-    if state.redraw_text || text != state.text || dialogue_text != state.dialogue_text {
+    if state.redraw_text
+        || text != state.text
+        || dialogue_text != state.dialogue_text
+        || menu_text != state.menu_text
+    {
         for entity in &text_layer {
             commands.entity(entity).despawn();
         }
-        if !text.is_empty() || dialogue_text.is_some() {
-            let image = images.add(text_image(hud, &text, dialogue_text.as_ref()));
+        if !text.is_empty() || dialogue_text.is_some() || !menu_text.is_empty() {
+            let image = images.add(text_image(hud, &text, dialogue_text.as_ref(), &menu_text));
             commands.entity(viewport).with_child((
                 HudText,
                 ImageNode::new(image),
@@ -965,6 +1023,7 @@ fn update(
         state.redraw_text = false;
         state.text = text;
         state.dialogue_text = dialogue_text;
+        state.menu_text = menu_text;
     }
 }
 
@@ -1108,10 +1167,32 @@ mod tests {
         };
         let (_, at) = dialogue_lines(&hud, "A").remove(0);
         let shadow = ((at[1] + 1) as usize * 640 + (at[0] + 1) as usize) * 4;
-        let player = text_image(&hud, &[], Some(&(0, "A".into())));
-        let npc = text_image(&hud, &[], Some(&(1, "A".into())));
+        let player = text_image(&hud, &[], Some(&(0, "A".into())), &[]);
+        let npc = text_image(&hud, &[], Some(&(1, "A".into())), &[]);
         assert_eq!(player.data.as_ref().unwrap()[shadow + 3], 97);
         assert_eq!(npc.data.as_ref().unwrap()[shadow + 3], 199);
+    }
+
+    #[test]
+    fn menu_items_stack_from_the_origin_and_take_their_alpha_from_their_state() {
+        let mut hud = asset(2);
+        hud.font.line_height = 26;
+        hud.text_alpha = [255, 199];
+        hud.player_text_alpha = [200, 150];
+        hud.used_text_alpha = [128, 100];
+        let mut menu = cyrus_game::script::MenuState::default();
+        for (text, flag) in [("first", 0), ("second", 0), ("third", 1)] {
+            menu.add(300, text, 0, flag, 0, "second");
+        }
+        assert_eq!(
+            menu_lines(&hud, [35, 25], &menu),
+            vec![
+                ("first".into(), [35, 25], [200, 150]),
+                ("second".into(), [35, 51], [255, 199]),
+                ("third".into(), [35, 77], [128, 100]),
+            ],
+            "the remembered text is highlighted; used items are dimmer"
+        );
     }
 
     #[test]
@@ -1169,6 +1250,7 @@ mod tests {
             font: default(),
             text_alpha: [255, 199],
             player_text_alpha: [255, 97],
+            used_text_alpha: [128, 100],
         }
     }
 

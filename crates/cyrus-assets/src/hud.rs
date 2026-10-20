@@ -57,6 +57,8 @@ pub struct HudAsset {
     pub text_alpha: [u8; 2],
     /// SYSTEM.INI [3dfx] font_norm, for reserved player dialogue record zero.
     pub player_text_alpha: [u8; 2],
+    /// SYSTEM.INI [3dfx] font_used, for scripted menu items already chosen.
+    pub used_text_alpha: [u8; 2],
 }
 
 #[derive(Serialize, Deserialize, Clone)]

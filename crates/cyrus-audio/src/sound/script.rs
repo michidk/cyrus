@@ -1893,7 +1893,7 @@ mod dialogue_tests {
             "auto_defend": false, "notices": [["",""],["",""]], "inventory": {}, "start_items": [], "items": [],
             "selected": null, "bindings": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
             "font": {"start": 0, "line_height": 0, "glyphs": [], "palette": []},
-            "text_alpha": [255,255], "player_text_alpha": [255,97]
+            "text_alpha": [255,255], "player_text_alpha": [255,97], "used_text_alpha": [128,100]
         }))
         .unwrap()
     }

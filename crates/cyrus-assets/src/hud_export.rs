@@ -142,6 +142,10 @@ pub(crate) fn prepare(
         cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_norm")?)
             .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_norm: {e}"))?;
 
+    let used_text_alpha =
+        cyrus_text::font_alpha(text(&system_fields, "SYSTEM.INI", "3dfx", "font_used")?)
+            .map_err(|e| anyhow::anyhow!("hud: SYSTEM.INI [3dfx] font_used: {e}"))?;
+
     let flag = |section: &str, key: &str| -> anyhow::Result<bool> {
         Ok(system_number(section, key)? != 0)
     };
@@ -302,6 +306,7 @@ pub(crate) fn prepare(
         font,
         text_alpha,
         player_text_alpha,
+        used_text_alpha,
         labels,
     };
 

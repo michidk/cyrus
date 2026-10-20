@@ -702,6 +702,7 @@ mod tests {
             font: Default::default(),
             text_alpha: [0; 2],
             player_text_alpha: [0; 2],
+            used_text_alpha: [0; 2],
         };
         let hud = crate::script::ScriptHud::default();
         hud.configure(&data, &crate::preferences::Preferences::default());

@@ -248,6 +248,11 @@ impl GameplayGlobals {
         std::mem::take(&mut self.host_requests)
     }
 
+    /// The scripted menu's items and highlight, which the HUD draws while the menu is active.
+    pub fn menu(&self) -> &super::menu::MenuState {
+        &self.menu
+    }
+
     /// The movie the next world load plays, if `QueueMovie` queued one.
     pub fn queued_movie(&self) -> Option<i32> {
         self.queued_movie
