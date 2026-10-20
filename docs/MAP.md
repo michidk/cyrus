@@ -159,6 +159,7 @@ module where it is defined and regenerate.
 - `src/script/navigation/route.rs` — Ordered walk-route search and reverse next-hop selection from preservation's SOUP contract.
 - `src/script/order.rs` — Fresh-world ordinary actor membership and cached view-window traversal.
 - `src/script/playback.rs` — Explicit script stages feed shared animation poses and synchronous sound intents.
+- `src/script/player_status.rs` — `PlayerStatus`: the first matching class of the selected player's motion bytes, living state,
 - `src/script/presentation.rs` — Presentation bindings read poses from the authoritative logical script actor.
 - `src/script/registry.rs` — Logical script instances retain authored object order and reject stale world identities.
 - `src/script/registry/activation.rs` — Ordinary activation reads current logical actors at each invocation.
