@@ -484,6 +484,22 @@ pub(super) fn begin_sheathing(control: &mut super::registry::ActorControlState) 
     combat.cooldown = 24;
 }
 
+/// The unconditional part of `endCombat`: lifecycle selector 1, AI mode 0, hook enabled, combat flag
+/// 0x04 cleared, close-distance pass counter and coordination selection state zeroed. Returns
+/// false, changing nothing, when the actor has no combat record.
+pub(super) fn end_combat_reset(control: &mut super::registry::ActorControlState) -> bool {
+    let Some(combat) = control.combat.as_mut() else {
+        return false;
+    };
+    combat.flags &= !4;
+    combat.close_distance_passes = 0;
+    combat.attacker_selection_state = 0;
+    control.death_selector = 1;
+    control.death_response = 0;
+    control.script_control &= !2;
+    true
+}
+
 /// Whether `control` is a valid combat target for the actor `own` (preservation's "Valid target"
 /// rule): not killed while in lifecycle state 8, has a combat record, and does not target itself.
 pub(super) fn combat_target_valid(
@@ -551,6 +567,38 @@ mod sheath_tests {
         ] {
             assert!(!sheath_eligible(control, holding, drawing, sheathing));
         }
+    }
+
+    #[test]
+    fn end_combat_resets_the_selector_mode_hook_flag_and_counters() {
+        let mut control = ActorControlState {
+            death_selector: 6,
+            death_response: 3,
+            script_control: 0b1011,
+            combat: Some(CombatControlState {
+                flags: 0x07,
+                close_distance_passes: 12,
+                attacker_selection_state: 5,
+                cooldown: 9,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(end_combat_reset(&mut control));
+        let combat = control.combat.as_ref().unwrap();
+        assert_eq!(combat.flags, 0x03);
+        assert_eq!(combat.close_distance_passes, 0);
+        assert_eq!(combat.attacker_selection_state, 0);
+        // The cooldown belongs to sheathing, not to the reset.
+        assert_eq!(combat.cooldown, 9);
+        assert_eq!((control.death_selector, control.death_response), (1, 0));
+        assert_eq!(control.script_control, 0b1001);
+        let mut bare = ActorControlState {
+            death_selector: 6,
+            ..Default::default()
+        };
+        assert!(!end_combat_reset(&mut bare));
+        assert_eq!(bare.death_selector, 6);
     }
 
     #[test]

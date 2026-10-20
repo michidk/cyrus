@@ -2976,6 +2976,29 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(())
     }
 
+    /// `SheathSword`'s action: when the receiver can sheathe it enters the sheathing state. The
+    /// selected player's HUD timer and camera selection are not wired.
+    fn sheath_sword(&mut self, function: &str, id: ScriptActorId) -> Result<()> {
+        let selected = self.selected_player() == Some(id);
+        let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
+        let actor = &mut self.registry.actors[self.index];
+        let Some(control) = actor.control.as_mut() else {
+            return Ok(());
+        };
+        let eligible = self.task_system
+            && actor.animation.is_some()
+            && super::combat::sheath_eligible(control, holding, drawing, sheathing);
+        if !eligible {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            !selected,
+            "{function} selected-player HUD timer and camera selection unavailable"
+        );
+        super::combat::begin_sheathing(control);
+        Ok(())
+    }
+
     /// Receiver state for locomotion tasks; fallible reads surface only when a task uses them.
     fn locomotion_state(&self) -> Result<super::locomotion::BackwardState, String> {
         let actor = &self.registry.actors[self.index];
@@ -4482,25 +4505,23 @@ impl Host for GameHost<'_, '_, '_, '_> {
         }
         if function.eq_ignore_ascii_case("SheathSword") {
             anyhow::ensure!(arguments.is_empty(), "SheathSword requires no arguments");
-            let selected = self.selected_player() == Some(id);
-            let (holding, drawing, sheathing) = self.receiver_weapon_predicates(function)?;
-            let actor = &mut self.registry.actors[self.index];
-            let Some(control) = actor.control.as_mut() else {
-                return Ok(CallResult::Complete(0));
-            };
-            let eligible = self.task_system
-                && actor.animation.is_some()
-                && super::combat::sheath_eligible(control, holding, drawing, sheathing);
-            if !eligible {
-                return Ok(CallResult::Complete(0));
-            }
-            // The selected player also resets the HUD health-display timer and selects
-            // camera slot zero; neither owner is wired here.
+            self.sheath_sword(function, id)?;
+            return Ok(CallResult::Complete(0));
+        }
+        // endCombat runs SheathSword's action, then unconditionally resets the lifecycle selector
+        // and mode bytes, re-enables the hook, leaves combat mode and clears the close-distance
+        // pass counter and the coordination selection state.
+        if function.eq_ignore_ascii_case("endCombat") {
+            anyhow::ensure!(arguments.is_empty(), "endCombat requires no arguments");
+            self.sheath_sword(function, id)?;
+            let control = self.registry.actors[self.index]
+                .control
+                .as_mut()
+                .context("endCombat: receiver control unavailable")?;
             anyhow::ensure!(
-                !selected,
-                "SheathSword selected-player HUD timer and camera selection unavailable"
+                super::combat::end_combat_reset(control),
+                "endCombat: receiver combat record unavailable"
             );
-            super::combat::begin_sheathing(control);
             return Ok(CallResult::Complete(0));
         }
         if function.eq_ignore_ascii_case("isFighting") {
