@@ -931,7 +931,9 @@ impl Task {
                     player[2].wrapping_sub(input.position[2]),
                 ));
                 let heading = i32::from(input.angles[1]);
-                let mut delta = heading.wrapping_neg().wrapping_sub(bearing) & 0x7ff;
+                // The query bearing is the negation of the routine's angle, which the routine
+                // subtracts from the negated heading.
+                let mut delta = bearing.wrapping_sub(heading) & 0x7ff;
                 if delta == 0 {
                     return Ok(true);
                 }
