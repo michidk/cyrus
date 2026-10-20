@@ -3078,6 +3078,19 @@ fn player_hanging_is_false_outside_the_hanging_state() {
 }
 
 #[test]
+fn menu_natives_start_empty_and_need_installed_text_to_add_items() {
+    assert_eq!(
+        run_native_calls(&[("menuNew", &[]), ("menuSelection", &[])]).unwrap(),
+        0
+    );
+    let error = run_native_world(&[("menuAddItem", &[1, 0, 5])])
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("menuAddItem"), "{error:#}");
+    assert!(run_native_world(&[("menuNew", &[1])]).is_err());
+}
+
+#[test]
 fn flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures() {
     let flat = |calls: &[(&str, &[i32])]| run_native_world(calls).unwrap().actors()[0].flat_state();
     assert_eq!(flat(&[("FlatOff", &[])]), None, "no record is created");

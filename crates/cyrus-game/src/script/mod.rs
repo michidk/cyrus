@@ -107,7 +107,9 @@ pub use journal::{Journal, JournalSnapshot};
 pub mod locomotion;
 mod maintenance;
 mod markers;
+mod menu;
 pub use maintenance::{SoundMaintenance, SoundResetStage};
+pub use menu::{MenuInput, MenuItem, MenuState};
 pub use registry::body::{OrdinaryBodyQuery, OrdinaryResidualQuery};
 pub use registry::bounds::{BoundsSegment, ordinary_bounds_segments, ordinary_bounds_separation};
 pub use registry::falling::{

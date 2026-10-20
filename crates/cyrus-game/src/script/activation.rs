@@ -192,7 +192,9 @@ pub struct GameplayGlobals {
     /// World-loop iterations, reset on entry and incremented before ordinary traversal.
     pub(super) world_loop_frame: u32,
     pub(super) sound_maintenance: super::SoundMaintenance,
-    menu_state: u16,
+    pub(super) menu_state: u16,
+    /// Items and highlight of the scripted menu, retained across world replacement.
+    pub(super) menu: super::menu::MenuState,
     dialogue_state: Option<u16>,
     highlighted_choice: Option<String>,
     candle_show_requested: bool,
@@ -1116,6 +1118,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     world_loop_frame: u32,
     sound_maintenance: super::maintenance::SoundMaintenanceSnapshot,
     menu_state: u16,
+    #[serde(default)]
+    menu: super::menu::MenuState,
     dialogue_state: Option<u16>,
     highlighted_choice: Option<String>,
     candle_show_requested: bool,
@@ -1159,6 +1163,7 @@ impl GameplayGlobals {
             world_loop_frame: self.world_loop_frame,
             sound_maintenance: self.sound_maintenance.snapshot(),
             menu_state: self.menu_state,
+            menu: self.menu.clone(),
             dialogue_state: self.dialogue_state,
             highlighted_choice: self.highlighted_choice.clone(),
             candle_show_requested: self.candle_show_requested,
@@ -1236,6 +1241,7 @@ impl GameplayGlobals {
             world_loop_frame: saved.world_loop_frame,
             sound_maintenance: super::SoundMaintenance::from_snapshot(saved.sound_maintenance),
             menu_state: saved.menu_state,
+            menu: saved.menu,
             dialogue_state: saved.dialogue_state,
             highlighted_choice: saved.highlighted_choice,
             candle_show_requested: saved.candle_show_requested,

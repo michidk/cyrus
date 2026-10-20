@@ -75,12 +75,21 @@ pub(super) struct AmbientCall<'a> {
     pub actor_index: usize,
 }
 
+/// The shared scripted menu for `menuProc`.
+pub(super) struct MenuCall<'a> {
+    pub state: &'a mut super::menu::MenuState,
+    /// The menu-active word that `menuBegin` raises and `menuEnd` clears.
+    pub active: &'a mut u16,
+    pub input: Option<super::menu::MenuInput>,
+}
+
 /// Shared services sampled for each native task invocation.
 #[derive(Default)]
 pub(super) struct NativeServices<'a> {
     pub ambient: Option<&'a AmbientCall<'a>>,
     pub frame_wait: Option<FrameWaitCall>,
     pub dialogue: Option<&'a mut super::DialogueState>,
+    pub menu: Option<MenuCall<'a>>,
     pub player_dialogue: Option<PlayerDialogueCall<'a>>,
     /// The selected player's animation, for `RTXpAnim`. Absent when the player is the receiver,
     /// whose own animation then serves, or when the player has no prepared animation.
@@ -356,6 +365,8 @@ fn talk_cycle(
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     Dialogue,
+    /// `menuProc`: the shared scripted menu's highlight and selection.
+    Menu,
     AnimationFrame {
         player: bool,
     },
@@ -833,6 +844,19 @@ impl Task {
                     .dialogue
                     .context("WaitOnDialog records unavailable")?
                     .waiting()
+            }
+            Self::Menu => {
+                anyhow::ensure!(arguments.is_empty(), "menuProc requires no arguments");
+                let menu = services.menu.context("menuProc menu state unavailable")?;
+                *menu.active = 1;
+                let input = menu
+                    .input
+                    .context("menuProc controls, clock and delay settings unavailable")?;
+                let running = menu.state.step(input);
+                if !running {
+                    *menu.active = 0;
+                }
+                !running
             }
             Self::Ambient { channel } => {
                 let [effect, volume, rate] = arguments else {
@@ -2097,6 +2121,9 @@ impl NativeTasks {
                 "WaitOnDialog requires task encoding"
             );
             Task::Dialogue
+        } else if function.eq_ignore_ascii_case("menuProc") {
+            anyhow::ensure!(kind == CallKind::Task, "menuProc requires task encoding");
+            Task::Menu
         } else if function.eq_ignore_ascii_case("RTXp") {
             anyhow::ensure!(kind == CallKind::Task, "RTXp requires task encoding");
             Task::PlayerDialogue { started: false }

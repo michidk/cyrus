@@ -205,6 +205,7 @@ impl Task {
     fn contract(self) -> (&'static str, usize, Option<CallKind>) {
         match self {
             Self::Dialogue => ("WaitOnDialog", 0, Some(CallKind::Task)),
+            Self::Menu => ("menuProc", 0, Some(CallKind::Task)),
             Self::AnimationFrame { player: false } => ("WaitAnimFrame", 2, Some(CallKind::Task)),
             Self::AnimationFrame { player: true } => {
                 ("WaitPlayerAnimFrame", 2, Some(CallKind::Task))

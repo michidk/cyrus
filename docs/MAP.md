@@ -156,6 +156,7 @@ module where it is defined and regenerate.
 - `src/script/locomotion.rs` — Nonplayer locomotion decisions follow preservation's engine/SOUP.md "MoveBackward".
 - `src/script/maintenance.rs` — Ordered sound maintenance follows preservation's engine/sound.md.
 - `src/script/markers.rs` — Ordinary-world marker queries use preservation's SOUP node-marker distance contract.
+- `src/script/menu.rs` — Scripted choice menu: the items `menuAddItem` collects, the highlight `menuProc` moves with the
 - `src/script/mod.rs` — Game-owned SOUP hosts and supported camera-centered ordinary actor updates.
 - `src/script/navigation.rs` — Walk-node ownership, free-node search and empty-map Wander follow preservation contracts.
 - `src/script/navigation/route.rs` — Ordered walk-route search and reverse next-hop selection from preservation's SOUP contract.

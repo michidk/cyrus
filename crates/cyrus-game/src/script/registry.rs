@@ -150,6 +150,23 @@ impl std::fmt::Debug for LocomotionGeometry<'_> {
     }
 }
 
+/// Controls, clock and settings for one `menuProc` step: up and down are the first two bindings
+/// (forward and backward) and select is the fourth action binding.
+fn menu_input(
+    inputs: &ScriptInputs<'_>,
+    dialogue: Option<&super::DialogueState>,
+) -> Option<super::menu::MenuInput> {
+    let held = inputs.player_controller?.held;
+    Some(super::menu::MenuInput {
+        up: held.forward,
+        down: held.backward,
+        select: held.action,
+        tick: inputs.combat_clock_sample?,
+        elapsed_delay: inputs.variable_timing?,
+        traverse_delay: i32::try_from(dialogue?.settings().menu_traverse_delay).ok()?,
+    })
+}
+
 /// Inputs supplied by the owning scheduler; missing values never imply a clock tick.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ScriptInputs<'a> {
@@ -163,6 +180,9 @@ pub struct ScriptInputs<'a> {
     pub activation_use_held: Option<bool>,
     /// Raw current BIOS-clock sample for combat pacing, independent of nominal ticks.
     pub combat_clock_sample: Option<u32>,
+    /// The original's variable-timing flag, which lets elapsed BIOS ticks shorten menu repeat
+    /// delays; absence is unknown.
+    pub variable_timing: Option<bool>,
     pub nominal_ticks: Option<u32>,
     pub frame_scale: Option<u32>,
     pub player_query: Option<super::QueryInputs>,
@@ -2589,9 +2609,15 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     nominal_ticks,
                 },
             );
+        let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
         let services = super::tasks::NativeServices {
             ambient: Some(&ambient),
             dialogue: self.registry.globals.dialogue.as_mut(),
+            menu: Some(super::tasks::MenuCall {
+                state: &mut self.registry.globals.menu,
+                active: &mut self.registry.globals.menu_state,
+                input: menu_input,
+            }),
             player_dialogue: Some(player_dialogue),
             player_animation,
             group_sync: Some(super::tasks::GroupSyncCall {
@@ -3695,6 +3721,55 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 &values,
                 &self.registry.texture_frames,
             )?;
+            return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function
+            && ["menuNew", "menuAddItem", "menuSelection"]
+                .iter()
+                .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            let values = arguments
+                .iter()
+                .map(|argument| argument.integer())
+                .collect::<Result<Vec<_>>>()?;
+            let name = function.to_ascii_lowercase();
+            let expected = if name == "menuadditem" { 3 } else { 0 };
+            anyhow::ensure!(values.len() == expected, "{function}: wrong argument count");
+            let globals = &mut self.registry.globals;
+            match name.as_str() {
+                "menunew" => globals.menu.clear(),
+                "menuselection" => return Ok(CallResult::Complete(globals.menu.selection())),
+                _ => {
+                    let limit = globals
+                        .dialogue
+                        .as_ref()
+                        .context("menuAddItem: dialogue settings unavailable")?
+                        .settings()
+                        .max_menu_items as usize;
+                    let hud = self
+                        .inputs
+                        .hud
+                        .context("menuAddItem: installed text unavailable")?;
+                    // A label without an installed entry adds nothing.
+                    let bytes = values[0].to_le_bytes();
+                    if let Some(text) = std::str::from_utf8(&bytes)
+                        .ok()
+                        .map(|label| hud.activation_label(label))
+                        .transpose()?
+                        .flatten()
+                    {
+                        let remembered = globals.highlighted_choice().unwrap_or("").to_owned();
+                        globals.menu.add(
+                            limit,
+                            &text,
+                            values[0],
+                            values[1],
+                            values[2],
+                            &remembered,
+                        );
+                    }
+                }
+            }
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
@@ -5067,6 +5142,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     nominal_ticks,
                 },
             );
+        let menu_input = menu_input(&self.inputs, self.registry.globals.dialogue.as_ref());
         let result = actor.tasks.poll(
             token,
             arguments,
@@ -5076,6 +5152,11 @@ impl Host for GameHost<'_, '_, '_, '_> {
             super::tasks::NativeServices {
                 ambient: Some(&ambient),
                 dialogue: self.registry.globals.dialogue.as_mut(),
+                menu: Some(super::tasks::MenuCall {
+                    state: &mut self.registry.globals.menu,
+                    active: &mut self.registry.globals.menu_state,
+                    input: menu_input,
+                }),
                 player_dialogue: Some(player_dialogue),
                 player_animation,
                 group_sync: Some(super::tasks::GroupSyncCall {
