@@ -1,222 +1,111 @@
 # cyrus-viewer
 
-A separate Bevy and egui application for inspecting your original Redguard
-assets. Buy the game from GOG and point the native viewer at your own install.
-The viewer reads the installation without modifying it.
+Browse Redguard models, worlds, textures, fonts, animations, scripts, and audio.
+Bring your own [GOG copy](https://www.gog.com/en/game/the_elder_scrolls_adventures_redguard).
+The viewer reads your install without changing it.
 
-The browser viewer shares the game's local folder picker. Choose the outer GOG
-folder containing `Redguard`, `DOSBOX`, `game.gog` and `game.ins`; selected files
-stay on your computer. No upload or install server is needed. Use `?install=local`
-to override a saved service URL, and select the folder again on each page load.
+[Open in your browser](https://michidk.github.io/cyrus/viewer/) ·
+[Download native builds](https://github.com/michidk/cyrus/releases/latest)
+
+| Model | World | Font |
+| --- | --- | --- |
+| ![Textured character model](../../dev/pages/viewer-model.webp) | ![Island world overview](../../dev/pages/viewer-world.webp) | ![Bitmap font specimen](../../dev/pages/viewer-font.webp) |
+
+## Get started
+
+In the browser, click **Choose game folder** and select the outer GOG folder
+containing `Redguard`, `DOSBOX`, `game.gog`, and `game.ins`. Files stay on your
+computer; no upload or server is needed. Select the folder again after reloading.
+Use `?install=local` to override a saved server URL.
+
+For native builds, launch `cyrus-viewer` and choose your install, or pass it directly:
+
+```sh
+./cyrus-viewer --install /path/to/Redguard
+# Windows: cyrus-viewer.exe --install C:\path\to\Redguard
+```
+
+The native viewer also checks `REDGUARD_DIR`, the remembered location, and default
+local/GOG folders. Its picker accepts the outer GOG folder or inner game folder
+and remembers the location for both viewer and game. Linux Browse needs a desktop
+file portal or Zenity; entering a path works without either. The Linux archive
+uses Ubuntu 24.04 system libraries.
+
+## Explore
+
+Choose a format, search by name or path, then select an item. Open archives to
+browse their members. Up/Down changes selection outside text fields; drag panel
+boundaries to resize them. Details and References link related assets.
+
+| Preview | Tools |
+| --- | --- |
+| Images and fonts | Zoom, palettes, animation frames, glyph atlas |
+| Models | Shading, animation, normals, bounds, face picking, UV layout |
+| Worlds and terrain | Placements, navigation, heightmaps, materials, tile inspection |
+| Audio and movies | Playback, seeking, looping, volume, movie audio tracks and frame stepping |
+| Scripts and definitions | Readable source and decoded JSON |
+| PVO spatial data | Wireframe octree, depth controls, slices, linked world objects |
+
+Models and worlds use Orbit by default. Drag to rotate, right-drag to pan, and
+scroll to zoom. In Flycam, right-drag to look and use WASD to move, Q/E to move
+down/up, and Shift to move faster while the pointer is over the viewport.
+
+Use the palette selector for associated world palettes. Without palette shows
+grayscale indices when no embedded colors are available. JSON views expose decoded
+records without pixel, compressed-frame, or PCM payloads. Unsupported or malformed
+entries report a reason; unrecognized files are hidden.
+
+Browser asset selections and model palettes are shareable through the address
+bar. The recipient needs the same installation. Back restores the previous selection.
+
+## Run from source
 
 ```sh
 cargo run -p cyrus-viewer -- --install /path/to/Redguard
-# REDGUARD_DIR or default local/GOG folders can supply the location.
 ```
 
-Prebuilt archives run with `./cyrus-viewer --install /path/to/Redguard` or
-`cyrus-viewer.exe --install C:\path\to\Redguard` on Windows.
-The Linux archive uses Ubuntu 24.04 system libraries.
-
-If no usable install is found, enter its folder in the shared native picker or
-choose Browse, then Continue. The picker accepts outer GOG folders and install
-subfolders. It remembers the resolved location in `cyrus-config/install.json`,
-shared with the game, and asks again when that location stops working.
-Continue uses the existing application window and starts catalog loading
-without launching another process. Cancel
-closes the application without changing the saved location. Linux Browse needs
-a desktop file portal or Zenity; entering a path also works without either.
-
-Choose a file format, search by name or source path, and select an item. RGM, WLD,
-ROB, 3D, and 3DC have separate categories. Numbered TEXBSI banks share one
-category; derived World previews and CD audio have their own entries.
-Up/Down changes selection when a text field is not focused. The Details panel
-shows source information and links to related archive members, textures, and
-world variants. Panels resize by dragging their boundaries.
-
-Images support fit, zoom, frame selection, and palette selection for indexed
-sources. Animated images and models have Play/Pause, Loop, and an editable frame
-interval in milliseconds. Fonts show a sample and glyph atlas. Models and worlds have
-Orbit (default) and Flycam camera modes, Textured, Unlit, Solid and Wireframe
-shading, an optional edge overlay, frame controls where supported, and automatic
-framing. Orbit uses drag to rotate, right-drag to pan, and scroll to zoom.
-Flycam uses right-drag to look and WASD to move while the pointer is over the
-viewport; Q/E moves down/up and Shift boosts speed fourfold. Flight speed scales
-with the framed asset size, crossing half the framing distance per second.
-Loading shows a progress bar, including archive indexing, preview preparation,
-model dependencies and media. Stages without a measurable total use a spinner.
-The stage label appears below the indicator.
-Models start with the first available scene palette. The palette selector lists
-palettes from their referencing worlds, including time-of-day variants, with
-Without palette last. Indexed images use their embedded palette first when present; otherwise they
-default to the first associated palette. Their selector and related-asset links use
-terrain/model references or the matching sky palette. Without palette shows grayscale indices. Standalone model
-references are indexed from scene placement and actor metadata on first use,
-then reused; this does not run during startup.
-
-Archive categories initially list archives. Open one to read its member index,
-then select a member to load its contents. A BSI bank with one member opens that
-image directly after indexing. Search covers files and the currently
-opened archive. Speech entries use original IDs; labels become available after
-selection.
-
-Audio shows a waveform with playback, seeking, looping, and volume. Movies have
-video, audio, a timeline, and frame stepping. Definitions offer readable source and JSON views alongside preservation's decoded
-fields. RGM world previews and WLD terrain geometry can switch to JSON. PVO files
-show a 3D wireframe octree with depth selection and Orbit/Flycam controls, a
-top-down slice with depth and height controls, and a JSON view.
-Malformed members remain visible with a reason. Unrecognized files are hidden.
-WAV lists standalone files; SFX, RTX, and CD audio contain additional sounds.
-PCX and LBM show indexed images with their embedded palettes. ANM shows decoded
-frames and initializes playback with its authored frame interval. The installed
-`pointers.bmp` cursor sheet uses preservation's GXA decoder and shows every image
-in a scrollable grid without animation controls; standard Windows BMP
-images also remain supported.
-
-WLD selections open the heightmap automatically. The Texture rotations layer includes
-a color legend for 0°, 90°, 180° and 270°; Tile directions adds arrows on the 3D terrain.
-Terrain maps show heights, materials, quarter-turn rotations and wave-selected
-vertices. Click a map cell or set its row and column to inspect its values and
-highlight it in 3D. **Inferred:** direction arrows follow the tile's positive texture-U
-axis, using preservation's terrain UV rotations.
-**Verified:** WLD stores heights and texture rotations; terrain normals are derived.
-
-Models offer rendered vertex and triangle normals, mesh bounds, authored subobject
-spheres, a UV layout for the picked mesh and face picking. Normal spacing limits overlay density.
-Face picking is always enabled; toggle UV layout to see the picked mesh's UVs
-over its sampled texture, with the TEXBSI filename, image name and pixel dimensions.
-The texture remains visible when the scene uses solid or wireframe shading.
-Normal spacing and length controls appear on a separate row beneath the checkboxes.
-The exporter falls back to authored face normals when vertex normals cannot be
-normalized, including the near-zero values in the installed CRAK `.3D` models.
-Picking reports the rendered triangle and normalized UVs. Authored polygon records,
-normal tables, frame data and subobject face membership remain in JSON.
-
-RGM inspection labels markers, lights and object placements in 3D. Navigation
-graphs show directed routes in authored local X/Z coordinates. Actor inspection
-connects placements, scripts, hooks, model references and animation commands.
-Bounds use local XY/XZ projections. Collision sphere diagrams retain authored
-radii, vertices and offsets without inventing their world poses. Light vectors
-retain their documented direction/attenuation fields.
-
-Select a PVO cell in the slice or cell list to highlight its static objects in
-the associated world. **Verified:** PVO visibility IDs identify placed objects.
-IDs beyond the static object table require runtime state and remain explicitly
-unmapped. Configuration files retain source and JSON views.
-
-Supported previews also offer JSON inspection. Images retain parsed headers,
-frame descriptions, palettes and animation records; fonts retain glyph metrics;
-models retain decoded geometry, normals, materials, frame records and authored bounds;
-terrain retains every stored map plane plus decoded cell values; worlds retain
-placement, navigation, actor and script records; audio retains
-sample format and frame counts; movies retain dimensions and timing. Existing
-archive indexes, spatial data, definitions and source views keep their decoded
-JSON. Pixel, compressed-frame and PCM payloads are omitted from inspection JSON.
-BSI texture palette choices follow referencing models and terrain through their
-world assignments. Standalone sky images use their companion COL palette.
-The References panel links the associated palette files and model/terrain sources.
-Images without a known palette relationship offer embedded colors or raw indices.
-
-TXT, MDI, DIG, PIF, OPL, AD, RST, DLL and EXE files, and the Miles driver-support file
-`mssdrvr.lst`, are excluded from the catalog.
-MDI, DIG, PIF, OPL, AD and RST are also excluded from preload parsing.
-
-## Browser build
-
-Build without game files, then serve your original install at runtime:
+For a browser build with a local install server:
 
 ```sh
 just viewer-web-build
 just run-viewer-web --install /path/to/Redguard
 ```
 
-For a prebuilt browser archive, use Python 3.11 or newer from its `browser/`
-directory:
+For a prebuilt browser archive, run from its `browser/` directory with Python 3.11+:
 
 ```sh
 python3 viewer-server.py --directory . --install /path/to/Redguard --port 8080
 ```
 
-Open `http://127.0.0.1:8080/viewer.html`. The server binds to loopback.
+Open <http://127.0.0.1:8080/viewer.html>, expand the server option, and click
+**Connect to server**. Here, `--install` points to the folder containing `RGFX.EXE`.
+The server binds to loopback and serves original bytes; previews are generated
+in browser memory. Keep game files and generated previews private and outside
+source control or application releases.
 
-The browser worker parses the original files with the same Rust parsers as the
-native viewer. Selecting an entry produces its preview and media in browser
-memory. The server supplies only a file listing and original bytes. No preview
-export is required.
-
-The game and viewer share the browser bootstrap loader and service-worker cache.
-The viewer keeps that loading overlay visible while its catalog starts; the game
-uses its installed artwork for world loading.
-Original downloads are cached by content digest. CD reads use byte ranges.
-The selected asset is encoded as `#asset=<id>&file=<source-path>` in the browser URL. Copy that
-URL to reopen the asset in the same installation; browser Back restores selection.
-A selected model palette is also preserved in the URL.
-Native cached previews remain on disk outside the install. After updating for a
-parser correction, close the native viewer and remove `cyrus-config/cache/viewer/`
-from its working directory to regenerate previews. If using a custom cache
-location, remove its `viewer/` subdirectory instead. Browser previews are generated
-in memory; reload the updated application to regenerate them.
-
-**Verified:** preservation 0.10.1 corrects rare model UV overflow, including the
-observatory floor. Cyrus 0.1.13 and later include that parser fix. GLBs exported
-with an older parser retain their old UVs and must be exported again with the
-updated preservation CLI. See preservation's [UV accumulation rule](https://github.com/michidk/redguard-preservation/blob/main/docs/formats/models/3d.md#facevertex).
-
-For private static hosting, serve `target/web`, the original files beneath
-`original/`, and an `original/manifest.json` listing each file's `path`,
-`bytes`, and 64-character content `digest`. The preview server's manifest
-endpoint supplies this listing. The virtual paths `disc/game.gog`,
-`disc/game.ins`, and `splash/glide2x_emu.ovl` refer to the associated GOG files.
-The host must support HTTP byte ranges. Pass `?install=https://your-private-host/original/` or select that URL at startup.
-The shared bootstrap validates and remembers it for both applications.
-
-Original files and generated previews contain game data. Keep them private,
-outside source control and application releases. Startup reads the file listing and small palette/configuration files. Archive
-indexes are read only when opened. Older links without a source path may need
-to scan archive indexes to locate their member.
-
-## Current limits
-
-The renderer is a generic inspection view. It does not claim Faithful game
-lighting, animation timing, or scene behavior. Palette choices come from WORLD.INI and preservation's scene references. Without
-a palette, models use embedded texture colors or grayscale palette indices.
-Models with no known world reference have no scene palette choices. World
-previews use their configured palette.
-Model playback uses preservation's frame conversion and the chosen inspection
-interval. It does not execute the original animation scripts. Unknown encodings
-or incomplete frames report an explicit error. **Unknown:** the available BSI documentation does not establish separate mip-level
-layouts. The viewer exposes decoded image frames and metadata without a mip selector.
-
-Movie playback offers every authored audio track, with sample rate, channel count and
-bit depth, or silent playback. Switching tracks preserves the timeline position. The selected movie is downloaded and
-its audio prepared before playback; progress identifies reading and decoding.
-Large movies still require the full original movie bytes. Seeking decodes forward
-in bounded batches and may pause while catching up. Browser audio requires a user gesture.
-Scripts are inspected as data, never executed.
-
-`cyrus-assets` tests the portable catalog/runtime contracts. Native and browser
-runtime checks are also needed to verify rendering, input, and media playback.
-
-Native and browser selection options use exactly the same names:
-
-| CLI | Browser URL |
+| Native option | Browser parameter |
 | --- | --- |
 | `--install PATH` | `?install=URL` |
 | `--asset ID` | `?asset=ID` or `#asset=ID` |
-| `--file SOURCE` | `?asset=ID&file=SOURCE` or the same fragment |
-| `--palette NAME` | `?asset=ID&palette=NAME` or the same fragment |
+| `--file SOURCE` | Add `&file=SOURCE` to identify an archive |
+| `--palette NAME` | Add `&palette=NAME` to select a model palette |
 
-URL values must be percent-encoded. `file` identifies an archive to resolve an
-asset member; without it, older ID-only selections scan archive indexes.
-`file` and `palette` require `asset`. Native selection waits for the catalog and
-uses the same model palette rules as browser selection.
+Percent-encode URL values. `file` and `palette` require `asset`.
+See [setup](../../docs/SETUP.md) for shared build and install options.
 
-Browser startup always shows the shared install picker. Local folders use the
-browser's directory file input. URL parameters, server defaults and the saved
-URL only prefill the expandable server option; Connect to server validates and
-loads that source. The validated URL is shared with the game in localStorage
-`cyrus-install`. AI-driven tests supply a source explicitly and automate Connect
-to server.
+## Limits and troubleshooting
 
-World light inspection shows signed RGB strengths and authored radii. Light markers
-use the exported scene origin; local lights are not presented as directional vectors.
+The viewer uses generic inspection rendering. It does not claim Faithful game
+lighting, timing, or scene behavior. Model playback steps converted frames at the
+chosen interval; scripts are inspected as data and never executed.
+
+Movies load their full original bytes and prepare audio before playback. Seeking
+may pause while decoding catches up. Browser audio requires a user gesture.
+
+After a parser update, close the native viewer and remove
+`cyrus-config/cache/viewer/` to regenerate cached previews. For a custom cache
+location, remove its `viewer/` subdirectory. Reload the updated browser app to
+regenerate its in-memory previews.
+
+Portable catalog contracts are tested in `cyrus-assets`. Rendering, input, and
+media playback also need native and browser runtime checks.
