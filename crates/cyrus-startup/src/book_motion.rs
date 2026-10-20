@@ -37,14 +37,19 @@ impl BookMotion {
     pub fn opening(frame_counts: [usize; 5]) -> Self {
         let mut motion = Self {
             pose: BookPose {
-                camera: [-4.0, -100.0, 240.0],
+                frames: [frame_counts[0].saturating_sub(1), 0, 0, 0, 0],
+                camera: [408.0, 0.0, 0.0],
                 ..BookPose::default()
             },
             frame_counts,
             turns: std::array::from_fn(|_| None),
             camera: VecDeque::new(),
         };
-        motion.request([0.0; 3], 0, 0.15);
+        // Preservation menu entry context 1 opens the cover through a three-part sweep.
+        motion.request([172.0, 204.0, -152.0], -116, 0.15);
+        motion.request([172.0, 204.0, -152.0], 0, 0.15);
+        motion.request([0.0; 3], 116, 0.15);
+        motion.turn(0, 0, 1);
         motion
     }
 
@@ -230,7 +235,7 @@ mod tests {
     #[test]
     fn book_cues_follow_delayed_starts_and_cover_frame_crossings_once() {
         let mut motion = BookMotion::opening([9, 9, 0, 9, 9]);
-        assert!(cues(&mut motion).is_empty());
+        assert_eq!(cues(&mut motion), [(9, 64)]);
         for (from, to, expected) in [
             (0, 3, vec![(4, 66)]),
             (3, 0, vec![(4, 66)]),
@@ -316,15 +321,33 @@ mod tests {
     }
 
     #[test]
-    fn opening_samples_truncate_and_settle_on_the_sixth_update() {
+    fn startup_entry_sweeps_holds_and_opens_the_cover_before_accepting_input() {
         let mut motion = BookMotion::opening([9, 9, 0, 9, 9]);
-        assert!(motion.tick(|_| {}));
-        assert_eq!(motion.pose.camera, [-3.0, -84.0, 203.0]);
-        for _ in 0..5 {
-            assert!(motion.tick(|_| {}));
+        assert_eq!(motion.pose.camera, [408.0, 0.0, 0.0]);
+        assert_eq!(motion.pose.frames, [8, 0, 0, 0, 0]);
+        let mut sounds = Vec::new();
+        for update in 1..=18 {
+            assert!(motion.tick(|effect| sounds.push((update, effect))));
+            match update {
+                1 => {
+                    assert_eq!(motion.pose.camera, [372.0, 30.0, -22.0]);
+                    assert_eq!(motion.pose.pitch, 2031);
+                    assert_eq!(motion.pose.frames[0], 8);
+                }
+                6 | 12 => {
+                    assert_eq!(motion.pose.camera, [172.0, 204.0, -152.0]);
+                    assert_eq!(motion.pose.pitch, 1932);
+                }
+                18 => {
+                    assert_eq!(motion.pose.camera, [0.0; 3]);
+                    assert_eq!(motion.pose.pitch, 0);
+                }
+                _ => {}
+            }
         }
-        assert_eq!(motion.pose.camera, [0.0; 3]);
-        assert!(!motion.tick(|_| {}));
+        assert_eq!(sounds, [(9, 64)]);
+        assert_eq!(motion.pose.frames, [0; 5]);
+        assert!(!motion.tick(|_| panic!("settled book dispatched a sound")));
     }
 
     #[test]
