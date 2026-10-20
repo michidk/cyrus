@@ -245,13 +245,7 @@ pub(crate) fn script_view(
     ready: Option<Res<crate::ReadyScene>>,
     flycam: Res<FlycamSettings>,
     camera: Query<&Transform, With<ViewCamera>>,
-    placed_player: Query<
-        (),
-        (
-            With<Player>,
-            With<cyrus_game::player::placement::PlayerPose>,
-        ),
-    >,
+    placed_player: Query<&cyrus_game::player::placement::PlayerPose, With<Player>>,
     drive: Option<Res<cyrus_game::script::CameraDrive>>,
     driven: Option<Res<cyrus_game::script::CameraFrameState>>,
 ) {
@@ -267,16 +261,27 @@ pub(crate) fn script_view(
         return;
     }
     // A driven camera's world view is its published position, as the original builds its map list.
-    if let Some(published) = drive
-        .as_deref()
-        .zip(driven.as_deref().and_then(|state| state.published.as_ref()))
-        .filter(|(drive, _)| drive.enabled && !flycam.enabled)
-        .map(|(_, published)| published)
-    {
-        commands.insert_resource(cyrus_game::script::ScriptView {
-            source: request.0.clone(),
-            position: published.pose.position,
-        });
+    // Until the first pose exists the camera has not moved from its spawn, so the window is built
+    // around the player instead, which the first established pose is within a camera distance of.
+    if drive.as_deref().is_some_and(|drive| drive.enabled) && !flycam.enabled {
+        let position = match driven.as_deref().and_then(|state| state.published.as_ref()) {
+            Some(published) => Some(published.pose.position),
+            None => placed_player.single().ok().and_then(|pose| {
+                let [x, y, z] = pose.position;
+                Some([
+                    i32::try_from(x).ok()?,
+                    i32::try_from(y).ok()?,
+                    i32::try_from(z).ok()?,
+                ])
+            }),
+        };
+        match position {
+            Some(position) => commands.insert_resource(cyrus_game::script::ScriptView {
+                source: request.0.clone(),
+                position,
+            }),
+            None => commands.remove_resource::<cyrus_game::script::ScriptView>(),
+        }
         return;
     }
     let position = camera.translation;

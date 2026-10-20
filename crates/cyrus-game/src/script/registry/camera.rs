@@ -176,10 +176,12 @@ impl<T: crate::script::camera::CameraTerrainHeights> CameraGeometry for SceneCam
         excluded: ScriptActorId,
     ) -> Result<Vec<cyrus_collision::collision_mesh::IntegerSegmentContact>> {
         let mut models = self.scene.static_collision.window_models(self.view)?;
+        // Only static-path live actors carry face geometry; animated actors are sphere-style
+        // candidates with no mesh to test (**Inferred** for the original's segment list).
         models.extend(
             self.live
                 .iter()
-                .filter(|actor| !actor.animation_excluded)
+                .filter(|actor| !actor.animation_excluded && actor.static_model_path)
                 .filter_map(|actor| actor.model),
         );
         let collected = crate::script::camera::collect_segment_models(
