@@ -4500,6 +4500,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             return Ok(CallResult::Complete(i32::from(visible)));
         }
         if function.eq_ignore_ascii_case("PlayerDistance")
+            || function.eq_ignore_ascii_case("AcuratePlayerDistance")
             || function.eq_ignore_ascii_case("PlayerFacing")
             || function.eq_ignore_ascii_case("PlayerLooking")
             || function.eq_ignore_ascii_case("PlayerArc")

@@ -1821,6 +1821,11 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
         actor.query("PlayerDistance", &[], inputs).unwrap(),
         Some(1536)
     );
+    // The accurate form is the rounded Euclidean length: sqrt(256² + 512² + 768²) is 957.8.
+    assert_eq!(
+        actor.query("AcuratePlayerDistance", &[], inputs).unwrap(),
+        Some(958)
+    );
     assert_eq!(
         actor
             .query(
@@ -1854,9 +1859,17 @@ fn spatial_distance_requires_explicit_override_and_fallback_state() {
     assert!(actor.query("PlayerDistance", &[], inputs).is_err());
     inputs.fallback_position = Some([1, 2, 3]);
     assert_eq!(actor.query("PlayerDistance", &[], inputs).unwrap(), Some(6));
+    assert_eq!(
+        actor.query("AcuratePlayerDistance", &[], inputs).unwrap(),
+        Some(4)
+    );
     inputs.distance_override = Some(true);
     assert_eq!(
         actor.query("PlayerDistance", &[], inputs).unwrap(),
+        Some(9_999_999)
+    );
+    assert_eq!(
+        actor.query("AcuratePlayerDistance", &[], inputs).unwrap(),
         Some(9_999_999)
     );
 }

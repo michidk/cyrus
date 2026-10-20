@@ -459,7 +459,8 @@ impl ActorSpatial {
         arguments: &[cyrus_script::Argument],
         inputs: QueryInputs,
     ) -> Result<Option<i32>> {
-        let distance = name.eq_ignore_ascii_case("PlayerDistance");
+        let accurate = name.eq_ignore_ascii_case("AcuratePlayerDistance");
+        let distance = name.eq_ignore_ascii_case("PlayerDistance") || accurate;
         let facing = name.eq_ignore_ascii_case("PlayerFacing");
         let looking = name.eq_ignore_ascii_case("PlayerLooking");
         let arc = name.eq_ignore_ascii_case("PlayerArc");
@@ -512,7 +513,7 @@ impl ActorSpatial {
             return Ok(Some(i32::from(difference.abs() <= tolerance.integer()?)));
         }
         if distance {
-            ensure!(arguments.is_empty(), "PlayerDistance requires no arguments");
+            ensure!(arguments.is_empty(), "{name} requires no arguments");
             if inputs
                 .distance_override
                 .context("PlayerDistance override state unavailable")?
@@ -520,6 +521,12 @@ impl ActorSpatial {
                 return Ok(Some(9_999_999));
             }
             let (receiver_position, player_position) = self.distance_positions(inputs)?;
+            if accurate {
+                // The rounded Euclidean length of the three-axis difference, not the Manhattan sum.
+                return Ok(Some(rounded_distance(std::array::from_fn(|axis| {
+                    receiver_position[axis].wrapping_sub(player_position[axis])
+                }))?));
+            }
             let distance = receiver_position
                 .into_iter()
                 .zip(player_position)
