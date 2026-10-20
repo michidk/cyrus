@@ -4144,6 +4144,37 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation(axes)?;
             return Ok(CallResult::Complete(0));
         }
+        if function.eq_ignore_ascii_case("ResetPosition") {
+            anyhow::ensure!(
+                arguments.len() == 3,
+                "ResetPosition requires three arguments"
+            );
+            let mut axes = [false; 3];
+            for (axis, argument) in arguments.iter().enumerate() {
+                axes[axis] = argument.integer()? != 0;
+            }
+            let change = self
+                .registry
+                .spatial
+                .as_mut()
+                .context("ResetPosition: spatial state not prepared")?
+                .actor_mut(self.index)?
+                .reset_position(axes)?;
+            // The original moves its view-origin global, which cyrus keeps as the published
+            // camera position, by the selected player's change (**Inferred** mapping).
+            if self.registry.selected_player_index() == Some(self.index)
+                && let Some(camera) = self.registry.camera.as_mut()
+            {
+                for (axis, delta) in change.into_iter().enumerate() {
+                    camera.current.position[axis] =
+                        camera.current.position[axis].wrapping_add(delta);
+                }
+            }
+            if self.registry.spatial(id)?.parent.is_none() {
+                self.registry.refresh_transform(id)?;
+            }
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("cameraController") {
             anyhow::ensure!(
                 arguments.is_empty(),

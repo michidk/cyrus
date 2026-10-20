@@ -383,6 +383,27 @@ impl ActorSpatial {
         Ok(())
     }
 
+    /// `ResetPosition(x, y, z)`: every axis whose flag is set takes the actor's home position (the
+    /// first stored location, even for an attached actor), and the previous-position snapshot
+    /// becomes the result. Returns the change per axis so the selected player's view origin can
+    /// follow it; the matrix refresh is the caller's.
+    pub fn reset_position(&mut self, axes: [bool; 3]) -> Result<[i32; 3]> {
+        let home = *self
+            .locations
+            .first()
+            .context("ResetPosition: home position unavailable")?;
+        let before = self.local.position;
+        for (axis, selected) in axes.into_iter().enumerate() {
+            if selected {
+                self.local.position[axis] = home[axis];
+            }
+        }
+        self.previous_local_position = self.local.position;
+        Ok(std::array::from_fn(|axis| {
+            self.local.position[axis].wrapping_sub(before[axis])
+        }))
+    }
+
     /// Restore locked axes after ordinary script/movement work, before matrix refresh.
     /// Uses current attribute bytes and the pre-update snapshot; slaves bypass restoration.
     /// The matrix is unchanged, following preservation's SOUP ordinary axis-lock rules.
@@ -868,6 +889,17 @@ mod tests {
             fallback_position: None,
             linked_position: Some(None),
         }
+    }
+
+    #[test]
+    fn reset_position_restores_only_the_flagged_axes_from_home() {
+        let mut actor = receiver([10, 20, 30], vec![[1, 2, 3], [100, 200, 300]]);
+        let change = actor.reset_position([true, false, true]).unwrap();
+        assert_eq!(actor.local.position, [1, 20, 3]);
+        assert_eq!(actor.previous_local_position, [1, 20, 3]);
+        assert_eq!(change, [-9, 0, -27]);
+        assert_eq!(actor.reset_position([false; 3]).unwrap(), [0; 3]);
+        assert!(receiver([0; 3], vec![]).reset_position([true; 3]).is_err());
     }
 
     #[test]
