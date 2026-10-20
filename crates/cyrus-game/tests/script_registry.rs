@@ -3090,6 +3090,30 @@ fn player_hanging_is_false_outside_the_hanging_state() {
 }
 
 #[test]
+fn queue_movie_plays_five_through_ten_at_once_and_queues_the_rest_for_the_next_load() {
+    let queued = |calls: &[(&str, &[i32])]| {
+        let mut world = run_native_world(calls).unwrap();
+        let play = world.globals_mut().take_host_requests().play_movie;
+        (world.globals().queued_movie(), play)
+    };
+    assert_eq!(queued(&[("QueueMovie", &[3])]), (Some(3), None));
+    assert_eq!(queued(&[("QueueMovie", &[11])]), (Some(11), None));
+    assert_eq!(
+        queued(&[("QueueMovie", &[-1])]),
+        (None, None),
+        "-1 is the empty queue"
+    );
+    assert_eq!(queued(&[("QueueMovie", &[-2])]), (Some(-2), None));
+    assert_eq!(queued(&[("QueueMovie", &[5])]), (None, Some(5)));
+    assert_eq!(
+        queued(&[("QueueMovie", &[3]), ("QueueMovie", &[10])]),
+        (None, Some(10)),
+        "playing at once empties the queue"
+    );
+    assert!(run_native_world(&[("QueueMovie", &[])]).is_err());
+}
+
+#[test]
 fn menu_natives_start_empty_and_need_installed_text_to_add_items() {
     assert_eq!(
         run_native_calls(&[("menuNew", &[]), ("menuSelection", &[])]).unwrap(),
@@ -15784,6 +15808,7 @@ fn session_request_natives_raise_requests_for_the_host() {
             won_game: true,
             push_player: true,
             pop_player: true,
+            play_movie: None,
         }
     );
     assert_eq!(

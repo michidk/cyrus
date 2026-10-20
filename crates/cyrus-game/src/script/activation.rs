@@ -183,6 +183,8 @@ pub struct GameplayGlobals {
     pub(super) dialogue: Option<super::DialogueState>,
     lockout: Option<u16>,
     pub(super) lineup_result: Option<i32>,
+    /// Movie queued by `QueueMovie` for the next world load; the original's value is -1 when none.
+    queued_movie: Option<i32>,
     player_idle_counter: Option<i32>,
     controller_prelude: Option<ControllerPrelude>,
     pub(super) selected_combat_inhibition: Option<i32>,
@@ -229,6 +231,9 @@ pub struct HostRequests {
     pub push_player: bool,
     /// `PopPlayer` was called.
     pub pop_player: bool,
+    /// `QueueMovie` named a movie from five through ten, which plays at once, outside the world
+    /// load; the movie queue is empty afterwards.
+    pub play_movie: Option<i32>,
 }
 impl GameplayGlobals {
     /// Whether the swap state selects GREMLIN instead of CYRUS as the selected player.
@@ -239,6 +244,28 @@ impl GameplayGlobals {
     /// Takes and clears the pending script requests.
     pub fn take_host_requests(&mut self) -> HostRequests {
         std::mem::take(&mut self.host_requests)
+    }
+
+    /// The movie the next world load plays, if `QueueMovie` queued one.
+    pub fn queued_movie(&self) -> Option<i32> {
+        self.queued_movie
+    }
+
+    /// The host clears the queue once the world load has played the movie.
+    pub fn take_queued_movie(&mut self) -> Option<i32> {
+        self.queued_movie.take()
+    }
+
+    /// `QueueMovie`: movies five through ten play at once and empty the queue; others wait for
+    /// the next world load. The comparison is unsigned, so negative values queue.
+    pub(super) fn queue_movie(&mut self, movie: i32) {
+        if (5..=10).contains(&(movie as u32)) {
+            self.host_requests.play_movie = Some(movie);
+            self.queued_movie = None;
+        } else {
+            // The original's empty-queue value is -1, so queueing it leaves nothing queued.
+            self.queued_movie = (movie != -1).then_some(movie);
+        }
     }
 
     pub(super) fn request_mut(&mut self) -> &mut HostRequests {
@@ -1105,6 +1132,8 @@ pub(super) struct GameplayGlobalsSnapshot {
     ground_prevalidation_used: bool,
     ground_prevalidation: Option<super::OrdinaryGroundPrevalidation>,
     lineup_result: Option<i32>,
+    #[serde(default)]
+    queued_movie: Option<i32>,
     combat_messages: super::combat::CombatMessagesSnapshot,
     dialogue: Option<super::DialogueSnapshot>,
     lockout: Option<u16>,
@@ -1151,6 +1180,7 @@ impl GameplayGlobals {
             ground_prevalidation_used: self.ground_prevalidation_used,
             ground_prevalidation: self.ground_prevalidation,
             lineup_result: self.lineup_result,
+            queued_movie: self.queued_movie,
             combat_messages: self.combat_messages.snapshot(),
             dialogue: self.dialogue.as_ref().map(super::DialogueState::snapshot),
             lockout: self.lockout,
@@ -1232,6 +1262,7 @@ impl GameplayGlobals {
             dialogue,
             lockout: saved.lockout,
             lineup_result: saved.lineup_result,
+            queued_movie: saved.queued_movie,
             player_idle_counter: saved.player_idle_counter,
             controller_prelude: saved.controller_prelude,
             selected_combat_inhibition: saved.selected_combat_inhibition,

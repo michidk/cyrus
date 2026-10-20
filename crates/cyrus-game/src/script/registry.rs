@@ -4379,6 +4379,13 @@ impl Host for GameHost<'_, '_, '_, '_> {
         if function.eq_ignore_ascii_case("Animal") {
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("QueueMovie") {
+            let [movie] = arguments else {
+                anyhow::bail!("QueueMovie requires one argument")
+            };
+            self.registry.globals.queue_movie(movie.integer()?);
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("LoadWorld") {
             let [world, a, b] = arguments else {
                 anyhow::bail!("LoadWorld requires three arguments")
