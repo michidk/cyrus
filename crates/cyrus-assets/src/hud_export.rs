@@ -91,7 +91,7 @@ pub(crate) fn prepare(
     let stamp = directory.join("source.txt");
     let mut fingerprint = DefaultHasher::new();
     (
-        11u32,
+        12u32,
         (&system, &items, &keys, &worlds),
         (
             &candle_bytes,
