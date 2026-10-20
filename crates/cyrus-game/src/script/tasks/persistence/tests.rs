@@ -2,7 +2,7 @@
 use super::*;
 use crate::script::tasks::{
     FaceTarget, Lookup, MoveTarget, NativeServices, PlayerFaceCall, PlayerFaceOutcome,
-    PlayerFaceState, PointHost, SpatialCall, Speech,
+    PlayerFaceState, PointHost, PointWrapper, SpatialCall, Speech,
 };
 use cyrus_script::{
     Argument, CallResult, CodeOrigin, Host, Invocation, Runtime, Target, Thread, program::*,
@@ -2564,13 +2564,18 @@ fn axis_movement_and_rotation_match_the_original_routines() {
 
 #[derive(Default)]
 struct RecordingPointHost {
-    moves: Vec<(MoveTarget, i32)>,
+    moves: Vec<(PointWrapper, MoveTarget, i32)>,
     faces: Vec<FaceTarget>,
     result: i32,
 }
 impl PointHost for RecordingPointHost {
-    fn move_to(&mut self, target: MoveTarget, tolerance: i32) -> Result<i32> {
-        self.moves.push((target, tolerance));
+    fn move_to(
+        &mut self,
+        wrapper: PointWrapper,
+        target: MoveTarget,
+        tolerance: i32,
+    ) -> Result<i32> {
+        self.moves.push((wrapper, target, tolerance));
         Ok(self.result)
     }
     fn face(&mut self, target: FaceTarget) -> Result<i32> {
@@ -2596,17 +2601,40 @@ fn point_tasks_decode_their_operands_and_complete_when_the_host_step_returns_zer
         (
             Task::MoveNodeMarker,
             integers(&[7, 300]),
-            (MoveTarget::Marker(7), 300),
+            (PointWrapper::Node, MoveTarget::Marker(7), 300),
         ),
         (
             Task::MoveNodeLocation,
             integers(&[2, -5]),
-            (MoveTarget::Location(2), -5),
+            (PointWrapper::Node, MoveTarget::Location(2), -5),
         ),
         (
             Task::MoveNodePosition,
             integers(&[256, -512, 1024, 0]),
-            (MoveTarget::Position([256, -512, 1024]), 0),
+            (
+                PointWrapper::Node,
+                MoveTarget::Position([256, -512, 1024]),
+                0,
+            ),
+        ),
+        (
+            Task::MoveMarker,
+            integers(&[7, 300]),
+            (PointWrapper::Direct, MoveTarget::Marker(7), 300),
+        ),
+        (
+            Task::MoveLocation,
+            integers(&[2, -5]),
+            (PointWrapper::Direct, MoveTarget::Location(2), -5),
+        ),
+        (
+            Task::MovePosition,
+            integers(&[256, -512, 1024, 0]),
+            (
+                PointWrapper::Direct,
+                MoveTarget::Position([256, -512, 1024]),
+                0,
+            ),
         ),
     ] {
         for (result, done) in [(1, false), (-3, false), (0, true)] {

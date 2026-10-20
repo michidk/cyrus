@@ -115,7 +115,15 @@ pub(super) enum FaceTarget {
     Point([i32; 2]),
 }
 
-/// What `MoveNodeMarker`, `MoveNodeLocation` and `MoveNodePosition` walk toward.
+/// Which point wrapper a move task steps: the node wrapper claims walk nodes along routes, the
+/// direct wrapper walks straight at the destination.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PointWrapper {
+    Node,
+    Direct,
+}
+
+/// What the `Move*` point tasks walk toward.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum MoveTarget {
     /// A local Q8 position.
@@ -131,7 +139,8 @@ pub(super) enum MoveTarget {
 pub(super) trait PointHost {
     /// One point-wrapper step toward `target` within a Q8 arrival tolerance; the wrapper's
     /// return, nonzero while the walk continues.
-    fn move_to(&mut self, target: MoveTarget, tolerance: i32) -> Result<i32>;
+    fn move_to(&mut self, wrapper: PointWrapper, target: MoveTarget, tolerance: i32)
+    -> Result<i32>;
 
     /// The signed pre-turn difference, or zero when the receiver cannot turn, has arrived or its
     /// turn finished in this step.
@@ -497,6 +506,12 @@ enum Task {
     ScaledMove,
     /// `sRotate(x, y, z, duration)`: the same step as `Rotate`.
     ScaledRotate,
+    /// `MoveMarker(marker, tolerance)`: the direct point wrapper toward a marker.
+    MoveMarker,
+    /// `MoveLocation(location, tolerance)`: the direct point wrapper toward a receiver location.
+    MoveLocation,
+    /// `MovePosition(x, y, z, tolerance)`: the direct point wrapper toward a Q8 position.
+    MovePosition,
     /// `MoveNodeMarker(marker, tolerance)`: the point wrapper toward a marker.
     MoveNodeMarker,
     /// `MoveNodeLocation(location, tolerance)`: the point wrapper toward a receiver location.
@@ -1095,27 +1110,40 @@ impl Task {
                 }
                 duration.wrapping_sub(1) <= elapsed
             }
-            Self::MoveNodeMarker | Self::MoveNodeLocation | Self::MoveNodePosition => {
+            Self::MoveMarker
+            | Self::MoveLocation
+            | Self::MovePosition
+            | Self::MoveNodeMarker
+            | Self::MoveNodeLocation
+            | Self::MoveNodePosition => {
+                let wrapper = if matches!(
+                    self,
+                    Self::MoveNodeMarker | Self::MoveNodeLocation | Self::MoveNodePosition
+                ) {
+                    PointWrapper::Node
+                } else {
+                    PointWrapper::Direct
+                };
                 let (target, tolerance) = match (&*self, arguments) {
-                    (Self::MoveNodeMarker, [marker, tolerance]) => {
+                    (Self::MoveMarker | Self::MoveNodeMarker, [marker, tolerance]) => {
                         (MoveTarget::Marker(marker.integer()?), tolerance.integer()?)
                     }
-                    (Self::MoveNodeLocation, [location, tolerance]) => (
+                    (Self::MoveLocation | Self::MoveNodeLocation, [location, tolerance]) => (
                         MoveTarget::Location(location.integer()?),
                         tolerance.integer()?,
                     ),
-                    (Self::MoveNodePosition, [x, y, z, tolerance]) => (
+                    (Self::MovePosition | Self::MoveNodePosition, [x, y, z, tolerance]) => (
                         MoveTarget::Position([x.integer()?, y.integer()?, z.integer()?]),
                         tolerance.integer()?,
                     ),
                     _ => anyhow::bail!(
-                        "MoveNodeMarker and MoveNodeLocation take two arguments, MoveNodePosition four"
+                        "the marker and location move tasks take two arguments, the position tasks four"
                     ),
                 };
                 let host = services
                     .point
-                    .context("MoveNode tasks require the receiver's point-walking owner")?;
-                host.move_to(target, tolerance)? == 0
+                    .context("Move point tasks require the receiver's point-walking owner")?;
+                host.move_to(wrapper, target, tolerance)? == 0
             }
             Self::FaceAngle | Self::FacePos => {
                 let target = match (&*self, arguments) {
@@ -2477,6 +2505,12 @@ impl NativeTasks {
             Task::ScaledMove
         } else if function.eq_ignore_ascii_case("sRotate") {
             Task::ScaledRotate
+        } else if function.eq_ignore_ascii_case("MoveMarker") {
+            Task::MoveMarker
+        } else if function.eq_ignore_ascii_case("MoveLocation") {
+            Task::MoveLocation
+        } else if function.eq_ignore_ascii_case("MovePosition") {
+            Task::MovePosition
         } else if function.eq_ignore_ascii_case("MoveNodeMarker") {
             Task::MoveNodeMarker
         } else if function.eq_ignore_ascii_case("MoveNodeLocation") {
@@ -2615,6 +2649,9 @@ impl NativeTasks {
         [
             "FaceAngle",
             "FacePos",
+            "MoveMarker",
+            "MoveLocation",
+            "MovePosition",
             "MoveNodeMarker",
             "MoveNodeLocation",
             "MoveNodePosition",
@@ -2630,6 +2667,9 @@ impl NativeTasks {
             Some(
                 Task::FaceAngle
                     | Task::FacePos
+                    | Task::MoveMarker
+                    | Task::MoveLocation
+                    | Task::MovePosition
                     | Task::MoveNodeMarker
                     | Task::MoveNodeLocation
                     | Task::MoveNodePosition

@@ -21467,6 +21467,57 @@ fn disengaged_combat_uses_retained_point_and_real_forward_or_walk_movement() {
 }
 
 #[test]
+fn direct_point_steps_turn_then_walk_complete_on_arrival_and_restart_from_unknown_phases() {
+    use cyrus_game::script::{ScriptHud, ScriptInputs};
+    let hud = ScriptHud::default();
+    let run = |phase: u8, destination: [i32; 3], falling: bool| {
+        let (mut world, _, _) = retained_point_fixture(18, 8, 12, |saved| {
+            saved["actors"][0]["control"]["point_command"] =
+                serde_json::json!({"value":0,"word":0,"phase":phase,"counter":0});
+            saved["spatial"]["actors"][0]["local"]["angles"] = serde_json::json!([0, 0, 0]);
+            if falling {
+                saved["actors"][0]["control"]["falling_state"] = 1.into();
+            }
+        });
+        let id = world.id(0).unwrap();
+        let result = world
+            .move_ordinary_direct(
+                id,
+                destination,
+                0,
+                ScriptInputs {
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(1),
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    ..Default::default()
+                },
+                None,
+                Some(&mut |_, _| Ok(())),
+            )
+            .unwrap();
+        let control = world.actors()[0].control_state().unwrap();
+        (
+            result,
+            world.globals().native_command().point_phase,
+            control.death_selector,
+        )
+    };
+    let far_ahead = [255, -257, 100_000];
+    let here = [255, -257, -1];
+    // Phase zero starts a turn; phase 22 finishes it and starts walking.
+    assert_eq!(run(0, far_ahead, false), (1, 22, 7));
+    assert_eq!(run(22, far_ahead, false), (1, 11, 7));
+    // Arrival completes from phases that test it, and phase 21 completes unconditionally.
+    assert_eq!(run(0, here, false).0, 0);
+    assert_eq!(run(9, here, false).0, 0);
+    assert_eq!(run(21, far_ahead, false), (0, 21, 0));
+    // Unknown phases restart from zero; falling or queued motion interrupts any phase.
+    assert_eq!(run(5, far_ahead, false), (1, 0, 7));
+    assert_eq!(run(11, far_ahead, true), (1, 0, 7));
+}
+
+#[test]
 fn disengaged_turn_bypasses_arrival_and_movement_services() {
     use cyrus_game::script::OrdinarySlopeInputs;
     let (mut world, _, _) = movement_fixture(

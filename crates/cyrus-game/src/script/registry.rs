@@ -19,6 +19,7 @@ mod coordination;
 mod counter;
 mod defence;
 mod dialogue;
+mod direct_point;
 pub(super) mod falling;
 mod flat;
 mod follow;
@@ -5051,6 +5052,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 "sMove",
                 "sRotate",
                 "sMoveAlongAxis",
+                "MoveMarker",
+                "MoveLocation",
+                "MovePosition",
                 "MoveNodeMarker",
                 "MoveNodeLocation",
                 "MoveNodePosition",

@@ -1,7 +1,7 @@
 //! The receiver's side of the point tasks: one ordinary turn step per `FaceAngle`/`FacePos`
 //! invocation and one point-wrapper step per `MoveNodeMarker`/`MoveNodeLocation`/`MoveNodePosition`.
 use super::{GameHost, ScriptActorId};
-use crate::script::tasks::{FaceTarget, MoveTarget, PointHost};
+use crate::script::tasks::{FaceTarget, MoveTarget, PointHost, PointWrapper};
 use anyhow::{Context, Result};
 
 /// Attribute that gates every facing task: a receiver whose turn rate is zero cannot turn and
@@ -9,7 +9,12 @@ use anyhow::{Context, Result};
 const TURN_RATE_ATTRIBUTE: usize = 15;
 
 impl PointHost for GameHost<'_, '_, '_, '_> {
-    fn move_to(&mut self, target: MoveTarget, tolerance: i32) -> Result<i32> {
+    fn move_to(
+        &mut self,
+        wrapper: PointWrapper,
+        target: MoveTarget,
+        tolerance: i32,
+    ) -> Result<i32> {
         let id = ScriptActorId {
             generation: self.generation,
             index: self.index,
@@ -23,7 +28,7 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
                     .registry
                     .markers
                     .as_ref()
-                    .context("MoveNodeMarker markers not prepared")?
+                    .context("move task markers not prepared")?
                     .position(marker)?;
                 let extent = self.registry.ordinary_collision_shape(id)?.positive_extent[1];
                 [
@@ -33,21 +38,28 @@ impl PointHost for GameHost<'_, '_, '_, '_> {
                 ]
             }
             MoveTarget::Location(location) => {
-                self.receiver_location("MoveNodeLocation", location)?
+                self.receiver_location("move task location", location)?
             }
         };
         let inputs = self.inputs;
         let sounds = self.sounds.as_mut().map(|sink| {
             &mut **sink as &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>
         });
-        self.registry.move_ordinary_point(
-            id,
-            destination,
-            tolerance,
-            inputs,
-            self.random.as_deref_mut(),
-            sounds,
-        )
+        // A script task keeps its point state in its own slot's native command, which the task
+        // pass has already loaded.
+        let (world, index) = (self.registry.world, self.index);
+        let random = self.random.as_deref_mut();
+        match wrapper {
+            PointWrapper::Node => {
+                self.registry
+                    .move_point_wrapper(id, destination, tolerance, inputs, random, sounds)
+            }
+            PointWrapper::Direct => {
+                self.registry
+                    .move_point_direct(id, destination, tolerance, inputs, random, sounds)
+            }
+        }
+        .with_context(|| format!("world {world} actor {index} point movement"))
     }
 
     fn face(&mut self, target: FaceTarget) -> Result<i32> {

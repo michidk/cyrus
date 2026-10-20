@@ -130,20 +130,8 @@ impl ScriptWorld {
                 .context("point control unavailable")?
                 .point_command
                 .load(&mut self.globals.native_command);
-            self.validate_walk_navigation(id)?;
-            let result = if self.globals.native_command.pause_ticks != 0 {
-                let ticks = inputs
-                    .nominal_ticks
-                    .context("point pause requires nominal_ticks")?;
-                self.globals.native_command.pause_ticks = self
-                    .globals
-                    .native_command
-                    .pause_ticks
-                    .saturating_sub(ticks);
-                1
-            } else {
-                self.move_point_entry(id, destination, tolerance, inputs, random, sounds)?
-            };
+            let result =
+                self.move_point_wrapper(id, destination, tolerance, inputs, random, sounds)?;
             let shared = &mut self.globals.native_command;
             self.actors[index]
                 .control
@@ -151,18 +139,47 @@ impl ScriptWorld {
                 .expect("admitted point control")
                 .point_command
                 .save(shared);
-            let frame_scale = inputs
-                .frame_scale
-                .context("point wrapper requires frame_scale")?;
-            let spatial = self
-                .spatial
-                .as_mut()
-                .context("point spatial state unavailable")?
-                .actor_mut(index)?;
-            super::super::navigation::limit_point_displacement(spatial, frame_scale)?;
             Ok(result)
         })();
         result.with_context(|| format!("world {} actor {} point movement", self.world, id.index))
+    }
+
+    /// The point wrapper over whatever point state the shared native command holds: combat loads
+    /// the actor's retained copy around it, and a script task runs it on its own slot's state.
+    pub(super) fn move_point_wrapper(
+        &mut self,
+        id: ScriptActorId,
+        destination: [i32; 3],
+        tolerance: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: Option<&mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>>,
+    ) -> Result<i32> {
+        let index = self.resolve(id)?;
+        self.validate_walk_navigation(id)?;
+        let result = if self.globals.native_command.pause_ticks != 0 {
+            let ticks = inputs
+                .nominal_ticks
+                .context("point pause requires nominal_ticks")?;
+            self.globals.native_command.pause_ticks = self
+                .globals
+                .native_command
+                .pause_ticks
+                .saturating_sub(ticks);
+            1
+        } else {
+            self.move_point_entry(id, destination, tolerance, inputs, random, sounds)?
+        };
+        let frame_scale = inputs
+            .frame_scale
+            .context("point wrapper requires frame_scale")?;
+        let spatial = self
+            .spatial
+            .as_mut()
+            .context("point spatial state unavailable")?
+            .actor_mut(index)?;
+        super::super::navigation::limit_point_displacement(spatial, frame_scale)?;
+        Ok(result)
     }
 
     fn move_point_entry(
@@ -243,7 +260,7 @@ impl ScriptWorld {
         Ok(0)
     }
 
-    fn point_destination_arrived(
+    pub(super) fn point_destination_arrived(
         &self,
         index: usize,
         destination: [i32; 3],
@@ -336,7 +353,7 @@ impl ScriptWorld {
         Ok(())
     }
 
-    fn advance_point_delay(
+    pub(super) fn advance_point_delay(
         &mut self,
         id: ScriptActorId,
         inputs: ScriptInputs<'_>,
@@ -533,7 +550,7 @@ impl ScriptWorld {
         Ok(1)
     }
 
-    fn complete_point(&mut self, id: ScriptActorId, result: u8) -> Result<i32> {
+    pub(super) fn complete_point(&mut self, id: ScriptActorId, result: u8) -> Result<i32> {
         self.globals.native_command_return = result;
         self.release_held_walk_nodes(id)?;
         let actor = &mut self.actors[id.index];
