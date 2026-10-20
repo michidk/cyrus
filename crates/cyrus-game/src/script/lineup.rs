@@ -44,7 +44,7 @@ pub trait StepPort {
     type Saved;
     fn position(&self) -> [i32; 3];
     fn heading(&self) -> u16;
-    fn save(&self) -> Self::Saved;
+    fn save(&mut self) -> Self::Saved;
     fn restore(&mut self, saved: Self::Saved);
     /// One step of the matching one-unit movement task.
     fn walk(&mut self, step: CloseStep);
@@ -75,6 +75,15 @@ pub fn close_step_run<P: StepPort>(port: &mut P, step: CloseStep, x: i32, z: i32
     false
 }
 
+/// The owner of the selected player's alignment: the helpers plus the reference actor and any
+/// failure a helper met (the helpers answer conservatively and the call then fails).
+pub trait LineupHost: LineupPort {
+    /// The receiving actor's position and heading.
+    fn reference(&mut self) -> anyhow::Result<([i32; 3], u16)>;
+    /// The first failure a helper met, if any.
+    fn failure(&mut self) -> Option<anyhow::Error>;
+}
+
 /// The pickup mover's retained state: the fallback flag.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PickupState {
@@ -82,11 +91,11 @@ pub struct PickupState {
 }
 
 /// Completion: the default animation request, which reports completion.
-fn finished<P: LineupPort>(port: &mut P) -> i32 {
+fn finished<P: LineupPort + ?Sized>(port: &mut P) -> i32 {
     i32::from(!port.default_animation())
 }
 
-fn stale_exit<P: LineupPort>(port: &mut P) -> i32 {
+fn stale_exit<P: LineupPort + ?Sized>(port: &mut P) -> i32 {
     if port.stale_response() {
         port.abandon(true);
         0
@@ -97,7 +106,7 @@ fn stale_exit<P: LineupPort>(port: &mut P) -> i32 {
 
 /// `PlayerPickupLineUp`'s mover: zero when done, one while continuing. On the first invocation
 /// (elapsed zero) a blocked straight path selects the fallback, the plain mover, for good.
-pub fn pickup_mover<P: LineupPort>(
+pub fn pickup_mover<P: LineupPort + ?Sized>(
     port: &mut P,
     state: &mut PickupState,
     elapsed: i32,
@@ -132,7 +141,7 @@ pub fn pickup_mover<P: LineupPort>(
 
 /// The plain mover: far from the final heading it backs toward the target while turning to face
 /// it, otherwise it turns to the final heading and steps in the direction the bearing selects.
-pub fn plain_mover<P: LineupPort>(port: &mut P, angle: i32, target: [i32; 3]) -> i32 {
+pub fn plain_mover<P: LineupPort + ?Sized>(port: &mut P, angle: i32, target: [i32; 3]) -> i32 {
     let [x, _, z] = target;
     if port.stale_response() {
         port.abandon(false);
@@ -462,7 +471,7 @@ mod tests {
         fn heading(&self) -> u16 {
             self.heading
         }
-        fn save(&self) -> Self::Saved {
+        fn save(&mut self) -> Self::Saved {
             (self.position, self.counter, self.animation)
         }
         fn restore(&mut self, saved: Self::Saved) {

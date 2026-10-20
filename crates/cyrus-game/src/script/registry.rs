@@ -21,6 +21,7 @@ pub(super) mod ground;
 pub(super) mod hazard;
 mod late;
 mod light;
+mod lineup;
 pub(super) mod model;
 pub(super) mod obstacle;
 pub(super) mod ordinary;
@@ -2425,6 +2426,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         invocation: cyrus_script::Invocation,
     ) -> Result<Option<CallResult>> {
         let kind = mode.kind();
+        if matches!(mode, super::tasks::NativeTaskMode::Script(_))
+            && super::tasks::NativeTasks::is_lineup_function(function)
+        {
+            return self.lineup_call(function, kind, arguments, invocation);
+        }
         let id = ScriptActorId {
             generation: self.generation,
             index: self.index,
@@ -2590,6 +2596,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 state,
                 outcome: &mut player_face_outcome,
             }),
+            lineup: None,
         };
         let result = match mode {
             super::tasks::NativeTaskMode::Script(kind) => actor.tasks.call(
@@ -4877,6 +4884,9 @@ impl Host for GameHost<'_, '_, '_, '_> {
             generation: self.generation,
             index: self.index,
         };
+        if self.registry.actors[self.index].tasks.is_lineup_task(token) {
+            return self.lineup_poll(token, arguments, invocation);
+        }
         let ambient = self.ambient_call();
         let player_dialogue = self.player_dialogue_call();
         let frame_wait = self.frame_wait_call();
@@ -5045,6 +5055,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                     state,
                     outcome: &mut player_face_outcome,
                 }),
+                lineup: None,
             },
         );
         self.finish_camera_update(result.is_ok())?;

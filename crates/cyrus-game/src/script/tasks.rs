@@ -89,6 +89,8 @@ pub(super) struct NativeServices<'a> {
     pub locomotion: Option<LocomotionCall<'a>>,
     pub camera: Option<CameraCall<'a>>,
     pub player_face: Option<PlayerFaceCall<'a>>,
+    /// The selected player's alignment owner, for the lineup natives.
+    pub lineup: Option<&'a mut (dyn super::lineup::LineupHost + 'a)>,
 }
 
 /// The selected player's state for `PlayerFaceObj`, read before the call.
@@ -465,6 +467,12 @@ enum Task {
     },
     /// `PlayerFaceObj`: turns the selected player toward the receiver.
     PlayerFace,
+    /// `PlayerPickupLineUp`: the pickup mover; `fallback` is its retained switch to the plain mover.
+    PickupLineUp {
+        fallback: bool,
+    },
+    /// `PlayerParallelLineUp`: the plain mover.
+    ParallelLineUp,
 }
 impl Task {
     fn complete(
@@ -963,6 +971,42 @@ impl Task {
                 };
                 input.angles[1] = (heading & 0x7ff) as u16;
                 elapsed >= duration.wrapping_sub(1)
+            }
+            Self::PickupLineUp { .. } | Self::ParallelLineUp => {
+                use super::lineup::{PickupState, pickup_mover, plain_mover};
+                let [angle, x_offset, z_offset] = arguments else {
+                    anyhow::bail!(
+                        "PlayerPickupLineUp and PlayerParallelLineUp take three arguments"
+                    );
+                };
+                let elapsed = invocation
+                    .elapsed
+                    .context("lineup requires elapsed input")?;
+                let port = services
+                    .lineup
+                    .context("lineup selected-player state unavailable")?;
+                let (position, heading) = port.reference()?;
+                let angle = (i32::from(heading) + angle.integer()?) & 0x7ff;
+                let target = [
+                    position[0].wrapping_add(x_offset.integer()?),
+                    position[1],
+                    position[2].wrapping_add(z_offset.integer()?),
+                ];
+                let result = match self {
+                    Self::PickupLineUp { fallback } => {
+                        let mut state = PickupState {
+                            fallback: *fallback,
+                        };
+                        let result = pickup_mover(&mut *port, &mut state, elapsed, angle, target);
+                        *fallback = state.fallback;
+                        result
+                    }
+                    _ => plain_mover(&mut *port, angle, target),
+                };
+                if let Some(error) = port.failure() {
+                    return Err(error);
+                }
+                result == 0
             }
             Self::PlayerFace => {
                 use super::alignment::{self, Facing};
@@ -2097,6 +2141,18 @@ impl NativeTasks {
                 "PlayerFaceObj requires task encoding"
             );
             Task::PlayerFace
+        } else if function.eq_ignore_ascii_case("PlayerPickupLineUp") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "PlayerPickupLineUp requires task encoding"
+            );
+            Task::PickupLineUp { fallback: false }
+        } else if function.eq_ignore_ascii_case("PlayerParallelLineUp") {
+            anyhow::ensure!(
+                kind == CallKind::Task,
+                "PlayerParallelLineUp requires task encoding"
+            );
+            Task::ParallelLineUp
         } else if function.eq_ignore_ascii_case("FacePlayer") {
             Task::FacePlayer
         } else if function.eq_ignore_ascii_case("FacePlayerInertia") {
@@ -2203,6 +2259,21 @@ impl NativeTasks {
         Ok(completed)
     }
     /// Whether `token` is a `PlayerFaceObj` continuation, which needs the selected player's state.
+    /// Whether `function` is a lineup native, which needs the selected player's alignment owner.
+    pub(super) fn is_lineup_function(function: &str) -> bool {
+        ["PlayerPickupLineUp", "PlayerParallelLineUp"]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+    }
+
+    /// Whether `token` is a lineup continuation.
+    pub(super) fn is_lineup_task(&self, token: u64) -> bool {
+        matches!(
+            self.tasks.get(&token),
+            Some(Task::PickupLineUp { .. } | Task::ParallelLineUp)
+        )
+    }
+
     pub(super) fn is_player_face_task(&self, token: u64) -> bool {
         matches!(self.tasks.get(&token), Some(Task::PlayerFace))
     }

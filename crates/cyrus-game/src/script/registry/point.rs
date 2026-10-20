@@ -284,7 +284,7 @@ impl ScriptWorld {
         Ok(distance.wrapping_sub(tolerance) <= threshold)
     }
 
-    fn admit_point_default(
+    pub(super) fn admit_point_default(
         &mut self,
         id: ScriptActorId,
         inputs: ScriptInputs<'_>,

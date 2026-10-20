@@ -3699,3 +3699,147 @@ fn synchronous_movement_ignores_task_identity_and_script_calls_keep_their_slots(
     assert_eq!(tasks.next, 1);
     assert_eq!(tasks.tasks.len(), 1);
 }
+
+/// A lineup owner that logs the helpers the movers call; the path check, facing and every other
+/// answer come from the fields.
+struct LineupLog {
+    reference: ([i32; 3], u16),
+    path_clear: bool,
+    log: Vec<String>,
+}
+
+impl crate::script::lineup::LineupPort for LineupLog {
+    fn stale_response(&self) -> bool {
+        false
+    }
+    fn level_roll(&mut self) {}
+    fn path_clear(&mut self, target: [i32; 3]) -> bool {
+        self.log.push(format!("path {target:?}"));
+        self.path_clear
+    }
+    fn face_point(&mut self, x: i32, z: i32) -> bool {
+        self.log.push(format!("face {x} {z}"));
+        true
+    }
+    fn arrival(&mut self, _: i32, _: i32) -> bool {
+        false
+    }
+    fn permitted(&mut self, _: i32, _: i32) -> bool {
+        false
+    }
+    fn step(&mut self, _: crate::script::alignment::CloseStep, _: i32, _: i32) -> bool {
+        true
+    }
+    fn turn_to(&mut self, heading: u16) -> bool {
+        self.log.push(format!("turn {heading}"));
+        true
+    }
+    fn heading(&self) -> u16 {
+        0
+    }
+    fn relative_bearing(&self, _: i32, _: i32) -> u16 {
+        0
+    }
+    fn default_animation(&mut self) -> bool {
+        true
+    }
+    fn set_called_flags(&mut self, _: bool) {}
+    fn abandon(&mut self, _: bool) {}
+}
+
+impl crate::script::lineup::LineupHost for LineupLog {
+    fn reference(&mut self) -> anyhow::Result<([i32; 3], u16)> {
+        Ok(self.reference)
+    }
+    fn failure(&mut self) -> Option<anyhow::Error> {
+        None
+    }
+}
+
+#[test]
+fn the_lineup_natives_target_the_receiver_with_unrotated_offsets_and_retain_the_fallback() {
+    let args = [
+        Argument::Integer(100),
+        Argument::Integer(-30),
+        Argument::Integer(40),
+    ];
+    let invocation = |elapsed| Invocation {
+        elapsed: Some(elapsed),
+        unpaused_tasks: 0,
+        unpaused_blocking_tasks: 0,
+    };
+    let mut owner = LineupLog {
+        reference: ([1000, 77, 2000], 2000),
+        path_clear: false,
+        log: vec![],
+    };
+    let mut tasks = NativeTasks::default();
+    // A blocked path at elapsed zero selects the plain mover for the rest of the task: with the
+    // player's heading 0 and the final heading (2000 + 100 + 1024) & 2047 = 1076, the turn target
+    // is (1076 + 1024) & 2047 = 52.
+    fn services(owner: &mut LineupLog) -> NativeServices<'_> {
+        NativeServices {
+            lineup: Some(owner),
+            ..Default::default()
+        }
+    }
+    let Some(CallResult::Pending(token)) = tasks
+        .call(
+            ("PlayerPickupLineUp", CallKind::Task),
+            &args,
+            invocation(0),
+            &mut None,
+            &mut None,
+            services(&mut owner),
+        )
+        .unwrap()
+    else {
+        panic!("a lineup task allocates a continuation")
+    };
+    assert_eq!(owner.log, ["path [970, 77, 2040]", "turn 52"]);
+    owner.log.clear();
+    // The fallback is retained: later polls do not test the path again.
+    owner.path_clear = true;
+    tasks
+        .poll(
+            token,
+            &args,
+            invocation(1),
+            &mut None,
+            &mut None,
+            services(&mut owner),
+        )
+        .unwrap();
+    assert_eq!(owner.log, ["turn 52"]);
+    // The retained fallback survives a snapshot; the contract names the native with three arguments.
+    let snapshot = serde_json::to_value(tasks.snapshot()).unwrap();
+    assert!(snapshot.to_string().contains("\"fallback\":true"));
+    // The parallel native always runs the plain mover.
+    owner.log.clear();
+    let mut parallel = NativeTasks::default();
+    parallel
+        .call(
+            ("PlayerParallelLineUp", CallKind::Task),
+            &args,
+            invocation(0),
+            &mut None,
+            &mut None,
+            services(&mut owner),
+        )
+        .unwrap();
+    assert_eq!(owner.log, ["turn 52"]);
+    // A clear path keeps the pickup mover: it faces the target position.
+    owner.log.clear();
+    let mut pickup = NativeTasks::default();
+    pickup
+        .call(
+            ("PlayerPickupLineUp", CallKind::Task),
+            &args,
+            invocation(0),
+            &mut None,
+            &mut None,
+            services(&mut owner),
+        )
+        .unwrap();
+    assert_eq!(owner.log, ["path [970, 77, 2040]", "face 970 2040"]);
+}

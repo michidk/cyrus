@@ -184,7 +184,7 @@ impl ScriptWorld {
         Ok(true)
     }
 
-    fn restore_ordinary_rollback(
+    pub(super) fn restore_ordinary_rollback(
         &mut self,
         id: ScriptActorId,
         snapshot: &OrdinaryRollbackSnapshot,
