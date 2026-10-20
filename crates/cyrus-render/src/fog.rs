@@ -7,7 +7,8 @@ pub use preparation::{
     SceneMaterialAssetsPlugin, prepare_scene_materials, validate_scene_materials,
 };
 pub use texture::{
-    TextureAnimations, TextureFrame, TexturePlaybackSnapshot, TextureSourcesSnapshot,
+    EffectDraw, EffectDrawView, TextureAnimations, TextureFrame, TexturePlaybackSnapshot,
+    TextureSourcesSnapshot,
 };
 
 use crate::camera::ViewCamera;

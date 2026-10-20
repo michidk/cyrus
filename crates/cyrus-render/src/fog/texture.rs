@@ -2,6 +2,7 @@
 pub(super) mod admission;
 mod checkpoint;
 mod effects;
+pub use effects::{EffectDraw, EffectDrawView};
 mod frames;
 pub use checkpoint::{TexturePlaybackSnapshot, TextureSourcesSnapshot};
 

@@ -414,9 +414,13 @@ production shader arithmetic. Full pixel parity remains unverified.
 inspection holds for matched captures. Holding a frame suppresses automatic
 requests for that image until resumed; selection preserves its deadline.
 World replacement clears the hold with the image timeline. Ordinary playback
-has no hold. Explicit gameplay frame requests remain unsupported. Installed effect images
-join the same prepared source census without advancing playback; source failures
-reject capture. Environmental effect drawing remains unavailable.
+has no hold. Installed effect images join the same prepared source census without
+advancing playback; source failures reject capture. Effect draw preparation tests
+source-image bounds before requesting frames and supplies geometry, brightness,
+alpha and flags. Explicit effect requests replace the shared current frame while
+preserving its deadline; automatic requests continue from that frame. These
+requests do not advance effect lifetime or apply draw-time movement.
+Production pool binding and environmental effect drawing remain unavailable.
 
 Terrain playback retains source and animated heights in engine units before
 converting each final height to mesh coordinates. `WaterPlayback::camera_terrain`

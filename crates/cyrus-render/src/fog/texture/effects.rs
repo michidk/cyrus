@@ -13,6 +13,35 @@ use std::collections::BTreeMap;
 pub(super) struct PreparedEffects {
     source: String,
     pub(super) bindings: BTreeMap<u16, Binding>,
+    metadata: BTreeMap<u16, DrawMetadata>,
+    ambient: Option<i16>,
+}
+
+struct DrawMetadata {
+    size: [u32; 2],
+    scale: f32,
+    flags: u16,
+    alpha: u16,
+}
+
+/// Camera-space admission inputs in original map units, with positive Z forward.
+/// X and Y have not yet been multiplied by the projection scales.
+pub struct EffectDrawView {
+    pub center: [f32; 3],
+    pub projection_scale: Vec2,
+    pub clipping: [f32; 2],
+}
+
+/// One bound-admitted billboard request, before polygon processing or raster coverage.
+/// Dimensions and radius are original map units; alpha is the original constant input.
+pub struct EffectDraw {
+    pub texture: Handle<Image>,
+    pub frame: usize,
+    pub half_extents: Vec2,
+    pub radius: f32,
+    pub brightness: u8,
+    pub alpha: u16,
+    pub flags: u16,
 }
 
 impl TextureAnimations {
@@ -97,8 +126,138 @@ impl TextureAnimations {
         self.effects = Some(PreparedEffects {
             source: identity,
             bindings,
+            metadata: source
+                .images
+                .iter()
+                .map(|(&id, image)| {
+                    (
+                        id,
+                        DrawMetadata {
+                            size: image.size,
+                            scale: f32::from(image.texture_scale) / 256.0,
+                            flags: image.flags,
+                            alpha: image.alpha,
+                        },
+                    )
+                })
+                .collect(),
+            ambient: source.ambient_brightness,
         });
         Ok(())
+    }
+
+    /// Request a prepared effect image only after its source bound is admitted.
+    /// `descriptor` and `lifetime_frame` are retained pool values. This does not
+    /// advance lifetime or apply the pool's draw-time movement.
+    /// Explicit selection replaces the shared current frame, preserving its deadline;
+    /// later automatic requests continue from it. Inspection holds suppress both paths.
+    /// Wrong environments, missing sources and invalid explicit frames reject without
+    /// changing playback. Bound rejection returns `None` without requesting an image.
+    /// Verified: preservation SOUP frame submission and texture-animation contracts.
+    pub fn request_effect_draw(
+        &mut self,
+        environment: AssetId<cyrus_assets::environment::Environment>,
+        descriptor: u32,
+        lifetime_frame: i32,
+        view: &EffectDrawView,
+        now: u32,
+    ) -> Result<Option<EffectDraw>> {
+        ensure!(
+            self.is_bound_to(environment),
+            "effect draw environment differs from prepared images"
+        );
+        ensure!(
+            self.effects_error.is_none(),
+            "effect image preparation failed: {:?}",
+            self.effects_error
+        );
+        ensure!(
+            view.center.into_iter().all(f32::is_finite)
+                && view.projection_scale.is_finite()
+                && view.projection_scale.min_element() > 0.0
+                && view.clipping.into_iter().all(f32::is_finite)
+                && view.clipping[0] >= 0.0
+                && view.clipping[1] > view.clipping[0],
+            "effect draw has invalid camera-space admission inputs"
+        );
+        let id = descriptor as u16;
+        if id == 0 || id == u16::MAX {
+            return Ok(None);
+        }
+        let prepared = self
+            .effects
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("effect images are not prepared"))?;
+        let binding = prepared
+            .bindings
+            .get(&id)
+            .ok_or_else(|| anyhow::anyhow!("effect texture {id}: prepared image absent"))?;
+        let metadata = &prepared.metadata[&id];
+        let alternate = descriptor & 0x20000 != 0;
+        let geometry_scale = if alternate {
+            0.5
+        } else if descriptor & 0x10000 != 0 {
+            90.0 / 256.0
+        } else {
+            1.0
+        };
+        let radius = crate::flat::bound_radius(metadata.size[0], metadata.size[1], metadata.scale)
+            * geometry_scale;
+        let [x, y, z] = view.center;
+        if super::admission::classify(
+            [x * view.projection_scale.x, y * view.projection_scale.y, z],
+            radius,
+            view.projection_scale,
+            view.clipping,
+        )
+        .is_none()
+        {
+            return Ok(None);
+        }
+        let brightness = if alternate {
+            prepared.ambient.ok_or_else(|| {
+                anyhow::anyhow!("effect texture {id}: world ambient brightness absent")
+            })? as u8
+        } else {
+            255
+        };
+        let explicit = if alternate {
+            let frame = usize::try_from(lifetime_frame).map_err(|_| {
+                anyhow::anyhow!("effect texture {id}: negative explicit frame {lifetime_frame}")
+            })?;
+            ensure!(
+                frame < binding.frames.len(),
+                "effect texture {id}: explicit frame {frame} outside 0..{}",
+                binding.frames.len()
+            );
+            Some(frame)
+        } else {
+            None
+        };
+        let state = self
+            .states
+            .get_mut(&binding.key)
+            .ok_or_else(|| anyhow::anyhow!("effect texture {id}: shared timeline absent"))?;
+        if !state.held {
+            if let Some(frame) = explicit {
+                state.playback.frame = Some(frame);
+            } else {
+                state.request(now);
+            }
+        }
+        let frame = state.playback.frame.unwrap_or(0);
+        Ok(Some(EffectDraw {
+            texture: binding.frames[frame].clone(),
+            frame,
+            half_extents: Vec2::new(metadata.size[0] as f32, metadata.size[1] as f32)
+                * 0.5
+                * metadata.scale
+                * geometry_scale,
+            radius,
+            brightness,
+            alpha: if alternate { 140 } else { metadata.alpha },
+            flags: if alternate { 0x201 } else { metadata.flags },
+        }))
     }
 
     /// Preparation failure for the current environment, before any pool is enabled.

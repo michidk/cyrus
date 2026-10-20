@@ -99,7 +99,7 @@ impl Description {
 }
 
 // Source-image diagonal, quantized before scaling, from preservation flat admission.
-fn bound_radius(width: u32, height: u32, scale: f32) -> f32 {
+pub(crate) fn bound_radius(width: u32, height: u32, scale: f32) -> f32 {
     let width = width as f32;
     let height = height as f32;
     let half_diagonal =
