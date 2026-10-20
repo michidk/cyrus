@@ -158,10 +158,10 @@ impl ScriptWorld {
                 }
                 continue;
             }
+            let selected_player = self.selected_player_index() == Some(id.index)
+                && inputs.player_controller.is_some();
             let actor = &mut self.actors[id.index];
             actor.sync_falling_motion();
-            let selected_player = matches!(actor.source, super::ScriptActorSource::Player)
-                && inputs.player_controller.is_some();
             if actor.placement().is_none() && !selected_player {
                 continue;
             }
@@ -901,7 +901,7 @@ fn initialize_entry(
                 continue;
             }
             let id = world.id(index)?;
-            if matches!(world.actors[index].source, super::ScriptActorSource::Player)
+            if world.selected_player_index() == Some(index)
                 && !world
                     .spatial
                     .as_ref()
