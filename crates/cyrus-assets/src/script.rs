@@ -430,6 +430,10 @@ pub struct Scripts {
     /// player-to-receiver distance above which `PlayerLineUp` approaches rather than aligns closely.
     #[serde(default)]
     pub lineup_distance: Option<i32>,
+    /// Animation frame count of every installed `TEXBSI` bank image, by bank number then
+    /// image index: what `FlatAnimate` and `FlatSetTexture` size their playback from.
+    #[serde(default)]
+    pub texture_frames: BTreeMap<u16, BTreeMap<u16, u16>>,
     /// Installed multiple-attacker angular spacing threshold, without scaling.
     pub non_engaged_spacing: Option<i32>,
     /// Installed misc sword_clank_1/2 effect IDs; omissions remain unavailable.
@@ -461,6 +465,7 @@ impl Scripts {
             self.version,
             (&self.combat_attacks, &self.combat_defenses, &self.weapons),
             (self.in_combat_threshold, self.lineup_distance),
+            &self.texture_frames,
             (
                 self.non_engaged_spacing,
                 self.node_timer,
@@ -482,7 +487,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 25,
+            self.version == 26,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

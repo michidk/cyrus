@@ -74,13 +74,14 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 25,
+        version: 26,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         lineup_distance: None,
+        texture_frames: Default::default(),
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
         node_timer: None,
@@ -3014,6 +3015,24 @@ fn light_controls_create_a_disabled_record_then_update_it_with_low_word_stores()
         run_native_world(&[("Light", &[1])]).is_err(),
         "wrong argument count"
     );
+}
+
+#[test]
+fn flat_controls_keep_a_per_actor_record_and_reject_uninstalled_textures() {
+    let flat = |calls: &[(&str, &[i32])]| run_native_world(calls).unwrap().actors()[0].flat_state();
+    assert_eq!(flat(&[("FlatOff", &[])]), None, "no record is created");
+    let shown = flat(&[("Flat", &[300]), ("FlatOffset", &[1, -2, 3])]).unwrap();
+    assert_eq!(shown["enabled"], true);
+    assert_eq!(shown["texture"], 300);
+    assert_eq!(shown["offset"], serde_json::json!([1, 65534, 3]));
+    let hidden = flat(&[("Flat", &[300]), ("FlatOff", &[])]).unwrap();
+    assert_eq!(hidden["enabled"], false);
+    assert_eq!(flat(&[("FlatLikeStatic", &[300])]).unwrap()["frame"], 65535);
+    let error = run_native_world(&[("FlatAnimate", &[(1 << 7) | 2, 0, 0])])
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("not installed"), "{error:#}");
+    assert!(run_native_world(&[("FlatOffset", &[1])]).is_err());
 }
 
 #[test]

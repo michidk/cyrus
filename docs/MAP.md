@@ -179,6 +179,7 @@ module where it is defined and regenerate.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/effects.rs` — World-local environmental effects follow preservation's SOUP pool and lifetime rules.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
+- `src/script/registry/flat.rs` — Retained actor flat records follow the original's per-actor flat sprite controls.
 - `src/script/registry/follow.rs` — Supporting actor motion runs after collision and before ordinary axis locks.
 - `src/script/registry/ground.rs` — Ordinary ground queries retain model ownership and selected-player fallback history.
 - `src/script/registry/hazard.rs` — The nonplayer step hazard test follows the original's destination surface classification.

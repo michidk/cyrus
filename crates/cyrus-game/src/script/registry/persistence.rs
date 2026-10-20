@@ -293,6 +293,8 @@ struct ActorSnapshot {
     collision: Option<CollisionSnapshot>,
     player_movement: Option<player::PlayerMovementSnapshot>,
     light: Option<super::light::LightState>,
+    #[serde(default)]
+    flat: Option<super::flat::FlatState>,
     tasks: super::super::NativeTasksSnapshot,
     native_commands: [super::super::NativeCommandState; 6],
     animation: Option<AnimationSnapshot>,
@@ -319,6 +321,7 @@ impl ActorSnapshot {
             control: actor.control.as_ref().map(ControlSnapshot::capture),
             surface: actor.surface,
             light: actor.light.clone(),
+            flat: actor.flat.clone(),
             model: actor.model.snapshot(),
             collision: actor.collision.as_ref().map(CollisionSnapshot::capture),
             player_movement: actor
@@ -475,6 +478,7 @@ impl ActorSnapshot {
             .transpose()?;
         actor.surface = self.surface;
         actor.light = self.light;
+        actor.flat = self.flat;
         actor.model = model::ModelState::from_snapshot(
             self.model,
             context.animations,

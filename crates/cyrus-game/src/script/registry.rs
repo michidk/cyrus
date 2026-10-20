@@ -20,6 +20,7 @@ mod counter;
 mod defence;
 mod dialogue;
 pub(super) mod falling;
+mod flat;
 mod follow;
 pub(super) mod ground;
 pub(super) mod hazard;
@@ -298,6 +299,7 @@ pub struct ScriptActor {
     collision: Option<ground::OrdinaryCollisionShape>,
     player_movement: Option<player::PlayerMovement>,
     light: Option<light::LightState>,
+    flat: Option<flat::FlatState>,
     pub(super) location_offsets: Vec<[i32; 3]>,
     tasks: super::tasks::NativeTasks,
     native_commands: [super::NativeCommandState; 6],
@@ -381,6 +383,7 @@ pub struct ScriptWorld {
     combat_defenses: Vec<cyrus_assets::script::combat::Defense>,
     in_combat_threshold: Option<i32>,
     lineup_distance: Option<i32>,
+    texture_frames: flat::TextureFrames,
     non_engaged_spacing: Option<i32>,
     combat_clank_effects: [Option<i32>; 2],
     node_timer: Option<i32>,
@@ -727,6 +730,7 @@ impl ScriptWorld {
             };
             ScriptActor {
                 light,
+                flat: None,
                 message_read: 0,
                 surface: (control.is_some()
                     || matches!(
@@ -856,6 +860,7 @@ impl ScriptWorld {
             combat_defenses: scripts.combat_defenses.clone(),
             in_combat_threshold: scripts.in_combat_threshold,
             lineup_distance: scripts.lineup_distance,
+            texture_frames: scripts.texture_frames.clone(),
             non_engaged_spacing: scripts.non_engaged_spacing,
             combat_clank_effects: scripts.combat_clank_effects,
             node_timer: scripts.node_timer,
@@ -3667,6 +3672,31 @@ impl Host for GameHost<'_, '_, '_, '_> {
             }
             return Ok(CallResult::Complete(0));
         }
+        if kind == CallKind::Function
+            && [
+                "Flat",
+                "FlatSetTexture",
+                "FlatOff",
+                "FlatOffset",
+                "FlatAnimate",
+                "FlatStop",
+                "FlatLikeStatic",
+            ]
+            .iter()
+            .any(|name| function.eq_ignore_ascii_case(name))
+        {
+            let values = arguments
+                .iter()
+                .map(|argument| argument.integer())
+                .collect::<Result<Vec<_>>>()?;
+            flat::call(
+                &mut self.registry.actors[self.index].flat,
+                function,
+                &values,
+                &self.registry.texture_frames,
+            )?;
+            return Ok(CallResult::Complete(0));
+        }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("LightOff") {
             anyhow::ensure!(arguments.is_empty(), "LightOff requires no arguments");
             let actor = &mut self.registry.actors[self.index];
@@ -5193,6 +5223,7 @@ mod fighting_tests {
         let actors: Vec<_> = (0..=positions.len())
             .map(|index| ScriptActor {
                 light: None,
+                flat: None,
                 message_read: 0,
                 source: ScriptActorSource::Map(Instance {
                     object_id: index as u32,
@@ -5277,6 +5308,7 @@ mod fighting_tests {
             combat_defenses: Vec::new(),
             in_combat_threshold: Some(threshold),
             lineup_distance: None,
+            texture_frames: Default::default(),
             non_engaged_spacing: None,
             combat_clank_effects: [None; 2],
             node_timer: None,
@@ -5343,6 +5375,7 @@ mod selector_tests {
     fn actor(source: ScriptActorSource) -> ScriptActor {
         ScriptActor {
             light: None,
+            flat: None,
             message_read: 0,
             source,
             runtime_identifier: None,

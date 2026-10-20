@@ -4,13 +4,14 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 25,
+        version: 26,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         lineup_distance: None,
+        texture_frames: Default::default(),
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
         node_timer: None,
@@ -636,7 +637,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 25);
+    assert_eq!(scripts.version, 26);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());

@@ -606,6 +606,7 @@ mod tests {
             collision: None,
             player_movement: None,
             light: None,
+            flat: None,
             location_offsets: vec![],
             tasks: Default::default(),
             native_commands: Default::default(),

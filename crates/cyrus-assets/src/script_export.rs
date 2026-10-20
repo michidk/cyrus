@@ -196,7 +196,7 @@ pub fn prepare_source(
         attributes: definition.attributes,
     };
     let mut scripts = Scripts {
-        version: 25,
+        version: 26,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
@@ -210,6 +210,7 @@ pub fn prepare_source(
             .game
             .lineup_distance
             .map(|value| value.wrapping_shl(8)),
+        texture_frames: texture_frames(source)?,
         node_timer: combat.as_ref().and_then(|combat| combat.misc.node_timer),
         non_engaged_spacing: combat
             .as_ref()
@@ -275,6 +276,39 @@ pub fn export(scripts: &Scripts, out: &Path) -> Result<()> {
     crate::native::publish(&path, &serde_json::to_vec(scripts)?)
         .with_context(|| format!("commit {}", path.display()))?;
     Ok(())
+}
+
+/// Frame counts of the first installed file for each `TEXBSI.<bank>` number.
+fn texture_frames(
+    source: &dyn crate::source::ReadAssets,
+) -> Result<BTreeMap<u16, BTreeMap<u16, u16>>> {
+    let mut banks = BTreeMap::new();
+    for file in &source.manifest().files {
+        let name = file
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        if let Some(bank) = name
+            .strip_prefix("TEXBSI.")
+            .and_then(|bank| bank.parse::<u16>().ok())
+        {
+            banks.entry(bank).or_insert(&file.path);
+        }
+    }
+    banks
+        .into_iter()
+        .map(|(bank, path)| {
+            let images = rgpre::import::bsi::parse_bsi_file(&source.read(path)?)
+                .with_context(|| format!("{path}: texture frame counts"))?
+                .images
+                .iter()
+                .map(|image| (image.image_index, image.frame_count))
+                .collect();
+            Ok((bank, images))
+        })
+        .collect()
 }
 
 fn player_distance_override(source: &dyn crate::source::ReadAssets) -> Result<bool> {

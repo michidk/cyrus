@@ -73,13 +73,14 @@ fn scripts(standalone: &[&str]) -> Scripts {
         actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
     }
     let mut result = Scripts {
-        version: 25,
+        version: 26,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         lineup_distance: None,
+        texture_frames: Default::default(),
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
         node_timer: None,

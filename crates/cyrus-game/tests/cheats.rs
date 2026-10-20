@@ -503,13 +503,14 @@ fn console_reads_live_flags_and_rejects_stale_world_definitions() {
 
     let mut app = console_app();
     let mut scripts = Scripts {
-        version: 25,
+        version: 26,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
         combat_defenses: vec![],
         in_combat_threshold: None,
         lineup_distance: None,
+        texture_frames: Default::default(),
         non_engaged_spacing: None,
         combat_clank_effects: [None; 2],
         node_timer: None,
