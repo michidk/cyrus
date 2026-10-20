@@ -26045,7 +26045,8 @@ fn player_looking_facing_and_arc_match_the_original_routines() {
     // Rows from the original routines in an emulator: function, receiver heading, player heading,
     // player offset X and Z, first and second argument (PlayerLooking takes only the second),
     // result.
-    let rows: Vec<(String, u16, u16, i32, i32, i32, i32, i32)> = serde_json::from_str(
+    type Row = (String, u16, u16, i32, i32, i32, i32, i32);
+    let rows: Vec<Row> = serde_json::from_str(
         r#"[
 ["looking",0,0,0,5000,0,100,0],
 ["looking",0,0,0,5000,256,200,0],
@@ -26377,7 +26378,8 @@ fn player_distance_natives_match_the_original_routines() {
     use cyrus_game::script::{PlayerQuery, QueryInputs};
     // Rows from the original routines in an emulator: function, receiver position, player offset
     // from it, result.
-    let rows: Vec<(String, [i32; 3], [i32; 3], i32)> = serde_json::from_str(
+    type Row = (String, [i32; 3], [i32; 3], i32);
+    let rows: Vec<Row> = serde_json::from_str(
         r#"[
 ["distance",[0,0,0],[0,0,0],0],
 ["distance",[50,-60,70],[0,0,0],0],
