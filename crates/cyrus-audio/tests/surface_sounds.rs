@@ -449,7 +449,7 @@ fn ordinary_and_animation_audio_drains_do_not_replay_the_same_cue() {
         let execute = world
             .resource::<cyrus_game::script::OrdinarySoundExecutor>()
             .0;
-        execute(world);
+        execute(world, cyrus_game::script::OrdinaryPhase::Simulation);
     }
     let (mut app, _) = fixture();
     app.init_resource::<cyrus_game::script::ScriptActors>()

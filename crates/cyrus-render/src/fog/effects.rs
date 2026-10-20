@@ -230,7 +230,7 @@ fn capture(
         crate::presentation_clock::PresentationClock::elapsed(presentation.as_deref(), &time);
     let Some(step) = clock
         .as_ref()
-        .and_then(|sample| sample.step(world.generation()))
+        .and_then(|sample| sample.presentation_step(world.generation()))
     else {
         textures.effect_clock.pause();
         return;

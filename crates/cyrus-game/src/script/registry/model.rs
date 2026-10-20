@@ -280,6 +280,7 @@ impl ScriptWorld {
         data: &Animations,
         camera: [i32; 3],
         inputs: super::ScriptInputs<'_>,
+        mut random: Option<&mut crate::random::EngineRandom>,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         self.require_model_identity(data)?;
@@ -302,7 +303,10 @@ impl ScriptWorld {
             .to_vec();
         for id in order {
             let actor = &self.actors[id.index];
-            if actor
+            if !matches!(
+                actor.source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ) && actor
                 .placement()
                 .is_none_or(|placement| placement.object_type != 1)
             {
@@ -318,7 +322,13 @@ impl ScriptWorld {
                 continue;
             }
             let refreshed = (|| -> Result<()> {
-                self.refresh_model_presentations(data, &[id])?;
+                self.refresh_model_presentations_with_health(
+                    data,
+                    &[id],
+                    Some(inputs),
+                    random.as_deref_mut(),
+                    Some(sounds),
+                )?;
                 let actor = &self.actors[id.index];
                 if actor.attributes[23] == 0
                     || actor
@@ -453,7 +463,7 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Prepare the selected standalone player's animated model owner without a
+    /// Prepare a standalone player role's animated model owner without a
     /// fictitious MPOB placement. Fresh animated players retain the allocator-zero
     /// collision metadata described in preservation's animation rules.
     /// Caller admission still owns presentation timing.
@@ -465,8 +475,11 @@ impl ScriptWorld {
         self.require_model_identity(data)?;
         let index = self.resolve(id)?;
         ensure!(
-            matches!(self.actors[index].source, super::ScriptActorSource::Player),
-            "world {} instance {index}: selected player model required",
+            matches!(
+                self.actors[index].source,
+                super::ScriptActorSource::Player | super::ScriptActorSource::AlternatePlayer
+            ),
+            "world {} instance {index}: standalone player model required",
             self.world
         );
         ensure!(
@@ -475,8 +488,11 @@ impl ScriptWorld {
             self.world
         );
         ensure!(
-            data.actor(self.actors[index].name())?["model_load_path"] == "animation_table",
-            "world {} selected player: animated model definition required",
+            matches!(
+                data.actor(self.actors[index].name())?["model_load_path"].as_str(),
+                Some("animation_table" | "none")
+            ),
+            "world {} standalone player: model path unsupported",
             self.world
         );
         self.actors[index].model.collision_flags = Some(0);
@@ -491,6 +507,17 @@ impl ScriptWorld {
         &mut self,
         data: &Animations,
         admitted: &[ScriptActorId],
+    ) -> Result<()> {
+        self.refresh_model_presentations_with_health(data, admitted, None, None, None)
+    }
+
+    fn refresh_model_presentations_with_health(
+        &mut self,
+        data: &Animations,
+        admitted: &[ScriptActorId],
+        inputs: Option<super::ScriptInputs<'_>>,
+        mut random: Option<&mut crate::random::EngineRandom>,
+        mut sounds: Option<&mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>>,
     ) -> Result<()> {
         self.require_model_identity(data)?;
         for &id in admitted {
@@ -511,14 +538,32 @@ impl ScriptWorld {
                 "world {} instance {index}: model resources not prepared",
                 self.world
             );
-            ensure!(
-                actor.attributes()[1] & 4 == 0
-                    || actor
-                        .surface
-                        .is_some_and(|surface| !(1..=5).contains(&surface) && surface != 11),
-                "world {} instance {index}: water-dependent model position owner unavailable",
-                self.world
-            );
+            let water_surface = if actor.attributes()[1] & 4 == 0 {
+                None
+            } else {
+                let surface = actor.surface.context("model surface unavailable")?;
+                matches!(surface, 1..=5 | 11).then_some(surface)
+            };
+            if let Some(surface) = water_surface {
+                ensure!(
+                    inputs.is_some(),
+                    "world {} instance {index}: water-dependent model position owner unavailable",
+                    self.world
+                );
+                ensure!(
+                    matches!(surface, 5 | 11),
+                    "world {} instance {index}: surface {} model displacement unavailable",
+                    self.world,
+                    surface
+                );
+                ensure!(
+                    actor.attributes()[26] == 0
+                        && self.spatial(id)?.parent.is_none()
+                        && self.spatial(id)?.linked_position.is_none(),
+                    "world {} instance {index}: attached water model position unavailable",
+                    self.world
+                );
+            }
             let static_radius = actor.model.static_radius;
             let path = data.actor(actor.name())?["model_load_path"].as_str();
             let animation = match path {
@@ -533,13 +578,11 @@ impl ScriptWorld {
                     let Some(frame) = self.animation_frame(id)? else {
                         continue;
                     };
-                    Some(
-                        if matches!(self.actors[index].source, super::ScriptActorSource::Player) {
-                            data.resolve_frame(self.actors[index].name(), frame)?
-                        } else {
-                            data.resolve_map_frame(index, frame)?
-                        },
-                    )
+                    Some(if self.actors[index].placement().is_none() {
+                        data.resolve_frame(self.actors[index].name(), frame)?
+                    } else {
+                        data.resolve_map_frame(index, frame)?
+                    })
                 }
                 path => anyhow::bail!(
                     "world {} instance {index}: model path {path:?} unsupported",
@@ -573,6 +616,81 @@ impl ScriptWorld {
                 radius,
                 animation,
             });
+            if let Some(surface) = water_surface {
+                let selected = self.selected_player_index() == Some(index);
+                let progress = if selected {
+                    self.globals
+                        .selected_health
+                        .as_ref()
+                        .and_then(|state| state.death())
+                        .context("model selected death progress unavailable")?
+                        .progress()
+                } else {
+                    0
+                };
+                // Publication precedes mode selection and fatal health; actor coordinates stay Q8.
+                self.actors[index]
+                    .model
+                    .current
+                    .as_mut()
+                    .expect("selected model")
+                    .position[1] = (pose.position[1] >> 8)
+                    .wrapping_add(64)
+                    .wrapping_add(progress as i32) as f32;
+                if selected && surface == 5 {
+                    self.set_model_death_mode_one()?;
+                }
+                let control = self.actors[index]
+                    .control
+                    .as_ref()
+                    .expect("validated control");
+                if control.queued_motion != 0
+                    || control.directional_state.iter().any(|state| state & 3 != 0)
+                {
+                    continue;
+                }
+                let inputs = inputs.expect("validated model health services");
+                let sounds = sounds
+                    .as_deref_mut()
+                    .context("model health sound executor unavailable")?;
+                if selected {
+                    self.apply_selected_health_command(
+                        id,
+                        -255,
+                        1,
+                        inputs,
+                        random.as_deref_mut(),
+                        sounds,
+                    )?;
+                } else {
+                    let combat_mode = self.actors[index]
+                        .control
+                        .as_ref()
+                        .and_then(|control| control.combat.as_ref())
+                        .is_some_and(|combat| combat.flags & 4 != 0);
+                    self.change_ordinary_health(
+                        id,
+                        -255,
+                        data,
+                        super::transition::ObstacleEnvironment {
+                            auto_grab: false,
+                            selected_player: self.selected_player(),
+                            item_system_ready: inputs
+                                .hud
+                                .context("model health inventory unavailable")?
+                                .inventory_ready()?,
+                            shell_execution: inputs
+                                .shell_execution
+                                .context("model health shell context unavailable")?,
+                            ticks: inputs
+                                .nominal_ticks
+                                .context("model health nominal ticks unavailable")?,
+                        },
+                        Some(combat_mode),
+                        sounds,
+                    )?;
+                }
+            }
         }
         Ok(())
     }

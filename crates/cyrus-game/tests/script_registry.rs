@@ -3480,6 +3480,14 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         role.attributes.insert("attr_23".into(), 1);
         scripts.actors.insert(name.into(), role);
     }
+    scripts.weapons.insert(
+        1,
+        weapon::Weapon {
+            hand_model: "LOGIC".into(),
+            hilt_model: "LOGIC".into(),
+            length: 17,
+        },
+    );
     scripts.content_id = scripts.content_identity().unwrap();
     let mut data = Animations {
         version: 2,
@@ -3507,7 +3515,7 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
             faces: vec![],
             corner_normals: vec![],
             encoding: "animated_i16".into(),
-            positions: vec![vec![]; 14],
+            positions: vec![vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]; 14],
             normals: vec![vec![]; 14],
         },
     );
@@ -3516,7 +3524,9 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     ]);
     for (name, effect) in [("CYRUS", 9), ("GREMLIN", 10)] {
         data.metadata["actors"].as_array_mut().unwrap().push(serde_json::json!({
-            "script_name":name,"raan_entries":[{"file_path":"LOGIC.3D","frame_count":14}],
+            "script_name":name,"model_load_path":"animation_table",
+            "raex":{"grip0":0,"grip1":1,"scabbard0":0,"scabbard1":1,"v_vertex":0,"v_size":0},
+            "raan_entries":[{"file_path":"LOGIC.3D","frame_count":14}],
             "animation_groups":[{"group_index":0,"anim_id":1,"anim_type":0,
                 "commands":[{"opcode":4,"sound_param":effect,"volume_shift":0},
                     {"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":2},{"opcode":2,"value":0}]}]
@@ -3637,6 +3647,15 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         });
     app.update();
     let snapshot = |app: &App| {
+        assert!(
+            !matches!(
+                app.world().resource::<cyrus_game::script::ScriptStatus>(),
+                cyrus_game::script::ScriptStatus::Failed { .. }
+            ),
+            "{:?}",
+            app.world().resource::<cyrus_game::script::ScriptStatus>()
+        );
+
         let actors = app.world().resource::<ScriptActors>();
         actors
             .current
@@ -3669,7 +3688,10 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     let mut initial_roles = role_snapshot(&app);
     assert_eq!(initial_roles["actors"][0]["attributes"][23], 1);
     assert_eq!(initial_roles["actors"][1]["attributes"][23], 1);
-    assert_eq!(initial_roles["actors"][0]["animation"]["frame"], 1);
+    assert_eq!(
+        initial_roles["actors"][0]["animation"]["frame"], 1,
+        "{initial_roles}"
+    );
     assert_eq!(initial_roles["actors"][1]["animation"]["frame"], 1);
     let presented = app
         .world()
@@ -3692,12 +3714,9 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
     assert_eq!(logical_pose.angles, [0, 0, 0]);
     assert_eq!(world.globals().lockout(), Some(0));
     assert_eq!(world.globals().player_idle_counter(), Some(0));
-    assert!(
-        world.actors()[3]
-            .control_state()
-            .unwrap()
-            .object_update_excluded
-    );
+    let alternate = world.actors()[3].control_state().unwrap();
+    assert!(alternate.hidden);
+    assert!(!alternate.object_update_excluded);
     let cues: Vec<_> = app
         .world_mut()
         .resource_mut::<Messages<cyrus_world::sound::SoundCue>>()
@@ -3767,6 +3786,14 @@ fn automatic_world_updates_advance_authored_actors_and_pause_in_menu() {
         .current
         .as_ref()
         .unwrap();
+    assert!(
+        !matches!(
+            app.world().resource::<cyrus_game::script::ScriptStatus>(),
+            cyrus_game::script::ScriptStatus::Failed { .. }
+        ),
+        "{:?}",
+        app.world().resource::<cyrus_game::script::ScriptStatus>()
+    );
     assert_eq!(logical_world.globals().player_idle_counter(), Some(1));
     assert_eq!(
         logical_world
@@ -5122,6 +5149,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             &data,
             [0; 3],
             cyrus_game::script::ScriptInputs::default(),
+            None,
             &mut |_, _| Ok(()),
         )
         .unwrap();
@@ -5141,6 +5169,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             &data,
             [0; 3],
             cyrus_game::script::ScriptInputs::default(),
+            None,
             &mut |_, _| Ok(()),
         )
         .unwrap();
@@ -5151,6 +5180,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             &data,
             [256; 3],
             cyrus_game::script::ScriptInputs::default(),
+            None,
             &mut |_, _| Ok(()),
         )
         .unwrap();
@@ -5169,6 +5199,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             &data,
             [256; 3],
             cyrus_game::script::ScriptInputs::default(),
+            None,
             &mut |_, _| Ok(()),
         )
         .unwrap();
@@ -5178,6 +5209,7 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
             &data,
             [0; 3],
             cyrus_game::script::ScriptInputs::default(),
+            None,
             &mut |_, _| Ok(()),
         )
         .unwrap();
@@ -12092,6 +12124,33 @@ fn keyboard_walk_runs_through_ordinary_scheduler_and_projects_release() {
     assert!(app.world().resource::<PlayerInput>().forward);
     let moving = position(&app);
     assert!(moving[2] > initial[2], "{initial:?} -> {moving:?}");
+    let actors = app.world().resource::<ScriptActors>();
+    let world = actors.current.as_ref().unwrap();
+    assert_eq!(
+        world
+            .model_presentation(player_id)
+            .unwrap()
+            .unwrap()
+            .position,
+        initial.map(|value| (value >> 8) as f32),
+        "model preparation must capture the position before ordinary movement"
+    );
+    let alternate = world
+        .actors()
+        .iter()
+        .position(|actor| {
+            matches!(
+                actor.source,
+                cyrus_game::script::ScriptActorSource::AlternatePlayer
+            )
+        })
+        .unwrap();
+    assert!(
+        world
+            .model_presentation(world.id(alternate).unwrap())
+            .unwrap()
+            .is_none()
+    );
     let player = app
         .world_mut()
         .query_filtered::<Entity, With<Player>>()
@@ -27038,3 +27097,124 @@ fn a_receivers_lineup_natives_walk_the_selected_player_onto_the_target() {
 
 #[path = "script_registry/effects.rs"]
 mod environmental_effect_tests;
+
+#[test]
+fn automatic_hazard_models_publish_displacement_before_selected_death() {
+    use cyrus_game::script::{ScriptActorSource, ScriptHud, ScriptInputs, ScriptStage};
+    for (surface, queued, directions) in [
+        (5, 0, [0, 0]),
+        (11, 0, [0, 0]),
+        (5, 1, [0, 0]),
+        (11, 0, [1, 0]),
+        (5, 0, [0, 2]),
+        (11, 0, [128, 128]),
+    ] {
+        let (scripts, mut world, mut data, scene) = player_walking_fixture_with(|scripts| {
+            scripts.definition.attributes[105] = "skip_death_animation".into();
+            scripts
+                .actors
+                .get_mut("CYRUS")
+                .unwrap()
+                .attributes
+                .insert("skip_death_animation".into(), 1);
+        });
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        if queued != 0 || directions != [0, 0] {
+            world = replace_health_test_animation(world, &scripts, &mut data, index, 0, |saved| {
+                saved["actors"][index]["control"]["queued_motion"] = queued.into();
+                saved["actors"][index]["control"]["directional_state"] =
+                    serde_json::json!(directions);
+            });
+        }
+        let player = world.id(index).unwrap();
+        world
+            .advance(
+                player,
+                ScriptStage::Animation,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        let hud = ScriptHud::default();
+        let mut random = cyrus_game::random::EngineRandom::from_state(42);
+        world
+            .apply_selected_contact_health(
+                player,
+                50,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        // The ordinary script wrapper retains the source used by later model health.
+        world
+            .advance(
+                world.id(0).unwrap(),
+                ScriptStage::OrdinaryMain,
+                ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        world
+            .prepare_model_admission(&Default::default(), scene.collision.placements.len())
+            .unwrap();
+        world.set_actor_surface(player, surface).unwrap();
+        let logical = world.spatial(player).unwrap().local.position;
+        world
+            .refresh_automatic_models(
+                &data,
+                logical,
+                ScriptInputs {
+                    hud: Some(&hud),
+                    shell_execution: Some(false),
+                    death_suppressed: Some(false),
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                Some(&mut random),
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert!(
+            world.actors()[index].failure().is_none(),
+            "{:?}",
+            world.actors()[index].failure()
+        );
+        assert_eq!(world.spatial(player).unwrap().local.position, logical);
+        assert_eq!(
+            world.model_presentation(player).unwrap().unwrap().position[1],
+            ((logical[1] >> 8) + 64) as f32
+        );
+        let guarded = queued != 0 || directions.iter().any(|value| value & 3 != 0);
+        assert_eq!(
+            world.actors()[index].attributes()[3],
+            if guarded { 50 } else { 0 }
+        );
+        let health = world.globals().selected_health().unwrap();
+        assert_eq!(health.hit_inhibited(), !guarded);
+        assert_eq!(
+            health.death().unwrap().mode(),
+            if surface == 5 { 1 } else { 0 }
+        );
+    }
+}

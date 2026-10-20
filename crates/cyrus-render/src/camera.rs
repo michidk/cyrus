@@ -185,6 +185,7 @@ impl Plugin for CameraPlugin {
             .add_systems(
                 Update,
                 script_view
+                    .before(cyrus_game::script::ModelPreparation)
                     .after(follow_player)
                     .before(cyrus_game::script::OrdinaryUpdates)
                     .run_if(in_state(AppState::InGame)),

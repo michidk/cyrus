@@ -416,14 +416,16 @@ pub(super) fn play_audio(world: &mut World) {
     }
 }
 
-pub(super) fn execute_ordinary(world: &mut World) {
+pub(super) fn execute_ordinary(world: &mut World, phase: cyrus_game::script::OrdinaryPhase) {
     play_audio(world);
-    if let Err(error) = world.run_system_cached(scoped_ordinary) {
+    if let Err(error) = world.run_system_cached_with(scoped_ordinary, phase) {
         world
             .resource_mut::<cyrus_game::script::ScriptActors>()
             .report_runtime_error(format!("ordinary audio host: {error}"));
     }
-    if let Err(error) = world.run_system_cached(finish_ordinary) {
+    if phase == cyrus_game::script::OrdinaryPhase::Simulation
+        && let Err(error) = world.run_system_cached(finish_ordinary)
+    {
         world
             .resource_mut::<cyrus_game::script::ScriptActors>()
             .report_runtime_error(format!("ordinary dialogue host: {error}"));
@@ -750,9 +752,12 @@ impl ScriptSounds<'_, '_> {
     /// Run ordinary game stages with a prepared RTX cache and the same shared
     /// channels used by ambient effects. Pending preparation retains the requesting task;
     /// missing reset ownership remains explicit rather than defaulting to false.
+    // Each borrowed service remains owned by its host during either game phase.
+    #[allow(clippy::too_many_arguments)]
     pub fn run_ordinary_with_dialogue(
         &mut self,
         context: cyrus_game::script::OrdinaryContext,
+        phase: cyrus_game::script::OrdinaryPhase,
         cache: &mut cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
         hud: &cyrus_assets::hud::HudAsset,
         read: &mut dyn FnMut([u8; 4]) -> anyhow::Result<Poll<super::dialogue::DialogueClip>>,
@@ -771,6 +776,7 @@ impl ScriptSounds<'_, '_> {
         };
         cyrus_game::script::run_ordinary(
             context,
+            phase,
             Some(&ambient),
             sound_reset,
             Some(&source),
@@ -1213,6 +1219,7 @@ impl cyrus_world::sound::AmbientSoundDriver for DialogueAmbient<'_, '_, '_, '_> 
 #[derive(Resource, Default)]
 pub struct RuntimeDialogue {
     ordinary_completed: bool,
+    sound_reset: Option<bool>,
     generation: Option<u64>,
     hud: Option<Handle<cyrus_assets::hud::HudAsset>>,
     cache: cyrus_assets::sound::DialogueCache<super::dialogue::DialogueClip>,
@@ -1231,12 +1238,15 @@ struct DialogueAssets<'w> {
 }
 
 fn scoped_ordinary(
+    In(phase): In<cyrus_game::script::OrdinaryPhase>,
     mut context: cyrus_game::script::OrdinaryContext,
     mut sounds: ScriptSounds,
     mut dialogue: DialogueAssets,
 ) {
     dialogue.runtime.ordinary_completed = false;
-    if !context.is_running() {
+    if !context.is_running()
+        || (phase == cyrus_game::script::OrdinaryPhase::Simulation && !context.models_prepared())
+    {
         return;
     }
     let generation = context.generation();
@@ -1247,6 +1257,7 @@ fn scoped_ordinary(
     ) {
         let RuntimeDialogue {
             ordinary_completed,
+            sound_reset,
             generation: prepared_generation,
             hud,
             cache,
@@ -1319,28 +1330,39 @@ fn scoped_ordinary(
         if !ready {
             return;
         }
-        let reset = context.with_world_services(|world, ticks| {
-            world.with_sound_maintenance(|world, maintenance| {
-                sounds.maintain_sound(maintenance, ticks, world, cache)
-            })
-        });
-        let Some(reset) = reset else {
-            return;
-        };
-        let reset = match reset {
-            Ok(reset) => reset,
-            Err(error) => {
-                context.report_error(format!("ordinary sound maintenance: {error:#}"));
+        if phase == cyrus_game::script::OrdinaryPhase::ModelPresentation {
+            let reset = context.with_world_services(|world, ticks| {
+                world.with_sound_maintenance(|world, maintenance| {
+                    sounds.maintain_sound(maintenance, ticks, world, cache)
+                })
+            });
+            let Some(reset) = reset else {
                 return;
-            }
-        };
-        *ordinary_completed = true;
-        sounds.run_ordinary_with_dialogue(context, cache, hud, &mut read, Some(reset), taunts);
+            };
+            let reset = match reset {
+                Ok(reset) => reset,
+                Err(error) => {
+                    context.report_error(format!("ordinary sound maintenance: {error:#}"));
+                    return;
+                }
+            };
+            *sound_reset = Some(reset);
+        }
+        *ordinary_completed = phase == cyrus_game::script::OrdinaryPhase::Simulation;
+        sounds.run_ordinary_with_dialogue(
+            context,
+            phase,
+            cache,
+            hud,
+            &mut read,
+            *sound_reset,
+            taunts,
+        );
     } else {
         // Reset ownership remains with game maintenance; absent ownership is not
         // replaced by an assumed false flag.
         sounds.with_driver(generation, |driver, emit| {
-            cyrus_game::script::run_ordinary(context, Some(driver), None, None, None, emit);
+            cyrus_game::script::run_ordinary(context, phase, Some(driver), None, None, None, emit);
         });
     }
 }
@@ -2260,6 +2282,7 @@ impl RuntimeDialogue {
         };
         Ok(Self {
             ordinary_completed: saved.ordinary_completed,
+            sound_reset: None,
             generation: saved
                 .generation
                 .map(|old| bindings.generation(old))

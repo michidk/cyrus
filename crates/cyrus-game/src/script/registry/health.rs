@@ -132,6 +132,16 @@ impl GameplayGlobals {
 }
 
 impl ScriptWorld {
+    pub(super) fn set_model_death_mode_one(&mut self) -> Result<()> {
+        self.globals
+            .selected_health
+            .as_mut()
+            .and_then(|health| health.death.as_mut())
+            .context("model selected death mode unavailable")?
+            .mode = 1;
+        Ok(())
+    }
+
     /// Reset the selected receiver's ledge action after its damage animation starts.
     /// Support clearing precedes transition admission; blocked transitions retain
     /// state 17 and clear directional state. Follows preservation's SOUP reset rule.
@@ -595,6 +605,35 @@ impl ScriptWorld {
             .wrapping_add(height.wrapping_mul(256))
             .wrapping_add(1536);
         self.spawn_death_effect(descriptor, point)
+    }
+
+    /// Selected `AdjustHealth` routing, shared by native commands and model hazards.
+    /// Early replenish feedback precedes inhibition; nonzero modes retain the native source.
+    pub(super) fn apply_selected_health_command(
+        &mut self,
+        id: ScriptActorId,
+        change: i32,
+        mode: i32,
+        inputs: ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        inputs
+            .hud
+            .context("AdjustHealth: selected-player HUD owner unavailable")?
+            .request_replenish_health_feedback();
+        if mode == 0 {
+            self.apply_selected_additive_health(id, change, inputs, random, sounds)
+        } else {
+            self.apply_selected_death_health(
+                id,
+                change,
+                Some(self.globals.native_source),
+                inputs,
+                random,
+                sounds,
+            )
+        }
     }
 
     /// Death-owning health publishes displayed health before notifications. A missing

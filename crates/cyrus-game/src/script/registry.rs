@@ -1779,7 +1779,7 @@ impl ScriptWorld {
                         .control
                         .as_mut()
                         .expect("player role has allocation state")
-                        .object_update_excluded = true;
+                        .hidden = true;
                 }
                 Ok(())
             }
@@ -4042,47 +4042,29 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .selected_player()
                 .is_some_and(|player| player.index == self.index);
             if selected {
-                self.inputs
-                    .hud
-                    .with_context(|| format!("{function}: selected-player HUD owner unavailable"))?
-                    .request_replenish_health_feedback();
                 if !set {
-                    if arguments[1].integer()? != 0 {
-                        let id = self.registry.id(self.index)?;
-                        let source = self.registry.globals.native_source;
-                        let sounds = &mut self.sounds;
-                        self.registry.apply_selected_death_health(
-                            id,
-                            arguments[0].integer()?,
-                            Some(source),
-                            self.inputs,
-                            self.random.as_deref_mut(),
-                            &mut |actor, sound| {
-                                sounds
-                                    .as_deref_mut()
-                                    .context("selected death sound executor unavailable")?(
-                                    actor, sound,
-                                )
-                            },
-                        )?;
-                        return Ok(CallResult::Complete(0));
-                    }
                     let id = self.registry.id(self.index)?;
                     let sounds = &mut self.sounds;
-                    self.registry.apply_selected_additive_health(
+                    self.registry.apply_selected_health_command(
                         id,
                         arguments[0].integer()?,
+                        arguments[1].integer()?,
                         self.inputs,
                         self.random.as_deref_mut(),
                         &mut |actor, sound| {
-                            let executor = sounds
+                            sounds
                                 .as_deref_mut()
-                                .context("selected health sound executor unavailable")?;
-                            executor(actor, sound)
+                                .context("selected health sound executor unavailable")?(
+                                actor, sound,
+                            )
                         },
                     )?;
                     return Ok(CallResult::Complete(0));
                 }
+                self.inputs
+                    .hud
+                    .with_context(|| format!("{function}: selected-player HUD owner unavailable"))?
+                    .request_replenish_health_feedback();
             }
             let attributes = &mut self.registry.actors[self.index].attributes;
             // Generic admission follows the native selected-player feedback update.

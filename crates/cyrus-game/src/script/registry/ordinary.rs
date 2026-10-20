@@ -18,15 +18,34 @@ pub struct ScriptView {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OrdinaryUpdates;
 
+/// Model selection/positioning precedes scene submission and ordinary simulation.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ModelPreparation;
+
+/// Both phases borrow the same synchronous host services; only simulation advances actors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OrdinaryPhase {
+    ModelPresentation,
+    Simulation,
+}
+
 /// Timing admitted for this host update, removed while ordinary world work is paused.
 /// A restored or otherwise changed SimulationClock alone is not a sampled update.
 #[derive(Resource)]
 pub struct WorldClockSample {
     generation: u64,
     step: ClockStep,
+    models_prepared: bool,
 }
 impl WorldClockSample {
     /// Current update timing only when it belongs to the supplied logical generation.
+    /// Submission is admitted only after this sample's model services complete.
+    pub fn presentation_step(&self, generation: u64) -> Option<ClockStep> {
+        self.models_prepared
+            .then(|| self.step(generation))
+            .flatten()
+    }
+
     pub fn step(&self, generation: u64) -> Option<ClockStep> {
         (self.generation == generation).then_some(self.step)
     }
@@ -500,6 +519,7 @@ pub(crate) fn sample_clock(
             commands.insert_resource(WorldClockSample {
                 generation: actors.current.as_ref().unwrap().generation(),
                 step: clock.step(),
+                models_prepared: false,
             });
         }
     }
@@ -517,7 +537,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     scripts: Option<Res<'w, Assets<cyrus_assets::script::Scripts>>>,
     scene_request: Option<Res<'w, crate::player::data::PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<crate::player::data::PlayerScene>>>,
-    sample: Option<Res<'w, WorldClockSample>>,
+    sample: Option<ResMut<'w, WorldClockSample>>,
     cheats: Option<Res<'w, crate::cheats::Cheats>>,
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, crate::logbook::LogbookScreen>>,
@@ -527,7 +547,7 @@ pub(crate) struct OrdinaryAssets<'w> {
 /// Optional host execution adapter. The game retains ordinary stage ownership;
 /// the host lends synchronous services for the duration of this invocation.
 #[derive(Resource)]
-pub struct OrdinarySoundExecutor(pub fn(&mut World));
+pub struct OrdinarySoundExecutor(pub fn(&mut World, OrdinaryPhase));
 
 /// Scheduler inputs borrowed for one ordinary invocation. Presentation hosts may
 /// lend an audio driver without retaining game state or introducing another VM.
@@ -706,6 +726,17 @@ impl OrdinaryContext<'_, '_> {
         Some(update(world, self.clock.as_ref()?.step().nominal_ticks))
     }
 
+    /// A simulation invocation cannot bypass this update's completed model phase.
+    pub fn models_prepared(&self) -> bool {
+        self.generation().is_some_and(|generation| {
+            self.prepared
+                .sample
+                .as_ref()
+                .and_then(|sample| sample.presentation_step(generation))
+                .is_some()
+        })
+    }
+
     /// Retain a contextual host failure and stop automatic world updates.
     pub fn report_error(&mut self, error: String) {
         self.actors.report_runtime_error(error);
@@ -719,7 +750,7 @@ impl OrdinaryContext<'_, '_> {
             .as_ref()
             .into_iter()
             .flat_map(|world| world.actors.iter())
-            .filter(|actor| actor.placement().is_some())
+            .filter(|actor| actor.control.is_some())
             .flat_map(|actor| &actor.combat_taunts)
             .filter(|taunt| taunt.label != [0; 4])
             .map(|taunt| taunt.label)
@@ -734,17 +765,29 @@ impl OrdinaryContext<'_, '_> {
     }
 }
 
+pub(crate) fn prepare_models(world: &mut World) {
+    execute_phase(world, OrdinaryPhase::ModelPresentation);
+}
+
 pub(crate) fn step(world: &mut World) {
+    execute_phase(world, OrdinaryPhase::Simulation);
+}
+
+fn execute_phase(world: &mut World, phase: OrdinaryPhase) {
     if let Some(executor) = world.get_resource::<OrdinarySoundExecutor>() {
         let execute = executor.0;
-        execute(world);
-    } else if let Err(error) = world.run_system_cached(queued_step) {
+        execute(world, phase);
+    } else if let Err(error) = world.run_system_cached_with(queued_step, phase) {
         world.resource_mut::<ScriptActors>().error = Some(format!("ordinary scheduler: {error}"));
     }
 }
 
-fn queued_step(context: OrdinaryContext, mut sounds: Option<ResMut<Messages<SoundCue>>>) {
-    run_ordinary(context, None, None, None, None, &mut |cue| {
+fn queued_step(
+    In(phase): In<OrdinaryPhase>,
+    context: OrdinaryContext,
+    mut sounds: Option<ResMut<Messages<SoundCue>>>,
+) {
+    run_ordinary(context, phase, None, None, None, None, &mut |cue| {
         let sounds = sounds
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("ordinary sound consumer unavailable"))?;
@@ -857,6 +900,14 @@ fn initialize_entry(
                     )
                 })?;
             }
+            if !world.actors[index].model.prepared
+                && world.actors[index]
+                    .control
+                    .as_ref()
+                    .is_some_and(|control| !control.hidden && !control.object_update_excluded)
+            {
+                world.prepare_player_model_resources(id, data)?;
+            }
         }
     }
     Ok(())
@@ -866,6 +917,7 @@ fn initialize_entry(
 /// reset state remains unsupported; a host must not substitute a guessed flag.
 pub fn run_ordinary(
     context: OrdinaryContext,
+    phase: OrdinaryPhase,
     ambient_sound: Option<&dyn cyrus_world::sound::AmbientSoundDriver>,
     sound_reset: Option<bool>,
     dialogue_source: Option<&dyn super::super::DialogueSource>,
@@ -898,7 +950,7 @@ pub fn run_ordinary(
         scripts: _,
         scene_request,
         scenes,
-        sample,
+        mut sample,
         cheats,
         console,
         logbook,
@@ -929,57 +981,75 @@ pub fn run_ordinary(
     let Some(world) = actors.current.as_mut() else {
         return;
     };
-    if sample.is_none_or(|sample| sample.generation != world.generation()) {
+    if sample
+        .as_ref()
+        .is_none_or(|sample| sample.generation != world.generation())
+    {
         return;
     }
     if !world.model_resources_prepared() || world.model_admission.is_none() {
         return;
     }
     let timing = clock.step();
-    // Ordinary world scheduling runs outside the separate shell-script context.
-    if let Err(error) = world.flush_map_updates(view.position, false) {
-        actors.error = Some(format!("automatic deferred movement: {error:#}"));
-        return;
-    }
     let mut send_sound = |actor, sound| send_actor_sound(actor, sound, &request.0, &bindings, emit);
-    let preparation = (|| -> anyhow::Result<()> {
-        initialize_entry(
-            world,
-            data,
-            timing.nominal_ticks,
-            players.single().ok(),
-            entry.as_deref().copied(),
-            &mut send_sound,
-        )?;
-        if players.single().is_ok()
-            && let Some(hud) = hud.as_ref()
-            && let Some(index) = world.selected_player_index()
-        {
-            world.check_player_weapon(
-                world.id(index)?,
-                hud,
-                false,
+    if phase == OrdinaryPhase::ModelPresentation {
+        // Ordinary world scheduling runs outside the separate shell-script context.
+        if let Err(error) = world.flush_map_updates(view.position, false) {
+            actors.error = Some(format!("automatic deferred movement: {error:#}"));
+            return;
+        }
+        let preparation = (|| -> anyhow::Result<()> {
+            initialize_entry(
+                world,
+                data,
                 timing.nominal_ticks,
+                players.single().ok(),
+                entry.as_deref().copied(),
                 &mut send_sound,
             )?;
+            if players.single().is_ok()
+                && let Some(hud) = hud.as_ref()
+                && let Some(index) = world.selected_player_index()
+            {
+                world.check_player_weapon(
+                    world.id(index)?,
+                    hud,
+                    false,
+                    timing.nominal_ticks,
+                    &mut send_sound,
+                )?;
+            }
+            world.refresh_automatic_models(
+                data,
+                view.position,
+                ScriptInputs {
+                    hud: hud.as_deref(),
+                    shell_execution: Some(false),
+                    death_suppressed: cheats
+                        .as_ref()
+                        .and_then(|cheats| cheats.death_suppressed().ok()),
+                    nominal_ticks: Some(timing.nominal_ticks),
+                    frame_scale: Some(timing.frame_scale),
+                    dialogue_source,
+                    combat_taunts,
+                    sound_reset,
+                    ..Default::default()
+                },
+                Some(&mut random),
+                &mut send_sound,
+            )
+        })();
+        if let Err(error) = preparation {
+            actors.error = Some(format!("automatic model presentation: {error:#}"));
+            return;
         }
-        world.refresh_automatic_models(
-            data,
-            view.position,
-            ScriptInputs {
-                hud: hud.as_deref(),
-                shell_execution: Some(false),
-                death_suppressed: cheats
-                    .as_ref()
-                    .and_then(|cheats| cheats.death_suppressed().ok()),
-                nominal_ticks: Some(timing.nominal_ticks),
-                ..Default::default()
-            },
-            &mut send_sound,
-        )
-    })();
-    if let Err(error) = preparation {
-        actors.error = Some(format!("automatic model presentation: {error:#}"));
+        sample
+            .as_deref_mut()
+            .expect("admitted clock sample")
+            .models_prepared = true;
+        return;
+    }
+    if sample.as_ref().is_none_or(|sample| !sample.models_prepared) {
         return;
     }
     let player_query = (|| -> anyhow::Result<_> {

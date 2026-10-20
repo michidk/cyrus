@@ -22,6 +22,13 @@
 //! does not establish automatic scheduler admission or complete gameplay support.
 //! Missing required ownership and unsupported branches return contextual errors.
 //!
+//! [`ModelPreparation`] captures model geometry and stored positions before
+//! [`SceneSubmission`] and [`OrdinaryUpdates`]. Both [`OrdinaryPhase`] calls borrow
+//! the same host services; only simulation advances ordinary actors. Effect hosts
+//! use [`WorldClockSample::presentation_step`] so pending model preparation cannot
+//! admit an effect update. Surfaces 5 and 11 support model-only displacement and
+//! fatal health routing; other water displacement paths remain unsupported.
+//!
 //! Normal interpreter entry assigns the session native source before entry/task
 //! admission. Alternate entry retains it. Native strings use that source's program,
 //! while routed locals and properties remain receiver-owned. Snapshots rebind the
@@ -145,8 +152,8 @@ mod playback;
 mod presentation;
 mod registry;
 pub use registry::ordinary::{
-    OrdinaryContext, OrdinaryInputs, OrdinarySoundExecutor, OrdinaryUpdates, ScriptView,
-    WorldClockSample, run_ordinary,
+    ModelPreparation, OrdinaryContext, OrdinaryInputs, OrdinaryPhase, OrdinarySoundExecutor,
+    OrdinaryUpdates, ScriptView, WorldClockSample, run_ordinary,
 };
 mod sound;
 mod spatial;
@@ -193,7 +200,7 @@ impl Plugin for ScriptPlugin {
         app.configure_sets(
             Update,
             SceneSubmission
-                .after(registry::ordinary::sample_clock)
+                .after(ModelPreparation)
                 .before(crate::player::runtime::step)
                 .before(OrdinaryUpdates),
         );
@@ -241,6 +248,13 @@ impl Plugin for ScriptPlugin {
             )
             .add_systems(
                 Update,
+                registry::ordinary::prepare_models
+                    .in_set(ModelPreparation)
+                    .after(registry::ordinary::sample_clock)
+                    .after(presentation::bind_scene),
+            )
+            .add_systems(
+                Update,
                 registry::ordinary::step
                     .in_set(OrdinaryUpdates)
                     .after(crate::player::runtime::step)
@@ -252,12 +266,18 @@ impl Plugin for ScriptPlugin {
             .add_systems(Last, world_request::consume.in_set(WorldLoopExit))
             .add_systems(
                 Update,
-                (presentation::bind_scene, presentation::apply)
-                    .chain()
-                    .before(cyrus_world::animation::AnimationSystems)
-                    .after(crate::player::runtime::step)
+                presentation::bind_scene
+                    .before(ModelPreparation)
                     .after(registry::prepare)
                     .after(registry::clear_unprepared)
+                    .run_if(resource_exists::<cyrus_world::animation::AnimationRequest>),
+            )
+            .add_systems(
+                Update,
+                presentation::apply
+                    .before(cyrus_world::animation::AnimationSystems)
+                    .after(OrdinaryUpdates)
+                    .after(crate::player::runtime::step)
                     .run_if(resource_exists::<cyrus_world::animation::AnimationRequest>),
             )
             .add_systems(

@@ -3470,7 +3470,8 @@ fn standalone_role_initialization_owns_combat_and_rejects_repeated_or_failed_ent
             let control = world.actors()[index].control_state().unwrap();
             assert_eq!(control.combat.is_some(), combat);
             assert_eq!(control.combat_death_default, combat.then_some(0));
-            assert_eq!(control.object_update_excluded, index == 3);
+            assert_eq!(control.hidden, index == 3);
+            assert!(!control.object_update_excluded);
             assert!(
                 world
                     .initialize_player_animation(id, &animation, 1, &mut |_| panic!(
