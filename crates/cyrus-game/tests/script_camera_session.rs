@@ -939,8 +939,8 @@ mod live {
         function_world("XResetCamera")
     }
 
-    /// A world whose map actor calls the argument-free camera function `name` once.
-    fn function_world(name: &str) -> (ScriptWorld, PoseService) {
+    /// The scripts of [`function_world`]: its map actor calls `name` as a function.
+    fn function_scripts(name: &str) -> Scripts {
         let mut data = scripts_calling(name, &[]);
         data.definition.functions[1].kind = CallKind::Function;
         let step = data
@@ -960,6 +960,15 @@ mod live {
             max_vel: 100_000,
             ..Default::default()
         };
+        data
+    }
+
+    /// A world whose map actor calls the argument-free camera function `name` once.
+    fn function_world(name: &str) -> (ScriptWorld, PoseService) {
+        world_from(function_scripts(name))
+    }
+
+    fn world_from(mut data: Scripts) -> (ScriptWorld, PoseService) {
         let mut world = prepared(&mut data);
         world.initialize_camera_pose(start()).unwrap();
         let service = PoseService {
@@ -969,6 +978,52 @@ mod live {
             fail: false,
         };
         (world, service)
+    }
+
+    #[test]
+    fn x_reset_camera_clears_the_task_slots_of_the_player_and_camera_actors() {
+        let mut data = function_scripts("XResetCamera");
+        data.definition.functions.push(Function {
+            name: "showPlayer".into(),
+            param_count: 0,
+            kind: CallKind::Task,
+        });
+        let show_player = Operation::Call {
+            call: Call {
+                function_id: 2,
+                function: "showPlayer".into(),
+                target: Object::Me,
+                kind: CallKind::Task,
+                arguments: vec![],
+            },
+        };
+        for (name, origin) in [("CYRUS", 100), ("CAMERA", 200)] {
+            data.actors.insert(
+                name.into(),
+                actor(
+                    vec![show_player.clone(), Operation::End { target: 0 }],
+                    origin,
+                ),
+            );
+        }
+        let (mut world, service) = world_from(data);
+        let hud = ScriptHud::default();
+        for index in [PLAYER, CAMERA] {
+            run(&mut world, index, BODY, Some(&hud)).unwrap();
+            assert_eq!(
+                world.actors()[index].runtime().unwrap().active_tasks(),
+                1,
+                "actor {index} starts a task"
+            );
+        }
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        for index in [PLAYER, CAMERA] {
+            assert_eq!(
+                world.actors()[index].runtime().unwrap().active_tasks(),
+                0,
+                "XResetCamera clears actor {index}'s tasks"
+            );
+        }
     }
 
     #[test]
