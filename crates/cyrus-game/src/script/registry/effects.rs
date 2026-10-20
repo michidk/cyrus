@@ -241,6 +241,7 @@ mod tests {
 
     fn source(frame_count: usize) -> Effects {
         Effects {
+            ambient_brightness: Some(128),
             capacity: 2,
             disabled: false,
             images: BTreeMap::from([(

@@ -258,6 +258,7 @@ fn exercise_runtime_session(
     let scene = PlayerScene::decode(&scene_bytes)?;
     let collision = cyrus_assets::collision::CollisionScene::default();
     let effects = with_effects.then(|| cyrus_assets::effects::Effects {
+        ambient_brightness: Some(128),
         capacity: 2,
         disabled: false,
         images: BTreeMap::new(),

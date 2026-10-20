@@ -11,6 +11,7 @@ use cyrus_game::{
 
 fn source(capacity: u32, disabled: bool) -> Effects {
     Effects {
+        ambient_brightness: Some(128),
         capacity,
         disabled,
         images: BTreeMap::from([(

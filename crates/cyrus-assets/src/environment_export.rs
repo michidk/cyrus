@@ -406,6 +406,7 @@ pub(crate) fn prepare(
             &system_settings.system,
             map,
             palette,
+            rgpre::import::world_ini::effect_brightness(&ini, entry.index)?,
         )?),
         terrain_heights,
         texture_scale,

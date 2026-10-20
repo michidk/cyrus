@@ -19,6 +19,7 @@ fn installed_world_prepares_effect_frames_and_map_drawing_attributes() -> Result
     let effects = environment.effects.expect("prepared effect inputs");
     assert!(!effects.disabled);
     assert_eq!(effects.capacity, 32);
+    assert_eq!(effects.ambient_brightness, Some(78));
     assert_eq!(effects.images.len(), 4);
     // Verified installed BSI frame ranges and map FLAT alpha inputs.
     for (identity, size, count, delay, alpha) in [

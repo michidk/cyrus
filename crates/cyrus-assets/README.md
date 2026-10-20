@@ -29,8 +29,10 @@ Re-export manually prepared worlds and models after updating. Session documents
 retain exact source identities and reject incompatible exports.
 Environment preparation also retains installed effect pool settings and the four
 selected-death texture images, with complete palette-decoded frames, source dimensions,
-texture scale, timing and map `FLAT` drawing attributes. Re-export older environments
-before consuming effect inputs; absent metadata remains unavailable. This prepares
+texture scale, timing, map `FLAT` drawing attributes and signed per-world effect
+brightness. Older caches report absent brightness rather than an invented default.
+Re-export older environments before consuming effect inputs; absent metadata
+remains unavailable. This prepares
 data only; effect spawning and presentation are not enabled by the cache.
 Environment caches require the installed 256-size and 128-size texture reduction
 factors. Re-export older environments and model GLBs for original pixel-coordinate

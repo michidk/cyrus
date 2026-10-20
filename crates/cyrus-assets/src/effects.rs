@@ -8,6 +8,10 @@ use std::collections::BTreeMap;
 /// World-local effect pool settings and decoded source images.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Effects {
+    /// Signed WORLD.INI world_ambientfx face brightness for explicit-frame drawing.
+    /// Older caches lack this input and cannot prepare effect presentation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambient_brightness: Option<i16>,
     /// Installed max_effects after the signed zero clamp.
     pub capacity: u32,
     /// Installed disable_effects, independent of capacity.
@@ -71,10 +75,12 @@ pub(crate) fn prepare(
     settings: &rgpre::import::system_ini::SystemSettings,
     map: &rgpre::import::rgm::RgmFile,
     palette: &rgpre::import::palette::Palette,
+    ambient_brightness: i16,
 ) -> Result<Effects> {
     use rgpre::import::bsi::BsiIndex;
     use std::io::Cursor;
     let mut effects = Effects {
+        ambient_brightness: Some(ambient_brightness),
         capacity: settings
             .max_effects
             .context("SYSTEM.INI [system] max_effects missing")?
@@ -137,6 +143,7 @@ mod tests {
     #[test]
     fn portable_effect_images_reject_truncated_rgba_with_texture_context() -> Result<()> {
         let effects = Effects {
+            ambient_brightness: Some(-32768),
             capacity: 1,
             disabled: false,
             images: BTreeMap::from([(
@@ -153,6 +160,17 @@ mod tests {
             )]),
         };
         let mut decoded: Effects = serde_json::from_slice(&serde_json::to_vec(&effects)?)?;
+        assert_eq!(decoded.ambient_brightness, Some(-32768));
+        let mut old = serde_json::to_value(&effects)?;
+        old.as_object_mut().unwrap().remove("ambient_brightness");
+        let old: Effects = serde_json::from_value(old)?;
+        assert_eq!(old.ambient_brightness, None);
+        assert!(
+            !serde_json::to_value(&old)?
+                .as_object()
+                .unwrap()
+                .contains_key("ambient_brightness")
+        );
         decoded.validate()?;
         decoded.images.get_mut(&7).unwrap().frames[0].pop();
         let error = decoded.validate().unwrap_err().to_string();
