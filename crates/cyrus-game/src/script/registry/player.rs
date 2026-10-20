@@ -184,6 +184,12 @@ impl ScriptWorld {
                     Ok(())
                 }
                 SheathedAction::RunForward => world.step_player(id, "MoveForward", inputs, sounds),
+                SheathedAction::RunBackward => {
+                    world.step_player(id, "MoveBackward", inputs, sounds)
+                }
+                SheathedAction::WalkBackward => {
+                    anyhow::bail!("selected-player WalkBackward step check unavailable")
+                }
             }
         })
     }

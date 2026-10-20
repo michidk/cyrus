@@ -216,18 +216,32 @@ fn unsupported_actions_are_not_silently_treated_as_idle_or_forward() {
             },
             "activation",
         ),
-        (
-            PlayerInput {
-                backward: true,
-                ..Default::default()
-            },
-            "backward",
-        ),
     ] {
         let error = select_sheathed_action(&input, state())
             .unwrap_err()
             .to_string();
         assert!(error.contains("sheathed player controller"), "{error}");
         assert!(error.contains(reason), "{error}");
+    }
+}
+
+#[test]
+fn backward_alone_selects_the_walk_or_run_helper_by_the_same_rule_as_forward() {
+    for (walk_mode, held, expected) in [
+        (false, false, SheathedAction::RunBackward),
+        (false, true, SheathedAction::WalkBackward),
+        (true, false, SheathedAction::WalkBackward),
+        (true, true, SheathedAction::RunBackward),
+    ] {
+        let known = SheathedControllerState {
+            walk_mode,
+            ..state()
+        };
+        let input = PlayerInput {
+            backward: true,
+            walk: held,
+            ..Default::default()
+        };
+        assert_eq!(select_sheathed_action(&input, known).unwrap(), expected);
     }
 }

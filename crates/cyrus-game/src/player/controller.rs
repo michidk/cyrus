@@ -31,6 +31,10 @@ pub enum SheathedAction {
     Idle,
     WalkForward,
     RunForward,
+    /// Backward input alone: the walk helper `WalkBackward` when the walk mode and key give a
+    /// walk, otherwise the run helper `MoveBackward`, each with duration 1.
+    WalkBackward,
+    RunBackward,
     /// Left or right alone with the walk key held: the scripted `MoveLeft` or `MoveRight`
     /// stepper with duration 1, which a left press takes over a right press.
     Sidestep(crate::script::locomotion::Strafe),
@@ -49,8 +53,9 @@ pub enum SheathedAction {
 /// `input` must contain Faithful held-key samples: `walk` is installed key_a,
 /// not a Modern walking request or the retained Tab toggle. Left and right apply
 /// the caller's [ground turn](super::turn); the held walk key with only left or
-/// right selects a sidestep. Jumping, activation, and backward-only movement require
-/// separate implementations.
+/// right selects a sidestep. Backward-only movement picks the walk or run helper by the same
+/// walk-mode rule as forward movement (verified against the original controller in an
+/// emulator). Jumping and activation require separate implementations.
 /// A return or idle selection does not suppress later animation continuation.
 pub fn select_sheathed_action(
     input: &PlayerInput,
@@ -92,11 +97,13 @@ pub fn select_sheathed_action(
         } else {
             SheathedAction::RunForward
         })
+    } else if input.backward {
+        Ok(if state.walk_mode ^ input.walk {
+            SheathedAction::WalkBackward
+        } else {
+            SheathedAction::RunBackward
+        })
     } else {
-        anyhow::ensure!(
-            !input.backward,
-            "sheathed player controller: backward movement unsupported"
-        );
         Ok(SheathedAction::Idle)
     }
 }
