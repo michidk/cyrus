@@ -171,6 +171,8 @@ pub struct ScriptInputs<'a> {
     pub blocked_ahead_30: Option<bool>,
     /// Explicit inspection input for MoveForward without live geometry.
     pub forward_step_clear: Option<bool>,
+    /// Explicit inspection input for an ordinary MoveLeft or MoveRight without live geometry.
+    pub lateral_step_clear: Option<bool>,
     /// Live receiver-bound queries take precedence over caller-sampled checks.
     pub locomotion_geometry: Option<LocomotionGeometry<'a>>,
 }
@@ -2834,6 +2836,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             combat_step_attribute: actor.attributes[18],
             strafe_step_attribute: actor.attributes[83],
             strafe_turn_attribute: actor.attributes[84],
+            lateral_step_attribute: actor.attributes[10],
             forward_step_attribute: actor.attributes[8],
             forward_combat_step_attribute: actor.attributes[17],
             walk_step_attribute: actor.attributes[12],
@@ -2853,6 +2856,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let mut admission = super::tasks::LocomotionAdmission {
             blocked_ahead_30: self.inputs.blocked_ahead_30,
             forward_step_clear: self.inputs.forward_step_clear,
+            lateral_step_clear: self.inputs.lateral_step_clear,
             ..Default::default()
         };
         let Some(operation) = operation else {
@@ -2915,6 +2919,28 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 if needed {
                     admission.blocked_ahead_30 =
                         Some(self.registry.blocked_ahead(id, 30, obstacle())?);
+                }
+            }
+            LocomotionOperation::Strafe(strafe) => {
+                // Only the ordinary dry stance runs the lateral check; combat strafes skip it.
+                if matches!(
+                    super::locomotion::strafe_admission(state, strafe),
+                    super::locomotion::StrafeAdmission::OutsideCombat { .. }
+                ) {
+                    let direction = match strafe {
+                        super::locomotion::Strafe::Left => hazard::OrdinaryStepDirection::Left,
+                        super::locomotion::Strafe::Right => hazard::OrdinaryStepDirection::Right,
+                    };
+                    let mut missing_sound =
+                        |_, _| anyhow::bail!("strafe collision sound handler unavailable");
+                    let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
+                    admission.lateral_step_clear = Some(self.registry.ordinary_step_clear(
+                        id,
+                        direction,
+                        geometry.ground,
+                        geometry.environment,
+                        sounds,
+                    )?);
                 }
             }
             LocomotionOperation::Forward | LocomotionOperation::WalkForward => {

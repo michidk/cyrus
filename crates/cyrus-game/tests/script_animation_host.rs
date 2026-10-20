@@ -4856,53 +4856,124 @@ fn move_backward_without_the_group_never_moves_and_still_completes() {
     assert_eq!(world.flags(), [9]);
 }
 
-#[test]
-fn strafes_outside_combat_stance_report_the_unimplemented_step_checks() {
-    for name in ["MoveLeft", "MoveRight"] {
-        let mut data = move_backward_scripts(8);
-        for step in data
-            .actors
-            .get_mut("ACTOR")
-            .unwrap()
-            .program
-            .steps
-            .values_mut()
-        {
-            if let Operation::Call { call } = &mut step.operation {
-                call.function = name.into();
-            }
+fn strafe_world(name: &str, step: u8) -> (ScriptWorld, ScriptActorId) {
+    let mut data = move_backward_scripts(8);
+    for entry in data
+        .actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .program
+        .steps
+        .values_mut()
+    {
+        if let Operation::Call { call } = &mut entry.operation {
+            call.function = name.into();
         }
-        data.definition.functions.last_mut().unwrap().name = name.into();
-        data.content_id = data.content_identity().unwrap();
-        let mut world = ScriptWorld::prepare(&data, 1).unwrap();
-        world.prepare_spatial().unwrap();
-        let id = world.id(0).unwrap();
-        world
-            .bind_animation(id, &move_backward_animations(&data, &[0, 94, 95]), 0)
-            .unwrap();
+    }
+    data.definition.functions.last_mut().unwrap().name = name.into();
+    data.actors
+        .get_mut("ACTOR")
+        .unwrap()
+        .attributes
+        .insert("attr_10".into(), step);
+    data.content_id = data.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&data, 1).unwrap();
+    world.prepare_spatial().unwrap();
+    let id = world.id(0).unwrap();
+    let group = if name == "MoveLeft" { 24 } else { 26 };
+    world
+        .bind_animation(id, &move_backward_animations(&data, &[0, group]), 0)
+        .unwrap();
+    (world, id)
+}
+
+fn strafe_stage(
+    world: &mut ScriptWorld,
+    id: ScriptActorId,
+    stage: ScriptStage,
+    hud: &cyrus_game::script::ScriptHud,
+    clear: Option<bool>,
+) -> anyhow::Result<()> {
+    world.advance(
+        id,
+        stage,
+        cyrus_game::script::ScriptInputs {
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            hud: Some(hud),
+            shell_execution: Some(false),
+            lateral_step_clear: clear,
+            ..Default::default()
+        },
+        None,
+        None,
+        30,
+    )
+}
+
+#[test]
+fn strafes_outside_combat_stance_need_the_lateral_step_check_input() {
+    for name in ["MoveLeft", "MoveRight"] {
+        let (mut world, id) = strafe_world(name, 8);
         let hud = locomotion_hud();
-        let error = world
-            .advance(
-                id,
-                BODY,
-                cyrus_game::script::ScriptInputs {
-                    nominal_ticks: Some(1),
-                    frame_scale: Some(256),
-                    hud: Some(&hud),
-                    shell_execution: Some(false),
-                    ..Default::default()
-                },
-                None,
-                None,
-                30,
-            )
-            .unwrap_err();
+        let error = strafe_stage(&mut world, id, BODY, &hud, None).unwrap_err();
         assert!(
-            format!("{error:#}").contains("outside combat stance unsupported"),
+            format!("{error:#}").contains("lateral step check input unavailable"),
             "{name}: {error:#}"
         );
         assert_eq!(
             world.actors()[0].control_state().unwrap().motion_direction,
+            if name == "MoveLeft" { 4 } else { 5 }
+        );
+    }
+}
+
+#[test]
+fn a_blocked_lateral_step_completes_without_moving_or_requesting_a_group() {
+    for name in ["MoveLeft", "MoveRight"] {
+        let (mut world, id) = strafe_world(name, 8);
+        let hud = locomotion_hud();
+        let start = world.spatial(id).unwrap().local.position;
+        strafe_stage(&mut world, id, BODY, &hud, Some(false)).unwrap();
+        for _ in 0..3 {
+            strafe_stage(&mut world, id, TASKS, &hud, Some(false)).unwrap();
+        }
+        assert_eq!(world.spatial(id).unwrap().local.position, start, "{name}");
+        assert_eq!(
+            world.actors()[0].control_state().unwrap().motion_direction,
+            if name == "MoveLeft" { 4 } else { 5 }
+        );
+    }
+}
+
+#[test]
+fn ordinary_strafes_step_a_quarter_turn_off_the_heading_when_the_check_passes() {
+    for name in ["MoveLeft", "MoveRight"] {
+        let (mut world, id) = strafe_world(name, 8);
+        let hud = locomotion_hud();
+        let start = world.spatial(id).unwrap().local.position;
+        let mut moved = 0;
+        for index in 0..4 {
+            strafe_stage(
+                &mut world,
+                id,
+                if index == 0 { BODY } else { TASKS },
+                &hud,
+                Some(true),
+            )
+            .unwrap();
+            let position = world.spatial(id).unwrap().local.position;
+            moved += (0..3)
+                .map(|axis| i64::from(position[axis]) - i64::from(start[axis]))
+                .map(i64::abs)
+                .sum::<i64>()
+                - moved;
+        }
+        // The first steps ramp by the packed counter, so only require movement and the called flag.
+        assert!(moved > 0, "{name} moved {moved}");
+        let control = world.actors()[0].control_state().unwrap();
+        assert_eq!(
+            control.motion_direction,
             if name == "MoveLeft" { 4 } else { 5 }
         );
     }

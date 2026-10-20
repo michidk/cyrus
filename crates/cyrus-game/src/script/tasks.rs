@@ -132,6 +132,8 @@ pub(super) struct LocomotionCall<'a> {
 pub(super) struct LocomotionAdmission {
     pub blocked_ahead_30: Option<bool>,
     pub forward_step_clear: Option<bool>,
+    /// Lateral step check of an ordinary `MoveLeft` or `MoveRight`.
+    pub lateral_step_clear: Option<bool>,
     pub walk_forward_mode: bool,
     pub forward_admitted: Option<bool>,
 }
@@ -1032,21 +1034,71 @@ impl Task {
                 if admission == StrafeAdmission::Refused {
                     return Ok(true);
                 }
-                *motion
+                let receiver = motion
                     .motion
-                    .with_context(|| format!("{name} motion state unavailable"))?
-                    .direction = strafe.motion_direction();
-                let StrafeAdmission::Combat { group, step, turn } = admission else {
-                    anyhow::bail!(
-                        "{name} outside combat stance unsupported: lateral step check, edge probe and hanging-edge test"
-                    );
-                };
+                    .with_context(|| format!("{name} motion state unavailable"))?;
+                *receiver.direction = strafe.motion_direction();
                 let input = animation.as_mut().with_context(|| {
                     format!("{name} requires prepared animation and explicit nominal ticks")
                 })?;
                 let spatial = spatial
                     .as_mut()
                     .with_context(|| format!("{name} requires receiver pose and frame_scale"))?;
+                let (group, step, turn) = match admission {
+                    StrafeAdmission::Combat { group, step, turn } => (group, step, turn),
+                    StrafeAdmission::OutsideCombat { group } => {
+                        if !motion.admission.lateral_step_clear.with_context(|| {
+                            format!("{name} lateral step check input unavailable")
+                        })? {
+                            return Ok(true);
+                        }
+                        if input.animation.has_group(group) {
+                            let frame = match &mut input.sounds {
+                                Some(sounds) => input.animation.request_with_sounds(
+                                    group,
+                                    0,
+                                    input.ticks,
+                                    *sounds,
+                                )?,
+                                None => input.animation.request(group, 0, input.ticks)?,
+                            };
+                            *input.frame = frame.or(*input.frame);
+                        }
+                        if motion.animation_system
+                            && !input
+                                .animation
+                                .current_group()
+                                .is_some_and(|current| strafe.ordinary_groups().contains(&current))
+                        {
+                            return Ok(!continues(duration, elapsed));
+                        }
+                        *motion.called |= strafe.called_flag();
+                        let distance = super::locomotion::initial_step_distance(
+                            receiver.counters,
+                            strafe.counter_shift(),
+                            state.step_adjustment,
+                            i32::from(state.lateral_step_attribute) << 8,
+                        );
+                        if let Some((heading, distance)) = super::locomotion::strafe_translation(
+                            *strafe,
+                            spatial.angles[1],
+                            distance,
+                            spatial.frame_scale as i32,
+                            input.animation.translation_suppressed(),
+                        ) {
+                            *spatial.position = cyrus_world::transform::translate_forward(
+                                *spatial.position,
+                                heading,
+                                distance,
+                            )?;
+                        }
+                        return Ok(!continues(duration, elapsed));
+                    }
+                    StrafeAdmission::Unsupported => anyhow::bail!(
+                        "{name} in deep water or hanging at an edge unsupported: edge probe and hanging-edge test"
+                    ),
+                    StrafeAdmission::Refused => unreachable!("refusal returned above"),
+                };
                 let already_strafing = input.animation.current_group().is_some_and(|current| {
                     super::locomotion::Strafe::COMBAT_GROUPS.contains(&current)
                 });
@@ -1062,6 +1114,7 @@ impl Task {
                     None => input.animation.request(group, 0, input.ticks)?,
                 };
                 *input.frame = frame.or(*input.frame);
+                *motion.called |= strafe.called_flag();
                 let (angle, movement) = strafe_motion(
                     *strafe,
                     spatial.angles[1],
@@ -1515,6 +1568,7 @@ pub(super) enum LocomotionOperation {
     Backward,
     Forward,
     WalkForward,
+    Strafe(super::locomotion::Strafe),
 }
 impl LocomotionOperation {
     pub(super) fn named(name: &str) -> Option<Self> {
@@ -1524,6 +1578,10 @@ impl LocomotionOperation {
             Some(Self::Forward)
         } else if name.eq_ignore_ascii_case("WalkForward") {
             Some(Self::WalkForward)
+        } else if name.eq_ignore_ascii_case("MoveLeft") {
+            Some(Self::Strafe(super::locomotion::Strafe::Left))
+        } else if name.eq_ignore_ascii_case("MoveRight") {
+            Some(Self::Strafe(super::locomotion::Strafe::Right))
         } else {
             None
         }

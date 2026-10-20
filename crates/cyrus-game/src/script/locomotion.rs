@@ -21,6 +21,8 @@ pub struct BackwardState {
     /// Attribute bytes 83 and 84 give a combat-stance strafe's step length and turn rate.
     pub strafe_step_attribute: u8,
     pub strafe_turn_attribute: u8,
+    /// Attribute byte 10 gives an ordinary (outside combat stance) strafe's step length.
+    pub lateral_step_attribute: u8,
     /// Attribute bytes 8 (ordinary) and 17 (combat stance) give `MoveForward`'s step length.
     pub forward_step_attribute: u8,
     pub forward_combat_step_attribute: u8,
@@ -114,6 +116,37 @@ impl Strafe {
 
     /// Both strafe groups; a receiver already in either completes without moving.
     pub const COMBAT_GROUPS: [u16; 2] = [94, 95];
+
+    /// Animation group of the ordinary (outside combat stance, dry) strafe.
+    pub fn ordinary_group(self, torch_burning: bool) -> u16 {
+        match (self, torch_burning) {
+            (Self::Left, false) => 24,
+            (Self::Left, true) => 25,
+            (Self::Right, false) => 26,
+            (Self::Right, true) => 27,
+        }
+    }
+
+    /// Both ordinary groups of this direction, which end the wait for the requested group.
+    pub fn ordinary_groups(self) -> [u16; 2] {
+        [self.ordinary_group(false), self.ordinary_group(true)]
+    }
+
+    /// Bit of the shared direction-called flags the stepper sets once it moves.
+    pub fn called_flag(self) -> u8 {
+        match self {
+            Self::Left => 1,
+            Self::Right => 2,
+        }
+    }
+
+    /// Shift of this direction's packed step counter.
+    pub fn counter_shift(self) -> u8 {
+        match self {
+            Self::Left => 0,
+            Self::Right => 2,
+        }
+    }
 }
 
 /// Outcome of a strafe's admission.
@@ -121,9 +154,11 @@ impl Strafe {
 pub enum StrafeAdmission {
     /// The call completes immediately without changing the receiver.
     Refused,
-    /// Outside combat stance the original runs a lateral model-contact step check, an edge probe
-    /// and the hanging-edge test, which are not implemented.
-    OutsideCombat,
+    /// Deep water (edge probe) or hanging at an edge: not implemented.
+    Unsupported,
+    /// Outside combat stance, on dry ground: after the lateral step check passes, request `group`
+    /// and move by the attribute byte 10 step.
+    OutsideCombat { group: u16 },
     /// Combat stance: request `group`, turn by `turn` and move by `step` whole units.
     Combat { group: u16, step: u8, turn: u8 },
 }
@@ -139,8 +174,12 @@ pub fn strafe_admission(state: BackwardState, strafe: Strafe) -> StrafeAdmission
             step: state.strafe_step_attribute,
             turn: state.strafe_turn_attribute,
         }
+    } else if state.living_state == 15 || matches!(state.surface, 2 | 4) {
+        StrafeAdmission::Unsupported
     } else {
-        StrafeAdmission::OutsideCombat
+        StrafeAdmission::OutsideCombat {
+            group: strafe.ordinary_group(state.torch_burning),
+        }
     }
 }
 
@@ -170,6 +209,29 @@ pub fn strafe_motion(
     let distance = (i32::from(step) << 8).wrapping_mul(frame_scale) >> 8;
     let movement = (!translation_suppressed && distance > 0).then_some((heading, distance));
     (angle, movement)
+}
+
+/// One ordinary strafe step: the movement heading (the receiver's heading plus 512 for left and
+/// minus 512 for right, wrapped) and the Q8 `distance` scaled by the frame scale, or `None` when
+/// the translation-suppression marker or a nonpositive distance means no movement. The ordinary
+/// strafe never turns the receiver.
+pub fn strafe_translation(
+    strafe: Strafe,
+    angle_y: u16,
+    distance: i32,
+    frame_scale: i32,
+    translation_suppressed: bool,
+) -> Option<(u16, i32)> {
+    if translation_suppressed {
+        return None;
+    }
+    let offset = match strafe {
+        Strafe::Left => 512,
+        Strafe::Right => -512,
+    };
+    let heading = (i32::from(angle_y).wrapping_add(offset) & 2047) as u16;
+    let distance = distance.wrapping_mul(frame_scale) >> 8;
+    (distance > 0).then_some((heading, distance))
 }
 
 /// Motion-direction byte `MoveForward` stores once admitted.
@@ -484,8 +546,37 @@ mod tests {
         );
         assert_eq!(
             strafe_admission(ready(), Strafe::Left),
-            StrafeAdmission::OutsideCombat
+            StrafeAdmission::OutsideCombat { group: 24 }
         );
+        assert_eq!(
+            strafe_admission(
+                BackwardState {
+                    torch_burning: true,
+                    ..ready()
+                },
+                Strafe::Right
+            ),
+            StrafeAdmission::OutsideCombat { group: 27 }
+        );
+        for unsupported in [
+            BackwardState {
+                living_state: 15,
+                ..ready()
+            },
+            BackwardState {
+                surface: 2,
+                ..ready()
+            },
+            BackwardState {
+                surface: 4,
+                ..ready()
+            },
+        ] {
+            assert_eq!(
+                strafe_admission(unsupported, Strafe::Right),
+                StrafeAdmission::Unsupported
+            );
+        }
         for refused in [
             BackwardState {
                 rope_attached: true,
@@ -505,6 +596,25 @@ mod tests {
                 StrafeAdmission::Refused
             );
         }
+    }
+
+    #[test]
+    fn ordinary_strafe_translates_a_quarter_turn_off_the_unturned_heading() {
+        assert_eq!(
+            strafe_translation(Strafe::Left, 100, 2048, 256, false),
+            Some((612, 2048))
+        );
+        assert_eq!(
+            strafe_translation(Strafe::Right, 100, 2048, 128, false),
+            Some((1636, 1024))
+        );
+        assert_eq!(strafe_translation(Strafe::Left, 100, 2048, 256, true), None);
+        assert_eq!(strafe_translation(Strafe::Right, 100, 0, 256, false), None);
+        assert_eq!(
+            (Strafe::Left.called_flag(), Strafe::Right.called_flag()),
+            (1, 2)
+        );
+        assert_eq!(Strafe::Right.ordinary_groups(), [26, 27]);
     }
 
     #[test]
