@@ -252,7 +252,8 @@ impl ScriptWorld {
             .as_ref()
             .context("player turn control unavailable")?;
         let torch = control.torch_burning != 0;
-        let free = control.directional_state == [0, 0];
+        // Actor bytes +0x1b2 and +0x1b3: the falling and queued-motion bytes.
+        let free = control.falling_state == 0 && control.queued_motion == 0;
         // The held walk key turns only with forward or backward, and silently.
         let (turns, animates) = if held.walk {
             (free && (held.forward || held.backward), false)
