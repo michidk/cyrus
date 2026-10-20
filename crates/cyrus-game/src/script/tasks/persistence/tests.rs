@@ -1066,6 +1066,83 @@ fn ambient_rtx_follows_its_clip_without_creating_a_dialogue_line() {
 }
 
 #[test]
+fn move_along_axis_rotates_each_step_and_completes_without_the_final_move() {
+    let mut tasks = NativeTasks::default();
+    let args = [
+        Argument::Integer(2),
+        Argument::Integer(1024),
+        Argument::Integer(4),
+    ];
+    let mut position = [0; 3];
+    let mut angles = [0; 3];
+    let mut updates = vec![];
+    // A quarter turn about Y sends the Z step onto X.
+    let matrix = Matrix::orientation([0, 512, 0]);
+    let mut step = |tasks: &mut NativeTasks, position: &mut [i32; 3], elapsed: i32, token| {
+        let invocation = Invocation {
+            elapsed: Some(elapsed),
+            unpaused_tasks: 0,
+            unpaused_blocking_tasks: 0,
+        };
+        let mut spatial = Some(SpatialCall {
+            position,
+            angles: &mut angles,
+            frame_scale: 256,
+            turn: 0,
+            nominal_ticks: 1,
+            matrix,
+            slave: false,
+            locations: &[],
+            effective_position: None,
+            player_position: None,
+            actor_index: 3,
+            map_updates: &mut updates,
+        });
+        match token {
+            None => {
+                assert_eq!(
+                    tasks
+                        .call(
+                            ("MoveAlongAxis", CallKind::Task),
+                            &args,
+                            invocation,
+                            &mut None,
+                            &mut spatial,
+                            NativeServices::default(),
+                        )
+                        .unwrap(),
+                    Some(CallResult::Pending(1))
+                );
+                false
+            }
+            Some(token) => tasks
+                .poll(
+                    token,
+                    &args,
+                    invocation,
+                    &mut None,
+                    &mut spatial,
+                    NativeServices::default(),
+                )
+                .unwrap(),
+        }
+    };
+    // 1024 / 4 >> 8 is 1, times scale 256: 256 per update along the rotated axis.
+    step(&mut tasks, &mut position, 0, None);
+    let first = position;
+    assert_ne!(first, [0; 3]);
+    assert_eq!(first[1], 0);
+    assert!(first[0].abs() >= 250 && first[2].abs() <= 6, "{first:?}");
+    assert!(!step(&mut tasks, &mut position, 1, Some(1)));
+    assert!(!step(&mut tasks, &mut position, 2, Some(1)));
+    let before = position;
+    // The accumulated 1024 reaches the delta: complete, with no move on this call.
+    assert!(step(&mut tasks, &mut position, 3, Some(1)));
+    assert_eq!(position, before);
+    assert_eq!(updates, vec![3]);
+}
+
+#[test]
 fn control_animation_turns_the_receiver_only_while_its_group_plays() {
     use crate::script::tasks::AnimationCall;
     use cyrus_assets::animation::Animations;

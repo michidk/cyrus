@@ -236,6 +236,7 @@ impl Task {
             Self::Strafe(super::super::locomotion::Strafe::Left) => ("MoveLeft", 1, None),
             Self::Strafe(super::super::locomotion::Strafe::Right) => ("MoveRight", 1, None),
             Self::Location => ("MoveToLocation", 2, None),
+            Self::AxisMovement { .. } => ("MoveAlongAxis", 3, None),
             Self::Duration => ("Wait", 1, None),
             Self::Tasks => ("WaitOnTasks", 0, None),
             Self::Blocking => ("WaitNonMulti", 0, None),

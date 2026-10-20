@@ -4301,6 +4301,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
             && [
                 "Wander",
                 "MoveByAxis",
+                "MoveAlongAxis",
                 "sMoveByAxis",
                 "MoveObjectAxis",
                 "MoveToLocation",

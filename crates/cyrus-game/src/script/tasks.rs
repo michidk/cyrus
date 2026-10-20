@@ -410,6 +410,12 @@ enum Task {
         group: u16,
         started: bool,
     },
+    /// `MoveAlongAxis`: the delta, spread over the duration and rotated by the receiver's
+    /// orientation; `target` is the delta retained at elapsed zero, `accumulated` the sum so far.
+    AxisMovement {
+        target: i32,
+        accumulated: i32,
+    },
 }
 impl Task {
     fn complete(
@@ -1208,6 +1214,52 @@ impl Task {
                 }
                 !continues(duration, elapsed)
             }
+            Self::AxisMovement {
+                target,
+                accumulated,
+            } => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("MoveAlongAxis requires three arguments")
+                };
+                let (axis, delta, duration) =
+                    (axis.integer()?, delta.integer()?, duration.integer()?);
+                if delta == 0 || duration == 0 {
+                    return Ok(true);
+                }
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveAlongAxis requires explicit elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("MoveAlongAxis requires spatial state and frame_scale")?;
+                if elapsed == 0 {
+                    *target = delta;
+                    *accumulated = 0;
+                }
+                let step = (delta
+                    .checked_div(duration)
+                    .context("MoveAlongAxis division overflow")?
+                    >> 8)
+                    .wrapping_mul(input.frame_scale as i32);
+                *accumulated = accumulated.wrapping_add(step);
+                if (step < 0 && *accumulated <= *target) || (step > 0 && *accumulated >= *target) {
+                    return Ok(true);
+                }
+                let mut offset = [0; 3];
+                offset[match axis {
+                    0 => 0,
+                    1 => 1,
+                    _ => 2,
+                }] = step;
+                let rotated = input.matrix.transform(offset)?;
+                for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
+                    *coordinate = coordinate.wrapping_add(amount);
+                }
+                if !input.map_updates.contains(&input.actor_index) {
+                    input.map_updates.push(input.actor_index);
+                }
+                !(duration.wrapping_sub(1) > elapsed)
+            }
             Self::Location => {
                 let [location, duration] = arguments else {
                     anyhow::bail!("MoveToLocation requires two arguments")
@@ -1851,6 +1903,11 @@ impl NativeTasks {
             Task::Movement { target: 0 }
         } else if function.eq_ignore_ascii_case("sMoveByAxis") {
             Task::ScaledMovement { origin: 0 }
+        } else if function.eq_ignore_ascii_case("MoveAlongAxis") {
+            Task::AxisMovement {
+                target: 0,
+                accumulated: 0,
+            }
         } else if function.eq_ignore_ascii_case("MoveToLocation") {
             Task::Location
         } else if function.eq_ignore_ascii_case("Wait") {
