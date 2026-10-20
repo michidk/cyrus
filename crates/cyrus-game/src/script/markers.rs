@@ -35,6 +35,15 @@ impl Markers {
         Ok(Self(markers))
     }
 
+    /// The marker's Q8 position; absent, unreserved or out-of-table markers are fatal in the original.
+    pub fn position(&self, marker: i32) -> Result<[i32; 3]> {
+        usize::try_from(marker)
+            .ok()
+            .and_then(|index| self.0.get(index))
+            .with_context(|| format!("marker {marker}: outside ordinary world table"))?
+            .with_context(|| format!("marker {marker}: unavailable"))
+    }
+
     pub fn contains(&self, marker: i32, position: [i32; 3], distance: i32) -> Result<bool> {
         let target = usize::try_from(marker)
             .ok()

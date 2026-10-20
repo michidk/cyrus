@@ -56,6 +56,8 @@ pub(super) struct SpatialCall<'a> {
     pub matrix: cyrus_world::transform::Matrix,
     pub slave: bool,
     pub locations: &'a [[i32; 3]],
+    /// The world's marker table, for `MoveToMarker`.
+    pub markers: Option<&'a super::markers::Markers>,
     pub effective_position: Option<[i32; 3]>,
     /// Selected player's local position, when the caller supplies the player query.
     pub player_position: Option<[i32; 3]>,
@@ -365,6 +367,8 @@ fn talk_cycle(
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 enum Task {
     Dialogue,
+    /// `MoveToMarker`: a timed straight move to a marker.
+    Marker,
     /// `menuProc`: the shared scripted menu's highlight and selection.
     Menu,
     AnimationFrame {
@@ -1579,6 +1583,62 @@ impl Task {
                 }
                 !(duration.wrapping_sub(1) > elapsed)
             }
+            Self::Marker => {
+                let [marker, duration] = arguments else {
+                    anyhow::bail!("MoveToMarker requires two arguments")
+                };
+                let (marker, duration) = (marker.integer()?, duration.integer()?);
+                let elapsed = invocation
+                    .elapsed
+                    .context("MoveToMarker requires elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("MoveToMarker requires receiver pose and frame_scale")?;
+                // Steps left at the current frame scale, truncated toward zero.
+                let remaining = duration
+                    .wrapping_sub(1)
+                    .wrapping_sub(elapsed)
+                    .wrapping_shl(8)
+                    .checked_div(input.frame_scale as i32)
+                    .context("MoveToMarker division invalid")?;
+                let target = input
+                    .markers
+                    .context("MoveToMarker markers not prepared")?
+                    .position(marker)?;
+                if !(duration.wrapping_sub(1) > elapsed) {
+                    *input.position = target;
+                    if !input.map_updates.contains(&input.actor_index) {
+                        input.map_updates.push(input.actor_index);
+                    }
+                    return Ok(true);
+                }
+                let source = if input.slave {
+                    input
+                        .effective_position
+                        .context("MoveToMarker attached receiver pose unavailable")?
+                } else {
+                    *input.position
+                };
+                let differences =
+                    std::array::from_fn(|axis| target[axis].wrapping_sub(source[axis]));
+                let direction = super::spatial::normalized_direction(differences);
+                let distance = super::spatial::rounded_distance(std::array::from_fn(|axis| {
+                    source[axis].wrapping_sub(target[axis])
+                }))?;
+                if remaining != 0 {
+                    let step = distance
+                        .checked_div(remaining)
+                        .context("MoveToMarker division invalid")?;
+                    for (axis, component) in direction.into_iter().enumerate() {
+                        input.position[axis] = input.position[axis]
+                            .wrapping_add(((component >> 10).wrapping_mul(step >> 2)) >> 4);
+                    }
+                    if !input.map_updates.contains(&input.actor_index) {
+                        input.map_updates.push(input.actor_index);
+                    }
+                }
+                false
+            }
             Self::Location => {
                 let [location, duration] = arguments else {
                     anyhow::bail!("MoveToLocation requires two arguments")
@@ -2272,6 +2332,8 @@ impl NativeTasks {
                 target: 0,
                 accumulated: 0,
             }
+        } else if function.eq_ignore_ascii_case("MoveToMarker") {
+            Task::Marker
         } else if function.eq_ignore_ascii_case("MoveToLocation") {
             Task::Location
         } else if function.eq_ignore_ascii_case("Wait") {

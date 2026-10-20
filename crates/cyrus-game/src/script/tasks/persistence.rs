@@ -243,6 +243,7 @@ impl Task {
             Self::Strafe(super::super::locomotion::Strafe::Left) => ("MoveLeft", 1, None),
             Self::Strafe(super::super::locomotion::Strafe::Right) => ("MoveRight", 1, None),
             Self::Location => ("MoveToLocation", 2, None),
+            Self::Marker => ("MoveToMarker", 2, None),
             Self::AxisMovement { .. } => ("MoveAlongAxis", 3, None),
             Self::WanderLocation { .. } => ("WanderToLocation", 2, None),
             Self::Duration => ("Wait", 1, None),

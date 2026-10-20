@@ -2595,6 +2595,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                 |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
                     matrix: spatial.local.matrix,
                     locations: &spatial.locations,
+                    markers: self.registry.markers.as_ref(),
                     effective_position: spatial.effective.map(|pose| pose.position),
                     player_position,
                     slave: actor.attributes[26] != 0,
@@ -5092,6 +5093,7 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 |(spatial, (frame_scale, nominal_ticks))| super::tasks::SpatialCall {
                     matrix: spatial.local.matrix,
                     locations: &spatial.locations,
+                    markers: self.registry.markers.as_ref(),
                     effective_position: spatial.effective.map(|pose| pose.position),
                     player_position,
                     slave: actor.attributes[26] != 0,

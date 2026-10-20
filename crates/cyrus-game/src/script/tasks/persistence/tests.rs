@@ -40,6 +40,7 @@ impl Host for NativeHost {
             matrix: Matrix::IDENTITY,
             slave: false,
             locations: &[[100, 200, 300]],
+            markers: None,
             effective_position: None,
             player_position: None,
             actor_index: 0,
@@ -79,6 +80,7 @@ impl Host for NativeHost {
             matrix: Matrix::IDENTITY,
             slave: false,
             locations: &[[100, 200, 300]],
+            markers: None,
             effective_position: None,
             player_position: None,
             actor_index: 0,
@@ -1081,6 +1083,7 @@ fn player_face(receiver: [i32; 3], player: PlayerFaceState) -> PlayerFaceOutcome
         matrix: Matrix::IDENTITY,
         slave: false,
         locations: &[],
+        markers: None,
         effective_position: None,
         player_position: None,
         actor_index: 5,
@@ -1173,6 +1176,7 @@ fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_
             matrix: Matrix::IDENTITY,
             slave: false,
             locations: &locations,
+            markers: None,
             effective_position: None,
             player_position: None,
             actor_index: 5,
@@ -1220,6 +1224,141 @@ fn wander_to_location_fixes_its_speed_on_the_first_call_and_snaps_when_within_a_
 }
 
 #[test]
+fn move_to_marker_matches_the_original_routine() {
+    // Rows run through the original MoveToMarker in an emulator (research oracle), one per line:
+    // slave, position, attached position, marker position (map units), duration, elapsed, frame
+    // scale, then the original's result (0 done, 1 running), the position after and the number of
+    // map updates raised.
+    const ROWS: &str = "\
+1,256,-125898,-2560,102175,-290219,-38831,-1025,4,4,12,0,128,1,-16373,-112929,-898,1
+0,-2560,0,77703,-168925,282211,-280562,0,4,-16,40,2,300,1,-2478,0,75063,1
+0,-109065,-2560,256,-188105,-201938,126970,-1012,4,0,2,0,512,1,-109065,-2560,256,0
+1,-2560,0,-285060,37505,-115106,-154446,0,4,0,200,0,256,1,-2761,571,-284289,1
+0,-2560,181979,0,-10654,268463,-78193,-16,-16,-16,3,0,256,1,-4015,88919,-2909,1
+0,0,256,256,-232508,-51270,274247,-465,0,-165,1,199,300,0,-119040,0,-42240,1
+0,279395,-2560,-2560,-268707,-112744,-138258,4,0,-16,5,39,256,0,1024,0,-4096,1
+1,-2560,256,-2560,136856,17955,122754,4,-701,4,3,1,512,1,-2560,256,-2560,0
+1,256,219213,296892,-243045,261094,-271897,-300,-16,4,200,0,256,1,1070,217877,298259,1
+0,238768,0,256633,-271651,-55239,-15921,4,4,-16,2,199,128,0,1024,1024,-4096,1
+0,-2560,-2560,0,160265,-282415,25470,-16,0,205,40,250,1000,0,-4096,0,52480,1
+0,0,88625,256,179477,-118613,-22901,0,0,-16,40,11,1000,1,0,75949,-537,1
+0,0,0,256,-11202,251690,-12959,4,834,-16,12,1,256,1,0,21018,-412,1
+0,0,-2560,-2560,-37041,6457,-16260,0,-16,4,200,250,300,0,0,-4096,1024,1
+0,256,91785,172019,-68071,-260277,-87470,-16,0,-392,200,0,300,1,229,91227,170398,1
+1,0,124363,0,-282938,-208899,295302,23,665,0,2,0,1000,1,0,124363,0,0
+1,-2560,256,0,245030,235833,-133266,4,-16,6,3,0,256,1,-126116,-120426,66087,1
+0,0,0,-2560,-41460,-116958,-164959,4,-16,-1070,1,0,128,0,1024,-4096,-273920,1
+0,256,256,-2560,-45299,-220530,-147140,0,0,-337,5,250,256,0,0,0,-86272,1
+1,256,0,64785,221324,66937,167213,-16,-16,0,0,199,256,0,-4096,-4096,0,1
+1,154584,256,-2560,-58157,-206838,63081,0,-16,4,40,2,128,1,155326,2992,-3442,1
+1,0,227979,0,149691,-137820,125925,0,-1028,4,200,11,1000,1,-3169,225338,-2641,1
+1,-53080,-2560,-9455,-264602,154469,17956,-16,4,-16,200,0,1000,1,-47967,-5685,-9929,1
+1,-247933,-2560,-123896,-154344,168552,152085,4,0,4,2,4,128,0,1024,0,1024,1
+0,0,81555,-2560,39092,89498,-61570,4,0,675,0,0,77,0,1024,0,172800,1
+1,0,256,215725,-247917,260254,-190164,4,4,4,1,39,1000,0,1024,1024,1024,1
+0,0,256,0,-173677,121390,48892,-16,0,-16,12,199,128,0,-4096,0,-4096,1
+1,-2560,-2560,0,-228881,-260994,158268,844,4,0,12,0,1000,1,216844,128238,-80167,1
+1,-2560,256,256,229667,-120782,205499,0,4,4,5,199,1000,0,0,1024,1024,1
+0,-2560,256,-267190,-119314,48497,165561,141,0,4,12,0,300,1,1673,-215,-237553,1
+0,-2560,-2560,-2560,239419,39394,-100575,-16,-16,4,0,1,1000,0,-4096,-4096,1024,1
+0,-2560,256,256,116719,242111,-212167,91,-16,-1028,0,11,300,0,23296,-4096,-263168,1
+0,162174,0,0,281683,120052,274058,0,0,0,12,2,77,1,156582,0,0,1
+0,-80342,196809,-2560,-184254,-5961,-61292,4,-16,4,200,1,300,1,-79859,195601,-2540,1
+0,256,0,-2560,-270199,110626,-75586,0,0,-942,5,199,256,0,0,0,-241152,1
+0,256,191567,256,143259,-203867,13902,-16,4,-251,40,39,77,0,-4096,1024,-64256,1
+0,233358,-64166,0,98327,182471,239701,0,4,0,5,11,256,0,0,1024,0,1
+1,255760,-2560,256,174211,-277309,139040,-16,-16,0,12,39,256,0,-4096,-4096,0,1
+1,-2560,256,256,-163972,-79986,109743,4,4,4,1,11,512,0,1024,1024,1024,1
+0,196715,0,0,3733,47736,38491,4,903,4,3,39,512,0,1024,231168,1024,1
+1,-2560,-2560,256,225870,239815,180916,0,-787,4,5,0,1000,1,-233282,-447524,-181026,1
+1,0,0,128032,-18318,-202208,-517,4,0,-16,1,1,1000,0,1024,0,-4096,1
+0,-2560,256,256,1059,203761,206127,59,-16,4,200,11,77,1,-2533,249,256,1
+1,-2560,-216858,-277494,-232104,-31246,-208706,0,0,4,0,2,300,0,0,0,1024,1
+0,-2560,0,98023,79097,-84644,-177223,0,-16,-16,3,4,128,0,0,-4096,-4096,1
+0,8754,0,-2560,40903,83809,-214873,-684,82,0,0,199,256,0,-175104,20992,0,1
+0,256,-2560,-2560,-198121,137460,107700,4,-16,0,0,4,256,0,1024,-4096,0,1
+0,0,256,0,-218660,54433,-240453,4,4,-649,2,250,300,0,1024,1024,-166144,1
+1,256,0,256,-209782,266039,253455,779,4,916,3,39,128,0,199424,1024,234496,1
+0,0,-96481,-109856,172277,183225,92978,0,4,-376,12,199,77,0,0,1024,-96256,1
+0,126971,0,0,-33727,253619,-13550,-16,4,-16,1,0,512,0,-4096,1024,-4096,1
+0,47245,256,-2560,76598,25066,-49423,0,92,-16,12,39,256,0,0,23552,-4096,1
+0,295730,256,-2560,146017,200903,-142868,-16,0,4,1,0,256,0,-4096,0,1024,1
+1,0,-2560,256,171969,-103197,177158,-16,-16,-16,2,250,128,0,-4096,-4096,-4096,1
+1,128162,-125866,-2560,295827,-215184,-241300,4,0,-877,1,0,512,0,1024,0,-224512,1
+1,0,256,0,-26456,-296355,-179003,4,4,0,5,0,256,1,6800,73699,43522,1
+0,256,-191090,-160976,20367,-75374,-25363,931,-16,-16,3,250,300,0,238336,-4096,-4096,1
+0,127617,-2560,-177860,-24961,111734,18507,4,4,-13,1,4,128,0,1024,1024,-3328,1
+0,-34881,256,-2560,222852,122568,230666,-16,-16,-16,200,199,1000,0,-4096,-4096,-4096,1
+1,256,-19504,-2560,190,173442,-169319,-16,0,-255,200,199,256,0,-4096,0,-65280,1
+0,254044,0,-2560,-269521,-89734,99404,-16,-16,0,200,39,1000,1,247592,-202,-2560,1
+0,-46049,-211536,-2560,-154340,10200,-243331,0,0,-16,200,2,256,1,-45827,-210475,-2578,1
+0,-2560,84299,256,220959,250645,221981,-16,4,-16,40,0,512,1,-2698,79911,-19,1
+1,0,-85137,123152,162087,-259683,-243052,-16,-505,4,200,4,256,1,-852,-84492,124391,1
+1,-2560,-2560,-2560,-278899,33889,-96779,0,4,4,40,0,128,1,1013,-3037,-1310,1
+0,256,256,-2560,-166888,57996,250535,-16,4,0,0,250,77,0,-4096,1024,0,1
+1,36042,125043,-226751,-144294,209018,174134,0,0,4,5,11,256,0,0,0,1024,1
+0,0,-2560,0,-165110,-234446,-75211,4,-16,0,12,0,256,1,89,-2699,0,1
+0,256,0,256,-282831,-115841,-155255,4,-734,4,5,1,77,1,256,-20876,256,1
+1,0,-22879,256,-66164,246843,279006,4,442,4,40,199,128,0,1024,113152,1024,1
+0,-32138,134742,0,153871,247768,206528,0,-16,0,2,4,256,0,0,-4096,0,1
+1,-2560,0,0,-48884,-70785,-156746,4,-16,4,40,1,300,1,-1080,2002,4875,1
+1,-268300,256,0,-51536,-52889,225348,-16,467,-16,2,4,1000,0,-4096,119552,-4096,1
+0,0,256,-2560,-57020,-129238,102418,-740,0,-524,5,39,77,0,-189440,0,-134144,1
+0,0,256,-2560,-1274,-180194,92324,4,-16,4,3,4,77,0,1024,-4096,1024,1
+1,0,256,-40965,292760,-175766,206268,-16,-1045,0,0,39,512,0,-4096,-267520,0,1
+1,-2560,-2560,-67488,37754,236803,225035,4,-16,-226,1,199,512,0,1024,-4096,-57856,1
+1,0,0,256,186471,-22828,-282777,0,0,0,2,0,1000,1,0,0,256,0
+1,-2560,5505,0,13251,-140189,294560,-16,4,4,0,39,512,0,-4096,1024,1024,1
+0,0,-2560,-2560,-282408,-126617,-213665,4,113,4,3,0,128,1,247,5240,-1694,1";
+    for row in ROWS.lines() {
+        let v: Vec<i32> = row.split(',').map(|value| value.parse().unwrap()).collect();
+        let metadata = serde_json::json!({
+            "markers": (0..8)
+                .map(|index| serde_json::json!({
+                    "map_position": if index == 7 { [v[7], v[8], v[9]] } else { [0, 0, 0] },
+                    "reserved": u8::from(index == 7),
+                }))
+                .collect::<Vec<_>>(),
+        });
+        let markers = crate::script::markers::Markers::prepare(&metadata).unwrap();
+        let mut position = [v[1], v[2], v[3]];
+        let mut angles = [0; 3];
+        let mut updates = vec![];
+        let mut spatial = Some(SpatialCall {
+            position: &mut position,
+            angles: &mut angles,
+            frame_scale: v[12] as u32,
+            turn: 0,
+            nominal_ticks: 1,
+            matrix: Matrix::IDENTITY,
+            slave: v[0] != 0,
+            locations: &[],
+            markers: Some(&markers),
+            effective_position: Some([v[4], v[5], v[6]]),
+            player_position: None,
+            actor_index: 5,
+            map_updates: &mut updates,
+        });
+        let done = super::super::Task::Marker
+            .complete(
+                &[Argument::Integer(7), Argument::Integer(v[10])],
+                Invocation {
+                    elapsed: Some(v[11]),
+                    unpaused_tasks: 0,
+                    unpaused_blocking_tasks: 0,
+                },
+                &mut None,
+                &mut spatial,
+                NativeServices::default(),
+            )
+            .unwrap();
+        assert_eq!(i32::from(!done), v[13], "{row}");
+        assert_eq!(position, [v[14], v[15], v[16]], "{row}");
+        assert_eq!(updates.len() as i32, v[17], "{row}");
+    }
+}
+
+#[test]
 fn move_along_axis_matches_the_original_routine() {
     // Rows run through the original MoveAlongAxis over synthetic actors with the published rotation
     // table (research oracle): [[pitch, yaw, roll], axis, delta, duration, scale, steps] where each
@@ -1255,6 +1394,7 @@ fn move_along_axis_matches_the_original_routine() {
                 matrix: Matrix::orientation(angles),
                 slave: false,
                 locations: &[],
+                markers: None,
                 effective_position: None,
                 player_position: None,
                 actor_index: 3,
@@ -1344,6 +1484,7 @@ fn control_animation_turns_the_receiver_only_while_its_group_plays() {
             matrix: Matrix::IDENTITY,
             slave: false,
             locations: &[],
+            markers: None,
             effective_position: None,
             player_position: None,
             actor_index: 0,
@@ -1850,6 +1991,7 @@ fn walk_forward_task_selects_groups_and_scales_the_zero_step_fallback_before_fra
                         matrix: Matrix::IDENTITY,
                         slave: false,
                         locations: &[],
+                        markers: None,
                         effective_position: None,
                         player_position: None,
                         actor_index: 0,
@@ -2063,6 +2205,7 @@ fn face_player_matches_the_original_routine() {
                     matrix: Matrix::IDENTITY,
                     slave: false,
                     locations: &[],
+                    markers: None,
                     effective_position: None,
                     player_position: Some([dx as i32, 0, dz as i32]),
                     actor_index: 0,
@@ -2238,6 +2381,7 @@ fn face_player_inertia_matches_the_original_routine() {
                     matrix: Matrix::IDENTITY,
                     slave: false,
                     locations: &[],
+                    markers: None,
                     effective_position: None,
                     player_position: Some([dx as i32, 0, dz as i32]),
                     actor_index: 0,
@@ -2397,6 +2541,7 @@ fn axis_movement_and_rotation_match_the_original_routines() {
                             matrix: Matrix::IDENTITY,
                             slave: false,
                             locations: &[],
+                            markers: None,
                             effective_position: None,
                             player_position: None,
                             actor_index: 0,
@@ -2554,6 +2699,7 @@ fn scaled_axis_movement_and_rotation_match_the_original_routines() {
                             matrix: Matrix::IDENTITY,
                             slave: false,
                             locations: &[],
+                            markers: None,
                             effective_position: None,
                             player_position: None,
                             actor_index: 0,
@@ -2656,6 +2802,7 @@ fn move_to_location_matches_the_original_routine() {
                         matrix: Matrix::IDENTITY,
                         slave: false,
                         locations: &[location],
+                        markers: None,
                         effective_position: None,
                         player_position: None,
                         actor_index: 0,
@@ -2760,6 +2907,7 @@ fn wander_to_location_matches_the_original_routine() {
                         matrix: Matrix::IDENTITY,
                         slave: false,
                         locations: &[location],
+                        markers: None,
                         effective_position: None,
                         player_position: None,
                         actor_index: 0,
@@ -2964,6 +3112,7 @@ fn move_object_axis_matches_the_original_routine() {
                         matrix: Matrix::orientation(angles),
                         slave: false,
                         locations: &[],
+                        markers: None,
                         effective_position: None,
                         player_position: None,
                         actor_index: 0,
@@ -3427,6 +3576,7 @@ fn walk_backward_matches_the_original_routine() {
                     matrix: Matrix::IDENTITY,
                     slave: false,
                     locations: &[],
+                    markers: None,
                     effective_position: None,
                     player_position: None,
                     actor_index: 0,
