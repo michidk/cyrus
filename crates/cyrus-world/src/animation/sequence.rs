@@ -244,6 +244,10 @@ impl FrameSequence {
         self.loops = count;
     }
 
+    pub(super) fn clear_exit_marker(&mut self) {
+        self.exit_reached = false;
+    }
+
     pub(super) fn exit_reached(&self) -> bool {
         self.exit_reached
     }

@@ -150,12 +150,14 @@ impl ScriptWorld {
                     .expect("admitted ordinary control")
                     .advance_action_transition_counter(ticks);
                 if self.actors[id.index].animation.is_some() {
-                    let items_ready = inputs
-                        .hud
-                        .map(super::super::ScriptHud::inventory_ready)
-                        .transpose()?
-                        .unwrap_or(false);
-                    self.select_map_animation_default(id, items_ready, ticks, sounds)?;
+                    if !self.select_selected_death_animation_default(id, ticks, sounds)? {
+                        let items_ready = inputs
+                            .hud
+                            .map(super::super::ScriptHud::inventory_ready)
+                            .transpose()?
+                            .unwrap_or(false);
+                        self.select_map_animation_default(id, items_ready, ticks, sounds)?;
+                    }
                     if self.updates.animation_system {
                         self.advance(
                             id,

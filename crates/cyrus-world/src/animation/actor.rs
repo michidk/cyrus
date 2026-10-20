@@ -237,6 +237,30 @@ impl ActorAnimation {
         Ok(frame)
     }
 
+    /// Apply the caller-admitted selected death override, bypassing ordinary defaults.
+    /// A matching group keeps its cursor/frame/delays, cancels pending playback,
+    /// clears the exit marker and replaces the finite loop count with 32.
+    /// Otherwise force-starts with modifier zero and this update's nominal ticks.
+    /// Follows preservation's SOUP selected-player death animation override.
+    pub fn select_death_override_with_sounds(
+        &mut self,
+        group: u16,
+        ticks: u32,
+        sounds: &mut dyn FnMut(AnimationSound) -> anyhow::Result<()>,
+    ) -> anyhow::Result<Option<u32>> {
+        self.check_failure()?;
+        self.default = group;
+        if let Some((current, sequence)) = self.current.as_mut()
+            && *current == group
+        {
+            self.pending = None;
+            sequence.clear_exit_marker();
+            sequence.set_loop_count(32);
+            return Ok(None);
+        }
+        self.force_request_with_sounds(group, 0, ticks, sounds)
+    }
+
     /// Set playback direction without advancing, requesting a group or changing countdowns.
     /// New group selection resets direction to forward. Follows preservation's reverse rules.
     pub fn set_reverse(&mut self, reverse: bool) -> anyhow::Result<()> {

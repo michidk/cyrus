@@ -448,3 +448,88 @@ fn cancelling_a_pending_request_preserves_current_frame_sound_and_loop_count() {
         }]
     );
 }
+
+#[test]
+fn death_override_retains_current_cursor_and_replaces_exit_loop_state() {
+    use cyrus_world::animation::ActorAnimation;
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":70},{"opcode":0,"frame_reference":71},
+            {"opcode":2,"value":0}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":80},{"opcode":2,"value":0}]}
+    ]));
+    for loops in [0, 1, 7, 255] {
+        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+        assert_eq!(actor.force_request(7, 0, 1).unwrap(), Some(70));
+        actor.request(8, 0, 0).unwrap();
+        actor.set_loop_count(loops).unwrap();
+        let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
+        saved["current"][1]["exit_reached"] = true.into();
+        let mut actor = ActorAnimation::from_snapshot(
+            &data,
+            "ACTOR",
+            serde_json::from_value(saved.clone()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            actor
+                .select_death_override_with_sounds(7, u32::MAX, &mut |_| panic!(
+                    "retained animation must not restart"
+                ))
+                .unwrap(),
+            None
+        );
+        saved["default"] = 7.into();
+        saved["pending"] = Value::Null;
+        saved["current"][1]["exit_reached"] = false.into();
+        saved["current"][1]["loops"] = 32.into();
+        assert_eq!(serde_json::to_value(actor.snapshot()).unwrap(), saved);
+        assert_eq!(actor.advance(1).unwrap(), Some(71));
+        assert_eq!(actor.current_group(), Some(7));
+    }
+}
+
+#[test]
+fn changed_death_override_starts_before_return_and_preserves_failed_default() {
+    use cyrus_world::animation::ActorAnimation;
+    let data = asset(json!([
+        {"group_index":7,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":4,"sound_param":7,"volume_shift":0},
+            {"opcode":0,"frame_reference":70},{"opcode":2,"value":0}]},
+        {"group_index":8,"anim_id":1,"anim_type":0,"commands":[
+            {"opcode":0,"frame_reference":80},{"opcode":2,"value":0}]}
+    ]));
+    for fail in [false, true] {
+        let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 8).unwrap();
+        actor.advance(1).unwrap();
+        let mut events = Vec::new();
+        let result = actor.select_death_override_with_sounds(7, 1, &mut |event| {
+            let reject = fail && matches!(event, AnimationSound::Play { .. });
+            events.push(event);
+            anyhow::ensure!(!reject, "death sound rejected");
+            Ok(())
+        });
+        assert_eq!(actor.default_group(), 7);
+        assert_eq!(
+            events,
+            vec![AnimationSound::Play {
+                effect: 7,
+                rate_offset_hz: 0
+            }]
+        );
+        if fail {
+            assert!(result.is_err());
+            assert!(
+                actor
+                    .select_death_override_with_sounds(7, 1, &mut |_| panic!(
+                        "sticky failure replay"
+                    ))
+                    .is_err()
+            );
+        } else {
+            assert_eq!(result.unwrap(), Some(70));
+            assert_eq!(actor.current_group(), Some(7));
+        }
+    }
+}

@@ -14321,6 +14321,16 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 }
             );
         }
+        if initialized && world.globals().player_death_override_group() == Some(0) {
+            assert!(
+                !world
+                    .select_selected_death_animation_default(player, 1, &mut |_, _| panic!(
+                        "inactive override"
+                    ))
+                    .unwrap()
+            );
+        }
+
         if (9..=11).contains(&mode) || matches!(mode, 4 | 6) {
             // Effect mode is retained independently of later ground-surface updates.
             if mode == 6 {
@@ -14450,6 +14460,34 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                     );
                 }
             }
+        }
+        if matches!(mode, 9 | 10) {
+            let before = movement_snapshot(&world, &scripts, &data);
+            let mut expected = before["actors"][index]["animation"].clone();
+            let group = if mode == 9 { 134 } else { 122 };
+            expected["playback"]["default"] = group.into();
+            expected["playback"]["pending"] = serde_json::Value::Null;
+            expected["playback"]["current"][1]["exit_reached"] = false.into();
+            expected["playback"]["current"][1]["loops"] = 32.into();
+            assert!(
+                world
+                    .select_selected_death_animation_default(player, u32::MAX, &mut |_, _| panic!(
+                        "retained death group restarted"
+                    ))
+                    .unwrap()
+            );
+            let after = movement_snapshot(&world, &scripts, &data);
+            assert_eq!(after["actors"][index]["animation"], expected);
+            assert_eq!(
+                world
+                    .globals()
+                    .selected_health()
+                    .unwrap()
+                    .death()
+                    .unwrap()
+                    .progress(),
+                13
+            );
         }
     }
 }

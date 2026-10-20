@@ -346,6 +346,77 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Handle the selected inhibited player's nonzero death override before ordinary
+    /// default selection or inventory queries. Returns false when that branch is absent.
+    pub fn select_selected_death_animation_default(
+        &mut self,
+        id: ScriptActorId,
+        ticks: u32,
+        sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
+    ) -> Result<bool> {
+        let index = self.resolve(id)?;
+        if self.selected_player_index() != Some(index) {
+            return Ok(false);
+        }
+        let result = (|| {
+            let group = self
+                .globals
+                .player_death_override_group()
+                .context("selected death override owner unavailable")?;
+            if group == 0
+                || !self
+                    .globals
+                    .player_hit_inhibited()
+                    .context("selected death inhibition unavailable")?
+            {
+                return Ok(false);
+            }
+            if let Some(error) = self.actors[index].failure() {
+                anyhow::bail!("{error}");
+            }
+            let group = u16::try_from(group)
+                .context("selected death override outside animation group range")?;
+            let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let actor = &mut self.actors[index];
+            let surface = actor.surface;
+            let animation = actor
+                .animation
+                .as_mut()
+                .context("selected death animation unavailable")?;
+            match animation
+                .playback
+                .select_death_override_with_sounds(group, ticks, &mut |sound| {
+                    sounds(
+                        id,
+                        ScriptSound::Animation {
+                            sound,
+                            surface,
+                            position,
+                        },
+                    )
+                }) {
+                Ok(frame) => {
+                    animation.frame = frame.or(animation.frame);
+                    Ok(true)
+                }
+                Err(error) => {
+                    let message = format!(
+                        "world {} instance {index} selected death default: {error:#}",
+                        self.world
+                    );
+                    actor.animation_failure = Some(message.clone());
+                    anyhow::bail!(message)
+                }
+            }
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {index} selected death default",
+                self.world
+            )
+        })
+    }
+
     /// Death admission bypasses idle and movement. The synchronous starter precedes
     /// progress accumulation; environmental spawning requires its own host.
     pub(super) fn advance_selected_death_controller(
