@@ -20,8 +20,9 @@ with angles (0, 2027, 0) for a player at (32464, -275, 33892), angles (0, 22, 0)
 the pose pipeline reproduces it (`script_camera_original`); a START screenshot shows
 Cyrus from behind, upright, on the ship deck. **Inferred:** the angle-to-view
 mapping (local +Z along the look direction with X mirrored) fits those poses but was
-not compared pixel for pixel; terrain correction, the camera's own view position for
-`ScriptView`, and roll or shake are not wired.
+not compared pixel for pixel. The driven camera's position feeds `ScriptView` and the
+map's terrain heights feed its terrain correction (retained-window terrain is
+ignored); roll and shake are not wired.
 Effects, music and speech playback live in `cyrus-audio`.
 Depends on game/world/assets; none of those crates depends on presentation.
 Production rendering has no `cyrus-audio` dependency. Native host composition
