@@ -151,6 +151,7 @@ impl ControlSnapshot {
             collision_response_auxiliary: self.collision_response_auxiliary,
             collision_response_age: self.collision_response_age,
             overlap_contact_identifier: self.overlap_contact_identifier,
+            ground_kind: 0,
             rope_attached: self.rope_attached,
             torch_burning: self.torch_burning,
             weapon_drawn: self.weapon_drawn,

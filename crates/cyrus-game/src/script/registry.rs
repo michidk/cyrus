@@ -238,6 +238,9 @@ pub struct ActorControlState {
     pub collision_response_age: u8,
     /// Original low-word overlap contact identifier; zero also denotes a static placement.
     pub overlap_contact_identifier: u16,
+    /// Kind of the last ground-response record the selected player's ordinary support query chose:
+    /// 0 none, 0x20 a model or actor face, 0x40 terrain. `PlayerOnScape` reads it.
+    pub ground_kind: u8,
     pub rope_attached: bool,
     pub torch_burning: u8,
     pub weapon_drawn: bool,
@@ -4123,6 +4126,21 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 )
             };
             return Ok(CallResult::Complete(value));
+        }
+        // PlayerOnScape: the selected player's last ground response was a terrain contact.
+        if function.eq_ignore_ascii_case("PlayerOnScape") {
+            anyhow::ensure!(arguments.is_empty(), "PlayerOnScape requires no arguments");
+            let player = self
+                .selected_player()
+                .context("PlayerOnScape: selected player unavailable")?;
+            let index = self.registry.resolve(player)?;
+            let control = self.registry.actors[index]
+                .control
+                .as_ref()
+                .context("PlayerOnScape: selected-player control unavailable")?;
+            return Ok(CallResult::Complete(i32::from(
+                control.ground_kind == super::registry::ground::TERRAIN_KIND,
+            )));
         }
         // PlayerStatus classifies the selected player; the motion bytes are the inferred
         // actor bytes +0x1b1 through +0x1b3 and the living state +0x1b4.

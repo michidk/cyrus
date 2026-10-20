@@ -346,6 +346,11 @@ impl ScriptWorld {
                 .expect("validated history")
                 .history
                 .finish_query(metadata, true);
+            self.actors[id.index]
+                .control
+                .as_mut()
+                .expect("validated control")
+                .ground_kind = ground_kind(selected.as_ref());
         }
         if let Some(support) = &selected {
             let owner = match support.source() {
@@ -427,5 +432,40 @@ impl OrdinaryStableProbe {
             "stable recovery terrain height outside integer map range"
         );
         Ok(self.start[1] <= height as i32 && height as i32 <= self.end[1])
+    }
+}
+
+/// Kind byte of the original's ground-response record for a selected support: 0x40 for terrain.
+pub(super) const TERRAIN_KIND: u8 = 0x40;
+
+/// Kind byte of the ground-response record: zero without support, 0x40 for terrain and 0x20 for any
+/// model or actor face.
+fn ground_kind(support: Option<&SelectedSupport>) -> u8 {
+    match support.map(SelectedSupport::source) {
+        None => 0,
+        Some(SupportSource::Terrain) => TERRAIN_KIND,
+        Some(_) => 0x20,
+    }
+}
+
+#[cfg(test)]
+mod kind_tests {
+    use super::*;
+
+    #[test]
+    fn the_response_kind_follows_the_support_source() {
+        let support = |source| SelectedSupport::Fallback {
+            source,
+            normal: [0, 256, 0],
+            actor_height: 0,
+        };
+        assert_eq!(ground_kind(None), 0);
+        assert_eq!(ground_kind(Some(&support(SupportSource::Terrain))), 0x40);
+        for source in [
+            SupportSource::Model { model: 1, face: 2 },
+            SupportSource::Actor { actor: 1, face: 2 },
+        ] {
+            assert_eq!(ground_kind(Some(&support(source))), 0x20);
+        }
     }
 }
