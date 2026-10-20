@@ -29,6 +29,9 @@ pub struct BackwardState {
     /// Attribute bytes 12 and 19 give WalkForward ordinary and combat step lengths.
     pub walk_step_attribute: u8,
     pub walk_combat_step_attribute: u8,
+    /// Attribute bytes 13 and 20 give WalkBackward's ordinary and combat step lengths.
+    pub walk_backward_step_attribute: u8,
+    pub walk_backward_combat_step_attribute: u8,
     /// A combat move is already selected (the action selector is not -1).
     pub move_selected: bool,
     /// Attribute 11 selects the initial distance ramp, independently of animation suppression.
@@ -79,6 +82,12 @@ pub fn backward_admission(
         group,
         step: state.step_attribute,
     }
+}
+
+/// `WalkBackward`'s admission before its step check: the idle admission with lifecycle byte 0
+/// only. The original's extra refusal for the selected player is not modelled.
+pub fn walk_backward_admitted(state: &BackwardState) -> bool {
+    idle_admitted(state) && state.living_state == 0
 }
 
 /// The admission shared by every nonplayer stepper: no rope, sliding, falling or queued motion,

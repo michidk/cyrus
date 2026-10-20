@@ -3003,6 +3003,8 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             forward_combat_step_attribute: actor.attributes[17],
             walk_step_attribute: actor.attributes[12],
             walk_combat_step_attribute: actor.attributes[19],
+            walk_backward_step_attribute: actor.attributes[13],
+            walk_backward_combat_step_attribute: actor.attributes[20],
             move_selected: control
                 .combat
                 .as_ref()
@@ -3028,6 +3030,9 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         let walking = matches!(operation, LocomotionOperation::WalkForward)
             && !matches!(state.surface, 2 | 4);
         admission.walk_forward_mode = walking;
+        let walking_backward = matches!(operation, LocomotionOperation::WalkBackward)
+            && !matches!(state.surface, 2 | 4);
+        admission.walk_backward_mode = walking_backward;
         admission.forward_admitted = Some(super::locomotion::forward_admitted(&state));
         // WalkForward has no caller-sampled substitute for its side-effecting query.
         if walking {
@@ -3037,14 +3042,14 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             generation: self.generation,
             index: self.index,
         };
-        if walking {
+        if walking || walking_backward {
             anyhow::ensure!(
                 self.selected_player() != Some(id)
                     && !matches!(
                         self.registry.actors[self.index].source,
                         ScriptActorSource::Player | ScriptActorSource::AlternatePlayer
                     ),
-                "world {} instance {}: selected-player WalkForward unavailable",
+                "world {} instance {}: selected-player walking step unavailable",
                 self.world,
                 self.index,
             );
@@ -3072,6 +3077,20 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             respond: false,
         };
         match operation {
+            LocomotionOperation::WalkBackward => {
+                if walking_backward && super::locomotion::walk_backward_admitted(&state) {
+                    let mut missing_sound =
+                        |_, _| anyhow::bail!("WalkBackward collision sound handler unavailable");
+                    let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
+                    admission.backward_step_clear = Some(self.registry.ordinary_step_clear(
+                        id,
+                        hazard::OrdinaryStepDirection::Backward,
+                        geometry.ground,
+                        geometry.environment,
+                        sounds,
+                    )?);
+                }
+            }
             LocomotionOperation::Backward => {
                 let mut needed = false;
                 super::locomotion::backward_admission(state, || {

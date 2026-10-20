@@ -170,6 +170,10 @@ pub(super) struct LocomotionAdmission {
     /// Lateral step check of an ordinary `MoveLeft` or `MoveRight`.
     pub lateral_step_clear: Option<bool>,
     pub walk_forward_mode: bool,
+    /// `WalkBackward` outside deep water; in deep water it is `MoveBackward`.
+    pub walk_backward_mode: bool,
+    /// `WalkBackward`'s step check.
+    pub backward_step_clear: Option<bool>,
     pub forward_admitted: Option<bool>,
 }
 
@@ -427,6 +431,9 @@ enum Task {
     },
     FacePlayer,
     Backward,
+    /// `WalkBackward`: `MoveBackward` outside deep water with its own groups, step attributes and
+    /// step check.
+    WalkBackward,
     Strafe(super::locomotion::Strafe),
     Forward,
     WalkForward,
@@ -1002,10 +1009,10 @@ impl Task {
                 outcome.aligning = facing.ongoing();
                 !facing.ongoing()
             }
-            Self::Backward => {
+            Self::Backward | Self::WalkBackward => {
                 use super::locomotion::{
                     BACKWARD_MOTION_DIRECTION, BackwardAdmission, backward_admission,
-                    backward_translation, continues,
+                    backward_translation, continues, walk_backward_admitted,
                 };
                 let [duration] = arguments else {
                     anyhow::bail!("MoveBackward requires one argument")
@@ -1018,25 +1025,53 @@ impl Task {
                     .locomotion
                     .context("MoveBackward locomotion state unavailable")?;
                 let state = motion.state.map_err(anyhow::Error::msg)?;
-                let mut probe_needed = false;
-                let admission = backward_admission(state, || {
-                    probe_needed = true;
-                    motion.admission.blocked_ahead_30.unwrap_or(false)
-                });
-                anyhow::ensure!(
-                    !(probe_needed && motion.admission.blocked_ahead_30.is_none()),
-                    "MoveBackward blocked-ahead probe input unavailable"
-                );
-                if admission == BackwardAdmission::Refused {
-                    return Ok(true);
-                }
-                let receiver = motion
-                    .motion
-                    .context("MoveBackward motion state unavailable")?;
-                *receiver.direction = BACKWARD_MOTION_DIRECTION;
-                let BackwardAdmission::Proceed { group, step } = admission else {
-                    return Ok(true);
+                let walking =
+                    matches!(self, Self::WalkBackward) && motion.admission.walk_backward_mode;
+                let mut receiver = motion.motion;
+                let (group, step) = if walking {
+                    if !walk_backward_admitted(&state)
+                        || !motion
+                            .admission
+                            .backward_step_clear
+                            .context("WalkBackward step check input unavailable")?
+                    {
+                        return Ok(true);
+                    }
+                    *receiver
+                        .as_mut()
+                        .context("WalkBackward motion state unavailable")?
+                        .direction = BACKWARD_MOTION_DIRECTION;
+                    if state.holding_weapon || state.combat_mode {
+                        (93, state.walk_backward_combat_step_attribute)
+                    } else {
+                        (
+                            if state.torch_burning { 23 } else { 22 },
+                            state.walk_backward_step_attribute,
+                        )
+                    }
+                } else {
+                    let mut probe_needed = false;
+                    let admission = backward_admission(state, || {
+                        probe_needed = true;
+                        motion.admission.blocked_ahead_30.unwrap_or(false)
+                    });
+                    anyhow::ensure!(
+                        !(probe_needed && motion.admission.blocked_ahead_30.is_none()),
+                        "MoveBackward blocked-ahead probe input unavailable"
+                    );
+                    if admission == BackwardAdmission::Refused {
+                        return Ok(true);
+                    }
+                    *receiver
+                        .as_mut()
+                        .context("MoveBackward motion state unavailable")?
+                        .direction = BACKWARD_MOTION_DIRECTION;
+                    let BackwardAdmission::Proceed { group, step } = admission else {
+                        return Ok(true);
+                    };
+                    (group, step)
                 };
+                let receiver = receiver.context("MoveBackward motion state unavailable")?;
                 let input = animation.as_mut().context(
                     "MoveBackward requires prepared animation and explicit nominal ticks",
                 )?;
@@ -1057,11 +1092,17 @@ impl Task {
                         return Ok(!continues(duration, elapsed));
                     }
                     *motion.called |= 8;
+                    // WalkBackward with a zero step length instead moves half of attribute 9, unscaled.
+                    let step_distance = if walking && step == 0 {
+                        i32::from(state.step_attribute >> 1)
+                    } else {
+                        i32::from(step) << 8
+                    };
                     let distance = super::locomotion::initial_step_distance(
                         receiver.counters,
                         6,
                         state.step_adjustment,
-                        i32::from(step) << 8,
+                        step_distance,
                     );
                     if let Some((heading, distance)) = backward_translation(
                         spatial.angles[1],
@@ -1845,6 +1886,7 @@ pub struct NativeTasks {
 #[derive(Clone, Copy)]
 pub(super) enum LocomotionOperation {
     Backward,
+    WalkBackward,
     Forward,
     WalkForward,
     Strafe(super::locomotion::Strafe),
@@ -1853,6 +1895,8 @@ impl LocomotionOperation {
     pub(super) fn named(name: &str) -> Option<Self> {
         if name.eq_ignore_ascii_case("MoveBackward") {
             Some(Self::Backward)
+        } else if name.eq_ignore_ascii_case("WalkBackward") {
+            Some(Self::WalkBackward)
         } else if name.eq_ignore_ascii_case("MoveForward") {
             Some(Self::Forward)
         } else if name.eq_ignore_ascii_case("WalkForward") {
@@ -1885,6 +1929,7 @@ impl NativeTasks {
     pub(super) fn locomotion_operation(&self, token: u64) -> Option<LocomotionOperation> {
         match self.tasks.get(&token)? {
             Task::Backward => Some(LocomotionOperation::Backward),
+            Task::WalkBackward => Some(LocomotionOperation::WalkBackward),
             Task::Forward => Some(LocomotionOperation::Forward),
             Task::WalkForward => Some(LocomotionOperation::WalkForward),
             _ => None,
@@ -2044,6 +2089,8 @@ impl NativeTasks {
             Task::FacePlayer
         } else if function.eq_ignore_ascii_case("MoveBackward") {
             Task::Backward
+        } else if function.eq_ignore_ascii_case("WalkBackward") {
+            Task::WalkBackward
         } else if function.eq_ignore_ascii_case("MoveForward") {
             Task::Forward
         } else if function.eq_ignore_ascii_case("WalkForward") {
