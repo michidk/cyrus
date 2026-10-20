@@ -31,9 +31,9 @@ impl ScriptWorld {
         &mut self,
         id: ScriptActorId,
         selected_player: Option<ScriptActorId>,
-        _inputs: super::ScriptInputs<'_>,
-        _random: Option<&mut crate::random::EngineRandom>,
-        _sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+        inputs: super::ScriptInputs<'_>,
+        random: Option<&mut crate::random::EngineRandom>,
+        sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<()> {
         let Some(message) = self.peek_combat_message(id)? else {
             return Ok(());
@@ -53,10 +53,8 @@ impl ScriptWorld {
                 .with_context(|| format!("hit message actor {index} combat unavailable"))?
                 .flags &= !3;
         }
-        anyhow::bail!(
-            "ordinary combat message {} response services unsupported",
-            message.code
-        )
+        let random = random.context("hit response random stream unavailable")?;
+        self.process_hit_response_core(id, message.sender, inputs, random, sounds)
     }
 
     pub fn process_combat_message(

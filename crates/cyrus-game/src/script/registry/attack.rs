@@ -4,6 +4,76 @@ use crate::script::decision::attack_step_with_animation;
 use anyhow::{Context, Result};
 
 impl ScriptWorld {
+    /// Apply the verified d001 response core after message intent clears. This slice
+    /// owns displacement, positional impact sound, taunt, wrapping strength/armor
+    /// damage arithmetic and contact-death selector routing. Animation admission
+    /// remains in the playback follow-up.
+    pub(super) fn process_hit_response_core(
+        &mut self,
+        receiver: ScriptActorId,
+        sender: ScriptActorId,
+        inputs: super::ScriptInputs<'_>,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let receiver_index = self.resolve(receiver)?;
+        let sender_index = self.resolve(sender)?;
+        let from = self.spatial(sender)?.local.position;
+        let origin = self.spatial(receiver)?.local.position;
+        let heading = super::super::spatial::query_bearing(
+            origin[0].wrapping_sub(from[0]),
+            origin[2].wrapping_sub(from[2]),
+        );
+        let moved = cyrus_world::transform::translate_forward(origin, heading, 3000)?;
+        self.spatial
+            .as_mut()
+            .context("hit response spatial state unavailable")?
+            .actor_mut(receiver_index)?
+            .local
+            .position = moved;
+        let effect = i32::from(self.actors[receiver_index].attributes[86]);
+        let rate_offset_hz = random.rnd(128)?.wrapping_mul(16).wrapping_sub(1024);
+        sounds(
+            receiver,
+            crate::script::ScriptSound::Positional {
+                effect,
+                volume: 0,
+                rate_offset_hz,
+                position: self.sight_position(receiver_index)?,
+            },
+        )?;
+        self.request_hurt_combat_taunt(receiver, inputs, random, sounds)?;
+        let (strength, damage) = {
+            let combat = self.actors[sender_index]
+                .control
+                .as_ref()
+                .and_then(|control| control.combat.as_ref())
+                .context("hit sender combat unavailable")?;
+            let motion = self.current_combat_motion(sender)?;
+            (
+                combat.strength,
+                motion.damage.context("hit motion damage unavailable")?,
+            )
+        };
+        let armor = self.actors[receiver_index]
+            .control
+            .as_ref()
+            .and_then(|control| control.combat.as_ref())
+            .context("hit receiver combat unavailable")?
+            .armor;
+        let product = (strength.wrapping_add(100)).wrapping_mul(damage);
+        let scaled = product.wrapping_div(100);
+        let mitigated = scaled.wrapping_mul(armor).wrapping_div(100);
+        let change = (scaled.wrapping_sub(mitigated)).wrapping_neg();
+        let health = i32::from(self.actors[receiver_index].attributes[3])
+            .wrapping_add(change)
+            .clamp(0, 255);
+        self.actors[receiver_index].attributes[3] = health as u8;
+        if health < 1 {
+            self.dispatch_contact_death(receiver, 0, inputs.nominal_ticks, sounds)?;
+        }
+        Ok(())
+    }
     /// Read attack-processing admission without advancing playback or marking contact.
     /// Reverse playback rejects processing before intent or motion queries. The signed
     /// command cursor admits the start-inclusive/end-exclusive active
