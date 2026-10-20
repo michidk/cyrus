@@ -15,6 +15,7 @@ pub(super) struct PreparedEffects {
     pub(super) bindings: BTreeMap<u16, Binding>,
     metadata: BTreeMap<u16, DrawMetadata>,
     ambient: Option<i16>,
+    capacity: usize,
 }
 
 struct DrawMetadata {
@@ -22,6 +23,57 @@ struct DrawMetadata {
     scale: f32,
     flags: u16,
     alpha: u16,
+}
+
+impl DrawMetadata {
+    fn shape(&self, descriptor: u32) -> (Vec2, f32) {
+        let geometry = if descriptor & 0x20000 != 0 {
+            0.5
+        } else if descriptor & 0x10000 != 0 {
+            90.0 / 256.0
+        } else {
+            1.0
+        };
+        (
+            Vec2::new(self.size[0] as f32, self.size[1] as f32) * 0.5 * self.scale * geometry,
+            crate::flat::bound_radius(self.size[0], self.size[1], self.scale) * geometry,
+        )
+    }
+}
+impl PreparedEffects {
+    fn packet(&self, descriptor: u32, frame: usize) -> Result<EffectDraw> {
+        let id = descriptor as u16;
+        ensure!(
+            id != 0 && id != u16::MAX,
+            "effect texture {id}: no-draw identity in retained packet"
+        );
+        let binding = self
+            .bindings
+            .get(&id)
+            .ok_or_else(|| anyhow::anyhow!("effect texture {id}: prepared image absent"))?;
+        ensure!(
+            frame < binding.frames.len(),
+            "effect texture {id}: retained frame {frame} outside prepared range"
+        );
+        let metadata = &self.metadata[&id];
+        let alternate = descriptor & 0x20000 != 0;
+        let (half_extents, radius) = metadata.shape(descriptor);
+        Ok(EffectDraw {
+            texture: binding.frames[frame].clone(),
+            frame,
+            half_extents,
+            radius,
+            brightness: if alternate {
+                self.ambient.ok_or_else(|| {
+                    anyhow::anyhow!("effect texture {id}: world ambient brightness absent")
+                })? as u8
+            } else {
+                255
+            },
+            alpha: if alternate { 140 } else { metadata.alpha },
+            flags: if alternate { 0x201 } else { metadata.flags },
+        })
+    }
 }
 
 /// Camera-space admission inputs in original map units, with positive Z forward.
@@ -142,6 +194,11 @@ impl TextureAnimations {
                 })
                 .collect(),
             ambient: source.ambient_brightness,
+            capacity: if source.disabled {
+                0
+            } else {
+                source.capacity as usize
+            },
         });
         Ok(())
     }
@@ -194,15 +251,7 @@ impl TextureAnimations {
             .ok_or_else(|| anyhow::anyhow!("effect texture {id}: prepared image absent"))?;
         let metadata = &prepared.metadata[&id];
         let alternate = descriptor & 0x20000 != 0;
-        let geometry_scale = if alternate {
-            0.5
-        } else if descriptor & 0x10000 != 0 {
-            90.0 / 256.0
-        } else {
-            1.0
-        };
-        let radius = crate::flat::bound_radius(metadata.size[0], metadata.size[1], metadata.scale)
-            * geometry_scale;
+        let radius = metadata.shape(descriptor).1;
         let [x, y, z] = view.center;
         if super::admission::classify(
             [x * view.projection_scale.x, y * view.projection_scale.y, z],
@@ -214,13 +263,7 @@ impl TextureAnimations {
         {
             return Ok(None);
         }
-        let brightness = if alternate {
-            prepared.ambient.ok_or_else(|| {
-                anyhow::anyhow!("effect texture {id}: world ambient brightness absent")
-            })? as u8
-        } else {
-            255
-        };
+        let mut packet = prepared.packet(descriptor, 0)?;
         let explicit = if alternate {
             let frame = usize::try_from(lifetime_frame).map_err(|_| {
                 anyhow::anyhow!("effect texture {id}: negative explicit frame {lifetime_frame}")
@@ -246,18 +289,49 @@ impl TextureAnimations {
             }
         }
         let frame = state.playback.frame.unwrap_or(0);
-        Ok(Some(EffectDraw {
-            texture: binding.frames[frame].clone(),
-            frame,
-            half_extents: Vec2::new(metadata.size[0] as f32, metadata.size[1] as f32)
-                * 0.5
-                * metadata.scale
-                * geometry_scale,
-            radius,
-            brightness,
-            alpha: if alternate { 140 } else { metadata.alpha },
-            flags: if alternate { 0x201 } else { metadata.flags },
-        }))
+        packet.frame = frame;
+        packet.texture = binding.frames[frame].clone();
+        Ok(Some(packet))
+    }
+
+    pub(in crate::fog) fn retained_effect_draw(
+        &self,
+        descriptor: u32,
+        frame: usize,
+    ) -> Result<EffectDraw> {
+        self.effects
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("retained effect images absent"))?
+            .packet(descriptor, frame)
+    }
+
+    pub(in crate::fog) fn validate_effect_draws(
+        &self,
+        draws: &[crate::fog::effects::RetainedEffectDraw],
+    ) -> Result<()> {
+        ensure!(
+            draws.windows(2).all(|pair| pair[0].slot < pair[1].slot),
+            "retained effect slots duplicate or unordered"
+        );
+        for draw in draws {
+            ensure!(
+                self.effects
+                    .as_ref()
+                    .is_some_and(|effects| draw.slot < effects.capacity),
+                "retained effect slot {} outside prepared pool",
+                draw.slot
+            );
+            self.retained_effect_draw(draw.descriptor, draw.frame)?;
+            let key = &self.effects.as_ref().unwrap().bindings[&(draw.descriptor as u16)].key;
+            ensure!(
+                self.states
+                    .get(key)
+                    .is_some_and(|state| state.playback.frame.is_some()),
+                "retained effect slot {}: image has never been requested",
+                draw.slot
+            );
+        }
+        Ok(())
     }
 
     /// Preparation failure for the current environment, before any pool is enabled.
@@ -420,6 +494,108 @@ mod tests {
                 .is_err()
         );
         assert_eq!(world.resource::<Assets<Image>>().len(), count);
+        Ok(())
+    }
+    #[test]
+    fn displayed_packets_and_fraction_restore_without_requests_or_pool_movement() -> Result<()> {
+        use crate::fog::effects::RetainedEffectDraw;
+        let environment = Handle::<cyrus_assets::environment::Environment>::default().id();
+        let source = Effects {
+            ambient_brightness: Some(78),
+            capacity: 2,
+            disabled: false,
+            images: BTreeMap::from([(
+                0x2500,
+                cyrus_assets::effects::EffectImage {
+                    name: "A00000".into(),
+                    size: [1, 1],
+                    texture_scale: 256,
+                    delay_ms: 100,
+                    flags: 1,
+                    alpha: 151,
+                    frames: vec![vec![10, 20, 30, 255], vec![40, 50, 60, 255]],
+                },
+            )]),
+        };
+        let mut assets = Assets::default();
+        let mut fresh = || -> Result<TextureAnimations> {
+            let mut owner = TextureAnimations {
+                environment: Some(environment),
+                ..default()
+            };
+            owner.prepare_effects(&source, &mut assets)?;
+            Ok(owner)
+        };
+        let mut live = fresh()?;
+        let view = EffectDrawView {
+            center: [0.0, 0.0, 100.0],
+            projection_scale: Vec2::ONE,
+            clipping: [1.0, 1000.0],
+        };
+        live.request_effect_draw(environment, 0x22500, 1, &view, 100)?;
+        live.request_effect_draw(environment, 0x22500, 0, &view, 100)?;
+        live.effect_draws = vec![
+            RetainedEffectDraw {
+                slot: 0,
+                descriptor: 0x22500,
+                position: [10, 20, 30],
+                frame: 1,
+            },
+            RetainedEffectDraw {
+                slot: 1,
+                descriptor: 0x22500,
+                position: [40, 50, 60],
+                frame: 0,
+            },
+        ];
+        live.effect_clock
+            .advance(std::time::Duration::from_secs(7))?;
+        live.effect_clock
+            .advance(std::time::Duration::from_millis(7010))?;
+        let saved = serde_json::to_value(live.snapshot_playback()?)?;
+        let mut restored =
+            TextureAnimations::from_snapshot(fresh()?, serde_json::from_value(saved.clone())?)?;
+        assert_eq!(restored.effect_draws[0].position, [10, 20, 30]);
+        assert_eq!(restored.effect_draws[1].position, [40, 50, 60]);
+        assert_eq!(
+            restored
+                .retained_effect_draw(
+                    restored.effect_draws[0].descriptor,
+                    restored.effect_draws[0].frame
+                )?
+                .frame,
+            1
+        );
+        assert_eq!(
+            restored
+                .retained_effect_draw(
+                    restored.effect_draws[1].descriptor,
+                    restored.effect_draws[1].frame
+                )?
+                .frame,
+            0
+        );
+        assert_eq!(restored.snapshot()[0].frame, Some(0));
+        assert_eq!(serde_json::to_value(restored.snapshot_playback()?)?, saved);
+        assert_eq!(
+            restored
+                .effect_clock
+                .advance(std::time::Duration::from_millis(7017))?,
+            1
+        );
+        for mutation in 0..5 {
+            let mut bad = saved.clone();
+            match mutation {
+                0 => bad["effect_draws"][0]["frame"] = 2.into(),
+                1 => bad["effect_draws"][1]["slot"] = 0.into(),
+                2 => bad["effect_draws"][1]["slot"] = 2.into(),
+                3 => bad["effect_clock"]["phase"] = 1_000_000_000_u32.into(),
+                _ => bad["images"][0]["frame"] = serde_json::Value::Null,
+            }
+            assert!(
+                TextureAnimations::from_snapshot(fresh()?, serde_json::from_value(bad)?).is_err()
+            );
+        }
         Ok(())
     }
 }

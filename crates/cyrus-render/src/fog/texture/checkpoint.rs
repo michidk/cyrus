@@ -140,6 +140,10 @@ impl TextureSourcesSnapshot {
 pub struct TexturePlaybackSnapshot {
     version: u32,
     images: Vec<ImagePlayback>,
+    #[serde(default)]
+    effect_clock: crate::fog::effects::EffectDrawClock,
+    #[serde(default)]
+    effect_draws: Vec<crate::fog::effects::RetainedEffectDraw>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -178,7 +182,14 @@ impl TextureAnimations {
             })
             .collect();
         images.sort_by(|a, b| a.image.cmp(&b.image));
-        Ok(TexturePlaybackSnapshot { version: 1, images })
+        self.effect_clock.validate()?;
+        self.validate_effect_draws(&self.effect_draws)?;
+        Ok(TexturePlaybackSnapshot {
+            version: 1,
+            images,
+            effect_clock: self.effect_clock.clone(),
+            effect_draws: self.effect_draws.clone(),
+        })
     }
 
     /// Consume an off-live, fully bound replacement. Validate its exact prepared
@@ -204,6 +215,10 @@ impl TextureAnimations {
             snapshot.images.len() == prepared.states.len(),
             "texture replacement image census differs"
         );
+        snapshot.effect_clock.validate()?;
+        prepared.effects_repaint = true;
+        prepared.effect_clock = snapshot.effect_clock.clone();
+        prepared.effect_draws = snapshot.effect_draws.clone();
         let mut previous: Option<&str> = None;
         for saved in &snapshot.images {
             ensure!(
@@ -250,6 +265,7 @@ impl TextureAnimations {
             };
             state.held = saved.held;
         }
+        prepared.validate_effect_draws(&prepared.effect_draws)?;
         prepared.restored_binding = true;
         Ok(prepared)
     }

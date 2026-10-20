@@ -420,7 +420,20 @@ source-image bounds before requesting frames and supplies geometry, brightness,
 alpha and flags. Explicit effect requests replace the shared current frame while
 preserving its deadline; automatic requests continue from that frame. These
 requests do not advance effect lifetime or apply draw-time movement.
-Production pool binding and environmental effect drawing remain unavailable.
+
+Environmental effects bind to the exact prepared environment, world and logical
+generation. The renderer retains billboard submissions before object updates and
+lifetime expiry, then draws them through the shared flat queue, lighting and
+texture materials. Replacement removes owned GPU assets. Texture snapshots retain
+submitted packets and presentation phase; restoration repaints without requesting
+images or moving the logical pool. Missing admitted world-clock samples, console
+and logbook suspension pause capture.
+**Verified:** installed binding/restoration and synthetic software-Vulkan checks
+cover axis reversals, constant alpha and depth flags. **Inferred:** the normalized
+60 Hz presentation adapter follows the documented Glide retrace ceiling; it does
+not establish original cadence. **Unknown:** installed death playback, complete
+native/browser restored continuation and pixel parity. Special drawing flag
+`0x80` remains unsupported.
 
 Terrain playback retains source and animated heights in engine units before
 converting each final height to mesh coordinates. `WaterPlayback::camera_terrain`

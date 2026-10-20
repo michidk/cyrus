@@ -192,12 +192,16 @@ impl EnvironmentalEffects {
         Ok(())
     }
     fn prepare_draw(&mut self, ticks: u32) {
+        self.prepare_draws(ticks, 1);
+    }
+    fn prepare_draws(&mut self, ticks: u32, draws: u32) {
         if self.disabled || self.is_empty() {
             return;
         }
         for effect in self.slots.iter_mut().flatten() {
             if effect.descriptor & 0x20000 != 0 {
-                effect.position[1] = effect.position[1].wrapping_sub(ticks.wrapping_add(2) as i32);
+                effect.position[1] = effect.position[1]
+                    .wrapping_sub(ticks.wrapping_add(draws.wrapping_mul(2)) as i32);
             }
         }
     }
@@ -276,13 +280,29 @@ impl ScriptWorld {
         }
         self.effects.iter().flat_map(EnvironmentalEffects::active)
     }
+    /// Apply the published nominal-tick and per-draw position terms separately.
+    /// Presentation hosts may normalize draw cadence without deferring nominal
+    /// movement across a later birth, release or slot reuse. `draws` can be zero;
+    /// callers must supply each interval before the next object/lifetime update.
+    /// This advances neither lifetime nor image playback. Active slots stay ordered.
+    pub fn prepare_environment_effect_draws(
+        &mut self,
+        nominal_ticks: u32,
+        draws: u32,
+    ) -> impl Iterator<Item = (usize, &EnvironmentalEffect)> {
+        if let Some(effects) = &mut self.effects {
+            effects.prepare_draws(nominal_ticks, draws);
+        }
+        self.effects.iter().flat_map(EnvironmentalEffects::active)
+    }
     pub(super) fn spawn_death_effect(&mut self, descriptor: u32, point: [i32; 3]) -> Result<()> {
         self.effects
             .as_mut()
             .context("selected death environmental effect spawning unavailable")?
             .spawn(descriptor, point)
     }
-    /// World-loop effect stage, after object/code-object updates and before scene drawing.
+    /// World-loop lifetime stage after object/code-object updates. The scene already
+    /// retained its effect submissions; expiry does not retract those packets.
     pub fn advance_environment_effects(&mut self, ticks: u32) {
         if let Some(effects) = &mut self.effects {
             effects.advance(ticks);
@@ -408,6 +428,48 @@ mod tests {
             restored.active().next().unwrap().1.position[1],
             i32::MAX - 1
         );
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_draw_terms_do_not_carry_tick_debt_across_birth_or_reuse() -> Result<()> {
+        let mut effects = EnvironmentalEffects::prepare(&source(4))?;
+        effects.spawn(0x22500, [0; 3])?;
+        effects.prepare_draws(3, 0);
+        assert_eq!(effects.active().next().unwrap().1.position[1], -5);
+        // A later birth must not inherit the previous interval's nominal ticks.
+        effects.spawn(0x22500, [0; 3])?;
+        effects.prepare_draws(0, 1);
+        assert_eq!(effects.slots[0].as_ref().unwrap().position[1], -7);
+        assert_eq!(effects.slots[1].as_ref().unwrap().position[1], -4);
+        effects.slots[0].as_mut().unwrap().active = false;
+        effects.prepare_draws(5, 0);
+        assert_eq!(effects.slots[0].as_ref().unwrap().position[1], -12);
+        effects.spawn(0x22500, [0; 3])?;
+        effects.prepare_draws(0, 1);
+        assert_eq!(effects.slots[0].as_ref().unwrap().position[1], -4);
+        assert_eq!(effects.slots[1].as_ref().unwrap().position[1], -11);
+        Ok(())
+    }
+
+    #[test]
+    fn submission_precedes_same_loop_birth_updates_and_keeps_packets_after_expiry() -> Result<()> {
+        let mut effects = EnvironmentalEffects::prepare(&source(4))?;
+        // The scene's first submission sees no effect. Object work then creates it.
+        effects.prepare_draw(1);
+        assert_eq!(effects.active().count(), 0);
+        effects.spawn(0x22500, [2560, 0, 7680])?;
+        effects.advance(1);
+        assert_eq!(effects.active().next().unwrap().1.frame, 1);
+        // Next scene submission sees the preceding loop's settled lifetime frame.
+        effects.prepare_draw(3);
+        let packet = effects.active().next().unwrap().1.clone();
+        assert_eq!(packet.frame, 1);
+        assert_eq!(packet.position, [10, -7, 30]);
+        effects.advance(3);
+        assert_eq!(effects.active().count(), 0);
+        assert_eq!(packet.frame, 1);
+        assert_eq!(packet.position, [10, -7, 30]);
         Ok(())
     }
 

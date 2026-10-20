@@ -1,6 +1,6 @@
 //! Automatic ordinary map stages share the installed clock and logical actor state.
 use super::{ScriptActorId, ScriptActors, ScriptInputs, ScriptStage, ScriptWorld};
-use crate::clock::{SimulationClock, bios_tick};
+use crate::clock::{ClockStep, SimulationClock, bios_tick};
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use cyrus_assets::animation::Animations;
@@ -18,8 +18,19 @@ pub struct ScriptView {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OrdinaryUpdates;
 
+/// Timing admitted for this host update, removed while ordinary world work is paused.
+/// A restored or otherwise changed SimulationClock alone is not a sampled update.
 #[derive(Resource)]
-pub(crate) struct ClockSample(u64);
+pub struct WorldClockSample {
+    generation: u64,
+    step: ClockStep,
+}
+impl WorldClockSample {
+    /// Current update timing only when it belongs to the supplied logical generation.
+    pub fn step(&self, generation: u64) -> Option<ClockStep> {
+        (self.generation == generation).then_some(self.step)
+    }
+}
 
 /// Timing/services and matching world geometry for one ordinary traversal.
 /// Missing geometry cannot admit an actor's collision stages.
@@ -472,7 +483,7 @@ pub(crate) fn sample_clock(
             .as_ref()
             .zip(prepared.request.as_ref())
             .is_some_and(|(view, request)| view.source == request.0);
-    commands.remove_resource::<ClockSample>();
+    commands.remove_resource::<WorldClockSample>();
     if let Some(mut clock) = clock {
         let tick = bios_tick(time.elapsed());
         if ready {
@@ -486,7 +497,10 @@ pub(crate) fn sample_clock(
                 .expect("clock readiness requires a world")
                 .globals
                 .advance_player_idle_clock(clock.measurement_intervals());
-            commands.insert_resource(ClockSample(actors.current.as_ref().unwrap().generation()));
+            commands.insert_resource(WorldClockSample {
+                generation: actors.current.as_ref().unwrap().generation(),
+                step: clock.step(),
+            });
         }
     }
     *running = ready;
@@ -503,7 +517,7 @@ pub(crate) struct OrdinaryAssets<'w> {
     scripts: Option<Res<'w, Assets<cyrus_assets::script::Scripts>>>,
     scene_request: Option<Res<'w, crate::player::data::PlayerSceneRequest>>,
     scenes: Option<Res<'w, Assets<crate::player::data::PlayerScene>>>,
-    sample: Option<Res<'w, ClockSample>>,
+    sample: Option<Res<'w, WorldClockSample>>,
     cheats: Option<Res<'w, crate::cheats::Cheats>>,
     console: Option<Res<'w, cyrus_console::Console>>,
     logbook: Option<Res<'w, crate::logbook::LogbookScreen>>,
@@ -562,7 +576,7 @@ impl OrdinaryContext<'_, '_> {
             return Ok(false);
         };
         let world = self.actors.current.as_mut().expect("running world");
-        if sample.0 != world.generation()
+        if sample.generation != world.generation()
             || !world.model_resources_prepared()
             || world.model_admission.is_none()
             || (world.selected_player_index().is_some() && self.players.single().is_err())
@@ -683,7 +697,7 @@ impl OrdinaryContext<'_, '_> {
             .prepared
             .sample
             .as_ref()
-            .is_none_or(|sample| sample.0 != world.generation())
+            .is_none_or(|sample| sample.generation != world.generation())
             || !world.model_resources_prepared()
             || world.model_admission.is_none()
         {
@@ -915,7 +929,7 @@ pub fn run_ordinary(
     let Some(world) = actors.current.as_mut() else {
         return;
     };
-    if sample.is_none_or(|sample| sample.0 != world.generation()) {
+    if sample.is_none_or(|sample| sample.generation != world.generation()) {
         return;
     }
     if !world.model_resources_prepared() || world.model_admission.is_none() {

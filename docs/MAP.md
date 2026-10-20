@@ -232,6 +232,9 @@ module where it is defined and regenerate.
 - `src/fog.rs` — Documented Glide fog and clipping for exported scene materials.
 - `src/fog/clipping.rs` — Separate model draw geometry preserves authored pose/admission topology while clipping lit RGB.
 - `src/fog/compositing.rs` — Placed-flat submission order for destination-copy compositing.
+- `src/fog/effects.rs` — Environmental pool presentation and retained draw cadence.
+- `src/fog/effects/geometry.rs` — Centered effect billboards use the same local axes and lighting inputs as placed flats.
+- `src/fog/effects/timing.rs` — Retained 60 Hz effect presentation phase, independent of host rendering frequency.
 - `src/fog/preparation.rs` — Off-live material construction using the ordinary geometry and sampling rules.
 - `src/fog/texture.rs` — Demand-driven texture frames from preservation's texture-animation contract.
 - `src/fog/texture/admission.rs` — Original bound and authored-polygon admission before texture binding.

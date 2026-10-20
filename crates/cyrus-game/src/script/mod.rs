@@ -146,7 +146,7 @@ mod presentation;
 mod registry;
 pub use registry::ordinary::{
     OrdinaryContext, OrdinaryInputs, OrdinarySoundExecutor, OrdinaryUpdates, ScriptView,
-    run_ordinary,
+    WorldClockSample, run_ordinary,
 };
 mod sound;
 mod spatial;
@@ -182,9 +182,21 @@ pub use world_request::{
     DeathBookEntry, DeathDispatch, LastGameEntry, LastSaveSelection, WorldLoopExit,
 };
 
+/// Retain scene submissions before player/object updates mutate their source state.
+/// Environmental effects follow preservation's SOUP world-loop submission order.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SceneSubmission;
+
 pub struct ScriptPlugin;
 impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut App) {
+        app.configure_sets(
+            Update,
+            SceneSubmission
+                .after(registry::ordinary::sample_clock)
+                .before(crate::player::runtime::step)
+                .before(OrdinaryUpdates),
+        );
         app.init_resource::<CameraDrive>()
             .init_resource::<CameraFrameState>()
             .init_resource::<ScriptStatus>()

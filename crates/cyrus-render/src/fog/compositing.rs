@@ -82,12 +82,14 @@ fn extract(
             &InheritedVisibility,
         )>,
     >,
+    effects: Extract<Query<(Entity, &super::effects::EffectBillboard)>>,
     distance: Extract<Res<super::RenderDistance>>,
     fidelity: Extract<Res<Fidelity>>,
 ) {
     order.known.clear();
     order.ranks.clear();
     order.known.extend(flats.iter().map(|(entity, ..)| entity));
+    order.known.extend(effects.iter().map(|(entity, _)| entity));
     let (Ok((camera, projection)), Some(clipping)) =
         (cameras.single(), distance.effective(&fidelity))
     else {
@@ -122,6 +124,16 @@ fn extract(
     }
     selected.sort_by_key(|(key, _)| *key);
     let mut entries: Vec<_> = selected.into_iter().map(|(_, entry)| entry).collect();
+    let mut effect_entries: Vec<_> = effects
+        .iter()
+        .filter(|(_, effect)| effect.admitted)
+        .collect();
+    effect_entries.sort_by_key(|(_, effect)| effect.slot);
+    entries.extend(
+        effect_entries
+            .into_iter()
+            .map(|(entity, effect)| (entity, effect.alpha)),
+    );
     partition(&mut entries);
     order.ranks.extend(
         entries
@@ -175,6 +187,88 @@ fn order(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn extraction_appends_pool_slots_after_flats_before_shared_alpha_partition() {
+        use super::super::effects::EffectBillboard;
+        use bevy::{ecs::system::RunSystemOnce, render::MainWorld};
+        let mut main = MainWorld::default();
+        main.init_resource::<Fidelity>();
+        main.insert_resource(super::super::RenderDistance {
+            original: Some([1.0, 2000.0]),
+            override_far: None,
+        });
+        let camera = Vec3::new(-230.4, 0.0, -3_046.4);
+        main.spawn((
+            crate::camera::ViewCamera,
+            GlobalTransform::from_translation(camera),
+            Projection::Perspective(PerspectiveProjection::default()),
+        ));
+        let flat = main
+            .spawn((
+                crate::flat::Flat {
+                    brightness: Some(255),
+                    alpha: 255,
+                    source_index: 1,
+                    radius: 1.0,
+                },
+                GlobalTransform::from_translation(camera - Vec3::Z * 10.0),
+                InheritedVisibility::VISIBLE,
+            ))
+            .id();
+        // Spawn out of slot order and outside the placed-flat spatial window.
+        let effect3 = main
+            .spawn((
+                EffectBillboard {
+                    slot: 3,
+                    alpha: 255,
+                    admitted: true,
+                },
+                GlobalTransform::from_translation(Vec3::splat(1_000_000.0)),
+            ))
+            .id();
+        let effect1 = main
+            .spawn(EffectBillboard {
+                slot: 1,
+                alpha: 255,
+                admitted: true,
+            })
+            .id();
+        let effect2 = main
+            .spawn(EffectBillboard {
+                slot: 2,
+                alpha: 255,
+                admitted: true,
+            })
+            .id();
+        let rejected = main
+            .spawn(EffectBillboard {
+                slot: 0,
+                alpha: 255,
+                admitted: false,
+            })
+            .id();
+        let mut render = World::new();
+        render.insert_resource(main);
+        render.init_resource::<FlatOrder>();
+        render.run_system_once(extract).unwrap();
+        let ranks = &render.resource::<FlatOrder>().ranks;
+        for (rank, entity) in [flat, effect1, effect2, effect3].into_iter().enumerate() {
+            assert_eq!(ranks.get(&entity), Some(&rank));
+        }
+        assert!(render.resource::<FlatOrder>().known.contains(&rejected));
+        assert!(!ranks.contains_key(&rejected));
+        {
+            let mut main = render.resource_mut::<MainWorld>();
+            main.get_mut::<crate::flat::Flat>(flat).unwrap().alpha = 140;
+            main.get_mut::<EffectBillboard>(effect3).unwrap().alpha = 140;
+        }
+        render.run_system_once(extract).unwrap();
+        let ranks = &render.resource::<FlatOrder>().ranks;
+        for (rank, entity) in [effect2, effect1, flat, effect3].into_iter().enumerate() {
+            assert_eq!(ranks.get(&entity), Some(&rank));
+        }
+    }
+
     #[test]
     fn spatial_selection_excludes_corners_and_outside_cells() {
         let position = |x: i32, z: i32| {

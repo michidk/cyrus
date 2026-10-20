@@ -1,6 +1,7 @@
 //! Documented Glide fog and clipping for exported scene materials.
 mod clipping;
 mod compositing;
+mod effects;
 mod preparation;
 mod texture;
 pub use preparation::{
@@ -158,12 +159,16 @@ struct ModelExtension {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct ModelKey {
     flat: bool,
+    write_depth: bool,
+    always_pass: bool,
 }
 
 impl From<&ModelExtension> for ModelKey {
     fn from(extension: &ModelExtension) -> Self {
         Self {
             flat: extension.compositing.x >= 0.0,
+            write_depth: extension.compositing.y as u16 & 0x200 == 0,
+            always_pass: extension.compositing.y as u16 & 0x100 != 0,
         }
     }
 }
@@ -198,8 +203,12 @@ impl MaterialExtension for ModelExtension {
         if key.bind_group_data.flat
             && let Some(depth) = &mut descriptor.depth_stencil
         {
-            depth.depth_write_enabled = Some(true);
-            depth.depth_compare = Some(bevy::render::render_resource::CompareFunction::Greater);
+            depth.depth_write_enabled = Some(key.bind_group_data.write_depth);
+            depth.depth_compare = Some(if key.bind_group_data.always_pass {
+                bevy::render::render_resource::CompareFunction::Always
+            } else {
+                bevy::render::render_resource::CompareFunction::Greater
+            });
         }
         Ok(())
     }
@@ -218,6 +227,7 @@ pub(crate) struct FogPlugin;
 impl Plugin for FogPlugin {
     fn build(&self, app: &mut App) {
         texture::register(app);
+        effects::register(app);
         clipping::register(app);
         compositing::register(app);
         load_shader_library!(app, "glide_fog.wesl");

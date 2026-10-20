@@ -90,7 +90,10 @@ pub struct TextureAnimations {
     states: HashMap<String, ImageState>,
     restored_binding: bool,
     effects: Option<effects::PreparedEffects>,
-    effects_error: Option<String>,
+    pub(in crate::fog) effects_error: Option<String>,
+    pub(in crate::fog) effects_repaint: bool,
+    pub(in crate::fog) effect_draws: Vec<super::effects::RetainedEffectDraw>,
+    pub(in crate::fog) effect_clock: super::effects::EffectDrawClock,
 }
 
 /// Observed zero-based image frame and inspection state, sorted by canonical image name.
@@ -146,21 +149,29 @@ impl TextureAnimations {
     }
 }
 
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::fog) enum TextureSystems {
+    Bind,
+    Request,
+}
+
 pub(super) fn register(app: &mut App) {
     frames::register(app);
     app.init_resource::<TextureAnimations>()
         .add_systems(
             Update,
-            bind.after(crate::flat::PrepareFlats)
+            bind.in_set(TextureSystems::Bind)
+                .after(crate::flat::PrepareFlats)
                 .before(super::apply_scene_fog),
         )
         .add_systems(
             PostUpdate,
-            advance.after(VisibilitySystems::CheckVisibility).run_if(
-                |logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>| {
+            advance
+                .in_set(TextureSystems::Request)
+                .after(VisibilitySystems::CheckVisibility)
+                .run_if(|logbook: Option<Res<cyrus_game::logbook::LogbookScreen>>| {
                     !logbook.is_some_and(|screen| screen.suspended())
-                },
-            ),
+                }),
         );
 }
 
@@ -197,6 +208,8 @@ fn bind(
         images.states.clear();
         images.effects = None;
         images.effects_error = None;
+        images.effect_clock = Default::default();
+        images.effect_draws.clear();
     }
     if images.effects.is_none()
         && images.effects_error.is_none()
