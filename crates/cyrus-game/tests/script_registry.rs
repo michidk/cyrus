@@ -28007,3 +28007,154 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
 
 #[path = "script_registry/water_model.rs"]
 mod water_model_tests;
+
+#[test]
+fn block_message_displaces_sender_and_hands_off_without_changing_budget() {
+    for (sender_position, expected) in [
+        ([10000, 77, 0], [13000, 77, 0]),
+        ([-10000, 77, 0], [-13000, 77, 0]),
+        ([0, 77, 10000], [0, 77, 13000]),
+        ([0, 77, -10000], [0, 77, -13000]),
+        ([0, 77, 0], [0, 77, 3000]),
+        ([10000, 77, 10000], [12121, 77, 12121]),
+        ([-10000, 77, -10000], [-12121, 77, -12121]),
+        ([16777217, 77, 0], [16780216, 77, 0]),
+    ] {
+        for coordinator in [false, true] {
+            let (mut world, scripts, data) = coordination_message_fixture(|saved| {
+                for index in 0..6 {
+                    saved["actors"][index]["control"]["combat"]["flags"] = 0xff.into();
+                    saved["actors"][index]["control"]["combat"]["attacker_selection_state"] =
+                        0.into();
+                }
+                saved["actors"][5]["control"]["combat"]["attacker_selection_state"] =
+                    i32::from(coordinator).into();
+                saved["spatial"]["actors"][0]["local"]["position"] = serde_json::json!([0, 5, 0]);
+                saved["spatial"]["actors"][1]["local"]["position"] =
+                    serde_json::json!(sender_position);
+            });
+            world.ordinary_actors([0, 0]).unwrap();
+            let receiver = world.id(0).unwrap();
+            let sender = world.id(1).unwrap();
+            let before = movement_snapshot(&world, &scripts, &data);
+            world.send_combat_message(sender, receiver, 0xd000).unwrap();
+            world.process_combat_message(receiver, None).unwrap();
+            assert_eq!(world.spatial(sender).unwrap().local.position, expected);
+            assert_eq!(world.spatial(receiver).unwrap().local.position, [0, 5, 0]);
+            let after = movement_snapshot(&world, &scripts, &data);
+            assert_eq!(
+                after["spatial"]["actors"][1]["local"]["angles"],
+                before["spatial"]["actors"][1]["local"]["angles"]
+            );
+            assert_eq!(
+                after["spatial"]["actors"][1]["local"]["matrix_bits"],
+                before["spatial"]["actors"][1]["local"]["matrix_bits"]
+            );
+            for index in [0, 1] {
+                assert_eq!(
+                    world.actors()[index]
+                        .control_state()
+                        .unwrap()
+                        .combat
+                        .as_ref()
+                        .unwrap()
+                        .flags,
+                    0xfc
+                );
+            }
+            let combat = world.actors()[0]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap();
+            assert_eq!(combat.decision.aggression, 7);
+            assert_eq!(combat.attacker_selection_state, i32::from(!coordinator));
+            assert_eq!(
+                combat.close_distance_passes,
+                if coordinator { 11 } else { 0 }
+            );
+            if coordinator {
+                let message = world
+                    .consume_combat_message(world.id(5).unwrap())
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    (message.sender, message.receiver, message.code),
+                    (receiver, Some(world.id(5).unwrap()), 0xd003)
+                );
+            }
+            assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+        }
+    }
+}
+
+#[test]
+fn block_message_keeps_displacement_and_intent_clears_before_handoff_error() {
+    let (mut world, _, _) = coordination_message_fixture(|saved| {
+        saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = 0.into();
+        for index in [0, 1] {
+            saved["actors"][index]["control"]["combat"]["flags"] = 0xff.into();
+            saved["spatial"]["actors"][index]["local"]["position"] = serde_json::json!([0, 77, 0]);
+        }
+    });
+    let receiver = world.id(0).unwrap();
+    let sender = world.id(1).unwrap();
+    world.send_combat_message(sender, receiver, 0xd000).unwrap();
+    let error = format!(
+        "{:#}",
+        world.process_combat_message(receiver, None).unwrap_err()
+    );
+    assert!(error.contains("ordinary traversal unavailable"), "{error}");
+    assert_eq!(world.spatial(sender).unwrap().local.position, [0, 77, 3000]);
+    for index in [0, 1] {
+        assert_eq!(
+            world.actors()[index]
+                .control_state()
+                .unwrap()
+                .combat
+                .as_ref()
+                .unwrap()
+                .flags,
+            0xfc
+        );
+    }
+    assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+}
+
+#[test]
+fn block_message_handoff_gates_skip_unavailable_traversal_and_selected_death_queries() {
+    for (state, dead, selected) in [(1, false, false), (0, true, false), (0, false, true)] {
+        let (mut world, _, _) = coordination_message_fixture(|saved| {
+            saved["actors"][0]["control"]["combat"]["attacker_selection_state"] = state.into();
+            if dead {
+                saved["actors"][0]["control"]["death_selector"] = 8.into();
+            }
+            for index in [0, 1] {
+                saved["spatial"]["actors"][index]["local"]["position"] =
+                    serde_json::json!([0, 77, 0]);
+            }
+        });
+        let receiver = world.id(0).unwrap();
+        let sender = world.id(1).unwrap();
+        world.send_combat_message(sender, receiver, 0xd000).unwrap();
+        world
+            .process_combat_message(receiver, selected.then_some(receiver))
+            .unwrap();
+        assert_eq!(world.spatial(sender).unwrap().local.position, [0, 77, 3000]);
+        let combat = world.actors()[0]
+            .control_state()
+            .unwrap()
+            .combat
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            (
+                combat.attacker_selection_state,
+                combat.close_distance_passes,
+                combat.decision.aggression
+            ),
+            (state, 11, 7)
+        );
+    }
+}
