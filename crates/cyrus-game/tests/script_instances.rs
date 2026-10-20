@@ -1133,6 +1133,7 @@ fn installed_start_combat_constructors_retain_original_spacing_ranges() {
                 .initialize_player_animation(id, &data, 0, &mut |_| Ok(()))
                 .unwrap(),
             ScriptActorSource::Camera => panic!("camera unexpectedly has combat attributes"),
+            ScriptActorSource::Shell(_) => panic!("shell unexpectedly has combat attributes"),
         }
         let actor = &world.actors()[index];
         let combat = actor.control_state().unwrap().combat.as_ref().unwrap();

@@ -50,6 +50,7 @@ impl ActorLists {
                         cells.entry(cell).or_default().push(index);
                     }
                 }
+                ScriptActorSource::Shell(_) => {}
                 _ => persistent.push(index),
             }
         }

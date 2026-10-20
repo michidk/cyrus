@@ -195,8 +195,9 @@ pub fn prepare_source(
         references: definition.references,
         attributes: definition.attributes,
     };
+    let shells = world_shells(source, &system, world, &actors)?;
     let mut scripts = Scripts {
-        version: 26,
+        version: 27,
         weapons: crate::script::weapon::prepare_world_source(source, &system, world, registry)?,
         combat_clank_effects: [
             combat.as_ref().and_then(|combat| combat.misc.sword_clank_1),
@@ -236,6 +237,7 @@ pub fn prepare_source(
         world,
         content_id: String::new(),
         definition,
+        shells,
         actors,
         instances: rgm
             .sections
@@ -399,6 +401,39 @@ fn prepare_combat_taunts(
             })
         })
         .collect()
+}
+
+/// Shell scripts created while loading a world, in creation order: the debug shell (skipped by
+/// SYSTEM.INI `[debug] final_version`), `COMMON`, then the script named after the world's map
+/// file. A name without an installed program creates no shell.
+fn world_shells(
+    source: &dyn crate::source::ReadAssets,
+    system: &rgpre::import::system_ini::SystemIni,
+    world: u32,
+    actors: &BTreeMap<String, Actor>,
+) -> Result<Vec<String>> {
+    let worlds =
+        rgpre::import::world_ini::WorldIni::parse(&crate::preparation::text(source, "WORLD.INI")?);
+    let entry = worlds
+        .entries
+        .iter()
+        .find(|entry| entry.index == world)
+        .with_context(|| format!("world {world}: not listed in WORLD.INI"))?;
+    let map = entry
+        .map
+        .rsplit(['/', '\\'])
+        .next()
+        .and_then(|file| Path::new(file).file_stem())
+        .and_then(|stem| stem.to_str())
+        .with_context(|| format!("world {world}: invalid map {}", entry.map))?
+        .to_ascii_uppercase();
+    let debug = (!system.debug.final_version.unwrap_or(false)).then_some("DEBUG");
+    Ok(debug
+        .into_iter()
+        .chain(["COMMON", map.as_str()])
+        .filter(|name| actors.contains_key(*name))
+        .map(str::to_owned)
+        .collect())
 }
 
 #[cfg(test)]

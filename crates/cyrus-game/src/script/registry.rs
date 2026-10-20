@@ -92,6 +92,9 @@ pub enum ScriptActorSource {
     Player,
     AlternatePlayer,
     Camera,
+    /// A shell script (`DEBUG`, `COMMON` or the world's own): a script context without a map
+    /// object, run each update on zeroed temporary attributes until `KillMe`.
+    Shell(String),
 }
 impl ScriptActorSource {
     fn name(&self) -> &str {
@@ -100,6 +103,7 @@ impl ScriptActorSource {
             Self::Player => "CYRUS",
             Self::AlternatePlayer => "GREMLIN",
             Self::Camera => "CAMERA",
+            Self::Shell(name) => name,
         }
     }
     fn label(&self) -> &'static str {
@@ -108,6 +112,7 @@ impl ScriptActorSource {
             Self::Player => "player",
             Self::AlternatePlayer => "alternate_player",
             Self::Camera => "camera",
+            Self::Shell(_) => "shell",
         }
     }
 }
@@ -782,7 +787,8 @@ impl ScriptWorld {
                 }
                 _ => None,
             };
-            let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6));
+            let separate = matches!(&source, ScriptActorSource::Map(placement) if matches!(placement.object_type, 2 | 6))
+                || matches!(&source, ScriptActorSource::Shell(_));
             let light = match &source {
                 ScriptActorSource::Map(placement) if placement.object_type == 6 => {
                     Some(light::LightState::authored(placement))
@@ -855,6 +861,16 @@ impl ScriptWorld {
             actors.push(allocate(
                 ScriptActorSource::Map(placement.clone()),
                 identifier,
+                index,
+            ));
+        }
+        // Shell scripts exist before the standalone roles; the original prepends each record to its
+        // list, so they run newest first (see `update_shells`).
+        for name in &scripts.shells {
+            let index = actors.len();
+            actors.push(allocate(
+                ScriptActorSource::Shell(name.clone()),
+                None,
                 index,
             ));
         }
@@ -2016,9 +2032,10 @@ impl ScriptWorld {
         }
         if matches!(stage, ScriptStage::SeparateMain | ScriptStage::SeparateHook) {
             anyhow::ensure!(
-                self.actors[index]
-                    .placement()
-                    .is_some_and(|placement| matches!(placement.object_type, 2 | 6))
+                (matches!(self.actors[index].source, ScriptActorSource::Shell(_))
+                    || self.actors[index]
+                        .placement()
+                        .is_some_and(|placement| matches!(placement.object_type, 2 | 6)))
                     && self.actors[index].control.is_some(),
                 "separate stage requires admitted type-two or type-six scratch state"
             );

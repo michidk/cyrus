@@ -4,7 +4,7 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 26,
+        version: 27,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -45,6 +45,7 @@ fn cache() -> Scripts {
         actor_pool_capacity: 32,
         world: 7,
         content_id: String::new(),
+        shells: Vec::new(),
         definition: Definition {
             functions: vec![Function {
                 name: "NullFunction".into(),
@@ -568,6 +569,8 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
         system: Vec<u8>,
         cheats: Option<Vec<u8>>,
     }
+    const WORLD_INI: &[u8] =
+        b"[world]\nworld_map[17]=MAPS\\ISLAND.rgm\nworld_palette[17]=3DART\\DAY.COL\n";
     impl ReadAssets for Source {
         fn manifest(&self) -> &Manifest {
             &self.manifest
@@ -577,6 +580,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
                 "SYSTEM.INI" => self.system.as_slice(),
                 "soup386/SOUP386.DEF" => &[],
                 "ITEMS.INI" => b"[items]\n",
+                "WORLD.INI" => WORLD_INI,
                 "REDGUARD.CHT" => self.cheats.as_deref().unwrap(),
                 _ => anyhow::bail!("unexpected source {path}"),
             };
@@ -600,6 +604,11 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
                     FileInfo {
                         path: "ITEMS.INI".into(),
                         bytes: 8,
+                        digest: "0".repeat(64),
+                    },
+                    FileInfo {
+                        path: "WORLD.INI".into(),
+                        bytes: WORLD_INI.len() as u64,
                         digest: "0".repeat(64),
                     },
                     FileInfo {
@@ -637,7 +646,8 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 26);
+    assert_eq!(scripts.version, 27);
+    assert!(scripts.shells.is_empty(), "no installed shell programs");
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());

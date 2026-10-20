@@ -454,6 +454,11 @@ pub struct Scripts {
     pub world: u32,
     pub definition: Definition,
     pub actors: BTreeMap<String, Actor>,
+    /// Shell scripts the world starts with, in creation order: the debug shell unless
+    /// SYSTEM.INI `[debug] final_version` is set, `COMMON`, then the script named after the
+    /// world's map file. Only names with an installed program are listed.
+    #[serde(default)]
+    pub shells: Vec<String>,
     pub instances: Vec<Instance>,
     pub unsupported: BTreeMap<String, String>,
 }
@@ -479,7 +484,7 @@ impl Scripts {
             self.actor_pool_capacity,
             self.world,
             &self.definition,
-            &self.actors,
+            (&self.actors, &self.shells),
             &self.instances,
             &self.unsupported,
         ))?;
@@ -487,7 +492,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 26,
+            self.version == 27,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

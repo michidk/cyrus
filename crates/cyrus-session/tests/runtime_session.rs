@@ -61,7 +61,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
     };
     let mut result = Scripts {
-        version: 26,
+        version: 27,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -101,6 +101,7 @@ fn scripts(operations: Vec<Operation>) -> Scripts {
         },
         actor_pool_capacity: 10,
         content_id: String::new(),
+        shells: Vec::new(),
         world: 17,
         definition: Definition {
             functions: [

@@ -1312,7 +1312,7 @@ mod tests {
             ),
         ]);
         let mut scripts = Scripts {
-            version: 26,
+            version: 27,
             weapons: Default::default(),
             camera: Default::default(),
             combat_attacks: vec![],
@@ -1352,6 +1352,7 @@ mod tests {
             },
             actor_pool_capacity: 10,
             content_id: String::new(),
+            shells: Vec::new(),
             world: 1,
             definition: Definition {
                 functions: vec![

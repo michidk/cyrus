@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 26,
+        version: 27,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -114,6 +114,7 @@ fn cache() -> Scripts {
         },
         actor_pool_capacity: 32,
         content_id: String::new(),
+        shells: Vec::new(),
         world: 7,
         definition: Definition {
             functions: vec![Function {
@@ -10348,6 +10349,39 @@ fn separate_updates_retain_locals_and_tasks_without_ordinary_control_or_attribut
         for actor in world.actors() {
             assert_eq!(actor.runtime().unwrap().active_tasks(), 1);
         }
+    }
+}
+
+#[test]
+fn shell_scripts_run_without_a_map_object_and_retain_locals() {
+    use cyrus_game::script::{ScriptActorSource, ScriptInputs};
+    let mut scripts = cache();
+    scripts.instances.clear();
+    scripts.shells = vec!["LOGIC".into()];
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    assert_eq!(world.actors().len(), 1);
+    assert!(matches!(
+        world.actors()[0].source,
+        ScriptActorSource::Shell(_)
+    ));
+    for expected in [5, 6] {
+        world
+            .update_shells(
+                ScriptInputs {
+                    nominal_ticks: Some(1),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+                &mut cyrus_game::random::EngineRandom::default(),
+                &mut |_, _| Ok(()),
+                100,
+            )
+            .unwrap();
+        let actor = &world.actors()[0];
+        assert_eq!(actor.runtime().unwrap().variables(), [expected]);
+        assert!(actor.control_state().is_none());
+        assert!(actor.failure().is_none());
     }
 }
 

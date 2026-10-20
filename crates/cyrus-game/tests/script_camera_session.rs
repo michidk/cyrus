@@ -73,7 +73,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
     }
     let mut result = Scripts {
-        version: 26,
+        version: 27,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -113,6 +113,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         },
         actor_pool_capacity: 10,
         content_id: String::new(),
+        shells: Vec::new(),
         world: 17,
         definition: Definition {
             functions: [
