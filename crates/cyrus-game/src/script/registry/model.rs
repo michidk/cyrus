@@ -5,7 +5,8 @@
 //! player scene's terrain and effective swim depth, and dispatches water effects
 //! through the shared pool without drawing random values. Selected attr105-one
 //! prepasses clear direction before null-source health; surface5/11 retains its
-//! separate native-source route. Attached/linked water positioning remains unavailable.
+//! separate native-source route. Family refresh owns attached coordinates and bypasses
+//! water positioning; linked model owner/offset positioning remains unavailable.
 //!
 //! [engine contract]: https://michidk.github.io/redguard-preservation/engine/SOUP.html#current-model-presentation
 use super::super::Pose;
@@ -618,7 +619,15 @@ impl ScriptWorld {
                 static_radius.filter(|_| publish_geometry)
             };
             let actor = &self.actors[index];
-            let water_surface = if actor.attributes()[1] & 4 == 0 {
+            let family_position = actor.attributes()[26] != 0;
+            if family_position {
+                ensure!(
+                    self.spatial(id)?.parent.is_some() && self.spatial(id)?.effective.is_some(),
+                    "world {} instance {index}: family model position owner unavailable",
+                    self.world
+                );
+            }
+            let water_surface = if family_position || actor.attributes()[1] & 4 == 0 {
                 None
             } else {
                 let surface = actor.surface.context("model surface unavailable")?;
@@ -669,7 +678,11 @@ impl ScriptWorld {
             if animation.is_some() {
                 self.actors[index].model.animation_radius = radius;
             }
-            let position = pose.position.map(|value| (value >> 8) as f32);
+            let position = if family_position {
+                previous_position.context("family model coordinates unavailable")?
+            } else {
+                pose.position.map(|value| (value >> 8) as f32)
+            };
             self.actors[index].model.position = Some(position);
             self.actors[index].model.current = radius.map(|radius| ModelPresentation {
                 position,

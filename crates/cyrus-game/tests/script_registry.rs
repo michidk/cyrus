@@ -1793,6 +1793,18 @@ fn nested_families_compose_original_positions_and_keep_generation_identity() {
     assert_eq!(pose.effective.unwrap().position, [28160, 122880, 84480]);
     assert_eq!(pose.effective.unwrap().angles, [0, 512, 0]);
     assert_eq!(pose.previous_effective_position, Some([2560, -5120, 7680]));
+    assert_eq!(
+        world.model_position(lever).unwrap(),
+        Some([110.0, 480.0, 330.0])
+    );
+    assert_eq!(
+        world.model_position(world.id(1).unwrap()).unwrap(),
+        Some([100.0, 500.0, 300.0])
+    );
+    assert_eq!(
+        world.model_position(world.id(0).unwrap()).unwrap(),
+        Some([0.0; 3])
+    );
     assert!(world.prepare_spatial().is_err());
     let replacement = ScriptWorld::prepare(&scripts, 13).unwrap();
     assert!(
@@ -14320,6 +14332,10 @@ fn position_property_access_keeps_attached_effective_pose_until_family_refresh()
         .unwrap();
     assert_eq!(world.actors()[1].runtime().unwrap().variables(), [768]);
     assert_eq!(
+        world.model_position(child).unwrap(),
+        Some([103.0, 4.0, 0.0])
+    );
+    assert_eq!(
         serde_json::to_value(world.spatial(child).unwrap()).unwrap(),
         expected
     );
@@ -14327,6 +14343,84 @@ fn position_property_access_keeps_attached_effective_pose_until_family_refresh()
     assert_eq!(
         world.spatial(child).unwrap().effective.unwrap().position[0],
         25088
+    );
+    assert_eq!(world.model_position(child).unwrap(), Some([98.0, 4.0, 0.0]));
+}
+
+#[test]
+fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
+    let mut scripts = heading_property_scripts(294, Object::Me);
+    scripts.definition.references[294] = "pos.vx".into();
+    let mut child = scripts.actors["LOGIC"].clone();
+    child.attributes.insert("attr_26".into(), 1);
+    child.attributes.insert("attr_1".into(), 4);
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_25".into(), 1);
+    scripts.actors.insert("CHILD".into(), child);
+    scripts.instances[1].actor = "CHILD".into();
+    scripts.instances[0].angles = [0; 3];
+    scripts.instances[1].angles = [0; 3];
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .program
+        .steps
+        .get_mut(&0)
+        .unwrap()
+        .operation = Operation::Assign {
+        destination: Place::Property {
+            object: Object::Me,
+            reference: 294,
+        },
+        formula: Formula {
+            first: Value::Integer { value: -257 },
+            rest: vec![],
+        },
+    };
+    let (mut world, data, _) = static_model_fixture(scripts);
+    let root = world.id(0).unwrap();
+    let child = world.id(1).unwrap();
+    world.set_actor_surface(child, 2).unwrap();
+    world.refresh_families().unwrap();
+    world
+        .refresh_model_presentations(&data, &[root, child])
+        .unwrap();
+    let before = world.model_presentation(child).unwrap().unwrap();
+    let radius = before.radius;
+    assert!(before.animation.is_none());
+    world
+        .advance(
+            root,
+            cyrus_game::script::ScriptStage::Body(Thread::Main),
+            cyrus_game::script::ScriptInputs {
+                frame_scale: Some(256),
+                nominal_ticks: Some(1),
+                ..Default::default()
+            },
+            None,
+            None,
+            20,
+        )
+        .unwrap();
+    world.refresh_families().unwrap();
+    let current = world.model_presentation(child).unwrap().unwrap();
+    assert_eq!(current.position, [-2.0, 20.0, 30.0]);
+    assert_eq!(current.pose.position, [-257, 5120, 7680]);
+    assert_eq!(
+        current.pose.matrix,
+        world.spatial(child).unwrap().effective.unwrap().matrix
+    );
+    assert_eq!(current.radius, radius);
+    assert!(current.animation.is_none());
+    assert_eq!(world.model_position(child).unwrap(), Some(current.position));
+    assert_eq!(
+        world.model_presentation(root).unwrap().unwrap().position,
+        [10.0, 20.0, 30.0]
     );
 }
 

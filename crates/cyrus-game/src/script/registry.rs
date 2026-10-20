@@ -1515,13 +1515,36 @@ impl ScriptWorld {
             .refresh_transform()
     }
 
-    /// Explicit family pass; does not infer timing or actor update eligibility.
+    /// Explicit family pass, publishing attached model transforms even without geometry.
+    /// Retains root model snapshots and selected geometry, radius and animation.
+    /// Does not infer timing or actor update eligibility.
     pub fn refresh_families(&mut self) -> Result<()> {
-        self.spatial
+        let spatial = self
+            .spatial
             .as_mut()
-            .context("spatial state not prepared")?
+            .context("spatial state not prepared")?;
+        spatial
             .refresh_families()
-            .with_context(|| format!("world {} attachment refresh", self.world))
+            .with_context(|| format!("world {} attachment refresh", self.world))?;
+        for (index, actor) in self.actors.iter_mut().enumerate() {
+            if !spatial.is_initialized(index)? {
+                continue;
+            }
+            let state = spatial.actor(index)?;
+            if state.parent.is_none() {
+                continue;
+            }
+            let pose = state
+                .effective
+                .context("refreshed family pose unavailable")?;
+            let position = pose.position.map(|value| (value >> 8) as f32);
+            actor.model.position = Some(position);
+            if let Some(current) = actor.model.current.as_mut() {
+                current.pose = pose;
+                current.position = position;
+            }
+        }
+        Ok(())
     }
 
     pub fn generation(&self) -> u64 {
