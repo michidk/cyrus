@@ -941,3 +941,40 @@ mod timed_taunt_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod message_queue_tests {
+    use super::*;
+
+    fn id(index: usize) -> ScriptActorId {
+        ScriptActorId {
+            generation: 1,
+            index,
+        }
+    }
+
+    #[test]
+    fn peek_preserves_cursor_and_skips_other_receivers() {
+        let mut queue = CombatMessages::default();
+        queue.send(
+            7,
+            CombatMessage {
+                sender: id(2),
+                receiver: Some(id(3)),
+                code: 0xd001,
+            },
+        );
+        queue.send(
+            7,
+            CombatMessage {
+                sender: id(2),
+                receiver: Some(id(4)),
+                code: 0xd005,
+            },
+        );
+        let first = queue.peek(7, id(4), 0).unwrap().unwrap();
+        assert_eq!(first.code, 0xd005);
+        assert_eq!(queue.peek(7, id(4), 0).unwrap(), Some(first));
+        assert_eq!(queue.consume(7, id(4), &mut 0).unwrap(), Some(first));
+    }
+}
