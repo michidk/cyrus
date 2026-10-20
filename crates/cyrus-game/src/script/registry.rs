@@ -424,6 +424,8 @@ pub struct ScriptWorld {
     camera_glide: super::camera::GlideSettings,
     /// Installed shared camera limits.
     camera_limits: cyrus_assets::script::CameraLimits,
+    /// Installed `[camera]` values, kept to reload record zero on a camera reset.
+    camera_settings: cyrus_assets::script::CameraSettings,
     effects: Option<EnvironmentalEffects>,
 }
 impl ScriptWorld {
@@ -894,6 +896,7 @@ impl ScriptWorld {
             camera,
             camera_glide: scripts.camera.glide.into(),
             camera_limits: scripts.camera.limits,
+            camera_settings: scripts.camera.clone(),
             effects: None,
             model_admission: None,
             spatial: None,
@@ -4085,6 +4088,39 @@ impl Host for GameHost<'_, '_, '_, '_> {
                 .reset_rotation(axes)?;
             return Ok(CallResult::Complete(0));
         }
+        if function.eq_ignore_ascii_case("XResetCamera") {
+            anyhow::ensure!(arguments.is_empty(), "XResetCamera requires no arguments");
+            let service = self
+                .inputs
+                .camera_update
+                .context("XResetCamera: camera update service unavailable")?;
+            let player = self
+                .registry
+                .selected_player_index()
+                .context("XResetCamera: selected player unavailable")?;
+            let camera = self
+                .registry
+                .camera
+                .as_ref()
+                .context("XResetCamera: camera session unavailable")?
+                .camera_actor
+                .index;
+            anyhow::ensure!(
+                self.index != player && self.index != camera,
+                "XResetCamera called by the player or camera actor is unsupported"
+            );
+            let reset = self.registry.reset_camera_session(player, service);
+            self.finish_camera_update(reset.is_ok())?;
+            reset?;
+            let lockout = self.registry.globals.lockout_player(0);
+            apply_player_lockout(
+                &mut self.registry.actors,
+                &mut self.registry.activation,
+                Some(player),
+                lockout,
+            );
+            return Ok(CallResult::Complete(0));
+        }
         if function.eq_ignore_ascii_case("ReloadRotation") {
             anyhow::ensure!(arguments.is_empty(), "ReloadRotation requires no arguments");
             self.registry
@@ -5548,6 +5584,7 @@ mod fighting_tests {
             camera: None,
             camera_glide: Default::default(),
             camera_limits: Default::default(),
+            camera_settings: Default::default(),
             effects: None,
         };
         let host = GameHost {

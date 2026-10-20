@@ -129,6 +129,8 @@ impl ScriptWorld {
         let camera = self.camera.as_mut().expect("initialized");
         camera.records[selected].flags &= !0x01;
         let pose = result?;
+        // Setup stores its first pose as both the current and the previous pose.
+        camera.previous = camera.current;
         camera.reset_render();
         Ok(pose)
     }

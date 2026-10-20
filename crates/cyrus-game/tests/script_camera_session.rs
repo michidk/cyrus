@@ -935,6 +935,83 @@ mod live {
         }
     }
 
+    fn reset_world() -> (ScriptWorld, PoseService) {
+        let mut data = scripts_calling("XResetCamera", &[]);
+        data.definition.functions[1].kind = CallKind::Function;
+        let step = data
+            .actors
+            .get_mut("ACTOR")
+            .unwrap()
+            .program
+            .steps
+            .get_mut(&0)
+            .unwrap();
+        let Operation::Call { call } = &mut step.operation else {
+            unreachable!("the first step is the native call")
+        };
+        call.kind = CallKind::Function;
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            ..Default::default()
+        };
+        let mut world = prepared(&mut data);
+        world.initialize_camera_pose(start()).unwrap();
+        let service = PoseService {
+            seen: Default::default(),
+            hits: std::cell::RefCell::new(hits()),
+            published: Default::default(),
+            fail: false,
+        };
+        (world, service)
+    }
+
+    #[test]
+    fn x_reset_camera_recomputes_the_first_pose_with_record_zero_selected() {
+        let (mut world, service) = reset_world();
+        run_with(&mut world, BODY, Some(&service)).unwrap();
+        let camera = world.camera().unwrap();
+        assert_eq!(camera.selected.index(), 0);
+        assert_eq!((camera.scripted_active, camera.scripted_nesting), (0, 0));
+        assert_eq!(
+            camera.records[0].flags, 0x40,
+            "record zero is reset to its flag"
+        );
+        assert_eq!(
+            camera.current, camera.previous,
+            "setup stores the first pose as both current and previous"
+        );
+        assert_ne!(camera.current, start(), "the pose was recomputed");
+        assert_eq!(
+            world
+                .spatial(world.id(CAMERA).unwrap())
+                .unwrap()
+                .local
+                .position,
+            camera.current.position,
+            "the camera actor carries the published pose"
+        );
+        assert_eq!(
+            *service.seen.borrow(),
+            Some(([4000, 9000, -6000], [100, 1900, 20])),
+            "the selected player's pose"
+        );
+        assert_eq!(world.globals().lockout(), Some(0), "the player is unlocked");
+    }
+
+    #[test]
+    fn x_reset_camera_without_the_update_service_changes_nothing() {
+        let (mut world, _) = reset_world();
+        let before = world.camera().unwrap().clone();
+        let error = run_with(&mut world, BODY, None).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("camera update service unavailable"),
+            "{error:#}"
+        );
+        assert_eq!(world.camera().unwrap().current, before.current);
+        assert_eq!(world.globals().lockout(), None);
+    }
+
     #[test]
     fn location_native_without_the_update_service_fails_before_changing_the_camera() {
         let (mut world, _) = location_world("showObjLoc", &[3, -2, 5], false);

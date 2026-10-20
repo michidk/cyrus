@@ -256,9 +256,14 @@ impl Runtime {
     }
     /// Cancels host task records before forgetting tokens. The game owns effect teardown.
     pub fn cancel_tasks(&mut self, host: &mut dyn Host) -> Result<()> {
+        self.cancel_tasks_with(|token| host.cancel(token))
+    }
+    /// Cancels every task slot through `cancel`, for a caller clearing another actor's tasks
+    /// without a host bound to that actor.
+    pub fn cancel_tasks_with(&mut self, mut cancel: impl FnMut(u64) -> Result<()>) -> Result<()> {
         for task in &mut self.state.tasks {
             if let Some(active) = task {
-                host.cancel(active.token)?;
+                cancel(active.token)?;
                 *task = None;
             }
         }

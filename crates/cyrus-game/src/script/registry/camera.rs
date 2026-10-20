@@ -36,6 +36,71 @@ impl ScriptWorld {
         Ok((pose.position, pose.angles))
     }
 
+    /// `XResetCamera` for the selected player `player`: reload record zero's defaults, select it,
+    /// zero the scripted-camera words, recompute the first published pose through `service` as
+    /// setup does (limiter bypassed, current and previous equal), clear the player's and the
+    /// camera actor's tasks, and rebuild the player's matrix with its retained angles set to the
+    /// current ones. The new camera state is built first, so a failure changes nothing. The
+    /// original also clears five flag bits of a per-actor task byte whose meaning cyrus does not
+    /// model; clearing the task slots is the only part applied (**Inferred** to cover it).
+    pub(super) fn reset_camera_session(
+        &mut self,
+        player: usize,
+        service: &dyn crate::script::camera::CameraUpdateService,
+    ) -> Result<()> {
+        let camera = self
+            .camera
+            .as_ref()
+            .with_context(|| format!("world {}: camera session unavailable", self.world))?;
+        let camera_actor = self.resolve(camera.camera_actor)?;
+        let (position, angles) = self.camera_binding_pose(player)?;
+        let mut state = camera.clone();
+        state.reload_player_defaults(
+            &self.camera_settings,
+            self.id(player)?,
+            self.actors[player].attributes[105],
+        )?;
+        state.scripted_active = 0;
+        state.scripted_nesting = 0;
+        let candidate = state.records[0].clone().candidate(position, angles)?;
+        let first = CameraPose {
+            position: candidate,
+            angles: [0; 3],
+        };
+        state.current = first;
+        state.previous = first;
+        state.records[0].flags |= 0x01;
+        service.update(&mut state, position, angles)?;
+        state.records[0].flags &= !0x01;
+        state.previous = state.current;
+        state.reset_render();
+        for index in [player, camera_actor] {
+            self.cancel_actor_tasks(index)?;
+        }
+        let actor = self
+            .spatial
+            .as_mut()
+            .context("camera reset: spatial state not prepared")?
+            .actor_mut(player)?;
+        actor.reset_rotation([false; 3])?;
+        actor.initial_angles = actor.local.angles;
+        self.camera = Some(state);
+        Ok(())
+    }
+
+    /// Clear all six task slots of another actor, as `KillMyTasks` does for its receiver.
+    fn cancel_actor_tasks(&mut self, index: usize) -> Result<()> {
+        let actor = &mut self.actors[index];
+        match actor.runtime.as_mut() {
+            Some(runtime) => runtime.cancel_tasks_with(|token| actor.tasks.cancel(token)),
+            None if actor.unavailable.is_some() => Ok(()),
+            None => anyhow::bail!(
+                "world {} instance {index}: script runtime is active, its tasks cannot be cleared",
+                self.world
+            ),
+        }
+    }
+
     /// Establish the camera's first published pose. Setup computes it with one pose pass
     /// that omits movement limiting; the caller supplies that pose. Both history poses
     /// start equal, and the CAMERA actor's spatial state is created once.
