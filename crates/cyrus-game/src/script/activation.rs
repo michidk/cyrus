@@ -279,15 +279,15 @@ impl GameplayGlobals {
 
     /// Advance preliminary timers before idle reset or lockout admission.
     /// Units and ordering follow preservation's player controller contract.
-    /// Unsupported pending/override execution stops at its actual stage; earlier
-    /// timer changes remain retained. This does not perform ordinary dispatch.
+    /// Returns whether hit inhibition admits death execution instead of idle/movement.
+    /// Unsupported pending-action execution retains earlier timer changes.
     pub fn prepare_player_controller(
         &mut self,
         nominal_ticks: u32,
         queued_motion: u8,
         falling: u8,
         sliding: u8,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let state = self
             .controller_prelude
             .as_mut()
@@ -317,13 +317,8 @@ impl GameplayGlobals {
         );
         state.action_ticks = state.action_ticks.saturating_sub(nominal_ticks);
         state.secondary_ticks = state.secondary_ticks.saturating_sub(nominal_ticks);
-        anyhow::ensure!(
-            !self
-                .player_hit_inhibited()
-                .context("player controller: hit inhibition unavailable")?,
-            "player controller: death execution unavailable"
-        );
-        Ok(())
+        self.player_hit_inhibited()
+            .context("player controller: hit inhibition unavailable")
     }
 
     /// Last established signed idle counter; startup ownership may still be unknown.
@@ -802,7 +797,7 @@ mod idle_tests {
                 assert_eq!(restored.player_hit_inhibited(), Some(inhibited));
                 assert_eq!(restored.player_death_override_group(), Some(group));
                 assert_eq!(
-                    restored.prepare_player_controller(0, 0, 0, 0).is_err(),
+                    restored.prepare_player_controller(0, 0, 0, 0).unwrap(),
                     inhibited
                 );
                 restored.initialize_player_controller();
@@ -933,13 +928,7 @@ mod idle_tests {
             ),
             (5, 9, 9)
         );
-        assert!(
-            globals
-                .prepare_player_controller(4, 0, 0, 1)
-                .unwrap_err()
-                .to_string()
-                .contains("death execution")
-        );
+        assert!(globals.prepare_player_controller(4, 0, 0, 1).unwrap());
         let state = globals.controller_prelude.as_ref().unwrap();
         assert_eq!(
             (

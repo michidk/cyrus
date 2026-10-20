@@ -243,7 +243,7 @@ impl ScriptWorld {
                         id,
                         query,
                         player_timing,
-                        inputs.player_controller.expect("admitted controller"),
+                        inputs,
                         random,
                         sounds,
                     )?;

@@ -12062,12 +12062,15 @@ fn selected_player_collision_uses_logical_pose_and_live_map_support() {
                 player,
                 query(),
                 timing,
-                cyrus_game::script::PlayerControllerInput {
-                    held: &cyrus_game::player::input::PlayerInput {
-                        forward: true,
-                        ..Default::default()
-                    },
-                    walk_mode: true,
+                cyrus_game::script::ScriptInputs {
+                    player_controller: Some(cyrus_game::script::PlayerControllerInput {
+                        held: &cyrus_game::player::input::PlayerInput {
+                            forward: true,
+                            ..Default::default()
+                        },
+                        walk_mode: true,
+                    }),
+                    ..Default::default()
                 },
                 &mut cyrus_game::random::EngineRandom::default(),
                 &mut |id, cue| {
@@ -14091,7 +14094,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
         ("SetHealth", 0, 12, true, 0, None),
         ("SetHealth", 60, 13, true, 60, None),
     ] {
-        let (mut scripts, _, mut data, _) = player_walking_fixture();
+        let (mut scripts, _, mut data, scene) = player_walking_fixture();
         for (index, name, value) in [
             (3, "health", 40),
             (97, "health_gate", if mode >= 12 { 0 } else { 1 }),
@@ -14121,7 +14124,7 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                 .attributes
                 .insert("skip_death_animation".into(), 1);
         }
-        if mode >= 9 {
+        if mode >= 9 || mode == 6 {
             if mode >= 10 {
                 scripts.definition.attributes[110] = "held_weapon".into();
                 scripts
@@ -14148,6 +14151,21 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                     "commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}),
                 );
             }
+        }
+        if mode == 4 {
+            data.metadata["actors"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|actor| actor["script_name"] == "CYRUS")
+                .unwrap()["animation_groups"]
+                .as_array_mut()
+                .unwrap()
+                .push(
+                    serde_json::json!({"group_index":77,"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":4,"sound_param":9,"volume_shift":0},
+                        {"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]}),
+                );
         }
         let function_id = scripts.definition.functions.len() as u16;
         scripts.definition.functions.push(Function {
@@ -14282,6 +14300,136 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                     i32::from(expected)
                 }
             );
+        }
+        if (9..=11).contains(&mode) || matches!(mode, 4 | 6) {
+            // Effect mode is retained independently of later ground-surface updates.
+            if mode == 6 {
+                world.set_actor_surface(player, 0).unwrap();
+            }
+            world.prepare_player_model_resources(player, &data).unwrap();
+            let map = world.id(0).unwrap();
+            world
+                .refresh_model_presentations(&data, &[map, player])
+                .unwrap();
+            let prepared = world
+                .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+                .unwrap();
+            let initial_position = world.spatial(player).unwrap().local.position;
+            let mut progress = 0u32;
+            for ticks in if mode == 4 {
+                [13, 0, 0, 0]
+            } else {
+                [0, 1, u32::MAX, 13]
+            } {
+                let state_before = random.state();
+                let mut sound_calls = 0;
+                let result = world.advance_player_controller(
+                    player,
+                    cyrus_game::script::OrdinaryGroundQuery {
+                        scene: &scene,
+                        animations: &data,
+                        prepared: &prepared,
+                        distance: 4,
+                        sidedness: false,
+                    },
+                    cyrus_game::clock::ClockStep {
+                        frame_scale: 256,
+                        nominal_ticks: ticks,
+                        fine_ticks: 0,
+                    },
+                    ScriptInputs {
+                        player_controller: Some(cyrus_game::script::PlayerControllerInput {
+                            held: &cyrus_game::player::input::PlayerInput {
+                                forward: true,
+                                ..Default::default()
+                            },
+                            walk_mode: true,
+                        }),
+                        hud: (ticks == 0).then_some(&hud),
+                        ..Default::default()
+                    },
+                    &mut random,
+                    &mut |actor, sound| {
+                        assert_eq!(mode, 4);
+                        assert_eq!(actor, player);
+                        assert!(matches!(
+                            sound,
+                            cyrus_game::script::ScriptSound::Animation { .. }
+                        ));
+                        sound_calls += 1;
+                        anyhow::bail!("death starter sound rejected")
+                    },
+                );
+                if mode == 4 {
+                    assert!(
+                        format!("{:#}", result.unwrap_err())
+                            .contains("death starter sound rejected")
+                    );
+                    assert_eq!(sound_calls, 1);
+                    assert_eq!(
+                        world
+                            .globals()
+                            .selected_health()
+                            .unwrap()
+                            .death()
+                            .unwrap()
+                            .progress(),
+                        0
+                    );
+                    assert_eq!(world.globals().player_death_override_group(), Some(77));
+                    assert_eq!(random.state(), state_before);
+                    break;
+                }
+                if mode == 6 && ticks == 1 {
+                    let error = result.unwrap_err();
+                    assert!(
+                        format!("{error:#}").contains("environmental effect spawning unavailable")
+                    );
+                    assert_eq!(
+                        world
+                            .globals()
+                            .selected_health()
+                            .unwrap()
+                            .death()
+                            .unwrap()
+                            .progress(),
+                        1
+                    );
+                    assert_eq!(random.state(), 3263785912);
+                    break;
+                }
+                assert!(result.unwrap());
+                progress = progress.wrapping_add(ticks);
+                assert_eq!(
+                    world
+                        .globals()
+                        .selected_health()
+                        .unwrap()
+                        .death()
+                        .unwrap()
+                        .progress(),
+                    progress
+                );
+                assert_eq!(
+                    world.globals().player_death_override_group(),
+                    Some(if mode == 9 || mode == 6 { 134 } else { 122 })
+                );
+                assert_eq!(
+                    world.spatial(player).unwrap().local.position,
+                    initial_position
+                );
+                if mode == 6 {
+                    assert_eq!(random.state(), 3397979675);
+                } else {
+                    assert_eq!(random.state(), state_before);
+                }
+                if mode == 11 {
+                    assert_eq!(
+                        world.inspect(index, 1)["actors"][0]["animation"]["current_group"],
+                        0 // Missing 122 uses the animation owner's default, not health's fallback 121.
+                    );
+                }
+            }
         }
     }
 }

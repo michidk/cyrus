@@ -31,8 +31,9 @@
 //!
 //! Selected death-owning health publishes actor/display health before notification,
 //! retains captured pose and numeric death progress/mode, and consumes the retained
-//! source override. Missing rope cleanup and later death-controller/restart services
-//! remain explicit gaps. The caller supplies raw session death suppression; this
+//! source override. Death control starts the retained group before wrapping progress
+//! accumulation and bypasses idle/movement. Rope cleanup, environmental spawning,
+//! completion and restart remain explicit gaps. The caller supplies raw session death suppression; this
 //! does not establish complete cheat or death support. See
 //! [preservation's health ordering](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#selected-player-death-owning-health-mode).
 //!

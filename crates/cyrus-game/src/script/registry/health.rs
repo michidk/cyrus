@@ -346,6 +346,86 @@ impl ScriptWorld {
         Ok(())
     }
 
+    /// Death admission bypasses idle and movement. The synchronous starter precedes
+    /// progress accumulation; environmental spawning requires its own host.
+    pub(super) fn advance_selected_death_controller(
+        &mut self,
+        id: ScriptActorId,
+        inputs: ScriptInputs<'_>,
+        ticks: u32,
+        random: &mut crate::random::EngineRandom,
+        sounds: &mut dyn FnMut(ScriptActorId, ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let result = (|| {
+            let index = self.resolve(id)?;
+            ensure!(
+                self.selected_player_index() == Some(index),
+                "death controller receiver is not selected"
+            );
+            ensure!(
+                self.globals
+                    .player_hit_inhibited()
+                    .context("selected death inhibition unavailable")?,
+                "selected death controller requires hit inhibition"
+            );
+            let mut group = self
+                .globals
+                .player_death_override_group()
+                .context("selected death override owner unavailable")?;
+            if group == 0 {
+                let (_, holding) = self.spacing_weapon(id, inputs)?;
+                group = if holding { 122 } else { 134 };
+                self.globals.set_player_death_override_group(group)?;
+            }
+            let position = super::animation_sound_position(self.spatial.as_ref(), index);
+            let actor = &mut self.actors[index];
+            let surface = actor.surface;
+            let animation = actor
+                .animation
+                .as_mut()
+                .context("selected death animation unavailable")?;
+            let frame = animation.playback.force_request_with_sounds(
+                u16::try_from(group)
+                    .context("selected death override outside animation group range")?,
+                0,
+                ticks,
+                &mut |sound| {
+                    sounds(
+                        id,
+                        ScriptSound::Animation {
+                            sound,
+                            surface,
+                            position,
+                        },
+                    )
+                },
+            )?;
+            animation.frame = frame.or(animation.frame);
+            let death = self
+                .globals
+                .selected_health
+                .as_mut()
+                .context("selected health initialization unavailable")?
+                .death
+                .as_mut()
+                .context("selected death progress owner unavailable")?;
+            death.progress = death.progress.wrapping_add(ticks);
+            match death.mode {
+                1 => anyhow::bail!("selected death environmental effect spawning unavailable"),
+                2 if (random.draw() as u32) & death.progress.wrapping_add(1) == 0 => {
+                    anyhow::bail!("selected death environmental effect spawning unavailable")
+                }
+                _ => Ok(()),
+            }
+        })();
+        result.with_context(|| {
+            format!(
+                "world {} instance {} selected death controller",
+                self.world, id.index
+            )
+        })
+    }
+
     /// Death-owning health publishes displayed health before notifications. A missing
     /// source context is distinct from generic forwarding's known absent source.
     pub(super) fn apply_selected_death_health(

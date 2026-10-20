@@ -33,14 +33,14 @@ pub struct PlayerControllerInput<'a> {
 }
 
 impl ScriptWorld {
-    /// Run the admitted sheathed controller at its synchronous ordinary native hook.
+    /// Run supported death or sheathed grounded control at the ordinary native hook.
     /// Animation/queued stages precede this; continuation and late response follow it.
     pub fn advance_player_controller(
         &mut self,
         id: super::ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
         timing: crate::clock::ClockStep,
-        input: PlayerControllerInput<'_>,
+        inputs: super::ScriptInputs<'_>,
         random: &mut crate::random::EngineRandom,
         sounds: &mut dyn FnMut(super::ScriptActorId, super::super::ScriptSound) -> Result<()>,
     ) -> Result<bool> {
@@ -53,12 +53,22 @@ impl ScriptWorld {
                 .control
                 .as_ref()
                 .context("player controller control unavailable")?;
-            world.globals.prepare_player_controller(
+            if world.globals.prepare_player_controller(
                 timing.nominal_ticks,
                 control.queued_motion,
                 control.falling_state,
                 control.sliding_state,
-            )?;
+            )? {
+                return world.advance_selected_death_controller(
+                    id,
+                    inputs,
+                    timing.nominal_ticks,
+                    random,
+                    sounds,
+                );
+            }
+            let actor = &world.actors[id.index];
+            let control = actor.control.as_ref().expect("validated control");
             let group = actor
                 .animation
                 .as_ref()
@@ -131,6 +141,9 @@ impl ScriptWorld {
                 !(1..=5).contains(&world.actor_surface(id)?),
                 "player controller water/lava dispatch unsupported"
             );
+            let input = inputs
+                .player_controller
+                .context("player controller input unavailable")?;
             match select_sheathed_action(
                 input.held,
                 SheathedControllerState {
