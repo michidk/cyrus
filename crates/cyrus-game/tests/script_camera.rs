@@ -49,6 +49,7 @@ fn state() -> CameraState {
             position: [0.0; 3],
             angles: [0; 3],
         },
+        shake: 0,
     }
 }
 
@@ -84,6 +85,35 @@ impl CameraGeometry for Geometry {
         self.calls.push("terrain");
         Ok(if self.bad_height { f32::NAN } else { 1000.0 })
     }
+}
+
+#[test]
+fn view_angles_wobble_the_first_angle_by_the_shake_level() {
+    let mut camera = state();
+    camera.current.angles = [100, 2047, 5];
+    assert_eq!(camera.view_angles(0), [100, 2047, 5], "no shake, no change");
+    camera.add_shake();
+    camera.add_shake();
+    assert_eq!(camera.shake, 32, "impulses cap at one level");
+    assert_eq!(
+        camera.view_angles(0),
+        [68, 2047, 5],
+        "even frame: down, then halve"
+    );
+    assert_eq!(camera.shake, 16);
+    assert_eq!(
+        camera.view_angles(1),
+        [116, 2047, 5],
+        "odd frame: up, level kept"
+    );
+    assert_eq!(camera.shake, 16);
+    camera.current.angles[0] = 10;
+    assert_eq!(
+        camera.view_angles(2),
+        [2042, 2047, 5],
+        "wraps into one turn"
+    );
+    assert_eq!(camera.shake, 8);
 }
 
 #[test]

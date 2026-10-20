@@ -317,9 +317,33 @@ impl CameraState {
                 ..CameraMarks::default()
             },
             render: RenderPose::cut_to(pose),
+            shake: 0,
         };
         state.reload_player_defaults(settings, player, player_type)?;
         Ok(state)
+    }
+
+    /// Raise the screen shake by one impulse (32), capped at 32.
+    pub fn add_shake(&mut self) {
+        self.shake = 32;
+    }
+
+    /// The angles the frame draws with, from the published angles. The original's roll tilt is
+    /// selected by a mode word nothing ever writes (zero: no tilt), so none is applied. A
+    /// shaking camera moves the first angle down by the shake level on even frames, halving the
+    /// level, and up by it on odd frames. `frame` is the main loop's frame counter.
+    pub fn view_angles(&mut self, frame: u32) -> [u16; 3] {
+        let mut angles = self.current.angles;
+        if self.shake != 0 {
+            let shake = i32::from(self.shake);
+            if frame & 1 == 0 {
+                angles[0] -= shake;
+                self.shake >>= 1;
+            } else {
+                angles[0] += shake;
+            }
+        }
+        angles.map(|angle| (angle & 0x7ff) as u16)
     }
 
     /// Cut the render camera to the published pose, as setup does once the first pose exists.
@@ -489,6 +513,8 @@ pub(super) struct CameraSnapshot {
     marks: Option<CameraMarks>,
     #[serde(default)]
     render: Option<RenderPose>,
+    #[serde(default)]
+    shake: u8,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -541,6 +567,7 @@ impl CameraState {
             alternate_actor: id(self.alternate_actor),
             marks: Some(self.marks),
             render: Some(self.render),
+            shake: self.shake,
         }
     }
 
@@ -592,6 +619,7 @@ impl CameraState {
             render: saved
                 .render
                 .unwrap_or(RenderPose::cut_to(pose(saved.current))),
+            shake: saved.shake,
         })
     }
 }
@@ -792,6 +820,8 @@ pub struct CameraState {
     pub alternate_actor: super::ScriptActorId,
     pub marks: CameraMarks,
     pub render: RenderPose,
+    /// Screen shake level, zero to 32: the frame's pitch wobble amplitude.
+    pub shake: u8,
 }
 
 impl CameraState {
