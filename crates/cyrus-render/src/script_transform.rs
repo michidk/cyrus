@@ -74,16 +74,20 @@ struct AppliedScriptTransform;
 /// Converts original axes to rgpre scene axes without decomposing the matrix.
 /// Position truncation precedes conversion, per preservation's family-render rules.
 pub fn scene_transform(pose: Pose) -> Affine3A {
+    scene_transform_at(pose, pose.position.map(|value| (value >> 8) as f32))
+}
+
+fn scene_transform_at(pose: Pose, model_position: [f32; 3]) -> Affine3A {
     let sign = [-1.0, -1.0, 1.0];
     let matrix = Mat3::from_cols_array(&std::array::from_fn::<_, 9, _>(|index| {
         let (row, column) = (index % 3, index / 3);
         sign[row] * pose.matrix.0[row][column] * sign[column]
     }));
     let mut position = Vec3::from_array(std::array::from_fn(|axis| {
-        sign[axis] * (pose.position[axis] >> 8) as f32 / 20.0
+        sign[axis] * model_position[axis] / 20.0
     }));
     // rgpre offsets scene Z to align authored placements with the exported terrain.
-    position.z = -((16_777_215.0 - (pose.position[2] >> 8) as f64 * 256.0) as f32) * (1.0 / 5120.0);
+    position.z = -((16_777_215.0 - f64::from(model_position[2]) * 256.0) as f32) * (1.0 / 5120.0);
     Affine3A::from_mat3_translation(matrix, position)
 }
 
@@ -126,7 +130,15 @@ fn apply(
     for (entity, binding, applied) in roots {
         let pose = binding.and_then(|binding| {
             let world = actors.as_ref()?.current.as_ref()?;
-            world.spatial(binding.actor).ok()?.query_pose().ok()
+            match world.model_presentation(binding.actor).ok()? {
+                Some(model) => Some(scene_transform_at(model.pose, model.position)),
+                None => world
+                    .spatial(binding.actor)
+                    .ok()?
+                    .query_pose()
+                    .ok()
+                    .map(scene_transform),
+            }
         });
         if pose.is_none() && applied.is_none() {
             continue;
@@ -143,7 +155,7 @@ fn apply(
             .unwrap_or_default();
         let global = if let Some(pose) = pose {
             commands.entity(entity).insert(AppliedScriptTransform);
-            parent * GlobalTransform::from(Mat4::from(scene_transform(pose)))
+            parent * GlobalTransform::from(Mat4::from(pose))
         } else {
             commands.entity(entity).remove::<AppliedScriptTransform>();
             parent * *local

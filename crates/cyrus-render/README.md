@@ -36,7 +36,7 @@ same `PreparedWorld`. Core-only and native headless assemblies omit this plugin.
 Script-driven actor poses retain the same scene origin as exported world placements and markers.
 The framed inspection camera supplies `ScriptView` before ordinary actor updates.
 Script visibility flags hide or restore bound scene nodes independently of actor
-update eligibility. Static transforms continue to use the logical actor matrix.
+update eligibility. Current model records retain the captured transform and animation frame.
 HUD remains a separate plugin; startup is composed by the host. Hosts install `cyrus-audio` separately;
 headless assembly keeps sound control state without Bevy's audio backend.
 HUD artwork and rasterized text explicitly use nearest sampling when the
@@ -357,9 +357,11 @@ pose reaches the loaded node. Native and browser use the same loader path.
 This adds no animation interpreter, actor activation, or simulation clock.
 
 `ScriptTransformPlugin` presents explicitly prepared logical script poses through
-existing `ScriptBinding` nodes. It preserves the stored affine matrix, converts
-original axes to the shared scene coordinates, and updates descendant global
-transforms after ordinary propagation. Removing or expiring a binding restores
+existing `ScriptBinding` nodes. Current model records supply their captured matrix
+and stored map-unit position; other explicit bindings use the logical pose.
+It converts original axes to the shared scene coordinates and updates descendant
+global transforms after ordinary propagation. Stored model displacement leaves
+logical player and actor coordinates unchanged. Removing or expiring a binding restores
 the authored local transforms. Presentation never advances script stages.
 
 Script flat sounds retain logical world/actor ownership. `EndSound` matches the

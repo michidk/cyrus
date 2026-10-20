@@ -193,18 +193,40 @@ pub(super) fn apply(
         let Some(data) = assets.get(&binding.source) else {
             continue;
         };
-        let result = world.animation_frame(binding.actor).and_then(|frame| {
-            frame
+        let result = match world.model_presentation(binding.actor) {
+            Ok(Some(model)) => model
+                .animation
+                .as_ref()
                 .map(|frame| {
-                    let actor = &world.actors()[binding.actor.index];
-                    if actor.placement().is_some() {
-                        data.resolve_map_frame(binding.actor.index, frame)
-                    } else {
-                        data.resolve_frame(actor.name(), frame)
-                    }
+                    anyhow::ensure!(
+                        data.models
+                            .get(&frame.model)
+                            .is_some_and(|model| frame.frame < model.positions.len()),
+                        "world {} retained model {} frame {} unavailable",
+                        world.world,
+                        frame.model,
+                        frame.frame
+                    );
+                    Ok(cyrus_assets::animation::ModelFrame {
+                        model: frame.model.clone(),
+                        frame: frame.frame,
+                    })
                 })
-                .transpose()
-        });
+                .transpose(),
+            Ok(None) => world.animation_frame(binding.actor).and_then(|frame| {
+                frame
+                    .map(|frame| {
+                        let actor = &world.actors()[binding.actor.index];
+                        if actor.placement().is_some() {
+                            data.resolve_map_frame(binding.actor.index, frame)
+                        } else {
+                            data.resolve_frame(actor.name(), frame)
+                        }
+                    })
+                    .transpose()
+            }),
+            Err(error) => Err(error),
+        };
         match result {
             Ok(Some(frame)) => {
                 let next = AnimationPose {

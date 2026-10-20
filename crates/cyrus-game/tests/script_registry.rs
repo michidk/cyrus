@@ -5229,6 +5229,93 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
 }
 
 #[test]
+fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
+    use cyrus_game::script::{WorldRestoreContext, WorldSnapshotSources};
+    let mut scripts = cache();
+    for placement in &mut scripts.instances {
+        placement.object_type = 1;
+        placement.map_position = [10, 20, 30];
+    }
+    scripts.content_id = scripts.content_identity().unwrap();
+    let (mut world, data, statics) = static_model_fixture(scripts.clone());
+    let id = world.id(0).unwrap();
+    world.refresh_model_presentations(&data, &[id]).unwrap();
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        effects: None,
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+    let restore = |saved| {
+        ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &sources,
+            WorldRestoreContext {
+                generation: 9,
+                globals: Default::default(),
+                samples: &BTreeMap::new(),
+            },
+        )
+    };
+    let mut displaced = saved.clone();
+    displaced["actors"][0]["model"]["current"]["position"] =
+        serde_json::json!([10.0_f32.to_bits(), 200.5_f32.to_bits(), 30.0_f32.to_bits()]);
+    let restored = restore(displaced).unwrap();
+    let id = restored.id(0).unwrap();
+    assert_eq!(
+        restored.spatial(id).unwrap().local.position,
+        [2560, 5120, 7680]
+    );
+    let model = restored.model_presentation(id).unwrap().unwrap();
+    assert_eq!(model.position, [10.0, 200.5, 30.0]);
+    assert_eq!(model.pose.position, [2560, 5120, 7680]);
+    assert_eq!(
+        restored.live_collision_inputs(&[id]).unwrap()[0]
+            .model
+            .as_ref()
+            .unwrap()
+            .position,
+        [10.0, 200.5, 30.0]
+    );
+    let hits = statics
+        .segment_contacts(
+            0,
+            &model.collision_pose().unwrap(),
+            [10.0, 190.0, 30.0],
+            [10.0, 210.0, 30.0],
+            false,
+        )
+        .unwrap();
+    assert_eq!(hits[0].point[1], 200.5);
+    assert_eq!(
+        serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap()["actors"][0]["model"]["current"]
+            ["position"],
+        serde_json::json!([10.0_f32.to_bits(), 200.5_f32.to_bits(), 30.0_f32.to_bits()])
+    );
+    let mut old = saved.clone();
+    old["actors"][0]["model"]["current"]
+        .as_object_mut()
+        .unwrap()
+        .remove("position");
+    let old = restore(old).unwrap();
+    assert_eq!(
+        old.model_presentation(old.id(0).unwrap())
+            .unwrap()
+            .unwrap()
+            .position,
+        [10.0, 20.0, 30.0]
+    );
+    let mut malformed = saved;
+    malformed["actors"][0]["model"]["current"]["position"][1] = f32::NAN.to_bits().into();
+    assert!(
+        format!("{:#}", restore(malformed).err().unwrap()).contains("saved model position invalid")
+    );
+}
+
+#[test]
 fn model_positioning_allows_known_dry_surfaces_with_collision_enabled() {
     let mut scripts = cache();
     scripts

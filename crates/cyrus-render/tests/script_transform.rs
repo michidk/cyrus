@@ -7,7 +7,7 @@ use cyrus_world::transform::Matrix;
 use serde_json::json;
 
 #[test]
-fn script_visibility_hides_and_restores_the_bound_static_model() {
+fn script_visibility_and_stored_position_follow_binding_lifetime() {
     use cyrus_game::script::{ScriptInputs, ScriptStage};
     for (function, expected) in [
         ("HideMe", Visibility::Hidden),
@@ -28,6 +28,35 @@ fn script_visibility_hides_and_restores_the_bound_static_model() {
         scripts.content_id = scripts.content_identity().unwrap();
         let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
         world.prepare_spatial().unwrap();
+        let data = Animations {
+            version: 2,
+            world: scripts.world,
+            metadata: json!({
+                "script_content_id": scripts.content_id,
+                "actors": [{"script_name":"STATIC", "model_load_path":"static"}]
+            }),
+            sections: Default::default(),
+            models: Default::default(),
+            unsupported: Default::default(),
+        };
+        let collision: cyrus_assets::collision::ActorCollisionModels =
+            serde_json::from_value(json!({
+                "object_count":1,
+                "models":{"test":{
+                    "version":[118,53,46,48], "radius":42.0,
+                    "vertices":[[-20.0,0.0,-20.0],[20.0,0.0,-20.0],[0.0,0.0,20.0]],
+                    "normals":[[0.0,-1.0,0.0]], "faces":[[0,1,2]],
+                    "textures":[null], "subobjects":[]
+                }},
+                "instances":{"0":"test"}, "collision_flags":{"0":0}, "unsupported":{}
+            }))
+            .unwrap();
+        world
+            .prepare_model_resources(
+                &data,
+                &cyrus_collision::actor_models::ActorModelCollision::new(&collision).unwrap(),
+            )
+            .unwrap();
         let id = world.id(0).unwrap();
         world
             .advance(
@@ -43,6 +72,34 @@ fn script_visibility_hides_and_restores_the_bound_static_model() {
                 100,
             )
             .unwrap();
+        if function == "ShowMe" {
+            let collision = Default::default();
+            let sources = cyrus_game::script::WorldSnapshotSources {
+                effects: None,
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &collision,
+            };
+            let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
+            saved["actors"][0]["model"]["current"]["position"] =
+                json!([40.0_f32.to_bits(), 900.0_f32.to_bits(), 80.0_f32.to_bits()]);
+            world = ScriptWorld::from_snapshot(
+                serde_json::from_value(saved).unwrap(),
+                &sources,
+                cyrus_game::script::WorldRestoreContext {
+                    generation: 2,
+                    globals: Default::default(),
+                    samples: &Default::default(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                world.spatial(world.id(0).unwrap()).unwrap().local.position,
+                [10240, -15360, 20480]
+            );
+        }
+        let id = world.id(0).unwrap();
         let mut actors = ScriptActors::default();
         actors.current = Some(world);
         let mut app = App::new();
@@ -75,7 +132,11 @@ fn script_visibility_hides_and_restores_the_bound_static_model() {
                 .get::<GlobalTransform>(node)
                 .unwrap()
                 .translation(),
-            Vec3::new(-2.0, 3.0, -3272.7998)
+            Vec3::new(
+                -2.0,
+                if function == "ShowMe" { -45.0 } else { 3.0 },
+                -3272.7998
+            )
         );
         app.world_mut().entity_mut(node).remove::<ScriptBinding>();
         app.update();

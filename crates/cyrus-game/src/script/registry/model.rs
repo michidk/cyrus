@@ -6,22 +6,26 @@ use cyrus_assets::animation::{Animations, ModelFrame};
 use cyrus_collision::actor_models::ActorModelCollision;
 
 /// Selected geometry and its stored transform, independent of later logical movement.
-/// Position has eight fractional bits; radius is in original map units.
+/// The captured source pose has eight fractional bits. Stored model position and
+/// radius use original map units; presentation displacement never moves the actor.
 pub struct ModelPresentation {
+    /// Captured source pose and orientation; its Q8 position does not include model displacement.
     pub pose: Pose,
+    /// Stored map-unit position shared by model geometry, bounds and rendering.
+    pub position: [f32; 3],
     pub radius: f32,
     /// None selects the actor's retained static model; Some selects RAAN geometry.
     pub animation: Option<ModelFrame>,
 }
 
 impl ModelPresentation {
-    /// Stored instance transform for collision queries, with Q8 positions truncated to map units.
+    /// Stored instance transform for collision queries, including presentation displacement.
     /// The original row-major matrix is retained without renderer-axis conversion.
     pub fn collision_pose(&self) -> Result<cyrus_collision::collision_mesh::ModelPose> {
         use bevy::math::{Mat3, Vec3};
         let rows = self.pose.matrix.0.map(Vec3::from_array);
         cyrus_collision::collision_mesh::ModelPose::new(
-            self.pose.position.map(|value| (value >> 8) as f32),
+            self.position,
             Mat3::from_cols(rows[0], rows[1], rows[2]).transpose(),
         )
     }
@@ -58,6 +62,7 @@ impl ModelState {
     pub fn show_static(&mut self, pose: Pose) {
         if let Some(radius) = self.static_radius {
             self.current = Some(ModelPresentation {
+                position: pose.position.map(|value| (value >> 8) as f32),
                 pose,
                 radius,
                 animation: None,
@@ -144,7 +149,7 @@ impl ScriptWorld {
             self.model_presentation(id)?
                 .map(|record| cyrus_collision::candidates::ModelBounds {
                     instance: cyrus_collision::candidates::ModelInstance::Runtime(index),
-                    position: record.pose.position.map(|value| (value >> 8) as f32),
+                    position: record.position,
                     radius: record.radius,
                 });
         let position = if stable_recovery && model.is_none() {
@@ -563,6 +568,7 @@ impl ScriptWorld {
                 self.actors[index].model.animation_radius = Some(radius);
             }
             self.actors[index].model.current = Some(ModelPresentation {
+                position: pose.position.map(|value| (value >> 8) as f32),
                 pose,
                 radius,
                 animation,
@@ -830,7 +836,7 @@ impl ScriptWorld {
                 actor: index,
                 model: Some(ModelBounds {
                     instance: ModelInstance::Runtime(index),
-                    position: record.pose.position.map(|value| (value >> 8) as f32),
+                    position: record.position,
                     radius: record.radius,
                 }),
                 // Player-role exclusion was applied before reading the current model.
@@ -913,6 +919,8 @@ pub(super) struct ModelSnapshot {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ModelPresentationSnapshot {
     pose: super::super::spatial::SavedPose,
+    #[serde(default)]
+    position: Option<[u32; 3]>,
     radius: u32,
     animation: Option<(String, usize)>,
 }
@@ -932,6 +940,7 @@ impl ModelState {
                 .as_ref()
                 .map(|current| ModelPresentationSnapshot {
                     pose: current.pose.into(),
+                    position: Some(current.position.map(f32::to_bits)),
                     radius: current.radius.to_bits(),
                     animation: current
                         .animation
@@ -986,8 +995,19 @@ impl ModelState {
                         Ok(ModelFrame { model, frame })
                     })
                     .transpose()?;
+                let pose = saved.pose.restore()?;
+                // Earlier snapshots admitted only undisplaced model positions.
+                let position = saved.position.map_or_else(
+                    || pose.position.map(|value| (value >> 8) as f32),
+                    |bits| bits.map(f32::from_bits),
+                );
+                ensure!(
+                    position.iter().all(|value| value.is_finite()),
+                    "saved model position invalid"
+                );
                 Ok(ModelPresentation {
-                    pose: saved.pose.restore()?,
+                    pose,
+                    position,
                     radius: radius(saved.radius)?,
                     animation,
                 })

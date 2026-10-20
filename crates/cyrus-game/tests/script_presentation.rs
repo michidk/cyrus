@@ -42,15 +42,16 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     scripts.content_id = scripts.content_identity().unwrap();
     let data: Animations = serde_json::from_value(json!({
         "version":2,"world":17,"sections":{},"unsupported":{},
-        "models":{"TEST":{"base_positions":[[0,0,0]],"base_normals":[],"faces":[],"encoding":"animated_i32",
+        "models":{"TEST":{"radius":17.0,"base_positions":[[0,0,0]],"base_normals":[],"faces":[],"encoding":"animated_i32",
             "positions":[[[0,0,0]],[[0,1,0]]],"normals":[[],[]]}},
         "metadata":{"markers": [], "walk_node_maps": [], "script_content_id":scripts.content_id,
         "mpob_objects":[{"script_name":"ACTOR","object_type":1,"is_static":2,"model_name":"test"},{"script_name":"ACTOR","object_type":2,"is_static":2,"model_name":"test"}],"actors":[{
-            "script_name":"ACTOR",
+            "script_name":"ACTOR","model_load_path":"animation_table",
+            "raan_entries":[{"file_path":"TEST.3D","frame_count":2}],
             "animation_groups":[
                 {"group_index":9,"anim_type":0,"anim_id":1,"commands":[{"opcode":4,"sound_param":200,"volume_shift":0},{"opcode":1}]},
                 {"group_index":1,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":0},{"opcode":2,"value":0}]},
-                {"group_index":7,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":1},{"opcode":2,"value":0},{"opcode":1}]}
+                {"group_index":7,"anim_type":0,"anim_id":1,"commands":[{"opcode":0,"frame_reference":1},{"opcode":0,"frame_reference":0},{"opcode":1}]}
             ]
         }]}
     })).unwrap();
@@ -211,6 +212,61 @@ fn scene_binding_follows_actor_stage_and_expires_on_same_world_reload() {
     assert_eq!(runtime.program_counter(Thread::Main), Some(1));
     assert_eq!(runtime.active_tasks(), 1);
     assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 1);
+
+    // A later logical frame must not replace the frame captured with the model transform.
+    app.world_mut()
+        .resource_scope(|world, mut actors: Mut<ScriptActors>| {
+            let data = world
+                .resource::<Assets<Animations>>()
+                .get(&animation_handle)
+                .unwrap();
+            let models = cyrus_collision::actor_models::ActorModelCollision::new(
+                &cyrus_assets::collision::ActorCollisionModels {
+                    object_count: 2,
+                    collision_flags: std::collections::BTreeMap::from([(0, 0)]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let current = actors.current.as_mut().unwrap();
+            current.prepare_spatial().unwrap();
+            current.prepare_model_resources(data, &models).unwrap();
+            current.refresh_model_presentations(data, &[id]).unwrap();
+            for _ in 0..2 {
+                current
+                    .advance(
+                        id,
+                        ScriptStage::Animation,
+                        cyrus_game::script::ScriptInputs {
+                            nominal_ticks: Some(1),
+                            frame_scale: Some(256),
+                            ..Default::default()
+                        },
+                        None,
+                        None,
+                        10,
+                    )
+                    .unwrap();
+            }
+            assert_eq!(current.animation_frame(id).unwrap(), Some(0));
+        });
+    app.update();
+    assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 1);
+    app.world_mut()
+        .resource_scope(|world, mut actors: Mut<ScriptActors>| {
+            let data = world
+                .resource::<Assets<Animations>>()
+                .get(&animation_handle)
+                .unwrap();
+            actors
+                .current
+                .as_mut()
+                .unwrap()
+                .refresh_model_presentations(data, &[id])
+                .unwrap();
+        });
+    app.update();
+    assert_eq!(app.world().get::<AnimationPose>(node).unwrap().frame, 0);
 
     app.world_mut()
         .resource_mut::<ScriptActors>()
