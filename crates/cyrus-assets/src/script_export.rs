@@ -9,9 +9,7 @@ use rgpre::import::{
     },
     soup_def::SoupFunctionKind,
 };
-use std::collections::BTreeMap;
-#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 /// Exports actor programs independently of mesh availability; unsupported actors remain visible.
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
