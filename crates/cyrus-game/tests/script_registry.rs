@@ -21093,6 +21093,9 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
         0xd003
     );
     for code in [0xd001, 0xd005] {
+        let before_flags = [receiver, sender].map(|actor| {
+            world.actors()[actor.index].control_state().unwrap().combat.as_ref().unwrap().flags
+        });
         world.send_combat_message(sender, receiver, code).unwrap();
         let error = format!(
             "{:#}",
@@ -21100,6 +21103,11 @@ fn coordination_message_consumption_precedes_errors_and_processes_one_code_per_c
         );
         assert!(error.contains("unsupported"), "{error}");
         assert_eq!(world.consume_combat_message(receiver).unwrap(), None);
+        let flags = [receiver, sender].map(|actor| {
+            world.actors()[actor.index]
+                .control_state().unwrap().combat.as_ref().unwrap().flags
+        });
+        assert_eq!(flags, if code == 0xd001 { before_flags.map(|flags| flags & !3) } else { before_flags });
     }
 }
 

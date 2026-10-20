@@ -46,10 +46,23 @@ impl ScriptWorld {
                 0xd002 => id,
                 0xd003 => message.sender,
                 0xd000 => return self.process_block_message(id, message.sender, selected_player),
-                0xd001 | 0xd005 => anyhow::bail!(
-                    "ordinary combat message {} from actor {} unsupported",
-                    message.code,
-                    message.sender.index
+                0xd001 => {
+                    // Original order clears receiver intent, then sender intent, before
+                    // hit-reaction services. Those services remain unsupported here.
+                    for actor in [id, message.sender] {
+                        let index = self.resolve(actor)?;
+                        self.actors[index]
+                            .control
+                            .as_mut()
+                            .and_then(|control| control.combat.as_mut())
+                            .with_context(|| format!("hit message actor {index} combat unavailable"))?
+                            .flags &= !3;
+                    }
+                    anyhow::bail!("ordinary combat message {} response services unsupported", message.code)
+                }
+                0xd005 => anyhow::bail!(
+                    "ordinary combat message {} response services unsupported",
+                    message.code
                 ),
                 _ => return Ok(()),
             };
