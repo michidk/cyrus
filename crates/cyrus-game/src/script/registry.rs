@@ -2195,6 +2195,50 @@ impl ScriptWorld {
         &mut self.globals
     }
 
+    /// Atomically select CYRUS or GREMLIN for host-owned player binding.
+    ///
+    /// The original swaps two standalone player records, then reloads camera record zero from
+    /// the selected role's installed camera defaults.  This method owns only that logical-world
+    /// portion of the transaction: a host must rebind its entity, controller and presentation
+    /// after the returned identity is published.  Both roles are required even when selecting
+    /// the currently active one, so a partial world cannot silently enter a swapped state.
+    pub fn select_player(&mut self, swapped: bool) -> Result<ScriptActorId> {
+        let player = self
+            .actors
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .context("selected-player swap: CYRUS role unavailable")?;
+        let alternate = self
+            .actors
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::AlternatePlayer))
+            .context("selected-player swap: GREMLIN role unavailable")?;
+        let selected = if swapped { alternate } else { player };
+        let selected_id = self.id(selected)?;
+
+        // Build the camera mutation before changing the selector.  A malformed camera record
+        // therefore leaves both the selector and camera state untouched.
+        let next_camera = self
+            .camera
+            .as_ref()
+            .map(|camera| {
+                let mut next = camera.clone();
+                next.reload_player_defaults(
+                    &self.camera_settings,
+                    selected_id,
+                    self.actors[selected].attributes[105],
+                )?;
+                Ok::<_, anyhow::Error>(next)
+            })
+            .transpose()?;
+
+        self.globals.player_swapped = swapped;
+        if let Some(camera) = next_camera {
+            self.camera = Some(camera);
+        }
+        Ok(selected_id)
+    }
+
     /// Shared ownership and pending text; fresh world preparation resets both.
     pub fn activation(&self) -> &super::ActivationState {
         &self.activation
