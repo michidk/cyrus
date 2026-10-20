@@ -280,16 +280,13 @@ impl StaticCollision {
         Ok(candidates)
     }
 
-    fn prepare_static_candidates(
-        &self,
-        view: [i32; 2],
-        query: &CandidateQuery,
-    ) -> anyhow::Result<CollisionCandidates> {
+    /// First cell of the 18 by 18 static window around `view` (map units).
+    fn window_origin(view: [i32; 2]) -> anyhow::Result<[i32; 2]> {
         anyhow::ensure!(
             view.iter().all(|v| (0..=65535).contains(v)),
             "static view outside map"
         );
-        let first = view.map(|v| {
+        Ok(view.map(|v| {
             (if v < 4608 {
                 0
             } else if v + 4608 > 65535 {
@@ -297,7 +294,82 @@ impl StaticCollision {
             } else {
                 v - 4608
             }) / 512
-        });
+        }))
+    }
+
+    /// Every static placement in the 18 by 18 window around `view` (map units), in window
+    /// cell order with the four corner cells skipped and no distance test: the model list the
+    /// camera's segment query filters for itself.
+    pub fn window_models(&self, view: [i32; 2]) -> anyhow::Result<Vec<ModelBounds>> {
+        let first = Self::window_origin(view)?;
+        let mut result = Vec::new();
+        for z in 0..18 {
+            for x in 0..18 {
+                if (x == 0 || x == 17) && (z == 0 || z == 17) {
+                    continue;
+                }
+                let Some(indices) = self.cells.get(&(first[1] + z, first[0] + x)) else {
+                    continue;
+                };
+                for &index in indices {
+                    let placement = &self.placements[index];
+                    let model = self.models.get(&placement.model).with_context(|| {
+                        format!(
+                            "placement {} model {}: missing collision model",
+                            placement.id, placement.model
+                        )
+                    })?;
+                    result.push(ModelBounds {
+                        instance: ModelInstance::StaticPlacement(index),
+                        position: placement.position.map(|coordinate| coordinate as f32),
+                        radius: model.radius,
+                    });
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Segment contacts of one collected model, static or live, with map-unit endpoints.
+    /// A live model needs its stored pose in `poses` and the live collision registry.
+    pub fn model_segment_contacts(
+        &self,
+        model: ModelInstance,
+        actors: Option<&super::actor_models::ActorModelCollision>,
+        poses: &BTreeMap<usize, super::collision_mesh::ModelPose>,
+        start: [i32; 3],
+        end: [i32; 3],
+        sidedness: bool,
+    ) -> anyhow::Result<Vec<super::collision_mesh::WorldSegmentContact>> {
+        match model {
+            ModelInstance::StaticPlacement(index) => {
+                self.static_world_segment_contacts(index, start, end, sidedness)
+            }
+            ModelInstance::Runtime(index) => {
+                let pose = poses.get(&index).with_context(|| {
+                    format!("live model MPOB {index}: stored model pose unavailable")
+                })?;
+                actors
+                    .with_context(|| {
+                        format!("live model MPOB {index}: live collision registry unavailable")
+                    })?
+                    .segment_contacts(
+                        index,
+                        pose,
+                        start.map(|value| value as f32),
+                        end.map(|value| value as f32),
+                        sidedness,
+                    )
+            }
+        }
+    }
+
+    fn prepare_static_candidates(
+        &self,
+        view: [i32; 2],
+        query: &CandidateQuery,
+    ) -> anyhow::Result<CollisionCandidates> {
+        let first = Self::window_origin(view)?;
         let mut result = CollisionCandidates::default();
         for z in 0..18 {
             for x in 0..18 {

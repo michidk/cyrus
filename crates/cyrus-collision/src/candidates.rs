@@ -59,6 +59,16 @@ impl CandidateQuery {
         })
     }
 
+    /// A model-less body (the camera) searching the fallback radius 200 that skips `owner`,
+    /// the model of the actor it is bound to. Position has eight fractional bits.
+    pub fn without_model(position: [i32; 3], owner: Option<ModelInstance>) -> Self {
+        Self {
+            origin: Vec3::from_array(position.map(|coordinate| (coordinate >> 8) as f32)),
+            radius: 200.0,
+            own_model: owner,
+        }
+    }
+
     pub(crate) fn static_query(position: [i64; 3], radius: f32) -> Self {
         Self {
             origin: Vec3::from_array(position.map(|coordinate| (coordinate >> 8) as f32)),

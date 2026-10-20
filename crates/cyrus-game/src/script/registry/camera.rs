@@ -123,3 +123,151 @@ impl ScriptWorld {
         Ok(pose)
     }
 }
+
+/// Production camera geometry over the loaded scene and the world's live models, built once per
+/// update by [`ScriptWorld::scene_camera_geometry`].
+///
+/// **Inferred** from the original's code, not yet compared by execution: the segment query filters
+/// the engine's map list (the static window around the view, then live actors that are not
+/// animation-excluded) with its own bounds rules, and the contact query gathers with the shared
+/// gatherer at radius 200 excluding the bound actor's model, then queries the camera body (two
+/// spheres at the body origin, radii `camera_size` and `camera_scape_size`, identity orientation)
+/// without a contact cap or terrain contact. Both use the original's one-sided mode.
+pub struct SceneCameraGeometry<'a, T> {
+    scene: &'a crate::player::data::PlayerScene,
+    view: [i32; 2],
+    live: Vec<cyrus_collision::candidates::LiveActor>,
+    poses: std::collections::BTreeMap<usize, cyrus_collision::collision_mesh::ModelPose>,
+    limits: cyrus_assets::script::CameraLimits,
+    terrain: Option<T>,
+}
+
+impl<T> SceneCameraGeometry<'_, T> {
+    fn owner(&self, excluded: ScriptActorId) -> Option<cyrus_collision::candidates::ModelInstance> {
+        self.live
+            .iter()
+            .any(|actor| actor.actor == excluded.index)
+            .then_some(cyrus_collision::candidates::ModelInstance::Runtime(
+                excluded.index,
+            ))
+    }
+}
+
+impl<T: crate::script::camera::CameraTerrainHeights> CameraGeometry for SceneCameraGeometry<'_, T> {
+    fn segment(
+        &mut self,
+        start: [i32; 3],
+        end: [i32; 3],
+        excluded: ScriptActorId,
+    ) -> Result<Vec<cyrus_collision::collision_mesh::IntegerSegmentContact>> {
+        let mut models = self.scene.static_collision.window_models(self.view)?;
+        models.extend(
+            self.live
+                .iter()
+                .filter(|actor| !actor.animation_excluded)
+                .filter_map(|actor| actor.model),
+        );
+        let collected = crate::script::camera::collect_segment_models(
+            start,
+            end,
+            self.limits.obstacle_size.wrapping_shl(8),
+            self.owner(excluded),
+            &models,
+        )?;
+        let (start, end) = (start.map(|value| value >> 8), end.map(|value| value >> 8));
+        let mut contacts = Vec::new();
+        for model in collected {
+            for contact in self.scene.static_collision.model_segment_contacts(
+                model,
+                self.scene.actor_collision.as_ref(),
+                &self.poses,
+                start,
+                end,
+                false,
+            )? {
+                contacts.push(contact.integer()?);
+            }
+        }
+        Ok(contacts)
+    }
+
+    fn contacts(&mut self, position: [i32; 3], excluded: ScriptActorId) -> Result<Vec<[i32; 3]>> {
+        use bevy::math::{Mat3, Vec3};
+        let query = cyrus_collision::candidates::CandidateQuery::without_model(
+            position,
+            self.owner(excluded),
+        );
+        let candidates =
+            self.scene
+                .static_collision
+                .runtime_candidates(self.view, &query, &self.live, &[])?;
+        let spheres = [
+            (Vec3::ZERO, self.limits.camera_size as f32),
+            (Vec3::ZERO, self.limits.camera_scape_size as f32),
+        ];
+        let actors = self
+            .scene
+            .actor_collision
+            .as_ref()
+            .context("camera contacts: live model collision unavailable (re-export)")?;
+        let found = self.scene.static_collision.runtime_residual_body_contacts(
+            &candidates,
+            actors,
+            &self.poses,
+            cyrus_collision::collision_world::ResidualBodyQuery {
+                probe: cyrus_collision::collision_mesh::BodyProbe {
+                    position: position.map(i64::from),
+                    rotation: Mat3::IDENTITY,
+                    spheres: &spheres,
+                    sidedness: false,
+                },
+                excluded_candidate_type: None,
+            },
+        )?;
+        Ok(found.into_iter().map(|contact| contact.normal).collect())
+    }
+
+    fn terrain_height(&mut self, horizontal: [i32; 2]) -> Result<f32> {
+        let terrain = self
+            .terrain
+            .as_ref()
+            .context("camera terrain heights unavailable")?;
+        Ok(crate::script::camera::sample_terrain(horizontal, terrain)?.0)
+    }
+}
+
+impl ScriptWorld {
+    /// Gather the live models and stored poses the camera's geometry queries need. `actors` is the
+    /// ordinary update order, `view` the map-unit position the engine builds its map list around
+    /// (the published camera position), and `terrain` the retained and map heights when terrain
+    /// correction is enabled.
+    pub fn scene_camera_geometry<'a, T: crate::script::camera::CameraTerrainHeights>(
+        &self,
+        scene: &'a crate::player::data::PlayerScene,
+        view: [i32; 2],
+        actors: &[ScriptActorId],
+        limits: cyrus_assets::script::CameraLimits,
+        terrain: Option<T>,
+    ) -> Result<SceneCameraGeometry<'a, T>> {
+        anyhow::ensure!(
+            scene.world == self.world,
+            "world {} camera geometry scene identity mismatch",
+            self.world
+        );
+        let live = self.live_collision_inputs(actors)?;
+        let mut poses = std::collections::BTreeMap::new();
+        for actor in &live {
+            if let Some(record) = self.model_presentation(self.id(actor.actor)?)? {
+                poses.insert(actor.actor, record.collision_pose()?);
+            }
+        }
+        Ok(SceneCameraGeometry {
+            scene,
+            view,
+            live,
+            poses,
+            limits,
+            terrain,
+        })
+    }
+}
