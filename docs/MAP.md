@@ -320,6 +320,7 @@ module where it is defined and regenerate.
 - `src/session.rs` — Diagnostic browser save/load with one outstanding host operation.
 - `src/session/document.rs` — Typed browser documents; source admission and live replacement remain separate.
 - `src/session/load_assets.rs` — Browser cache preparation without publishing a world or starting gameplay.
+- `src/session/selection.rs` — Retained browser slot selection, separate from captured gameplay state.
 - `src/session/storage.rs` — Asynchronous browser session publication; callers own document validation.
 - `src/storage.rs` — Shared browser document storage for preferences, cheats and future save records.
 
