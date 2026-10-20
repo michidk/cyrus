@@ -12474,6 +12474,62 @@ fn backward_with_the_walk_key_walks_the_player_back_through_the_support_check() 
 }
 
 #[test]
+fn scripted_walk_steps_move_the_selected_player_through_the_support_check() {
+    use cyrus_game::script::{OrdinaryGroundQuery, ScriptActorSource, ScriptInputs};
+    // Walking forward advances Z along the heading (zero: +Z); walking backward reverses it.
+    for (function, direction) in [("WalkForward", 1), ("WalkBackward", -1)] {
+        let (_, mut world, data, scene) = player_walking_fixture();
+        let index = world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap();
+        let player = world.id(index).unwrap();
+        let map = world.id(0).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        let hud = cyrus_game::script::ScriptHud::default();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let before = world.spatial(player).unwrap().local.position;
+        let inputs = ScriptInputs {
+            hud: Some(&hud),
+            shell_execution: Some(false),
+            nominal_ticks: Some(1),
+            frame_scale: Some(256),
+            locomotion_geometry: Some(cyrus_game::script::LocomotionGeometry {
+                ground: OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                environment: cyrus_game::script::ObstacleEnvironment {
+                    selected_player: Some(player),
+                    auto_grab: false,
+                    item_system_ready: false,
+                    shell_execution: false,
+                    ticks: 1,
+                },
+            }),
+            ..Default::default()
+        };
+        world
+            .run_player_native_hook(player, &mut |world| {
+                world.step_player(player, function, inputs, &mut |_, _| Ok(()))
+            })
+            .unwrap();
+        let after = world.spatial(player).unwrap().local.position;
+        assert_eq!(after[0], before[0], "{function}");
+        assert!(
+            (after[2] - before[2]) * direction > 0,
+            "{function}: {before:?} -> {after:?}"
+        );
+    }
+}
+
+#[test]
 fn selected_player_collision_uses_logical_pose_and_live_map_support() {
     use cyrus_collision::ground::SupportSource;
     use cyrus_game::script::{OrdinaryGroundQuery, ScriptActorSource};

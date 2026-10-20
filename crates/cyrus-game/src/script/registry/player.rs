@@ -197,7 +197,7 @@ impl ScriptWorld {
     /// One of the controller's steppers (`MoveForward` for running, `MoveLeft` or `MoveRight` for a
     /// sidestep): the scripted native with duration 1, run synchronously on the selected player.
     /// The ordinary late stages resolve its translation.
-    fn step_player(
+    pub fn step_player(
         &mut self,
         id: super::ScriptActorId,
         function: &'static str,
@@ -439,29 +439,37 @@ impl ScriptWorld {
         movement.startup.finish_update(accepted);
         Ok(())
     }
-    /// The selected player's `WalkBackward` step check: the support query at the position one
-    /// step behind (attribute 13 plus the rear body extent, along the heading plus 1024),
-    /// without moving the player. The admission is the forward walking admission applied to
-    /// the backward probe, which is inferred.
-    pub fn player_backward_step_clear(
+    /// The selected player's scripted walking step check: the support query at the position one
+    /// step ahead (`WalkForward`: attribute 12 plus the front body extent) or behind
+    /// (`WalkBackward`: attribute 13 plus the rear extent), without moving the player. The
+    /// admission is the forward walking admission applied to that probe, which is inferred.
+    pub fn player_step_clear(
         &mut self,
         id: super::ScriptActorId,
         query: super::ground::OrdinaryGroundQuery<'_>,
+        forward: bool,
     ) -> Result<bool> {
         let index = self.resolve(id)?;
         let shape = self.ordinary_collision_shape(id)?;
-        let step = i32::from(self.actors[index].attributes[13])
-            .wrapping_add(shape.negative_extent[2])
+        let (attribute, extent) = if forward {
+            (12, shape.positive_extent[2])
+        } else {
+            (13, shape.negative_extent[2])
+        };
+        let step = i32::from(self.actors[index].attributes[attribute])
+            .wrapping_add(extent)
             .wrapping_mul(256);
         let pose = self.spatial(id)?.local;
-        let rotated = pose.matrix.transform([0, 0, step.wrapping_neg()])?;
+        let rotated =
+            pose.matrix
+                .transform([0, 0, if forward { step } else { step.wrapping_neg() }])?;
         let mut proposed = pose.position;
         proposed[0] = proposed[0].wrapping_add(rotated[0]);
         proposed[2] = proposed[2].wrapping_add(rotated[2]);
         let mut movement = self.actors[index]
             .player_movement
             .take()
-            .context("player backward step check requires an active movement update")?;
+            .context("player step check requires an active movement update")?;
         let result =
             self.query_player_forward_support(id, query, proposed, &mut movement.history, false);
         self.actors[index].player_movement = Some(movement);

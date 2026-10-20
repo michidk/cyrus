@@ -3071,10 +3071,11 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
             generation: self.generation,
             index: self.index,
         };
-        // The selected player's WalkBackward runs its step check through the player support
-        // query; its WalkForward is the controller's own walking stage.
+        // The selected player's scripted walking steps run their step checks through the player
+        // support query; the controller's forward walk is its own walking stage.
         let player_backward = walking_backward && self.selected_player() == Some(id);
-        if walking || (walking_backward && !player_backward) {
+        let player_forward = walking && self.selected_player() == Some(id);
+        if (walking && !player_forward) || (walking_backward && !player_backward) {
             anyhow::ensure!(
                 self.selected_player() != Some(id)
                     && !matches!(
@@ -3116,7 +3117,7 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                     let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
                     admission.backward_step_clear = Some(if player_backward {
                         self.registry
-                            .player_backward_step_clear(id, geometry.ground)?
+                            .player_step_clear(id, geometry.ground, false)?
                     } else {
                         self.registry.ordinary_step_clear(
                             id,
@@ -3171,13 +3172,16 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
                         let mut missing_sound =
                             |_, _| anyhow::bail!("WalkForward collision sound handler unavailable");
                         let sounds = self.sounds.as_deref_mut().unwrap_or(&mut missing_sound);
-                        admission.forward_step_clear =
-                            Some(self.registry.walk_forward_step_clear(
+                        admission.forward_step_clear = Some(if player_forward {
+                            self.registry.player_step_clear(id, geometry.ground, true)?
+                        } else {
+                            self.registry.walk_forward_step_clear(
                                 id,
                                 geometry.ground,
                                 geometry.environment,
                                 sounds,
-                            )?);
+                            )?
+                        });
                     } else if (control.movement_flags >> 4) & 3 < 3 {
                         admission.forward_step_clear = self.registry.forward_step_clear(
                             id,
