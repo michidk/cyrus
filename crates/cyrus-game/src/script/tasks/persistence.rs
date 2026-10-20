@@ -238,6 +238,7 @@ impl Task {
             Self::FacePlayerInertia => ("FacePlayerInertia", 1, None),
             Self::Move => ("Move", 4, None),
             Self::Rotate => ("Rotate", 4, None),
+            Self::ScaledAxisMovement => ("sMoveAlongAxis", 3, None),
             Self::ScaledMove => ("sMove", 4, None),
             Self::ScaledRotate => ("sRotate", 4, None),
             Self::FaceAngle => ("FaceAngle", 1, None),

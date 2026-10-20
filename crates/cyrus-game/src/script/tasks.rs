@@ -473,6 +473,9 @@ enum Task {
     /// `Rotate(x, y, z, duration)`: adds each axis's angle step to the angles on every
     /// invocation until the elapsed input reaches `duration - 1`.
     Rotate,
+    /// `sMoveAlongAxis(axis, delta, duration)`: each invocation adds the per-frame step along an
+    /// axis, rotated by the receiver's angles, until the elapsed input reaches `duration - 1`.
+    ScaledAxisMovement,
     /// `sMove(x, y, z, duration)`: `Move` with each operand divided by the duration instead of
     /// scaled by the tick count.
     ScaledMove,
@@ -990,6 +993,44 @@ impl Task {
                     .killed
                     .context("AmbientRtx receiver killed state unavailable")?;
                 !source.update_ambient_rtx(slot, position, volume.integer()?, killed)?
+            }
+            Self::ScaledAxisMovement => {
+                let [axis, delta, duration] = arguments else {
+                    anyhow::bail!("sMoveAlongAxis requires three arguments")
+                };
+                let (axis, delta, duration) =
+                    (axis.integer()?, delta.integer()?, duration.integer()?);
+                let elapsed = invocation
+                    .elapsed
+                    .context("sMoveAlongAxis requires explicit elapsed input")?;
+                let input = spatial
+                    .as_mut()
+                    .context("sMoveAlongAxis requires spatial state and frame_scale")?;
+                // The duration in frames at the current scale, then the step spread over it.
+                let frames = duration
+                    .wrapping_shl(8)
+                    .checked_div(input.frame_scale as i32)
+                    .filter(|frames| *frames != 0)
+                    .context("sMoveAlongAxis frame division by zero")?;
+                let step = delta
+                    .wrapping_shl(8)
+                    .checked_div(frames)
+                    .context("sMoveAlongAxis division overflow")?
+                    >> 8;
+                let mut offset = [0; 3];
+                offset[match axis {
+                    0 => 0,
+                    1 => 1,
+                    _ => 2,
+                }] = step;
+                let [pitch, yaw, roll] = *input.angles;
+                let rotated =
+                    cyrus_world::transform::Matrix::euler([pitch, yaw.wrapping_neg() & 2047, roll])
+                        .inverse_transform(offset)?;
+                for (coordinate, amount) in input.position.iter_mut().zip(rotated) {
+                    *coordinate = coordinate.wrapping_add(amount);
+                }
+                duration.wrapping_sub(1) <= elapsed
             }
             Self::Move | Self::Rotate | Self::ScaledMove | Self::ScaledRotate => {
                 let [x, y, z, duration] = arguments else {
@@ -2386,6 +2427,8 @@ impl NativeTasks {
             Task::Move
         } else if function.eq_ignore_ascii_case("Rotate") {
             Task::Rotate
+        } else if function.eq_ignore_ascii_case("sMoveAlongAxis") {
+            Task::ScaledAxisMovement
         } else if function.eq_ignore_ascii_case("sMove") {
             Task::ScaledMove
         } else if function.eq_ignore_ascii_case("sRotate") {
