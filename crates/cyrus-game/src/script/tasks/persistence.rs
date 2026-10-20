@@ -231,6 +231,7 @@ impl Task {
             Self::ScaledRelativeRotation { .. } => ("sRotateByAxis", 3, None),
             Self::PlayerFace => ("PlayerFaceObj", 0, Some(CallKind::Task)),
             Self::FacePlayer => ("FacePlayer", 1, None),
+            Self::FacePlayerInertia => ("FacePlayerInertia", 1, None),
             Self::Backward => ("MoveBackward", 1, None),
             Self::WalkBackward => ("WalkBackward", 1, None),
             Self::Forward => ("MoveForward", 1, None),

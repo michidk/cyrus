@@ -430,6 +430,8 @@ enum Task {
         origin: i32,
     },
     FacePlayer,
+    /// `FacePlayerInertia`: `FacePlayer` whose step shrinks by the elapsed input.
+    FacePlayerInertia,
     Backward,
     /// `WalkBackward`: `MoveBackward` outside deep water with its own groups, step attributes and
     /// step check.
@@ -912,7 +914,7 @@ impl Task {
                     .context("AmbientRtx receiver killed state unavailable")?;
                 !source.update_ambient_rtx(slot, position, volume.integer()?, killed)?
             }
-            Self::FacePlayer => {
+            Self::FacePlayer | Self::FacePlayerInertia => {
                 let [duration] = arguments else {
                     anyhow::bail!("FacePlayer requires one argument")
                 };
@@ -937,12 +939,20 @@ impl Task {
                 if delta == 0 {
                     return Ok(true);
                 }
-                let remaining = elapsed.wrapping_sub(duration).wrapping_abs().max(1);
                 let backwards = delta > 0x400;
                 if backwards {
                     delta = (-delta - 0x400) & 0x3ff;
                 }
-                let step = ((delta << 8) / remaining) >> 8;
+                let step = if matches!(self, Self::FacePlayerInertia) {
+                    ((delta << 8)
+                        .checked_div(duration)
+                        .context("FacePlayerInertia division by zero")?
+                        .wrapping_sub(elapsed))
+                        >> 8
+                } else {
+                    let remaining = elapsed.wrapping_sub(duration).wrapping_abs().max(1);
+                    ((delta << 8) / remaining) >> 8
+                };
                 if step == 0 {
                     return Ok(true);
                 }
@@ -2089,6 +2099,8 @@ impl NativeTasks {
             Task::PlayerFace
         } else if function.eq_ignore_ascii_case("FacePlayer") {
             Task::FacePlayer
+        } else if function.eq_ignore_ascii_case("FacePlayerInertia") {
+            Task::FacePlayerInertia
         } else if function.eq_ignore_ascii_case("MoveBackward") {
             Task::Backward
         } else if function.eq_ignore_ascii_case("WalkBackward") {
