@@ -24,6 +24,41 @@ impl ScriptWorld {
     /// Block response displaces the sender before coordination handoff.
     /// Unknown codes are inert; hit and damage responses remain unsupported.
     /// Consumption and earlier state writes survive a later service error.
+    /// Production dispatch sees scheduler services before consuming hit/damage messages.
+    /// The d001 response still stops after its verified intent writes; d005 remains inert
+    /// until its distinct response service is integrated.
+    pub fn process_combat_message_with_services(
+        &mut self,
+        id: ScriptActorId,
+        selected_player: Option<ScriptActorId>,
+        _inputs: super::ScriptInputs<'_>,
+        _random: Option<&mut crate::random::EngineRandom>,
+        _sounds: &mut dyn FnMut(ScriptActorId, super::super::ScriptSound) -> Result<()>,
+    ) -> Result<()> {
+        let Some(message) = self.peek_combat_message(id)? else {
+            return Ok(());
+        };
+        if message.code != 0xd001 {
+            return self.process_combat_message(id, selected_player);
+        }
+        let message = self
+            .consume_combat_message(id)?
+            .context("peeked hit message disappeared before consume")?;
+        for actor in [id, message.sender] {
+            let index = self.resolve(actor)?;
+            self.actors[index]
+                .control
+                .as_mut()
+                .and_then(|control| control.combat.as_mut())
+                .with_context(|| format!("hit message actor {index} combat unavailable"))?
+                .flags &= !3;
+        }
+        anyhow::bail!(
+            "ordinary combat message {} response services unsupported",
+            message.code
+        )
+    }
+
     pub fn process_combat_message(
         &mut self,
         id: ScriptActorId,

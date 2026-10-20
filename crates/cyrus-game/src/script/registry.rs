@@ -629,7 +629,13 @@ impl ScriptWorld {
             generation: self.generation,
             index,
         });
-        self.process_combat_message(id, selected_player)?;
+        self.process_combat_message_with_services(
+            id,
+            selected_player,
+            inputs,
+            random.as_deref_mut(),
+            sounds,
+        )?;
         if !selected
             && self.actors[index]
                 .control
