@@ -186,8 +186,8 @@ impl ScriptWorld {
     /// Ordinary keyboard ground turn of the sheathed selected player, with its
     /// turn animation and roll, following preservation's
     /// [ground-turn rules](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/player.md#ground-turn-eligibility-and-animation).
-    /// Mouse turning is not detected: the installed `mouse_turn` setting is not
-    /// exported, so a nonzero value is silently ignored.
+    /// The installed `mouse_turn` is 0; a SYSTEM.INI edited to enable mouse
+    /// turning is not detected (the setting is not exported) and is ignored.
     fn turn_player(
         &mut self,
         id: super::ScriptActorId,
