@@ -6270,12 +6270,7 @@ fn ordinary_combat_respects_scheduler_shell_without_activation_inputs() {
                 "{:?}",
                 world.actors()[0].failure()
             );
-            assert!(
-                world.actors()[0]
-                    .failure()
-                    .unwrap()
-                    .contains("combat message 53249")
-            );
+            assert!(world.actors()[0].failure().unwrap().contains("negative target attack slot"));
             assert!(world.consume_combat_message(receiver).unwrap().is_none());
         }
     }
