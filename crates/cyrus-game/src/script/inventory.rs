@@ -271,6 +271,15 @@ impl Inventory {
         self.remove_dependents(id, &mut Vec::new())
     }
 
+    /// Empty one item's count directly: no dependent removal and no flag handling.
+    pub(super) fn clear(&mut self, id: u16) -> Result<()> {
+        self.items
+            .get_mut(&id)
+            .with_context(|| format!("RemoveItem({id}): ITEM.INI definition absent"))?
+            .count = 0;
+        Ok(())
+    }
+
     fn remove_dependents(&mut self, id: u16, path: &mut Vec<u16>) -> Result<()> {
         if self.count(id)? == 0 {
             return Ok(());

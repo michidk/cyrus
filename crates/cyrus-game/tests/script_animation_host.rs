@@ -3018,6 +3018,32 @@ fn inventory_fixture(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAsset {
 }
 
 #[test]
+fn charge_weapon_swaps_the_weapon_items_and_remove_item_empties_one_count() {
+    use cyrus_game::{preferences::Preferences, script::ScriptHud};
+    let asset = inventory_fixture(&[(1, 1), (2, 5), (75, 0)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &Preferences::default());
+    hud_call(Some(&hud), "chargeWeapon", &[1]).unwrap();
+    let view = hud.inventory(None).unwrap();
+    assert_eq!(view.counts, [(1, 0), (2, 5), (75, 1)].into());
+    assert_eq!(view.selected, Some(75));
+    // Any other operand swaps back; only the low sixteen bits are compared with one.
+    hud_call(Some(&hud), "chargeWeapon", &[0]).unwrap();
+    let view = hud.inventory(None).unwrap();
+    assert_eq!(view.counts, [(1, 1), (2, 5), (75, 0)].into());
+    assert_eq!(view.selected, Some(1));
+    hud_call(Some(&hud), "chargeWeapon", &[0x10001]).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().selected, Some(75));
+    hud_call(Some(&hud), "RemoveItem", &[2]).unwrap();
+    assert_eq!(hud.inventory(None).unwrap().counts[&2], 0);
+    assert!(hud_call(Some(&hud), "RemoveItem", &[9]).is_err());
+    assert!(hud_call(Some(&hud), "RemoveItem", &[]).is_err());
+    // A closed inventory skips the adds and removals, then the selection has nothing to select.
+    assert!(hud_call(Some(&ScriptHud::default()), "chargeWeapon", &[1]).is_err());
+    assert!(hud_call(None, "chargeWeapon", &[1]).is_err());
+}
+
+#[test]
 fn inventory_requires_recursive_owned_prerequisites_before_any_effect() {
     use cyrus_game::{preferences::Preferences, script::ScriptHud};
     let mut asset = inventory_fixture(&[(1, 0), (2, 1), (3, 0), (4, 2)]);

@@ -3321,6 +3321,30 @@ impl<'input> GameHost<'_, '_, 'input, '_> {
         Ok(admission)
     }
 
+    /// `AddItem` over the session inventory: a closed inventory ignores the call, and an empty
+    /// selection repair assigns the selected player's weapon attribute.
+    fn add_session_item(&mut self, item: u16, amount: i32) -> Result<()> {
+        let hud = self
+            .inputs
+            .hud
+            .context("AddItem inventory host unavailable")?;
+        if !hud.inventory_ready()? {
+            return Ok(());
+        }
+        let player = self.selected_player();
+        let generation = self.generation;
+        let actors = &mut self.registry.actors;
+        hud.add_item(item, amount, &mut |weapon| {
+            let player = player.context("AddItem fallback selected player unavailable")?;
+            anyhow::ensure!(
+                player.generation == generation && player.index < actors.len(),
+                "AddItem fallback selected player identity is stale"
+            );
+            actors[player.index].attributes[23] = weapon;
+            Ok(())
+        })
+    }
+
     fn frame_wait_call(&self) -> super::tasks::FrameWaitCall {
         let sample = |index: usize| -> Result<(i32, i32, u8)> {
             self.registry.actors[index]
@@ -3953,27 +3977,44 @@ impl Host for GameHost<'_, '_, '_, '_> {
             let [item, amount] = arguments else {
                 anyhow::bail!("AddItem requires two arguments")
             };
+            let item =
+                u16::try_from(item.integer()?).context("AddItem item ID outside u16 range")?;
+            self.add_session_item(item, amount.integer()?)?;
+            return Ok(CallResult::Complete(0));
+        }
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("RemoveItem") {
+            let [item] = arguments else {
+                anyhow::bail!("RemoveItem requires one argument")
+            };
+            let item =
+                u16::try_from(item.integer()?).context("RemoveItem item ID outside u16 range")?;
+            self.inputs
+                .hud
+                .context("RemoveItem inventory host unavailable")?
+                .remove_item(item)?;
+            return Ok(CallResult::Complete(0));
+        }
+        // chargeWeapon(1) swaps the player's weapon item 1 for item 75 (the charged weapon) and any
+        // other operand swaps back: add the new item, record it as the weapon attribute, empty the
+        // old item and select the new one. A closed inventory skips the adds and removals, and the
+        // selection then fails as the original's does.
+        if kind == CallKind::Function && function.eq_ignore_ascii_case("chargeWeapon") {
+            let [charge] = arguments else {
+                anyhow::bail!("chargeWeapon requires one argument")
+            };
+            let (take, drop) = if charge.integer()? as i16 == 1 {
+                (75, 1)
+            } else {
+                (1, 75)
+            };
+            self.add_session_item(take, 1)?;
+            self.registry.actors[self.index].attributes[23] = take as u8;
             let hud = self
                 .inputs
                 .hud
-                .context("AddItem inventory host unavailable")?;
-            if !hud.inventory_ready()? {
-                return Ok(CallResult::Complete(0));
-            }
-            let item =
-                u16::try_from(item.integer()?).context("AddItem item ID outside u16 range")?;
-            let player = self.selected_player();
-            let generation = self.generation;
-            let actors = &mut self.registry.actors;
-            hud.add_item(item, amount.integer()?, &mut |weapon| {
-                let player = player.context("AddItem fallback selected player unavailable")?;
-                anyhow::ensure!(
-                    player.generation == generation && player.index < actors.len(),
-                    "AddItem fallback selected player identity is stale"
-                );
-                actors[player.index].attributes[23] = weapon;
-                Ok(())
-            })?;
+                .context("chargeWeapon inventory host unavailable")?;
+            hud.remove_item(drop)?;
+            hud.select_item(take)?;
             return Ok(CallResult::Complete(0));
         }
         if kind == CallKind::Function && function.eq_ignore_ascii_case("ActiveItem") {

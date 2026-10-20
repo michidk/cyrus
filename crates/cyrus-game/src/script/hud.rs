@@ -297,6 +297,18 @@ impl ScriptHud {
             .add(id, amount, assign_weapon)
     }
 
+    /// Empty one item's count without dependents. A closed inventory ignores the call.
+    pub fn remove_item(&self, id: u16) -> Result<()> {
+        let mut state = self.0.lock().expect("script HUD lock poisoned");
+        if let Some(error) = &state.inventory_error {
+            anyhow::bail!("inventory initialization: {error}");
+        }
+        match state.inventory.as_mut() {
+            Some(items) => items.clear(id),
+            None => Ok(()),
+        }
+    }
+
     /// Selected record ID, independent of ownership or visibility; zero when closed.
     pub fn active_item(&self) -> Result<u16> {
         let state = self.0.lock().expect("script HUD lock poisoned");
