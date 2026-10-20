@@ -4,8 +4,8 @@ use cyrus_game::{
     clock::ClockStep,
     random::EngineRandom,
     script::{
-        ScriptActorSource, ScriptHud, ScriptInputs, ScriptSound, ScriptStage, WorldSnapshotSources,
-        camera::CameraPose,
+        ActorEvent, ScriptActorSource, ScriptHud, ScriptInputs, ScriptSound, ScriptStage,
+        WorldSnapshotSources, camera::CameraPose,
     },
 };
 
@@ -368,4 +368,76 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
             }
         )));
     }
+}
+
+#[test]
+fn actor_events_spawn_surface_effects_in_bit_order_and_shake_the_camera() {
+    let (_scripts, mut world, data, scene) = player_walking_fixture_with(|_| {});
+    let player = world
+        .id(world
+            .actors()
+            .iter()
+            .position(|actor| matches!(actor.source, ScriptActorSource::Player))
+            .unwrap())
+        .unwrap();
+    world
+        .advance(
+            player,
+            ScriptStage::Entry,
+            ScriptInputs {
+                nominal_ticks: Some(0),
+                frame_scale: Some(256),
+                ..Default::default()
+            },
+            None,
+            None,
+            100,
+        )
+        .unwrap();
+    world
+        .initialize_camera_pose(CameraPose {
+            position: [0; 3],
+            angles: [0; 3],
+        })
+        .unwrap();
+    world
+        .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player])
+        .unwrap();
+    let mut effects = source(8, false);
+    let image = effects.images[&0x2500].clone();
+    for descriptor in [0x2580, 0x2700] {
+        effects.images.insert(descriptor, image.clone());
+    }
+    world.prepare_environment_effects(&effects).unwrap();
+    let event = |flags, surface| ActorEvent {
+        actor: player,
+        flags,
+        surface,
+        position: Some([2560, 0, 5120]),
+    };
+    // A stored surface that no set bit names spawns nothing, and the shake bit needs no surface.
+    world
+        .apply_actor_events(&[event(0x0f, Some(0)), event(0x10, None)])
+        .unwrap();
+    assert!(world.environmental_effects().unwrap().is_empty());
+    assert_eq!(world.camera().unwrap().shake, 32);
+    // Water takes both of its bits, lava and sand one each, in emission order.
+    world
+        .apply_actor_events(&[event(6, Some(1)), event(1, Some(5)), event(8, Some(6))])
+        .unwrap();
+    let active = world
+        .environmental_effects()
+        .unwrap()
+        .active()
+        .map(|(_, effect)| (effect.descriptor, effect.position[1]))
+        .collect::<Vec<_>>();
+    // The vertical point is the actor's extent plus 1536 Q8, less half the image height (512).
+    let height = world
+        .ordinary_collision_shape(player)
+        .unwrap()
+        .positive_extent[1];
+    let y = height + 4;
+    assert_eq!(active, [(0x2500, y), (0x2500, y), (0x2580, y), (0x2700, y)]);
+    // A surface bit without a known stored surface fails instead of skipping.
+    assert!(world.apply_actor_events(&[event(1, None)]).is_err());
 }

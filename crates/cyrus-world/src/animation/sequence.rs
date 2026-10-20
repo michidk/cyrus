@@ -16,13 +16,18 @@ enum Command {
         effect: Option<i64>,
         rate_shift: Option<i64>,
     },
+    Event(u32),
     Unsupported(u8),
 }
 
-/// Authored animation sound operations, dispatched synchronously by the actor's caller.
+/// Authored animation operations dispatched synchronously by the actor's caller, in command order.
 /// The caller owns surface remapping, positional gains, channel allocation and its last handle.
+/// `Event` is not a sound: sound consumers ignore it and the world host owns its effects.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AnimationSound {
+    /// The actor-event service with the command's operand: a bit set the host maps to surface
+    /// effects and a screen-shake impulse.
+    Event { flags: u32 },
     /// Start the signed effect index with a signed offset in hertz, before surface remapping.
     Play { effect: i16, rate_offset_hz: i32 },
     /// Stop the last remembered sound at EndAnimation, if its handle is valid.
@@ -35,7 +40,7 @@ pub(super) type SoundDispatcher<'a> =
     Option<&'a mut dyn FnMut(AnimationSound) -> anyhow::Result<()>>;
 
 /// A current group. Callers supply activation, whole nominal ticks, and exit eligibility.
-/// Sound commands require actor-side dispatch; actor events and remaining forward operations stay explicitly unsupported.
+/// Sound and actor-event commands require actor-side dispatch; remaining forward operations stay explicitly unsupported.
 #[derive(Clone)]
 pub struct FrameSequence {
     context: String,
@@ -196,6 +201,14 @@ impl FrameSequence {
                     // Preservation's legacy field name stores rate steps, not volume.
                     rate_shift: command["volume_shift"].as_i64(),
                 },
+                11 => {
+                    let value = command["value"].as_u64().with_context(|| {
+                        format!("{context} command {index}: event operand absent")
+                    })?;
+                    Command::Event(u32::try_from(value).with_context(|| {
+                        format!("{context} command {index}: event operand outside u32 range")
+                    })?)
+                }
                 12 => {
                     let value = command["value"].as_i64().with_context(|| {
                         format!("{context} command {index}: delay operand absent")
@@ -490,6 +503,16 @@ impl FrameSequence {
                         },
                     )?;
                     self.sound_requested = true;
+                    self.command = self.command.wrapping_add(step);
+                }
+                Command::Event(flags) => {
+                    anyhow::ensure!(
+                        sounds.is_some(),
+                        "{} command {}: opcode 11 playback unsupported",
+                        self.context,
+                        self.command
+                    );
+                    self.dispatch_sound(sounds, AnimationSound::Event { flags })?;
                     self.command = self.command.wrapping_add(step);
                 }
                 Command::Unsupported(opcode) if reverse && matches!(opcode, 6..=10 | 13..=15) => {

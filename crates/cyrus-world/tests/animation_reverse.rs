@@ -132,6 +132,62 @@ fn reverse_sound_dispatches_and_actor_events_remain_explicit() {
     assert!(
         format!("{:#}", actor.advance(0).unwrap_err()).contains("opcode 11 playback unsupported")
     );
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    actor.request(7, 0, 0).unwrap();
+    let mut saved = serde_json::to_value(actor.snapshot()).unwrap();
+    saved["current"][1]["command"] = 3.into();
+    saved["reverse"] = true.into();
+    let mut actor =
+        ActorAnimation::from_snapshot(&data, "ACTOR", serde_json::from_value(saved).unwrap())
+            .unwrap();
+    let mut events = vec![];
+    assert_eq!(
+        actor
+            .advance_with_sounds(0, &mut |event| {
+                events.push(event);
+                Ok(())
+            })
+            .unwrap(),
+        Some(72)
+    );
+    assert_eq!(events, [AnimationSound::Event { flags: 1 }]);
+}
+
+#[test]
+fn forward_actor_events_dispatch_in_command_order_before_the_next_frame() {
+    let mut data = data();
+    data.metadata["actors"][0]["animation_groups"][1]["commands"] = json!([
+        {"opcode":11,"value":17},
+        {"opcode":4,"sound_param":1,"volume_shift":2},
+        {"opcode":0,"frame_reference":70},
+        {"opcode":11,"value":8},
+        {"opcode":0,"frame_reference":71},
+        {"opcode":1}
+    ]);
+    let mut actor = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    let mut seen = vec![];
+    let frame = actor
+        .request_with_sounds(7, 0, 0, &mut |event| {
+            seen.push(event);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(frame, Some(70));
+    assert_eq!(
+        seen,
+        [
+            AnimationSound::Event { flags: 17 },
+            AnimationSound::Play {
+                effect: 1,
+                rate_offset_hz: 128
+            }
+        ]
+    );
+    let mut bare = ActorAnimation::from_asset(&data, "ACTOR", 0).unwrap();
+    assert!(
+        format!("{:#}", bare.request(7, 0, 0).unwrap_err())
+            .contains("opcode 11 playback unsupported")
+    );
 }
 
 #[test]

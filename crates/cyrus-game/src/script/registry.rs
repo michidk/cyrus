@@ -9,7 +9,7 @@ mod death_exit;
 mod effects;
 mod health;
 pub use death_exit::WorldLoopOutcome;
-pub use effects::{EnvironmentalEffect, EnvironmentalEffects};
+pub use effects::{ActorEvent, EnvironmentalEffect, EnvironmentalEffects};
 pub use health::{SelectedDeathState, SelectedHealthState};
 pub(super) mod body;
 pub(super) mod bounds;

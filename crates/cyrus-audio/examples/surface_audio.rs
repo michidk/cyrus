@@ -1,5 +1,5 @@
 //! Read-only installed ground/animation/mixer probe. See the crate README for the fixture contract.
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use bevy::{
     audio::{AudioPlayer, AudioSource, Decodable, PlaybackSettings, Source},
     prelude::{
@@ -508,6 +508,9 @@ fn play(
         } => json!({"kind": "play", "authored": effect, "rate_offset_hz": rate_offset_hz}),
         AnimationSound::Stop => json!({"kind": "stop"}),
         AnimationSound::Forget => json!({"kind": "forget"}),
+        AnimationSound::Event { .. } => {
+            bail!("surface audio comparison covers sounds, not actor events")
+        }
     };
     app.world_mut().write_message(SoundCue::Animation {
         position,

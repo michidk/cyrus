@@ -805,6 +805,10 @@ fn send_actor_sound(
 ) -> anyhow::Result<()> {
     let cue = match sound {
         super::super::ScriptSound::Animation {
+            sound: cyrus_world::animation::AnimationSound::Event { .. },
+            ..
+        } => anyhow::bail!("animation actor event outside an ordinary update is unsupported"),
+        super::super::ScriptSound::Animation {
             sound,
             surface,
             position,
@@ -991,7 +995,26 @@ pub fn run_ordinary(
         return;
     }
     let timing = clock.step();
-    let mut send_sound = |actor, sound| send_actor_sound(actor, sound, &request.0, &bindings, emit);
+    // Actor events are not sounds: keep each with the surface and position captured when its
+    // command ran, and apply them to the world once the stage that emitted them returns.
+    let events = std::cell::RefCell::new(Vec::new());
+    let mut send_sound = |actor: ScriptActorId, sound: super::super::ScriptSound| {
+        if let super::super::ScriptSound::Animation {
+            sound: cyrus_world::animation::AnimationSound::Event { flags },
+            surface,
+            position,
+        } = sound
+        {
+            events.borrow_mut().push(super::ActorEvent {
+                actor,
+                flags,
+                surface,
+                position,
+            });
+            return Ok(());
+        }
+        send_actor_sound(actor, sound, &request.0, &bindings, emit)
+    };
     if phase == OrdinaryPhase::ModelPresentation {
         // Ordinary world scheduling runs outside the separate shell-script context.
         if let Err(error) = world.flush_map_updates(view.position, false) {
@@ -1038,7 +1061,8 @@ pub fn run_ordinary(
                 Some(&mut random),
                 &mut send_sound,
             )
-        })();
+        })()
+        .and_then(|()| world.apply_actor_events(&events.take()));
         if let Err(error) = preparation {
             actors.error = Some(format!("automatic model presentation: {error:#}"));
             return;
@@ -1128,36 +1152,38 @@ pub fn run_ordinary(
         }
         _ => None,
     };
-    let result = world.update_ordinary(
-        data,
-        [view.position[0] >> 8, view.position[2] >> 8],
-        OrdinaryInputs {
-            scene: scene_request
-                .as_ref()
-                .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0))),
-            scripts: ScriptInputs {
-                hud: hud.as_deref(),
-                activation_use_held: input.as_deref().map(|held| held.action),
-                shell_execution: Some(false),
-                combat_clock_sample: Some(clock.bios_sample()),
-                nominal_ticks: Some(timing.nominal_ticks),
-                frame_scale: Some(timing.frame_scale),
-                player_query,
-                player_controller,
-                ambient_sound,
-                dialogue_source,
-                combat_taunts,
-                sound_reset,
-                camera_update: driven
+    let result = world
+        .update_ordinary(
+            data,
+            [view.position[0] >> 8, view.position[2] >> 8],
+            OrdinaryInputs {
+                scene: scene_request
                     .as_ref()
-                    .map(|update| update as &dyn super::super::camera::CameraUpdateService),
-                ..default()
+                    .and_then(|request| scenes.as_ref().and_then(|scenes| scenes.get(&request.0))),
+                scripts: ScriptInputs {
+                    hud: hud.as_deref(),
+                    activation_use_held: input.as_deref().map(|held| held.action),
+                    shell_execution: Some(false),
+                    combat_clock_sample: Some(clock.bios_sample()),
+                    nominal_ticks: Some(timing.nominal_ticks),
+                    frame_scale: Some(timing.frame_scale),
+                    player_query,
+                    player_controller,
+                    ambient_sound,
+                    dialogue_source,
+                    combat_taunts,
+                    sound_reset,
+                    camera_update: driven
+                        .as_ref()
+                        .map(|update| update as &dyn super::super::camera::CameraUpdateService),
+                    ..default()
+                },
             },
-        },
-        &mut random,
-        &mut send_sound,
-        100_000,
-    );
+            &mut random,
+            &mut send_sound,
+            100_000,
+        )
+        .and_then(|_| world.apply_actor_events(&events.take()));
     if let Err(error) = result {
         actors.error = Some(format!("automatic ordinary update: {error:#}"));
         return;

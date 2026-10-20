@@ -510,6 +510,10 @@ fn handle(
                             return Ok(());
                         }
                     };
+                    anyhow::ensure!(
+                        !matches!(sound, cyrus_world::animation::AnimationSound::Event { .. }),
+                        "animation actor events are unsupported in the control script stage"
+                    );
                     let mut nodes = script_bindings.iter().filter(|(_, bound)| **bound == actor);
                     let Some((entity, _)) = nodes.next() else {
                         use cyrus_world::animation::AnimationSound;
@@ -518,6 +522,7 @@ fn handle(
                                 json!({"type":"play", "effect":effect, "rate_offset_hz":rate_offset_hz}),
                             AnimationSound::Stop => json!({"type":"stop"}),
                             AnimationSound::Forget => json!({"type":"forget"}),
+                            AnimationSound::Event { .. } => unreachable!(),
                         };
                         captured_sounds.push(json!({"actor":actor, "sound":event}));
                         return Ok(());

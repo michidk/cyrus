@@ -6,7 +6,7 @@
 //! both active and released records; older active-only snapshots still restore.
 //! Hosts call `ScriptWorld::draw_environment_effects` once per actual scene draw.
 //! Source: preservation's SOUP environmental effect frame-submission contract.
-use super::ScriptWorld;
+use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::effects::Effects;
 use serde::{Deserialize, Serialize};
@@ -221,6 +221,28 @@ impl EnvironmentalEffects {
         }
     }
 }
+/// One authored actor event (animation opcode eleven) with the emitting actor's stored sound
+/// surface and local Q8 position when its command ran.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ActorEvent {
+    pub actor: ScriptActorId,
+    pub flags: u32,
+    pub surface: Option<u8>,
+    pub position: Option<[i32; 3]>,
+}
+
+/// Event bits that spawn an effect, in evaluation order: (bit, required stored surface,
+/// descriptor). The surfaces are lava (5), water (1) twice and sand (6); descriptor 0x2500 is also
+/// the one the landing check requests through the same effect point.
+const ACTOR_EVENT_EFFECTS: [(u32, u8, u32); 4] = [
+    (1, 5, 0x2580),
+    (2, 1, 0x2500),
+    (4, 1, 0x2500),
+    (8, 6, 0x2700),
+];
+/// Event bit that adds a camera shake impulse, after the effect bits.
+const ACTOR_EVENT_SHAKE: u32 = 0x10;
+
 // The effect helper uses the opposite angular convention to script query bearings.
 pub(super) fn death_effect_point(point: [i32; 3], camera: [i32; 3]) -> [i32; 3] {
     let bearing = super::super::spatial::query_bearing(
@@ -300,6 +322,54 @@ impl ScriptWorld {
             .as_mut()
             .context("selected death environmental effect spawning unavailable")?
             .spawn(descriptor, point)
+    }
+    /// Apply captured actor events in emission order. Each surface-gated bit spawns its effect at
+    /// the actor's position (the position captured with the event, else the current one) only when
+    /// the actor's stored surface matches; the shake bit adds one camera shake impulse. A bit that
+    /// needs unavailable surface, camera, extent or effect-pool state fails instead of skipping.
+    pub fn apply_actor_events(&mut self, events: &[ActorEvent]) -> Result<()> {
+        for event in events {
+            for (bit, surface, descriptor) in ACTOR_EVENT_EFFECTS {
+                if event.flags & bit == 0 {
+                    continue;
+                }
+                let stored = event.surface.with_context(|| {
+                    format!(
+                        "actor {} event: stored surface unavailable",
+                        event.actor.index
+                    )
+                })?;
+                if stored != surface {
+                    continue;
+                }
+                let position = match event.position {
+                    Some(position) => position,
+                    None => self.spatial(event.actor)?.local.position,
+                };
+                let camera = self
+                    .camera
+                    .as_ref()
+                    .context("actor event published camera unavailable")?;
+                self.spatial(camera.camera_actor)
+                    .context("actor event camera pose not initialized")?;
+                let mut point = death_effect_point(position, camera.current.position);
+                let height = self.ordinary_collision_shape(event.actor)?.positive_extent[1];
+                point[1] = point[1]
+                    .wrapping_add(height.wrapping_mul(256))
+                    .wrapping_add(1536);
+                self.effects
+                    .as_mut()
+                    .context("actor event environmental effect spawning unavailable")?
+                    .spawn(descriptor, point)?;
+            }
+            if event.flags & ACTOR_EVENT_SHAKE != 0 {
+                self.camera
+                    .as_mut()
+                    .context("actor event camera session unavailable")?
+                    .add_shake();
+            }
+        }
+        Ok(())
     }
     /// World-loop lifetime stage after object/code-object updates. The scene already
     /// retained its effect submissions; expiry does not retract those packets.
