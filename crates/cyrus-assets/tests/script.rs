@@ -4,7 +4,7 @@ use cyrus_script::program::*;
 use std::collections::BTreeMap;
 fn cache() -> Scripts {
     let mut scripts = Scripts {
-        version: 22,
+        version: 23,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -634,7 +634,7 @@ fn byte_source_preparation_resolves_clock_inputs_and_reports_invalid_fields() {
             use_smooth_divisor: false,
         }
     );
-    assert_eq!(scripts.version, 22);
+    assert_eq!(scripts.version, 23);
     assert!(!scripts.player_distance_override);
     let mut cheats = vec![0; 256];
     cheats[40..44].copy_from_slice(&u32::MAX.to_le_bytes());
@@ -1058,6 +1058,12 @@ fn camera_ini(skip: Option<&str>) -> String {
         ("max_y_vel", 4000),
         ("camera_size", 10),
         ("camera_scape_size", 5),
+        ("glide_x", 1),
+        ("glide_y", 2),
+        ("glide_z", 3),
+        ("glide_angle_x", 4),
+        ("glide_angle_y", 5),
+        ("glide_angle_z", 6),
     ];
     let mut names = Vec::new();
     for (slot, mode) in modes.iter().enumerate() {
@@ -1111,8 +1117,12 @@ fn camera_settings_read_every_installed_key_and_reject_a_missing_one() {
         ),
         (20, 5000, 4000, 10, 5)
     );
+    assert_eq!(settings.glide.position, [1.0, 2.0, 3.0]);
+    assert_eq!(settings.glide.angles, [4.0, 5.0, 6.0]);
     let error = parse(Some("max_acc")).unwrap_err();
     assert!(format!("{error:#}").contains("max_acc"), "{error:#}");
+    let error = parse(Some("glide_angle_y")).unwrap_err();
+    assert!(format!("{error:#}").contains("glide_angle_y"), "{error:#}");
     assert_eq!(settings.modes[0].angle_offset, [10, 11, 12]);
     assert_eq!(
         (settings.modes[0].distance, settings.modes[0].max_vel),

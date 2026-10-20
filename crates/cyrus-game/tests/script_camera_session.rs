@@ -73,7 +73,7 @@ fn scripts(standalone: &[&str]) -> Scripts {
         actors.insert((*name).into(), actor(end(), 100 + index as u32 * 100));
     }
     let mut result = Scripts {
-        version: 22,
+        version: 23,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -688,6 +688,62 @@ mod live {
         assert_eq!(state.current, pose);
         assert_eq!(state.previous, start());
         assert_eq!(world.spatial(camera).unwrap().local.position, pose.position);
+    }
+
+    #[test]
+    fn render_camera_cuts_after_setup_then_glides_by_the_installed_factors() {
+        use cyrus_game::script::camera::GlidePlayer;
+        let mut data = scripts(&["CYRUS", "CAMERA"]);
+        data.camera = CameraSettings {
+            offset_pos: [0, 2560, 0],
+            max_vel: 100_000,
+            glide: CameraGlide {
+                position: [0.5, 0.25, 1.0],
+                angles: [0.5; 3],
+            },
+            ..Default::default()
+        };
+        data.content_id = data.content_identity().unwrap();
+        let mut world = ScriptWorld::prepare(&data, 7).unwrap();
+        world.prepare_spatial().unwrap();
+        let player = world.id(PLAYER).unwrap();
+        world
+            .initialize_player_spatial(player, [1000, 2000, 3000], [0; 3])
+            .unwrap();
+        world.initialize_camera_pose(start()).unwrap();
+        let player = GlidePlayer {
+            holding_weapon: false,
+            rope_attached: false,
+        };
+        world.present_camera(player, true, &mut |_| Ok(())).unwrap();
+        let state = world.camera().unwrap();
+        assert_eq!(
+            state.render.position,
+            [3.0, 11.0, 11.0],
+            "setup's snap cuts"
+        );
+        assert!(!state.marks.snap);
+        world
+            .update_camera(&mut hits(), &settings(), &mut Geometry { fail: false })
+            .unwrap();
+        world.present_camera(player, true, &mut |_| Ok(())).unwrap();
+        let state = world.camera().unwrap();
+        // 1000, 4560 and 3000 become 3.90625, 17.8125 and 11.71875 map units; each axis moves its factor
+        // of the way from (3, 11, 11) and the whole-unit result is kept.
+        assert_eq!(state.render.position, [3.0, 12.0, 11.0]);
+        assert_eq!(state.render.angles, state.current.angles);
+        let before = world.camera().unwrap().render;
+        let error = world
+            .present_camera(player, true, &mut |_| {
+                anyhow::bail!("terrain service failed")
+            })
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("terrain service failed"));
+        assert_eq!(
+            world.camera().unwrap().render,
+            before,
+            "a failed step changes nothing"
+        );
     }
 
     #[test]

@@ -134,10 +134,19 @@ pub struct RenderPose {
 
 /// The installed `[camera]` glide factors: `glide_x/y/z` for the position axes and
 /// `glide_angle_x/y/z` for the angles.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct GlideSettings {
     pub position: [f32; 3],
     pub angles: [f32; 3],
+}
+
+impl From<cyrus_assets::script::CameraGlide> for GlideSettings {
+    fn from(glide: cyrus_assets::script::CameraGlide) -> Self {
+        Self {
+            position: glide.position,
+            angles: glide.angles,
+        }
+    }
 }
 
 /// What the render step reads from the selected player to decide between gliding and cutting.

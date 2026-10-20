@@ -364,6 +364,8 @@ pub struct ScriptWorld {
     /// Camera session owned by the CAMERA instance; absent when the world has no
     /// selected player or CAMERA actor.
     camera: Option<super::camera::CameraState>,
+    /// Installed render-camera glide factors.
+    camera_glide: super::camera::GlideSettings,
 }
 impl ScriptWorld {
     /// Index of the selected player (CYRUS, or GREMLIN while the swap state is set).
@@ -828,6 +830,7 @@ impl ScriptWorld {
             ordinary_prepared: false,
             surface_veto: None,
             camera,
+            camera_glide: scripts.camera.glide.into(),
             model_admission: None,
             spatial: None,
             activation: Default::default(),
@@ -4791,6 +4794,7 @@ mod fighting_tests {
             map_updates: Vec::new(),
             surface_veto: None,
             camera: None,
+            camera_glide: Default::default(),
         };
         let host = GameHost {
             native_source_program: None,

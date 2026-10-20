@@ -112,7 +112,7 @@ impl UpdateSettings {
 
 /// Installed `[camera]` values for camera record initialization, unscaled as stored in
 /// SYSTEM.INI. The key-to-record mapping is preservation's "Camera record installed settings".
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct CameraSettings {
     pub offset_pos: [i32; 3],
     pub offset_angle: [i32; 3],
@@ -123,6 +123,14 @@ pub struct CameraSettings {
     /// Slots three through eight: combat, hang, rope, rope above, rope below, debug.
     pub modes: [CameraModeSettings; 6],
     pub limits: CameraLimits,
+    pub glide: CameraGlide,
+}
+
+/// The render camera's glide factors from `[camera]` `glide_x/y/z` and `glide_angle_x/y/z`.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+pub struct CameraGlide {
+    pub position: [f32; 3],
+    pub angles: [f32; 3],
 }
 
 /// Shared `[camera]` values used by every pose update, unscaled as stored in SYSTEM.INI.
@@ -192,6 +200,23 @@ impl CameraSettings {
                 max_y_vel: need(camera.max_y_vel, "max_y_vel")?,
                 camera_size: need(camera.camera_size, "camera_size")?,
                 camera_scape_size: need(camera.camera_scape_size, "camera_scape_size")?,
+            },
+            glide: {
+                let need = |value: Option<f32>, key: &str| {
+                    value.with_context(|| format!("SYSTEM.INI [camera] {key} missing"))
+                };
+                CameraGlide {
+                    position: [
+                        need(camera.glide_x, "glide_x")?,
+                        need(camera.glide_y, "glide_y")?,
+                        need(camera.glide_z, "glide_z")?,
+                    ],
+                    angles: [
+                        need(camera.glide_angle_x, "glide_angle_x")?,
+                        need(camera.glide_angle_y, "glide_angle_y")?,
+                        need(camera.glide_angle_z, "glide_angle_z")?,
+                    ],
+                }
             },
             modes: [
                 mode!(
@@ -445,7 +470,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 22,
+            self.version == 23,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

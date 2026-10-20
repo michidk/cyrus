@@ -2,6 +2,7 @@
 use super::{ScriptActorId, ScriptWorld};
 use crate::script::camera::{
     CameraGeometry, CameraHitSelection, CameraPose, CameraUpdateInputs, CameraUpdateSettings,
+    GlidePlayer,
 };
 use anyhow::{Context, Result};
 
@@ -39,6 +40,23 @@ impl ScriptWorld {
         camera.previous = pose;
         camera.reset_render();
         Ok(())
+    }
+
+    /// The render camera's per-frame step: glide to the published pose or cut to it. The caller
+    /// supplies the selected player's weapon and rope state, whether the frame is a normal
+    /// main-loop frame, and the terrain correction for a gliding position (Q8 units, in place).
+    /// See `CameraState::present`; a failed correction leaves the camera untouched.
+    pub fn present_camera(
+        &mut self,
+        player: GlidePlayer,
+        in_frame: bool,
+        terrain: &mut dyn FnMut(&mut [i32; 3]) -> Result<()>,
+    ) -> Result<()> {
+        let camera = self
+            .camera
+            .as_mut()
+            .with_context(|| format!("world {}: camera session unavailable", self.world))?;
+        camera.present(&self.camera_glide, &player, in_frame, terrain)
     }
 
     /// Run one camera update for the selected record's bound actor and publish it: the
