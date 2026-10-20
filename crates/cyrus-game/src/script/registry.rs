@@ -3,7 +3,9 @@ use cyrus_script::program::{Call, CallKind, Operation};
 mod activation;
 mod attack;
 mod camera;
+mod death_exit;
 mod health;
+pub use death_exit::WorldLoopOutcome;
 pub use health::{SelectedDeathState, SelectedHealthState};
 pub(super) mod body;
 pub(super) mod bounds;
@@ -2187,6 +2189,8 @@ impl ScriptWorld {
 /// replacing its current world preserves them rather than starting a new session.
 #[derive(Resource)]
 pub struct ScriptActors {
+    /// Retained terminal loop result; unavailable dispatch is reported without resuming simulation.
+    pub world_loop_outcome: Option<WorldLoopOutcome>,
     pub current: Option<ScriptWorld>,
     visited: BTreeMap<u32, ScriptWorld>,
     discard_current_on_release: bool,
@@ -2199,6 +2203,7 @@ pub struct ScriptActors {
 impl Default for ScriptActors {
     fn default() -> Self {
         Self {
+            world_loop_outcome: None,
             current: None,
             visited: BTreeMap::new(),
             discard_current_on_release: false,
@@ -2243,6 +2248,7 @@ impl ScriptActors {
     /// Apply New Game's lockout cleanup and combat-queue reset before world replacement.
     /// Ordinary world reloads retain globals and must not call this operation.
     pub fn begin_new_game(&mut self) {
+        self.world_loop_outcome = None;
         if let Some(world) = self.current.as_mut() {
             let player = world.selected_player_index();
             let lockout = world.globals.lockout_player(0);
@@ -2362,6 +2368,7 @@ pub(super) fn prepare(
             world.globals.sound_maintenance.enter_world();
             world.globals.world_loop_frame = 0;
             world.globals.group_sync = Default::default();
+            actors.world_loop_outcome = None;
             actors.current = Some(world);
         }
         Err(error) => {
@@ -4791,6 +4798,7 @@ mod fighting_tests {
             flags: Vec::new(),
             flag_state: super::super::flags::Flags::prepare(&definition).unwrap(),
             updates: cyrus_assets::script::UpdateSettings {
+                fall_death_ticks: 144,
                 dummy_model_manager: false,
                 task_system: true,
                 animation_system: true,

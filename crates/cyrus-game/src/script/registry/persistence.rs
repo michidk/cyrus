@@ -840,6 +840,7 @@ impl RegistryCandidate {
     fn into_registry(self) -> ScriptActors {
         let restored_generation = Some(self.current.generation());
         ScriptActors {
+            world_loop_outcome: None,
             current: Some(self.current),
             visited: self.visited,
             discard_current_on_release: false,
@@ -1312,6 +1313,7 @@ impl ScriptActors {
         let mut globals = std::mem::take(&mut self.current.as_mut().unwrap().globals);
         let mut maintenance = std::mem::take(&mut globals.sound_maintenance);
         let result = maintenance.restore_world(&mut |stage| cleanup(stage, &mut globals), || {
+            self.world_loop_outcome = None;
             self.current = Some(replacement);
             Ok(())
         });

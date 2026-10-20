@@ -34,7 +34,10 @@
 //! source override. Death control starts the retained group before wrapping progress
 //! accumulation and bypasses idle/movement. Default selection applies the retained
 //! override before inventory queries and preserves matching playback cursors. Rope
-//! cleanup, environmental spawning, completion and restart remain explicit gaps.
+//! cleanup, environmental spawning, last-save/menu dispatch and restart remain
+//! explicit gaps. End-of-frame exit arbitration retains the independent falling
+//! timeout and selected animation/progress completion before win requests. See
+//! [preservation's exit ordering](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#world-loop-death-exit-ordering).
 //! The caller supplies raw session death suppression; this does not establish
 //! complete cheat or death support. See
 //! [preservation's health ordering](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#selected-player-death-owning-health-mode).
@@ -129,7 +132,9 @@ pub use registry::vertical::{
     OrdinaryVerticalInputs, OrdinaryVerticalState, ordinary_falling_vertical,
     ordinary_queued_vertical, ordinary_vertical_factor,
 };
-pub use registry::{OrdinaryCombatBranch, OrdinaryCombatCoordinationInput, WalkRouteExclusion};
+pub use registry::{
+    OrdinaryCombatBranch, OrdinaryCombatCoordinationInput, WalkRouteExclusion, WorldLoopOutcome,
+};
 mod navigation;
 pub use navigation::{ActorNavigation, PointCommandState, WalkNodeSlot, WalkRouteState};
 mod order;
@@ -162,6 +167,7 @@ pub use registry::{
 pub use spatial::{ActorSpatial, PlayerQuery, Pose, QueryInputs, rounded_distance};
 pub use status::{PlaybackDiagnostic, PlaybackDiagnostics, ScriptStatus};
 pub use tasks::{NativeCommandState, NativeTaskBindings, NativeTasks, NativeTasksSnapshot};
+pub use world_request::WorldLoopExit;
 pub(crate) use world_request::request_world;
 
 pub struct ScriptPlugin;
@@ -217,10 +223,7 @@ impl Plugin for ScriptPlugin {
                     .after(presentation::bind_scene)
                     .before(presentation::apply),
             )
-            .add_systems(
-                Update,
-                world_request::consume.after(registry::ordinary::step),
-            )
+            .add_systems(Last, world_request::consume.in_set(WorldLoopExit))
             .add_systems(
                 Update,
                 (presentation::bind_scene, presentation::apply)

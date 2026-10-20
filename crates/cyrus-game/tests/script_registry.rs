@@ -74,7 +74,7 @@ fn cache() -> Scripts {
         ]),
     };
     let mut scripts = Scripts {
-        version: 23,
+        version: 24,
         weapons: Default::default(),
         camera: Default::default(),
         combat_attacks: vec![],
@@ -96,6 +96,7 @@ fn cache() -> Scripts {
         },
         player_distance_override: false,
         updates: cyrus_assets::script::UpdateSettings {
+            fall_death_ticks: 144,
             dummy_model_manager: false,
             task_system: true,
             animation_system: true,
@@ -14596,6 +14597,37 @@ fn selected_native_health_routes_addition_and_retains_early_feedback() {
                     .progress(),
                 13
             );
+            assert_eq!(
+                world.finish_world_loop(0).unwrap(),
+                cyrus_game::script::WorldLoopOutcome::Continue
+            );
+            data.metadata["markers"] = serde_json::json!([]);
+            data.metadata["walk_node_maps"] = serde_json::json!([]);
+            let mut saved = movement_snapshot(&world, &scripts, &data);
+            saved["actors"][index]["animation"]["playback"]["frame_progress"] = 0.into();
+            saved["actors"][index]["animation"]["playback"]["current"][1]["command"] = 1.into();
+            let globals = std::mem::take(world.globals_mut());
+            let collision = Default::default();
+            let sources = cyrus_game::script::WorldSnapshotSources {
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &collision,
+            };
+            let mut continued = ScriptWorld::from_snapshot(
+                serde_json::from_value(saved).unwrap(),
+                &sources,
+                cyrus_game::script::WorldRestoreContext {
+                    generation: 2,
+                    globals,
+                    samples: &BTreeMap::new(),
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                continued.finish_world_loop(0).unwrap(),
+                cyrus_game::script::WorldLoopOutcome::Death
+            );
         }
     }
 }
@@ -14746,6 +14778,10 @@ fn session_request_natives_raise_requests_for_the_host() {
         ("PopPlayer", &[1]),
     ])
     .unwrap();
+    assert_eq!(
+        world.finish_world_loop(u32::MAX).unwrap(),
+        cyrus_game::script::WorldLoopOutcome::WorldTransition([7, 11, -3])
+    );
     assert_eq!(
         world.globals_mut().take_host_requests(),
         HostRequests {
@@ -25491,4 +25527,172 @@ fn alternate_main_retains_native_source_before_decoding_strings() {
         globals["native_source"],
         serde_json::json!({"Actor":{"generation":41,"index":0}})
     );
+}
+
+#[test]
+fn world_loop_falling_timeout_retains_wraps_and_resets_independently_of_inhibition() {
+    use cyrus_game::script::{
+        ScriptActorSource, WorldLoopOutcome, WorldRestoreContext, WorldSnapshotSources,
+    };
+    let (scripts, mut world, mut data, _) = player_walking_fixture();
+    data.metadata["markers"] = serde_json::json!([]);
+    data.metadata["walk_node_maps"] = serde_json::json!([]);
+    world
+        .update_ordinary(
+            &data,
+            [0, 0],
+            cyrus_game::script::OrdinaryInputs {
+                scene: None,
+                scripts: cyrus_game::script::ScriptInputs {
+                    nominal_ticks: Some(0),
+                    frame_scale: Some(256),
+                    ..Default::default()
+                },
+            },
+            &mut cyrus_game::random::EngineRandom::default(),
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    let index = world
+        .actors()
+        .iter()
+        .position(|a| matches!(a.source, ScriptActorSource::Player))
+        .unwrap();
+    let collision = Default::default();
+    let sources = WorldSnapshotSources {
+        player: None,
+        scripts: &scripts,
+        animations: &data,
+        collision: &collision,
+    };
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][index]["control"]["falling_state"] = 128.into();
+    let globals = std::mem::take(world.globals_mut());
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 2,
+            globals,
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(world.globals().player_hit_inhibited(), Some(false));
+    for (ticks, elapsed, outcome) in [
+        (u32::MAX, u32::MAX, WorldLoopOutcome::Continue),
+        (1, 0, WorldLoopOutcome::Continue),
+        (144, 144, WorldLoopOutcome::Continue),
+        (0, 144, WorldLoopOutcome::Continue),
+        (1, 145, WorldLoopOutcome::Death),
+    ] {
+        assert_eq!(world.finish_world_loop(ticks).unwrap(), outcome);
+        assert_eq!(
+            world.globals().selected_health().unwrap().falling_elapsed(),
+            Some(elapsed)
+        );
+    }
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][index]["control"]["falling_state"] = 0.into();
+    let globals = std::mem::take(world.globals_mut());
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 3,
+            globals,
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        world.finish_world_loop(100).unwrap(),
+        WorldLoopOutcome::Continue
+    );
+    assert_eq!(
+        world.globals().selected_health().unwrap().falling_elapsed(),
+        Some(0)
+    );
+    let mut saved = movement_snapshot(&world, &scripts, &data);
+    saved["actors"][index]["control"]["falling_state"] = 1.into();
+    let globals = std::mem::take(world.globals_mut());
+    let mut world = ScriptWorld::from_snapshot(
+        serde_json::from_value(saved).unwrap(),
+        &sources,
+        WorldRestoreContext {
+            generation: 4,
+            globals,
+            samples: &BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        world.finish_world_loop(144).unwrap(),
+        WorldLoopOutcome::Continue
+    );
+    let mut clock = cyrus_game::clock::SimulationClock::new(scripts.clock).unwrap();
+    assert_eq!(clock.advance(0).nominal_ticks, 1);
+    let mut app = bevy::prelude::App::new();
+    app.add_plugins(cyrus_game::script::ScriptPlugin);
+    app.insert_resource(clock);
+    app.world_mut()
+        .resource_mut::<cyrus_game::script::ScriptActors>()
+        .current = Some(world);
+    app.world_mut().run_schedule(bevy::prelude::Last);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_game::script::ScriptActors>()
+            .world_loop_outcome,
+        Some(WorldLoopOutcome::Death)
+    );
+
+    app.world_mut().run_schedule(bevy::prelude::Last);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_game::script::ScriptActors>()
+            .current
+            .as_ref()
+            .unwrap()
+            .globals()
+            .selected_health()
+            .unwrap()
+            .falling_elapsed(),
+        Some(145)
+    );
+}
+
+#[test]
+fn world_loop_exit_system_publishes_native_world_transition_at_last() {
+    use bevy::prelude::*;
+    use cyrus_game::script::{ScriptActors, ScriptPlugin};
+    let world = run_native_world(&[("LoadWorld", &[7, 11, -3]), ("WonGame", &[])]).unwrap();
+    let mut app = App::new();
+    app.add_plugins(ScriptPlugin);
+    app.world_mut().resource_mut::<ScriptActors>().current = Some(world);
+    assert!(
+        !app.world()
+            .contains_resource::<cyrus_world::lifecycle::SceneRequest>()
+    );
+    app.world_mut().run_schedule(Last);
+    assert_eq!(
+        app.world()
+            .resource::<cyrus_world::lifecycle::SceneRequest>()
+            .0,
+        "7"
+    );
+    assert_eq!(
+        *app.world()
+            .resource::<cyrus_game::player::placement::MarkerEntry>(),
+        cyrus_game::player::placement::MarkerEntry {
+            marker: 11,
+            heading: 2045
+        }
+    );
+    assert!(
+        app.world()
+            .contains_resource::<cyrus_world::lifecycle::ReloadScene>()
+    );
+    let actors = app.world().resource::<ScriptActors>();
+    assert!(actors.world_loop_outcome.is_none());
 }

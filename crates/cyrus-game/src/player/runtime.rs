@@ -189,6 +189,13 @@ pub(crate) fn step(
 ) {
     let (mut runtime, mut sounds) = simulation;
     runtime.explicit_updated = false;
+    if actors
+        .as_ref()
+        .is_some_and(|actors| actors.world_loop_outcome.is_some())
+    {
+        ticks.clear();
+        return;
+    }
     let (state, marker) = entry;
     let Ok((entity, pose, mut transform)) = players.single_mut() else {
         *runtime = PlayerRuntime::default();

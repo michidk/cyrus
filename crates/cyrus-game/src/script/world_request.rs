@@ -1,8 +1,12 @@
-//! Consumes the `LoadWorld` session request raised by scripts.
-use super::ScriptActors;
+//! End-of-frame world exits and host-owned dispatch of retained script requests.
+use super::{ScriptActors, WorldLoopOutcome};
 use crate::player::placement::MarkerEntry;
 use bevy::prelude::*;
 use cyrus_world::lifecycle::{ReloadScene, SceneRequest};
+
+/// End-of-frame exit arbitration precedes any replacement-session publication.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WorldLoopExit;
 
 /// Destination of a `LoadWorld(world, marker, heading)` call. The heading is masked to 0 through
 /// 2047 as preservation documents; the world index is validated against WORLD.INI by the scene
@@ -33,17 +37,69 @@ pub(crate) fn request_world(commands: &mut Commands, request: [i32; 3]) -> anyho
     Ok(())
 }
 
-/// Runs after the ordinary script step so the request is acted on after the current script step.
-/// Only `load_world` is taken; the other session requests belong to their own consumers.
-pub(super) fn consume(mut actors: ResMut<ScriptActors>, mut commands: Commands) {
+/// Runs after actor and presentation work. A pending world destination takes
+/// priority without advancing the falling timer. Death dispatch remains explicit
+/// until the last-save/menu owner is available; it never starts a fresh world.
+pub(super) fn consume(
+    mut actors: ResMut<ScriptActors>,
+    mut commands: Commands,
+    clock: Option<Res<crate::clock::SimulationClock>>,
+    state: Option<Res<State<crate::AppState>>>,
+    mut checked: Local<Option<(u64, u32, u32)>>,
+) {
+    if actors.error.is_some() || state.is_some_and(|state| *state.get() != crate::AppState::InGame)
+    {
+        return;
+    }
     let Some(world) = actors.current.as_mut() else {
         return;
     };
-    let Some(request) = world.globals_mut().request_mut().load_world.take() else {
+    let identity = (
+        world.generation(),
+        world.world,
+        world.globals().world_loop_frame,
+    );
+    let transition = world.globals_mut().request_mut().load_world;
+    if *checked == Some(identity) && transition.is_none() {
         return;
+    }
+    let first = checked.is_none();
+    *checked = Some(identity);
+    if first && identity.2 == 0 && transition.is_none() {
+        return;
+    }
+    // World preparation can precede the standalone-player initializer.
+    if transition.is_none() && world.globals().selected_health().is_none() {
+        return;
+    }
+    let result = if transition.is_some() {
+        world.finish_world_loop(0)
+    } else {
+        anyhow::Context::context(clock.as_ref(), "world-loop clock unavailable")
+            .and_then(|clock| world.finish_world_loop(clock.step().nominal_ticks))
     };
-    if let Err(error) = request_world(&mut commands, request) {
-        actors.report_runtime_error(format!("{error:#}"));
+    let world_id = world.world;
+    match result {
+        Ok(WorldLoopOutcome::Continue) => {
+            actors.world_loop_outcome = None;
+        }
+        Ok(WorldLoopOutcome::WorldTransition(destination)) => {
+            world.globals_mut().request_mut().load_world = None;
+            if let Err(error) = request_world(&mut commands, destination) {
+                actors.report_runtime_error(format!("{error:#}"));
+            }
+        }
+        Ok(outcome) => {
+            actors.world_loop_outcome = Some(outcome);
+            let service = match outcome {
+                WorldLoopOutcome::Death => "last-save/menu dispatcher",
+                _ => "win dispatcher",
+            };
+            actors.report_runtime_error(format!(
+                "world {world_id} {outcome:?} world-loop outcome: {service} unavailable"
+            ));
+        }
+        Err(error) => actors.report_runtime_error(format!("{error:#}")),
     }
 }
 

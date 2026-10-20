@@ -13,6 +13,8 @@ pub struct SelectedHealthState {
     hit_inhibited: bool,
     #[serde(default)]
     death: Option<SelectedDeathState>,
+    #[serde(default)]
+    falling_elapsed: Option<u32>,
 }
 
 /// Death state initialized by the selected-player initializer, independently of action timers.
@@ -40,6 +42,7 @@ impl SelectedDeathState {
 impl SelectedHealthState {
     pub(super) fn initialized(health: u8) -> Self {
         Self {
+            falling_elapsed: Some(0),
             maximum: 100,
             displayed: i32::from(health),
             hit_inhibited: false,
@@ -82,7 +85,13 @@ impl SelectedHealthState {
             .local_position = position;
     }
 
+    /// Independent world-loop falling timeout; absent in legacy snapshots.
+    pub fn falling_elapsed(&self) -> Option<u32> {
+        self.falling_elapsed
+    }
+
     pub(in crate::script) fn initialize_death(&mut self) {
+        self.falling_elapsed = Some(0);
         let death = self.death.get_or_insert(SelectedDeathState {
             progress: 0,
             mode: 0,
@@ -90,6 +99,19 @@ impl SelectedHealthState {
         });
         death.progress = 0;
         death.mode = 0;
+    }
+
+    pub(super) fn advance_falling_elapsed(&mut self, falling: bool, ticks: u32) -> Result<u32> {
+        let elapsed = self
+            .falling_elapsed
+            .as_mut()
+            .context("selected falling elapsed owner unavailable")?;
+        *elapsed = if falling {
+            elapsed.wrapping_add(ticks)
+        } else {
+            0
+        };
+        Ok(*elapsed)
     }
 
     pub(in crate::script) fn set_hit_inhibited(&mut self, inhibited: bool) {
@@ -790,5 +812,26 @@ mod tests {
             let candidate: SelectedHealthState = serde_json::from_value(candidate).unwrap();
             assert!(candidate.validate().is_err(), "accepted {field}={invalid}");
         }
+    }
+}
+
+#[cfg(test)]
+mod falling_timeout_tests {
+    use super::SelectedHealthState;
+    #[test]
+    fn legacy_falling_elapsed_remains_unknown_until_player_initialization() {
+        let mut saved = serde_json::to_value(SelectedHealthState::initialized(40)).unwrap();
+        saved.as_object_mut().unwrap().remove("falling_elapsed");
+        let mut health: SelectedHealthState = serde_json::from_value(saved).unwrap();
+        assert_eq!(health.falling_elapsed(), None);
+        assert!(
+            health
+                .advance_falling_elapsed(false, 1)
+                .unwrap_err()
+                .to_string()
+                .contains("owner unavailable")
+        );
+        health.initialize_death();
+        assert_eq!(health.falling_elapsed(), Some(0));
     }
 }

@@ -67,6 +67,8 @@ impl ClockSettings {
 /// Eligibility and stage ordering follow preservation's engine/animation.md and SOUP.md.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UpdateSettings {
+    /// Falling-death limit in nominal ticks, with original signed clamp and wrapping conversion.
+    pub fall_death_ticks: i32,
     /// Effective dummy 3D manager, including installed static-angle conversion.
     /// Its animation-vertex queries return the zero vector.
     pub dummy_model_manager: bool,
@@ -89,6 +91,12 @@ impl UpdateSettings {
             .convert_static_angles
             .context("SYSTEM.INI [debug] convert_static_angles missing")?;
         Ok(Self {
+            fall_death_ticks: settings
+                .game
+                .player_fall_dead_time
+                .context("SYSTEM.INI [game] player_fall_dead_time missing")?
+                .max(3)
+                .wrapping_mul(12),
             dummy_model_manager: dummy || convert,
             task_system: settings
                 .system
@@ -470,7 +478,7 @@ impl Scripts {
     }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
-            self.version == 23,
+            self.version == 24,
             "world {}: script schema {} unsupported; re-export the world",
             self.world,
             self.version

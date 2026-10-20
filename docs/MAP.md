@@ -169,6 +169,7 @@ module where it is defined and regenerate.
 - `src/script/registry/contact.rs` — Combat contact queries follow preservation's SOUP motion-contact rules.
 - `src/script/registry/coordination.rs` — Combat coordination shares attacker eligibility, close counters and addressed class queues.
 - `src/script/registry/counter.rs` — Live nonplayer counter timing, synchronous attack start and primitive sidesteps.
+- `src/script/registry/death_exit.rs` — End-of-frame exits use selected state after ordinary traversal, never mid-actor.
 - `src/script/registry/defence.rs` — Receiver-owned defence picks and synchronous animation, sound and timed-taunt execution.
 - `src/script/registry/dialogue.rs` — Dialogue and combat-taunt presentation share authoritative logical actors.
 - `src/script/registry/falling.rs` — Falling continuation requests precede the shared vertical writer.
@@ -202,7 +203,7 @@ module where it is defined and regenerate.
 - `src/script/tasks.rs` — Actor-owned native task tokens share waits and animation requests.
 - `src/script/tasks/persistence.rs` — Native task continuations validate against saved VM calls without execution.
 - `src/script/tasks/persistence/tests.rs` — Native continuations resume through VM calls and explicit restored service bindings.
-- `src/script/world_request.rs` — Consumes the `LoadWorld` session request raised by scripts.
+- `src/script/world_request.rs` — End-of-frame world exits and host-owned dispatch of retained script requests.
 
 ## `cyrus-mcp` — Each tool opens a fresh connection to the game's control port, so the server
 

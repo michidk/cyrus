@@ -1,7 +1,7 @@
 //! Exclusive host requests after ordinary frame updates; storage stays host-owned.
 use crate::{RuntimeSessionCandidate, RuntimeSessionSnapshot, SessionWorldAssets};
 use anyhow::{Context, Result, ensure};
-use bevy::prelude::{App, Assets, Handle, Last, Plugin, Resource, World};
+use bevy::prelude::{App, Assets, Handle, IntoScheduleConfigs, Last, Plugin, Resource, World};
 use cyrus_assets::hud::HudAsset;
 
 enum Request {
@@ -78,7 +78,7 @@ impl Plugin for SessionBoundaryPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionBoundary>()
             .init_resource::<crate::SessionSourceCatalog>()
-            .add_systems(Last, execute);
+            .add_systems(Last, execute.after(cyrus_game::script::WorldLoopExit));
     }
 }
 
