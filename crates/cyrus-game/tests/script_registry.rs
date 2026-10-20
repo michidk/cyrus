@@ -26183,7 +26183,7 @@ fn contact_health_keeps_addition_separate_from_caller_owned_death() {
         // No death groups exist in this fixture. Dispatch must still mark death,
         // without querying timing or calling animation sounds.
         world
-            .dispatch_contact_death_zero(id, None, &mut |_, _| panic!("unexpected sound"))
+            .dispatch_contact_death(id, 0, None, &mut |_, _| panic!("unexpected sound"))
             .unwrap();
         assert_eq!(world.actors()[0].control_state().unwrap().death_selector, 8);
     }
@@ -26750,7 +26750,13 @@ fn hurt_taunt_uses_ordered_selection_without_clock_or_target_distance() {
 #[test]
 fn contact_death_prefers_122_then_121_and_retains_combat_default() {
     use cyrus_game::script::CombatControlState;
-    for (groups, expected) in [(vec![121, 122], 124), (vec![121], 123)] {
+    for (groups, selector, expected) in [
+        (vec![121, 122], 0, Some(124)),
+        (vec![121], 0, Some(123)),
+        (vec![121, 122], 1, Some(123)),
+        (vec![121, 122], -1, Some(123)),
+        (vec![122], 1, None),
+    ] {
         let (world, scripts, mut data) = movement_fixture(
             18,
             false,
@@ -26777,11 +26783,11 @@ fn contact_death_prefers_122_then_121_and_retains_combat_default() {
         let id = world.id(0).unwrap();
         world.bind_animation(id, &data, 18).unwrap();
         world
-            .dispatch_contact_death_zero(id, Some(1), &mut |_, _| Ok(()))
+            .dispatch_contact_death(id, selector, Some(1), &mut |_, _| Ok(()))
             .unwrap();
         let control = world.actors()[0].control_state().unwrap();
         assert_eq!(control.death_selector, 8);
-        assert_eq!(control.combat_death_default, Some(expected));
+        assert_eq!(control.combat_death_default, expected);
         assert_eq!(
             (control.navigation.current, control.navigation.next),
             (-1, -1)

@@ -271,7 +271,7 @@ impl ScriptWorld {
                         )?;
                     }
                     if self.actors[index].attributes[3] == 0 {
-                        self.dispatch_contact_death_zero(defender, inputs.nominal_ticks, sounds)?;
+                        self.dispatch_contact_death(defender, 0, inputs.nominal_ticks, sounds)?;
                     }
                 }
                 continue;
@@ -347,11 +347,13 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Contact selector zero prefers group 122, then 121. A started combat
-    /// death releases walk nodes before retaining its default; selector eight is last.
-    pub fn dispatch_contact_death_zero(
+    /// Contact death with a nonzero selector skips group 122 and checks group 121.
+    /// Missing groups still assign death selector eight. Group defaults and walk-node
+    /// release follow preservation's contact-death animation dispatch contract.
+    pub fn dispatch_contact_death(
         &mut self,
         id: ScriptActorId,
+        selector: i32,
         ticks: Option<u32>,
         sounds: &mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>,
     ) -> Result<()> {
@@ -359,6 +361,7 @@ impl ScriptWorld {
         let group = self.actors[index].animation.as_ref().and_then(|animation| {
             [122, 121]
                 .into_iter()
+                .filter(|group| selector == 0 || *group != 122)
                 .find(|group| animation.playback.has_group(*group))
         });
         if let Some(group) = group {
