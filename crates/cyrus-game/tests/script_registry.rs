@@ -14395,13 +14395,12 @@ fn position_property_access_keeps_attached_effective_pose_until_family_refresh()
     assert_eq!(world.model_position(child).unwrap(), Some([98.0, 4.0, 0.0]));
 }
 
-#[test]
-fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
+fn family_model_fixture(collision: u8) -> (ScriptWorld, cyrus_assets::animation::Animations) {
     let mut scripts = heading_property_scripts(294, Object::Me);
     scripts.definition.references[294] = "pos.vx".into();
     let mut child = scripts.actors["LOGIC"].clone();
     child.attributes.insert("attr_26".into(), 1);
-    child.attributes.insert("attr_1".into(), 4);
+    child.attributes.insert("attr_1".into(), collision);
     scripts
         .actors
         .get_mut("LOGIC")
@@ -14430,7 +14429,16 @@ fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
             rest: vec![],
         },
     };
-    let (mut world, data, _) = static_model_fixture(scripts);
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    let (world, data, _) = static_model_fixture(scripts);
+    (world, data)
+}
+
+#[test]
+fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
+    let (mut world, data) = family_model_fixture(4);
     let root = world.id(0).unwrap();
     let child = world.id(1).unwrap();
     world.set_actor_surface(child, 2).unwrap();
@@ -14470,6 +14478,205 @@ fn family_refresh_updates_current_model_without_resampling_geometry_or_root() {
         world.model_presentation(root).unwrap().unwrap().position,
         [10.0, 20.0, 30.0]
     );
+}
+
+#[test]
+fn automatic_family_models_capture_master_before_ordinary_script_movement() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let (mut world, data) = family_model_fixture(0);
+    let root = world.id(0).unwrap();
+    let child = world.id(1).unwrap();
+    world
+        .prepare_model_admission(&Default::default(), 0)
+        .unwrap();
+    world.refresh_families().unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(
+        world.model_position(child).unwrap(),
+        Some([10.0, 20.0, 30.0])
+    );
+    assert_eq!(
+        world.model_presentation(child).unwrap().unwrap().position,
+        [10.0, 20.0, 30.0]
+    );
+    world
+        .update_ordinary(
+            &data,
+            [0; 2],
+            OrdinaryInputs {
+                scripts: inputs,
+                scene: None,
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    assert!(
+        world.actors()[root.index].failure().is_none(),
+        "{:?}",
+        world.actors()[root.index].failure()
+    );
+    assert_eq!(
+        world.spatial(root).unwrap().local.position,
+        [-257, 5120, 7680]
+    );
+    assert_eq!(
+        world.model_position(child).unwrap(),
+        Some([10.0, 20.0, 30.0]),
+        "ordinary scripts must not rewrite this frame's attached presentation"
+    );
+    assert_eq!(
+        world.spatial(child).unwrap().effective.unwrap().position,
+        [2560, 5120, 7680]
+    );
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(
+        world.model_position(child).unwrap(),
+        Some([-2.0, 20.0, 30.0])
+    );
+    assert_eq!(
+        world
+            .model_presentation(child)
+            .unwrap()
+            .unwrap()
+            .pose
+            .position,
+        [-257, 5120, 7680]
+    );
+}
+
+#[test]
+fn automatic_group_release_waits_for_the_next_model_phase() {
+    use cyrus_game::script::{OrdinaryInputs, ScriptInputs};
+    let mut scripts = wait_cache(vec![
+        wait(
+            4,
+            "SyncWithGroup",
+            CallKind::Task,
+            vec![Value::Integer { value: 3 }],
+        ),
+        set_flag(7),
+        Operation::End { target: 0 },
+    ]);
+    scripts.definition.functions.push(Function {
+        name: "SyncWithGroup".into(),
+        param_count: 1,
+        kind: CallKind::Task,
+    });
+    scripts
+        .actors
+        .get_mut("LOGIC")
+        .unwrap()
+        .attributes
+        .insert("attr_29".into(), 5);
+    for placement in &mut scripts.instances {
+        placement.active = 1;
+    }
+    let (mut world, data, _) = static_model_fixture(scripts);
+    world
+        .prepare_model_admission(&Default::default(), 0)
+        .unwrap();
+    let inputs = ScriptInputs {
+        nominal_ticks: Some(1),
+        frame_scale: Some(256),
+        ..Default::default()
+    };
+    let mut random = cyrus_game::random::EngineRandom::from_state(42);
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    world
+        .update_ordinary(
+            &data,
+            [0; 2],
+            OrdinaryInputs {
+                scripts: inputs,
+                scene: None,
+            },
+            &mut random,
+            &mut |_, _| Ok(()),
+            100,
+        )
+        .unwrap();
+    for index in 0..2 {
+        let id = world.id(index).unwrap();
+        assert!(
+            world.actors()[index].failure().is_none(),
+            "{:?}",
+            world.actors()[index].failure()
+        );
+        world
+            .advance(
+                id,
+                cyrus_game::script::ScriptStage::Tasks,
+                inputs,
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(
+            world.actors()[index].runtime().unwrap().active_tasks(),
+            1,
+            "newly posted groups must remain unreleased during this simulation pass"
+        );
+    }
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            None,
+            inputs,
+            Some(&mut random),
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    for index in 0..2 {
+        let id = world.id(index).unwrap();
+        world
+            .advance(
+                id,
+                cyrus_game::script::ScriptStage::Tasks,
+                inputs,
+                None,
+                None,
+                100,
+            )
+            .unwrap();
+        assert_eq!(world.actors()[index].runtime().unwrap().active_tasks(), 0);
+    }
 }
 
 #[test]

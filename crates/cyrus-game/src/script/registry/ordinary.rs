@@ -67,7 +67,6 @@ impl ScriptWorld {
     ) -> anyhow::Result<()> {
         if self.spatial.is_none() {
             self.prepare_spatial()?;
-            self.refresh_families()?;
         }
         if !self.ordinary_prepared {
             self.ordinary_prepared = true;
@@ -106,6 +105,8 @@ impl ScriptWorld {
     }
 
     /// Execute the supported ordinary map stages in authored traversal order.
+    /// The caller runs `refresh_automatic_models` first for this frame's family/group stage
+    /// and retained presentation. Simulation does not refresh those captured transforms.
     /// Unsupported movement/combat and native services stop the affected actor,
     /// retaining its diagnostic instead of treating the missing stage as successful.
     pub fn update_ordinary(
@@ -465,9 +466,6 @@ impl ScriptWorld {
                 ));
             }
         }
-        self.refresh_families()?;
-        // The group system updates after the family system.
-        self.globals.group_sync.update(&self.actors);
         self.update_separate(view, inputs, random, sounds, budget)?;
         self.advance_environment_effects(ticks);
         Ok(())

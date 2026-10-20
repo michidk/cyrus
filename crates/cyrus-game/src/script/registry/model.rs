@@ -302,8 +302,10 @@ impl ScriptWorld {
         Ok(())
     }
 
-    /// Refresh camera-selected models before ordinary simulation. Camera coordinates
-    /// are Q8; PVO lookup truncates toward zero, while map membership uses its own rule.
+    /// Run this frame's family/group stage, then refresh camera-selected models before simulation.
+    /// Call once per admitted world-loop iteration; family refresh also publishes hidden actors.
+    /// Camera coordinates are Q8; PVO lookup truncates toward zero, while map membership
+    /// uses its own rule.
     /// PVO-rejected ordinary actors retain records; rejected animation support clears them.
     /// `scene` must belong to this world when terrain or swim-depth inputs are needed.
     /// Missing cache settings, previous model coordinates or effect services fail explicitly.
@@ -331,6 +333,8 @@ impl ScriptWorld {
             "world {} PVO selected object outside prepared tables",
             self.world
         );
+        self.refresh_families()?;
+        self.globals.group_sync.update(&self.actors);
         let order = self
             .ordinary_actors([camera[0] >> 8, camera[2] >> 8])?
             .to_vec();
