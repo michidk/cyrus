@@ -1,4 +1,11 @@
 //! World-local environmental effects follow preservation's SOUP pool and lifetime rules.
+//!
+//! Lifetime updates release slots without erasing their retained drawing state.
+//! Scene drawing separately applies alternate-path Y movement before admission,
+//! including released records while another slot remains active. Snapshots retain
+//! both active and released records; older active-only snapshots still restore.
+//! Hosts call `ScriptWorld::draw_environment_effects` once per actual scene draw.
+//! Source: preservation's SOUP environmental effect frame-submission contract.
 use super::ScriptWorld;
 use anyhow::{Context, Result, ensure};
 use cyrus_assets::effects::Effects;
@@ -14,6 +21,7 @@ pub struct EnvironmentalEffect {
     /// Lifetime frame, independent of the image's automatic playback frame.
     pub frame: i32,
     target: i32,
+    active: bool,
 }
 
 /// Slot continuation only; metadata and capacity come from the exact installed source.
@@ -24,9 +32,18 @@ pub(super) struct EffectsSnapshot {
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct EffectSnapshot {
+    #[serde(default = "active_by_default", skip_serializing_if = "is_active")]
+    active: bool,
     descriptor: u32,
     position: [i32; 3],
     frame: i32,
+}
+
+fn active_by_default() -> bool {
+    true
+}
+fn is_active(active: &bool) -> bool {
+    *active
 }
 
 /// Fixed-capacity slots in original retained-list traversal order.
@@ -83,6 +100,7 @@ impl EnvironmentalEffects {
                 .iter()
                 .map(|effect| {
                     effect.as_ref().map(|effect| EffectSnapshot {
+                        active: effect.active,
                         descriptor: effect.descriptor,
                         position: effect.position,
                         frame: effect.frame,
@@ -113,10 +131,14 @@ impl EnvironmentalEffects {
                     )
                 })?;
             ensure!(
-                saved.frame == -1
-                    || (target == 0 && saved.frame == 0)
-                    || (target > 0 && saved.frame <= target),
-                "saved environmental effect slot {index}: frame {} exceeds lifetime target {target}",
+                if saved.active {
+                    saved.frame == -1
+                        || (target == 0 && saved.frame == 0)
+                        || (target > 0 && saved.frame <= target)
+                } else {
+                    target > 0 && saved.frame > target
+                },
+                "saved environmental effect slot {index}: frame {} disagrees with lifetime target {target} and active state",
                 saved.frame
             );
             pool.slots[index] = Some(EnvironmentalEffect {
@@ -124,25 +146,32 @@ impl EnvironmentalEffects {
                 position: saved.position,
                 frame: saved.frame,
                 target,
+                active: saved.active,
             });
         }
         Ok(pool)
     }
     /// Active effects in retained pool order, with stable slot indices until world replacement.
     pub fn active(&self) -> impl Iterator<Item = (usize, &EnvironmentalEffect)> {
-        self.slots
-            .iter()
-            .enumerate()
-            .filter_map(|(slot, effect)| effect.as_ref().map(|effect| (slot, effect)))
+        self.slots.iter().enumerate().filter_map(|(slot, effect)| {
+            effect
+                .as_ref()
+                .filter(|effect| effect.active)
+                .map(|effect| (slot, effect))
+        })
     }
     pub fn is_empty(&self) -> bool {
-        self.slots.iter().all(Option::is_none)
+        self.active().next().is_none()
     }
     fn spawn(&mut self, descriptor: u32, point: [i32; 3]) -> Result<()> {
         if self.disabled {
             return Ok(());
         }
-        let Some(slot) = self.slots.iter_mut().find(|effect| effect.is_none()) else {
+        let Some(slot) = self
+            .slots
+            .iter_mut()
+            .find(|effect| effect.as_ref().is_none_or(|effect| !effect.active))
+        else {
             return Ok(());
         };
         let &(height, target) = self.images.get(&(descriptor as u16)).with_context(|| {
@@ -158,17 +187,30 @@ impl EnvironmentalEffects {
             position: position.map(|v| v >> 8),
             frame: 0,
             target,
+            active: true,
         });
         Ok(())
     }
+    fn prepare_draw(&mut self, ticks: u32) {
+        if self.disabled || self.is_empty() {
+            return;
+        }
+        for effect in self.slots.iter_mut().flatten() {
+            if effect.descriptor & 0x20000 != 0 {
+                effect.position[1] = effect.position[1].wrapping_sub(ticks.wrapping_add(2) as i32);
+            }
+        }
+    }
     fn advance(&mut self, ticks: u32) {
         for slot in &mut self.slots {
-            if let Some(effect) = slot {
+            if let Some(effect) = slot
+                && effect.active
+            {
                 // The selected-death constructor always has reference zero and speed one.
                 if effect.frame != -1 && effect.target != 0 {
                     effect.frame = effect.frame.wrapping_add(ticks as i32);
                     if effect.frame > effect.target {
-                        *slot = None;
+                        effect.active = false;
                     }
                 }
             }
@@ -219,6 +261,20 @@ impl ScriptWorld {
     /// Absent until an effect presentation host has bound its installed source.
     pub fn environmental_effects(&self) -> Option<&EnvironmentalEffects> {
         self.effects.as_ref()
+    }
+    /// Prepare one actual scene draw, independently of lifetime updates.
+    /// Alternate records move upward by nominal ticks plus two, including free
+    /// retained records while the pool has an active slot. Call once per draw.
+    /// Returned records remain in pool order; image admission belongs to rendering.
+    /// Verified: preservation's environmental effect frame-submission contract.
+    pub fn draw_environment_effects(
+        &mut self,
+        nominal_ticks: u32,
+    ) -> impl Iterator<Item = (usize, &EnvironmentalEffect)> {
+        if let Some(effects) = &mut self.effects {
+            effects.prepare_draw(nominal_ticks);
+        }
+        self.effects.iter().flat_map(EnvironmentalEffects::active)
     }
     pub(super) fn spawn_death_effect(&mut self, descriptor: u32, point: [i32; 3]) -> Result<()> {
         self.effects
@@ -292,6 +348,67 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(0, 1)]
         );
+    }
+
+    #[test]
+    fn draw_moves_retained_free_records_and_restores_their_continuation() -> Result<()> {
+        let source = source(4);
+        let mut effects = EnvironmentalEffects::prepare(&source)?;
+        effects.spawn(0x22500, [256, 0, 512])?;
+        effects.advance(1);
+        effects.spawn(0x12500, [768, 0, 1024])?;
+        effects.advance(3);
+        assert_eq!(
+            effects.active().map(|(slot, _)| slot).collect::<Vec<_>>(),
+            [1]
+        );
+        effects.prepare_draw(0);
+        assert_eq!(effects.slots[0].as_ref().unwrap().position, [1, -4, 2]);
+        assert_eq!(effects.active().next().unwrap().1.position, [3, -2, 4]);
+        let saved = serde_json::to_value(effects.snapshot(&source)?)?;
+        assert_eq!(saved["slots"][0]["active"], false);
+        assert!(saved["slots"][1].get("active").is_none());
+        let mut restored =
+            EnvironmentalEffects::from_snapshot(serde_json::from_value(saved)?, &source)?;
+        for pool in [&mut effects, &mut restored] {
+            pool.prepare_draw(u32::MAX);
+            assert_eq!(pool.slots[0].as_ref().unwrap().position, [1, -5, 2]);
+            pool.advance(1);
+            assert!(pool.is_empty());
+            pool.prepare_draw(7);
+            assert_eq!(pool.slots[0].as_ref().unwrap().position, [1, -5, 2]);
+            pool.spawn(0x22500, [1280, 0, 1536])?;
+            pool.prepare_draw(7);
+            assert_eq!(pool.active().next().unwrap().1.position, [5, -11, 6]);
+        }
+        assert_eq!(
+            serde_json::to_value(effects.snapshot(&source)?)?,
+            serde_json::to_value(restored.snapshot(&source)?)?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn draw_wraps_y_and_invalid_free_snapshots_reject() -> Result<()> {
+        let source = source(4);
+        let mut effects = EnvironmentalEffects::prepare(&source)?;
+        effects.spawn(0x32500, [0; 3])?;
+        effects.slots[0].as_mut().unwrap().position[1] = i32::MIN;
+        effects.prepare_draw(0);
+        assert_eq!(effects.active().next().unwrap().1.position[1], i32::MAX - 1);
+        let saved = serde_json::to_value(effects.snapshot(&source)?)?;
+        let mut invalid = saved.clone();
+        invalid["slots"][0]["active"] = false.into();
+        assert!(
+            EnvironmentalEffects::from_snapshot(serde_json::from_value(invalid)?, &source).is_err()
+        );
+        let restored =
+            EnvironmentalEffects::from_snapshot(serde_json::from_value(saved)?, &source)?;
+        assert_eq!(
+            restored.active().next().unwrap().1.position[1],
+            i32::MAX - 1
+        );
+        Ok(())
     }
 
     #[test]

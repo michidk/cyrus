@@ -216,7 +216,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                 globals: cyrus_game::script::GameplayGlobals::default(),
                 samples: &samples,
             };
-            for field in ["source", "slots", "descriptor", "frame"] {
+            for field in ["source", "slots", "descriptor", "frame", "active"] {
                 let mut corrupt = saved.clone();
                 match field {
                     "source" => corrupt["effects"]["source"] = "wrong-source".into(),
@@ -228,6 +228,7 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                     }
                     "descriptor" => corrupt["effects"]["slots"][0]["descriptor"] = 1.into(),
                     "frame" => corrupt["effects"]["slots"][0]["frame"] = 4.into(),
+                    "active" => corrupt["effects"]["slots"][0]["active"] = false.into(),
                     _ => unreachable!(),
                 }
                 assert!(
@@ -274,6 +275,52 @@ fn routed_fatal_health_emits_retained_effects_and_roundtrips_live_slots() {
                 serde_json::to_value(restored.snapshot(&sources).unwrap()).unwrap()["effects"],
                 saved["effects"]
             );
+            if capacity == 2 {
+                let mut draw_saved = saved.clone();
+                draw_saved["effects"]["slots"][0]["descriptor"] = 0x22500.into();
+                draw_saved["effects"]["slots"][0]["frame"] = 3.into();
+                let mut drawing = ScriptWorld::from_snapshot(
+                    serde_json::from_value(draw_saved).unwrap(),
+                    &sources,
+                    context(),
+                )
+                .unwrap();
+                drawing.advance_environment_effects(1);
+                assert_eq!(
+                    drawing
+                        .draw_environment_effects(7)
+                        .map(|(slot, effect)| (slot, effect.position))
+                        .collect::<Vec<_>>(),
+                    [(1, [5, 22, 24])]
+                );
+                let captured = serde_json::to_value(drawing.snapshot(&sources).unwrap()).unwrap();
+                assert_eq!(
+                    captured["effects"]["slots"][0]["position"],
+                    serde_json::json!([8, 13, 23])
+                );
+                let mut drawing = ScriptWorld::from_snapshot(
+                    serde_json::from_value(captured).unwrap(),
+                    &sources,
+                    cyrus_game::script::WorldRestoreContext {
+                        generation: drawing.generation() + 1,
+                        ..context()
+                    },
+                )
+                .unwrap();
+                assert_eq!(drawing.draw_environment_effects(0).count(), 1);
+                let captured = serde_json::to_value(drawing.snapshot(&sources).unwrap()).unwrap();
+                assert_eq!(
+                    captured["effects"]["slots"][0]["position"],
+                    serde_json::json!([8, 11, 23])
+                );
+                drawing.advance_environment_effects(3);
+                assert_eq!(drawing.draw_environment_effects(7).count(), 0);
+                assert_eq!(
+                    serde_json::to_value(drawing.snapshot(&sources).unwrap()).unwrap()["effects"]["slots"]
+                        [0]["position"],
+                    serde_json::json!([8, 11, 23])
+                );
+            }
             restored.advance_environment_effects(3);
             assert!(
                 restored
