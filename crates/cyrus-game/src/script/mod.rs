@@ -148,6 +148,8 @@ pub use registry::ordinary::{
 mod sound;
 mod spatial;
 pub use sound::ScriptSound;
+/// Pure `PlayerLineUp` arithmetic; the native itself is not implemented.
+pub mod alignment;
 mod group_sync;
 mod status;
 mod tasks;

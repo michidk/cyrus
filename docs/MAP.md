@@ -138,6 +138,7 @@ module where it is defined and regenerate.
 - `src/preferences.rs` — Runtime preferences retain load failures and commit only after host persistence.
 - `src/random.rs` — Shared engine random arithmetic, following preservation's SOUP random functions.
 - `src/script/activation.rs` — Shared activation ownership and eligibility follow preservation's HUD prompt rules.
+- `src/script/alignment.rs` — `PlayerLineUp` arithmetic from preservation's engine/SOUP.md "Player alignment ownership and
 - `src/script/animation.rs` — Animation host for the shared SOUP core; eligibility and ticks remain explicit.
 - `src/script/attachment.rs` — Equipped-model geometry follows preservation's engine/attachment.md transform rules.
 - `src/script/attributes.rs` — Immediate attribute services; model-dependent writes remain explicit failures.
