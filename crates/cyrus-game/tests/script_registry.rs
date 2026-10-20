@@ -4791,6 +4791,7 @@ fn hide_clears_model_and_show_restores_retained_static_resource_immediately() {
     ]);
     let (mut world, data, _) = static_model_fixture(scripts);
     let id = world.id(0).unwrap();
+    assert_eq!(world.model_position(id).unwrap(), Some([0.0; 3]));
     world.refresh_model_presentations(&data, &[id]).unwrap();
     assert!(world.model_presentation(id).unwrap().is_some());
     let inputs = ScriptInputs {
@@ -4803,8 +4804,10 @@ fn hide_clears_model_and_show_restores_retained_static_resource_immediately() {
         .unwrap();
     assert!(world.actors()[0].control_state().unwrap().hidden);
     assert!(world.model_presentation(id).unwrap().is_none());
+    assert_eq!(world.model_position(id).unwrap(), Some([10.0, 20.0, 30.0]));
     world.refresh_model_presentations(&data, &[id]).unwrap();
     assert!(world.model_presentation(id).unwrap().is_none());
+    assert_eq!(world.model_position(id).unwrap(), Some([10.0, 20.0, 30.0]));
     world
         .advance(id, ScriptStage::Body(Thread::Main), inputs, None, None, 20)
         .unwrap();
@@ -5224,6 +5227,41 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         world.model_support(actor).unwrap(),
         ModelSupportOwners::default()
     );
+    // Rejected support still positions an actor with a selected frame, without loading geometry.
+    assert_eq!(world.model_position(actor).unwrap(), Some([0.0; 3]));
+    world
+        .set_model_support(
+            actor,
+            ModelSupportOwners {
+                actor: Some(support_actor),
+                static_placement: None,
+            },
+        )
+        .unwrap();
+    let resource = data.models.remove("MOVING").unwrap();
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            None,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert!(
+        world.actors()[0].failure().is_none(),
+        "{:?}",
+        world.actors()[0].failure()
+    );
+    assert!(world.model_presentation(actor).unwrap().is_none());
+    assert_eq!(
+        world.model_position(actor).unwrap(),
+        Some([10.0, 20.0, 30.0])
+    );
+    data.models.insert("MOVING".into(), resource);
+    world
+        .set_model_support(actor, ModelSupportOwners::default())
+        .unwrap();
     world
         .refresh_automatic_models(
             &data,
@@ -5338,6 +5376,24 @@ fn automatic_model_admission_reads_retained_support_before_ground_processing() {
         ModelSupportOwners::default()
     );
     assert!(world.model_presentation(actor).unwrap().is_some());
+    world
+        .refresh_model_presentations(&data, &[support_actor])
+        .unwrap();
+    assert!(world.model_presentation(support_actor).unwrap().is_some());
+    world
+        .refresh_automatic_models(
+            &data,
+            [0; 3],
+            cyrus_game::script::ScriptInputs::default(),
+            None,
+            &mut |_, _| Ok(()),
+        )
+        .unwrap();
+    assert!(world.model_presentation(support_actor).unwrap().is_some());
+    assert_eq!(
+        world.model_position(support_actor).unwrap(),
+        Some([10.0, 20.0, 30.0])
+    );
 }
 
 #[test]
@@ -5375,6 +5431,8 @@ fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
     let mut displaced = saved.clone();
     displaced["actors"][0]["model"]["current"]["position"] =
         serde_json::json!([10.0_f32.to_bits(), 200.5_f32.to_bits(), 30.0_f32.to_bits()]);
+    displaced["actors"][0]["model"]["position"] =
+        displaced["actors"][0]["model"]["current"]["position"].clone();
     let restored = restore(displaced).unwrap();
     let id = restored.id(0).unwrap();
     assert_eq!(
@@ -5408,6 +5466,10 @@ fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
         serde_json::json!([10.0_f32.to_bits(), 200.5_f32.to_bits(), 30.0_f32.to_bits()])
     );
     let mut old = saved.clone();
+    old["actors"][0]["model"]
+        .as_object_mut()
+        .unwrap()
+        .remove("position");
     old["actors"][0]["model"]["current"]
         .as_object_mut()
         .unwrap()
@@ -5419,6 +5481,52 @@ fn stored_model_position_roundtrips_independently_of_logical_coordinates() {
             .unwrap()
             .position,
         [10.0, 20.0, 30.0]
+    );
+    assert_eq!(
+        old.model_position(old.id(0).unwrap()).unwrap(),
+        Some([10.0, 20.0, 30.0])
+    );
+    let mut hidden = saved.clone();
+    hidden["actors"][0]["model"]["current"] = serde_json::Value::Null;
+    let retained = restore(hidden.clone()).unwrap();
+    assert_eq!(
+        retained.model_position(retained.id(0).unwrap()).unwrap(),
+        Some([10.0, 20.0, 30.0])
+    );
+    hidden["actors"][0]["model"]
+        .as_object_mut()
+        .unwrap()
+        .remove("position");
+    let unknown = restore(hidden).unwrap();
+    assert_eq!(
+        unknown.model_position(unknown.id(0).unwrap()).unwrap(),
+        None
+    );
+    let mut no_resource = saved.clone();
+    no_resource["actors"][0]["model"]["current"] = serde_json::Value::Null;
+    no_resource["actors"][0]["model"]["static_radius"] = serde_json::Value::Null;
+    no_resource["actors"][0]["model"]["position"] = serde_json::json!([0, 0, 0]);
+    let mut no_resource = restore(no_resource).unwrap();
+    let actor = no_resource.id(0).unwrap();
+    no_resource
+        .refresh_model_presentations(&data, &[actor])
+        .unwrap();
+    assert!(no_resource.model_presentation(actor).unwrap().is_none());
+    assert_eq!(
+        no_resource.model_position(actor).unwrap(),
+        Some([10.0, 20.0, 30.0])
+    );
+    let mut malformed_retained = saved.clone();
+    malformed_retained["actors"][0]["model"]["position"][1] = f32::INFINITY.to_bits().into();
+    assert!(
+        format!("{:#}", restore(malformed_retained).err().unwrap())
+            .contains("saved retained model position invalid")
+    );
+    let mut inconsistent = saved.clone();
+    inconsistent["actors"][0]["model"]["position"][1] = 21.0_f32.to_bits().into();
+    assert!(
+        format!("{:#}", restore(inconsistent).err().unwrap())
+            .contains("saved current and retained model position disagree")
     );
     let mut malformed = saved;
     malformed["actors"][0]["model"]["current"]["position"][1] = f32::NAN.to_bits().into();
@@ -27300,6 +27408,10 @@ fn automatic_hazard_models_publish_displacement_before_selected_death() {
         assert_eq!(
             world.model_presentation(player).unwrap().unwrap().position[1],
             ((logical[1] >> 8) + 64) as f32
+        );
+        assert_eq!(
+            world.model_position(player).unwrap().unwrap(),
+            world.model_presentation(player).unwrap().unwrap().position
         );
         let guarded = queued != 0 || directions.iter().any(|value| value & 3 != 0);
         assert_eq!(

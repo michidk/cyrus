@@ -1,4 +1,8 @@
 //! Collision-facing model records follow preservation's current-model lifecycle.
+//!
+//! Position and geometry have distinct lifetimes; see the [engine contract].
+//!
+//! [engine contract]: https://michidk.github.io/redguard-preservation/engine/SOUP.html#current-model-presentation
 use super::super::Pose;
 use super::{ScriptActorId, ScriptWorld};
 use anyhow::{Context, Result, ensure};
@@ -45,7 +49,6 @@ pub(super) struct AdmissionState {
     static_count: usize,
 }
 
-#[derive(Default)]
 pub(super) struct ModelState {
     pub prepared: bool,
     pub support: ModelSupportOwners,
@@ -54,15 +57,36 @@ pub(super) struct ModelState {
     pub static_radius: Option<f32>,
     pub animation_radius: Option<f32>,
     pub collision_flags: Option<u8>,
+    /// Stored map-unit coordinates survive loss of the current geometry record.
+    /// None denotes an older snapshot that did not preserve this owner.
+    pub position: Option<[f32; 3]>,
     pub current: Option<ModelPresentation>,
     pub weapon: Option<super::super::attachment::EquippedWeapon>,
 }
 
+impl Default for ModelState {
+    fn default() -> Self {
+        Self {
+            prepared: false,
+            support: ModelSupportOwners::default(),
+            ledge_support: None,
+            static_radius: None,
+            animation_radius: None,
+            collision_flags: None,
+            position: Some([0.0; 3]),
+            current: None,
+            weapon: None,
+        }
+    }
+}
+
 impl ModelState {
     pub fn show_static(&mut self, pose: Pose) {
+        let position = pose.position.map(|value| (value >> 8) as f32);
+        self.position = Some(position);
         if let Some(radius) = self.static_radius {
             self.current = Some(ModelPresentation {
-                position: pose.position.map(|value| (value >> 8) as f32),
+                position,
                 pose,
                 radius,
                 animation: None,
@@ -316,11 +340,8 @@ impl ScriptWorld {
                 continue;
             }
             let allowed = self.animation_support_admitted(id, &selected)?;
-            if !allowed && data.actor(actor.name())?["model_load_path"] == "animation_table" {
-                self.actors[id.index].model.current = None;
-                self.actors[id.index].model.animation_radius = None;
-                continue;
-            }
+            let rejected_animation =
+                !allowed && data.actor(actor.name())?["model_load_path"] == "animation_table";
             let refreshed = (|| -> Result<()> {
                 self.refresh_model_presentations_with_health(
                     data,
@@ -328,7 +349,13 @@ impl ScriptWorld {
                     Some(inputs),
                     random.as_deref_mut(),
                     Some(sounds),
+                    !rejected_animation,
                 )?;
+                if rejected_animation {
+                    self.actors[id.index].model.current = None;
+                    self.actors[id.index].model.animation_radius = None;
+                    return Ok(());
+                }
                 let actor = &self.actors[id.index];
                 if actor.attributes[23] == 0
                     || actor
@@ -508,7 +535,7 @@ impl ScriptWorld {
         data: &Animations,
         admitted: &[ScriptActorId],
     ) -> Result<()> {
-        self.refresh_model_presentations_with_health(data, admitted, None, None, None)
+        self.refresh_model_presentations_with_health(data, admitted, None, None, None, true)
     }
 
     fn refresh_model_presentations_with_health(
@@ -518,6 +545,7 @@ impl ScriptWorld {
         inputs: Option<super::ScriptInputs<'_>>,
         mut random: Option<&mut crate::random::EngineRandom>,
         mut sounds: Option<&mut dyn FnMut(ScriptActorId, crate::script::ScriptSound) -> Result<()>>,
+        publish_geometry: bool,
     ) -> Result<()> {
         self.require_model_identity(data)?;
         for &id in admitted {
@@ -538,6 +566,47 @@ impl ScriptWorld {
                 "world {} instance {index}: model resources not prepared",
                 self.world
             );
+            let static_radius = actor.model.static_radius;
+            let path = data.actor(actor.name())?["model_load_path"].as_str();
+            let animation = match path {
+                Some("static" | "none") => None,
+                Some("animation_table") => {
+                    self.actors[index].model.animation_radius = None;
+                    let Some(frame) = self.animation_frame(id)? else {
+                        continue;
+                    };
+                    if !publish_geometry {
+                        None
+                    } else {
+                        Some(if self.actors[index].placement().is_none() {
+                            data.resolve_frame(self.actors[index].name(), frame)?
+                        } else {
+                            data.resolve_map_frame(index, frame)?
+                        })
+                    }
+                }
+                path => anyhow::bail!(
+                    "world {} instance {index}: model path {path:?} unsupported",
+                    self.world
+                ),
+            };
+            let radius = if let Some(frame) = &animation {
+                Some(
+                    data.models
+                        .get(&frame.model)
+                        .with_context(|| {
+                            format!(
+                                "world {} instance {index} model {} unavailable",
+                                self.world, frame.model
+                            )
+                        })?
+                        .radius
+                        .context("animation header radius unavailable; re-export world")?,
+                )
+            } else {
+                static_radius.filter(|_| publish_geometry)
+            };
+            let actor = &self.actors[index];
             let water_surface = if actor.attributes()[1] & 4 == 0 {
                 None
             } else {
@@ -564,54 +633,17 @@ impl ScriptWorld {
                     self.world
                 );
             }
-            let static_radius = actor.model.static_radius;
-            let path = data.actor(actor.name())?["model_load_path"].as_str();
-            let animation = match path {
-                Some("static" | "none") => {
-                    if static_radius.is_none() {
-                        continue;
-                    }
-                    None
-                }
-                Some("animation_table") => {
-                    self.actors[index].model.animation_radius = None;
-                    let Some(frame) = self.animation_frame(id)? else {
-                        continue;
-                    };
-                    Some(if self.actors[index].placement().is_none() {
-                        data.resolve_frame(self.actors[index].name(), frame)?
-                    } else {
-                        data.resolve_map_frame(index, frame)?
-                    })
-                }
-                path => anyhow::bail!(
-                    "world {} instance {index}: model path {path:?} unsupported",
-                    self.world
-                ),
-            };
-            let radius = if let Some(frame) = &animation {
-                data.models
-                    .get(&frame.model)
-                    .with_context(|| {
-                        format!(
-                            "world {} instance {index} model {} unavailable",
-                            self.world, frame.model
-                        )
-                    })?
-                    .radius
-                    .context("animation header radius unavailable; re-export world")?
-            } else {
-                static_radius.context("retained static model unavailable")?
-            };
             if self.spatial(id)?.parent.is_none() {
                 self.refresh_transform(id)?;
             }
             let pose = self.spatial(id)?.query_pose()?;
             if animation.is_some() {
-                self.actors[index].model.animation_radius = Some(radius);
+                self.actors[index].model.animation_radius = radius;
             }
-            self.actors[index].model.current = Some(ModelPresentation {
-                position: pose.position.map(|value| (value >> 8) as f32),
+            let position = pose.position.map(|value| (value >> 8) as f32);
+            self.actors[index].model.position = Some(position);
+            self.actors[index].model.current = radius.map(|radius| ModelPresentation {
+                position,
                 pose,
                 radius,
                 animation,
@@ -629,14 +661,17 @@ impl ScriptWorld {
                     0
                 };
                 // Publication precedes mode selection and fatal health; actor coordinates stay Q8.
-                self.actors[index]
-                    .model
-                    .current
-                    .as_mut()
-                    .expect("selected model")
-                    .position[1] = (pose.position[1] >> 8)
+                let y = (pose.position[1] >> 8)
                     .wrapping_add(64)
                     .wrapping_add(progress as i32) as f32;
+                self.actors[index]
+                    .model
+                    .position
+                    .as_mut()
+                    .expect("published position")[1] = y;
+                if let Some(current) = self.actors[index].model.current.as_mut() {
+                    current.position[1] = y;
+                }
                 if selected && surface == 5 {
                     self.set_model_death_mode_one()?;
                 }
@@ -900,6 +935,12 @@ impl ScriptWorld {
         Ok(self.actors[index].model.current.as_ref())
     }
 
+    /// Stored map-unit model coordinates, independent of current geometry and logical movement.
+    /// Fresh actors begin at zero. Older snapshots without retained geometry may be unknown.
+    pub fn model_position(&self, id: ScriptActorId) -> Result<Option<[f32; 3]>> {
+        Ok(self.actors[self.resolve(id)?].model.position)
+    }
+
     /// Retained selected resource radius, including hidden actors without a current record.
     /// An absent animated frame clears it; later logical movement does not change it.
     pub fn model_radius(&self, id: ScriptActorId) -> Result<Option<f32>> {
@@ -1031,6 +1072,8 @@ pub(super) struct ModelSnapshot {
     static_radius: Option<u32>,
     animation_radius: Option<u32>,
     collision_flags: Option<u8>,
+    #[serde(default)]
+    position: Option<[u32; 3]>,
     current: Option<ModelPresentationSnapshot>,
     weapon: Option<super::super::attachment::EquippedWeaponSnapshot>,
 }
@@ -1053,6 +1096,7 @@ impl ModelState {
             static_radius: self.static_radius.map(f32::to_bits),
             animation_radius: self.animation_radius.map(f32::to_bits),
             collision_flags: self.collision_flags,
+            position: self.position.map(|position| position.map(f32::to_bits)),
             current: self
                 .current
                 .as_ref()
@@ -1131,6 +1175,20 @@ impl ModelState {
                 })
             })
             .transpose()?;
+        let position = saved
+            .position
+            .map(|bits| bits.map(f32::from_bits))
+            .or_else(|| current.as_ref().map(|record| record.position));
+        ensure!(
+            position.is_none_or(|position| position.iter().all(|value| value.is_finite())),
+            "saved retained model position invalid"
+        );
+        ensure!(
+            current
+                .as_ref()
+                .is_none_or(|record| Some(record.position) == position),
+            "saved current and retained model position disagree"
+        );
         let weapon = saved.weapon.map(|saved| saved.restore()).transpose()?;
         if let Some(weapon) = &weapon {
             ensure!(
@@ -1150,6 +1208,7 @@ impl ModelState {
             static_radius: saved.static_radius.map(radius).transpose()?,
             animation_radius: saved.animation_radius.map(radius).transpose()?,
             collision_flags: saved.collision_flags,
+            position,
             current,
         })
     }

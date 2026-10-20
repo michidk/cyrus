@@ -84,6 +84,8 @@ fn script_visibility_and_stored_position_follow_binding_lifetime() {
             let mut saved = serde_json::to_value(world.snapshot(&sources).unwrap()).unwrap();
             saved["actors"][0]["model"]["current"]["position"] =
                 json!([40.0_f32.to_bits(), 900.0_f32.to_bits(), 80.0_f32.to_bits()]);
+            saved["actors"][0]["model"]["position"] =
+                saved["actors"][0]["model"]["current"]["position"].clone();
             world = ScriptWorld::from_snapshot(
                 serde_json::from_value(saved).unwrap(),
                 &sources,
